@@ -1,0 +1,45 @@
+<Solution>
+  <Folder Name="/Client/">
+    <Project Path="FoundationDB.Aspire.Hosting/FoundationDB.Aspire.Hosting.csproj" />
+    <Project Path="FoundationDB.Aspire/FoundationDB.Aspire.csproj" />
+    <Project Path="FoundationDB.BindingTester/FoundationDB.BindingTester.csproj" />
+    <Project Path="FoundationDB.Client.Native/FoundationDB.Client.Native.csproj" />
+    <Project Path="FoundationDB.Client/FoundationDB.Client.csproj" />
+    <Project Path="FoundationDB.Layers.Common/FoundationDB.Layers.Common.csproj" />
+    <Project Path="FoundationDB.Layers.Experimental/FoundationDB.Layers.Experimental.csproj" />
+    <Project Path="FoundationDB.Linq.Providers/FoundationDB.Linq.Providers.csproj" />
+    <Project Path="FoundationDB.Samples/FoundationDB.Samples.csproj" />
+    <Project Path="FoundationDB.Testing/FoundationDB.Testing.csproj" />
+    <Project Path="FoundationDB.Tests.Sandbox/FoundationDB.Tests.Sandbox.csproj" />
+    <Project Path="FoundationDB.Tests/FoundationDB.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Core/">
+    <Project Path="SnowBank.Core.Tests/SnowBank.Core.Tests.csproj" />
+    <Project Path="SnowBank.Core/SnowBank.Core.csproj" />
+    <Project Path="SnowBank.Networking.Http/SnowBank.Networking.Http.csproj" />
+    <Project Path="SnowBank.Serialization.Json.CodeGen.Tests/SnowBank.Serialization.Json.CodeGen.Tests.csproj" />
+    <Project Path="SnowBank.Serialization.Json.CodeGen/SnowBank.Serialization.Json.CodeGen.csproj" />
+    <Project Path="SnowBank.Shell.Tests/SnowBank.Shell.Tests.csproj" />
+    <Project Path="SnowBank.Shell/SnowBank.Shell.csproj" />
+    <Project Path="SnowBank.Testing.Common/SnowBank.Testing.Common.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="Common/foundationdb-net-client.snk" />
+    <File Path="Common/VersionInfo.props" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="Documentation/docfx.json" />
+    <File Path="global.json" />
+    <File Path="LICENSE.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/Solution Items/GitHub Actions/">
+    <File Path=".github/workflows/build_native.yml" />
+    <File Path=".github/workflows/dotnetcore.yml" />
+  </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="FdbBurner/FdbBurner.csproj" />
+    <Project Path="FdbShell/FdbShell.csproj" />
+    <Project Path="FdbTop/FdbTop.csproj" />
+  </Folder>
+</Solution>
