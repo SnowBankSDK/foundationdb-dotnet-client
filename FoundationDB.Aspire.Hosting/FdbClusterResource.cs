@@ -114,7 +114,8 @@ namespace Aspire.Hosting.ApplicationModel
 		/// <inheritdoc />
 		public ReferenceExpression ConnectionStringExpression => ReferenceExpression.Create($"{GetConnectionString()}");
 
-		private string GetConnectionString()
+		/// <summary>Generates the Connection String that can be injected into other processes to connect to this cluster</summary>
+		public string GetConnectionString()
 		{
 			string clusterDesc = this.ClusterDescription ?? this.Name;
 			string clusterId = this.ClusterId ?? this.Name;
