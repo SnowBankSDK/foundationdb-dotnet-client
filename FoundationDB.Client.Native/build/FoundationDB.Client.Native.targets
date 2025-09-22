@@ -50,9 +50,9 @@ Copyright (c) 2023-2025 SnowBank SAS
 		<!-- Define the platform-specific runtime identifier -->
 		<FdbTargetRuntimeIdentifier Condition="'$(FdbTargetRuntimeIdentifier)' == ''">$(RuntimeIdentifier)</FdbTargetRuntimeIdentifier>
 		<FdbPathToRuntimeFolder>$(MSBuildThisFileDirectory)..\runtimes\</FdbPathToRuntimeFolder>
-		<FdbIsSourceProjectReference Condition="'$(MSBuildProjectExtension)' == '.csproj' and '$(TargetFramework)' != ''">true</FdbIsSourceProjectReference>
+		<FdbIsSourceProjectReference Condition="'$(FdbIsSourceProjectReference)' == '' and '$(MSBuildProjectExtension)' == '.csproj' and '$(TargetFramework)' != ''">true</FdbIsSourceProjectReference>
 		<FdbIsSourceProjectReference Condition="'$(FdbIsSourceProjectReference)' == ''">false</FdbIsSourceProjectReference>
-		<FdbIsPortableBuild Condition="'$(RuntimeIdentifier)' == ''">true</FdbIsPortableBuild>
+		<FdbIsPortableBuild Condition="'$(FdbIsPortableBuild)' == '' and '$(RuntimeIdentifier)' == ''">true</FdbIsPortableBuild>
 		<FdbIsPortableBuild Condition="'$(FdbIsPortableBuild)' == ''">false</FdbIsPortableBuild>
 	</PropertyGroup>
 
@@ -76,7 +76,7 @@ Copyright (c) 2023-2025 SnowBank SAS
 	<Target Name="FdbCopyPortableNativeLibrariesToBuild" BeforeTargets="Build" Condition="'$(FdbIsPortableBuild)' == 'true' and '$(FdbIsSourceProjectReference)' == 'true' and '$(_IsPublishing)' != 'true'">
 		
 		<Message Text="FdbCopyPortableNativeLibrariesToBuild: Fw=$(TargetFramework), Rid=$(FdbTargetRuntimeIdentifier), IsPortable=$(FdbIsPortableBuild), IsFromSource=$(FdbIsSourceProjectReference), ThisDir=$(MSBuildThisFileDirectory)" Importance="low"/>
-		<Message Text="Copying FDB Client native libraries to build output folder -> $(OutDir)" Importance="high"/>
+		<Message Text="Copying FDB Client native libraries to build output folder -> $(OutDir)runtimes\" Importance="high"/>
 
 		<!-- Copy to the output directory, only if changed -->
 		<Copy
