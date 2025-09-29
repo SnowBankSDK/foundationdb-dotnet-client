@@ -1543,13 +1543,15 @@ namespace System
 			return Convert.ToBase64String(this.Array, this.Offset, this.Count);
 		}
 
-		/// <summary>Converts a slice into a string with each byte encoded into uppercase hexadecimal (<c>A-F</c>)</summary>
+		/// <summary>Converts a slice into a string with each byte encoded into uppercase hexadecimal (<c>0-9A-F</c>)</summary>
 		/// <returns>ex: <c>"0123456789ABCDEF"</c></returns>
+		/// <remarks>The result is identical to the <c>"N"</c> format when calling <see cref="ToString(string?,System.IFormatProvider?)"/> or <see cref="TryFormat"/></remarks>
 		public string ToHexString()
 			=> Convert.ToHexString(this.Span);
 
-		/// <summary>Converts a slice into a string with each byte encoded into lowercase hexadecimal (<c>a-f</c>)</summary>
-		/// <returns>ex: <c>"0123456789abcdef"</c></returns>
+		/// <summary>Converts a slice into a string with each byte encoded into lowercase hexadecimal (<c>0-9a-f</c>)</summary>
+		/// <returns>ex: <c>"0123456789abcdef"</c></returns>0
+		/// <remarks>The result is identical to the <c>"n"</c> format when calling <see cref="ToString(string?,System.IFormatProvider?)"/> or <see cref="TryFormat"/></remarks>
 		public string ToHexStringLower()
 #if NET9_0_OR_GREATER
 			=> Convert.ToHexStringLower(this.Span);
@@ -1557,18 +1559,20 @@ namespace System
 			=> this.Span.ToHexaString('\0', lowerCase: true);
 #endif
 
-		/// <summary>Converts a slice into a string with each byte encoded into uppercase hexadecimal, separated by a character</summary>
+		/// <summary>Converts a slice into a string with each byte encoded into uppercase hexadecimal (<c>0-9A-F</c>), separated by a character</summary>
 		/// <param name="sep">Character used to separate the hexadecimal pairs (ex: <c>' '</c>)</param>
 		/// <returns>"01 23 45 67 89 AB CD EF"</returns>
+		/// <remarks>When <paramref name="sep"/> is <c>' '</c>, the result is identical to the <c>"X"</c> format when calling <see cref="ToString(string?,System.IFormatProvider?)"/> or <see cref="TryFormat"/></remarks>
 		[Pure]
 		public string ToHexString(char sep)
 		{
 			return sep != '\0' ? this.Span.ToHexaString(sep, lowerCase: false) : Convert.ToHexString(this.Span);
 		}
 
-		/// <summary>Converts a slice into a string with each byte encoded into lowercase hexadecimal, separated by a character</summary>
+		/// <summary>Converts a slice into a string with each byte encoded into lowercase hexadecimal (<c>0-9a-f</c>), separated by a character</summary>
 		/// <param name="sep">Character used to separate the hexadecimal pairs (ex: <c>' '</c>)</param>
 		/// <returns>"01 23 45 67 89 ab cd ef"</returns>
+		/// <remarks>When <paramref name="sep"/> is <c>' '</c>, the result is identical to the <c>"n"</c> format when calling <see cref="ToString(string?,System.IFormatProvider?)"/> or <see cref="TryFormat"/></remarks>
 		[Pure]
 		public string ToHexStringLower(char sep)
 		{
