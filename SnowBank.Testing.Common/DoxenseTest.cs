@@ -26,12 +26,14 @@
 
 namespace SnowBank.Testing
 {
+	using System.ComponentModel;
 	using System.IO;
 	using System.Reflection;
 
 	/// <summary>Legacy base class.</summary>
 	[DebuggerNonUserCode]
 	[Obsolete("Please derive from SimpleTest instead.")]
+	[EditorBrowsable(EditorBrowsableState.Never)]
 	public abstract class DoxenseTest : SimpleTest
 	{
 

@@ -54,14 +54,15 @@ namespace SnowBank.Networking
 
 		/// <summary>Resolves the public IP address of the specified target, as seen by the local host</summary>
 		/// <param name="hostNameOrAddress">Host name of IP address</param>
+		/// <param name="ct">Token used to cancel the request</param>
 		/// <returns>The resolved IP address of the host, the address if it is already resolved, or <see langword="null"/> if the resolution failed</returns>
 		// ReSharper disable once InconsistentNaming
-		ValueTask<IPAddress?> GetPublicIPAddressForHost(string hostNameOrAddress);
+		ValueTask<IPAddress?> GetPublicIPAddressForHost(string hostNameOrAddress, CancellationToken ct);
 
 		/// <summary>Performs a DNS resolution for the specified host name</summary>
 		/// <param name="hostNameOrAddress">Host name or IP address</param>
 		/// <param name="family">Type of DNS record (A, AAA, ...)</param>
-		/// <param name="ct">Cancellation token</param>
+		/// <param name="ct">Token used to cancel the request</param>
 		/// <returns>Result of the DNS resolution</returns>
 		Task<IPHostEntry> DnsLookup(string hostNameOrAddress, AddressFamily? family, CancellationToken ct);
 
@@ -145,6 +146,9 @@ namespace SnowBank.Networking
 		IVirtualNetworkLocation RegisterLocation(string id, string name, VirtualNetworkType type, VirtualNetworkLocationOptions options);
 
 		/// <summary>Gets the network location with the specified identifier</summary>
+		/// <param name="id">Id of the network location</param>
+		/// <returns>The corresponding <see cref="IVirtualNetworkLocation"/> if it exists, or an exception if it does not.</returns>
+		/// <exception cref="InvalidOperationException">If there is no network location with the given <paramref name="id"/></exception>
 		IVirtualNetworkLocation GetLocation(string id);
 
 		/// <summary>Gets the host with the specified identifier</summary>
@@ -158,7 +162,8 @@ namespace SnowBank.Networking
 		/// <returns>Simulated response from the virtual DNS server</returns>
 		Task<IPHostEntry> DnsResolve(string hostNameOrAddress, IVirtualNetworkHost? sourceHost, AddressFamily? family, CancellationToken ct);
 
-		/// <summary>Dumps a human-readable version of the network topology, for logging/troubleshooting purpose</summary>
+		/// <summary>Generates a human-readable description of the network topology, for logging/troubleshooting purpose</summary>
+		/// <remarks>The generated string may contain multiple lines, and end with a carriage return.</remarks>
 		string Dump();
 
 	}
@@ -261,7 +266,7 @@ namespace SnowBank.Networking
 		VirtualNetworkLocationOptions Options { get; }
 
 		/// <summary>Registers a new host to this network location</summary>
-		/// <remarks>Should only called by the test framework, during the setup phase</remarks>
+		/// <remarks>Should only be called by the test framework, during the setup phase</remarks>
 		[EditorBrowsable(EditorBrowsableState.Advanced)]
 		IVirtualNetworkMap RegisterHost(string id, VirtualHostIdentity identity);
 
@@ -274,13 +279,13 @@ namespace SnowBank.Networking
 		void RegisterIpAddress(IPAddress address);
 
 		/// <summary>Allocates a new IP address using the virtual DHCP server of this location</summary>
-		/// <returns></returns>
 		IPAddress AllocateIpAddress();
 
-		/// <summary>Generates a new virtual MAC address</summary>
-		/// <param name="ouiPrefix">OUI prefix of this vender (ex: <c>'12:34:56'</c>)</param>
-		/// <param name="seed">Deterministic seed, or null to generate a truly random address</param>
-		/// <returns>Completed MAC address (ex: <c>'12:34:56:A2:79:3F'</c>)</returns>
+		/// <summary>Allocates a new MAC address on this network location</summary>
+		/// <param name="ouiPrefix">First 24 bits of the MAC address, in the format <c>"XX:XX:XX"</c> (with X = hex digit)</param>
+		/// <param name="seed">Optional seed used to generate a deterministic address (like the host name, its IP address, etc...). If <see langword="null"/>, a randomly generated seed will be used instead.</param>
+		/// <returns>A newly generated MAC address, in the format <c>"XX:XX:XX:YY:YY:YY"</c> with X coming from <paramref name="ouiPrefix"/> and Y being generated from the <paramref name="seed"/></returns>
+		/// <example><c>AllocateMacAddress("12:34:56") => "12:34:56:C0:FF:EE"</c></example>
 		string AllocateMacAddress(string ouiPrefix, string? seed = null);
 
 		/// <summary>Generates a new virtual Serial Number from a pattern</summary>
@@ -344,10 +349,10 @@ namespace SnowBank.Networking
 		/// <remarks>By convention, should be UPPERCASE.</remarks>
 		string HostName { get; }
 
-		/// <summary>Additional names for this host (exccluding the primary host name and fqdn)</summary>
+		/// <summary>Additional names for this host (excluding the primary host name and fqdn)</summary>
 		string[] Aliases { get; }
 
-		/// <summary>Static ip address (optionnal)</summary>
+		/// <summary>Static ip address (optional)</summary>
 		/// <remarks>By convention, IP addresses in the range 83.73.77.0/24 are used for simulated hosts, in order to ensure that no real packet "escapes" from the test context to a real network.</remarks>
 		IPAddress[] Addresses { get; }
 

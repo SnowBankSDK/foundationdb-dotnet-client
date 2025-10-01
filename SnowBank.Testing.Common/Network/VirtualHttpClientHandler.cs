@@ -32,7 +32,7 @@ namespace SnowBank.Networking
 	using System.Net.Http;
 	using SnowBank.Networking.Http;
 
-	/// <summary>HTTP handler that emulates requests to <see cref="IVirtualNetworkHost">virtual hosts</see> through a <see cref="IVirtualNetworkMap">virtual network</see></summary>
+	/// <summary>HTTP handler implementation that emulates requests to <see cref="IVirtualNetworkHost">virtual hosts</see> through a <see cref="IVirtualNetworkMap">virtual network</see></summary>
 	internal class VirtualHttpClientHandler : DelegatingHandler
 	{
 
@@ -89,6 +89,7 @@ namespace SnowBank.Networking
 			return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
 		}
 
+		/// <inheritdoc />
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
 			var uri = request.RequestUri;
@@ -104,11 +105,11 @@ namespace SnowBank.Networking
 			// From the host name in the URI of the request, we will check:
 			// - if the remote host "exists" in the virtual network topology,
 			// - if we can resolve this into an IP address,
-			// - if we know the network location that corresspond to this ip,
+			// - if we know the network location that correspond to this IP address,
 			// - if the source host can reach this network location,
 			// - if the remote host is offline or online
 			// - if the port on the remote host is bound to any HTTP service
-			// If all the conditions are met, then we will actual generate a virtual http handler that invokes that service.
+			// If all the conditions are met, then we will generate a virtual http handler that invokes that service.
 			// If not, then we will throw an exception that attempts to replicate the actual exception that would happen in "real life".
 
 			string hostName = uri.DnsSafeHost;
@@ -124,8 +125,8 @@ namespace SnowBank.Networking
 				{
 					// ??
 				};
-				this.Options.Configure(handler);
-				var invoker = new HttpMessageInvoker(handler);
+				var configuredHandler = this.Options.Configure(handler);
+				var invoker = new HttpMessageInvoker(configuredHandler);
 				return invoker.SendAsync(request, cancellationToken);
 			}
 
@@ -149,7 +150,7 @@ namespace SnowBank.Networking
 					}
 
 					if (host.Offline)
-					{ // the host is offline (rebooting? disconnected from ethernet/wifi?)
+					{ // the host is offline (rebooting? disconnected from ethernet/Wi-Fi?)
 
 						//TODO: depending on the situation, we should either simulate a name resolution failure, OR a tcp connect timeout:
 						// - if the DNS entry for the host is statically assigned, OR the caller still as the IP in cache from an earlier query, it would attempt to connect with the remote host, and fail with a timeout.

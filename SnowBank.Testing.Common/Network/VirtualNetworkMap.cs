@@ -42,18 +42,26 @@ namespace SnowBank.Networking
 
 		public VirtualNetworkMap(VirtualNetworkTopology topology, VirtualNetworkTopology.SimulatedHost host)
 		{
+			Contract.NotNull(topology);
+			Contract.NotNull(host);
+
 			this.Topology = topology;
 			this.Host = host;
 		}
 
 		/// <summary>Topology of the virtualized network</summary>
 		public VirtualNetworkTopology Topology { get; }
+
+		/// <inheritdoc />
 		IVirtualNetworkTopology IVirtualNetworkMap.Topology => this.Topology;
 
 		/// <summary>Local virtual host</summary>
 		public VirtualNetworkTopology.SimulatedHost Host { get; }
+
+		/// <inheritdoc />
 		IVirtualNetworkHost IVirtualNetworkMap.Host => this.Host;
 
+		/// <inheritdoc />
 		IVirtualNetworkHost? IVirtualNetworkMap.FindHost(string hostOrAddress) => FindHost(hostOrAddress);
 
 		/// <summary>Lookup the Virtual Host that correspond to the given hostname or IP address</summary>
@@ -98,6 +106,7 @@ namespace SnowBank.Networking
 			return host;
 		}
 
+		/// <inheritdoc />
 		[Obsolete("Use CreateBetterHttpHandler instead")]
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public override HttpMessageHandler? CreateHttpHandler(string hostOrAddress, int port)
@@ -184,18 +193,21 @@ namespace SnowBank.Networking
 			return (null, null);
 		}
 
+		/// <inheritdoc />
 		public override HttpMessageHandler CreateBetterHttpHandler(Uri baseAddress, BetterHttpClientOptions options)
 		{
 			return new VirtualHttpClientHandler(this, baseAddress, options);
 		}
 
-		public override ValueTask<IPAddress?> GetPublicIPAddressForHost(string hostNameOrAddress)
+		/// <inheritdoc />
+		public override ValueTask<IPAddress?> GetPublicIPAddressForHost(string hostNameOrAddress, CancellationToken ct)
 		{
-			if (hostNameOrAddress is "127.0.0.1" or "localhost" or "localhost.localdomain")
+			if (ct.IsCancellationRequested) return ValueTask.FromCanceled<IPAddress?>(ct);
+
+			if (hostNameOrAddress is ("127.0.0.1" or "localhost" or "localhost.localdomain"))
 			{
 				return new (IPAddress.Loopback);
 			}
-
 			if (hostNameOrAddress == "::1")
 			{
 				return new (IPAddress.IPv6Loopback);
@@ -204,18 +216,20 @@ namespace SnowBank.Networking
 			return new (this.Host.Addresses[0]);
 		}
 
+		/// <inheritdoc />
 		public override Task<IPHostEntry> DnsLookup(string hostNameOrAddress, AddressFamily? family, CancellationToken ct)
 		{
 			return this.Topology.DnsResolve(hostNameOrAddress, this.Host, family, ct);
 		}
 
+		/// <inheritdoc />
 		public override IReadOnlyList<NetworkAdaptorDescriptor> GetNetworkAdaptors()
 		{
 			var res = new List<NetworkAdaptorDescriptor>();
 			int idx = 0;
 			foreach (var net in this.Host.Adapters)
 			{
-				res.Add(new NetworkAdaptorDescriptor()
+				res.Add(new()
 				{
 					Id = net.Id,
 					Index = ++idx,
@@ -235,55 +249,60 @@ namespace SnowBank.Networking
 			}
 			return res;
 		}
+
 	}
 
+	/// <summary>Handler that emulates a non-existing host on the network</summary>
+	/// <remarks>All requests using this handler will throw with an <see cref="HttpRequestException"/> emulating various error codes that are typically observed when interacting with missing or failed hosts.</remarks>
 	public class VirtualDeadHttpClientHandler : HttpClientHandler
 	{
 
+		/// <summary>Creates the appropriate exception to emulate the error condition</summary>
 		private Func<Uri?, Exception> Handler { get; }
 
 		public VirtualDeadHttpClientHandler(Func<Uri?, Exception> handler)
 		{
+			Contract.NotNull(handler);
 			this.Handler = handler;
 		}
 
-		public static VirtualDeadHttpClientHandler SimulatePortNotBoundFailure(string debugReason)
+		/// <summary>Simulates a host that is alive, but that is not listening to the requested port.</summary>
+		/// <remarks>This is typically the case when either the host is in the process of starting up and the remote service has not started yet, the service failed to start, or the port configuration is incorrect.</remarks>
+		public static VirtualDeadHttpClientHandler SimulatePortNotBoundFailure(string debugReason) => new((uri) =>
 		{
-			return new VirtualDeadHttpClientHandler((uri) =>
-			{
-				var webEx = new WebException($"No connection could be made because the target machine actively refused it {uri?.DnsSafeHost ?? "<unknown>"}:{uri?.Port}", WebExceptionStatus.ConnectFailure);
-				return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
-			});
-		}
+			var webEx = new WebException($"No connection could be made because the target machine actively refused it {uri?.DnsSafeHost ?? "<unknown>"}:{uri?.Port}", WebExceptionStatus.ConnectFailure);
+			return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
+		});
 
-		public static VirtualDeadHttpClientHandler SimulateNameResolutionFailure(string debugReason)
+		/// <summary>Simulates a host that does not exist, or that cannot be resolved via DNS.</summary>
+		/// <remarks>This is typically the case when the url points to a non-existing host, or the DNS search domain is misconfigured on the local node, or when DNS is not available.</remarks>
+		public static VirtualDeadHttpClientHandler SimulateNameResolutionFailure(string debugReason) => new((uri) =>
 		{
-			return new VirtualDeadHttpClientHandler((uri) =>
-			{
-				var webEx = new WebException($"The remote name could not be resolved: '{uri?.Host ?? "<unknown>"}'", WebExceptionStatus.NameResolutionFailure);
-				return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
-			});
-		}
+			var webEx = new WebException($"The remote name could not be resolved: '{uri?.Host ?? "<unknown>"}'", WebExceptionStatus.NameResolutionFailure);
+			return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
+		});
 
-		public static VirtualDeadHttpClientHandler SimulateConnectFailure(string debugReason)
+		/// <summary>Simulates a network connectivity issue.</summary>
+		/// <returns>This assumes that the IP address is known but the host is not responding, either because it is offline, or there is a network connectivity issue preventing communication both ways.</returns>
+		public static VirtualDeadHttpClientHandler SimulateConnectFailure(string debugReason) => new((_) =>
 		{
-			return new VirtualDeadHttpClientHandler((_) =>
-			{
-				var sockEx = new SocketException(10060); // TimedOut
-				var webEx = new WebException("Unable to connect to the remove server", sockEx, WebExceptionStatus.ConnectFailure, null);
-				return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
-			});
-		}
+			var sockEx = new SocketException(10060); // TimedOut
+			var webEx = new WebException("Unable to connect to the remove server", sockEx, WebExceptionStatus.ConnectFailure, null);
+			return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
+		});
 
+		/// <inheritdoc />
 		protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
 			throw this.Handler(request.RequestUri);
 		}
 
+		/// <inheritdoc />
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
 			throw this.Handler(request.RequestUri);
 		}
+
 	}
 
 }

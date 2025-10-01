@@ -35,24 +35,32 @@ namespace SnowBank.Networking
 	using System.Net.Sockets;
 	using SnowBank.IO.Hashing;
 
+	/// <summary>Default implementation of <see cref="IVirtualNetworkTopology"/></summary>
 	public class VirtualNetworkTopology : IVirtualNetworkTopology
 	{
 
+		/// <summary>Represents a virtual network adapter that is used by a <see cref="SimulatedHost"/> to talk to a <see cref="SimulatedNetwork"/></summary>
 		public sealed record SimulatedNetworkAdapter : IVirtualNetworkAdapter
 		{
 
 			public required SimulatedNetwork Location { get; init; }
 
+			/// <inheritdoc />
 			IVirtualNetworkLocation IVirtualNetworkAdapter.Location => this.Location;
 
+			/// <inheritdoc />
 			public required string Id { get; init; }
 
+			/// <inheritdoc />
 			public required NetworkInterfaceType Type { get; init; }
 
+			/// <inheritdoc />
 			public required string Name { get; init; }
 
+			/// <inheritdoc />
 			public required string Description { get; init; }
 
+			/// <inheritdoc />
 			public required (IPAddress Address, IPAddress Mask, int PrefixLength)[] UnicastAddresses { get; init; }
 
 			public string? PhysicalAddress { get; init; }
@@ -60,47 +68,57 @@ namespace SnowBank.Networking
 		}
 
 		// By convention:
-		// - If hostname is an fqdns that ends in ".simulated", it is a virtual device
+		// - If hostname is a fqdns that ends in ".simulated", it is a virtual device
 		// - If hostname is an IPv4 in the range 83.73.77.0/24 ("SIM*" in ascii), it is also a virtual device
 
+		/// <summary>Represents a virtual host in a <see cref="SimulatedNetwork"/></summary>
 		[DebuggerDisplay("{ToString(),nq}")]
 		public sealed class SimulatedHost : IVirtualNetworkHost
 		{
-			/// <summary>Unique ID of this host in the global network</summary>
+
+			/// <inheritdoc />
 			public string Id { get; }
 
+			/// <inheritdoc cref="IVirtualNetworkHost.Adapters"/>
 			public SimulatedNetworkAdapter[] Adapters { get; }
+
+			/// <inheritdoc />
 			IReadOnlyList<IVirtualNetworkAdapter> IVirtualNetworkHost.Adapters => this.Adapters;
 
+			/// <inheritdoc cref="IVirtualNetworkHost.Locations"/>
 			public SimulatedNetwork[] Locations { get; }
+
+			/// <inheritdoc />
 			IReadOnlyList<IVirtualNetworkLocation> IVirtualNetworkHost.Locations => this.Locations;
 
+			/// <inheritdoc cref="IVirtualNetworkHost.Loopback"/>
 			public SimulatedNetwork? Loopback { get; }
+
+			/// <inheritdoc />
 			IVirtualNetworkLocation? IVirtualNetworkHost.Loopback => this.Loopback;
 
-			/// <summary>Nom de domaine complet (fqdn) du host (ex: pc123.domain.local)</summary>
+			/// <inheritdoc />
 			public string Fqdn { get; }
 
-			/// <summary>Nom principal du host, excluant le domaine (ex: PC123)</summary>
+			/// <inheritdoc />
 			public string HostName { get; }
 
-			/// <summary>Noms aditionnels optionnels du host (exclant le nom d'host et son fqdn)</summary>
+			/// <inheritdoc />
 			public string[] Aliases { get; }
 
-			/// <summary>Static ip address (optionnel)</summary>
-			/// <remarks>Par convention, on utilise des IP dans la range 83.73.77.0/24 pour les simulated virtual devices</remarks>
+			/// <inheritdoc />
 			public IPAddress[] Addresses { get; }
 
 			public bool Passthrough { get; }
 
-			/// <summary>Flag that is <see langword="true"/> when this host is 'offline' and should not respond to any external request.</summary>
+			/// <inheritdoc />
 			public bool Offline { get; private set; }
 
 			/// <summary>Map of all handlers attached to each network location</summary>
 			/// <remarks>The key is the network location id, and the value is the map of the ports that are bound: <c>Location => (Port => Handler)</c></remarks>
 			public Dictionary<string, Dictionary<int, Func<HttpMessageHandler>>> Handlers { get; } = new(StringComparer.Ordinal);
 
-			/// <summary>Create a new simulated host</summary>
+			/// <summary>Constructs a new simulated host</summary>
 			/// <param name="adapters">List of the network adapters that are available for this host (note: must include at least one adapter for 'localhost')</param>
 			/// <param name="id">Unique id of this host</param>
 			/// <param name="hostName">Primary host name (ex: "pc042")</param>
@@ -124,9 +142,7 @@ namespace SnowBank.Networking
 				this.Offline = offline;
 			}
 
-			/// <summary>Change the <see cref="Offline">offline state</see> of this host</summary>
-			/// <param name="offline">Mark the host as offline if <see langword="true"/>, or back online if <see langword="false"/>.</param>
-			/// <remarks>If the host is offline, all simulated requests will start to fail</remarks>
+			/// <inheritdoc />
 			public void SetOffline(bool offline)
 			{
 				//TODO: maybe add a parameter to specify which kind of "offline" fault the host should simulate: powered-down? ethernet is off? currently rebooting but not yet ready? some big crash?
@@ -134,10 +150,7 @@ namespace SnowBank.Networking
 				//TODO: maybe have a way to "cancel" any in-flight requests to this host?
 			}
 
-			/// <summary>Bind a "virtual socket" on the specified port</summary>
-			/// <param name="location">Network location (ie: network adapter) on which to bind this handler</param>
-			/// <param name="port">Port of the virtual socket</param>
-			/// <param name="handler">Handler that will be called on each connection attempt on this port. It should return an HTTP handler that will process (or fail) the request.</param>
+			/// <inheritdoc />
 			/// <exception cref="InvalidOperationException">If the host is not able to bind virtual socket (ex: passthrough host)</exception>
 			public void Bind(IVirtualNetworkLocation location, int port, Func<HttpMessageHandler> handler)
 			{
@@ -147,7 +160,7 @@ namespace SnowBank.Networking
 				{
 					if (!this.Handlers.TryGetValue(location.Id, out var ports))
 					{
-						ports = new Dictionary<int, Func<HttpMessageHandler>>();
+						ports = new();
 						this.Handlers[location.Id] = ports;
 					}
 
@@ -155,7 +168,7 @@ namespace SnowBank.Networking
 				}
 			}
 
-			/// <summary>Find a message handler that is bound to the specified port</summary>
+			/// <summary>Finds a message handler that is bound to the specified port</summary>
 			/// <param name="location">Network location (ie: network adapter) from which the request is coming</param>
 			/// <param name="port">Port of the connection attempt</param>
 			/// <returns>If the port is bound, return a new HTTP message handler that will process request. If the port is unassigned, it will return <see langword="null"/>.</returns>
@@ -175,7 +188,7 @@ namespace SnowBank.Networking
 				}
 			}
 
-			/// <summary>Return all the variations of host names, fqdn and aliases that this host responds to.</summary>
+			/// <summary>Returns all the variations of host names, fqdn and aliases that this host responds to.</summary>
 			public IEnumerable<string> GetHostKeys()
 			{
 				if (!string.IsNullOrEmpty(this.Fqdn))
@@ -198,23 +211,32 @@ namespace SnowBank.Networking
 				}
 			}
 
+			/// <inheritdoc />
 			public override string ToString()
 			{
 				return $"Host<{this.Id}>(Fqdn={this.Fqdn}, IP={string.Join<IPAddress>(", ", this.Addresses)}, Aliases={string.Join<string>(", ", this.Aliases)})";
 			}
 
+			/// <inheritdoc />
 			public override bool Equals(object? obj) => obj is IVirtualNetworkHost host && Equals(host);
 
+			/// <inheritdoc />
 			public bool Equals(IVirtualNetworkHost? other) => ReferenceEquals(other, this) || (!ReferenceEquals(other, null) && other.Id == this.Id);
 
+			/// <inheritdoc />
 			public override int GetHashCode() => this.Id.GetHashCode();
 
 		}
 
-		public Dictionary<string, SimulatedHost> HostsById { get; } = new Dictionary<string, SimulatedHost>(StringComparer.Ordinal);
+		public Dictionary<string, SimulatedHost> HostsById { get; } = new(StringComparer.Ordinal);
 
-		public Dictionary<string, string> HostsByNameOrAddress { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		public Dictionary<string, string> HostsByNameOrAddress { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+		/// <summary>Represents a virtual network location, such as "LAN", a Cloud DMZ, or the Loopback interface, as well as all its services (DNS, DHCP, ...).</summary>
+		/// <remarks>
+		/// <para>Hosts belonging to the same network location can talk to each other directly.</para>
+		/// <para>Hosts from different network locations may require virtual routing to be configured</para>
+		/// </remarks>
 		[DebuggerDisplay("Id={Id}, Name={Name}, Type={Type}, IpRange={Options.IpRange}, DnsSuffix={Options.DnsSuffix}")]
 		public sealed class SimulatedNetwork : IVirtualNetworkLocation
 		{
@@ -237,25 +259,35 @@ namespace SnowBank.Networking
 				}
 			}
 
+			/// <inheritdoc />
 			public string Id { get; }
 
+			/// <inheritdoc />
 			public string Name { get; }
 
+			/// <inheritdoc />
 			public VirtualNetworkType Type { get; }
 
+			/// <inheritdoc />
 			public VirtualNetworkLocationOptions Options { get; }
 
+			/// <inheritdoc cref="IVirtualNetworkLocation.Topology" />
 			public VirtualNetworkTopology Topology { get; }
+
+			/// <inheritdoc />
 			IVirtualNetworkTopology IVirtualNetworkLocation.Topology => this.Topology;
 
 			/// <summary>Host présent dans cet emplacement</summary>
-			public Dictionary<string, SimulatedHost> HostsById { get; } = new Dictionary<string, SimulatedHost>(StringComparer.OrdinalIgnoreCase);
-			public Dictionary<string, string> HostsByNameOrAddress { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+			public Dictionary<string, SimulatedHost> HostsById { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-			public Dictionary<string, List<(string Id, string? Argument)>> NetworkServices { get; } = new Dictionary<string, List<(string, string?)>>(StringComparer.Ordinal);
+			public Dictionary<string, string> HostsByNameOrAddress { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+			public Dictionary<string, List<(string Id, string? Argument)>> NetworkServices { get; } = new(StringComparer.Ordinal);
+
+			/// <inheritdoc />
 			IVirtualNetworkMap IVirtualNetworkLocation.RegisterHost(string id, VirtualHostIdentity identity) => RegisterHost(id, identity);
 
+			/// <inheritdoc cref="IVirtualNetworkLocation.RegisterHost" />
 			public VirtualNetworkMap RegisterHost(string id, VirtualHostIdentity identity)
 			{
 				var host = this.Topology.RegisterHost(this, id, identity);
@@ -267,32 +299,38 @@ namespace SnowBank.Networking
 				return new VirtualNetworkMap(this.Topology, host);
 			}
 
+			/// <inheritdoc />
 			IVirtualNetworkHost IVirtualNetworkLocation.AddHostPassthrough(string id, VirtualHostIdentity identity) => AddHostPassthrough(id, identity);
 
+			/// <inheritdoc cref="IVirtualNetworkLocation.AddHostPassthrough" />
 			public SimulatedHost AddHostPassthrough(string id, VirtualHostIdentity identity)
 			{
 				identity.PassthroughToPhysicalNetwork = true;
 				return this.Topology.RegisterHost(this, id, identity);
 			}
 
+			/// <inheritdoc />
 			public IVirtualNetworkHost? GetHost(string id)
 			{
 				return this.HostsById.GetValueOrDefault(id);
 			}
 
+			/// <inheritdoc />
 			public bool CanSendTo(IVirtualNetworkLocation target)
 			{
 				if (this.Equals(target)) return true;
 				//TODO: do we have a valid gateway, or are we isolated from the rest of the world?
-				return true; // par défaut c'est ouvert!
+				return true; // open by default
 			}
 
+			/// <inheritdoc />
 			public bool CanReceiveFrom(IVirtualNetworkLocation source)
 			{
 				if (this.Equals(source)) return true;
 				return this.Options.AllowsIncoming;
 			}
 
+			/// <inheritdoc />
 			public void RegisterNetworkService(string serviceType, string componentId, string? argument)
 			{
 				Contract.NotNullOrEmpty(serviceType);
@@ -300,12 +338,13 @@ namespace SnowBank.Networking
 
 				if (!this.NetworkServices.TryGetValue(serviceType, out var services))
 				{
-					services = new List<(string, string?)>();
+					services = [ ];
 					this.NetworkServices[serviceType] = services;
 				}
 				services.Add((componentId, argument));
 			}
 
+			/// <inheritdoc />
 			public (string Id, string? Argument)[] BrowseNetworkService(string serviceType)
 			{
 				return !this.NetworkServices.TryGetValue(serviceType, out var services)
@@ -313,20 +352,27 @@ namespace SnowBank.Networking
 					: services.ToArray();
 			}
 
+			/// <inheritdoc />
 			public override string ToString() => $"Network<{this.Id}>(Type={this.Type}, Name={this.Name}, IP={this.Options.IpRange})";
 
+			/// <inheritdoc />
 			public override bool Equals(object? obj) => obj is IVirtualNetworkLocation net && Equals(net);
 
+			/// <inheritdoc />
 			public bool Equals(IVirtualNetworkLocation? other) => ReferenceEquals(this, other) || (!ReferenceEquals(other, null) && other.Id == this.Id);
 
+			/// <inheritdoc />
 			public override int GetHashCode() => this.Id.GetHashCode();
 
 			private SortedSet<IPAddress> AllocatedAddresses { get; } = new(IPAddressComparer.Default);
 
 			private IPAddress? DhcpAddressFirst { get; }
+
 			private IPAddress? DhcpAddressLast { get; }
+
 			private IPAddress? DhcpAddressNextFree { get; set; }
 
+			/// <inheritdoc />
 			public void RegisterIpAddress(IPAddress address)
 			{
 				if (!this.AllocatedAddresses.Add(address))
@@ -335,7 +381,7 @@ namespace SnowBank.Networking
 				}
 			}
 
-			/// <summary>Allocate a new IP address (pseudo-DHCP) on this network location</summary>
+			/// <inheritdoc />
 			public IPAddress AllocateIpAddress()
 			{
 				if (this.Type == VirtualNetworkType.Loopback) throw new InvalidOperationException($"Network Location {this.Id} ({this.Name}) does not support DHCP because it is a loopback adaptaer!");
@@ -359,11 +405,7 @@ namespace SnowBank.Networking
 				throw new InvalidOperationException($"Network Location {this.Id} ({this.Name}) allocation pool is full!");
 			}
 
-			/// <summary>Allocate a new MAC address on this network location</summary>
-			/// <param name="ouiPrefix">First 24 bits of the MAC address, in the format <c>"XX:XX:XX"</c> (with X = hex digit)</param>
-			/// <param name="seed">Optional seed used to generate a deterministic address (like the host name, its IP address, etc...). If <see langword="null"/>, a randomly generated seed will be used instead.</param>
-			/// <returns>A newly generated MAC address, in the format <c>"XX:XX:XX:YY:YY:YY"</c> with X coming from <paramref name="ouiPrefix"/> and Y being generated from the <paramref name="seed"/></returns>
-			/// <example><c>AllocateMacAddress("12:34:56") => "12:34:56:C0:FF:EE"</c></example>
+			/// <inheritdoc />
 			public string AllocateMacAddress(string ouiPrefix, string? seed = null)
 			{
 				Contract.NotNullOrEmpty(ouiPrefix);
@@ -371,12 +413,12 @@ namespace SnowBank.Networking
 
 				seed ??= Guid.NewGuid().ToString();
 				ulong h = Fnv1Hash32.FromString(seed);
-				// We only need 3 bytes, so we will folder the 32 bits down to 24 bits.
+				// We only need 3 bytes, so we will fold the 32 bits down to 24 bits.
 				int tail = (int) ((h & 0xFFFFFFUL) ^ ((h >> 24) & 0xFFFFFFUL) ^ ((h >> 48) & 0xFFFFUL));
 				return $"{ouiPrefix}:{((tail >> 16) & 0xFF):X02}:{((tail >> 8) & 0xFF):X02}:{(tail & 0xFF):X02}";
 			}
 
-			/// <summary>Generate a new unique serial number, within this network location</summary>
+			/// <summary>Generates a new unique serial number, within this network location</summary>
 			/// <param name="pattern">Pattern string where any '#' will be replaced by a digit (0-9), and '?' by an uppercase letter (A-Z)</param>
 			/// <param name="seed">Optional seed used to generate a deterministic serial numbers (like the host name, its IP address, etc...). If <see langword="null"/>, a randomly generated seed will be used instead.</param>
 			/// <returns>A string where all '#' and '?' in the <paramref name="pattern"/> have been replaced.</returns>
@@ -419,7 +461,7 @@ namespace SnowBank.Networking
 
 		internal Dictionary<string, SimulatedNetwork> Locations { get; } = new Dictionary<string, SimulatedNetwork>(StringComparer.Ordinal);
 
-		/// <summary>Register a new network location to this topology</summary>
+		/// <inheritdoc />
 		public IVirtualNetworkLocation RegisterLocation(string id, string name, VirtualNetworkType type, VirtualNetworkLocationOptions options)
 		{
 			Contract.Debug.Requires(id != null && name != null && options != null);
@@ -438,10 +480,7 @@ namespace SnowBank.Networking
 			}
 		}
 
-		/// <summary>Get a network location, given its identifier.</summary>
-		/// <param name="id">Id of the network location</param>
-		/// <returns>The corresponding <see cref="IVirtualNetworkLocation"/> if it exists, or an exception if it does not.</returns>
-		/// <exception cref="InvalidOperationException">If there is no network location with the given <paramref name="id"/></exception>
+		/// <inheritdoc />
 		public IVirtualNetworkLocation GetLocation(string id)
 		{
 			using (this.Lock.GetReadLock())
@@ -452,7 +491,7 @@ namespace SnowBank.Networking
 			}
 		}
 
-		/// <summary>Generate a multi-line textual dump of the network topology</summary>
+		/// <inheritdoc />
 		public string Dump()
 		{
 			using (this.Lock.GetReadLock())
@@ -484,7 +523,7 @@ namespace SnowBank.Networking
 			}
 		}
 
-		/// <summary>Register a new host in the global network topology</summary>
+		/// <summary>Registers a new host in the global network topology</summary>
 		/// <param name="location">Network location where this host is located</param>
 		/// <param name="id">Unique id of this host</param>
 		/// <param name="identity">Configuration of this host</param>
@@ -588,11 +627,12 @@ namespace SnowBank.Networking
 			}
 		}
 
+		/// <inheritdoc />
 		IVirtualNetworkHost IVirtualNetworkTopology.GetHost(string id) => GetHost(id);
 
 		private static InvalidOperationException ErrorMissingHost(string id) => new($"Simulated host '{id}' does not exists");
 
-		/// <summary>Get a virtual host, given its identifier</summary>
+		/// <summary>Gets a virtual host, given its identifier</summary>
 		/// <param name="id">Id of the virtual host</param>
 		/// <returns>The corresponding <see cref="IVirtualNetworkHost"/> if it exists, or an exception if it does not.</returns>
 		/// <exception cref="InvalidOperationException">If there is no virtual host with the given <paramref name="id"/></exception>
@@ -604,7 +644,7 @@ namespace SnowBank.Networking
 			}
 		}
 
-		/// <summary>Get a virtual host, given its IP address</summary>
+		/// <summary>Gets a virtual host, given its IP address</summary>
 		/// <param name="address">Known IP address of the host</param>
 		/// <param name="host">Receives the host if there is a match.</param>
 		/// <returns><see langword="true"/> if the host was found; otherwise, <see langword="false"/></returns>
@@ -625,8 +665,8 @@ namespace SnowBank.Networking
 			}
 		}
 
-		/// <summary>Get a virtual host, given its host name</summary>
-		/// <param name="hostName">Known name of the host (could be host name, fdqn, one of its aliases, ...)</param>
+		/// <summary>Gets a virtual host, given its host name</summary>
+		/// <param name="hostName">Known name of the host (could be host name, fqdn, one of its aliases, ...)</param>
 		/// <param name="host">Receives the host if there is a match.</param>
 		/// <returns><see langword="true"/> if the host was found; otherwise, <see langword="false"/></returns>
 		public bool TryGetHostByHostName(string hostName, [MaybeNullWhen(false)] out SimulatedHost host)
@@ -643,15 +683,15 @@ namespace SnowBank.Networking
 			}
 		}
 
-		/// <summary>Perform a simulated DNS resolution of the given host name or ip address, from the point of view of a simulated host.</summary>
+		/// <summary>Performs a simulated DNS resolution of the given host name or ip address, from the point of view of a simulated host.</summary>
 		/// <param name="hostNameOrAddress">Host name, fqdn, or IP address</param>
-		/// <param name="source">Virtual host that is perfoming the DNS resolution</param>
+		/// <param name="source">Virtual host that is performing the DNS resolution</param>
 		/// <param name="family">If specified, the type of address resolved (A, AAA, ...)</param>
 		/// <param name="ct">Token used to cancel the DNS resolution</param>
 		/// <returns>Result of the resolution.</returns>
 		/// <exception cref="SocketException">Simulated socket exception, if the resolution has failed</exception>
 		/// <exception cref="ArgumentException">If any argument is invalid.</exception>
-		/// <remarks>This method attempts to emulates the behavior of <see cref="Dns.GetHostEntryAsync(System.Net.IPAddress)"/></remarks>
+		/// <remarks>This method attempts to emulate the behavior of <see cref="Dns.GetHostEntryAsync(System.Net.IPAddress)"/></remarks>
 		public async Task<IPHostEntry> DnsResolve(string hostNameOrAddress, IVirtualNetworkHost? source, AddressFamily? family, CancellationToken ct)
 		{
 			Contract.NotNullOrEmpty(hostNameOrAddress);
