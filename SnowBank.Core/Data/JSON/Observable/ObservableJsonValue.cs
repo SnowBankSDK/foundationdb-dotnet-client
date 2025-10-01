@@ -41,9 +41,66 @@ namespace SnowBank.Data.Json
 			this.Depth = (parent?.Depth ?? -1) + 1;
 		}
 
+		/// <summary>Untracked singleton for an explicit <c>null</c> value</summary>
+		public static readonly ObservableJsonValue Null = new(null, null, default, JsonNull.Null);
+
+		/// <summary>Untracked singleton for "missing" values</summary>
+		/// <remarks>This can be used as the root of an observable document that does not exist yet, or has been deleted.</remarks>
+		public static readonly ObservableJsonValue Missing = new(null, null, default, JsonNull.Missing);
+
+		/// <summary>Untracked singleton for <c>false</c></summary>
+		public static readonly ObservableJsonValue False = new(null, null, default, JsonBoolean.True);
+
+		/// <summary>Untracked singleton for <c>true</c></summary>
+		public static readonly ObservableJsonValue True = new(null, null, default, JsonBoolean.True);
+
+		/// <summary>Untracked singleton for <c>0</c></summary>
+		public static readonly ObservableJsonValue Zero = new(null, null, default, JsonNumber.Zero);
+
+		/// <summary>Untracked singleton for <c>[ ]</c></summary>
+		public static readonly ObservableJsonValue EmptyArray = new(null, null, default, JsonArray.ReadOnly.Empty);
+
+		/// <summary>Untracked singleton for <c>{ }</c></summary>
+		public static readonly ObservableJsonValue EmptyObject = new(null, null, default, JsonObject.ReadOnly.Empty);
+
 		/// <summary>Returns an untracked JSON value</summary>
+		/// <remarks>This may return singleton instances for well-known values (null, true/false, 0, empty array of object, ...)</remarks>
 		[Pure, MustUseReturnValue]
-		public static ObservableJsonValue Untracked(JsonValue value) => new(null, null, default, value);
+		public static ObservableJsonValue Untracked(JsonValue value)
+		{
+			// return singletons for well known values
+			switch (value)
+			{
+				case JsonNull jNull:
+				{
+					if (ReferenceEquals(jNull, JsonNull.Missing)) return Missing;
+					if (ReferenceEquals(jNull, JsonNull.Null)) return Null;
+					break;
+				}
+				case JsonNumber jNum:
+				{
+					if (ReferenceEquals(jNum, JsonNumber.Zero)) return Zero;
+					break;
+				}
+				case JsonBoolean jBool:
+				{
+					return jBool.Value ? True : False;
+				}
+				case JsonObject jObj:
+				{
+					if (ReferenceEquals(jObj, JsonObject.ReadOnly.Empty)) return EmptyObject;
+					break;
+				}
+				case JsonArray jArr:
+				{
+					if (ReferenceEquals(jArr, JsonArray.ReadOnly.Empty)) return EmptyObject;
+					break;
+				}
+			}
+
+			// allocate a new wrapper
+			return new(null, null, default, value);
+		}
 
 		/// <summary>Returns an JSON value tracked by a context</summary>
 		[Pure, MustUseReturnValue]
