@@ -63,7 +63,7 @@ namespace SnowBank.Networking
 		}
 
 		/// <inheritdoc />
-		public virtual async ValueTask<IPAddress?> GetPublicIPAddressForHost(string hostNameOrAddress)
+		public virtual async ValueTask<IPAddress?> GetPublicIPAddressForHost(string hostNameOrAddress, CancellationToken ct)
 		{
 			//REVIEW: this method is somewhat problematic, because of the following reasons:
 			// => the DNS server may not be reachable, or may not be able to resolve the host name at this point in time
@@ -71,7 +71,7 @@ namespace SnowBank.Networking
 			// => the remote host may not be online when we call this method, and WINS or ARP-based resolution may fail
 			// => Wi-Fi/4G connection may be down (on the road/train, going through a tunnel, ...)
 
-			var hostEntry = await Dns.GetHostEntryAsync(hostNameOrAddress).ConfigureAwait(false);
+			var hostEntry = await Dns.GetHostEntryAsync(hostNameOrAddress, ct).ConfigureAwait(false);
 			if (hostEntry.AddressList.Length == 0)
 			{
 				return null;
