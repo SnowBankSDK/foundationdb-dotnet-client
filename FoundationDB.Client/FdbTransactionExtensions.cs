@@ -4154,7 +4154,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>
-		/// Adds a key to the transaction’s read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
+		/// Adds a key to the transaction's read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
 		/// </summary>
 		public static void AddConflictRange<TBeginKey>(this IFdbTransaction trans, in TBeginKey beginKeyInclusive, ReadOnlySpan<byte> endKeyExclusive, FdbConflictRangeType type)
 			where TBeginKey : struct, IFdbKey
@@ -4171,7 +4171,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>
-		/// Adds a key to the transaction’s read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
+		/// Adds a key to the transaction's read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
 		/// </summary>
 		public static void AddConflictRange<TEndKey>(this IFdbTransaction trans, ReadOnlySpan<byte> beginKeyInclusive, in TEndKey endKeyExclusive, FdbConflictRangeType type)
 			where TEndKey : struct, IFdbKey
@@ -4188,7 +4188,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>
-		/// Adds a key to the transaction’s read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
+		/// Adds a key to the transaction's read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
 		/// </summary>
 		public static void AddConflictRange<TBeginKey, TEndKey>(this IFdbTransaction trans, in TBeginKey beginKeyInclusive, in TEndKey endKeyExclusive, FdbConflictRangeType type)
 			where TBeginKey : struct, IFdbKey
@@ -4212,7 +4212,7 @@ namespace FoundationDB.Client
 			trans.AddConflictRange(in range, FdbConflictRangeType.Read);
 		}
 
-		/// <summary>Adds a range of keys to the transaction’s read conflict ranges as if you had read the range. As a result, other transactions that write a key in this range could cause the transaction to fail with a conflict.</summary>
+		/// <summary>Adds a range of keys to the transaction's read conflict ranges as if you had read the range. As a result, other transactions that write a key in this range could cause the transaction to fail with a conflict.</summary>
 		public static void AddReadConflictRange(this IFdbTransaction trans, KeyRange range)
 		{
 			trans.AddConflictRange(range, FdbConflictRangeType.Read);
@@ -4232,20 +4232,20 @@ namespace FoundationDB.Client
 			trans.AddConflictRange(in beginKeyInclusive, in endKeyExclusive, FdbConflictRangeType.Read);
 		}
 
-		/// <summary>Adds a range of keys to the transaction’s read conflict ranges as if you had read the range. As a result, other transactions that write a key in this range could cause the transaction to fail with a conflict.</summary>
+		/// <summary>Adds a range of keys to the transaction's read conflict ranges as if you had read the range. As a result, other transactions that write a key in this range could cause the transaction to fail with a conflict.</summary>
 		public static void AddReadConflictRange(this IFdbTransaction trans, ReadOnlySpan<byte> beginKeyInclusive, ReadOnlySpan<byte> endKeyExclusive)
 		{
 			trans.AddConflictRange(beginKeyInclusive, endKeyExclusive, FdbConflictRangeType.Read);
 		}
 
-		/// <summary>Adds a key to the transaction’s read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.</summary>
+		/// <summary>Adds a key to the transaction's read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.</summary>
 		public static void AddReadConflictKey(this IFdbTransaction trans, Slice key)
 		{
 			trans.AddConflictRange(KeyRange.FromKey(key), FdbConflictRangeType.Read);
 		}
 
 		/// <summary>
-		/// Adds a key to the transaction’s read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
+		/// Adds a key to the transaction's read conflict ranges as if you had read the key. As a result, other transactions that write to this key could cause the transaction to fail with a conflict.
 		/// </summary>
 		public static void AddReadConflictKey<TKey>(this IFdbTransaction trans, in TKey key)
 			where TKey : struct, IFdbKey
@@ -4260,7 +4260,7 @@ namespace FoundationDB.Client
 			trans.AddConflictRange(in range, FdbConflictRangeType.Write);
 		}
 
-		/// <summary>Adds a range of keys to the transaction’s write conflict ranges as if you had cleared the range. As a result, other transactions that concurrently read a key in this range could fail with a conflict.</summary>
+		/// <summary>Adds a range of keys to the transaction's write conflict ranges as if you had cleared the range. As a result, other transactions that concurrently read a key in this range could fail with a conflict.</summary>
 		public static void AddWriteConflictRange(this IFdbTransaction trans, KeyRange range)
 		{
 			trans.AddConflictRange(range, FdbConflictRangeType.Write);
@@ -4280,14 +4280,14 @@ namespace FoundationDB.Client
 			trans.AddConflictRange(in beginKeyInclusive, in endKeyExclusive, FdbConflictRangeType.Write);
 		}
 
-		/// <summary>Adds a range of keys to the transaction’s write conflict ranges as if you had cleared the range. As a result, other transactions that concurrently read a key in this range could fail with a conflict.</summary>
+		/// <summary>Adds a range of keys to the transaction's write conflict ranges as if you had cleared the range. As a result, other transactions that concurrently read a key in this range could fail with a conflict.</summary>
 		public static void AddWriteConflictRange(this IFdbTransaction trans, ReadOnlySpan<byte> beginKeyInclusive, ReadOnlySpan<byte> endKeyExclusive)
 		{
 			trans.AddConflictRange(beginKeyInclusive, endKeyExclusive, FdbConflictRangeType.Write);
 		}
 
 		/// <summary>
-		/// Adds a key to the transaction’s write conflict ranges as if you had cleared the key. As a result, other transactions that concurrently read this key could fail with a conflict.
+		/// Adds a key to the transaction's write conflict ranges as if you had cleared the key. As a result, other transactions that concurrently read this key could fail with a conflict.
 		/// </summary>
 		public static void AddWriteConflictKey(this IFdbTransaction trans, Slice key)
 		{
@@ -4295,7 +4295,7 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>
-		/// Adds a key to the transaction’s write conflict ranges as if you had cleared the key. As a result, other transactions that concurrently read this key could fail with a conflict.
+		/// Adds a key to the transaction's write conflict ranges as if you had cleared the key. As a result, other transactions that concurrently read this key could fail with a conflict.
 		/// </summary>
 		public static void AddWriteConflictKey<TKey>(this IFdbTransaction trans, in TKey key)
 			where TKey : struct, IFdbKey

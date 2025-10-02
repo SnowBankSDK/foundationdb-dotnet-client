@@ -251,7 +251,7 @@ namespace FoundationDB.Client.Core
 		/// </summary>
 		/// <param name="ct">Token used to cancel the operation from the outside</param>
 		/// <returns>Task that succeeds if the transaction was committed successfully, or fails if the transaction failed to commit.</returns>
-		/// <remarks>As with other client/server databases, in some failure scenarios a client may be unable to determine whether a transaction succeeded. In these cases, CommitAsync() will throw CommitUnknownResult error. The OnErrorAsync() function treats this error as retry-able, so retry loops that don’t check for CommitUnknownResult could execute the transaction twice. In these cases, you must consider the idempotence of the transaction.</remarks>
+		/// <remarks>As with other client/server databases, in some failure scenarios a client may be unable to determine whether a transaction succeeded. In these cases, CommitAsync() will throw CommitUnknownResult error. The OnErrorAsync() function treats this error as retry-able, so retry loops that don't check for CommitUnknownResult could execute the transaction twice. In these cases, you must consider the idempotence of the transaction.</remarks>
 		Task CommitAsync(CancellationToken ct);
 
 		/// <summary>Implements the recommended retry and back-off behavior for a transaction.

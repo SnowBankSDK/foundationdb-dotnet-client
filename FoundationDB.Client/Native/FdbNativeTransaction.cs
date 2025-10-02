@@ -996,7 +996,7 @@ namespace FoundationDB.Client.Native
 		/// If the commit does succeed, the transaction is durably committed to the database and all subsequently started transactions will observe its effects.
 		/// </summary>
 		/// <returns>Task that succeeds if the transaction was committed successfully, or fails if the transaction failed to commit.</returns>
-		/// <remarks>As with other client/server databases, in some failure scenarios a client may be unable to determine whether a transaction succeeded. In these cases, CommitAsync() will throw CommitUnknownResult error. The OnErrorAsync() function treats this error as retryable, so retry loops that don’t check for CommitUnknownResult could execute the transaction twice. In these cases, you must consider the idempotence of the transaction.</remarks>
+		/// <remarks>As with other client/server databases, in some failure scenarios a client may be unable to determine whether a transaction succeeded. In these cases, CommitAsync() will throw CommitUnknownResult error. The OnErrorAsync() function treats this error as retryable, so retry loops that don't check for CommitUnknownResult could execute the transaction twice. In these cases, you must consider the idempotence of the transaction.</remarks>
 		public Task CommitAsync(CancellationToken ct)
 		{
 			if (ct.IsCancellationRequested) return Task.FromCanceled(ct);

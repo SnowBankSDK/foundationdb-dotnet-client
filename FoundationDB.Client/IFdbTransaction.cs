@@ -101,7 +101,7 @@ namespace FoundationDB.Client
 		/// As with other client/server databases, in some failure scenarios a client may be unable to determine whether a transaction succeeded.
 		/// In these cases, <see cref="CommitAsync"/> will throw <see cref="FdbError.CommitUnknownResult"/> error.
 		/// The <see cref="IFdbReadOnlyTransaction.OnErrorAsync"/> function treats this error as retryable,
-		/// so retry loops that don’t check for <see cref="FdbError.CommitUnknownResult"/> could execute the transaction twice.
+		/// so retry loops that don't check for <see cref="FdbError.CommitUnknownResult"/> could execute the transaction twice.
 		/// In these cases, you must consider the idempotence of the transaction.
 		/// </para>
 		/// </remarks>
