@@ -1049,7 +1049,6 @@ namespace SnowBank.Data.Json
 		/// <param name="comparer">Custom equality comparer if specified; otherwise, uses the default comparer for this type</param>
 		/// <returns><see langword="true"/> if both arguments are considered equal; otherwise, <see langword="false"/></returns>
 		/// <remarks>This method tries to perform an optimized comparison, and should perform less memory allocations than calling </remarks>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(TValue value, IEqualityComparer<TValue>? comparer = null) => this.Json.ValueEquals(value, comparer);
 
 		/// <summary>Tests if the field with the specified name is equal to the specified value, using the strict JSON comparison semantics</summary>
@@ -1059,7 +1058,6 @@ namespace SnowBank.Data.Json
 		/// <param name="comparer">Custom equality comparer if specified; otherwise, uses the default comparer for this type</param>
 		/// <returns><see langword="true"/> if both arguments are considered equal; otherwise, <see langword="false"/></returns>
 		/// <remarks>This method tries to perform an optimized comparison, and should perform less memory allocations than calling </remarks>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(string name, TValue value, IEqualityComparer<TValue>? comparer = null) => this.GetValue(name).ValueEquals(value, comparer);
 
 		/// <summary>Tests if the field with the specified name is equal to the specified value, using the strict JSON comparison semantics</summary>
@@ -1069,7 +1067,6 @@ namespace SnowBank.Data.Json
 		/// <param name="comparer">Custom equality comparer if specified; otherwise, uses the default comparer for this type</param>
 		/// <returns><see langword="true"/> if both arguments are considered equal; otherwise, <see langword="false"/></returns>
 		/// <remarks>This method tries to perform an optimized comparison, and should perform less memory allocations than calling </remarks>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(ReadOnlyMemory<char> name, TValue value, IEqualityComparer<TValue>? comparer = null) => this.GetValue(name).ValueEquals(value, comparer);
 
 		/// <summary>Tests if the item at the specified location is equal to the specified value, using the strict JSON comparison semantics</summary>
@@ -1079,7 +1076,6 @@ namespace SnowBank.Data.Json
 		/// <param name="comparer">Custom equality comparer if specified; otherwise, uses the default comparer for this type</param>
 		/// <returns><see langword="true"/> if both arguments are considered equal; otherwise, <see langword="false"/></returns>
 		/// <remarks>This method tries to perform an optimized comparison, and should perform less memory allocations than calling </remarks>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(int index, TValue value, IEqualityComparer<TValue>? comparer = null) => this.GetValue(index).ValueEquals(value, comparer);
 
 		/// <summary>Tests if the item at the specified location is equal to the specified value, using the strict JSON comparison semantics</summary>
@@ -1089,7 +1085,6 @@ namespace SnowBank.Data.Json
 		/// <param name="comparer">Custom equality comparer if specified; otherwise, uses the default comparer for this type</param>
 		/// <returns><see langword="true"/> if both arguments are considered equal; otherwise, <see langword="false"/></returns>
 		/// <remarks>This method tries to perform an optimized comparison, and should perform less memory allocations than calling </remarks>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(Index index, TValue value, IEqualityComparer<TValue>? comparer = null) => this.GetValue(index).ValueEquals(value, comparer);
 
 		/// <summary>Tests if the child with the specified name or index is equal to the specified value, using the strict JSON comparison semantics</summary>
@@ -1099,7 +1094,6 @@ namespace SnowBank.Data.Json
 		/// <param name="comparer">Custom equality comparer if specified; otherwise, uses the default comparer for this type</param>
 		/// <returns><see langword="true"/> if both arguments are considered equal; otherwise, <see langword="false"/></returns>
 		/// <remarks>This method tries to perform an optimized comparison, and should perform less memory allocations than calling </remarks>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(JsonPathSegment segment, TValue value, IEqualityComparer<TValue>? comparer = null) => this.GetValue(segment).ValueEquals(value, comparer);
 
 		/// <summary>Tests if the child at the specified path is equal to the specified value, using the strict JSON comparison semantics</summary>
@@ -1109,7 +1103,6 @@ namespace SnowBank.Data.Json
 		/// <param name="comparer">Custom equality comparer if specified; otherwise, uses the default comparer for this type</param>
 		/// <returns><see langword="true"/> if both arguments are considered equal; otherwise, <see langword="false"/></returns>
 		/// <remarks>This method tries to perform an optimized comparison, and should perform less memory allocations than calling </remarks>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(JsonPath path, TValue value, IEqualityComparer<TValue>? comparer = null) => this.GetValue(path).ValueEquals(value, comparer);
 
 		#endregion
@@ -3103,7 +3096,6 @@ namespace SnowBank.Data.Json
 		/// <para>If the previous value of this node is equal to <paramref name="comparand"/>, then it will be replaced with <paramref name="value"/>; otherwise, it will not be modified.</para>
 		/// <para>To test if the object was changed, test if the returned value is equal to <paramref name="comparand"/> (no change) or not (changed)</para>
 		/// </remarks>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool CompareExchange<TValue>(TValue? value, TValue? comparand)
 		{
 			if (!this.Json.ValueEquals(comparand))

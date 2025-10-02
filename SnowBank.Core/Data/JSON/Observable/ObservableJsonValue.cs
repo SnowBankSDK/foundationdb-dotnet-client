@@ -1304,7 +1304,6 @@ namespace SnowBank.Data.Json
 		/// <typeparam name="TValue">Type of the value</typeparam>
 		/// <param name="value">Expected value</param>
 		/// <param name="comparer">Equality comparer to use (optional)</param>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(TValue value, IEqualityComparer<TValue>? comparer = null) => this.ToJsonValue().ValueEquals(value, comparer);
 
 		/// <summary>Tests if the value of a field of this document is equal to a given value</summary>
@@ -1312,7 +1311,6 @@ namespace SnowBank.Data.Json
 		/// <param name="name">Name of the field</param>
 		/// <param name="value">Expected value</param>
 		/// <param name="comparer">Equality comparer to use (optional)</param>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(string name, TValue value, IEqualityComparer<TValue>? comparer = null)
 		{
 			var child = this.Json.GetValueOrDefault(name);
@@ -1325,7 +1323,6 @@ namespace SnowBank.Data.Json
 		/// <param name="name">Name of the field</param>
 		/// <param name="value">Expected value</param>
 		/// <param name="comparer">Equality comparer to use (optional)</param>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(ReadOnlyMemory<char> name, TValue value, IEqualityComparer<TValue>? comparer = null)
 		{
 			var child = this.Json.GetValueOrDefault(name);
@@ -1338,7 +1335,6 @@ namespace SnowBank.Data.Json
 		/// <param name="index">Index of this item</param>
 		/// <param name="value">Expected value</param>
 		/// <param name="comparer">Equality comparer to use (optional)</param>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(int index, TValue value, IEqualityComparer<TValue>? comparer = null)
 		{
 			var child = this.Json.GetValueOrDefault(index);
@@ -1351,7 +1347,6 @@ namespace SnowBank.Data.Json
 		/// <param name="index">Index of this item</param>
 		/// <param name="value">Expected value</param>
 		/// <param name="comparer">Equality comparer to use (optional)</param>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(Index index, TValue value, IEqualityComparer<TValue>? comparer = null)
 		{
 			var child = this.Json.GetValueOrDefault(index);
@@ -1364,7 +1359,6 @@ namespace SnowBank.Data.Json
 		/// <param name="segment">Path of this child</param>
 		/// <param name="value">Expected value</param>
 		/// <param name="comparer">Equality comparer to use (optional)</param>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(JsonPathSegment segment, TValue value, IEqualityComparer<TValue>? comparer = null)
 		{
 			JsonValue item;
@@ -1391,7 +1385,6 @@ namespace SnowBank.Data.Json
 		/// <param name="path">Path to the node</param>
 		/// <param name="value">Expected value</param>
 		/// <param name="comparer">Equality comparer to use (optional)</param>
-		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
 		public bool ValueEquals<TValue>(JsonPath path, TValue value, IEqualityComparer<TValue>? comparer = null)
 		{
 			//TODO: REVIEW: how can we optimize this?
