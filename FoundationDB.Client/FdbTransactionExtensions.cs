@@ -2811,7 +2811,7 @@ namespace FoundationDB.Client
 		{
 			Contract.NotNull(trans);
 			Contract.Positive(stampOffset);
-			if (stampOffset > key.Length - 10) throw new ArgumentException("The VersionStamp overflows past the end of the value.", nameof(stampOffset));
+			if (stampOffset > value.Length - 10) throw new ArgumentException("The VersionStamp overflows past the end of the value.", nameof(stampOffset));
 
 			int apiVer = trans.Context.GetApiVersion();
 			if (apiVer < 400)
