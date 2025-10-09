@@ -19,7 +19,7 @@
 
 	<PropertyGroup>
 		<!-- Override the version here, because it must match the verison of the native dlls, NOT the .NET binding itself! -->
-		<VersionPrefix>7.3.68</VersionPrefix>
+		<VersionPrefix>7.4.4</VersionPrefix>
 		<VersionSuffix></VersionSuffix>
 		<AssemblyTitle>Native Client Libraries for FoundationDB</AssemblyTitle>
 		<Description>FoundationDB Native Client libraries for Windows (fdb_c.dll), Linux (libfdb_c.so) and macOS (libfdb_c.dylib).</Description>

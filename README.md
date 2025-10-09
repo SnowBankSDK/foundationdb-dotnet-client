@@ -100,7 +100,7 @@ private static void Main(string[] args)
         .AddFoundationDb("fdb",
             apiVersion: 730,
             root: "/Tenant/ACME/MySuperApp/v1",
-            clusterVersion: "7.3.68",
+            clusterVersion: "7.4.4",
             rollForward: FdbVersionPolicy.Exact
          );
 
@@ -273,7 +273,7 @@ In your AppHost:
         .AddFoundationDb("fdb",
             apiVersion: 730,
             root: "/Tenant/ACME/MySuperApp/v1",
-            clusterVersion: "7.3.68",
+            clusterVersion: "7.4.4",
             rollForward: FdbVersionPolicy.Exact
         );
 ```
@@ -529,16 +529,16 @@ The easiest way to deploy is to use one of the [ASP.NET Core Runtime docker imag
 
 In order to function, the FoundationDB Native client library (`fdb_c.dll` on Windows, `libfdb_c.so`) needs to be present in the container image. The easiest way is to simply copy them from the [FoundationDB Docker image](https://hub.docker.com/r/foundationdb/foundationdb) that contains these files.
 
-Example of a `Dockerfile` that will grab v7.3.x binaries and inject them into you application container:
+Example of a `Dockerfile` that will grab v7.4.x binaries and inject them into you application container:
 
 ```Dockerfile
 # Version of the FoundationDB Client Library
-ARG FDB_VERSION=7.3.68
+ARG FDB_VERSION=7.4.4
 
 # We will need the official fdb docker image to obtain the client binaries
 FROM foundationdb/foundationdb:${FDB_VERSION} as fdb
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 
 # copy the binary from the official fdb image into our target image.
 COPY --from=fdb /usr/lib/libfdb_c.so /usr/lib

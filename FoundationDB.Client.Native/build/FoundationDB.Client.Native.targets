@@ -46,6 +46,11 @@ Copyright (c) 2023-2025 SnowBank SAS
 
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
+	<ItemGroup>
+		<!-- Include this version in the list -->
+		<FdbNativeVersion Include="7.4" />
+	</ItemGroup>
+	
 	<PropertyGroup>
 		<!-- Define the platform-specific runtime identifier -->
 		<FdbTargetRuntimeIdentifier Condition="'$(FdbTargetRuntimeIdentifier)' == ''">$(RuntimeIdentifier)</FdbTargetRuntimeIdentifier>
@@ -55,6 +60,14 @@ Copyright (c) 2023-2025 SnowBank SAS
 		<FdbIsPortableBuild Condition="'$(FdbIsPortableBuild)' == '' and '$(RuntimeIdentifier)' == ''">true</FdbIsPortableBuild>
 		<FdbIsPortableBuild Condition="'$(FdbIsPortableBuild)' == ''">false</FdbIsPortableBuild>
 	</PropertyGroup>
+
+	<!-- Target that is used to detect if multiple conflicting versions of the native libraries are referenced by the project being built. -->
+	<Target Name="CheckForConflictingFdbNative74Libraries" BeforeTargets="Build" Condition="'$(FdbAllowMultipleVersions)' != 'true'">
+		<Message Text="Using FoundationDB Native Libraries for: @(FdbNativeVersion)" Importance="Low" />
+		<!-- If we have more than one entry in FdbNativeVersion, it means that multiple variants of the native client packages have been included -->
+		<!-- We cannot allow this, because they each have a different file under .../runtimes/{rid}/native/libfdb_c.so, which would be flattened during publishing, and they would overwrite one another. -->
+		<Error Condition="@(FdbNativeVersion->Count()) &gt; 1" Text="Multiple FoundationDB.Client.Native versions detected: @(FdbNativeVersion). These packages are mutually exclusive. Please reference only one NuGet package variant, or use the multi-version meta-package." />
+	</Target>
 
 	<!-- Get the list of native files to copy (excluding README.md) -->
 	<ItemGroup>
@@ -73,12 +86,13 @@ Copyright (c) 2023-2025 SnowBank SAS
 		<None Include="@(FdbPortableNativeLibraries)" Pack="true" PackagePath="runtimes/" />
 	</ItemGroup>
 	
-	<Target Name="FdbCopyPortableNativeLibrariesToBuild" BeforeTargets="Build" Condition="'$(FdbIsPortableBuild)' == 'true' and '$(FdbIsSourceProjectReference)' == 'true' and '$(_IsPublishing)' != 'true'">
+	<!-- Portable Build: copy all files under runtimes/... to the same folder structure in the build destination -->
+	<Target Name="FdbCopyPortableNative74LibrariesToBuild" BeforeTargets="Build" Condition="'$(FdbAllowMultipleVersions)' != 'true' and '$(FdbIsPortableBuild)' == 'true' and '$(FdbIsSourceProjectReference)' == 'true' and '$(_IsPublishing)' != 'true'">
 		
 		<Message Text="FdbCopyPortableNativeLibrariesToBuild: Fw=$(TargetFramework), Rid=$(FdbTargetRuntimeIdentifier), IsPortable=$(FdbIsPortableBuild), IsFromSource=$(FdbIsSourceProjectReference), ThisDir=$(MSBuildThisFileDirectory)" Importance="low"/>
-		<Message Text="Copying FDB Client native libraries to build output folder -> $(OutDir)runtimes\" Importance="high"/>
+		<Message Text="Copying all FDB Client @(FdbNativeVersion) Native libraries to Build output folder -> $(OutDir)runtimes\" Importance="high"/>
 
-		<!-- Copy to the output directory, only if changed -->
+		<!-- Copy to the Build output directory, only if changed -->
 		<Copy
 			SourceFiles="@(FdbPortableNativeLibraries)"
 			DestinationFolder="$(OutDir)runtimes\%(RecursiveDir)"
@@ -87,12 +101,13 @@ Copyright (c) 2023-2025 SnowBank SAS
 
 	</Target>
 
-	<Target Name="FdbCopyPlatformNativeLibrariesToBuild" BeforeTargets="Build" Condition="'$(FdbIsPortableBuild)' != 'true' and '$(FdbIsSourceProjectReference)' == 'true' and '$(_IsPublishing)' != 'true'">
+	<!-- Target-Specific Build: copy only the files under runtimes/{rid}/native/... to the root of the build destination -->
+	<Target Name="FdbCopyPlatformNative74LibrariesToBuild" BeforeTargets="Build" Condition="'$(FdbAllowMultipleVersions)' != 'true' and '$(FdbIsPortableBuild)' != 'true' and '$(FdbIsSourceProjectReference)' == 'true' and '$(_IsPublishing)' != 'true'">
 		
 		<Message Text="FdbCopyPlatformNativeLibrariesToBuild: Fw=$(TargetFramework), Rid=$(FdbTargetRuntimeIdentifier), IsPortable=$(FdbIsPortableBuild), IsFromSource=$(FdbIsSourceProjectReference), ThisDir=$(MSBuildThisFileDirectory)" Importance="low"/>
-		<Message Text="Copying FDB Client $(FdbTargetRuntimeIdentifier) native libraries to build output folder -> $(OutDir)" Importance="high"/>
+		<Message Text="Copying FDB Client @(FdbNativeVersion) Native Library for target '$(FdbTargetRuntimeIdentifier)' to build output folder -> $(OutDir)" Importance="high"/>
 
-		<!-- Copy to the output directory, only if changed -->
+		<!-- Copy to the Build output directory, only if changed -->
 		<Copy
 			SourceFiles="@(FdbPlatformNativeLibraries)"
 			DestinationFolder="$(OutDir)%(RecursiveDir)"
@@ -101,12 +116,13 @@ Copyright (c) 2023-2025 SnowBank SAS
 
 	</Target>
 
-	<Target Name="FdbCopyPortableNativeLibrariesToPublish" AfterTargets="Publish" Condition="'$(FdbIsPortableBuild)' == 'true' and '$(FdbIsSourceProjectReference)' == 'true'">
+	<!-- Portable Publish: copy all files under runtimes/... to the same folder structure in the publishing destination -->
+	<Target Name="FdbCopyPortableNative74LibrariesToPublish" AfterTargets="Publish" Condition="'$(FdbAllowMultipleVersions)' != 'true' and '$(FdbIsPortableBuild)' == 'true' and '$(FdbIsSourceProjectReference)' == 'true'">
 		
 		<Message Text="FdbCopyPortableNativeLibrariesToPublish: Fw=$(TargetFramework), Rid=$(FdbTargetRuntimeIdentifier), IsPortable=$(FdbIsPortableBuild), IsFromSource=$(FdbIsSourceProjectReference), ThisDir=$(MSBuildThisFileDirectory)" Importance="low"/>
-		<Message Text="Copying FDB Client native libraries to publish folder -> $(PublishDir)" Importance="high"/>
+		<Message Text="Copying all FDB Client @(FdbNativeVersion) Native Libraries to publish folder -> $(PublishDir)" Importance="high"/>
 
-		<!-- Copy to the publish directory, only if changed -->
+		<!-- Copy to the Publish output directory, only if changed -->
 		<Copy
 			SourceFiles="@(FdbPortableNativeLibraries)"
 			DestinationFolder="$(PublishDir)runtimes\%(RecursiveDir)"
@@ -115,12 +131,13 @@ Copyright (c) 2023-2025 SnowBank SAS
 		
 	</Target>
 
-	<Target Name="FdbCopyPlatformNativeLibrariesToPublish" AfterTargets="Publish" Condition="'$(FdbIsPortableBuild)' != 'true' and '$(FdbIsSourceProjectReference)' == 'true'">
+	<!-- Target-Specific Publish: copy only the files under runtimes/{rid}/native/... to the root of the publishing destination -->
+	<Target Name="FdbCopyPlatformNative74LibrariesToPublish" AfterTargets="Publish" Condition="'$(FdbAllowMultipleVersions)' != 'true' and '$(FdbIsPortableBuild)' != 'true' and '$(FdbIsSourceProjectReference)' == 'true'">
 		
 		<Message Text="FdbCopyPlatformNativeLibrariesToPublish: Fw=$(TargetFramework), Rid=$(FdbTargetRuntimeIdentifier), IsPortable=$(FdbIsPortableBuild), IsFromSource=$(FdbIsSourceProjectReference), ThisDir=$(MSBuildThisFileDirectory)" Importance="low"/>
-		<Message Text="Copying FDB Client $(FdbTargetRuntimeIdentifier) native library to publish folder -> $(PublishDir)" Importance="high"/>
+		<Message Text="Copying FDB Client @(FdbNativeVersion) Native Library for target '$(FdbTargetRuntimeIdentifier)' to publish folder -> $(PublishDir)" Importance="high"/>
 
-		<!-- Copy to the publish directory, only if changed -->
+		<!-- Copy to the Publish output directory, only if changed -->
 		<Copy
 			SourceFiles="@(FdbPlatformNativeLibraries)"
 			DestinationFolder="$(PublishDir)%(RecursiveDir)"

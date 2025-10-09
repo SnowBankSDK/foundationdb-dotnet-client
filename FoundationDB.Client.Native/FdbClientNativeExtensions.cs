@@ -121,7 +121,12 @@ namespace FoundationDB.Client
 				: RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64"
 				: null;
 
-			string fileName = platform == "win" ? "fdb_c.dll" : platform == "osx" ? "libfdb_c.dylib" : "libfdb_c.so";
+			string fileName = platform switch
+			{
+				"win" => "fdb_c.dll",
+				"osx" => "libfdb_c.dylib",
+				_ => "libfdb_c.so"
+			};
 
 			if (platform is null || arch is null)
 			{

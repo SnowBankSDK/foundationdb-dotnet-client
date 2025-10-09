@@ -131,9 +131,9 @@ foreach ($file in $files) {
 	# If we already have the file (with the correct checksum), skip it
 	if (Test-Path -Path $fileTargetPath) {
 		$computedChecksum = Get-FileHash $fileTargetPath -Algorithm SHA256 | Select-Object -ExpandProperty Hash
-		Write-Host "  - actual   : " -ForegroundColor DarkGray -NoNewLine;
-		Write-Host $computedChecksum.ToLower()
+		Write-Host "  - local    : " -ForegroundColor DarkGray -NoNewLine;
 		if ($fileChecksum -eq $computedChecksum) {
+			Write-Host $computedChecksum.ToLower()
 			if ($force) {
 				Write-Host "  => File $fileTargetPath exists and as the correct checksum, but will be downloaded anyways because -force was specified." -ForegroundColor Yellow
 			} else {
@@ -141,6 +141,7 @@ foreach ($file in $files) {
 				continue
 			}
 		} else {
+			Write-Host $computedChecksum.ToLower() -ForegroundColor Yellow
 			Write-Host "  => File $fileTargetPath exists but has an incorrect checksum. Re-downloading." -ForegroundColor Red
 		}
 	}
@@ -157,7 +158,7 @@ foreach ($file in $files) {
 	# Verify the checksum
 	$computedChecksum = Get-FileHash $fileTargetPath -Algorithm SHA256 | Select-Object -ExpandProperty Hash
 
-	Write-Host "  - actual   : " -ForegroundColor DarkGray -NoNewLine;
+	Write-Host "  - updated  : " -ForegroundColor DarkGray -NoNewLine;
 	Write-Host $computedChecksum.ToLower()
 
 	if ($fileChecksum -ne $computedChecksum) {

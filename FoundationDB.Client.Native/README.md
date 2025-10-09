@@ -2,57 +2,61 @@
 
 This package will redistribute the native client libraries required to connect to a FoundationDB cluster from a .NET application.
 
-# Why is it needed
+## Why is it needed
 
 The .NET FoundationDB Binding (`FoundationDB.Client`) is a managed .NET assembly that contains the APIs and other facilities to query a FoundationDB cluster from your .NET application.
 
 But like all other bindings, it requires a native library called `FDB Client Library` (usually `lifdb_c.so` or `fdb_c.dll`) to communicate with a compatible FoundationDB cluster.
 
-Contrary to other database systems, a client library compiled for 7.3.x can only connect to 7.3.x servers
-and will not be able to connect to older (<= 7.2.x) or newer (>= 7.4, 8.x, ...) live cluster.
+Contrary to other database systems, a native client library compiled for 7.4.x can only connect to 7.4.x servers
+and will not be able to connect to older (<= 7.3.x) or newer (>= 7.5.x, 8.x, ...) live cluster.
 
 This gives you two choices:
-- Build your application to target a specific minor version of FoundationDB, such as `7.3`
-  - You will need to also deploy a `7.3.x` cluster, and your binaries will not be compatible with any other versions.
+- Build your application to target a specific minor version of FoundationDB, such as `7.4`
+  - You will need to also deploy a `7.4.x` cluster, and your binaries will not be compatible with any other versions.
   - You will have to rebuild your application if you decide to upgrade or download to a different minor or major version.
 - Build your application to target a specific API level such as `730`.
-  - You will be able to connect to a live cluster with version _at least_ 7.3.x
-  - You will need to redistribute the native client libraries via a side channel, either by including them manually in a DockerFile, or installing them at the last minute during deployment
+  - You will be able to connect to a live cluster with version _at least_ `7.3.x`.
+  - You will need to redistribute the by a side channel, either by including them manually in a DockerFile, or installing them at the last minute during deployment.
 
 The `FoundationDB.Client.Native` package helps solve the first case, by allowing you to reference a specific version of the native libraries in your project,
 and redistributes the native client library as part of the your binaries.
 
-# What it does
+## What it does
 
-The package includes the `fdb_c` client library and `fdbcli` utility for the following supported platforms
+Your application must have access to a build of the FoundationDB Client library ("fdb_c") at runtime, in order to connect to your FoundationDB cluster.
+
+This package includes the `fdb_c` client library, built for the following supported platforms:
 - `win-x64`
 - `linux-x64`
 - `linux-arm64` (aka `aarch64`)
 - `osx-arm64`
 
-This package can be used in two ways:
-
-- Via the `FoundationDB.Client.Native` NuGet package, if you are also referencing the `FoundationDB.Client` NuGet package.
-- Via the `.csproj` and additional MSBuild `.targets` files, if you are compiling the source of the binding as part of your application.
-
 The assembly redistributed in the package contains a mini loader that will locate and use the correct library at runtime.
 
-# Referencing in your project file
+## How to use it
 
-## Via NuGet
+This package can be used in two ways:
+
+- Via a `PackageReference` to the `FoundationDB.Client.Native` NuGet package, if you are also referencing the `FoundationDB.Client` NuGet package.
+- Via a `ProjectReference` with custom `.targets` to a local copy of `FoundationDB.Client.Native.csproj`, if you are compiling the .NET Binding as part of your application.
+
+### Referencing in your project file
+
+#### Via NuGet
 
 If you are not compiling the source of FoundationDB.Client, but instead are referencing it via the NuGet package, then you should instead add a reference to the FoundationDB.Client.Native package:
 
 ```msbuild_build_script
 <ItemGroup>
-	<PackageReference Include"FoundationDB.Client" Version="x.y.z" />
-	<PackageReference Include"FoundationDB.Client.Native" Version="x.y.z" />
+	<PackageReference Include"FoundationDB.Client" Version="x.y.z" /> <!-- use version compatible with the API level you need -->
+	<PackageReference Include"FoundationDB.Client.Native" Version="7.4.XXX" /> <!-- use a version compatible with your production cluster -->
 </ItemGroup>
 ```
-			
+
 The package will automatically copy the native libraries during build, pack or publish.
 
-## Via Source compilation
+#### Via Source compilation
 
 Let's assume that you have created a git submodule called "FoundationDB" at the root of your solution folder.
 
@@ -70,11 +74,11 @@ To include this package in your project, simply add the following at the end of 
 The imported target will automatically copy the native libraries to your project's output folder.
 
 To check that this is working properly, navigate to your `bin/debug/net##.0/` folder,
-and check that it contains the following structure:
+and check that it contains the expected folder structure.
 
-For example, when building for .NET 9.0 in Debug configuration:
+For example, when building for .NET 10.0 in Debug configuration:
 ```
-bin\debug\net9.0\
+bin\debug\net10.0\
 - YourApp.exe
   ...
 - FoundationDB.Client.dll
@@ -84,77 +88,60 @@ bin\debug\net9.0\
   - win-x64\
     - native\
       - fdb_c.dll
-      - fdbcli.exe
   - linux-x64\
     - native\
       - libfdb_c.so
-      - fdbcli
+  - linux-arm64\
+    - native\
+      - libfdb_c.so
+  - osx-arm64\
+    - native\
+      - libfdb_c.dylib
 ```
 
-# Loading the native libraries at runtime
+### Loading the native libraries at runtime
 
-To enable the loader to find the libraries at runtime, find the section of your application
-startup logic that calls `AddFoundationDB(...)` and add a call to `UseNativeClient()` like so:
+The packge contains a small loader that will locate the native library and set the `FdbDatabaseProviderOptions.NativeLibraryPath` property automatically.
+
+In order for the loader to find the libraries at runtime, locate in your application startup logic the call to `AddFoundationDB(...)`,
+and inject a call to `UseNativeClient()` like so:
 
 ```csharp
-builder.AddFoundationDb(730, options =>
+builder.AddFoundationDb(740, options =>
 {
-	// other options...
-		
-	// instruct the loader to use the native libraries that were distributed with
-	// the 'FoundationDB.Client.Native' package.
+	// load the native library that was distributed by the 'FoundationDB.Client.Native' package
 	options.UseNativeClient();
 
+	// set any other options you require...
 });
 ```
 
-By default, this will probe the for the native libraries, and fail if they are not found,
-which could happen if the application is running on a non-supported platform, or if the
-files where not properly bundled with the application.
+By default, this will probe for the location of the native libraries on disk.
+
+This operation may fail if no compatible library is found, which could happen if the application is running on a non-supported platform,
+or if the files were not properly bundled with the application (invalid name or location, not readable by the process, ...).
 	
 Specifying `UseNativeClient(allowSystemFallback: true)` will allow the loader to fall back
-to the operating system mechanism for finding the native libraries, if you intend to deploy
-them separately from your .NET application.
+to the native resolution mechanism of your operating system, if must deploy them to a different location.
 
-# Publishing / Packing
+_Note: The call to UseNativeClient() MUST NOT be trimmed during publishing,
+otherwise the linker may consider that the reference `FoundationDB.Client.Native` is unused,
+and may not copy the native libraries to the build output folder!_
 
-The package supports both Framework-Dependent/Self-Contained mode, and Portable/Platform-specific.
+## Publishing / Packing
 
-When publishing to a specific runtime, for example `linux-x64` or `win-x64`,
-the `libfdb_c.so` or `fdb_c.dll` files will copied to the same folder as your executable.
+The package supports both Framework-Dependent vs Self-Contained, and Portable vs Platform-specific modes.
 
-When publishing as portable that could run on any platform, all files for all supported
-platforms will be copied to the relevant `runtimes/{rid}/native` sub-folders.
+When publishing for a specific runtime, for example `linux-x64` or `win-x64`, only the files for this platform will copied to the same folder as your executable.
+
+When publishing a portable application that could run on any platform, all native libraries for all supported platforms will be copied under the relevant `runtimes/{rid}/native` sub-folders,
+which could cause a significant increase in the size of your redistributable package!
+
+The native client loader will look - at runtime - for a file with the expected name for the current platform (`fdb_c.dll` on Windows, `libfdb_c.so` on Linux, `libfdb_c.dylib` on macOS)
+by looking first in the working directory of your application, and then under the `runtimes/{rid}/native` subfolder that matches the runtime platform.
 
 If you are building a Docker image, you should target `linux-x64` or `linux-arm64`, in order to only include the library for this specific platform, and reduce the overall size of your image.
 
-# Alternatives
+## Alternatives
 
-Another solution is to redistribute the native libraries via a separate mechanism.
-
-For local dev, install the fdb client libraries manually.
-
-When publishing to Docker, you can use the official `foundationdb/foundationdb` Docker images, in order to copy the `libfdb_c.so` files into your own image:
-
-Example of a `Dockerfile` that will grab v7.3.x binaries and inject them into you application container:
-
-```Dockerfile
-# Version of the FoundationDB Client Library
-ARG FDB_VERSION=7.3.68
-
-# We will need the official fdb docker image to obtain the client binaries
-FROM foundationdb/foundationdb:${FDB_VERSION} as fdb
-
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
-
-# copy the binary from the official fdb image into our target image.
-COPY --from=fdb /usr/lib/libfdb_c.so /usr/lib
-
-WORKDIR /App
-
-COPY . /App
-
-ENTRYPOINT ["dotnet", "MyWebApp.dll"]
-```
-
-Make sure to reference a version that is compatible with your target FoundationDB cluster.
+You can also redistribute the native libraries via a separate mechanism, and either let the operating system find the library, or manually specify the path via the `NativeLibraryPath` option.
