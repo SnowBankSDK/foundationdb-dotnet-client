@@ -302,6 +302,18 @@ namespace FoundationDB.Client
 		/// </remarks>
 		AuthorizationToken = 2000, // persistent + sensitive
 
+		/// <summary>Enables replica consistency check</summary>
+		/// <remarks>
+		/// <para>Compares the results returned by storage server replicas (as many as specified by <see cref="ConsistencyCheckRequiredReplicas"/> option) for a given read request, in client-side load balancer.</para>
+		/// </remarks>
+		EnableReplicaConsistencyCheck = 4000,
+
+		/// <summary>Specifies the number of storage server replica results that the load balancer needs to compare when the <see cref="EnableReplicaConsistencyCheck"/> option is set.</summary>
+		/// <remarks>
+		/// <para>Parameter: (int) Number of storage replicas over which the load balancer consistency check is done.</para>
+		/// </remarks>
+		ConsistencyCheckRequiredReplicas = 4001,
+
 	}
 
 }
