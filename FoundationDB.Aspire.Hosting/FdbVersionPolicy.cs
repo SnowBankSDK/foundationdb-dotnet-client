@@ -34,26 +34,27 @@ namespace Aspire.Hosting.ApplicationModel
 		Exact = 0,
 
 		/// <summary>Select the latest version published to the docker registry.</summary>
-		/// <remarks>Please note that there is no guarantee that the latest version is stable or is compatible with the selected API level.</remarks>
+		/// <remarks>Please note that there is no guarantee that the latest version is stable or is compatible with the selected API level!</remarks>
 		Latest,
 
 		/// <summary>Select the latest compatible version published to the docker registry, that is greater than or equal to the version requested.</summary>
 		/// <remarks>
-		/// <para>For example, if version <c>6.0.3</c> is requested, but <c>7.3.5</c> is currently available, it will be used instead.</para>
+		/// <para>For example, if version <c>6.0.3</c> is requested, but <c>7.4.4</c> is currently available, it will be used instead.</para>
 		/// <para>If a newer version is available, but is known to break compatibility (by removing support for the API level selected), then it will not be included in the selection process.</para>
+		/// <para>Please note that there is no guarantee that the latest major version will be compatible with this version of the .NET binding, and that request API level is still supported!</para>
 		/// </remarks>
 		LatestMajor,
 
 		/// <summary>Select the latest compatible minor version published to the docker registry, that is greater than or equal to the version requested.</summary>
 		/// <remarks>
-		/// <para>For example, if version <c>6.0.3</c> is requested, but <c>6.2.7</c> is the latest <c>6.x</c> version available, it will be used even if there is a more recent <c>7.x</c> version.</para>
+		/// <para>For example, if version <c>7.1.3</c> is requested, but <c>7.4.4</c> is the latest <c>7.x</c> version available, it will be used even if there is a more recent <c>8.x</c> version.</para>
 		/// <para>If a newer version is available, but is known to break compatibility (by removing support for the API level selected), then it will not be included in the selection process.</para>
 		/// </remarks>
 		LatestMinor,
 		
 		/// <summary>Select the latest stable patch version available for the minor version requested.</summary>
 		/// <remarks>
-		/// <para>For example, if version <c>6.0.3</c> is requested, but <c>6.0.7</c> is the latest <c>6.0.x</c> version available, it will be used even if there is a more recent <c>6.1.x</c> or <c>7.x</c> version.</para>
+		/// <para>For example, if version <c>7.3.5</c> is requested, but <c>7.3.70</c> is the latest <c>7.3.x</c> version available, it will be used even if there is a more recent <c>7.4.x</c> or <c>8.x</c> version.</para>
 		/// <para>If a newer version is available, but is known to break compatibility (by removing support for the API level selected), then it will not be included in the selection process.</para>
 		/// </remarks>
 		LatestPatch,

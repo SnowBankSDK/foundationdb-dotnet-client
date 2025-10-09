@@ -13,7 +13,7 @@
 							"properties": {
 								"ApiVersion": {
 									"type": "integer",
-									"description": "API level selected by the process (ex: 710, 730, ...). Must be supported by the native library that is deployed alongside the application."
+									"description": "API level selected by the process (ex: 710, 730, 740, ...). Must be supported by the native library that is deployed alongside the application."
 								},
 								"Root": {
 									"type": "string",

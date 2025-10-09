@@ -51,7 +51,7 @@ namespace Aspire.Hosting.ApplicationModel
 		/// <remarks>The strategy works similarly to the <c>rollForward</c> property of the <c>global.json</c> file, see https://learn.microsoft.com/en-us/dotnet/core/tools/global-json.</remarks>
 		public required FdbVersionPolicy RollForward { get; set; }
 
-		/// <summary>Tag of the docker image that will be used to run the cluster locally. (ex: <c>"latest"</c>, <c>"7.3.68"</c>, ...)</summary>
+		/// <summary>Tag of the docker image that will be used to run the cluster locally. (ex: <c>"latest"</c>, <c>"7.4.4"</c>, <c>"7.3.68"</c>, ...)</summary>
 		public required string DockerTag { get; set; }
 
 		/// <summary>Path to the local native client library (<c>fdb_c.dll</c> on Windows, <c>libfdb_c.so</c> on Linux, <c>libfdb_c.dylib</c> on macOS, ...)</summary>
@@ -129,7 +129,7 @@ namespace Aspire.Hosting.ApplicationModel
 			// Cluster File format: "<DESC>:<ID>@<HOST1>:<PORT1>[,<HOST2>:<PORT2>,...]"
 			// By default, the docker image uses "docker:docker@127.0.0.1:4550"
 
-			string contents = $"{clusterDesc}:{clusterId}@{coordinatorHost}:{coordinatorPort.ToString(CultureInfo.InvariantCulture)}";
+			string contents = string.Create(CultureInfo.InvariantCulture, $"{clusterDesc}:{clusterId}@{coordinatorHost}:{coordinatorPort}");
 
 			//TODO: replace this with a proper use of ReferenceExpression?
 

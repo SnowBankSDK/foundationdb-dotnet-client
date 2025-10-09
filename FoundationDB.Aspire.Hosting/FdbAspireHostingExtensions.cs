@@ -37,8 +37,11 @@ namespace Aspire.Hosting
 	public static class FdbAspireHostingExtensions
 	{
 
+		/// <summary>Tag for the latest v7.4 docker image</summary>
+		public static readonly Version LatestVersion74 = new Version(7, 4, 4);
+
 		/// <summary>Tag for the latest v7.3 docker image</summary>
-		public static readonly Version LatestVersion73 = new Version(7, 3, 54);
+		public static readonly Version LatestVersion73 = new Version(7, 3, 70);
 
 		/// <summary>Tag for the latest v7.2 docker image</summary>
 		public static readonly Version LatestVersion72 = new Version(7, 2, 9);
@@ -133,12 +136,12 @@ namespace Aspire.Hosting
 				{
 					case IPEndPoint ip:
 					{
-						sb.Append(ip.Address.ToString()).Append(':').Append(ip.Port.ToString(CultureInfo.InvariantCulture));
+						sb.Append(CultureInfo.InvariantCulture, $"{ip.Address}:{ip.Port}");
 						break;
 					}
 					case DnsEndPoint dns:
 					{
-						sb.Append(dns.Host).Append(':').Append(dns.Port.ToString(CultureInfo.InvariantCulture));
+						sb.Append(CultureInfo.InvariantCulture, $"{dns.Host}:{dns.Port}");
 						break;
 					}
 					default:
@@ -170,7 +173,7 @@ namespace Aspire.Hosting
 		/// <param name="apiVersion">API version that is requested by the application</param>
 		/// <param name="root">Root subspace location used by the application, in the cluster keyspace.</param>
 		/// <param name="port">Custom port for the docker container</param>
-		/// <param name="clusterVersion">If not <c>null</c>, specifies the targeted version for the cluster nodes (ex: "7.2.5", "7.3.27", "7.2.*", "7.*", ...)</param>
+		/// <param name="clusterVersion">If not <c>null</c>, specifies the targeted version for the cluster nodes (ex: "7.4.4", "7.3.27", "7.4.*", "7.*", ...)</param>
 		/// <param name="rollForward">Specifies the policy used to optionally select a more recent version</param>
 		public static IResourceBuilder<FdbClusterResource> AddFoundationDb(this IDistributedApplicationBuilder builder, string name, int apiVersion, string root, int? port = null, string? clusterVersion = null, FdbVersionPolicy? rollForward = null)
 		{
@@ -183,7 +186,7 @@ namespace Aspire.Hosting
 		/// <param name="apiVersion">API version that is requested by the application</param>
 		/// <param name="root">Root subspace location used by the application, in the cluster keyspace.</param>
 		/// <param name="port">The host port to bind the underlying container to (defaults to <c>4550</c>)</param>
-		/// <param name="clusterVersion">If not <c>null</c>, specifies the targeted version for the cluster nodes (ex: "7.2.5", "7.3.27", "7.2.*", "7.*", ...)</param>
+		/// <param name="clusterVersion">If not <c>null</c>, specifies the targeted version for the cluster nodes (ex: "7.4.4", "7.3.27", "7.4.*", "7.*", ...)</param>
 		/// <param name="rollForward">Specifies the policy used to optionally select a more recent version</param>
 		/// <param name="imageRegistry">Specifies a custom image registry for the container (defaults to <c>"docker.io"</c>)</param>
 		public static IResourceBuilder<FdbClusterResource> AddFoundationDb(
@@ -205,8 +208,8 @@ namespace Aspire.Hosting
 			if (string.IsNullOrWhiteSpace(clusterVersion) || clusterVersion == "*")
 			{ // version is not specified
 
-				// Use the request ApiVersion to select the correct version
-				// The version corresponding to level 720 is 7.2 (last digit is usually always 0)
+				// Use the request ApiVersion to select the correct version.
+				// For example, the version corresponding to level 740 is 7.4 (last digit is usually always 0)
 				int major = (apiVersion / 100);
 				int minor = (apiVersion / 10) % 10;
 				ver = new Version(major, minor);
@@ -220,7 +223,7 @@ namespace Aspire.Hosting
 					rollForward ??= FdbVersionPolicy.LatestMinor;
 				}
 				else
-				{ // ex: "7.3.x"
+				{ // ex: "7.4.x"
 					rollForward ??= FdbVersionPolicy.LatestPatch;
 				}
 			}
@@ -235,7 +238,7 @@ namespace Aspire.Hosting
 				imageRegistry = "docker.io";
 			}
 
-			// select the docker image tag that corresponds to the version and specified rollforward policy
+			// select the docker image tag that corresponds to the version and specified roll forward policy
 			var dockerTag = ComputeDockerTagFromVersion(ver, rollForward.Value);
 
 			var fdbCluster = new FdbClusterResource(name)
@@ -411,9 +414,9 @@ namespace Aspire.Hosting
 		private static string ComputeDockerTagFromVersion(Version version, FdbVersionPolicy rollForward)
 		{
 			// Important Note:
-			// - As of know, there they are always released in pairs: one with AVX instructions enabled (odd number, ex: 7.3.49) and one without AVX enabled (even number, ex: 7.3.48)
+			// - As of now, they are always released in pairs: one with AVX instructions enabled (odd number, ex: 7.3.71) and one without AVX enabled (even number, ex: 7.3.70)
 			// - The AVX enabled versions are faster, but are NOT compatible with ARM64 and will not run on Apple M-chip enabled laptops, where you need a non-AVX version.
-			// - As this method is mostly used for the local dev loop, and to make it easier to develop on MBP or Mac Mini, we will always roll foward to even version (non-AVX)
+			// - As this method is mostly used for the local dev loop, and to make it easier to develop on MBP or Mac Mini, we will always roll forward to even version (non-AVX)
 			// => In production deployment, you should use the most appropriate version depending on the target platform.
 
 			//TODO: maybe query the docker hub API, but use a local cache?
@@ -423,7 +426,7 @@ namespace Aspire.Hosting
 			{
 				case FdbVersionPolicy.Exact:
 				{
-					return version.Major.ToString(CultureInfo.InvariantCulture) + "." + version.Minor.ToString(CultureInfo.InvariantCulture) + "." + version.Build.ToString(CultureInfo.InvariantCulture);
+					return string.Create(CultureInfo.InvariantCulture, $"{version.Major}.{version.Minor}.{version.Build}");
 				}
 				case FdbVersionPolicy.Latest:
 				{ // I like to live dangerously!
@@ -433,6 +436,10 @@ namespace Aspire.Hosting
 				{ // Keep major.minor but use the latest patch (ie: X.Y.*)
 					switch (version.Major, version.Minor)
 					{
+						case (7, 4):
+						{
+							return LatestVersion74.ToString();
+						}
 						case (7, 3):
 						{
 							return LatestVersion73.ToString();
@@ -462,14 +469,14 @@ namespace Aspire.Hosting
 					{
 						case 7:
 						{
-							if (version.Minor > 3)
+							if (version.Minor > 4)
 							{
 								throw ErrorVersionIsGreaterThanSupportedByThisPackage(version);
 							}
 
-							return version.Minor == 3 && version.Build > LatestVersion73.Build
-								? "7.3." + version.Build.ToString(CultureInfo.InvariantCulture)
-								: LatestVersion73.ToString();
+							return version.Minor == 4 && version.Build > LatestVersion74.Build
+								? string.Create(CultureInfo.InvariantCulture, $"7.4.{version.Build}")
+								: LatestVersion74.ToString();
 						}
 						default:
 						{
@@ -480,19 +487,16 @@ namespace Aspire.Hosting
 				case FdbVersionPolicy.LatestMajor:
 				{ // Use the latest (stable) version available
 
-					if (version.Major > 7 || (version.Major == 7 && version.Minor > 3))
+					if (version.Major > 7 || (version.Major == 7 && version.Minor > 4))
 					{
 						throw ErrorVersionIsGreaterThanSupportedByThisPackage(version);
 					}
 
-					if (version.Minor == 3 && version.Build > LatestVersion73.Build)
-					{
-						return "7.3." + version.Build.ToString(CultureInfo.InvariantCulture);
+					if (version.Minor == 4 && version.Build > LatestVersion74.Build)
+					{ // this 7.4 version was probably released after this code was packaged, we'll allow it
+						return string.Create(CultureInfo.InvariantCulture, $"7.4.{version.Build}");
 					}
-					else
-					{
-						return LatestVersion73.ToString();
-					}
+					return LatestVersion74.ToString();
 				}
 				default:
 				{
@@ -502,16 +506,16 @@ namespace Aspire.Hosting
 		}
 
 		[MustUseReturnValue]
-		private static Exception ErrorVersionIsTooOldMajor(Version version)
-			=> new InvalidOperationException($"There are no docker images available for version {version}. The first docker images available start from 7.1.0. Please use the 'latestMajor' policy, or select a version of 7.1 or greater.");
+		private static InvalidOperationException ErrorVersionIsTooOldMajor(Version version)
+			=> new($"There are no docker images available for version {version}. The first docker images available start from 7.1.0. Please use the 'latestMajor' policy, or select a version of 7.1 or greater.");
 
 		[MustUseReturnValue]
-		private static Exception ErrorVersionIsTooOldMinor(Version version)
-			=> new InvalidOperationException($"There are no docker images available for version {version}. The first docker images available start from 7.1.0. Please use the 'latestMinor' policy, or select a version of 7.1 or greater.");
+		private static InvalidOperationException ErrorVersionIsTooOldMinor(Version version)
+			=> new($"There are no docker images available for version {version}. The first docker images available start from 7.1.0. Please use the 'latestMinor' policy, or select a version of 7.1 or greater.");
 
 		[MustUseReturnValue]
-		private static Exception ErrorVersionIsGreaterThanSupportedByThisPackage(Version version)
-			=> new NotImplementedException($"The selected version {version} is too recent and is not supported by this NuGet package. Please update the NuGet package or select an older version.");
+		private static InvalidOperationException ErrorVersionIsGreaterThanSupportedByThisPackage(Version version)
+			=> new($"The selected version {version} is too recent and is not supported by this NuGet package. Please update the NuGet package or select an older version.");
 
 	}
 
