@@ -430,9 +430,9 @@ namespace FoundationDB.Client.Tests
 
 			// the upper 8 bits are the 
 			var majorMinor = (ver >> 24) & 0xFF;
-			if (majorMinor <= 0x73)
+			if (majorMinor <= 0x74)
 			{ // known versions
-				Assert.That(majorMinor, Is.AnyOf(0x61, 0x62, 0x63, 0x70, 0x71, 0x72, 0x73));
+				Assert.That(majorMinor, Is.AnyOf(0x61, 0x62, 0x63, 0x70, 0x71, 0x72, 0x73, 0x74));
 			}
 			else
 			{ // future version?

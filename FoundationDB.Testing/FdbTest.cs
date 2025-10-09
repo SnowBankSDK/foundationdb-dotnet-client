@@ -39,6 +39,7 @@ namespace FoundationDB.Client.Tests
 	{
 
 		internal const string DockerImageTag73 = "7.3.68";
+		internal const string DockerImageTag74 = "7.4.4";
 
 		protected int OverrideApiVersion;
 
@@ -65,26 +66,51 @@ namespace FoundationDB.Client.Tests
 		[OneTimeSetUp]
 		protected async Task BeforeAllTests()
 		{
-			// we use the name of the .NET target framework
+			// We use the name of the .NET runtime version as part of the name of the container, in order to run the tests on multiple targets concurrently.
+			// ex: for .NET 10, the container will use the "-net10.0" suffix
+			var targetFrameworkVersion = GetRuntimeFrameworkVersion();
+			var targetMoniker = string.Create(CultureInfo.InvariantCulture, $"net{targetFrameworkVersion.Major}.{targetFrameworkVersion.Minor}");
 
-			var target = GetRuntimeFrameworkMoniker();
+			// We also use fdb version present in the docker image tag, in order to be able to test on multiple versions of fdb concurrently (that may use a different on-disk format).
+			// the tag will start with the version number, which we will use to have a different set of containers for the various version (73, 74, ...)
+			// ex: if the tag is "7.3.68", then the container name will be "fdb-test-7.3-net10". For the tag "7.4.6" it will be "fdb-test-7.4-net10"
+			var dockerImageTag = Environment.GetEnvironmentVariable("FDB_TEST_DOCKER_TAG");
+			if (string.IsNullOrEmpty(dockerImageTag)) dockerImageTag = DockerImageTag74;
 
-			//HACKHACK: we need a solution to allocate a dynamic port for the container _before_ starting the container itself,
-			// since we need to inject env variables with the port. We cannot use the dynamic port allocation of the builder
-			// itself, since we would know the port after the start when it's too late!
-			// => for now, we only need to switch on different versions of dotnet, so we use the major version to build a port number
+			if (!Version.TryParse(dockerImageTag, out var targetServerVersion))
+			{
+				Assert.Fail($"Failed to parse docker tag '{dockerImageTag}' to determine the version of the FoundationDB server.");
+				return;
+			}
 
-			int port = 4520 + Environment.Version.Major;
-			// - net6.0  -> 4526
-			// - net8.0  -> 4528
-			// - net9.0  -> 4529
-			// - net10.0 -> 4530
+			// Suffix that we will use the for container and data volumes. ex: "-7.3-net9.0" or "-7.4-net10.0"
+			var containerSuffix = string.Create(CultureInfo.InvariantCulture, $"-{targetServerVersion.Major}.{targetServerVersion.Minor}-{targetMoniker}");
 
-			var name = "fdb-test-" + target;
-			var volumeName = "fdb-test-" + target;
+			//Note: We need a solution to allocate a dynamic port for the container _before_ starting the container itself, since we need to inject env variables with the port.
+			// We cannot use the dynamic port allocation of the builder itself, since we would know the port after the start when it's too late!
+			// => we will combine the versions of the .NET runtime and fdb container version into a pseudo hash function that spreads the port over a range of 4600..4699
+			// => we ASSUME that the minor versions of both .NET and FDB will always be 0-9 (ie: no version 7.12)
 
-			var tag = Environment.GetEnvironmentVariable("FDB_TEST_DOCKER_TAG");
-			if (string.IsNullOrEmpty(tag)) tag = DockerImageTag73;
+			// Formula:
+			// P = SRV.Major * 10 + SRV.Minor    // P =  7 * 10 + 4 = 74
+			// Q = FX.Major * 10 + FX.Minor      // Q = 10 * 10 + 0 = 100
+			// H = (P * 13 + Q * 17) % 100       // H = (74 * 13 + 100 * 17) % 100 = 2662 % 100 = 62
+			// PORT = 4600 + H                   // PORT = 4600 + 62 = 4662
+			int port = 4600 + (((10 * targetServerVersion.Major + targetServerVersion.Minor) * 13) + ((10 * targetFrameworkVersion.Major + targetFrameworkVersion.Minor) * 17)) % 100;
+
+			// Some common values:
+			// | fdb | dotnet  | Port |
+			// +-----+---------+------+
+			// | 7.3 | net8.0  | 4609 |
+			// | 7.3 | net9.0  | 4679 |
+			// | 7.3 | net10.0 | 4649 |
+			// | 7.4 | net8.0  | 4622 |
+			// | 7.4 | net9.0  | 4692 |
+			// | 7.4 | net10.0 | 4662 |
+			// | 7.4 | net11.0 | 4632 |
+
+			var name = "fdb-test" + containerSuffix;
+			var volumeName = "fdb-test" + containerSuffix;
 
 			bool mustStartServer = false;
 			var container = FdbTest.ServerContainer;
@@ -97,7 +123,7 @@ namespace FoundationDB.Client.Tests
 					container = FdbTest.ServerContainer;
 					if (container == null)
 					{
-						container = new(name, tag, port, volumeName);
+						container = new(name, dockerImageTag, port, volumeName);
 						FdbTest.ServerContainer = container;
 						mustStartServer = true;
 					}
@@ -113,14 +139,16 @@ namespace FoundationDB.Client.Tests
 					// => most common failure is when Docker Desktop has not started yet on the local machine!
 					await container.StartContainer(TimeSpan.FromSeconds(20), this.Cancellation).ConfigureAwait(false);
 
-					var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
-					if (probe.Path == null)
-					{
-						Assert.Fail($"Could not located the native client library for platform '{probe.Rid}'. Looked in the following places: {string.Join(", ", probe.ProbedPaths)}");
-						return;
-					}
+					Fdb.Options.NativeLibPath = @"C:\temp\fdb\work\foundationdb\build\lib\Release\fdb_c.dll";
 
-					Fdb.Options.NativeLibPath = probe.Path;
+					//var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
+					//if (probe.Path == null)
+					//{
+					//	Assert.Fail($"Could not locate the native client library for platform '{probe.Rid}'. Looked in the following places: {string.Join(", ", probe.ProbedPaths)}");
+					//	return;
+					//}
+
+					//Fdb.Options.NativeLibPath = probe.Path;
 
 					// We must ensure that FDB is running before executing the tests
 					// => By default, we always use 
@@ -171,11 +199,10 @@ namespace FoundationDB.Client.Tests
 			return server!;
 		}
 
-		/// <summary>Returns the currently running framework moniker (<c>"net6.0"</c>, <c>"net8.0"</c>, <c>"net9.0"</c>, ...)</summary>
-		protected static string GetRuntimeFrameworkMoniker()
+		/// <summary>Returns the Major.Minor version of the currently running framework (<c>8.0</c>, <c>9.0</c>, <c>10.0</c>, ...)</summary>
+		protected static Version GetRuntimeFrameworkVersion()
 		{
-			string moniker = $"net{Environment.Version.Major}.{Environment.Version.Minor}";
-			return moniker;
+			return new Version(Environment.Version.Major, Environment.Version.Minor);
 		}
 
 		private async Task<FdbServerTestContainer> WaitForTestServerToBecomeReady()

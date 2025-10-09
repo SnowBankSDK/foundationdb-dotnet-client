@@ -35,7 +35,7 @@ namespace FoundationDB.Client.Native
 	internal static unsafe partial class FdbNative
 	{
 		public const int FDB_API_MIN_VERSION = 610;
-		public const int FDB_API_MAX_VERSION = 730;
+		public const int FDB_API_MAX_VERSION = 740;
 
 		/// <summary>Name of the C API dll used for P/Invoking</summary>
 		internal const string FDB_C_DLL = "fdb_c";
