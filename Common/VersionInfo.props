@@ -5,8 +5,8 @@
 		<VersionSuffix></VersionSuffix>
 		<Authors>SnowBank SAS</Authors>
 		<PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
-		<PackageProjectUrl>https://github.com/Doxense/foundationdb-dotnet-client</PackageProjectUrl>
-		<RepositoryUrl>https://github.com/Doxense/foundationdb-dotnet-client</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/SnowBankSDK/foundationdb-dotnet-client</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/SnowBankSDK/foundationdb-dotnet-client</RepositoryUrl>
 		<Copyright>Copyright (c) 2023-2025 SnowBank SAS, (c) 2005-2023 Doxense SAS</Copyright>
 	</PropertyGroup>
 

@@ -3,11 +3,11 @@ FoundationDB .NET Client
 
 C#/.NET binding for the [FoundationDB](https://www.foundationdb.org/) client library.
 
-[![License](https://img.shields.io/github/license/Doxense/foundationdb-dotnet-client)](LICENSE.md)
+[![License](https://img.shields.io/github/license/SnowBankSDK/foundationdb-dotnet-client)](LICENSE.md)
 [![NuGet version](https://img.shields.io/nuget/v/FoundationDB.Client.svg)](https://www.nuget.org/packages/FoundationDB.Client/)
 ![Platform](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-blue)
-[![Build](https://img.shields.io/github/actions/workflow/status/Doxense/foundationdb-dotnet-client/dotnetcore.yml)](https://github.com/Doxense/foundationdb-dotnet-client/actions/workflows/dotnetcore.yml)
-[![Last Commit](https://img.shields.io/github/last-commit/doxense/foundationdb-dotnet-client)](https://github.com/Doxense/foundationdb-dotnet-client/commits/master/)
+[![Build](https://img.shields.io/github/actions/workflow/status/SnowBankSDK/foundationdb-dotnet-client/dotnetcore.yml)](https://github.com/SnowBankSDK/foundationdb-dotnet-client/actions/workflows/dotnetcore.yml)
+[![Last Commit](https://img.shields.io/github/last-commit/SnowBankSDK/foundationdb-dotnet-client)](https://github.com/SnowBankSDK/foundationdb-dotnet-client/commits/master/)
 
 # How to use
 
