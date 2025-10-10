@@ -139,16 +139,14 @@ namespace FoundationDB.Client.Tests
 					// => most common failure is when Docker Desktop has not started yet on the local machine!
 					await container.StartContainer(TimeSpan.FromSeconds(20), this.Cancellation).ConfigureAwait(false);
 
-					Fdb.Options.NativeLibPath = @"C:\temp\fdb\work\foundationdb\build\lib\Release\fdb_c.dll";
+					var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
+					if (probe.Path == null)
+					{
+						Assert.Fail($"Could not locate the native client library for platform '{probe.Rid}'. Looked in the following places: {string.Join(", ", probe.ProbedPaths)}");
+						return;
+					}
 
-					//var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
-					//if (probe.Path == null)
-					//{
-					//	Assert.Fail($"Could not locate the native client library for platform '{probe.Rid}'. Looked in the following places: {string.Join(", ", probe.ProbedPaths)}");
-					//	return;
-					//}
-
-					//Fdb.Options.NativeLibPath = probe.Path;
+					Fdb.Options.NativeLibPath = probe.Path;
 
 					// We must ensure that FDB is running before executing the tests
 					// => By default, we always use 
