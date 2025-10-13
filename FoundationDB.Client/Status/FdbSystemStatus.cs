@@ -26,6 +26,7 @@
 
 // ReSharper disable UnusedMember.Global
 // ReSharper disable InconsistentNaming
+// ReSharper disable StringLiteralTypo
 namespace FoundationDB.Client.Status
 {
 
@@ -94,17 +95,21 @@ namespace FoundationDB.Client.Status
 			this.ReasonId = reasonId;
 		}
 
+		private static Message FromObject(JsonObject obj)
+		{
+			var key = obj.Get<string>("name", "");
+			var value = obj.Get<string>("description", "");
+			var reasonId = obj.Get<int?>("reasonId", null);
+			return new Message(key, value, reasonId);
+		}
+
 		internal static Message From(JsonObject? data, string field)
 		{
 			if (data == null || !data.TryGetObject(field, out var obj))
 			{
 				return new Message("", "", null);
 			}
-
-			var key = obj.Get<string>("name", "");
-			var value = obj.Get<string>("description", "");
-			var reasonId = obj.Get<int?>("reasonId", null);
-			return new Message(key, value, reasonId);
+			return FromObject(obj);
 		}
 
 		internal static Message[] FromArray(JsonObject? data, string field)
@@ -119,14 +124,11 @@ namespace FoundationDB.Client.Status
 			{
 				if (array.TryGetObject(i, out var obj))
 				{
-					var key = obj.Get<string>("name", "");
-					var value = obj.Get<string>("description", "");
-					var reasonId = obj.Get<int?>("reasonId", null);
-					res[i] = new Message(key, value, reasonId);
+					res[i] = FromObject(obj);
 				}
 				else
 				{
-					res[i] = new Message("", "", null);
+					res[i] = new("", "", null);
 				}
 			}
 			return res;
@@ -319,6 +321,7 @@ namespace FoundationDB.Client.Status
 		internal ClientStatus(JsonObject? data) : base(data) { }
 
 		private Message[]? m_messages;
+		private CoordinatorDescriptor[]? m_coordinators;
 
 		/// <summary>Path to the '.cluster' file used by the client to connect to the cluster</summary>
 		public string? ClusterFilePath => GetString("cluster_file", "path");
@@ -331,18 +334,69 @@ namespace FoundationDB.Client.Status
 		public Message[] Messages => m_messages ??= Message.FromArray(m_data, "messages");
 
 		/// <summary>Timestamp of the local client (unix time)</summary>
-		/// <remarks>Number of seconds since 1970-01-01Z, using the local system clock</remarks>
+		/// <remarks>
+		/// <para>Number of seconds since 1970-01-01Z, using the local system clock</para>
+		/// <para><c>client.timestamp</c></para>
+		/// </remarks>
 		public long Timestamp => GetInt64("timestamp") ?? 0;
 
 		/// <summary>Local system time on the client</summary>
+		/// <remarks><c>client.timestamp</c></remarks>
 		public DateTime SystemTime => new DateTime(checked(621355968000000000L + this.Timestamp * TimeSpan.TicksPerSecond), DateTimeKind.Utc);
 
 		/// <summary>Specifies if the local client was able to connect to the cluster</summary>
+		/// <remarks><c>client.database_status.available</c></remarks>
 		public bool DatabaseAvailable => GetBoolean("database_status", "available") ?? false;
 
 		/// <summary>Specifies if the database is currently healthy</summary>
+		/// <remarks><c>client.database_status.healthy</c></remarks>
 		//REVIEW: what does it mean if available=true, but healthy=false ?
 		public bool DatabaseHealthy => GetBoolean("database_status", "healthy") ?? false;
+
+		/// <summary>Returns the list of coordinators known to this client</summary>
+		/// <remarks><c>client.coordinators.coordinators[]</c></remarks>
+		public CoordinatorDescriptor[] Coordinators => m_coordinators ??= CoordinatorDescriptor.FromArray(GetObject("coordinators"), "coordinators");
+
+		/// <summary>Tests if a quorum of coordinators is reachable from this client</summary>
+		/// <remarks><c>client.coordinators.quorum_reachable</c></remarks>
+		public bool? QuorumReachable => GetBoolean("coordinators", "quorum_reachable");
+
+		/// <summary>Details about a coordinator, as known by a client</summary>
+		public sealed record CoordinatorDescriptor : MetricsBase
+		{
+
+			private static readonly CoordinatorDescriptor Missing = new(default(JsonObject));
+
+			internal CoordinatorDescriptor(JsonObject? data) : base(data) { }
+
+			public string Address => GetString("address") ?? string.Empty;
+
+			public FdbProtocolVersion Protocol => FdbProtocolVersion.Parse(GetString("protocol"));
+
+			public bool? IsReachable => GetBoolean("reachable");
+
+			internal static CoordinatorDescriptor From(JsonObject? data, string field)
+			{
+				return data is not null && data.TryGetObject(field, out var obj) ? new(obj) : Missing;
+			}
+
+			internal static CoordinatorDescriptor[] FromArray(JsonObject? data, string field)
+			{
+				if (data is null || !data.TryGetArray(field, out var array) || array.Count == 0)
+				{
+					return [];
+				}
+
+				var res = new CoordinatorDescriptor[array.Count];
+				for (int i = 0; i < res.Length; i++)
+				{
+					res[i] = array.TryGetObject(i, out var obj) ? new(obj) : Missing;
+				}
+				return res;
+			}
+
+		}
+
 	}
 
 	/// <summary>List of well known client messages</summary>
@@ -451,7 +505,6 @@ namespace FoundationDB.Client.Status
 		/// <summary><c>tenants</c></summary>
 		public ClusterTenantsMetrics Tenants => m_tenants ??= new ClusterTenantsMetrics(GetObject("tenants"));
 
-
 		/// <summary><c>processes</c>: List of the processes that are currently active in the cluster</summary>
 		public IReadOnlyDictionary<string, ProcessStatus> Processes => m_processes ??= ComputeProcesses();
 
@@ -489,6 +542,14 @@ namespace FoundationDB.Client.Status
 			}
 			return machines;
 		}
+
+		public string? ActivePrimaryDc => GetString("active_primary_dc");
+
+		public int? ActiveTssCount => GetInt32("active_tss_count");
+
+		public string? MetaClusterType => GetString("metacluster", "cluster_type"); // "standalone"
+
+		public bool? VersionEpochEnabled => GetBoolean("version_epoch", "enabled");
 
 	}
 
@@ -796,12 +857,12 @@ namespace FoundationDB.Client.Status
 		/// <example>"10.1.2.34:4500"</example>
 		public string Address => m_address ??= GetString("address") ?? string.Empty;
 
-		public string ClassSource => GetString("class_source") ?? string.Empty;
+		public string ClassSource => GetString("class_source") ?? string.Empty; // "command_line"
 
-		public string ClassType => GetString("class_type") ?? string.Empty;
+		public string ClassType => GetString("class_type") ?? string.Empty; // "unset"
 
 		/// <summary>Command line that was used to start this process</summary>
-		public string CommandLine => GetString("command_line") ?? string.Empty;
+		public string CommandLine => GetString("command_line") ?? string.Empty; // "fdbserver --xxx --yyy ...."
 
 		/// <summary>If true, this process is currently excluded from the cluster</summary>
 		public bool Excluded => GetBoolean("excluded") ?? false;
@@ -812,18 +873,18 @@ namespace FoundationDB.Client.Status
 		public Message[] Messages => m_messages ??= Message.FromArray(m_data, "messages");
 
 		/// <summary>Network performance counters</summary>
-		public ProcessNetworkMetrics Network => m_network ??= new ProcessNetworkMetrics(GetObject("network"));
+		public ProcessNetworkMetrics Network => m_network ??= new(GetObject("network"));
 
 		/// <summary>CPU performance counters</summary>
-		public ProcessCpuMetrics Cpu => m_cpu ??= new ProcessCpuMetrics(GetObject("cpu"));
+		public ProcessCpuMetrics Cpu => m_cpu ??= new(GetObject("cpu"));
 
 		/// <summary>Disk performance counters</summary>
-		public ProcessDiskMetrics Disk => m_disk ??= new ProcessDiskMetrics(GetObject("disk"));
+		public ProcessDiskMetrics Disk => m_disk ??= new(GetObject("disk"));
 
 		/// <summary>Memory performance counters</summary>
-		public ProcessMemoryMetrics Memory => m_memory ??= new ProcessMemoryMetrics(GetObject("memory"));
+		public ProcessMemoryMetrics Memory => m_memory ??= new(GetObject("memory"));
 
-		public LocalityConfiguration Locality => m_locality ??= new LocalityConfiguration(GetObject("locality"));
+		public LocalityConfiguration Locality => m_locality ??= new(GetObject("locality"));
 
 		/// <summary>List of the roles assumed by this process</summary>
 		/// <remarks>The key is the unique role ID in the cluster, and the value is the type of the role itself</remarks>
@@ -849,6 +910,10 @@ namespace FoundationDB.Client.Status
 				return m_roles;
 			}
 		}
+
+		public double? RunLoopBusy => GetDouble("run_loop_busy");
+
+		public double? UptimeSeconds => GetDouble("update_seconds");
 
 	}
 
@@ -882,6 +947,8 @@ namespace FoundationDB.Client.Status
 				"storage" => new StorageRoleMetrics(data),
 				"ratekeeper" => new RateKeeperRoleMetrics(data),
 				"data_distributor" => new DataDistributorRoleMetrics(data),
+				"coordinator" => new CoordinatorRoleMetrics(data),
+				"consistency_scan" => new ConsistencyScanRoleMetrics(data),
 				_ => new ProcessRoleMetrics(data, role)
 			};
 		}
@@ -1004,6 +1071,23 @@ namespace FoundationDB.Client.Status
 		{ }
 	}
 
+	/// <summary>Metrics related to the <c>coordinator</c> role</summary>
+	public sealed record CoordinatorRoleMetrics : ProcessRoleMetrics
+	{
+		public CoordinatorRoleMetrics(JsonObject? data) : base(data, "coordinator")
+		{ }
+
+		//note: this entry does not have an "id" property!
+
+	}
+
+	/// <summary>Metrics related to the <c>consistency_scan</c> role</summary>
+	public sealed record ConsistencyScanRoleMetrics : ProcessRoleMetrics
+	{
+		public ConsistencyScanRoleMetrics(JsonObject? data) : base(data, "consistency_scan")
+		{ }
+	}
+
 	public abstract record DiskBasedRoleMetrics : ProcessRoleMetrics
 	{
 		protected DiskBasedRoleMetrics(JsonObject? data, string role) : base(data, role)
@@ -1037,19 +1121,19 @@ namespace FoundationDB.Client.Status
 	{
 		internal StorageRoleMetrics(JsonObject? data) : base(data, "storage")
 		{
-			this.StorageMetadata = new StorageMetadataMetrics(GetObject("storage_metadata"));
-			this.BytesQueried = new RoughnessCounter(GetObject("bytes_queried"));
-			this.FinishedQueries = new RoughnessCounter(GetObject("finished_queries"));
-			this.KeysQueried = new RoughnessCounter(GetObject("keys_queried"));
-			this.MutationBytes = new RoughnessCounter(GetObject("mutation_bytes"));
-			this.Mutations = new RoughnessCounter(GetObject("mutations"));
-			this.TotalQueries = new RoughnessCounter(GetObject("total_queries"));
-			this.DataLag = new LagCounter(GetObject("data_lag"));
-			this.DurabilityLag = new LagCounter(GetObject("durability_lag"));
-			this.FetchedVersions = new RoughnessCounter(GetObject("fetched_versions"));
-			this.FetchesFromLogs = new RoughnessCounter(GetObject("fetched_versions"));
-			this.LowPriorityQueries = new RoughnessCounter(GetObject("low_priority_queries"));
-			this.ReadLatencyStatistics = new MetricStatistics(GetObject("read_latency_statistics"));
+			this.StorageMetadata = new(GetObject("storage_metadata"));
+			this.BytesQueried = new(GetObject("bytes_queried"));
+			this.FinishedQueries = new(GetObject("finished_queries"));
+			this.KeysQueried = new(GetObject("keys_queried"));
+			this.MutationBytes = new(GetObject("mutation_bytes"));
+			this.Mutations = new(GetObject("mutations"));
+			this.TotalQueries = new(GetObject("total_queries"));
+			this.DataLag = new(GetObject("data_lag"));
+			this.DurabilityLag = new(GetObject("durability_lag"));
+			this.FetchedVersions = new(GetObject("fetched_versions"));
+			this.FetchesFromLogs = new(GetObject("fetches_from_logs"));
+			this.LowPriorityQueries = new(GetObject("low_priority_queries"));
+			this.ReadLatencyStatistics = new(GetObject("read_latency_statistics"));
 		}
 
 		public int QueryQueueMax => (int) (GetInt64("query_queue_max") ?? 0);
@@ -1084,8 +1168,11 @@ namespace FoundationDB.Client.Status
 
 		public MetricStatistics ReadLatencyStatistics { get; }
 
-		/// <summary></summary>
 		public StorageMetadataMetrics StorageMetadata { get; }
+
+		public bool Tss => GetBoolean("tss") ?? false;
+
+		public string? RocksDbVersion => GetString("rocksdb_version");
 
 	}
 
@@ -1156,15 +1243,24 @@ namespace FoundationDB.Client.Status
 		public long AvailableBytes => GetInt64("available_bytes") ?? 0;
 
 		/// <summary>Memory allocated by the process</summary>
+		/// <remarks><para></para><c>cluster.processes.{PID}.memory.used_bytes</c>
+		/// <para>On Linux, this is the VmSize as reported by <c>/proc/[pid]/statm</c></para>
+		/// <para>On Windows, this is <c>PPROCESS_MEMORY_COUNTERS.PagefileUsage</c></para>
+		/// </remarks>
 		public long UsedBytes => GetInt64("used_bytes") ?? 0;
-		// On linux, this is the VmSize as reported by /proc/[pid]/statm
-		// On Window, this is PPROCESS_MEMORY_COUNTERS.PagefileUsage
 
 		/// <summary>Memory that has been allocated but is currently unused</summary>
+		/// <remarks><c>cluster.processes.{PID}.memory.unused_allocated_memory</c></remarks>
 		public long UnusedAllocatedMemory => GetInt64("unused_allocated_memory") ?? 0;
 		//note: this is currently the sum of all unused memory in the various slab allocators
 
+		/// <summary>Limit Bytes</summary>
+		/// <remarks><c>cluster.processes.{PID}.memory.limit_bytes</c></remarks>
 		public long LimitBytes => GetInt64("limit_bytes") ?? 0;
+
+		/// <summary>RSS Bytes</summary>
+		/// <remarks><c>cluster.processes.{PID}.memory.rss_bytes</c></remarks>
+		public long RssBytes => GetInt64("rss_bytes") ?? 0;
 
 	}
 
@@ -1249,8 +1345,13 @@ namespace FoundationDB.Client.Status
 		private LocalityConfiguration? m_locality;
 
 		/// <summary>Unique identifier for this machine.</summary>
+		/// <remarks>This is the value of the key in the <c>cluster.machines</c> dictionary</remarks>
 		//TODO: is it stable across reboots? what are the conditions for a process to change its ID ?
 		public string Id { get; }
+
+		/// <summary>Id of this machine</summary>
+		/// <remarks>This is the ID that is referenced by other objects (processes, etc...)</remarks>
+		public string MachineId => GetString("machine_id") ?? this.Id;
 
 		/// <summary>Identifier of the data center that is hosting this machine</summary>
 		/// <remarks>All machines that have the same DataCenterId are probably running on the same (physical) network.</remarks>
@@ -1264,15 +1365,15 @@ namespace FoundationDB.Client.Status
 		public bool Excluded => GetBoolean("excluded") ?? false;
 
 		/// <summary>Network performance counters</summary>
-		public MachineNetworkMetrics Network => m_network ??= new MachineNetworkMetrics(GetObject("network"));
+		public MachineNetworkMetrics Network => m_network ??= new(GetObject("network"));
 
 		/// <summary>CPU performance counters</summary>
-		public MachineCpuMetrics Cpu => m_cpu ??= new MachineCpuMetrics(GetObject("cpu"));
+		public MachineCpuMetrics Cpu => m_cpu ??= new(GetObject("cpu"));
 
 		/// <summary>Memory performance counters</summary>
-		public MachineMemoryMetrics Memory => m_memory ??= new MachineMemoryMetrics(GetObject("memory"));
+		public MachineMemoryMetrics Memory => m_memory ??= new(GetObject("memory"));
 
-		public LocalityConfiguration Locality => m_locality ??= new LocalityConfiguration(GetObject("locality"));
+		public LocalityConfiguration Locality => m_locality ??= new(GetObject("locality"));
 
 		public int ContributingWorkers => (int) (GetInt64("contributing_workers") ?? 0);
 	}

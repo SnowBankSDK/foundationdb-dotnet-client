@@ -233,6 +233,7 @@ namespace FoundationDB.Client.Tests
 			Assert.That(status.Client.DatabaseHealthy, Is.True); // hopefully!
 			Assert.That(status.Client.Messages, Is.Not.Null);
 			Assert.That(status.Client.Timestamp, Is.GreaterThan(1760000000));
+			Assert.That(status.Client.Coordinators, Is.Not.Null.Or.Empty.And.All.Not.Null);
 
 			Assert.That(status.Cluster, Is.Not.Null);
 			Assert.That(status.Cluster.ConnectionString, Does.StartWith("docker:docker@127.0.0.1:")); // note: the port number will change from run to run
