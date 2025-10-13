@@ -83,24 +83,34 @@ namespace FoundationDB.Client.Status
 			public FdbEndPoint Address => m_address ??= GetEndpoint("Address");
 			private FdbEndPoint? m_address;
 
+			/// <summary>Status of the connection (<c>"failed"</c>, <c>"connected"</c>, <c>"connecting"</c>, <c>"disconnected"</c>, ...)</summary>
 			public string? Status => GetString("Status");
 
 			public FdbProtocolVersion ProtocolVersion => FdbProtocolVersion.Parse(GetString("ProtocolVersion") ?? string.Empty);
 			//note: sometimes missing?
 
+			/// <summary>Tests if the <see cref="ProtocolVersion"/> is compatible with the client</summary>
 			public bool? Compatible => GetBoolean("Compatible");
 
+			/// <summary>Bytes received from this connection</summary>
 			public long? BytesReceived => GetInt64("BytesReceived");
 
+			/// <summary>Bytes sent through this connection</summary>
 			public long? BytesSent => GetInt64("BytesSent");
 
+			/// <summary>Total ping count</summary>
 			public long? PingCount => GetInt64("PingCount");
 
+			/// <summary>Number of ping timeouts</summary>
 			public long? PingTimeoutCount => GetInt64("PingTimeoutCount");
 
 			public double? BytesSampleTime => GetDouble("BytesSampleTime");
 
+			/// <summary>Elapsed time in seconds since the last connection attempt</summary>
 			public double? LastConnectTime => GetDouble("LastConnectTime");
+
+			/// <summary>Number of failed connection attempts</summary>
+			public int ConnectFailedCount => GetInt32("ConnectFailedCount") ?? 0;
 
 		}
 
