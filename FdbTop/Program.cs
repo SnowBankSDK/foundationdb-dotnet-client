@@ -137,7 +137,7 @@ namespace FdbTop
 
 				DisplayMode mode = DisplayMode.Metrics;
 
-				Task<FdbSystemStatus?>? taskStatus = null;
+				Task<FdbSystemStatus>? taskStatus = null;
 				FdbSystemStatus? status = null;
 
 				Program.Screen = new FrameBuffer(Console.WindowWidth, Console.WindowHeight);

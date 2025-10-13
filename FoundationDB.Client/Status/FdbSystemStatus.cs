@@ -33,13 +33,26 @@ namespace FoundationDB.Client.Status
 	[PublicAPI]
 	public sealed record FdbSystemStatus : MetricsBase
 	{
-		internal FdbSystemStatus(JsonObject doc, long readVersion)
+
+		internal FdbSystemStatus(JsonObject? doc, long readVersion)
 			: base(doc)
 		{
-			this.Client = new ClientStatus(doc.GetObjectOrDefault("client"));
-			this.Cluster = new ClusterStatus(doc.GetObjectOrDefault("cluster"));
-			this.ReadVersion = readVersion;
+			if (doc is not null)
+			{
+				this.Client = new ClientStatus(doc.GetObjectOrDefault("client"));
+				this.Cluster = new ClusterStatus(doc.GetObjectOrDefault("cluster"));
+				this.ReadVersion = readVersion;
+			}
+			else
+			{
+				this.Client = new ClientStatus(null);
+				this.Cluster = new ClusterStatus(null);
+				this.ReadVersion = 0;
+			}
 		}
+
+		/// <summary>Checks if this instance contains valid status data</summary>
+		public bool IsValid => this.ReadVersion != 0;
 
 		/// <summary>Details about the local Client</summary>
 		public ClientStatus Client { get; }

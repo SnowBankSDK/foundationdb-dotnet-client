@@ -224,14 +224,31 @@ namespace FoundationDB.Client.Tests
 			var status = await Fdb.System.GetStatusAsync(db, this.Cancellation);
 			Assert.That(status, Is.Not.Null);
 
+			Dump(status!.JsonData);
+
 			Assert.That(status!.Client, Is.Not.Null);
+			Assert.That(status.Client.ClusterFileUpToDate, Is.True);
+			Assert.That(status.Client.ClusterFilePath, Is.Not.Null.Or.Empty);
+			Assert.That(status.Client.DatabaseAvailable, Is.True);
+			Assert.That(status.Client.DatabaseHealthy, Is.True); // hopefully!
 			Assert.That(status.Client.Messages, Is.Not.Null);
+			Assert.That(status.Client.Timestamp, Is.GreaterThan(1760000000));
 
 			Assert.That(status.Cluster, Is.Not.Null);
+			Assert.That(status.Cluster.ConnectionString, Does.StartWith("docker:docker@127.0.0.1:")); // note: the port number will change from run to run
+			Assert.That(status.Cluster.Configuration, Is.Not.Null);
+			Assert.That(status.Cluster.Configuration.LogEngine, Is.AnyOf("ssd-2", "memory")); // note: could be something else!
+			Assert.That(status.Cluster.Configuration.StorageEngine, Is.AnyOf("ssd-2", "memory")); // note: could be something else!
+			Assert.That(status.Cluster.Configuration.RedundancyMode, Is.AnyOf("single", "double", "triple")); // note: could be something else!
 			Assert.That(status.Cluster.Messages, Is.Not.Null);
 			Assert.That(status.Cluster.Data, Is.Not.Null);
+			Assert.That(status.Cluster.Data.StateHealthy, Is.True);
+			Assert.That(status.Cluster.Data.TotalDiskUsedBytes, Is.GreaterThan(0));
+			Assert.That(status.Cluster.Data.TotalKVUsedBytes, Is.GreaterThan(0));
 			Assert.That(status.Cluster.Qos, Is.Not.Null);
 			Assert.That(status.Cluster.Workload, Is.Not.Null);
+			Assert.That(status.Cluster.Machines, Is.Not.Null.Or.Empty);
+
 		}
 
 		[Test]

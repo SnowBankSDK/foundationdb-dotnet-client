@@ -98,11 +98,11 @@ namespace FoundationDB.Client
 			#region JSON Status
 
 			/// <summary>Query the current status of the cluster</summary>
-			/// <remarks>Task that returns a <see cref="FdbSystemStatus"/> instance that wraps the parsed JSON document.</remarks>
+			/// <returns>Task that returns a <see cref="FdbSystemStatus"/> instance that wraps the parsed JSON document.</returns>
 			/// <remarks>
 			/// <para>This method will read the <c>`\xFF\xFF/status/json`</c> special key, and parse the result JSON bytes.</para>
 			/// </remarks>
-			public static async Task<FdbSystemStatus?> GetStatusAsync(IFdbReadOnlyTransaction trans)
+			public static async Task<FdbSystemStatus> GetStatusAsync(IFdbReadOnlyTransaction trans)
 			{
 				Contract.NotNull(trans);
 
@@ -112,10 +112,9 @@ namespace FoundationDB.Client
 					(value, found) => found ? CrystalJson.Parse(value).AsObject() : null
 				).ConfigureAwait(false);
 
-				if (doc is null) return null; // ???
-
+				// grab the read version if we have valid data
 				long rv = 0;
-				if (doc.ContainsKey("cluster"))
+				if (doc?.ContainsKey("cluster") ?? false)
 				{
 					rv = await trans.GetReadVersionAsync().ConfigureAwait(false);
 				}
@@ -124,12 +123,16 @@ namespace FoundationDB.Client
 			}
 
 			/// <summary>Queries the current status of the cluster</summary>
-			public static Task<FdbSystemStatus?> GetStatusAsync(IFdbDatabase db, CancellationToken ct)
+			/// <returns>Task that returns a <see cref="FdbSystemStatus"/> instance that wraps the parsed JSON document.</returns>
+			/// <remarks>
+			/// <para>This method will read the <c>`\xFF\xFF/status/json`</c> special key, and parse the result JSON bytes.</para>
+			/// </remarks>
+			public static Task<FdbSystemStatus> GetStatusAsync(IFdbDatabase db, CancellationToken ct)
 			{
 				Contract.NotNull(db);
 
 				// we should not retry the read to the status key!
-				return db.ReadAsync(tr =>
+				return db.ReadAsync(static tr =>
 				{
 					tr.Options.WithPrioritySystemImmediate();
 					//note: in v3.x, the status key does not need the access to system key option.
@@ -140,14 +143,19 @@ namespace FoundationDB.Client
 			}
 
 			/// <summary>Queries the current status of the cluster</summary>
-			public static async Task<FdbSystemStatus?> GetStatusAsync(IFdbDatabaseProvider db, CancellationToken ct)
+			/// <returns>Task that returns a <see cref="FdbSystemStatus"/> instance that wraps the parsed JSON document.</returns>
+			/// <remarks>
+			/// <para>This method will read the <c>`\xFF\xFF/status/json`</c> special key, and parse the result JSON bytes.</para>
+			/// </remarks>
+			public static async Task<FdbSystemStatus> GetStatusAsync(IFdbDatabaseProvider db, CancellationToken ct)
 			{
 				return await GetStatusAsync(await db.GetDatabase(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
 			}
 
 			/// <summary>Queries the current status of the client</summary>
+			/// <returns>Task that returns a <see cref="FdbClientStatus"/> instance that wraps the parsed JSON document.</returns>
 			/// <remarks>
-			/// <para>Requires API version 730 or greater</para>
+			/// <para>Requires API version <c>730</c> or greater</para>
 			/// </remarks>
 			public static async Task<FdbClientStatus> GetClientStatusAsync(IFdbDatabase db, CancellationToken ct)
 			{
@@ -165,7 +173,7 @@ namespace FoundationDB.Client
 
 			/// <summary>Queries the current status of the client</summary>
 			/// <remarks>
-			/// <para>Requires API version 730 or greater</para>
+			/// <para>Requires API version <c>730</c> or greater</para>
 			/// </remarks>
 			public static async Task<FdbClientStatus> GetClientStatusAsync(IFdbDatabaseProvider db, CancellationToken ct)
 			{
