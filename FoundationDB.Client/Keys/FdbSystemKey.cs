@@ -38,6 +38,8 @@ namespace FoundationDB.Client
 
 		public static readonly FdbSystemKey Special = new(Slice.Empty, special: true);
 
+		#region Well Known Keys...
+
 		/// <summary><c>`\xFF/metadataVersion`</c>: contains the global metadata version for the database</summary>
 		/// <remarks>See <see cref="IFdbReadOnlyTransaction.GetMetadataVersionKeyAsync"/> and <see cref="IFdbTransaction.TouchMetadataVersionKey"/> for more details</remarks>
 		public static readonly FdbSystemKey MetadataVersion = new("/metadataVersion", special: false);
@@ -46,7 +48,74 @@ namespace FoundationDB.Client
 		/// <remarks>See <see cref="Fdb.System.GetStatusAsync(IFdbReadOnlyTransaction)"/> for more details.</remarks>
 		public static readonly FdbSystemKey StatusJson = new("/status/json", special: true);
 
+		/// <summary><c>`\xFF\xFF/transaction/conflicting_keys/...`</c></summary>
 		public static readonly FdbSystemKey TransactionConflictingKeys = new("/transaction/conflicting_keys/", special: true);
+
+		/// <summary><c>`\xFF/dbLocked`</c></summary>
+		public static readonly FdbSystemKey DbLocked = new("/dbLocked", false);
+
+		/// <summary><c>`\xFF/clusterIdKey`</c>: Durable cluster ID key.</summary>
+		/// <remarks>Added "Key" to the end to differentiate from the key // "\xff/clusterId" which was stored in the txnStateStore in FDB 7.1, whereas this key is stored in the database in 7.2+.</remarks>
+		public static readonly FdbSystemKey ClusterIdKey = new("/clusterIdKey", false);
+
+		/// <summary><c>`\xFF/logs`</c></summary>
+		public static readonly FdbSystemKey Logs = new("/logs", false); // see decodeLogsValue() in SystemData.cpp
+
+		/// <summary><c>`\xFF/backupEnabled`</c></summary>
+		public static readonly FdbSystemKey BackupEnabled = new("/backupEnabled", false);
+
+		/// <summary><c>`\xFF/backupDataFormat`</c></summary>
+		public static readonly FdbSystemKey BackupDataFormat = new("/backupDataFormat", false);
+
+		/// <summary><c>`\xFF/minRequiredCommitVersion`</c></summary>
+		public static readonly FdbSystemKey MinRequiredCommitVersion = new("/minRequiredCommitVersion", false);
+
+		/// <summary><c>`\xFF/dataDistributionMode`</c></summary>
+		public static readonly FdbSystemKey DataDistributionMode = new("/dataDistributionMode", false);
+
+		/// <summary><c>`\xFF/bulkLoadMode`</c></summary>
+		public static readonly FdbSystemKey BulkLoadMode = new("/bulkLoadMode", false);
+
+		/// <summary><c>`\xFF/bulkDumpMode`</c></summary>
+		public static readonly FdbSystemKey BulkDumpMode = new("/bulkDumpMode", false);
+
+		/// <summary><c>`\xFF/versionEpoch`</c></summary>
+		public static readonly FdbSystemKey VersionEpoch = new("/versionEpoch", false);
+
+		/// <summary><c>`\xFF/globals/lastEpochEnd`</c></summary>
+		public static readonly FdbSystemKey LastEpochEnd = new("/globals/lastEpochEnd", false);
+
+		/// <summary><c>`\xFF\xFF/globals/lastEpochEnd`</c></summary>
+		public static readonly FdbSystemKey LastEpochEndPrivate = new("/globals/lastEpochEnd", true);
+
+		/// <summary><c>`\xFF/globals/killStorage`</c></summary>
+		public static readonly FdbSystemKey KillStorage = new("/globals/killStorage", false);
+
+		/// <summary><c>`\xFF\xFF/globals/killStorage`</c></summary>
+		public static readonly FdbSystemKey KillStoragePrivate = new("/globals/killStorage", true);
+
+		/// <summary><c>`\xFF/globals/killStorage`</c></summary>
+		public static readonly FdbSystemKey RebootWhenDurable = new("/globals/rebootWhenDurable", false);
+
+		/// <summary><c>`\xFF\xFF/globals/killStorage`</c></summary>
+		public static readonly FdbSystemKey RebootWhenDurablePrivate = new("/globals/rebootWhenDurable", true);
+
+		/// <summary><c>`\xFF/globals/primaryLocality`</c></summary>
+		public static readonly FdbSystemKey PrimaryLocality = new("/globals/primaryLocality", false);
+
+		/// <summary><c>`\xFF\xFF/globals/primaryLocality`</c></summary>
+		public static readonly FdbSystemKey PrimaryLocalityPrivate = new("/globals/primaryLocality", true);
+
+		/// <summary><c>`\xFF/globals/fastLoggingEnabled`</c></summary>
+		public static readonly FdbSystemKey FastLoggingEnabled = new("/globals/fastLoggingEnabled", false);
+
+		/// <summary><c>`\xFF\xFF/globals/fastLoggingEnabled`</c></summary>
+		public static readonly FdbSystemKey FastLoggingEnabledPrivate = new("/globals/fastLoggingEnabled", true);
+
+		/// <summary><c>`\xFF/globals/constructData`</c></summary>
+		public static readonly FdbSystemKey ConstructData = new("/globals/constructData", false); // see decodeConstructKeys() in SystemData.cpp
+
+		#endregion
 
 		[SkipLocalsInit, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		internal FdbSystemKey(Slice suffix, bool special)
@@ -158,8 +227,12 @@ namespace FoundationDB.Client
 
 		#region Bytes(...)
 
-		public FdbSystemKey Bytes(FdbRawKey key) => Bytes(key.Data);
+		/// <summary>Appends the bytes of another key after the current key</summary>
+		/// <param name="suffix">Key whose binary representation will be appended to the current key</param>
+		public FdbSystemKey Bytes(FdbRawKey suffix) => Bytes(suffix.Data);
 
+		/// <summary>Appends the bytes of another key after the current key</summary>
+		/// <param name="suffix">Bytes to append to the current key</param>
 		[Pure]
 		public FdbSystemKey Bytes(Slice suffix)
 		{
@@ -180,6 +253,8 @@ namespace FoundationDB.Client
 				: new(Slice.FromStringAscii(this.SuffixString) + suffix, special);
 		}
 
+		/// <summary>Appends the bytes of another key after the current key</summary>
+		/// <param name="suffix">Bytes to append to the current key</param>
 		[Pure]
 		public FdbSystemKey Bytes(ReadOnlySpan<byte> suffix)
 		{
@@ -200,6 +275,9 @@ namespace FoundationDB.Client
 				: new(Slice.FromStringAscii(this.SuffixString).Concat(suffix), special);
 		}
 
+		/// <summary>Appends an ASCII string after the current key</summary>
+		/// <param name="suffix">String that must only contain ASCII bytes (0..127).</param>
+		/// <remarks>Suffix must only contain 7-bit ASCII characters. The only exception is the first character can be <c>\xFF</c> when appending to the System key (\xFF)</remarks>
 		[Pure]
 		public FdbSystemKey Bytes(string suffix)
 		{
@@ -223,6 +301,9 @@ namespace FoundationDB.Client
 			return new(this.SuffixString + suffix, special);
 		}
 
+		/// <summary>Appends an ASCII string after the current key</summary>
+		/// <param name="suffix">String that must only contain ASCII bytes (0..127).</param>
+		/// <remarks>Suffix must only contain 7-bit ASCII characters. The only exception is the first character can be <c>\xFF</c> when appending to the System key (\xFF)</remarks>
 		[Pure]
 		public FdbSystemKey Bytes(ReadOnlySpan<char> suffix)
 		{
