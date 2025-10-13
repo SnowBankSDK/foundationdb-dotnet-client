@@ -4599,7 +4599,6 @@ namespace FoundationDB.Client.Tests
 				tr.Set(subspace.Key("D"), Text("Initial D")); // Eurobeat intensifies
 			}, this.Cancellation);
 
-
 			Log("Start T1 & T2");
 			using var t1 = db.BeginTransaction(this.Cancellation);
 			using var t2 = db.BeginTransaction(this.Cancellation);
@@ -4737,6 +4736,67 @@ namespace FoundationDB.Client.Tests
 				}, this.Cancellation);
 
 			}, this.Cancellation);
+
+		}
+
+		[Test]
+		[Ignore("This kills my test server!")] // DO NOT RUN !
+		public async Task Test_Can_Construct_Data()
+		{
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			// Example:
+			// - 02000000|cfdf|6400000000000000|ff02000000000000|7b00000000000000
+			// - PrefixLength: 2
+			// - Prefix: <CF><DF>
+			// - ValueSize: 100 (0x64)
+			// - KeyCount: 767 (0x2FF)
+			// - Seed: 123 (0x7B)
+			// 
+
+			int valueSize = 100;
+			int keyCount = 767;
+			long seed = 123;
+
+			// Generate the data set
+			Log("# Generating data....");
+			await db.WriteAsync(async tr =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				var prefix = subspace.GetPrefixUnsafe();
+				Log($"Prefix: {prefix}");
+
+				var sw = new SliceWriter();
+				// StringRefs are stored as a length (32 bits LE) followed by the bytes
+				sw.WriteInt32(prefix.Count);
+				sw.WriteBytes(prefix);
+				sw.WriteInt64(valueSize);
+				sw.WriteInt64(keyCount);
+				sw.WriteInt64(seed);
+
+				var command = sw.ToSlice();
+				DumpHexa(command);
+
+				tr.Options.WithWriteAccessToSystemKeys();
+				tr.Set(FdbSystemKey.ConstructData, command);
+			}, this.Cancellation);
+
+			// Verify the dataset
+
+			Log("# Checking generated keys");
+			var kvps = await db.ReadAsync(async tr =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+
+				return await tr.GetRange(subspace.ToRange()).ToArrayAsync();
+			}, this.Cancellation);
+
+			Log($"> Found {kvps.Length} keys");
+			foreach (var kvp in kvps)
+			{
+				Log($"  - {kvp.Key:K} = {kvp.Value:V}");
+			}
 
 		}
 
