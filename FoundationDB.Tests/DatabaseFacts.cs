@@ -539,7 +539,7 @@ namespace FoundationDB.Client.Tests
 				Assert.That(conn.Compatible, Is.Not.Null);
 				Assert.That(conn.BytesReceived, Is.Not.Null.And.GreaterThanOrEqualTo(0));
 				Assert.That(conn.BytesSent, Is.Not.Null.And.GreaterThanOrEqualTo(0));
-				Assert.That(conn.ProtocolVersion, Is.Null.Or.Not.Empty); // sometimes missing (maybe the client did not connect to this coordinator yet?)
+				Assert.That(conn.ProtocolVersion.IsValid(), Is.True); // sometimes missing (maybe the client did not connect to this coordinator yet?)
 			}
 
 			Log($"Storage Servers: {status.StorageServers.Length}");

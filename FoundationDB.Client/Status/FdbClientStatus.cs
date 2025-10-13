@@ -85,7 +85,7 @@ namespace FoundationDB.Client.Status
 
 			public string? Status => GetString("Status");
 
-			public string? ProtocolVersion => GetString("ProtocolVersion");
+			public FdbProtocolVersion ProtocolVersion => FdbProtocolVersion.Parse(GetString("ProtocolVersion") ?? string.Empty);
 			//note: sometimes missing?
 
 			public bool? Compatible => GetBoolean("Compatible");

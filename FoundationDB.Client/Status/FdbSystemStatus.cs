@@ -406,13 +406,13 @@ namespace FoundationDB.Client.Status
 		public bool DatabaseLocked => GetBoolean("database_locked") ?? false;
 
 		/// <summary><c>protocol_version</c></summary>
-		public string ProtocolVersion => GetString("protocol_version") ?? string.Empty;
+		public FdbProtocolVersion ProtocolVersion => FdbProtocolVersion.Parse(GetString("protocol_version") ?? string.Empty);
 
 		/// <summary><c>newest_protocol_version</c></summary>
-		public string NewestProtocolVersion => GetString("newest_protocol_version") ?? string.Empty;
+		public FdbProtocolVersion NewestProtocolVersion => FdbProtocolVersion.Parse(GetString("newest_protocol_version") ?? string.Empty);
 
 		/// <summary><c>lowest_compatible_protocol_version</c></summary>
-		public string LowestCompatibleProtocolVersion => GetString("lowest_compatible_protocol_version") ?? string.Empty;
+		public FdbProtocolVersion LowestCompatibleProtocolVersion => FdbProtocolVersion.Parse(GetString("lowest_compatible_protocol_version") ?? string.Empty);
 
 		/// <summary><c>full_replication</c></summary>
 		public bool FullReplication => GetBoolean("full_replication") ?? false;
