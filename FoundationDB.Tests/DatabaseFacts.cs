@@ -433,28 +433,55 @@ namespace FoundationDB.Client.Tests
 			using var db = await OpenTestDatabaseAsync();
 
 			Log("Getting server protocol version...");
-			var ver = await Await(db.GetServerProtocolAsync(this.Cancellation), TimeSpan.FromSeconds(10));
-			Log($"> 0x{ver:x} ({ver})");
+			var pv = await Await(db.GetServerProtocolVersionAsync(this.Cancellation), TimeSpan.FromSeconds(10));
+			Log($"> \"{pv}\" ({pv.ToVersion()})");
 
+			Log($"- Version: 0x{pv.VersionWithFlags:x16} (with flags)");
+			Assert.That(pv.VersionWithFlags, Is.Not.Zero);
+			// The upper 32 bits should be 0x1fdb00b0
+			Assert.That(pv.VersionWithFlags >> 32, Is.EqualTo(0x1fdb00b0), "Invalid FDB protocol version (with flags)");
+
+			Log($"- Version: 0x{pv.Version:x016} (without flags)");
+			Assert.That(pv.Version, Is.Not.Zero);
 			// The upper 32 bits should be 0x0fdb00b0
-			Assert.That(ver >> 32, Is.EqualTo(0xfdb00b0), "Invalid FDB protocol version");
+			Assert.That(pv.Version >> 32, Is.EqualTo(0x0fdb00b0), "Invalid FDB protocol version (without flags)");
 
-			// The lower 32 bits should be the cluster version.
+			Assert.That(pv.HasObjectSerializerFlag(), Is.True, "Object Serializer flag should be set");
+			Assert.That(pv.IsValid(), Is.True);
+			Assert.That(pv.IsInvalid(), Is.False);
+
+			// The lower 32 bits should contain the cluster version in the upper 16 bits. The lower 16 bits are unused and always 0
+			Assert.That((pv.Version >> 16) & 0xFFFF, Is.Not.Zero);
+			Assert.That(pv.Version & 0xFFFF, Is.Zero);
+
 			// note: this is tricky to test because we don't know which server version will be used when running the test, we will _assume_ that it is at least 7.x something
 
 			// the format is "XYZR0000" for version "vX.Y.Z" and R is the "dev" version which may or may not be used anymore (unclear)
 			// for example: "73000000" is 7.3, and "61020000" is 6.1 dev version 2
 
 			// the upper 8 bits are the 
-			var majorMinor = (ver >> 24) & 0xFF;
+			var majorMinor = (pv.Version >> 24) & 0xFF;
 			if (majorMinor <= 0x74)
 			{ // known versions
 				Assert.That(majorMinor, Is.AnyOf(0x61, 0x62, 0x63, 0x70, 0x71, 0x72, 0x73, 0x74));
 			}
 			else
-			{ // future version?
-				Assert.Inconclusive($"Unknown protocol version: {majorMinor:x} for cluster protocol 0x{ver:x}");
+			{ // future version ?
+				Assert.Inconclusive($"Unknown protocol version: {majorMinor:x} for cluster protocol 0x{pv:x}");
 			}
+
+			var productVersion = pv.ToVersion();
+			Assert.That(pv.SupportsWatches(), Is.True);
+			Assert.That(pv.SupportsFearless(), Is.EqualTo(productVersion >= new Version(6, 0))); // added in 6.0
+			Assert.That(pv.SupportsEndpointAddrList(), Is.EqualTo(productVersion >= new Version(6, 2))); // added in 6.1
+			Assert.That(pv.SupportsTLogQueueEntryRef(), Is.EqualTo(productVersion >= new Version(6, 2))); // added in 6.2
+			Assert.That(pv.SupportsUnifiedTlogSpilling(), Is.EqualTo(productVersion >= new Version(6, 3))); // added in 6.3
+			Assert.That(pv.SupportsBackupWorker(), Is.EqualTo(productVersion >= new Version(6, 3))); // added in 6.3.1
+			Assert.That(pv.SupportsStableInterfaces(), Is.EqualTo(productVersion >= new Version(7, 0))); // added in 7.0
+			Assert.That(pv.SupportsChangeFeed(), Is.EqualTo(productVersion >= new Version(7, 1))); // added in 7.1
+			Assert.That(pv.SupportsOTELSpanContext(), Is.EqualTo(productVersion >= new Version(7, 2))); // added in 7.2
+			Assert.That(pv.SupportsGcTxnGenerations(), Is.EqualTo(productVersion >= new Version(7, 3))); // added in 7.3
+			Assert.That(pv.SupportsMutationChecksum(), Is.EqualTo(productVersion >= new Version(7, 4))); // added in 7.4
 		}
 
 		[Test]

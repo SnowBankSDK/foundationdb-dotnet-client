@@ -59,7 +59,12 @@ namespace FoundationDB.Client.Core
 
 		Task CreateSnapshotAsync(ReadOnlySpan<char> uid, ReadOnlySpan<char> snapCommand, CancellationToken ct);
 
-		Task<ulong> GetServerProtocolAsync(ulong expectedVersion, CancellationToken ct);
+		/// <summary>Returns the protocol version reported by the coordinator this client is connected to.</summary>
+		/// <param name="expectedVersion">If this value is not equal to <see cref="FdbProtocolVersion.None"/>, the task will not complete until the protocol version is <c>different</c> than expected (or <paramref name="ct"/> fires).</param>
+		/// <param name="ct">Token used to cancel the operation.</param>
+		/// <returns>Task that returns the current protocol version</returns>
+		/// <remarks>This will never complete if the remote server is running a protocol from FDB 5.0 or older.</remarks>
+		Task<FdbProtocolVersion> GetServerProtocolVersionAsync(FdbProtocolVersion expectedVersion, CancellationToken ct);
 
 		Task<Slice> GetClientStatus(CancellationToken ct);
 

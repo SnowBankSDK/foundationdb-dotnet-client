@@ -527,6 +527,27 @@ namespace FoundationDB.Client
 
 		#endregion
 
+		#region Back Compat
+
+		/// <summary>Returns the protocol version reported by the coordinator this client is connected to.</summary>
+		/// <param name="ct">Token used to cancel the operation.</param>
+		/// <returns>Task that returns the current protocol version</returns>
+		/// <remarks>This will never complete if the remote server is running a protocol from FDB 5.0 or older.</remarks>
+		public static Task<FdbProtocolVersion> GetServerProtocolVersionAsync(this IFdbDatabase db, CancellationToken ct)
+			=> db.GetServerProtocolVersionAsync(FdbProtocolVersion.None, ct);
+
+		/// <summary>Return the protocol version reported by the coordinator the client is connected to.</summary>
+		[Obsolete("Use GetServerProtocolVersionAsync() instead")]
+		[EditorBrowsable(EditorBrowsableState.Never)]
+		public static async Task<ulong> GetServerProtocolAsync(this IFdbDatabase db, CancellationToken ct)
+		{
+			var pv = await db.GetServerProtocolVersionAsync(FdbProtocolVersion.None, ct).ConfigureAwait(false);
+			// the original implementation returned the version without the flags
+			return (ulong) pv.Version;
+		}
+
+		#endregion
+
 	}
 
 }

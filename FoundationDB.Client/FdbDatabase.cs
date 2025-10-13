@@ -371,11 +371,11 @@ namespace FoundationDB.Client
 		}
 
 		/// <inheritdoc/>
-		public Task<ulong> GetServerProtocolAsync(CancellationToken ct)
+		public Task<FdbProtocolVersion> GetServerProtocolVersionAsync(FdbProtocolVersion expectedVersion, CancellationToken ct)
 		{
 			ThrowIfDisposed();
 
-			return m_handler.GetServerProtocolAsync(0, ct);
+			return m_handler.GetServerProtocolVersionAsync(expectedVersion, ct);
 		}
 
 		/// <inheritdoc/>
