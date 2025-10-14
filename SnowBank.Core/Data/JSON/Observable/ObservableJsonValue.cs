@@ -93,7 +93,7 @@ namespace SnowBank.Data.Json
 				}
 				case JsonArray jArr:
 				{
-					if (ReferenceEquals(jArr, JsonArray.ReadOnly.Empty)) return EmptyObject;
+					if (ReferenceEquals(jArr, JsonArray.ReadOnly.Empty)) return EmptyArray;
 					break;
 				}
 			}
