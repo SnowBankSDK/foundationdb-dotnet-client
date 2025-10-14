@@ -119,7 +119,7 @@ namespace SnowBank.Testing
 		public static JsonConstraint EqualTo(JsonValue expected) => new JsonEqualConstraint(JsonComparisonOperator.Equal, expected);
 
 		/// <summary>Assert that the value is a JSON Array with the expected content</summary>
-		public static JsonConstraint EqualTo(IEnumerable<JsonValue> expected) => new JsonEqualConstraint(JsonComparisonOperator.Equal, JsonArray.FromValues(expected));
+		public static JsonConstraint EqualTo(IEnumerable<JsonValue?> expected) => new JsonEqualConstraint(JsonComparisonOperator.Equal, JsonArray.FromValues(expected));
 
 		/// <summary>Assert that the value is strictly greater than the expected value</summary>
 		public static JsonConstraint GreaterThan(JsonValue expected) => new JsonEqualConstraint(JsonComparisonOperator.GreaterThan, expected);
@@ -1304,7 +1304,7 @@ namespace SnowBank.Testing
 			public JsonConstraintExpression EqualTo(JsonValue expected) => AddEqualConstraint(expected);
 
 			/// <summary>Assert that the value is a JSON Array with the expected content</summary>
-			public JsonConstraintExpression EqualTo(IEnumerable<JsonValue> expected) => AddEqualConstraint(JsonArray.FromValues(expected));
+			public JsonConstraintExpression EqualTo(IEnumerable<JsonValue?> expected) => AddEqualConstraint(JsonArray.FromValues(expected));
 
 			/// <summary>Assert that the value is strictly greater than the expected value</summary>
 			public JsonConstraintExpression GreaterThan(JsonValue expected) => AddEqualConstraint(JsonComparisonOperator.GreaterThan, expected);
