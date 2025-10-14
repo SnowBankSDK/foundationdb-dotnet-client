@@ -134,7 +134,7 @@ namespace SnowBank.Data.Json
 				// ie: the first visitor will call value.GetType() everytime, and will have to look up the specialized visitor that will be used for this specific instance
 				if (atRuntime)
 				{ // type == typeof(object), this is an empty singleton object
-					return (_, _, _, writer) => { writer.WriteEmptyObject(); };
+					return static (_, _, _, writer) => { writer.WriteEmptyObject(); };
 				}
 
 				return VisitObjectAtRuntime;
@@ -175,7 +175,7 @@ namespace SnowBank.Data.Json
 
 			if (type.IsAssignableTo<System.Xml.XmlNode>())
 			{ // XML node
-				return (v, _, _, writer) => writer.WriteValue(((System.Xml.XmlNode?) v)?.OuterXml);
+				return static (v, _, _, writer) => writer.WriteValue(((System.Xml.XmlNode?) v)?.OuterXml);
 			}
 
 			if (type.IsAssignableTo<System.Collections.IEnumerable>())
@@ -187,7 +187,7 @@ namespace SnowBank.Data.Json
 			{ // for interfaces, we need to perform a lookup at runtime for each instance
 				if (atRuntime)
 				{ //BUGBUG: this should not be possible for concrete instances!
-					return (_, _, _, writer) => writer.WriteEmptyObject();
+					return static (_, _, _, writer) => writer.WriteEmptyObject();
 				}
 
 				return VisitInterfaceAtRuntime;
@@ -197,34 +197,40 @@ namespace SnowBank.Data.Json
 
 			if (typeof(System.Text.StringBuilder) == type)
 			{
-				return (v, _, _, writer) => writer.WriteValue(v as System.Text.StringBuilder);
+				return static (v, _, _, writer) => writer.WriteValue(v as System.Text.StringBuilder);
 			}
 
 			if (typeof(System.Net.IPAddress) == type)
 			{
-				return (v, _, _, writer) => writer.WriteValue(v as System.Net.IPAddress);
+				return static (v, _, _, writer) => writer.WriteValue(v as System.Net.IPAddress);
 			}
 
 			if (typeof(System.Version) == type)
 			{
-				return (v, _, _, writer) => writer.WriteValue(v as System.Version);
+				return static (v, _, _, writer) => writer.WriteValue(v as System.Version);
 			}
 
 			if (typeof(System.Uri) == type)
 			{
-				return (v, _, _, writer) => writer.WriteValue(v as System.Uri);
+				return static (v, _, _, writer) => writer.WriteValue(v as System.Uri);
 			}
 
-			// There are multipled derived types for DateTimeZon, we have to call IsAssignableFrom(..) instead of comparing the type
+			// There are multiple derived types for DateTimeZone, we have to call IsAssignableFrom(...) instead of comparing the type
 			if (typeof(NodaTime.DateTimeZone).IsAssignableFrom(type))
 			{
-				return (v, _, _, writer) => writer.WriteValue(v as NodaTime.DateTimeZone);
+				return static (v, _, _, writer) => writer.WriteValue(v as NodaTime.DateTimeZone);
 			}
 
 			if (typeof(Type).IsAssignableFrom(type))
 			{
-				return (v, _, _, writer) => writer.WriteValue(((JsonString) JsonString.Return((Type) v!)).Value);
+				return static (v, _, _, writer) => writer.WriteValue(((JsonString) JsonString.Return((Type) v!)).Value);
 			}
+
+			if (typeof(Task).IsAssignableFrom(type))
+			{ // we don't allow serializing Task and Task<T>
+				return CreateVisitorForTaskLikeType(type);
+			}
+
 			#endregion
 
 			// class ?
@@ -583,6 +589,11 @@ namespace SnowBank.Data.Json
 				return static (v, _, _, writer) => writer.WriteEnum((Enum) v!);
 			}
 
+			if (type == typeof(ValueTask))
+			{
+				return CreateVisitorForTaskLikeType(type);
+			}
+
 			if (type.IsGenericType)
 			{
 				if (type.IsGenericInstanceOf(typeof (KeyValuePair<,>)))
@@ -592,6 +603,10 @@ namespace SnowBank.Data.Json
 				if (type.IsGenericInstanceOf(typeof(ArraySegment<>)))
 				{
 					return CreateVisitorForArraySegmentType(type);
+				}
+				if (type.IsGenericInstanceOf(typeof(ValueTask<>)))
+				{
+					return CreateVisitorForTaskLikeType(type);
 				}
 			}
 
@@ -649,6 +664,11 @@ namespace SnowBank.Data.Json
 
 			// struct ?
 			return VisitCustomClassOrStruct;
+		}
+
+		private static CrystalJsonTypeVisitor CreateVisitorForTaskLikeType(Type type)
+		{
+			return (_, dt, rt, _) => throw JsonSerializationException.CannotPackTaskLikeType(rt ?? type);
 		}
 
 		/// <summary>Create a visitor for enumerable types (arrays, lists, dictionaries, sets, ...)</summary>

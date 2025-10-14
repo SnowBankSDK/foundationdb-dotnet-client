@@ -55,13 +55,20 @@ namespace SnowBank.Data.Json
 		{ }
 
 		[MustUseReturnValue, Pure, MethodImpl(MethodImplOptions.NoInlining)]
-		public static JsonSerializationException CannotSerializeDerivedTypeWithoutTypeDiscriminator(Type concreteType, Type baseType) => new($"Could not serialize concrete type '{concreteType.GetFriendlyName()}' because it is not declared on parent abstract type '{baseType.GetFriendlyName()}'. Please add a JsonDerivedTypeAttribute annotation on the parent type to include this derived type.");
+		public static JsonSerializationException CannotSerializeDerivedTypeWithoutTypeDiscriminator(Type concreteType, Type baseType)
+			=> new($"Could not serialize concrete type '{concreteType.GetFriendlyName()}' because it is not declared on parent abstract type '{baseType.GetFriendlyName()}'. Please add a JsonDerivedTypeAttribute annotation on the parent type to include this derived type.");
 
 		[MustUseReturnValue, Pure, MethodImpl(MethodImplOptions.NoInlining)]
-		public static JsonSerializationException CannotPackDerivedTypeWithUnknownTypeDiscriminator(Type concreteType, Type baseType) => new($"Could not converter concrete type '{concreteType.GetFriendlyName()}' to a JSON value because it is not declared on parent abstract type '{baseType.GetFriendlyName()}'. Please add a JsonDerivedTypeAttribute annotation on the parent type to include this derived type.");
+		public static JsonSerializationException CannotPackDerivedTypeWithUnknownTypeDiscriminator(Type concreteType, Type baseType)
+			=> new($"Could not converter concrete type '{concreteType.GetFriendlyName()}' to a JSON value because it is not declared on parent abstract type '{baseType.GetFriendlyName()}'. Please add a JsonDerivedTypeAttribute annotation on the parent type to include this derived type.");
 
 		[MustUseReturnValue, Pure, MethodImpl(MethodImplOptions.NoInlining)]
-		public static JsonSerializationException CannotPackCustomTypeWithoutPolymorphicDeclaration(Type type) => new($"Could not serialize polymorphic type '{type.GetFriendlyName()}' because it does not declare any derived types. Please add one [JsonDerivedType] attribute declaration for each derived type to include.");
+		public static JsonSerializationException CannotPackCustomTypeWithoutPolymorphicDeclaration(Type type)
+			=> new($"Could not serialize polymorphic type '{type.GetFriendlyName()}' because it does not declare any derived types. Please add one [JsonDerivedType] attribute declaration for each derived type to include.");
+
+		[MustUseReturnValue, Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		public static JsonSerializationException CannotPackTaskLikeType(Type type)
+			=> new($"Cannot pack task-like type {type.GetFriendlyName()}. Did you forget the 'await' keyword?");
 
 	}
 

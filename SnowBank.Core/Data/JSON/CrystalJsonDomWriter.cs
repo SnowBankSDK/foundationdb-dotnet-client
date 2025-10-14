@@ -298,6 +298,10 @@ namespace SnowBank.Data.Json
 					{
 						return JsonString.Return(tp);
 					}
+					case Task:
+					{
+						throw JsonSerializationException.CannotPackTaskLikeType(runtimeType);
+					}
 				}
 			}
 			else
@@ -306,6 +310,7 @@ namespace SnowBank.Data.Json
 				{
 					return CrystalJsonVisitor.ConvertTupleToJson(tuple);
 				}
+				//TODO: detect ValueTask and ValueTask<T> ?
 			}
 
 

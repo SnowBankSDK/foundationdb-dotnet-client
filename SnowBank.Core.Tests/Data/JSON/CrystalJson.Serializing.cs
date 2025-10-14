@@ -3102,6 +3102,24 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(decoded.Foo, Is.EqualTo("world"));
 		}
 
+		[Test]
+		public void Test_Cannot_Serialize_Tasks()
+		{
+			// on common mistake is forgetting the "await" keyword,
+			// and trying to serialize a Task<Foo> instead of a Foo
+
+			var foo = new { Hello = "There" };
+			var taskFoo = Task.FromResult(foo);
+
+			// Serialize<T>
+			Assert.That(() => CrystalJson.Serialize(foo), Throws.Nothing);
+			Assert.That(() => CrystalJson.Serialize(taskFoo), Throws.InstanceOf<JsonSerializationException>().With.Message.Contains("'await'"));
+
+			// FromValue<T>
+			Assert.That(() => JsonValue.FromValue(foo), Throws.Nothing);
+			Assert.That(() => JsonValue.FromValue(taskFoo), Throws.InstanceOf<JsonSerializationException>().With.Message.Contains("'await'"));
+		}
+
 	}
 
 }
