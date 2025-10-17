@@ -1381,7 +1381,7 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override string ToStringOrDefault(string? defaultValue = null) => m_value;
 
-		public bool TryConvertToToString(out string value)
+		public bool TryConvertToString(out string value)
 		{
 			value = m_value;
 			return true;
