@@ -28,10 +28,7 @@ namespace SnowBank.Data.Json
 {
 	using System.ComponentModel;
 	using System.Globalization;
-
 	using SnowBank.Buffers;
-	using SnowBank.Buffers.Text;
-	using SnowBank.IO;
 	using SnowBank.Text;
 
 	/// <summary>JSON DateTime</summary>
@@ -77,8 +74,9 @@ namespace SnowBank.Data.Json
 
 		#region Private Members...
 
-		// Problème: DateTimeOffset "perd" l'information du DateTimeKind d'origine
-		// cad que si le serveur est dans la TimeZone de Greenwith (== UTC), alors on ne saura pas dire si la DateTime d'origine était Kind.Utc ou Kind.Local
+		// Problem: DateTimeOffset "lose" the information about the original DateTimeKind
+		// => when the server is in a timezone with offset 0, like Greenwich (~= UTC),
+		//    then we will not be able to tell if the original DateTime was Kind.Utc or Kind.Local
 
 		/// <summary>Copy of the "m_dateTime" field of a DateTimeOffset, or the original DateTime value</summary>
 		private readonly DateTime m_value;
@@ -86,10 +84,10 @@ namespace SnowBank.Data.Json
 		/// <summary>Copy of the "m_offsetMinutes" of a DateTimeOffset, or int.MinValue for DateTime</summary>
 		private readonly short m_offset;
 
-		// un DateTimeOffset est stocké sous forme d'une DateTime en UTC, accompagnée d'un offset
-		// un DateTime de source locale (UTC ou Local) aura m_offset == NO_TIMEZONE
-		// un DateTime de source distante (parsé) aura m_offset = NO_TIMEZONE s'il n'y avait pas d'infos dans le source, ou l'offset spécifié dans la source
-		// => si on demande un DateTime dans une autre TZ on aura la date convertie en LocalTime du serveur courrant.
+		// DateTimeOffset is stored as a UTC DateTime and the time zone offset
+		// DateTime from local sources (UTC or Local) will have m_offset == NO_TIMEZONE
+		// DateTime from remote sources (parsed from strings) will have m_offset = NO_TIMEZONE if there is no timezone details in the source
+		// => if we have to bind a remote date with a different TZ into a DateTime instance, it will be converted to a LocalTime relative to the current server
 
 		#endregion
 
@@ -459,7 +457,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			//BUGBUG: TODO: need to validate the format!
 			if (format is "J" or "j")
@@ -483,10 +481,10 @@ namespace SnowBank.Data.Json
 			JsonTokens.DateBeginJavaScript.CopyTo(buffer);
 			int pos = JsonTokens.DateBeginJavaScript.Length;
 
-			long ticks = m_offset == JsonDateTime.NO_TIMEZONE
+			long ticks = m_offset == NO_TIMEZONE
 				? CrystalJson.DateToJavaScriptTicks(m_value)
 				: CrystalJson.DateToJavaScriptTicks(this.DateWithOffset);
-			if (!ticks.TryFormat(buffer[pos..], out int len, null, null))
+			if (!ticks.TryFormat(buffer[pos..], out int len, null))
 			{
 				goto too_small;
 			}
@@ -542,7 +540,7 @@ namespace SnowBank.Data.Json
 					return true;
 				}
 
-				if (destination.Length < 2 || !CrystalJsonFormatter.TryFormatIso8601DateTime(destination.Slice(1), out int n, m_value, m_value.Kind, null))
+				if (destination.Length < 2 || !CrystalJsonFormatter.TryFormatIso8601DateTime(destination[1..], out int n, m_value, m_value.Kind, null))
 				{
 					goto too_small;
 				}
@@ -567,7 +565,7 @@ namespace SnowBank.Data.Json
 				}
 
 				destination[0] = '"';
-				if (!dto.TryFormat(destination.Slice(1), out int n, "O", CultureInfo.InvariantCulture))
+				if (!dto.TryFormat(destination[1..], out int n, "O", CultureInfo.InvariantCulture))
 				{
 					goto too_small;
 				}
@@ -585,7 +583,7 @@ namespace SnowBank.Data.Json
 #if NET8_0_OR_GREATER
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			// we first convert to chars, then to utf-8
 

@@ -125,9 +125,9 @@ namespace SnowBank.Data.Json
 			}
 			Contract.Debug.Assert(this.Cursor + size <= this.Chars.Length);
 
-			this.Chars.Slice(0, this.Cursor).CopyTo(this.Chars.Slice(size));
+			this.Chars[..this.Cursor].CopyTo(this.Chars[size..]);
 			this.Cursor += size;
-			return this.Chars.Slice(0, size);
+			return this.Chars[..size];
 		}
 
 		private void Advance(int length)
@@ -144,7 +144,7 @@ namespace SnowBank.Data.Json
 				Grow(prefix.Length);
 			}
 
-			this.Chars.Slice(0, this.Cursor).CopyTo(this.Chars.Slice(prefix.Length));
+			this.Chars[..this.Cursor].CopyTo(this.Chars[prefix.Length..]);
 			prefix.CopyTo(this.Chars);
 			this.Cursor += prefix.Length;
 		}
@@ -171,7 +171,7 @@ namespace SnowBank.Data.Json
 			var tmp = ArrayPool<char>.Shared.Rent((int) newCapacity);
 
 			// copy over the current content
-			var prev = this.Chars.Slice(0, this.Cursor);
+			var prev = this.Chars[..this.Cursor];
 			prev.CopyTo(tmp);
 
 			// return previous buffer to the pool
@@ -221,7 +221,7 @@ namespace SnowBank.Data.Json
 			{ // ".Foo"
 				var span = GetSpan(name.Length + 1);
 				span[0] = '.';
-				name.CopyTo(span.Slice(1));
+				name.CopyTo(span[1..]);
 				Advance(name.Length + 1);
 			}
 			else
@@ -254,7 +254,7 @@ namespace SnowBank.Data.Json
 			// '[' + int + ']'
 			var span = GetSpan(2 + StringConverters.Base10MaxCapacityInt32);
 			span[0] = '[';
-			index.TryFormat(span.Slice(1), out var charsWritten);
+			index.TryFormat(span[1..], out var charsWritten);
 			span[charsWritten + 1] = ']';
 			Advance(charsWritten + 2);
 		}
@@ -278,7 +278,7 @@ namespace SnowBank.Data.Json
 			var span = GetSpan(3 + StringConverters.Base10MaxCapacityInt32);
 			span[0] = '[';
 			span[1] = '^';
-			index.TryFormat(span.Slice(2), out var charsWritten);
+			index.TryFormat(span[2..], out var charsWritten);
 			span[charsWritten + 2] = ']';
 			Advance(charsWritten + 3);
 		}

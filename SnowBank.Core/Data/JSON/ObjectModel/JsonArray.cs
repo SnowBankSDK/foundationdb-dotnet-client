@@ -2726,7 +2726,7 @@ namespace SnowBank.Data.Json
 		public JsonArray Slice(int start)
 		{
 			// let the runtime perform the bound-checking
-			var items = AsSpan().Slice(start).ToArray();
+			var items = AsSpan()[start..].ToArray();
 			return new(items, items.Length, m_readOnly);
 		}
 
@@ -4160,10 +4160,10 @@ namespace SnowBank.Data.Json
 			switch (items.Length)
 			{
 				case 0: return [ ];
-				case 1: return ImmutableArray.Create<TValue?>(items[0].As<TValue?>(defaultValue, resolver));
-				case 2: return ImmutableArray.Create<TValue?>(items[0].As<TValue?>(defaultValue, resolver), items[1].As<TValue?>(defaultValue, resolver));
-				case 3: return ImmutableArray.Create<TValue?>(items[0].As<TValue?>(defaultValue, resolver), items[1].As<TValue?>(defaultValue, resolver), items[2].As<TValue?>(defaultValue, resolver));
-				case 4: return ImmutableArray.Create<TValue?>(items[0].As<TValue?>(defaultValue, resolver), items[1].As<TValue?>(defaultValue, resolver), items[2].As<TValue?>(defaultValue, resolver), items[3].As<TValue?>(defaultValue, resolver));
+				case 1: return [ items[0].As<TValue?>(defaultValue, resolver) ];
+				case 2: return [ items[0].As<TValue?>(defaultValue, resolver), items[1].As<TValue?>(defaultValue, resolver) ];
+				case 3: return [ items[0].As<TValue?>(defaultValue, resolver), items[1].As<TValue?>(defaultValue, resolver), items[2].As<TValue?>(defaultValue, resolver) ];
+				case 4: return [ items[0].As<TValue?>(defaultValue, resolver), items[1].As<TValue?>(defaultValue, resolver), items[2].As<TValue?>(defaultValue, resolver), items[3].As<TValue?>(defaultValue, resolver) ];
 				default:
 				{
 					var list = ImmutableArray.CreateBuilder<TValue?>(items.Length);
@@ -4752,7 +4752,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			string? literal;
 
@@ -4803,7 +4803,7 @@ namespace SnowBank.Data.Json
 #if NET8_0_OR_GREATER
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			var settings = format switch
 			{
@@ -4999,6 +4999,7 @@ namespace SnowBank.Data.Json
 				var type = typeof(TCollection);
 				if (type.IsEnumerableType(out var itemType))
 				{
+#pragma warning disable IL2060, IL3050
 					if (type.IsArray)
 					{ // optimized for arrays
 						return (bool) (s_helperArray ??= GetArrayComparisonHelper()).MakeGenericMethod(itemType).Invoke(self, [ value ])!;
@@ -5008,6 +5009,7 @@ namespace SnowBank.Data.Json
 						// TODO: call the IEnumerable<T> variant
 						return (bool) (s_helperEnumerable ??= GetEnumerableComparisonHelper()).MakeGenericMethod(itemType).Invoke(self, [ value ])!;
 					}
+#pragma warning restore IL2060, IL3050
 				}
 
 				var x = self.Bind<TCollection>();

@@ -24,6 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+// ReSharper disable IdentifierTypo
+
 namespace SnowBank.Data.Json
 {
 	using System.Buffers;
@@ -248,7 +250,7 @@ namespace SnowBank.Data.Json
 					res.Add(new(index));
 				}
 
-				tail = tail.Slice(consumed);
+				tail = tail[consumed..];
 			}
 
 			return res;
@@ -316,10 +318,10 @@ namespace SnowBank.Data.Json
 					buffer[p++] = new(index);
 				}
 
-				tail = tail.Slice(consumed);
+				tail = tail[consumed..];
 			}
 
-			segments = buffer.Slice(0, p);
+			segments = buffer[..p];
 			return true;
 		}
 
@@ -333,7 +335,7 @@ namespace SnowBank.Data.Json
 				int consumed = ParseNext(tail, out _, out _);
 				Contract.Debug.Assert(consumed != 0);
 
-				tail = tail.Slice(consumed);
+				tail = tail[consumed..];
 			}
 			return count;
 		}
@@ -1565,7 +1567,7 @@ namespace SnowBank.Data.Json
 		/// <param name="start">Number of segments to skip</param>
 		/// <returns>Slice of the path</returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public JsonPath Slice(int start) => new(this.Value.Slice(start));
+		public JsonPath Slice(int start) => new(this.Value[start..]);
 
 		/// <summary>Returns a subsection of this path, starting at <paramref name="start" /> position for <paramref name="length" /> segments.</summary>
 		/// <param name="start">Number of segments to skip</param>
@@ -1664,7 +1666,7 @@ namespace SnowBank.Data.Json
 
 				this.Segment = keyLength > 0 ? new(key) : new(index);
 				this.Offset += this.Consumed;
-				this.Tail = tail.Slice(consumed);
+				this.Tail = tail[consumed..];
 				this.Consumed = consumed;
 				Contract.Debug.Ensures(this.Consumed > 0); // we should have advanced in the path
 				Contract.Debug.Ensures((uint) this.Offset < this.Path.Value.Length); // Path must not be fully consumed (only when we return false)
@@ -1774,7 +1776,7 @@ namespace SnowBank.Data.Json
 
 				this.Segment = keyLength > 0 ? new(key) : new(index);
 				this.Offset += this.Consumed;
-				this.Tail = tail.Slice(consumed);
+				this.Tail = tail[consumed..];
 				this.Consumed = consumed;
 				Contract.Debug.Ensures(this.Consumed > 0); // we should have advanced in the path
 				Contract.Debug.Ensures((uint) this.Offset < this.Path.Value.Length); // Path must not be fully consumed (only when we return false)

@@ -83,11 +83,16 @@ namespace SnowBank.Data.Json
 			if (type == typeof(int)) return BoxedZeroInt32;
 			if (type == typeof(long)) return BoxedZeroInt64;
 			if (type == typeof(bool)) return BoxedFalse;
-			if (type == typeof(Guid)) return BoxedEmptyGuid;
 			if (type == typeof(double)) return BoxedZeroDouble;
 			if (type == typeof(float)) return BoxedZeroSingle;
+			if (type == typeof(Guid)) return BoxedGuidEmpty;
+			if (type == typeof(Uuid128)) return BoxedUuid128Empty;
+			if (type == typeof(TimeSpan)) return BoxedTimeSpanZero;
+
+#pragma warning disable IL2067
 			// for all other cases, we have to return a new value
-			return Activator.CreateInstance(type);
+			return Activator.CreateInstance(type, nonPublic: false);
+#pragma warning restore IL2067
 		}
 
 		#region JsonValue Members
@@ -127,12 +132,15 @@ namespace SnowBank.Data.Json
 			return null;
 		}
 
-		private static readonly object BoxedZeroInt32 = default(int);
-		private static readonly object BoxedZeroInt64 = default(long);
-		private static readonly object BoxedFalse = default(bool);
-		private static readonly object BoxedEmptyGuid = default(Guid);
-		private static readonly object BoxedZeroSingle = default(float);
-		private static readonly object BoxedZeroDouble = default(double);
+		// cached singletons for the most common default values for ValueTypes
+		private static readonly object BoxedFalse = false;
+		private static readonly object BoxedZeroInt32 = 0;
+		private static readonly object BoxedZeroInt64 = 0L;
+		private static readonly object BoxedZeroSingle = 0f;
+		private static readonly object BoxedZeroDouble = 0d;
+		private static readonly object BoxedTimeSpanZero = TimeSpan.Zero;
+		private static readonly object BoxedGuidEmpty = Guid.Empty;
+		private static readonly object BoxedUuid128Empty = Uuid128.Empty;
 
 		/// <inheritdoc />
 		public override bool IsNull => true;
@@ -281,15 +289,9 @@ namespace SnowBank.Data.Json
 			writer.WriteNull(); // "null"
 		}
 
-		/// <inheritdoc cref="TryFormat(System.Span{char},out int,System.ReadOnlySpan{char},System.IFormatProvider?)" />
-		public bool TryFormat(Span<char> destination, out int charsWritten)
-		{
-			return "null".TryCopyTo(destination, out charsWritten);
-		}
-
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Never)]
-		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			return "null".TryCopyTo(destination, out charsWritten);
 		}
@@ -297,7 +299,7 @@ namespace SnowBank.Data.Json
 #if NET8_0_OR_GREATER
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			return "null"u8.TryCopyTo(destination, out bytesWritten);
 		}
@@ -398,31 +400,31 @@ namespace SnowBank.Data.Json
 		public override bool? ToBooleanOrDefault(bool? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override byte ToByte(byte defaultValue = default) => defaultValue;
+		public override byte ToByte(byte defaultValue = 0) => defaultValue;
 
 		/// <inheritdoc />
 		public override byte? ToByteOrDefault(byte? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override sbyte ToSByte(sbyte defaultValue = default) => defaultValue;
+		public override sbyte ToSByte(sbyte defaultValue = 0) => defaultValue;
 
 		/// <inheritdoc />
 		public override sbyte? ToSByteOrDefault(sbyte? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override char ToChar(char defaultValue = default) => defaultValue;
+		public override char ToChar(char defaultValue = '\0') => defaultValue;
 
 		/// <inheritdoc />
 		public override char? ToCharOrDefault(char? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override short ToInt16(short defaultValue = default) => defaultValue;
+		public override short ToInt16(short defaultValue = 0) => defaultValue;
 
 		/// <inheritdoc />
 		public override short? ToInt16OrDefault(short? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override ushort ToUInt16(ushort defaultValue = default) => defaultValue;
+		public override ushort ToUInt16(ushort defaultValue = 0) => defaultValue;
 
 		/// <inheritdoc />
 		public override ushort? ToUInt16OrDefault(ushort? defaultValue = null) => defaultValue;
@@ -434,31 +436,31 @@ namespace SnowBank.Data.Json
 		public override int? ToInt32OrDefault(int? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override uint ToUInt32(uint defaultValue = default) => defaultValue;
+		public override uint ToUInt32(uint defaultValue = 0U) => defaultValue;
 
 		/// <inheritdoc />
 		public override uint? ToUInt32OrDefault(uint? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override long ToInt64(long defaultValue = default) => defaultValue;
+		public override long ToInt64(long defaultValue = 0L) => defaultValue;
 
 		/// <inheritdoc />
 		public override long? ToInt64OrDefault(long? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override ulong ToUInt64(ulong defaultValue = default) => defaultValue;
+		public override ulong ToUInt64(ulong defaultValue = 0UL) => defaultValue;
 
 		/// <inheritdoc />
 		public override ulong? ToUInt64OrDefault(ulong? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override float ToSingle(float defaultValue = default) => defaultValue;
+		public override float ToSingle(float defaultValue = 0f) => defaultValue;
 
 		/// <inheritdoc />
 		public override float? ToSingleOrDefault(float? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override double ToDouble(double defaultValue = default) => defaultValue;
+		public override double ToDouble(double defaultValue = 0d) => defaultValue;
 
 		/// <inheritdoc />
 		public override double? ToDoubleOrDefault(double? defaultValue = null) => defaultValue;
@@ -470,7 +472,7 @@ namespace SnowBank.Data.Json
 		public override Half? ToHalfOrDefault(Half? defaultValue = null) => defaultValue;
 
 		/// <inheritdoc />
-		public override decimal ToDecimal(decimal defaultValue = default) => defaultValue;
+		public override decimal ToDecimal(decimal defaultValue = 0m) => defaultValue;
 
 		/// <inheritdoc />
 		public override decimal? ToDecimalOrDefault(decimal? defaultValue = null) => defaultValue;

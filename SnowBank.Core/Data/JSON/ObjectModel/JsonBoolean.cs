@@ -331,16 +331,9 @@ namespace SnowBank.Data.Json
 			writer.WriteValue(m_value);
 		}
 
-		/// <inheritdoc cref="TryFormat(System.Span{char},out int,System.ReadOnlySpan{char},System.IFormatProvider?)" />
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public bool TryFormat(Span<char> destination, out int charsWritten)
-		{
-			return (m_value ? JsonTokens.True : JsonTokens.False).TryCopyTo(destination, out charsWritten);
-		}
-
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Never)]
-		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			return (m_value ? JsonTokens.True : JsonTokens.False).TryCopyTo(destination, out charsWritten);
 		}
@@ -348,7 +341,7 @@ namespace SnowBank.Data.Json
 #if NET8_0_OR_GREATER
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			return (m_value ? "true"u8 : "false"u8).TryCopyTo(destination, out bytesWritten);
 		}

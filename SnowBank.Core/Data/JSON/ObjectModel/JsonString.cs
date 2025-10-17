@@ -30,11 +30,9 @@ namespace SnowBank.Data.Json
 	using System.Collections.Frozen;
 	using System.Globalization;
 	using System.Net;
-	using System.Runtime;
 	using SnowBank.Buffers;
 	using SnowBank.Buffers.Text;
 	using SnowBank.Collections.Caching;
-	using SnowBank.IO;
 	using SnowBank.Runtime;
 	using SnowBank.Runtime.Converters;
 	using SnowBank.Text;
@@ -73,7 +71,7 @@ namespace SnowBank.Data.Json
 	{
 		
 		/// <summary>Empty string singleton</summary>
-		internal static readonly JsonString EmptyString = new JsonString(string.Empty);
+		internal static readonly JsonString EmptyString = new(string.Empty);
 
 		/// <summary>Returns the empty string</summary>
 		public static readonly JsonValue Empty = EmptyString;
@@ -1108,15 +1106,8 @@ namespace SnowBank.Data.Json
 			writer.WriteValue(m_value);
 		}
 
-		/// <inheritdoc cref="TryFormat(System.Span{char},out int,System.ReadOnlySpan{char},System.IFormatProvider?)" />
-		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public bool TryFormat(Span<char> destination, out int charsWritten)
-		{
-			return JsonEncoding.TryEncodeTo(destination, m_value, out charsWritten);
-		}
-
 		/// <inheritdoc />
-		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			//BUGBUG: TODO: need to validate the format!
 			if (format is "J" or "j")
@@ -1140,7 +1131,7 @@ namespace SnowBank.Data.Json
 #if NET8_0_OR_GREATER
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			//BUGBUG: TODO: need to validate the format!
 
@@ -1189,13 +1180,13 @@ namespace SnowBank.Data.Json
 		{
 			if (ReferenceEquals(other, this)) return true;
 			if (other is null) return false;
-			switch (other)
+			return other switch
 			{
-				case JsonString str:    return Equals(str);
-				case JsonNumber num:    return num.Equals(this);
-				case JsonDateTime date: return date.Equals(this);
-				default:                return false;
-			}
+				JsonString str    => this.Equals(str),
+				JsonNumber num    => num.Equals(this),
+				JsonDateTime date => date.Equals(this),
+				_                 => false
+			};
 		}
 
 		/// <inheritdoc />

@@ -70,7 +70,7 @@ namespace SnowBank.Data.Json
 		[ Pure]
 		public static explicit operator byte[]?(JsonValue? value)
 		{
-			if (value is null || value.IsNull) return default(byte[]);
+			if (value is null || value.IsNull) return null;
 
 			if (value.Type == JsonType.String)
 			{
@@ -574,7 +574,7 @@ namespace SnowBank.Data.Json
 		public static implicit operator JsonValue(Uri? value) => JsonString.Return(value);
 
 		[Pure]
-		public static explicit operator Uri?(JsonValue? value) => value.IsNullOrMissing() ? default : new Uri(value.ToString());
+		public static explicit operator Uri?(JsonValue? value) => value.IsNullOrMissing() ? null : new Uri(value.ToString());
 
 		#endregion
 
@@ -586,7 +586,7 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public static explicit operator IPAddress?(JsonValue? value)
 		{
-			if (value.IsNullOrMissing()) return default;
+			if (value.IsNullOrMissing()) return null;
 			var str = value.ToString();
 			return str.Length == 0 ? IPAddress.Any : IPAddress.Parse(str);
 		}

@@ -4548,23 +4548,27 @@ namespace SnowBank.Data.Json.Tests
 				["Space"] = "   ", // Space! Space? Space!!!
 			};
 
+			// strings
 			Assert.That(obj.Get<string>("Hello"), Is.EqualTo("World"));
 			Assert.That(obj.Get<string>("Hello", "not_found"), Is.EqualTo("World"));
 			Assert.That(obj.Get<string>("XYZHello".AsSpan(3), "not_found"), Is.EqualTo("World"));
 
-			Assert.That(obj.Get<int>("Foo"), Is.EqualTo(123));
-			Assert.That(obj.Get<int>("Foo", -1), Is.EqualTo(123));
-			Assert.That(obj.Get<int>("XYZFoo".AsSpan(3), -1), Is.EqualTo(123));
-
+			// booleans
 			Assert.That(obj.Get<bool>("Bar"), Is.True);
 			Assert.That(obj.Get<bool>("Bar", false), Is.True);
 			Assert.That(obj.Get<bool>("XYZBar".AsSpan(3), false), Is.True);
 
+			// integers
+			Assert.That(obj.Get<int>("Foo"), Is.EqualTo(123));
+			Assert.That(obj.Get<int>("Foo", -1), Is.EqualTo(123));
+			Assert.That(obj.Get<int>("XYZFoo".AsSpan(3), -1), Is.EqualTo(123));
+
+			// floats
 			Assert.That(obj.Get<double>("Baz"), Is.EqualTo(Math.PI));
 			Assert.That(obj.Get<double>("Baz", double.NaN), Is.EqualTo(Math.PI));
 			Assert.That(obj.Get<double>("XYZBaz".AsSpan(3), double.NaN), Is.EqualTo(Math.PI));
 
-			// empty doit retourner default(T) pour les ValueType, càd 0/false/...
+			// empty must return default(T) for ValueType instances (0, false, Guid.Empty, ...)
 			Assert.That(obj.Get<string>("Empty"), Is.EqualTo(""), "'' -> string");
 			Assert.That(obj.Get<int>("Empty"), Is.EqualTo(0), "'' -> int");
 			Assert.That(obj.Get<bool>("Empty"), Is.False, "'' -> bool");
@@ -4572,7 +4576,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(obj.Get<Guid>("Empty"), Is.EqualTo(Guid.Empty), "'' -> Guid");
 			Assert.That(obj.Get<string>("NotEmpty".AsSpan(3)), Is.EqualTo(""), "'' -> string");
 
-			// empty doit doit retourner default(T) pour les Nullable, càd null
+			// empty must return default(T) for Nullable<T> instances (null)
 			Assert.That(obj.Get<int?>("Empty", null), Is.Null, "'' -> int?");
 			Assert.That(obj.Get<bool?>("Empty", null), Is.Null, "'' -> bool?");
 			Assert.That(obj.Get<double?>("Empty", null), Is.Null, "'' -> double?");
@@ -4604,6 +4608,12 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(() => obj.Get<string>("Void"), Throws.InstanceOf<JsonBindingException>().With.Message.Contains("Void"));
 			Assert.That(() => obj.Get<int>("Void"), Throws.InstanceOf<JsonBindingException>().With.Message.Contains("Void"));
 			Assert.That(() => obj.Get<int?>("Void"), Throws.InstanceOf<JsonBindingException>().With.Message.Contains("Void"));
+
+			// type conversions (number to string, ...)
+			Assert.That(obj.Get<string>("Foo"), Is.EqualTo("123"));
+			Assert.That(obj.Get<string>("Bar"), Is.EqualTo("true"));
+			Assert.That(obj.Get<string>("Baz"), Is.EqualTo("3.141592653589793"));
+
 		}
 
 		[Test]

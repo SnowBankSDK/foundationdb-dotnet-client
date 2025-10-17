@@ -1744,7 +1744,7 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Gets the <b>required</b> JSON Array that corresponds to the field with the specified name.</summary>
 		/// <param name="index">Index of the value to retrieve</param>
-		/// <returns>the value of the field <paramref name="index"/> as a <see cref="JsonArray"/>, or an exception if it null, missing, or not a JSON Array.</returns>
+		/// <returns>the value of the field <paramref name="index"/> as a <see cref="JsonArray"/>, or an exception if it is null, missing, or not a JSON Array.</returns>
 		/// <exception cref="JsonBindingException">If the value is null, missing, or not a JSON Array.</exception>
 		[Pure]
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

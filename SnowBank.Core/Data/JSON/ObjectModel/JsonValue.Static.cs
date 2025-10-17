@@ -1034,7 +1034,7 @@ namespace SnowBank.Data.Json
 					pos += 2;
 				}
 
-				if (!item.TryFormat(buffer[pos..], out int len, default, null))
+				if (!item.TryFormat(buffer[pos..], out int len))
 				{
 					goto too_small;
 				}

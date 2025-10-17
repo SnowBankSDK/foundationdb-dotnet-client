@@ -24,7 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+#if DEBUG
 #define CHECK_INVARIANTS
+#endif
 
 namespace SnowBank.Data.Json
 {
@@ -139,13 +141,13 @@ namespace SnowBank.Data.Json
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public JsonObject(IEqualityComparer<string>? comparer) //REVIEW: remove this method and force to use ctor(capacity, comparer) instead?
 		{
-			m_items = new Dictionary<string, JsonValue>(0, comparer ?? StringComparer.Ordinal);
+			m_items = new(0, comparer ?? StringComparer.Ordinal);
 		}
 
 		public JsonObject(int capacity, IEqualityComparer<string>? comparer)
 		{
 			Contract.Positive(capacity);
-			m_items = new Dictionary<string, JsonValue>(capacity, comparer ?? StringComparer.Ordinal);
+			m_items = new(capacity, comparer ?? StringComparer.Ordinal);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -924,7 +926,7 @@ namespace SnowBank.Data.Json
 			{
 				map.Add(keySelector(item), packer.Pack(valueSelector(item), settings, resolver) ?? JsonNull.Null);
 			}
-			return new JsonObject(map, readOnly: false);
+			return new(map, readOnly: false);
 		}
 
 		/// <summary>Creates a JSON Object from a sequence of elements, using a custom key and value selector.</summary>
@@ -1621,25 +1623,13 @@ namespace SnowBank.Data.Json
 		{
 			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
 
-			switch (items)
+			return items switch
 			{
-				case IDictionary<string, JsonValue> dict:
-				{
-					return SetRange(dict);
-				}
-				case KeyValuePair<string, JsonValue>[] arr:
-				{
-					return SetRange(arr.AsSpan());
-				}
-				case List<KeyValuePair<string, JsonValue>> list:
-				{
-					return SetRange(CollectionsMarshal.AsSpan(list));
-				}
-				default:
-				{
-					return SetRangeSlow(this, items);
-				}
-			}
+				IDictionary<string, JsonValue> dict        => SetRange(dict),
+				KeyValuePair<string, JsonValue>[] arr      => SetRange(arr.AsSpan()),
+				List<KeyValuePair<string, JsonValue>> list => SetRange(CollectionsMarshal.AsSpan(list)),
+				_                                          => SetRangeSlow(this, items)
+			};
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
 			static JsonObject SetRangeSlow(JsonObject obj, IEnumerable<KeyValuePair<string, JsonValue>> items)
@@ -1669,21 +1659,12 @@ namespace SnowBank.Data.Json
 		{
 			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
 
-			switch (items)
+			return items switch
 			{
-				case (string, JsonValue?)[] arr:
-				{
-					return SetRange(arr.AsSpan());
-				}
-				case List<(string, JsonValue?)> list:
-				{
-					return SetRange(CollectionsMarshal.AsSpan(list));
-				}
-				default:
-				{
-					return SetRangeSlow(this, items);
-				}
-			}
+				(string, JsonValue?)[] arr      => SetRange(arr.AsSpan()),
+				List<(string, JsonValue?)> list => SetRange(CollectionsMarshal.AsSpan(list)),
+				_                               => SetRangeSlow(this, items)
+			};
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
 			static JsonObject SetRangeSlow(JsonObject obj, IEnumerable<(string Key, JsonValue Value)> items)
@@ -1869,25 +1850,13 @@ namespace SnowBank.Data.Json
 		{
 			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
 
-			switch (items)
+			return items switch
 			{
-				case IDictionary<string, JsonValue> dict:
-				{
-					return AddRange(dict);
-				}
-				case KeyValuePair<string, JsonValue>[] arr:
-				{
-					return AddRange(arr.AsSpan());
-				}
-				case List<KeyValuePair<string, JsonValue>> list:
-				{
-					return AddRange(CollectionsMarshal.AsSpan(list));
-				}
-				default:
-				{
-					return AddRangeSlow(this, items);
-				}
-			}
+				IDictionary<string, JsonValue> dict        => AddRange(dict),
+				KeyValuePair<string, JsonValue>[] arr      => AddRange(arr.AsSpan()),
+				List<KeyValuePair<string, JsonValue>> list => AddRange(CollectionsMarshal.AsSpan(list)),
+				_                                          => AddRangeSlow(this, items)
+			};
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
 			static JsonObject AddRangeSlow(JsonObject obj, IEnumerable<KeyValuePair<string, JsonValue>> items)
@@ -1918,21 +1887,12 @@ namespace SnowBank.Data.Json
 		{
 			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
 
-			switch (items)
+			return items switch
 			{
-				case (string, JsonValue?)[] arr:
-				{
-					return AddRange(arr.AsSpan());
-				}
-				case List<(string, JsonValue?)> list:
-				{
-					return AddRange(CollectionsMarshal.AsSpan(list));
-				}
-				default:
-				{
-					return AddRangeSlow(this, items);
-				}
-			}
+				(string, JsonValue?)[] arr      => AddRange(arr.AsSpan()),
+				List<(string, JsonValue?)> list => AddRange(CollectionsMarshal.AsSpan(list)),
+				_                               => AddRangeSlow(this, items)
+			};
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
 			static JsonObject AddRangeSlow(JsonObject obj, IEnumerable<(string Key, JsonValue Value)> items)
@@ -4323,7 +4283,9 @@ namespace SnowBank.Data.Json
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public override object? ToObject()
 		{
+#pragma warning disable IL2026
 			return CrystalJsonParser.DeserializeCustomClassOrStruct(this, typeof(object), CrystalJson.DefaultResolver);
+#pragma warning restore IL2026
 		}
 
 		/// <inheritdoc />
@@ -4421,7 +4383,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			string? literal;
 
@@ -4472,7 +4434,7 @@ namespace SnowBank.Data.Json
 #if NET8_0_OR_GREATER
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			var settings = format switch
 			{

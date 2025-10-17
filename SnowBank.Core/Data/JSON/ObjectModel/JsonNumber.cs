@@ -29,6 +29,7 @@
 
 namespace SnowBank.Data.Json
 {
+	using System.Buffers;
 	using System.ComponentModel;
 	using System.Globalization;
 	using System.Runtime.InteropServices;
@@ -150,7 +151,7 @@ namespace SnowBank.Data.Json
 
 		private enum Kind
 		{
-			/// <summary>Integer that can be casted to Int64 (long.MinValue &lt;= x &lt;= long.MaxValue)</summary>
+			/// <summary>Integer that can be cast to Int64 (long.MinValue &lt;= x &lt;= long.MaxValue)</summary>
 			Signed = 0,
 			/// <summary>Positive integer that requires an UInt64 (x > long.MaxValue)</summary>
 			Unsigned,
@@ -1875,17 +1876,17 @@ namespace SnowBank.Data.Json
 			if (value.Length <= 32)
 			{
 				Span<char> buffer = stackalloc char[value.Length];
-				var s = System.Text.Ascii.ToUtf16(value, buffer, out int written);
-				return Parse(buffer[..written]);
-			}
-			else
-			{
-				unsafe
+				if (System.Text.Ascii.ToUtf16(value, buffer, out int written) == OperationStatus.Done)
 				{
-					fixed(byte* ptr = value)
-					{
-						return Parse(ptr, value.Length);
-					}
+					return Parse(buffer[..written]);
+				}
+			}
+
+			unsafe
+			{
+				fixed(byte* ptr = value)
+				{
+					return Parse(ptr, value.Length);
 				}
 			}
 		}
@@ -2213,15 +2214,9 @@ namespace SnowBank.Data.Json
 			}
 		}
 
-		/// <inheritdoc cref="TryFormat(System.Span{char},out int,System.ReadOnlySpan{char},System.IFormatProvider?)" />
-		public bool TryFormat(Span<char> destination, out int charsWritten)
-		{
-			return TryFormat(destination, out charsWritten, "", null);
-		}
-
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Never)]
-		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			// we have to special case for NaN and +/-Infinity!
 			if (m_kind == Kind.Double)
@@ -2254,7 +2249,7 @@ namespace SnowBank.Data.Json
 				}
 				case Kind.Unsigned:
 				{
-					return m_value.Unsigned.TryFormat(destination, out charsWritten, default, null);
+					return m_value.Unsigned.TryFormat(destination, out charsWritten);
 				}
 				case Kind.Double:
 				{
@@ -2274,7 +2269,7 @@ namespace SnowBank.Data.Json
 #if NET8_0_OR_GREATER
 
 		/// <inheritdoc />
-		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		public override bool TryFormat(Span<byte> destination, out int bytesWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
 			// we have to special case for NaN and +/-Infinity!
 			if (m_kind == Kind.Double)
@@ -2308,7 +2303,7 @@ namespace SnowBank.Data.Json
 				}
 				case Kind.Unsigned:
 				{
-					return m_value.Unsigned.TryFormat(destination, out bytesWritten, default, null);
+					return m_value.Unsigned.TryFormat(destination, out bytesWritten);
 				}
 				case Kind.Double:
 				{
@@ -2742,8 +2737,8 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public bool Equals(Uuid48 value) => m_kind switch
 		{
-			Kind.Decimal => m_value.Decimal == (decimal) value.ToUInt64(),
-			Kind.Double => m_value.Double == (double) value.ToUInt64(),
+			Kind.Decimal => m_value.Decimal == value.ToUInt64(),
+			Kind.Double => m_value.Double == value.ToUInt64(),
 			Kind.Signed => m_value.Signed == value.ToInt64(),
 			Kind.Unsigned => m_value.Unsigned == value.ToUInt64(),
 			_ => false
@@ -3424,7 +3419,7 @@ namespace SnowBank.Data.Json
 			}
 			catch (Exception)
 			{ // not a valid number
-				result = default;
+				result = null;
 				return false;
 			}
 		}
@@ -3635,7 +3630,7 @@ namespace SnowBank.Data.Json
 				return true;
 			}
 
-			result = default;
+			result = null;
 			return false;
 		}
 

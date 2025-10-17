@@ -271,7 +271,7 @@ namespace SnowBank.Data.Json
 		/// <param name="pool">Pool used to allocate the content of the slice (use <see cref="ArrayPool{T}.Shared"/> if <see langword="null"/>)</param>
 		/// <param name="settings">Custom serialization settings</param>
 		/// <returns><see cref="Slice"/> that contains the utf-8 encoded text representation of the JSON value</returns>
-		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Pure, MustDisposeResource, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[OverloadResolutionPriority(1)]
 		public static SliceOwner ToJsonSlice(this JsonValue? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null) => CrystalJson.ToSlice(value, pool, settings);
 
@@ -289,7 +289,7 @@ namespace SnowBank.Data.Json
 		/// <param name="pool">Pool used to allocate the content of the slice (use <see cref="ArrayPool{T}.Shared"/> if <see langword="null"/>)</param>
 		/// <param name="settings">Custom serialization settings</param>
 		/// <returns><see cref="Slice"/> that contains the utf-8 encoded text representation of the JSON value</returns>
-		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Pure, MustDisposeResource, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static SliceOwner ToJsonSlice<TJsonSerializable>(this TJsonSerializable? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null)
 			where TJsonSerializable : IJsonSerializable
 			=> CrystalJson.ToSlice(value, pool, settings);
@@ -1082,7 +1082,7 @@ namespace SnowBank.Data.Json
 			if (size == 0) return readOnly ? JsonArray.ReadOnly.Empty : new();
 
 			ArgumentNullException.ThrowIfNull(items);
-			ArgumentOutOfRangeException.ThrowIfGreaterThan((ulong) (uint) size, (ulong) (uint) items.Length);
+			ArgumentOutOfRangeException.ThrowIfGreaterThan((uint) size, (uint) items.Length);
 			items.AsSpan(0, size);
 			return new(items, size, readOnly);
 		}
