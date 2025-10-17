@@ -357,7 +357,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					foreach (var member in current.GetMembers())
 					{
-						if (member.Kind is SymbolKind.Property or SymbolKind.Field or SymbolKind.Method)
+						if (member.Kind is (SymbolKind.Property or SymbolKind.Field or SymbolKind.Method))
 						{
 							var (memberDef, memberType) = ParseMemberMetadata(member, mappedTypes, work, namingPolicy);
 							if (memberDef != null)
@@ -534,6 +534,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					case IFieldSymbol field:
 					{
+						if (field.IsConst)
+						{ // do not include constants
+							return default;
+						}
 						if (field.IsImplicitlyDeclared || field.DeclaredAccessibility is (Accessibility.Private or Accessibility.Protected))
 						{
 							//note: we see the backing fields here, we could maybe capture them somewhere in order to generate optimized unsafe accessors?return null;
