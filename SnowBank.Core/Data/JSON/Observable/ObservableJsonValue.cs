@@ -892,9 +892,28 @@ namespace SnowBank.Data.Json
 			return array;
 		}
 
-		/// <summary>Returns the underlying <see cref="JsonValue"/> of the field with the specified name</summary>
+		/// <summary>Returns the underlying <see cref="JsonArray"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
-		/// <returns>Corresponding field</returns>
+		/// <param name="converter">Converter used to unpack the elements of the JSON Array into a <typeparamref name="TValue"/> instances</param>
+		/// <returns>Corresponding array</returns>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <exception cref="JsonBindingException">If the field is either null-or-missing, or not an array.</exception>
+		[Pure, MustUseReturnValue]
+		public TValue[] GetArray<TValue>(string name, IJsonConverter<TValue> converter)
+		{
+			var value = this.Json.GetValue(name);
+			if (value is not JsonArray array)
+			{
+				RecordChildAccess(name.AsMemory(), value, ObservableJsonAccess.Type);
+				throw CrystalJson.Errors.Parsing_CannotCastToJsonArray(value);
+			}
+			RecordChildAccess(name.AsMemory(), array, ObservableJsonAccess.Value);
+			return converter.UnpackArray(array, fieldName: name)!;
+		}
+
+		/// <summary>Returns the underlying <see cref="JsonArray"/> of the field with the specified name</summary>
+		/// <param name="name">Name of the field to return</param>
+		/// <returns>Corresponding array, or <c>null</c> if the field is null or missing</returns>
 		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		/// <exception cref="JsonBindingException">If the field is neither null-or-missing, nor an array.</exception>
 		[Pure, MustUseReturnValue]
@@ -910,9 +929,28 @@ namespace SnowBank.Data.Json
 			return array;
 		}
 
-		/// <summary>Returns the underlying <see cref="JsonValue"/> of the field with the specified name</summary>
+		/// <summary>Returns the underlying <see cref="JsonArray"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
-		/// <returns>Array in the corresponding field</returns>
+		/// <param name="converter">Converter used to unpack the elements of the JSON Array into a <typeparamref name="TValue"/> instances</param>
+		/// <returns>Corresponding array, or <c>null</c> if the field is null or missing</returns>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <exception cref="JsonBindingException">If the field is neither null-or-missing, nor an array.</exception>
+		[Pure, MustUseReturnValue]
+		public TValue[]? GetArrayOrDefault<TValue>(string name, IJsonConverter<TValue> converter)
+		{
+			var value = this.Json.GetValue(name);
+			if (value is not JsonArray array)
+			{
+				RecordChildAccess(name.AsMemory(), value, ObservableJsonAccess.Type);
+				return value is JsonNull ? null : throw CrystalJson.Errors.Parsing_CannotCastToJsonArray(value);
+			}
+			RecordChildAccess(name.AsMemory(), array, ObservableJsonAccess.Value);
+			return converter.UnpackArray(array, fieldName: name);
+		}
+
+		/// <summary>Returns the underlying <see cref="JsonArray"/> of the field with the specified name</summary>
+		/// <param name="name">Name of the field to return</param>
+		/// <returns>Array in the corresponding field, or an empty read-only array if null or missing</returns>
 		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		/// <exception cref="JsonBindingException">If the field is neither null-or-missing, nor an array.</exception>
 		[Pure, MustUseReturnValue]
@@ -926,6 +964,25 @@ namespace SnowBank.Data.Json
 			}
 			RecordChildAccess(name.AsMemory(), array, ObservableJsonAccess.Value);
 			return array;
+		}
+
+		/// <summary>Returns an array with the converted elements of the array contained in field with the specified name</summary>
+		/// <param name="name">Name of the field to return</param>
+		/// <param name="converter">Converter used to unpack the elements of the JSON Array into a <typeparamref name="TValue"/> instances</param>
+		/// <returns>Array of <typeparamref name="TValue"/> instances, or an empty array if the field is null or missing</returns>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <exception cref="JsonBindingException">If the field is neither null-or-missing, nor an array.</exception>
+		[Pure, MustUseReturnValue]
+		public TValue[] GetArrayOrEmpty<TValue>(string name, IJsonConverter<TValue> converter)
+		{
+			var value = this.Json.GetValue(name);
+			if (value is not JsonArray array)
+			{
+				RecordChildAccess(name.AsMemory(), value, ObservableJsonAccess.Type);
+				return value is JsonNull ? [ ] : throw CrystalJson.Errors.Parsing_CannotCastToJsonArray(value);
+			}
+			RecordChildAccess(name.AsMemory(), array, ObservableJsonAccess.Value);
+			return converter.UnpackArray(value, fieldName: name)!;
 		}
 
 		/// <summary>Returns the underlying <see cref="JsonArray"/> of the field with the specified name</summary>
