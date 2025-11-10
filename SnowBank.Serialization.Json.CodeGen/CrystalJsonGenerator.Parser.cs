@@ -273,7 +273,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						new(
 							"CJSON0002",
 							"At least one type must be included",
-							"The container type {0} must specify at only one application type to include, using the [CrystalJsonSerializable] attribute",
+							"The container type {0} must specify at least one type to include, using the [CrystalJsonSerializable] attribute",
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Warning,
 							isEnabledByDefault: true

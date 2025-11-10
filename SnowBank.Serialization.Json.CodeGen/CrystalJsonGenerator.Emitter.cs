@@ -1739,6 +1739,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{ // a ref type _could_ be null, but the setter does not allow it...
 							sb.AppendLine($"Setter = (instance, value) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName} = value is not null ? ({member.Type.FullyQualifiedName}) value : {member.DefaultLiteral} /* has-default-value */,");
 						}
+						else if (member.IsNotNull && member.Type.IsString())
+						{ // use string.Empty
+							sb.AppendLine($"Setter = (instance, value) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName} = value is not null ? ({member.Type.FullyQualifiedName}) value : \"\" /* not-null-string */,");
+						}
 						else if (member.IsNotNull && member.Type.IsEnumerable(out _))
 						{ // not-null collection type without a default value, we will inject a default empty collection expression
 							sb.AppendLine($"Setter = (instance, value) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName} = value is not null ? ({member.Type.FullyQualifiedName}) value : [ ] /* not-null-collection */,");
