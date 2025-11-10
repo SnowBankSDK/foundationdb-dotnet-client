@@ -865,7 +865,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
 		/// <returns>Corresponding field</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public JsonValue GetValue(string name)
 		{
@@ -877,7 +877,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonArray"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
 		/// <returns>Corresponding array</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		/// <exception cref="JsonBindingException">If the field is either null-or-missing, or not an array.</exception>
 		[Pure, MustUseReturnValue]
 		public JsonArray GetArray(string name)
@@ -895,7 +895,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
 		/// <returns>Corresponding field</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		/// <exception cref="JsonBindingException">If the field is neither null-or-missing, nor an array.</exception>
 		[Pure, MustUseReturnValue]
 		public JsonArray? GetArrayOrDefault(string name)
@@ -912,8 +912,8 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
-		/// <returns>Corresponding field</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <returns>Array in the corresponding field</returns>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		/// <exception cref="JsonBindingException">If the field is neither null-or-missing, nor an array.</exception>
 		[Pure, MustUseReturnValue]
 		public JsonArray GetArrayOrEmpty(string name)
@@ -931,7 +931,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonArray"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
 		/// <returns>Corresponding array</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		/// <exception cref="JsonBindingException">If the field is either null-or-missing, or not an array.</exception>
 		[Pure, MustUseReturnValue]
 		public JsonObject GetObject(string name)
@@ -949,7 +949,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
 		/// <returns>Corresponding field</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		/// <exception cref="JsonBindingException">If the field is neither null-or-missing, nor an array.</exception>
 		[Pure, MustUseReturnValue]
 		public JsonObject? GetObjectOrDefault(string name)
@@ -967,7 +967,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
 		/// <returns>Corresponding field</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		/// <exception cref="JsonBindingException">If the field is neither null-or-missing, nor an array.</exception>
 		[Pure, MustUseReturnValue]
 		public JsonObject GetObjectOrEmpty(string name)
@@ -986,7 +986,7 @@ namespace SnowBank.Data.Json
 		/// <param name="name">Name of the field</param>
 		/// <returns>Corresponding value.</returns>
 		/// <exception cref="JsonBindingException"> if the field is null or missing, or if its value could not be bound to type <typeparamref name="TValue"/>.</exception>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public TValue Get<TValue>(string name) where TValue : notnull
 		{
@@ -1004,7 +1004,7 @@ namespace SnowBank.Data.Json
 		/// <param name="name">Name of the field</param>
 		/// <param name="defaultValue">Value returned if the field is null or missing</param>
 		/// <returns>Corresponding value</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public TValue? Get<TValue>(string name, TValue defaultValue)
@@ -1033,7 +1033,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the field with the specified name</summary>
 		/// <param name="name">Name of the field to return</param>
 		/// <returns>Corresponding field</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public JsonValue GetValue(ReadOnlyMemory<char> name)
 		{
@@ -1051,7 +1051,7 @@ namespace SnowBank.Data.Json
 		/// <param name="name">Name of the field</param>
 		/// <returns>Corresponding value.</returns>
 		/// <exception cref="JsonBindingException"> if the field is null or missing, or if its value could not be bound to type <typeparamref name="TValue"/>.</exception>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public TValue Get<TValue>(ReadOnlyMemory<char> name) where TValue : notnull
 		{
@@ -1069,7 +1069,7 @@ namespace SnowBank.Data.Json
 		/// <param name="name">Name of the field</param>
 		/// <param name="defaultValue">Value returned if the field is null or missing</param>
 		/// <returns>Corresponding value</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public TValue? Get<TValue>(ReadOnlyMemory<char> name, TValue? defaultValue)
@@ -1098,7 +1098,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the item at the specified location</summary>
 		/// <param name="index">Index of the item to return</param>
 		/// <returns>Corresponding item, or <see cref="JsonNull.Error"/> if the index is out of bounds, of this is not an array.</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public JsonValue GetValue(int index)
 		{
@@ -1111,7 +1111,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Reads the value of the <b>required</b> item at the specified index</summary>
 		/// <param name="index">Index of the item</param>
 		/// <returns>Corresponding value</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public TValue Get<TValue>(int index) where TValue : notnull
 		{
@@ -1126,7 +1126,7 @@ namespace SnowBank.Data.Json
 		/// <param name="defaultValue">Value returned if the item is null or missing</param>
 		/// <returns>Corresponding value</returns>
 		/// <exception cref="JsonBindingException"> if the value of this item could not be bound to type <typeparamref name="TValue"/>.</exception>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public TValue? Get<TValue>(int index, TValue? defaultValue)
@@ -1151,7 +1151,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the item at the specified location</summary>
 		/// <param name="index">Index of the item to return</param>
 		/// <returns>Corresponding item, or <see cref="JsonNull.Error"/> if the index is out of bounds, of this is not an array.</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public JsonValue GetValue(Index index)
 		{
@@ -1164,7 +1164,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Reads the value of the <b>required</b> item at the specified index</summary>
 		/// <param name="index">Index of the item</param>
 		/// <returns>Corresponding value</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public TValue? Get<TValue>(Index index) where TValue : notnull
 		{
@@ -1179,7 +1179,7 @@ namespace SnowBank.Data.Json
 		/// <param name="defaultValue">Value returned if the item is null or missing</param>
 		/// <returns>Corresponding value</returns>
 		/// <exception cref="JsonBindingException"> if the value of this item could not be bound to type <typeparamref name="TValue"/>.</exception>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public TValue? Get<TValue>(Index index, TValue defaultValue)
@@ -1208,7 +1208,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the underlying <see cref="JsonValue"/> of the node at the specified location</summary>
 		/// <param name="path">Path to the node to read</param>
 		/// <returns>Corresponding value</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public JsonValue GetValue(JsonPath path) => Get(path).ToJsonValue();
@@ -1217,7 +1217,7 @@ namespace SnowBank.Data.Json
 		/// <param name="path">Path to the node to read</param>
 		/// <returns>Corresponding value.</returns>
 		/// <exception cref="JsonBindingException"> if the node is null or missing, or if its value could not be bound to type <typeparamref name="TValue"/>.</exception>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public TValue Get<TValue>(JsonPath path) where TValue : notnull
 		{
@@ -1234,7 +1234,7 @@ namespace SnowBank.Data.Json
 		/// <param name="defaultValue">Value returned if the node is null or missing</param>
 		/// <returns>Corresponding value</returns>
 		/// <exception cref="JsonBindingException"> if the value of this node could not be bound to type <typeparamref name="TValue"/>.</exception>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public TValue? Get<TValue>(JsonPath path, TValue defaultValue) => this.Json.GetPathValueOrDefault(path).As<TValue>(defaultValue);
@@ -1252,7 +1252,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Reads the value of the <b>required</b> node at the specified location</summary>
 		/// <param name="segment">Path to the node to read</param>
 		/// <returns>Corresponding value.</returns>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public JsonValue GetValue(JsonPathSegment segment) => Get(segment).ToJsonValue();
@@ -1261,7 +1261,7 @@ namespace SnowBank.Data.Json
 		/// <param name="segment">Path to the node to read</param>
 		/// <returns>Corresponding value.</returns>
 		/// <exception cref="JsonBindingException"> if the node is null or missing, or if its value could not be bound to type <typeparamref name="TValue"/>.</exception>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		public TValue Get<TValue>(JsonPathSegment segment) where TValue : notnull
 		{
@@ -1278,7 +1278,7 @@ namespace SnowBank.Data.Json
 		/// <param name="defaultValue">Value returned if the node is null or missing</param>
 		/// <returns>Corresponding value.</returns>
 		/// <exception cref="JsonBindingException"> if the value of this node could not be bound to type <typeparamref name="TValue"/>.</exception>
-		/// <remarks>This operation will be record as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
 		[Pure, MustUseReturnValue]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public TValue? Get<TValue>(JsonPathSegment segment, TValue defaultValue) => GetValue(segment).As<TValue>(defaultValue);
