@@ -8,19 +8,19 @@
     <PackageVersion Include="Aspire.Hosting" Version="9.5.1" />
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.5.1" />
     <PackageVersion Include="Aspire.Hosting.NodeJs" Version="9.5.1" />
-    <PackageVersion Include="Bogus" Version="35.6.4" />
+    <PackageVersion Include="Bogus" Version="35.6.5" />
     <PackageVersion Include="MathNet.Numerics.Signed" Version="5.0.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageVersion Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.Testing.Extensions.Telemetry" Version="2.0.0" />
-    <PackageVersion Include="Microsoft.Testing.Extensions.VSTestBridge" Version="2.0.0" />
-    <PackageVersion Include="Microsoft.Testing.Platform" Version="2.0.0" />
-    <PackageVersion Include="Microsoft.Testing.Platform.MSBuild" Version="2.0.0" />
-    <PackageVersion Include="Microsoft.TestPlatform.TestHost" Version="18.0.0" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.Telemetry" Version="2.0.2" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.VSTestBridge" Version="2.0.2" />
+    <PackageVersion Include="Microsoft.Testing.Platform" Version="2.0.2" />
+    <PackageVersion Include="Microsoft.Testing.Platform.MSBuild" Version="2.0.2" />
+    <PackageVersion Include="Microsoft.TestPlatform.TestHost" Version="18.0.1" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="NodaTime" Version="3.2.2" />
     <PackageVersion Include="NodaTime.Testing" Version="3.2.2" />
@@ -32,10 +32,10 @@
     <PackageVersion Include="OpenTelemetry.Api" Version="1.13.1" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.13.1" />
     <PackageVersion Include="protobuf-net" Version="3.2.56" />
-    <PackageVersion Include="Spectre.Console" Version="0.51.1" />
+    <PackageVersion Include="Spectre.Console" Version="0.53.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />
-    <PackageVersion Include="Testcontainers" Version="4.7.0" />
+    <PackageVersion Include="Testcontainers" Version="4.8.1" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.6" />
   </ItemGroup>
   <!-- Packages for .NET 10 Preview -->
