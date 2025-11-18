@@ -545,7 +545,7 @@ namespace SnowBank.Data.Json
 		};
 
 		/// <summary>Returns a sequence that enumerates the deserialized <typeparamref name="TValue"/> elements in this array</summary>
-		public Enumerable ToEnumerable() => this.m_value.Json switch
+		public Enumerable ToEnumerable() => m_value.Json switch
 		{
 			JsonArray array => new(array),
 			JsonNull        => new(JsonArray.ReadOnly.Empty),

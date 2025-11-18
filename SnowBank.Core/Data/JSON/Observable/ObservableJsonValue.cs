@@ -195,16 +195,16 @@ namespace SnowBank.Data.Json
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private void RecordSelfAccess(ObservableJsonAccess access, JsonValue? value = null)
+		internal void RecordSelfAccess(ObservableJsonAccess access, JsonValue? value = null)
 		{
 			this.Context?.RecordRead(this, default, value ?? this.Json, access);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private void RecordChildAccess(ReadOnlyMemory<char> name, JsonValue value, ObservableJsonAccess access) => this.Context?.RecordRead(this, new(name), value, access);
+		internal void RecordChildAccess(ReadOnlyMemory<char> name, JsonValue value, ObservableJsonAccess access) => this.Context?.RecordRead(this, new(name), value, access);
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private void RecordChildAccess(Index index, JsonValue value, ObservableJsonAccess access) => this.Context?.RecordRead(this, new(index), value, access);
+		internal void RecordChildAccess(Index index, JsonValue value, ObservableJsonAccess access) => this.Context?.RecordRead(this, new(index), value, access);
 
 		#endregion
 
@@ -1069,6 +1069,21 @@ namespace SnowBank.Data.Json
 			var child = this.Json.GetValueOrDefault(name);
 			RecordChildAccess(name.AsMemory(), child, ObservableJsonAccess.Value);
 			return child.As(defaultValue);
+		}
+
+		/// <summary>Reads the value of the optional field with the specified name</summary>
+		/// <param name="name">Name of the field</param>
+		/// <param name="defaultValue">Value returned if the field is null or missing</param>
+		/// <param name="resolver"></param>
+		/// <returns>Corresponding value</returns>
+		/// <remarks>This operation will be recorded as a <see cref="ObservableJsonAccess.Value"/> access.</remarks>
+		[Pure, MustUseReturnValue]
+		[return: NotNullIfNotNull(nameof(defaultValue))]
+		public TValue? Get<TValue>(string name, TValue defaultValue, ICrystalJsonTypeResolver? resolver)
+		{
+			var child = this.Json.GetValueOrDefault(name);
+			RecordChildAccess(name.AsMemory(), child, ObservableJsonAccess.Value);
+			return child.As(defaultValue, resolver);
 		}
 
 		/// <summary>Returns a wrapper for the field with the specified name</summary>
