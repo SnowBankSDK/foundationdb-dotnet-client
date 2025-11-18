@@ -887,13 +887,31 @@ namespace SnowBank.Serialization.Json.CodeGen
 								{
 									if (IsLocallyGeneratedType(valueType, out target, out _))
 									{
-										getterExpr = $"/* dict-local */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
+										getterExpr = $"/* string-dict-local */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
 										proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyDictionaryFullName}<{valueType.FullyQualifiedName}, {GetLocalReadOnlyProxyRef(target)}>";
 									}
 									else
 									{
-										getterExpr = $"/* dict-fallback */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
+										getterExpr = $"/* string-dict-fallback */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
 										proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyDictionaryFullName}<{valueType.FullyQualifiedName}>";
+									}
+								}
+								else if (keyType.IsInt32())
+								{
+									if (IsLocallyGeneratedType(valueType, out target, out _))
+									{
+										getterExpr = $"/* int-dict-local */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
+										proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyInt32DictionaryFullName}<{valueType.FullyQualifiedName}, {GetLocalReadOnlyProxyRef(target)}>";
+									}
+									else if (valueType.IsArray(out var elemType) && IsLocallyGeneratedType(elemType, out target, out _))
+									{
+										getterExpr = $"/* int-dict-local-array */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
+										proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyInt32DictionaryOfArrayFullName}<{elemType.FullyQualifiedName}, {GetLocalReadOnlyProxyRef(target)}>";
+									}
+									else
+									{
+										getterExpr = $"/* int-dict-fallback */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
+										proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyInt32DictionaryFullName}<{valueType.FullyQualifiedName}>";
 									}
 								}
 							}
@@ -1115,7 +1133,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 								}
 								else if (member.IsNullableRefType())
 								{
-									getterExpr ??= $"/* ref-nullable */ m_value.Get<{member.Type.FullyQualifiedName}?>({GetTargetPropertyNameRef(typeDef, member)}, {defaultValue})";
+									getterExpr ??= $"/* fast-ref-nullable */ m_value.Get<{member.Type.FullyQualifiedName}?>({GetTargetPropertyNameRef(typeDef, member)}, {defaultValue})";
 								}
 								else if (member.IsRequired)
 								{
@@ -2345,11 +2363,30 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (IsLocallyGeneratedType(valueType, out target, out _))
 						{
-							return $"/* local-dict */ {GetLocalSerializerRef(target)}.PackObject({getterExpr}, settings, resolver)";
+							return $"/* local-string-dict */ {GetLocalSerializerRef(target)}.PackObject({getterExpr}, settings, resolver)";
 						}
 						if (!valueType.IsValueType())
 						{
-							return $"/* fallback-dict */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackEnumerable({getterExpr}, settings, resolver)";
+							return $"/* fallback-string-dict */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackEnumerable({getterExpr}, settings, resolver)";
+						}
+					}
+					else if (keyType.IsInt32())
+					{
+						if (IsLocallyGeneratedType(valueType, out target, out _))
+						{
+							return $"/* local-int-dict */ {GetLocalSerializerRef(target)}.PackObject({getterExpr}, settings, resolver)";
+						}
+						if (valueType.IsEnumerable(out var elemType))
+						{
+							if (this.IsLocallyGeneratedType(elemType, out target, out _))
+							{
+								return $"/* local-int-dict-of-array */ {this.GetLocalSerializerRef(target)}.PackObject({getterExpr}!, settings, resolver)";
+							}
+						}
+
+						if (!valueType.IsValueType())
+						{
+							return $"/* fallback-dict-int */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackEnumerable({getterExpr}, settings, resolver)";
 						}
 					}
 					//else: int? other well known type?

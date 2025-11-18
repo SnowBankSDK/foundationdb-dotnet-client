@@ -222,7 +222,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					try
 					{
 						var typeDef = ParseTypeMetadata(type, mappedTypes, work, propertyNamingPolicy);
-						if (typeDef != null)
+						if (typeDef is not null)
 						{
 							includedTypes.Add(typeDef);
 
@@ -359,15 +359,20 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (member.Kind is (SymbolKind.Property or SymbolKind.Field or SymbolKind.Method))
 						{
+							Kenobi($"Inspecting member {member.Name}...");
 							var (memberDef, memberType) = ParseMemberMetadata(member, mappedTypes, work, namingPolicy);
-							if (memberDef != null)
+							if (memberDef is not null)
 							{
-								Kenobi($"Inspect member {member.Name} with type {memberDef.Type.FullName}, N={memberDef.Type.NullableOfType?.Name}, E={memberDef.Type.ElementType?.Name}, K={memberDef.Type.KeyType?.Name}, V={memberDef.Type.ValueType?.Name}");
+								Kenobi($"Inspected member {member.Name} with type {memberDef.Type.FullName}, N={memberDef.Type.NullableOfType?.FullName}, E={memberDef.Type.ElementType?.FullName}, K={memberDef.Type.KeyType?.FullName}, V={memberDef.Type.ValueType?.FullName}");
 								if (member.Name == "Id")
 								{
 									indexOfId = members.Count;
 								}
 								members.Add(memberDef);
+							}
+							else
+							{
+								Kenobi($"Skipped member {member.Name}");
 							}
 						}
 					}
@@ -402,7 +407,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
-				Kenobi($"Should we include {type} ?");
+				Kenobi($"Should we include `{type}` ?");
 
 				if (metadata.NullableOfType is not null)
 				{ // unwrap nullables, we want to inspect the concrete type
@@ -420,7 +425,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (!metadata.KeyType.IsPrimitive)
 					{
 						var target = this.KnownSymbols.Compilation.GetBestTypeByMetadataName(metadata.KeyType.FullName);
-						Kenobi($"--> KeyType<{metadata.KeyType.FullName}>: {target}");
+						Kenobi($"--> KeyType<{metadata.KeyType.FullName}>: {(target?.ToString() ?? "<no target>")}");
 						if (target is not null)
 						{
 							MaybeAddLinkedType(metadata.KeyType, target, mappedTypes, work);
@@ -429,10 +434,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (metadata.ValueType is not null && !metadata.ValueType.IsPrimitive)
 					{
 						var target = this.KnownSymbols.Compilation.GetBestTypeByMetadataName(metadata.ValueType.FullName);
-						Kenobi($"--> ValueType<{metadata.ValueType.FullName}>: {target}");
+						Kenobi($"--> ValueType<{metadata.ValueType.FullName}>: {(target?.ToString() ?? "<no target>")}");
 						if (target is not null)
 						{
 							MaybeAddLinkedType(metadata.ValueType, target, mappedTypes, work);
+						}
+						else if (metadata.ValueType.IsEnumerable(out var elemType))
+						{ // try again if the type is an enumerable (array, list, ...)
+							target = this.KnownSymbols.Compilation.GetBestTypeByMetadataName(elemType.FullName);
+							Kenobi($"--> ValueType<Enumerable of {elemType.FullName}>: {(target?.ToString() ?? "<no target>")}");
+							if (target is not null)
+							{
+								MaybeAddLinkedType(elemType, target, mappedTypes, work);
+							}
 						}
 					}
 					return;

@@ -56,9 +56,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 			System.Diagnostics.Debug.WriteLine(msg);
 #pragma warning disable RS1035
 			Console.WriteLine(msg);
-#pragma warning restore RS1035
-#pragma warning disable RS1035
-			System.IO.File.AppendAllText(@"c:\temp\analyzer.log", $"{ProcessIdentifier} [{DateTime.Now:O}] {msg}\r\n");
+			for (int i = 0; i < 4; i++)
+			{
+				try
+				{
+					System.IO.File.AppendAllText(@"c:\temp\analyzer.log", $"{ProcessIdentifier} [{DateTime.Now:O}] {msg}\r\n");
+					break;
+				}
+				catch (IOException)
+				{
+					Thread.Sleep(15);
+				}
+			}
 #pragma warning restore RS1035
 #endif
 		}

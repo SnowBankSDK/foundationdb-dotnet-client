@@ -514,6 +514,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Tests if this is the <see cref="string"/> type</summary>
 		public bool IsString() => this.SpecialType is SpecialType.System_String;
 
+		/// <summary>Tests if this is the <see cref="int"/> type</summary>
+		public bool IsInt32() => this.SpecialType is SpecialType.System_Int32;
+
 		/// <summary>Tests if this is an array (ex: <c>int[]</c>, <c>string?[]</c>)</summary>
 		/// <remarks>If <c>true</c>, <see cref="ElementType"/> holds the type of the elements of this array</remarks>
 		public bool IsArray() => this.TypeKind is TypeKind.Array;

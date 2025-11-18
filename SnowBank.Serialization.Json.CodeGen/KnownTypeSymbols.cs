@@ -96,6 +96,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 		// JSON readonly proxies are immutable typed wrappers other a JsonValue
 		public const string IJsonReadOnlyProxyFullName = CrystalJsonNamespace + ".IJsonReadOnlyProxy";
 		public const string JsonReadOnlyProxyDictionaryFullName = CrystalJsonNamespace + ".JsonReadOnlyProxyDictionary";
+		public const string JsonReadOnlyProxyInt32DictionaryFullName = CrystalJsonNamespace + ".JsonReadOnlyProxyInt32Dictionary";
+		public const string JsonReadOnlyProxyInt32DictionaryOfArrayFullName = CrystalJsonNamespace + ".JsonReadOnlyProxyInt32DictionaryOfArray";
 		public const string JsonReadOnlyProxyArrayFullName = CrystalJsonNamespace + ".JsonReadOnlyProxyArray";
 
 		// "mutable" json values will record all changes into a transaction object

@@ -24,6 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+//#define FULL_DEBUG
+
 namespace SnowBank.Serialization.Json.CodeGen
 {
 	using System.Text;
