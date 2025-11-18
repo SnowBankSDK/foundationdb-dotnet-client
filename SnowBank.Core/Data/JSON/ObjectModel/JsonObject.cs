@@ -38,6 +38,7 @@ namespace SnowBank.Data.Json
 	using System.Dynamic;
 	using System.Runtime.InteropServices;
 	using System.Text;
+	using SnowBank.Runtime.Converters;
 	using SnowBank.Buffers;
 	using SnowBank.Text;
 
@@ -3479,6 +3480,28 @@ namespace SnowBank.Data.Json
 			return this;
 		}
 
+		/// <summary>Sets the value of a field in the object</summary>
+		/// <exception cref="T:System.InvalidOperationException">The object is read-only.</exception>
+		[CollectionAccess(CollectionAccessType.UpdatedContent)]
+		public JsonObject Set(int key, JsonValue? value)
+		{
+			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
+
+			m_items[StringConverters.ToString(key)] = value ?? JsonNull.Null;
+			return this;
+		}
+
+		/// <summary>Sets the value of a field in the object</summary>
+		/// <exception cref="T:System.InvalidOperationException">The object is read-only.</exception>
+		[CollectionAccess(CollectionAccessType.UpdatedContent)]
+		public JsonObject Set(long key, JsonValue? value)
+		{
+			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
+
+			m_items[StringConverters.ToString(key)] = value ?? JsonNull.Null;
+			return this;
+		}
+
 		#endregion
 
 		#region Merging...
@@ -4662,7 +4685,7 @@ namespace SnowBank.Data.Json
 
 		public bool TryCopyTo(Span<KeyValuePair<string, JsonValue>> array)
 		{
-			if (this.m_items.Count > array.Length)
+			if (m_items.Count > array.Length)
 			{
 				return false;
 			}
@@ -4684,7 +4707,7 @@ namespace SnowBank.Data.Json
 
 		public bool TryCopyTo(Span<(string Key, JsonValue Value)> array)
 		{
-			if (this.m_items.Count > array.Length)
+			if (m_items.Count > array.Length)
 			{
 				return false;
 			}
