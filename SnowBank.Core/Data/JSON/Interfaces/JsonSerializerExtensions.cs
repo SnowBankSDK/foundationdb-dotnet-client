@@ -30,9 +30,7 @@ namespace SnowBank.Data.Json
 	using System.Collections.Immutable;
 	using System.ComponentModel;
 	using System.Runtime.InteropServices;
-
-	using NodaTime.TimeZones;
-
+	using SnowBank.Runtime.Converters;
 	using SnowBank.Buffers;
 
 	/// <summary>Helper methods for working with JSON converters</summary>
@@ -586,7 +584,7 @@ namespace SnowBank.Data.Json
 			return ImmutableList.Create<T>(UnpackArray(serializer, array, resolver));
 		}
 
-		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{TKey,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
+		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{string,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public static Dictionary<string, TValue>? UnpackDictionary<TValue>(this IJsonDeserializer<TValue> serializer, JsonValue? value, Dictionary<string, TValue>? defaultValue = null, IEqualityComparer<string>? keyComparer = null, ICrystalJsonTypeResolver? resolver = null, string? fieldName = null)
@@ -597,7 +595,7 @@ namespace SnowBank.Data.Json
 				_ => throw (fieldName != null ? CrystalJson.Errors.Parsing_CannotCastFieldToJsonObject(value, fieldName) : CrystalJson.Errors.Parsing_CannotCastToJsonObject(value))
 			};
 
-		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{TKey,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
+		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{string,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
 		[Pure]
 		public static Dictionary<string, TValue> UnpackDictionary<TValue>(this IJsonDeserializer<TValue> serializer, JsonObject obj, IEqualityComparer<string>? keyComparer = null, ICrystalJsonTypeResolver? resolver = null)
 		{
@@ -611,9 +609,40 @@ namespace SnowBank.Data.Json
 			return res;
 		}
 
+		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{int,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
+		[Pure]
+		[return: NotNullIfNotNull(nameof(defaultValue))]
+		public static Dictionary<int, TValue>? UnpackDictionaryInt32<TValue>(this IJsonDeserializer<TValue> serializer, JsonValue? value, Dictionary<int, TValue>? defaultValue = null, ICrystalJsonTypeResolver? resolver = null, string? fieldName = null)
+			=> value switch
+			{
+				null or JsonNull => defaultValue,
+				JsonObject obj   => UnpackDictionaryInt32(serializer, obj, resolver),
+				_                => throw (fieldName != null ? CrystalJson.Errors.Parsing_CannotCastFieldToJsonObject(value, fieldName) : CrystalJson.Errors.Parsing_CannotCastToJsonObject(value))
+			};
+
+		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{int,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
+		[Pure]
+		public static Dictionary<int, TValue> UnpackDictionaryInt32<TValue>(this IJsonDeserializer<TValue> serializer, JsonObject obj, ICrystalJsonTypeResolver? resolver = null)
+		{
+			var res = new Dictionary<int, TValue>(obj.Count);
+
+			foreach (var kv in obj)
+			{
+				if (!int.TryParse(kv.Key, out int k))
+				{
+					throw new InvalidOperationException("Cannot parse non-integer key");
+				}
+				res.Add(k, serializer.Unpack(kv.Value, resolver));
+			}
+
+			return res;
+		}
+
 		#endregion
 
 		#region IJsonPacker<T>...
+
+		#region Collections...
 
 		/// <summary>Converts a span of items into the equivalent <see cref="JsonArray"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -706,6 +735,12 @@ namespace SnowBank.Data.Json
 			return result;
 		}
 
+		#endregion
+
+		#region Dictionaries...
+
+		#region String keys...
+
 		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
 		/// <param name="items">Dictionary to convert</param>
@@ -725,18 +760,13 @@ namespace SnowBank.Data.Json
 				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new JsonObject(items.Count);
+			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
 			foreach (var kv in items)
 			{
 				result[kv.Key] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
 			}
 
-			if (settings.IsReadOnly())
-			{
-				result = result.FreezeUnsafe();
-			}
-
-			return result;
+			return new(result, settings.IsReadOnly());
 		}
 
 		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
@@ -758,7 +788,7 @@ namespace SnowBank.Data.Json
 				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new JsonObject(items.Count);
+			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
 			if (items is Dictionary<string, TValue> dict)
 			{
 				// we can skip the IEnumerator<...> allocation for this type
@@ -775,12 +805,46 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			if (settings.IsReadOnly())
+			return new(result, settings.IsReadOnly());
+		}
+
+		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
+		/// <param name="serializer">Custom serializer</param>
+		/// <param name="items">Dictionary to convert</param>
+		/// <param name="settings">Serialization settings</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IDictionary<string, TValue[]?>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		{
+			if (items == null)
 			{
-				result = result.FreezeUnsafe();
+				return null;
 			}
 
-			return result;
+			if (items.Count == 0)
+			{
+				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+			}
+
+			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			if (items is Dictionary<string, TValue[]?> dict)
+			{
+				// we can skip the IEnumerator<...> allocation for this type
+				foreach (var kv in dict)
+				{
+					result[kv.Key] = kv.Value is not null ? serializer.PackArray(kv.Value, settings, resolver) : JsonNull.Null;
+				}
+			}
+			else
+			{
+				foreach (var kv in items)
+				{
+					result[kv.Key] = kv.Value is not null ? serializer.PackArray(kv.Value, settings, resolver) : JsonNull.Null;
+				}
+			}
+
+			return new(result, settings.IsReadOnly());
 		}
 
 		/// <summary>Converts a span of key/value pairs into the equivalent <see cref="JsonObject"/></summary>
@@ -796,19 +860,14 @@ namespace SnowBank.Data.Json
 				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new JsonObject(items.Length);
+			var result = new Dictionary<string, JsonValue>(items.Length, settings.GetKeyComparer());
 
 			foreach (var kv in items)
 			{
 				result[kv.Key] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
 			}
 
-			if (settings.IsReadOnly())
-			{
-				result = result.FreezeUnsafe();
-			}
-
-			return result;
+			return new(result, settings.IsReadOnly());
 		}
 
 		/// <summary>Converts a sequence of key/value pairs into the equivalent <see cref="JsonObject"/></summary>
@@ -830,18 +889,18 @@ namespace SnowBank.Data.Json
 				return PackObject(serializer, span, settings, resolver);
 			}
 
-			JsonObject result;
+			Dictionary<string, JsonValue> result;
 			if (items.TryGetNonEnumeratedCount(out var count))
 			{
 				if (count == 0)
 				{
 					return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 				}
-				result = new(count);
+				result = new(count, settings.GetKeyComparer());
 			}
 			else
 			{
-				result = new();
+				result = new(settings.GetKeyComparer());
 			}
 
 			foreach (var kv in items)
@@ -849,13 +908,186 @@ namespace SnowBank.Data.Json
 				result[kv.Key] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
 			}
 
-			if (settings.IsReadOnly())
+			return new(result, settings.IsReadOnly());
+		}
+
+		#endregion
+
+		#region Integer keys...
+
+		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
+		/// <param name="serializer">Custom serializer</param>
+		/// <param name="items">Dictionary to convert</param>
+		/// <param name="settings">Serialization settings</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, Dictionary<int, TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		{
+			if (items == null)
 			{
-				result = result.FreezeUnsafe();
+				return null;
 			}
 
-			return result;
+			if (items.Count == 0)
+			{
+				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+			}
+
+			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			foreach (var kv in items)
+			{
+				result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+			}
+
+			return new(result, settings.IsReadOnly());
 		}
+
+		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
+		/// <param name="serializer">Custom serializer</param>
+		/// <param name="items">Dictionary to convert</param>
+		/// <param name="settings">Serialization settings</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IDictionary<int, TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		{
+			if (items == null)
+			{
+				return null;
+			}
+
+			if (items.Count == 0)
+			{
+				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+			}
+
+			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			if (items is Dictionary<int, TValue> dict)
+			{
+				// we can skip the IEnumerator<...> allocation for this type
+				foreach (var kv in dict)
+				{
+					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+				}
+			}
+			else
+			{
+				foreach (var kv in items)
+				{
+					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+				}
+			}
+
+			return new(result, settings.IsReadOnly());
+		}
+
+		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
+		/// <param name="serializer">Custom serializer</param>
+		/// <param name="items">Dictionary to convert</param>
+		/// <param name="settings">Serialization settings</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IDictionary<int, TValue[]?>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		{
+			if (items == null)
+			{
+				return null;
+			}
+
+			if (items.Count == 0)
+			{
+				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+			}
+
+			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			if (items is Dictionary<int, TValue[]?> dict)
+			{
+				// we can skip the IEnumerator<...> allocation for this type
+				foreach (var kv in dict)
+				{
+					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.PackArray(kv.Value, settings, resolver) : JsonNull.Null;
+				}
+			}
+			else
+			{
+				foreach (var kv in items)
+				{
+					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.PackArray(kv.Value, settings, resolver) : JsonNull.Null;
+				}
+			}
+
+			return new(result, settings.IsReadOnly());
+		}
+
+		/// <summary>Converts a span of key/value pairs into the equivalent <see cref="JsonObject"/></summary>
+		/// <param name="serializer">Custom serializer</param>
+		/// <param name="items">Span to convert</param>
+		/// <param name="settings">Serialization settings</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
+		public static JsonObject PackObject<TValue>(this IJsonPacker<TValue> serializer, ReadOnlySpan<KeyValuePair<int, TValue>> items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		{
+			if (items.Length == 0)
+			{
+				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+			}
+
+			var result = new Dictionary<string, JsonValue>(items.Length, settings.GetKeyComparer());
+
+			foreach (var kv in items)
+			{
+				result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+			}
+
+			return new(result, settings.IsReadOnly());
+		}
+
+		/// <summary>Converts a sequence of key/value pairs into the equivalent <see cref="JsonObject"/></summary>
+		/// <param name="serializer">Custom serializer</param>
+		/// <param name="items">Sequence to convert</param>
+		/// <param name="settings">Serialization settings</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IEnumerable<KeyValuePair<int, TValue>>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		{
+			if (items is null)
+			{
+				return null;
+			}
+
+			if (items.TryGetSpan(out var span))
+			{
+				return PackObject(serializer, span, settings, resolver);
+			}
+
+			Dictionary<string, JsonValue> result;
+			if (items.TryGetNonEnumeratedCount(out var count))
+			{
+				if (count == 0)
+				{
+					return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				}
+				result = new(count, settings.GetKeyComparer());
+			}
+			else
+			{
+				result = new(settings.GetKeyComparer());
+			}
+
+			foreach (var kv in items)
+			{
+				result[StringConverters.ToString(kv.Key)]= kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+			}
+
+			return new(result, settings.IsReadOnly());
+		}
+
+		#endregion
+
+		#endregion
 
 		#endregion
 
