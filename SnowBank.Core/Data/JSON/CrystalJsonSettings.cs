@@ -776,6 +776,11 @@ namespace SnowBank.Data.Json
 		public static bool IsReadOnly(this CrystalJsonSettings? settings)
 			=> settings is not null && settings.ReadOnly;
 
+		/// <summary>Returns either <see cref="StringComparer.Ordinal"/> or <see cref="StringComparer.OrdinalIgnoreCase"/> depending on the value of <see cref="CrystalJsonSettings.IgnoreCaseForNames"/></summary>
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static IEqualityComparer<string> GetKeyComparer(this CrystalJsonSettings? settings)
+			=> settings is not null && settings.IgnoreCaseForNames ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
 		/// <summary>Tests if the settings specify whether reference type properties and fields should be included when <see langword="null"/></summary>
 		/// <remarks>Example: The property <c>string? Name { get; ... }</c>, when its value is null, should always be written when the return value is <see langword="true"/>, or skipped if <see langword="false"/></remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]

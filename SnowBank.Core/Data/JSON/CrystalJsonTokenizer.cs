@@ -66,7 +66,7 @@ namespace SnowBank.Data.Json
 			this.Source = source;
 			this.Settings = settings ?? CrystalJsonSettings.Json;
 			this.InternMode = this.Settings.InterningMode;
-			this.FieldComparer = this.Settings.IgnoreCaseForNames ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+			this.FieldComparer = this.Settings.GetKeyComparer();
 		}
 
 		/// <inheritdoc />
