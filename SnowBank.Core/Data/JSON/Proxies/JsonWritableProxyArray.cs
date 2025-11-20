@@ -745,10 +745,39 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public void RemoveAt(int index) => m_value.RemoveAt(index);
 
+		/// <inheritdoc cref="IList{T}.RemoveAt"/>
 		public void RemoveAt(Index index) => m_value.RemoveAt(index);
+
+		/// <summary>Removes all the elements that match the conditions defined by the specified predicate.</summary>
+		/// <param name="match">The <see cref="Predicate{TProxy}"/> delegate that defines the conditions of the elements to remove.</param>
+		/// <returns>The number of elements removed from the array.</returns>
+		public int RemoveAll(Predicate<TProxy> match)
+		{
+			Contract.NotNull(match);
+
+			// we will remove items in reverse order, to preserve the index in the log of mutations
+			// ex: if we have XS = [ 'A', 'B', 'C', 'B', 'D' ] and we want to remove all 'B', we will first remove XS[3] and then XS[1]
+			int removed = 0;
+			for (int i = m_value.Count - 1; i >= 0; i--)
+			{
+				if (match(this[i]))
+				{
+					m_value.RemoveAt(i);
+					++removed;
+				}
+			}
+			return removed;
+		}
 
 		/// <inheritdoc />
 		public TProxy this[int index]
+		{
+			get => TProxy.Create(m_value[index]);
+			set => m_value.Set(index, value.ToJsonValue());
+		}
+
+		/// <inheritdoc cref="IList{TProxy}.this" />
+		public TProxy this[Index index]
 		{
 			get => TProxy.Create(m_value[index]);
 			set => m_value.Set(index, value.ToJsonValue());
