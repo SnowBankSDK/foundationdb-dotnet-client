@@ -1093,11 +1093,19 @@ namespace SnowBank.Collections.CacheOblivious
 			}
 		}
 
-		/// <summary>Mark a range with a new value by updating, merging or overriding any previous values in this range</summary>
-		/// <param name="beginInclusive"></param>
-		/// <param name="endExclusive"></param>
-		/// <param name="value"></param>
-		/// <param name="combinator"></param>
+		/// <summary>Copies all the ranges of this dictionary onto another dictionary</summary>
+		/// <param name="destination">Destination dictionary that will be modified</param>
+		public void CopyTo(ColaRangeDictionary<TKey, TValue> destination)
+		{
+			using var iter = new ColaStore.Enumerator<Entry>(m_items, reverse: false);
+			while (iter.MoveNext())
+			{
+				var entry = iter.Current;
+				destination.Mark(entry.Begin!, entry.End!, entry.Value!);
+			}
+		}
+
+		/// <summary>Marks a range with a new value by updating, merging or overriding any previous values in this range</summary>
 		public void Merge<TData>(TKey beginInclusive, TKey endExclusive, TData value, Func<TValue?, TData, TValue> combinator)
 		{
 			var keyComparer = m_keyComparer;

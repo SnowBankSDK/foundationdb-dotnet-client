@@ -345,6 +345,18 @@ namespace SnowBank.Collections.CacheOblivious
 			//TODO: check constraints !
 		}
 
+		/// <summary>Copies all the ranges of this set onto another set</summary>
+		/// <param name="destination">Destination set that will be modified</param>
+		public void CopyTo(ColaRangeSet<TKey> destination)
+		{
+			using var iter = new ColaStore.Enumerator<Entry>(m_items, reverse: false);
+			while (iter.MoveNext())
+			{
+				var entry = iter.Current;
+				destination.Mark(entry.Begin!, entry.End!);
+			}
+		}
+
 		/// <summary>Checks if there is at least one range that contains the specified key</summary>
 		/// <param name="key">Key to test</param>
 		/// <returns><c>true</c> if the key is contained by one range; otherwise, <c>false</c>.</returns>
