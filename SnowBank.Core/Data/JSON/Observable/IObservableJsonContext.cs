@@ -307,19 +307,58 @@ namespace SnowBank.Data.Json
 				{
 					case ObservableJsonAccess.Value:
 					{
+						// since we check the entire value, there is no point in also checking any children
 						return current.Value?.StrictEquals(value) ?? false;
 					}
 					case ObservableJsonAccess.Exists:
 					{
-						return current.Value is JsonBoolean b && b.Value == !value.IsNullOrMissing();
+						if (current.Value is JsonBoolean b)
+						{ // verify the existence
+							if (value.IsNullOrMissing())
+							{ // no value
+								if (b.Value)
+								{ // the value disappeared
+									return false;
+								}
+							}
+							else
+							{ // exists
+								if (!b.Value)
+								{ // the value appeared
+									return false;
+								}
+							}
+						}
+						break;
 					}
 					case ObservableJsonAccess.Type:
 					{
-						return current.Value is JsonNumber num && (JsonType) num.ToInt32() == value.Type;
+						if (current.Value is JsonNumber num)
+						{ // verify the type
+							if ((JsonType) num.ToInt32() != value.Type)
+							{ // the type changed!
+								return false;
+							}
+						}
+						break;
 					}
 					case ObservableJsonAccess.Length:
 					{
-						return value is JsonArray arr && current.Value is JsonNumber len && arr.Count == len.ToInt32();
+						if (current.Value is JsonNumber len)
+						{ // verify the array length
+							if (value is JsonArray arr)
+							{ // still an array
+								if (arr.Count != len.ToInt32())
+								{ // but the length changed!
+									return false;
+								}
+							}
+							else
+							{ // this is not an array anymore!
+								return false;
+							}
+						}
+						break;
 					}
 				}
 
