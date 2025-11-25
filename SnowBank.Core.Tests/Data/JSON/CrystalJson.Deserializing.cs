@@ -199,7 +199,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"9999-12-31T23:59:59.9999999Z\""), Is.EqualTo(DateTime.MaxValue), "DateTime.MaxValue");
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(253402300799999)\\/\""), Is.EqualTo(DateTime.MaxValue), "DateTime.MaxValue (auto-adjusted)"); // note: should automatically add the missing .99999 ms
 
-			// 2000-01-01 (heure d'hivers)
+			// 2000-01-01 (winter time)
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"2000-01-01T00:00:00.0000000Z\""), Is.EqualTo(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)), "2000-01-01 UTC");
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"2000-01-01T00:00:00Z\""), Is.EqualTo(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)), "2000-01-01 UTC");
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(946684800000)\\/\""), Is.EqualTo(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)), "2000-01-01 UTC");
@@ -212,7 +212,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"2000-01-01T00:00:00-01:00\""), Is.EqualTo(new DateTime(2000, 1, 1, 2, 0, 0, DateTimeKind.Local)), "2000-01-01 GMT-1");
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(946681200000-0100)\\/\""), Is.EqualTo(new DateTime(2000, 1, 1, 2, 0, 0, DateTimeKind.Local)), "2000-01-01 GMT-1");
 
-			// 2000-09-01 (heure d'été)
+			// 2000-09-01 (summertime)
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(967766400000)\\/\""), Is.EqualTo(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc)), "2000-09-01 UTC");
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(967759200000+0200)\\/\""), Is.EqualTo(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Local)), "2000-09-01 GMT+2 (Paris, DST)");
 
@@ -237,6 +237,66 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"20000101123456\""), Is.EqualTo(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Local)), "2000-01-01 12:34:56 GMT+1 (Paris)");
 			// ISO 8601
 			Assert.That(CrystalJson.Deserialize<DateTime>("\"2000-01-01T12:34:56Z\""), Is.EqualTo(new DateTime(2000, 1, 1, 12, 34, 56, DateTimeKind.Utc)), "2000-01-01 12:34:56 GMT");
+			// ISO 8601 with time offset
+			Assert.That(CrystalJson.Deserialize<DateTime>("\"2000-01-01T12:34:56+01:00\""), Is.EqualTo(new DateTime(2000, 1, 1, 12, 34, 56)), "2000-01-01 12:34:56 (CET)");
+		}
+
+		[Test]
+		public void Test_JsonDeserialize_DateTimeOffset()
+		{
+			// Unix Epoch (1970-1-1 UTC)
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(0)\\/\""), Is.EqualTo(new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero)));
+
+			// Min/Max Value
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\""), Is.EqualTo(DateTimeOffset.MinValue));
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"0001-01-01T00:00:00.0000000\""), Is.EqualTo(DateTimeOffset.MinValue));
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"0001-01-01T00:00:00\""), Is.EqualTo(DateTimeOffset.MinValue));
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(-62135596800000)\\/\""), Is.EqualTo(DateTimeOffset.MinValue));
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"0001-01-01T00:00:00.0000000Z\""), Is.EqualTo(DateTimeOffset.MinValue));
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"0001-01-01T00:00:00Z\""), Is.EqualTo(DateTimeOffset.MinValue));
+
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"9999-12-31T23:59:59.9999999\""), Is.EqualTo(DateTimeOffset.MaxValue));
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"9999-12-31T23:59:59.9999999Z\""), Is.EqualTo(DateTimeOffset.MaxValue));
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(253402300799999)\\/\""), Is.EqualTo(DateTimeOffset.MaxValue)); // note: should automatically add the missing .99999 ms
+
+			// 2000-01-01 (winter time)
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00.0000000Z\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero)), "2000-01-01 UTC");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00Z\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero)), "2000-01-01 UTC");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946684800000)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero)), "2000-01-01 UTC");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00.0000000\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1))), "2000-01-01 GMT+1 (Paris)");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1))), "2000-01-01 GMT+1 (Paris)");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00.0000000+01:00\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1))), "2000-01-01 GMT+1 (Paris)");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00+01:00\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1))), "2000-01-01 GMT+1 (Paris)");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946681200000+0100)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1))), "2000-01-01 GMT+1 (Paris)");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00.0000000-01:00\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(-1))), "2000-01-01 GMT-1");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00-01:00\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(-1))), "2000-01-01 GMT-1");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946681200000-0100)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(-1))), "2000-01-01 GMT-1");
+
+			// 2000-09-01 (summertime)
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(967766400000)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.Zero)), "2000-09-01 UTC");
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(967759200000+0200)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.FromHours(2))), "2000-09-01 GMT+2 (Paris, DST)");
+
+			// RoundTrip !
+			var utcNow = DateTimeOffset.UtcNow;
+			// /!\ JsonDateTime has a resolution to the millisecond, but UtcNow has a resolution up to the 'tick', which mean we have to truncate the value to milliseconds or else it will not roundtrip properly
+			var utcRoundTrip = CrystalJson.Deserialize<DateTimeOffset>(CrystalJson.Serialize(utcNow));
+			Assert.That(utcRoundTrip, Is.EqualTo(utcNow), "RoundTrip DateTimeOffset.UtcNow");
+
+			var localNow = DateTimeOffset.Now;
+			var localRoundTrip = CrystalJson.Deserialize<DateTimeOffset>(CrystalJson.Serialize(localNow));
+			Assert.That(localRoundTrip, Is.EqualTo(localNow), "RoundTrip DateTimeOffset.Now");
+
+			// direct deserialization
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(-62135596800000)\\/\""), Is.EqualTo(DateTimeOffset.MinValue));
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946681200000+0200)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(2))), "2000-01-01 GMT+2 (Paris, DST on)");
+			// YYYYMMDD
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"20000101\""), Is.EqualTo(new DateTimeOffset(new(2000, 1, 1, 0, 0, 0, DateTimeKind.Local))), "2000-01-01 Local");
+			// YYYYMMDDHHMMSS
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"20000101123456\""), Is.EqualTo(new DateTimeOffset(new (2000, 1, 1, 12, 34, 56, DateTimeKind.Local))), "2000-01-01 12:34:56 Local");
+			// ISO 8601
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T12:34:56Z\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 12, 34, 56, TimeSpan.Zero)), "2000-01-01 12:34:56 GMT");
+			// ISO 8601 with time offset
+			Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T12:34:56+01:00\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 12, 34, 56, TimeSpan.FromHours(1))), "2000-01-01 12:34:56 (CET)");
 		}
 
 		[Test]

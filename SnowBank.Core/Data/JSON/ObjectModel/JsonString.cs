@@ -1319,6 +1319,7 @@ namespace SnowBank.Data.Json
 			{
 				JsonString str => CompareTo(str),
 				JsonNumber num => -num.CompareTo(this), // use the JsonNumber.CompareTo(JsonString) implementation
+				JsonDateTime dt => TryConvertToDateTimeOffset(this.Value, out var dto) ? dto.CompareTo(dt.ToDateTimeOffset()) : base.CompareTo(other),
 				JsonNull => +1,
 				_ => base.CompareTo(other)
 			};
@@ -2008,9 +2009,12 @@ namespace SnowBank.Data.Json
 			{
 				if (tz.HasValue)
 				{
-					return new(d, tz.Value);
+					return new DateTimeOffset(new DateTime(d.ToLocalTime().Ticks, DateTimeKind.Unspecified), tz.Value);
 				}
-				return new(d);
+
+				return d == DateTime.MinValue ? DateTimeOffset.MinValue
+					: d == DateTime.MaxValue ? DateTimeOffset.MaxValue
+					: new(d);
 			}
 
 			return new(StringConverters.ParseDateTime(m_value));

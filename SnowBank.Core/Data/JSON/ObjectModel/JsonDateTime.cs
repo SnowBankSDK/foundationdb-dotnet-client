@@ -554,7 +554,7 @@ namespace SnowBank.Data.Json
 			{ // DateTimeOffset
 				var dto = new DateTimeOffset(m_value, TimeSpan.FromMinutes(m_offset));
 
-				if (dto == DateTime.MinValue)
+				if (dto == DateTimeOffset.MinValue)
 				{
 					return JsonString.EmptyString.TryFormat(destination, out charsWritten);
 				}
@@ -673,6 +673,23 @@ namespace SnowBank.Data.Json
 		public override int GetHashCode()
 		{
 			return m_value.GetHashCode();
+		}
+
+		
+		/// <inheritdoc />
+		public override int CompareTo(JsonValue? other)
+		{
+			if (ReferenceEquals(other, this)) return 0;
+			if (other is null) return +1;
+
+			return other switch
+			{
+				JsonDateTime dt => this.DateWithOffset.CompareTo(dt.DateWithOffset),
+				JsonString str => str.TryConvertToDateTimeOffset(out var dto) ? this.DateWithOffset.CompareTo(dto) : base.CompareTo(other),
+				JsonNumber num => num.ToDateTimeOffset().CompareTo(this.DateWithOffset),
+				JsonNull => +1,
+				_ => base.CompareTo(other)
+			};
 		}
 
 		#endregion

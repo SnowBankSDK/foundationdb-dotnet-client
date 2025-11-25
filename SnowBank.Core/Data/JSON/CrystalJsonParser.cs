@@ -324,12 +324,55 @@ namespace SnowBank.Data.Json
 		private static FormatException InvalidNumberFormat(ReadOnlySpan<char> literal, string reason) => new($"Invalid number '{literal}.' ({reason})");
 
 		/// <summary>Tests if the string COULD be a date in the ISO 8601 format</summary>
+		/// <param name="value">String literal to parse</param>
+		/// <param name="kind">Receives <see cref="DateTimeKind.Utc"/> if ends with <c>'Z'</c>, <see cref="DateTimeKind.Local"/> if could end with a time offset, or <see cref="DateTimeKind.Unspecified"/> if no offset indication was found</param>
+		/// <remarks>This is a fast heuristic that <i>may</i> have false positives</remarks>
 		[Pure]
-		private static bool CouldBeIso8601DateTime(ReadOnlySpan<char> value)
+		private static bool CouldBeIso8601DateTime(ReadOnlySpan<char> value, out DateTimeKind kind)
 		{
 			// look for markers like '-', 'T' and ':' at the correct place
 			// must end with either 'Z' (UTC) or '+##:##' / '-##:##'
-			return value.Length >= 20 && value[4] == '-' && value[7] == '-' && value[10] == 'T' && value[13] == ':' && value[16] == ':' && (value[^1] == 'Z' || (value[^3] == ':' && (value[^6] is '+' or '-')));
+			kind = DateTimeKind.Unspecified;
+
+			if (value.Length < 10 || !char.IsAsciiDigit(value[0]))
+			{
+				return false;
+			}
+
+			if (value.Length == 10)
+			{ // could be a <date> ("YYYY-MM-DD")
+				return value[4] == '-' && value[7] == '-';
+			}
+
+			if (value.Length < 19)
+			{ // too small to be a <data-time> ("YYYY-MM-DDThh:mm:ss")
+				return false;
+			}
+
+			if (value[10] != 'T' || value[13] != ':' || value[16] != ':')
+			{ // not a valid time part
+				return false;
+			}
+
+			if (value[^1] == 'Z')
+			{ // ends with 'Z', could be UTC
+				kind = DateTimeKind.Utc;
+				return true;
+			}
+
+			if (value[^3] == ':' && (value[^6] is '+' or '-'))
+			{ // could end with a time offset
+				kind = DateTimeKind.Local;
+				return true;
+			}
+
+			if (char.IsAsciiDigit(value[^1]))
+			{
+				kind = DateTimeKind.Unspecified;
+				return true;
+			}
+
+			return false;
 		}
 
 		[Pure, ContractAnnotation("value:null => false")]
@@ -340,7 +383,7 @@ namespace SnowBank.Data.Json
 #endif
 			result = DateTime.MinValue;
 
-			if (value.Length == 0 || !CouldBeIso8601DateTime(value)) return false;
+			if (value.Length == 0 || !CouldBeIso8601DateTime(value, out var kind)) return false;
 
 			// cf http://msdn.microsoft.com/en-us/library/bb882584.aspx
 			return DateTime.TryParse(value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.RoundtripKind, out result);
@@ -354,10 +397,216 @@ namespace SnowBank.Data.Json
 #endif
 			result = DateTimeOffset.MinValue;
 
-			if (value.Length == 0 || !CouldBeIso8601DateTime(value)) return false;
+			if (!TryParseDateTimeOffsetComponents(value, out DateOnly date, out TimeOnly time, out long nanos, out TimeSpan offset, out DateTimeKind kind))
+			{
+				return false;
+			}
 
-			// cf http://msdn.microsoft.com/en-us/library/bb882584.aspx
-			return DateTimeOffset.TryParse(value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.RoundtripKind, out result);
+			if (nanos != 0)
+			{ // add the nanoseconds to the time
+				Contract.Debug.Requires((ulong) nanos < 1_000_000_000);
+				time = time.Add(TimeSpan.FromTicks(nanos / TimeSpan.NanosecondsPerTick)); // note: 100 nanos per BCL tick
+			}
+
+			switch (kind)
+			{
+				case DateTimeKind.Unspecified:
+				{ // use the local server offset
+					Contract.Debug.Assert(offset == TimeSpan.Zero);
+					var dt = new DateTime(date, time, DateTimeKind.Unspecified);
+					result = dt == DateTime.MinValue ? DateTimeOffset.MinValue
+						: dt == DateTime.MaxValue ? DateTimeOffset.MaxValue
+						: new(dt);
+					break;
+				}
+				case DateTimeKind.Local:
+				{ // there is an offset specified
+					// the ctor for DTO insists on subtracting the offset to the time, so we have to compensate!
+					result = new(date, time, offset);
+					break;
+				}
+				default:
+				{ // the time is UTC
+					Contract.Debug.Assert(kind == DateTimeKind.Utc);
+					result = new(date, time, TimeSpan.Zero);
+					break;
+				}
+			}
+
+			return true;
+		}
+
+		public static bool TryParseDateTimeOffsetComponents(ReadOnlySpan<char> value, out DateOnly date, out TimeOnly time, out long nanos, out TimeSpan offset, out DateTimeKind kind)
+		{
+			if (value.Length < 10
+			 || !char.IsAsciiDigit(value[0])
+			 || !TryParseDateOnlyComponent(value, out date, out var remainder))
+			{
+				goto invalid;
+			}
+
+			value = remainder;
+			if (value.Length == 0)
+			{ // date only
+				time = default;
+				nanos = 0;
+				offset = TimeSpan.Zero;
+				kind = DateTimeKind.Unspecified;
+				return true;
+			}
+
+			if (value[0] == 'T')
+			{ // there is a time component
+				if (!TryParseTimeOnlyComponent(value[1..], out time, out nanos, out remainder))
+				{
+					goto invalid;
+				}
+				value = remainder;
+			}
+			else
+			{ // no time component
+				time = default;
+				nanos = 0;
+			}
+
+			if (value.Length == 0)
+			{ // there is no time offset specified
+				offset = TimeSpan.Zero;
+				kind = DateTimeKind.Unspecified;
+				return true;
+			}
+
+			if (value[0] == 'Z')
+			{
+				if (value.Length != 1) goto invalid;
+				offset = TimeSpan.Zero;
+				kind = DateTimeKind.Utc;
+				return true;
+			}
+			if (value[0] is ('+' or '-'))
+			{
+				if (!TryParseTimeOffsetComponent(value, out offset, out remainder) || remainder.Length != 0)
+				{
+					goto invalid;
+				}
+				kind = DateTimeKind.Local;
+				return true;
+			}
+
+			// this is not valid!
+
+		invalid:
+			date = default;
+			time = default;
+			nanos = 0;
+			offset = TimeSpan.Zero;
+			kind = default;
+			return false;
+		}
+
+		private static bool TryParseDateOnlyComponent(ReadOnlySpan<char> value, out DateOnly date, out ReadOnlySpan<char> remainder)
+		{
+			// YYYY-MM-DD
+
+			if (value.Length >= 10
+			 && value[4] == '-' && value[7] == '-'
+			 && int.TryParse(value[..4], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var year)
+			 && year is (>= 1 and <= 9999)
+			 && int.TryParse(value[5..7], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var month)
+			 && month is (>= 1 and <= 12)
+			 && int.TryParse(value[8..10], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var day)
+			 && day is >= 1 && day <= DateTime.DaysInMonth(year, month)
+			)
+			{
+				date = new DateOnly(year, month, day);
+				remainder = value[10..];
+				return true;
+			}
+
+			date = default;
+			remainder = default;
+			return false;
+		}
+
+		private static bool TryParseTimeOnlyComponent(ReadOnlySpan<char> value, out TimeOnly time, out long nanos, out ReadOnlySpan<char> remainder)
+		{
+			// hh:mm:ss[.ffffff]
+
+			if (value.Length >= 8
+				&& value[2] == ':' && value[5] == ':'
+				&& int.TryParse(value[..2], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
+				&& hour is (>= 0 and <= 23)
+				&& int.TryParse(value[3..5], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
+				&& minute is (>= 0 and <= 59)
+				&& int.TryParse(value[6..8], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var second)
+				&& second is >= 0 && second <= 60 /* leap second! */
+			)
+			{
+				value = value[8..];
+				nanos = 0;
+				if (value.Length > 0)
+				{ // there may be a millisecond part
+					if (value[0] == '.')
+					{ // ".f" minimum, up to any number of digits?
+						value = value[1..];
+						// count the number of digits
+						int digits = value.IndexOfAnyExceptInRange('0', '9');
+						if (digits == -1) digits = value.Length;
+						if (digits is (0 or > 15) || !ulong.TryParse(value[..digits], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var fractional))
+						{
+							goto invalid;
+						}
+						value = value[digits..];
+
+						if (fractional != 0)
+						{
+							// adjust the fractional part until we have nanoseconds
+							while (digits < 9)
+							{
+								fractional *= 10;
+								++digits;
+							}
+							while (digits > 9)
+							{
+								fractional /= 10; //TODO: how should we round? up or down?
+								--digits;
+							}
+						}
+						nanos = (long) fractional;
+					}
+				}
+
+				time = new TimeOnly(hour, minute, second);
+				remainder = value;
+				return true;
+			}
+		invalid:
+			time = default;
+			nanos = 0;
+			remainder = default;
+			return false;
+		}
+
+		private static bool TryParseTimeOffsetComponent(ReadOnlySpan<char> value, out TimeSpan offset, out ReadOnlySpan<char> remainder)
+		{
+			// +hh:mm or -hh:mm
+			if (value.Length >= 6
+			 && value[0] is ('+' or '-') && value[3] == ':'
+			 && int.TryParse(value[1..3], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
+			 && hour is (>= 0 and <= 12)
+			 && int.TryParse(value[4..6], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
+			 && minute is (>= 0 and < 60)
+			)
+			{
+				var minutes = (hour * 60) + minute;
+				offset = TimeSpan.FromMinutes(value[0] == '+' ? minutes : -minutes);
+				remainder = value[6..];
+				return true;
+			}
+
+			offset = TimeSpan.Zero;
+			remainder = default;
+			return false;
 		}
 
 		[Pure]
