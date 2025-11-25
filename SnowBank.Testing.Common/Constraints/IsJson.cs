@@ -583,9 +583,15 @@ namespace SnowBank.Testing
 						return;
 					}
 
-					string prefix = this.OriginalValue is IJsonProxyNode node
-						? $"JSON value at `{node.GetPath()}`"
-						: "JSON value";
+					string prefix = "JSON value";
+					if (this.OriginalValue is IJsonProxyNode node)
+					{
+						var path = node.GetPath();
+						if (!path.IsEmpty())
+						{
+							prefix = $"JSON value at `{path}`";
+						}
+					}
 
 					switch (this.Operator)
 					{
