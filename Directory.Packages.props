@@ -5,7 +5,7 @@
   </PropertyGroup>
   <!-- Packages that are common to all target frameworks -->
   <ItemGroup>
-    <PackageVersion Include="Aspire.Hosting" Version="13.0.0" />
+    <PackageVersion Include="Aspire.Hosting" Version="13.0.1" />
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.0.0" />
     <PackageVersion Include="Bogus" Version="35.6.5" />
     <PackageVersion Include="MathNet.Numerics.Signed" Version="5.0.0" />
