@@ -267,10 +267,19 @@ namespace Aspire.Hosting
 			var cluster = builder
 				.AddResource(fdbCluster)
 				.WithAnnotation(new ManifestPublishingCallbackAnnotation((ctx) => WriteFdbClusterToManifest(ctx, fdbCluster)))
-				.WithEndpoint(port: nodePort, targetPort: nodePort, name: "tcp", isProxied: false) // note: both ports MUST be the same (see above)
 				.WithImage(image: "foundationdb/foundationdb", tag: fdbCluster.DockerTag)
 				.WithImageRegistry(imageRegistry)
 				.WithVolume("fdb_data", "/var/fdb/data", isReadOnly: false) //HACKHACK: TODO: make this configurable!
+				.WithEndpoint("tcp", ep =>
+				{
+					// note: both Port and TargetPort MUST be the same (see above)
+					ep.Port = nodePort;
+					ep.TargetPort = nodePort;
+					ep.IsProxied = false;
+					// pre-allocate the port.
+					// note: this is a temp fix for an issue where the "deploy-prereq" pipeline step that would fail with "endpoint not allocated" error.
+					ep.AllocatedEndpoint = new(ep, ep.TargetHost, nodePort);
+				})
 				.WithEnvironment((context) =>
 				{
 					// get the allocated endpoint
