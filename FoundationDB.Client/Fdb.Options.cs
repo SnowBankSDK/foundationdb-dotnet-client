@@ -83,7 +83,7 @@ namespace FoundationDB.Client
 				{ // this is a file
 					if (fileName != expectedFileName)
 					{ 
-						throw new ArgumentException($"The name of the file must match exactly '{expectedFileName}'. If you need to handle multiple versions, they should be placed in a dedicated folder.");
+						throw new ArgumentException($"The name of the file must match exactly '{expectedFileName}' but was '{fileName}'. If you need to handle multiple versions, they should be placed in a dedicated folder.");
 					}
 				}
 				else if (global::System.IO.Directory.Exists(path))
@@ -109,14 +109,13 @@ namespace FoundationDB.Client
 			{
 				if (OperatingSystem.IsWindows())
 				{
-					return FdbNative.FDB_C_DLL + ".dll";
+					return "fdb_c.dll";
 				}
 				if (OperatingSystem.IsMacOS())
 				{
 					return "libfdb_c.dylib";
 				}
-				//TODO: macOS ?
-				return FdbNative.FDB_C_DLL + ".so";
+				return "libfdb_c.so";
 			}
 
 			#endregion

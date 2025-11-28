@@ -26,9 +26,7 @@
 
 namespace FoundationDB.Client.Native
 {
-	using System.Runtime.ConstrainedExecution;
 	using System.Security;
-	using Microsoft.Win32.SafeHandles;
 
 	/// <summary>Native Library Loader</summary>
 	internal sealed class UnmanagedLibrary : IDisposable
@@ -36,59 +34,22 @@ namespace FoundationDB.Client.Native
 		// See http://msdn.microsoft.com/msdnmag/issues/05/10/Reliability/ for more about safe handles.
 
 		[SuppressUnmanagedCodeSecurity]
-		public sealed class SafeLibraryHandle : SafeHandleZeroOrMinusOneIsInvalid
+		public sealed class SafeLibraryHandle : SafeHandle
 		{
-			private SafeLibraryHandle() : base(true) { }
+			public SafeLibraryHandle(string path)
+				: base(nint.Zero, ownsHandle: true)
+			{
+				SetHandle(NativeLibrary.Load(path));
+			}
+
+			public override bool IsInvalid => this.handle == nint.Zero;
 
 			protected override bool ReleaseHandle()
 			{
 				//cf Issue #49: it is too dangerous to unload the library because callbacks could still fire from the native side
-				//DISABLED: return NativeMethods.FreeLibrary(handle);
+				//DISABLED: NativeLibrary.Free(this.handle);
 				return true;
 			}
-		}
-
-		[SuppressUnmanagedCodeSecurity]
-		private static class NativeMethods
-		{
-			const string LIBDL = "dl";
-
-
-			[DllImport(LIBDL)]
-			private static extern SafeLibraryHandle dlopen(string fileName, int flags);
-
-
-			[DllImport(LIBDL, SetLastError = true)]
-			[return: MarshalAs(UnmanagedType.Bool)]
-			private static extern int dlclose(IntPtr hModule);
-
-			const string KERNEL = "kernel32";
-
-			[DllImport(KERNEL, CharSet = CharSet.Auto, BestFitMapping = false, SetLastError = true)]
-			private static extern SafeLibraryHandle LoadLibrary(string fileName);
-
-			[DllImport(KERNEL, SetLastError = true)]
-			[return: MarshalAs(UnmanagedType.Bool)]
-			private static extern bool FreeLibrary(IntPtr hModule);
-
-			public static SafeLibraryHandle LoadPlatformLibrary(string fileName) 
-			{
-				if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-				{
-					return LoadLibrary(fileName);
-				}
-				return dlopen(fileName, 1);
-			}
-
-			public static bool FreePlatformLibrary(IntPtr hModule)
-			{
-				if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-				{
-					return FreeLibrary(hModule);
-				}
-				return dlclose(hModule) == 0;
-			}
-
 		}
 
 		/// <summary>Load a native library into the current process</summary>
@@ -99,8 +60,8 @@ namespace FoundationDB.Client.Native
 		{
 			Contract.NotNull(path);
 
-			var handle = NativeMethods.LoadPlatformLibrary(path);
-			if (handle == null || handle.IsInvalid)
+			var handle = new SafeLibraryHandle(path);
+			if (handle.IsInvalid)
 			{
 				var ex = Marshal.GetExceptionForHR(Marshal.GetHRForLastWin32Error());
 				if (ex is System.IO.FileNotFoundException)
@@ -128,7 +89,7 @@ namespace FoundationDB.Client.Native
 		public SafeLibraryHandle Handle { get; }
 
 		/// <summary>Call FreeLibrary on the unmanaged dll. All function pointers handed out from this class become invalid after this.</summary>
-		/// <remarks>This is very dangerous because it suddenly invalidate everything retrieved from this dll. This includes any functions handed out via GetProcAddress, and potentially any objects returned from those functions (which may have an implementation in the dll)./// </remarks>
+		/// <remarks>This is very dangerous because it suddenly invalidates everything retrieved from this dll. This includes any functions handed out via GetProcAddress, and potentially any objects returned from those functions (which may have an implementation in the dll)./// </remarks>
 		public void Dispose()
 		{
 			if (!this.Handle.IsClosed)
