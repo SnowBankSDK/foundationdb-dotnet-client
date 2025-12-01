@@ -703,7 +703,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				SpecialType.System_UIntPtr => "UIntPtr.Zero",
 				SpecialType.System_DateTime => "DateTime.MinValue",
 				SpecialType.System_Enum => "0",
-				_ => type.IsValueType() ? "default" : "null"
+				_ => !type.IsValueType() || type.IsNullableOfT() ? "null" : "default"
 			};
 
 			private static INamedTypeSymbol[] GetTypeHierarchy(ITypeSymbol type)
