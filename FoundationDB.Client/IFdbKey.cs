@@ -30,7 +30,7 @@ namespace FoundationDB.Client
 	/// <summary>Represents a key in the database, that can be serialized into bytes</summary>
 	/// <remarks>
 	/// <para>Types that implement this interface usually wrap a parent subspace, as well as the elements that make up a key inside this subspace.</para>
-	/// <para>For example, a <see cref="FdbTupleKey{string,int}"/> will wrap the items <c>("hello", 123)</c>, which will be later converted into bytes using the Tuple Encoding</para>
+	/// <para>For example, a <see cref="FdbTupleKey{T1,T2}"/> will wrap the items <c>("hello", 123)</c>, which will be later converted into bytes using the Tuple Encoding</para>
 	/// <para>Keys that are reused multiple times can be converted into a <see cref="FdbRawKey"/> using the <see cref="FdbKeyHelpers.Memoize{TKey}"/> method, which wraps the complete key in a <see cref="Slice"/>.</para>
 	/// </remarks>
 	public interface IFdbKey : ISpanEncodable, ISpanFormattable
@@ -48,21 +48,21 @@ namespace FoundationDB.Client
 		[Pure]
 		IKeySubspace? GetSubspace();
 
-		/// <inheritdoc cref="IEquatable{T}.Equals(T?)"/>
+		/// <inheritdoc cref="IEquatable{T}.Equals(T)"/>
 		[Pure]
 		bool FastEqualTo<TOtherKey>(in TOtherKey key) where TOtherKey : struct, IFdbKey;
 
-		/// <inheritdoc cref="IComparable{T}.CompareTo(T?)"/>
+		/// <inheritdoc cref="IComparable{T}.CompareTo(T)"/>
 		[Pure]
 		int FastCompareTo<TOtherKey>(in TOtherKey key) where TOtherKey : struct, IFdbKey;
 
 #if !NET9_0_OR_GREATER
 
-		/// <inheritdoc cref="IEquatable{T}.Equals(T?)"/>
+		/// <inheritdoc cref="IEquatable{T}.Equals(T)"/>
 		[Pure]
 		bool Equals(ReadOnlySpan<byte> other);
 
-		/// <inheritdoc cref="IComparable{T}.CompareTo(T?)"/>
+		/// <inheritdoc cref="IComparable{T}.CompareTo(T)"/>
 		[Pure]
 		int CompareTo(ReadOnlySpan<byte> other);
 

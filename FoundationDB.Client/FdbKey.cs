@@ -110,7 +110,7 @@ namespace FoundationDB.Client
 
 		#region With Subspace...
 
-		/// <summary>Returns a key that wraps a pre-encoded binary suffix inside a <see cref="IBinaryKeySubspace"/></summary>
+		/// <summary>Returns a key that wraps a pre-encoded binary suffix inside a <see cref="IKeySubspace"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbSuffixKey FromBytes(IKeySubspace subspace, Slice relativeKey)
 		{
@@ -118,7 +118,7 @@ namespace FoundationDB.Client
 			return !relativeKey.IsNull ? new(subspace, relativeKey) : throw Fdb.Errors.KeyCannotBeNull(nameof(relativeKey));
 		}
 
-		/// <summary>Returns a key that wraps a pre-encoded binary suffix inside a <see cref="IBinaryKeySubspace"/></summary>
+		/// <summary>Returns a key that wraps a pre-encoded binary suffix inside a <see cref="IKeySubspace"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbSuffixKey FromBytes(IKeySubspace subspace, byte[] relativeKey)
 		{
@@ -126,7 +126,7 @@ namespace FoundationDB.Client
 			return relativeKey is not null ? new(subspace, relativeKey.AsSlice()) : throw Fdb.Errors.KeyCannotBeNull(nameof(relativeKey));
 		}
 
-		/// <summary>Returns a key that wraps a pre-encoded binary suffix inside a <see cref="IBinaryKeySubspace"/></summary>
+		/// <summary>Returns a key that wraps a pre-encoded binary suffix inside a <see cref="IKeySubspace"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbSuffixKey FromBytes(IKeySubspace subspace, byte[] relativeKey, int start, int length)
 		{
@@ -134,7 +134,7 @@ namespace FoundationDB.Client
 			return relativeKey is not null ? new(subspace, relativeKey.AsSlice(start, length)) : throw Fdb.Errors.KeyCannotBeNull(nameof(relativeKey));
 		}
 
-		/// <summary>Returns a key that wraps a pre-encoded binary suffix inside a <see cref="IBinaryKeySubspace"/></summary>
+		/// <summary>Returns a key that wraps a pre-encoded binary suffix inside a <see cref="IKeySubspace"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbSuffixKey FromBytes(IKeySubspace subspace, ReadOnlySpan<byte> relativeKey)
 		{

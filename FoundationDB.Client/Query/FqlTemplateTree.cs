@@ -58,7 +58,8 @@ namespace FoundationDB.Client
 
 		/// <summary>Finds the expression that matches the given tuple</summary>
 		/// <param name="tuple">Tuple to match against the tree</param>
-		/// <returns>Matching expression, or <c>null</c> if no match was found</returns>
+		/// <param name="template">Receives the expression that was matched</param>
+		/// <returns><c>true</c> if an expression matched the tuple; otherwise, <c>false</c></returns>
 		public bool TryMatch(SpanTuple tuple, [MaybeNullWhen(false)] out FqlTemplateExpression template)
 		{
 			var node = this.Root;

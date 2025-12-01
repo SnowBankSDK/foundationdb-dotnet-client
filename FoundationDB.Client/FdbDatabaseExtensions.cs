@@ -530,6 +530,7 @@ namespace FoundationDB.Client
 		#region Back Compat
 
 		/// <summary>Returns the protocol version reported by the coordinator this client is connected to.</summary>
+		/// <param name="db">Database instance</param>
 		/// <param name="ct">Token used to cancel the operation.</param>
 		/// <returns>Task that returns the current protocol version</returns>
 		/// <remarks>This will never complete if the remote server is running a protocol from FDB 5.0 or older.</remarks>

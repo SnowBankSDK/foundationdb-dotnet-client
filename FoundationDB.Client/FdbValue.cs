@@ -363,8 +363,6 @@ namespace FoundationDB.Client
 		#region JSON...
 
 		/// <summary>Returns a value that wraps a <see cref="JsonValue"/>, encoded as UTF-8 bytes</summary>
-		/// <param name="value"></param>
-		/// <returns></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[OverloadResolutionPriority(1)]
 		public static FdbJsonValue ToJson(JsonValue value, CrystalJsonSettings? settings = null)

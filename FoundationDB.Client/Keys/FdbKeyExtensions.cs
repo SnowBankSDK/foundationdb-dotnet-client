@@ -999,7 +999,7 @@ namespace FoundationDB.Client
 		/// <param name="key">Parent key</param>
 		/// <param name="suffix">Binary suffix</param>
 		/// <returns>Key that will append the binary suffix to the current key</returns>
-		/// <remarks>Please note that this will generate a different encoding than calling <see cref="Key{Slice}"/> with a slice (which uses the Tuple Encoding).</remarks>
+		/// <remarks>Please note that this will generate a different encoding than calling <see cref="Key{T}"/> with a <see cref="Slice"/> (which uses the Tuple Encoding).</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbSuffixKey<TKey> Bytes<TKey>(this TKey key, ReadOnlySpan<byte> suffix)
 			where TKey : struct, IFdbKey
@@ -1009,7 +1009,7 @@ namespace FoundationDB.Client
 		/// <param name="key">Parent key</param>
 		/// <param name="suffix">Binary suffix</param>
 		/// <returns>Key that will append the binary suffix to the current key</returns>
-		/// <remarks>Please note that this will generate a different encoding than calling <see cref="Key{Slice}"/> with a slice (which uses the Tuple Encoding).</remarks>
+		/// <remarks>Please note that this will generate a different encoding than calling <see cref="Key{T}"/> with a <see cref="Slice"/> (which uses the Tuple Encoding).</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbSuffixKey<TKey> Bytes<TKey>(this TKey key, Slice suffix)
 			where TKey : struct, IFdbKey
@@ -1019,7 +1019,7 @@ namespace FoundationDB.Client
 		/// <param name="key">Parent key</param>
 		/// <param name="suffix">Binary suffix</param>
 		/// <returns>Key that will append the binary suffix to the current key</returns>
-		/// <remarks>Please note that this will generate a different encoding than calling <see cref="Key{Slice}"/> with a slice (which uses the Tuple Encoding).</remarks>
+		/// <remarks>Please note that this will generate a different encoding than calling <see cref="Key{T}"/> with a <see cref="Slice"/> (which uses the Tuple Encoding).</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbSuffixKey<TKey> Bytes<TKey>(this TKey key, byte[]? suffix)
 			where TKey : struct, IFdbKey
@@ -1029,7 +1029,7 @@ namespace FoundationDB.Client
 		/// <param name="key">Parent key</param>
 		/// <param name="suffix">Suffix string, encoded as UTF-8 bytes</param>
 		/// <returns>Key that will append the binary suffix to the current key</returns>
-		/// <remarks>Please note that this will generate a different encoding than calling <see cref="Key{string}"/> with a string (which uses the Tuple Encoding).</remarks>
+		/// <remarks>Please note that this will generate a different encoding than calling <see cref="Key{T}"/> with a <see cref="string"/> (which uses the Tuple Encoding).</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbSuffixKey<TKey> Bytes<TKey>(this TKey key, string suffix)
 			where TKey : struct, IFdbKey
