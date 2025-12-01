@@ -162,7 +162,7 @@ namespace SnowBank.Buffers
 		}
 
 		/// <summary>
-		/// Returns a <see cref="Span{byte}"/> to write to that is at least the requested length (specified by <paramref name="sizeHint"/>).
+		/// Returns a <see cref="Span{T}">Span&lt;byte&gt;</see> to write to that is at least the requested length (specified by <paramref name="sizeHint"/>).
 		/// If no <paramref name="sizeHint"/> is provided (or it's equal to <code>0</code>), some non-empty buffer is returned.
 		/// </summary>
 		/// <param name="sizeHint">Minimum size required, or <c>0</c> to return all the remaining allocated space</param>
@@ -230,7 +230,7 @@ namespace SnowBank.Buffers
 		}
 
 		/// <summary>
-		/// Returns a <see cref="Memory{byte}"/> to write to that is at least the requested length (specified by <paramref name="sizeHint"/>).
+		/// Returns a <see cref="Memory{T}">Memory&lt;byte&gt;</see> to write to that is at least the requested length (specified by <paramref name="sizeHint"/>).
 		/// If no <paramref name="sizeHint"/> is provided (or it's equal to <code>0</code>), some non-empty buffer is returned.
 		/// </summary>
 		/// <param name="sizeHint">Minimum size required, or <c>0</c> to return all the remaining allocated space</param>

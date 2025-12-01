@@ -964,6 +964,7 @@ namespace SnowBank.Data.Tuples
 			}
 
 			/// <summary>Converts any object into a displayable string, for logging/debugging purpose</summary>
+			/// <param name="sb">Output buffer</param>
 			/// <param name="item">Object to stringify</param>
 			/// <returns>String representation of the object</returns>
 			/// <example>
@@ -1007,6 +1008,8 @@ namespace SnowBank.Data.Tuples
 			}
 
 			/// <summary>Converts any object into a displayable string, for logging/debugging purpose</summary>
+			/// <param name="destination">Output buffer</param>
+			/// <param name="charsWritten">Number of characters written to <paramref name="destination"/></param>
 			/// <param name="item">Object to stringify</param>
 			/// <returns>String representation of the object</returns>
 			/// <example>
@@ -1295,7 +1298,6 @@ namespace SnowBank.Data.Tuples
 					sb.Append(Slice.Dump(item, item.Length)); //TODO: version that does not allocate?
 					sb.Append('`');
 				}
-				;
 			}
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
@@ -1521,7 +1523,7 @@ namespace SnowBank.Data.Tuples
 			public static string Stringify(NodaTime.Instant item) => Stringify(item.ToDateTimeUtc()); /* "yyyy-mm-ddThh:mm:ss.ffffff" */
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
-			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static void StringifyTo(ref FastStringBuilder sb, NodaTime.Instant item) => StringifyTo(ref sb, item.ToDateTimeUtc()); /* "yyyy-mm-ddThh:mm:ss.ffffff" */
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
@@ -1538,6 +1540,7 @@ namespace SnowBank.Data.Tuples
 					: destination.TryWrite(CultureInfo.InvariantCulture, $"'{item}'", out charsWritten);
 
 			/// <summary>Converts a list of object into a displaying string, for logging/debugging purpose</summary>
+			/// <param name="sb">Output buffer</param>
 			/// <param name="items">Span of items to stringify</param>
 			/// <returns>String representation of the tuple in the form "(item1, item2, ...)"</returns>
 			/// <example><c>STuple.Formatter.ToString([ 1, 2, 3 ])</c> => <c>"(1, 2, 3)"</c></example>
@@ -1597,6 +1600,7 @@ namespace SnowBank.Data.Tuples
 			}
 
 			/// <summary>Converts a sequence of object into a displaying string, for logging/debugging purpose</summary>
+			/// <param name="sb">Output buffer</param>
 			/// <param name="items">Span of items to stringify</param>
 			/// <returns>String representation of the tuple in the form "(item1, item2, ...)"</returns>
 			/// <example><c>STuple.Formatter.ToString([ "hello", 123, true, "world" ])</c> => <c>"(\"hello\", 123, true, \"world\")"</c></example>
@@ -1644,6 +1648,7 @@ namespace SnowBank.Data.Tuples
 			}
 
 			/// <summary>Converts a sequence of object into a displaying string, for logging/debugging purpose</summary>
+			/// <param name="sb">Output buffer</param>
 			/// <param name="items">Sequence of items to stringify</param>
 			/// <returns>String representation of the tuple in the form "(item1, item2, ...)"</returns>
 			/// <example><c>STuple.Formatter.ToString([ "hello", 123, true, "world" ])</c> => <c>"(\"hello\", 123, true, \"world\")"</c></example>
@@ -1710,6 +1715,7 @@ namespace SnowBank.Data.Tuples
 			}
 
 			/// <summary>Converts a sequence of object into a displaying string, for logging/debugging purpose</summary>
+			/// <param name="sb">Output buffer</param>
 			/// <param name="items">Tuple to stringify</param>
 			/// <returns>String representation of the tuple in the form "(item1, item2, ...)"</returns>
 			/// <example><c>STuple.Formatter.ToString(TuPack.Unpack(/* ... "hello", 123, true, "world" ... */))</c> => <c>"(\"hello\", 123, true, \"world\")"</c></example>
@@ -1890,7 +1896,7 @@ namespace SnowBank.Data.Tuples
 					return true;
 				}
 
-				/// <summary>Parse a tuple</summary>
+				/// <summary>Parses a tuple</summary>
 				[Pure]
 				public IVarTuple ParseExpression()
 				{

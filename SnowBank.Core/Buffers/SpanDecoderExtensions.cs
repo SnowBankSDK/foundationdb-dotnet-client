@@ -1618,7 +1618,7 @@ namespace System
 			return true;
 		}
 
-		/// <summary>Calls <see cref="Span{T}.TryCopyTo"/> and, if successful, sets the number of copied items in <see cref="written"/></summary>
+		/// <summary>Calls <see cref="Span{T}.TryCopyTo"/> and, if successful, sets the number of copied items in <paramref name="written"/></summary>
 		/// <typeparam name="T"></typeparam>
 		/// <param name="source">The span to copy items from</param>
 		/// <param name="destination">The span to copy items into</param>

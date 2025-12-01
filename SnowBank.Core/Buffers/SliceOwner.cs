@@ -84,7 +84,7 @@ namespace System
 		}
 
 		/// <summary>Returns a <see cref="SliceOwner"/> that wraps an existing <see cref="Slice"/> that is not allocated from a pool</summary>
-		/// <param name="data">Slice of data, that is either <see cref="Slice.Nil"/>, <see cref="Slice.Empty"/>, or uses an array rented from <paramref name="pool"/></param>
+		/// <param name="data">Slice of data, that is either <see cref="Slice.Nil"/>, <see cref="Slice.Empty"/></param>
 		/// <returns><see cref="SliceOwner"/> that will do nothing when disposed.</returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static SliceOwner Wrap(Slice data) => new(data);

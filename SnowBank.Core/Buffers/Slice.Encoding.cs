@@ -1484,7 +1484,7 @@ namespace System
 		/// <returns>Decoded string, or null if the slice is null. The encoding will be automatically detected</returns>
 		/// <remarks>
 		/// This should only be used for slices produced by any of the <see cref="FromString(string?)"/>, <see cref="FromStringUtf8(string?)"/>, <see cref="FromStringUtf8WithBom(string?)"/>, <see cref="FromByteString(string?)"/> or <see cref="FromStringAscii(string?)"/> methods.
-		/// This is NOT compatible with slices produced by <see cref="FromStringAnsi"/> or encoded with any specific encoding or code page.
+		/// This is NOT compatible with slices produced by <see cref="FromStringAnsi(string?)"/> or encoded with any specific encoding or code page.
 		/// This method will NOT automatically remove the UTF-8 BOM if present (use <see cref="ToStringUtf8"/> if you need this)
 		/// </remarks>
 		[Pure]

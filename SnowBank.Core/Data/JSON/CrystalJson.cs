@@ -1245,8 +1245,8 @@ namespace SnowBank.Data.Json
 		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
 		/// <returns>Corresponding JSON value, or <see cref="JsonNull.Missing"/> if <paramref name="jsonText"/> is empty or composed only of white-space characters</returns>
 		/// <remarks>
-		/// <para>When called in a loop to consume a multi-fragment buffer, the caller should stop when <see cref="charsRead"/> is <c>0</c>.</para>
-		/// <para>This methods will skip any initial whitespaces (which will be included in <see cref="charsRead"/>), but will not skip any trailing whitespaces.</para>
+		/// <para>When called in a loop to consume a multi-fragment buffer, the caller should stop when <paramref name="charsRead"/> is <c>0</c>.</para>
+		/// <para>This methods will skip any initial whitespaces (which will be included in <paramref name="charsRead"/>), but will not skip any trailing whitespaces.</para>
 		/// </remarks>
 		public static JsonValue ParseFragment(ReadOnlySpan<char> jsonText, out int charsRead, CrystalJsonSettings? settings = null)
 		{

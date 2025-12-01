@@ -584,7 +584,7 @@ namespace SnowBank.Data.Json
 			return ImmutableList.Create<T>(UnpackArray(serializer, array, resolver));
 		}
 
-		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{string,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
+		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{TKey,TValue}"/> with <see cref="string"/> keys, stored into an optional field of a parent object</summary>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public static Dictionary<string, TValue>? UnpackDictionary<TValue>(this IJsonDeserializer<TValue> serializer, JsonValue? value, Dictionary<string, TValue>? defaultValue = null, IEqualityComparer<string>? keyComparer = null, ICrystalJsonTypeResolver? resolver = null, string? fieldName = null)
@@ -595,7 +595,7 @@ namespace SnowBank.Data.Json
 				_ => throw (fieldName != null ? CrystalJson.Errors.Parsing_CannotCastFieldToJsonObject(value, fieldName) : CrystalJson.Errors.Parsing_CannotCastToJsonObject(value))
 			};
 
-		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{string,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
+		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{TKey,TValue}"/> with <see cref="string"/> keys, stored into an optional field of a parent object</summary>
 		[Pure]
 		public static Dictionary<string, TValue> UnpackDictionary<TValue>(this IJsonDeserializer<TValue> serializer, JsonObject obj, IEqualityComparer<string>? keyComparer = null, ICrystalJsonTypeResolver? resolver = null)
 		{
@@ -609,7 +609,7 @@ namespace SnowBank.Data.Json
 			return res;
 		}
 
-		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{int,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
+		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{TKey,TValue}"/> with <see cref="int"/> keys, stored into an optional field of a parent object</summary>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
 		public static Dictionary<int, TValue>? UnpackDictionaryInt32<TValue>(this IJsonDeserializer<TValue> serializer, JsonValue? value, Dictionary<int, TValue>? defaultValue = null, ICrystalJsonTypeResolver? resolver = null, string? fieldName = null)
@@ -620,7 +620,7 @@ namespace SnowBank.Data.Json
 				_                => throw (fieldName != null ? CrystalJson.Errors.Parsing_CannotCastFieldToJsonObject(value, fieldName) : CrystalJson.Errors.Parsing_CannotCastToJsonObject(value))
 			};
 
-		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{int,TValue}"/> with string keys, stored into an optional field of a parent object</summary>
+		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{TKey,TValue}"/> with <see cref="int"/> keys, stored into an optional field of a parent object</summary>
 		[Pure]
 		public static Dictionary<int, TValue> UnpackDictionaryInt32<TValue>(this IJsonDeserializer<TValue> serializer, JsonObject obj, ICrystalJsonTypeResolver? resolver = null)
 		{

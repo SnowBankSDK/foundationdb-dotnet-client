@@ -33,7 +33,7 @@ namespace SnowBank.Data.Tuples.Binary
 	using System.Text;
 	using SnowBank.Data.Tuples;
 
-	/// <summary>Buffer for writing tuples into a <see cref="Span{byte}"/></summary>
+	/// <summary>Buffer for writing tuples into a <see cref="Span{T}">Span&lt;byte&gt;</see></summary>
 	[DebuggerDisplay("{ToString(),nq}"), DebuggerTypeProxy(typeof(DebugView))]
 	public ref struct TupleSpanWriter
 	{
