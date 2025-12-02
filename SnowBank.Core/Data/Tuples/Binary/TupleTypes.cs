@@ -177,6 +177,23 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <remarks><c>33 xx xx xx xx xx xx xx xx xx xx xx xx</c></remarks>
 		public const byte Uuid96 = 0x33;
 
+		/// <summary>Length-Prefixed Byte String (up to 255 bytes)</summary>
+		/// <remarks>
+		/// <para>An 8-bit integer representing the length, followed by the given number of bytes</para>
+		/// <para>Well suited for storing hashes, or similar binary blobs that may contain a lot of 0x00 bytes, without having to escape them.</para>
+		/// <para>This is an extension of the original Tuple specification, and may not be supported by all bindings.</para>
+		/// </remarks>
+		public const byte VarBytes1 = 0x34;
+
+		/// <summary>Length-Prefixed Byte String (from 256 to 65535 bytes)</summary>
+		/// <remarks>
+		/// <para>A 16-bit big-endian integer representing the length, followed by the given number of bytes</para>
+		/// <para>Well suited for storing hashes, or similar binary blobs that may contain a lot of 0x00 bytes, without having to escape them.</para>
+		/// <para>Lengths of 255 or less should use <see cref="VarBytes1"/> instead.</para>
+		/// <para>This is an extension of the original Tuple specification, and may not be supported by all bindings.</para>
+		/// </remarks>
+		public const byte VarBytes2 = 0x35;
+
 		/// <summary>Reserved Type 0 (application specific)</summary>
 		/// <remarks><c>40 ?? ...</c></remarks>
 		public const byte UserType0 = 0x40;
@@ -241,12 +258,19 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <remarks><c>4F ?? ...</c></remarks>
 		public const byte UserTypeF = 0x4F;
 
+		/// <summary>Marks the end of the tuple encoding (extension)</summary>
+		/// <remarks>
+		/// <para>This type indicates that the following bytes are not part of the tuple and are handled using a custom key encoding.</para>
+		/// <para>This is an extension of the original Tuple specification, and may not be supported by all bindings.</para>
+		/// </remarks>
+		public const byte EndOfTuple = 0xF0;
+
 		/// <summary>Standard prefix of the Directory Layer</summary>
 		/// <remarks>This is not a part of the tuple encoding itself, but helps the tuple decoder pretty-print tuples that would otherwise be unparsable.</remarks>
-		public const byte Directory = 254;
+		public const byte Directory = 0xFE;
 
 		/// <summary>Standard prefix of the System keys, or frequent suffix with key ranges</summary>
-		public const byte Escape = 255;
+		public const byte Escape = 0xFF;
 
 		/// <summary>Returns the type of tuple segment, from its header</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
