@@ -28,6 +28,6 @@ namespace Aspire.Hosting.ApplicationModel
 {
 
 	/// <summary>Represents a FoundationDB resource that requires a cluster file.</summary>
-	public interface IFdbResource : IResourceWithConnectionString;
+	public interface IFdbResource : IResourceWithConnectionString, IResourceWithEndpoints;
 
 }

@@ -64,7 +64,7 @@ namespace Aspire.Hosting.ApplicationModel
 
 		/// <summary>Path to the local native client library ('fdb_c.dll' or 'libfdb_c.so')</summary>
 		/// <remarks>
-		/// <para>This value if ignored if <see cref="DisableNativePreloading"/> is set to <see langword="true"/>.</para>
+		/// <para>This value if ignored when <see cref="DisableNativePreloading"/> is set to <see langword="true"/>.</para>
 		/// <para>See <see cref="Fdb.Options.SetNativeLibPath"/> for more information.</para>
 		/// </remarks>
 		public string? NativeLibraryPath { get; set; }
