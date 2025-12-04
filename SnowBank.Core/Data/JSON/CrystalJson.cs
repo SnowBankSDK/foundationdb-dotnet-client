@@ -1285,17 +1285,61 @@ namespace SnowBank.Data.Json
 		/// <param name="path">Instance from which to read the JSON document</param>
 		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
 		/// <param name="options">Options used for streaming operations.</param>
-		/// <returns>Corresponding JSON value. If <paramref name="path"/> is empty, will return <see cref="JsonNull.Missing"/></returns>
+		/// <returns>Corresponding JSON value. If the file is missing or empty and the <see cref="LoadOptions.ReturnNullIfMissing"/> flag is set in <paramref name="options"/>, <see cref="JsonNull.Missing"/> will be returned instead.</returns>
 		/// <remarks>
 		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please configure the <paramref name="settings"/> accordingly.</para>
 		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
 		/// </remarks>
+		/// <exception cref="FileNotFoundException">If the file does not exist, and flag <see cref="LoadOptions.ReturnNullIfMissing"/> is not set in <paramref cref="options"/></exception>
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue ParseFrom(string path, CrystalJsonSettings? settings = null, LoadOptions options = LoadOptions.None)
 		{
 			return LoadAndParseInternal(path, settings, options);
 		}
+
+		/// <summary>Reads the content of a file, and returns the corresponding JSON value</summary>
+		/// <param name="path">Instance from which to read the JSON document</param>
+		/// <param name="ct">Token used to cancel the operation</param>
+		/// <returns>Corresponding JSON value.</returns>
+		/// <remarks>
+		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please use one of the overloads that accepts a <see cref="CrystalJsonSettings"/> parameter.</para>
+		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
+		/// </remarks>
+		/// <exception cref="FileNotFoundException">If the file does not exist.</exception>
+		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
+		public static Task<JsonValue> ParseFromAsync(string path, CancellationToken ct)
+			=> LoadAndParseInternalAsync(path, null, LoadOptions.None, ct);
+
+		/// <summary>Reads the content of a file, and returns the corresponding JSON value</summary>
+		/// <param name="path">Instance from which to read the JSON document</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
+		/// <param name="ct">Token used to cancel the operation</param>
+		/// <returns>Corresponding JSON value.</returns>
+		/// <remarks>
+		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please configure the <paramref name="settings"/> accordingly.</para>
+		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
+		/// </remarks>
+		/// <exception cref="FileNotFoundException">If the file does not exist.</exception>
+		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
+		public static Task<JsonValue> ParseFromAsync(string path, CrystalJsonSettings? settings, CancellationToken ct)
+			=> LoadAndParseInternalAsync(path, settings, LoadOptions.None, ct);
+
+		/// <summary>Reads the content of a file, and returns the corresponding JSON value</summary>
+		/// <param name="path">Instance from which to read the JSON document</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
+		/// <param name="options">Options used for streaming operations.</param>
+		/// <param name="ct">Token used to cancel the operation</param>
+		/// <returns>Corresponding JSON value. If the file is missing or empty and the <see cref="LoadOptions.ReturnNullIfMissing"/> flag is set in <paramref name="options"/>, <see cref="JsonNull.Missing"/> will be returned instead.</returns>
+		/// <remarks>
+		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please configure the <paramref name="settings"/> accordingly.</para>
+		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
+		/// </remarks>
+		/// <exception cref="FileNotFoundException">If the file does not exist, and flag <see cref="LoadOptions.ReturnNullIfMissing"/> is not set in <paramref cref="options"/></exception>
+		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static Task<JsonValue> ParseFromAsync(string path, CrystalJsonSettings? settings, LoadOptions options, CancellationToken ct)
+			=> LoadAndParseInternalAsync(path, settings, options, ct);
 
 		/// <summary>Reads the content of a file, and returns the corresponding JSON value</summary>
 		/// <param name="source">Instance from which to read the JSON document</param>
@@ -1311,9 +1355,99 @@ namespace SnowBank.Data.Json
 		{
 			Contract.NotNull(source);
 
-			using var reader = new StreamReader(source, Encoding.UTF8, true);
+			if (!source.CanRead) throw new InvalidOperationException("Cannot read from source stream");
 
-			return ParseFromReader(new JsonTextReader(reader), settings);
+			if (ReferenceEquals(source, Stream.Null))
+			{ // not content
+				return JsonNull.Missing;
+			}
+
+			if (source is MemoryStream ms && ms.TryGetBuffer(out var buffer))
+			{ // read from the buffer directly
+				return Parse(buffer.AsSlice(), settings);
+			}
+
+			return ParseFromStream(source, settings);
+
+			static JsonValue ParseFromStream(Stream source, CrystalJsonSettings? settings)
+			{
+				using var reader = new StreamReader(source, Encoding.UTF8, true);
+
+				return ParseFromReader(new JsonTextReader(reader), settings);
+			}
+		}
+
+		/// <summary>Reads the content of a file, and returns the corresponding JSON value</summary>
+		/// <param name="source">Instance from which to read the JSON document</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
+		/// <param name="ct">Token used to cancel the operation</param>
+		/// <returns>Corresponding JSON value.</returns>
+		/// <remarks>
+		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please configure the <paramref name="settings"/> accordingly.</para>
+		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
+		/// </remarks>
+		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
+		[Pure]
+		public static Task<JsonValue> ParseFromAsync(Stream source, CrystalJsonSettings? settings, CancellationToken ct)
+		{
+			Contract.NotNull(source);
+			if (ct.IsCancellationRequested) return Task.FromCanceled<JsonValue>(ct);
+
+			if (!source.CanRead) throw new InvalidOperationException("Cannot read from source stream");
+
+			if (ReferenceEquals(source, Stream.Null))
+			{ // no content
+				return Task.FromResult(JsonNull.Missing);
+			}
+
+			switch (source)
+			{
+				case MemoryStream ms:
+				{ // read from memory (non-blocking)
+					return ParseFromMemoryStream(ms, settings, ct);
+				}
+				default:
+				{ // read from another thread (blocking)
+					return ParseFromDeferred(source, settings, ct);
+				}
+			}
+
+
+			static Task<JsonValue> ParseFromMemoryStream(MemoryStream ms, CrystalJsonSettings? settings, CancellationToken ct)
+			{
+				try
+				{
+					JsonValue value;
+					if (ms.TryGetBuffer(out var buffer))
+					{
+						value = Parse(buffer.AsSlice(), settings);
+					}
+					else
+					{
+						using var reader = new StreamReader(ms, Encoding.UTF8, true);
+
+						value = ParseFromReader(new JsonTextReader(reader), settings);
+					}
+					return Task.FromResult(value);
+				}
+				catch (Exception e)
+				{
+					return Task.FromException<JsonValue>(e);
+				}
+			}
+
+			static Task<JsonValue> ParseFromDeferred(Stream source, CrystalJsonSettings? settings, CancellationToken ct)
+			{
+				//TODO: find a better solution!
+				// => for now, we defer to the thread pool
+				return Task.Run(() =>
+				{
+					ct.ThrowIfCancellationRequested();
+					//TODO: use a stream wrapper that checks the cancellation token?
+					using var reader = new StreamReader(source, Encoding.UTF8, true);
+					return ParseFromReader(new JsonTextReader(reader), settings);
+				}, ct);
+			}
 		}
 
 		/// <summary>Checks if the buffer is likely to contain a JSON Object or Array</summary>
@@ -1366,10 +1500,10 @@ namespace SnowBank.Data.Json
 		[Pure]
 		private static StreamReader OpenJsonStreamReader(string path, CrystalJsonSettings? settings)
 		{
-			var bufferSize = 0x1000; // x4 = 16K
-			if (settings != null && settings.OptimizeForLargeData)
+			var bufferSize = 0x1000; // x4 = 16 KiB
+			if (settings is { OptimizeForLargeData: true })
 			{
-				bufferSize = 0x8000; // x4 = 128k
+				bufferSize = 0x8000; // x4 = 128 KiB
 			}
 
 			FileStream? fileStream = null;
@@ -1387,12 +1521,13 @@ namespace SnowBank.Data.Json
 		}
 
 		[Pure]
-		private static JsonValue LoadAndParseInternal(string path, CrystalJsonSettings? settings, LoadOptions options)
+		internal static JsonValue LoadAndParseInternal(string path, CrystalJsonSettings? settings, LoadOptions options = LoadOptions.None)
 		{
 			Contract.NotNullOrEmpty(path);
 			path = Path.GetFullPath(path);
 
-			if (!File.Exists(path))
+			var fi = new FileInfo(path);
+			if (!fi.Exists)
 			{ // The file does not exist
 
 				if ((options & LoadOptions.ReturnNullIfMissing) == LoadOptions.ReturnNullIfMissing)
@@ -1403,8 +1538,40 @@ namespace SnowBank.Data.Json
 				throw new FileNotFoundException("Specified JSON file could not be found", path);
 			}
 
+			//TODO: maybe buffer everything in memory if this is a small file?
+
 			using var reader = OpenJsonStreamReader(path, settings);
 			return ParseFromReader(new JsonTextReader(reader), settings);
+		}
+
+		[Pure]
+		internal static async Task<JsonValue> LoadAndParseInternalAsync(string path, CrystalJsonSettings? settings, LoadOptions options, CancellationToken ct)
+		{
+			Contract.NotNullOrEmpty(path);
+			path = Path.GetFullPath(path);
+
+			var fi = new FileInfo(path);
+			if (!fi.Exists)
+			{ // The file does not exist
+
+				if ((options & LoadOptions.ReturnNullIfMissing) == LoadOptions.ReturnNullIfMissing)
+				{ // Treat a FileNotFound as if it was present with a "null" value
+					return JsonNull.Missing;
+				}
+				// 404'ed !
+				throw new FileNotFoundException("Specified JSON file could not be found", path);
+			}
+
+			//TODO: find a better solution than this!
+			var value = await Task.Run(() =>
+			{
+				ct.ThrowIfCancellationRequested();
+				using var reader = OpenJsonStreamReader(path, settings);
+				//TODO: use a stream wrapper that checks the cancellation token?
+				return ParseFromReader(new JsonTextReader(reader), settings);
+			}, ct).ConfigureAwait(false);
+
+			return value;
 		}
 
 		#endregion

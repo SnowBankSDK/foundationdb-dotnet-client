@@ -125,6 +125,46 @@ namespace SnowBank.Data.Json
 
 		#endregion
 
+		#region Load from file...
+
+		public static JsonObject LoadFrom(string path, CrystalJsonSettings? settings = null)
+		{
+			Contract.NotNullOrWhiteSpace(path);
+			return (JsonObject) CrystalJson.LoadAndParseInternal(path, settings);
+		}
+
+		public static Task<JsonObject> LoadFromAsync(string path, CancellationToken ct) => LoadFromAsync(path, null, ct);
+
+		private static InvalidOperationException ErrorFileDoesNotContainExpectedObject(JsonValue value) => new($"Specified JSON file was loaded, but was of type {value.Type} instead of expected type Object");
+
+		public static async Task<JsonObject> LoadFromAsync(string path, CrystalJsonSettings? settings, CancellationToken ct)
+		{
+			Contract.NotNullOrWhiteSpace(path);
+			ct.ThrowIfCancellationRequested();
+
+			var value = await CrystalJson.LoadAndParseInternalAsync(path, settings, CrystalJson.LoadOptions.None, ct).ConfigureAwait(false);
+			return value as JsonObject ?? throw ErrorFileDoesNotContainExpectedObject(value);
+		}
+
+		public static async Task<JsonObject?> TryLoadFromAsync(string path, CrystalJsonSettings? settings, CancellationToken ct)
+		{
+			Contract.NotNullOrWhiteSpace(path);
+			ct.ThrowIfCancellationRequested();
+
+			var value = await CrystalJson.LoadAndParseInternalAsync(path, settings, CrystalJson.LoadOptions.ReturnNullIfMissing, ct).ConfigureAwait(false);
+
+			// if file is missing, we should have a JsonNull
+			if (value is JsonNull)
+			{
+				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : JsonObject.Create();
+			}
+
+			// otherwise, it should be our object
+			return value as JsonObject ?? throw ErrorFileDoesNotContainExpectedObject(value);
+		}
+
+		#endregion
+
 	}
 
 }
