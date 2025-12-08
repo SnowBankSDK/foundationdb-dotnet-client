@@ -597,7 +597,18 @@ namespace SnowBank.Collections.CacheOblivious
 			if (iterator.SeekLast()) m_bounds.End = iterator.Current!.End;
 		}
 
-		/// <summary>Mark a range with a new value</summary>
+		/// <summary>Marks a range with a new value</summary>
+		/// <param name="range">Begin key (included), End key (excluded) and new Value for this range</param>
+		/// <exception cref="InvalidOperationException">If <paramref name="range"/> is empty (End key less than or equal to Begin key)</exception>
+		public void Mark((TKey BeginInclusive, TKey EndExclusive, TValue value) range) => Mark(range.BeginInclusive, range.EndExclusive, range.value);
+
+		/// <summary>Marks a range with a new value</summary>
+		/// <param name="range">Begin key (included) and End key (excluded) of the range</param>
+		/// <param name="value">New value for this range</param>
+		/// <exception cref="InvalidOperationException">If <paramref name="range"/> is empty (End key less than or equal to Begin key)</exception>
+		public void Mark((TKey BeginInclusive, TKey EndExclusive) range, TValue value) => Mark(range.BeginInclusive, range.EndExclusive, value);
+
+		/// <summary>Marks a range with a new value</summary>
 		/// <param name="beginInclusive">Begin key of the range (included)</param>
 		/// <param name="endExclusive">End key of the range (excluded)</param>
 		/// <param name="value">New value for this range</param>
@@ -1431,7 +1442,7 @@ namespace SnowBank.Collections.CacheOblivious
 		[MustDisposeResource]
 		public ColaStore.Enumerator<Entry> GetEnumerator()
 		{
-			return new ColaStore.Enumerator<Entry>(m_items, reverse: false);
+			return new(m_items, reverse: false);
 		}
 
 		/// <summary>Returns a sequence of all the ranges in this dictionary, ordered by their keys.</summary>
