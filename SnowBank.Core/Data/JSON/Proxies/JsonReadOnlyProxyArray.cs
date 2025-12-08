@@ -156,7 +156,7 @@ namespace SnowBank.Data.Json
 			// the result would change if there are additional items in the array
 			if (!m_value.TryGetCount(out var count))
 			{
-				if (m_value.GetJsonUnsafe())
+				if (m_value.GetJsonUnsafe().IsNullOrMissing())
 				{
 					yield break;
 				}
