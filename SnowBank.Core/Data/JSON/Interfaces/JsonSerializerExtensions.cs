@@ -2048,6 +2048,44 @@ namespace SnowBank.Data.Json
 			return value.Required<T>(resolver);
 		}
 
+		/// <summary>Deserializes a required JSON value into an instance of <typeparamref name="T"/></summary>
+		/// <typeparam name="T">Type that implements <see cref="IJsonDeserializable{T}"/></typeparam>
+		/// <param name="converter">Deserializer instance to use</param>
+		/// <param name="value">JSON value to deserialize</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <param name="parent">Parent JSON object that holds this field (used when throwing exceptions).</param>
+		/// <param name="fieldName">Name of the field in the parent JSON object that holds this value (used when throwing exceptions).</param>
+		/// <returns>Deserialized instance</returns>
+		/// <exception cref="JsonBindingException"> if <paramref name="value"/> is null or missing, or it could not be bound to the type <typeparamref name="T"/>.</exception>
+		[return: NotNullIfNotNull(nameof(defaultValue))]
+		public static T? Unpack<T>(this IJsonDeserializer<T> converter, JsonValue? value, T? defaultValue, ICrystalJsonTypeResolver? resolver)
+			where T : notnull
+			{
+			if (value is null or JsonNull)
+			{
+				return defaultValue;
+			}
+			return converter.Unpack(value, resolver);
+		}
+
+		/// <summary>Deserializes a required JSON value into an instance of <typeparamref name="T"/></summary>
+		/// <typeparam name="T">Type that implements <see cref="IJsonDeserializable{T}"/></typeparam>
+		/// <param name="value">JSON value to deserialize</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <param name="parent">Parent JSON object that holds this field (used when throwing exceptions).</param>
+		/// <param name="fieldName">Name of the field in the parent JSON object that holds this value (used when throwing exceptions).</param>
+		/// <returns>Deserialized instance</returns>
+		/// <exception cref="JsonBindingException"> if <paramref name="value"/> is null or missing, or it could not be bound to the type <typeparamref name="T"/>.</exception>
+		public static T Unpack<T>(JsonValue? value, ICrystalJsonTypeResolver? resolver, JsonValue? parent = null, string? fieldName = null)
+			where T : notnull
+		{
+			if (value is null or JsonNull)
+			{
+				throw (fieldName != null ? CrystalJson.Errors.Parsing_FieldIsNullOrMissing(parent, fieldName, null) : CrystalJson.Errors.Parsing_ValueIsNullOrMissing());
+			}
+			return value.Required<T>(resolver);
+		}
+
 		#endregion
 
 		extension<TJsonPackable>(TJsonPackable? self)

@@ -1929,7 +1929,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						if (member.IsRequired)
 						{
 							// REVIEW: what if isNullableOfT is true ? this is a bit weird to have nullable value type that is also required??
-							sb.AppendLine($"{member.MemberName} = /* local-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired<{member.Type.FullyQualifiedName}>({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)}),");
+							sb.AppendLine($"{member.MemberName} = /* local-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)}),");
 						}
 						else if (isNullableOfT)
 						{
@@ -1937,7 +1937,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 						else
 						{
-							sb.AppendLine($"{member.MemberName} = /* local-optional */ {GetLocalSerializerRef(target)}.Unpack(obj[{GetLocalPropertyNameRef(member)}], resolver),");
+							sb.AppendLine($"{member.MemberName} = /* local-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver),");
 						}
 						continue;
 					}
@@ -1950,7 +1950,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 						else
 						{
-							sb.AppendLine($"{member.MemberName} = /* deserializable-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackJsonDeserializable<{member.Type.FullyQualifiedNameAnnotated}>.Unpack(obj[{GetLocalPropertyNameRef(member)}], resolver),");
+							sb.AppendLine($"{member.MemberName} = /* deserializable-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackJsonDeserializable<{member.Type.FullyQualifiedNameAnnotated}>(obj[{GetLocalPropertyNameRef(member)}], resolver),");
 						}
 						continue;
 					}
