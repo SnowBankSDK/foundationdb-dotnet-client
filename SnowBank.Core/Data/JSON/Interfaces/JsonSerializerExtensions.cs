@@ -1900,19 +1900,19 @@ namespace SnowBank.Data.Json
 		/// <summary>Deserializes a JSON value into an instance of <typeparamref name="T"/>, that is known to implement <see cref="IJsonDeserializable{T}"/></summary>
 		/// <typeparam name="T">Type that implements <see cref="IJsonDeserializable{T}"/></typeparam>
 		/// <param name="jsonBytes">UTF-8 encoded JSON document to parse</param>
-		/// <param name="missingValue">Fallback value returned when <paramref name="jsonBytes"/> is empty or <c>"null"</c>.</param>
+		/// <param name="defaultValue">Fallback value returned when <paramref name="jsonBytes"/> is empty or <c>"null"</c>.</param>
 		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
-		/// <returns>Deserialized instance, or <paramref name="missingValue"/> if <paramref name="jsonBytes"/> is empty or <c>"null"</c></returns>
+		/// <returns>Deserialized instance, or <paramref name="defaultValue"/> if <paramref name="jsonBytes"/> is empty or <c>"null"</c></returns>
 		/// <exception cref="JsonBindingException"> if <paramref name="jsonBytes"/> could not be bound to the type <typeparamref name="T"/>.</exception>
-		[return: NotNullIfNotNull(nameof(missingValue))]
-		public static T? DeserializeJsonDeserializable<T>(ReadOnlySpan<byte> jsonBytes, T? missingValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		[return: NotNullIfNotNull(nameof(defaultValue))]
+		public static T? DeserializeJsonDeserializable<T>(ReadOnlySpan<byte> jsonBytes, T? defaultValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			where T : IJsonDeserializable<T>
 		{
 			var value = CrystalJson.Parse(jsonBytes, settings);
 			if (value is JsonNull)
 			{
-				return missingValue;
+				return defaultValue;
 			}
 			return T.JsonDeserialize(value, resolver);
 		}
@@ -1932,17 +1932,17 @@ namespace SnowBank.Data.Json
 		/// <summary>Deserializes a JSON value into an instance of <typeparamref name="T"/>, that is known to implement <see cref="IJsonDeserializable{T}"/></summary>
 		/// <typeparam name="T">Type that implements <see cref="IJsonDeserializable{T}"/></typeparam>
 		/// <param name="value">JSON value to deserialize</param>
-		/// <param name="missingValue">Fallback value returned when <paramref name="value"/> is null or missing.</param>
+		/// <param name="defaultValue">Fallback value returned when <paramref name="value"/> is null or missing.</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
-		/// <returns>Deserialized instance, or <paramref name="missingValue"/> if <paramref name="value"/> is null or missing</returns>
+		/// <returns>Deserialized instance, or <paramref name="defaultValue"/> if <paramref name="value"/> is null or missing</returns>
 		/// <exception cref="JsonBindingException"> if <paramref name="value"/> could not be bound to the type <typeparamref name="T"/>.</exception>
-		[return: NotNullIfNotNull(nameof(missingValue))]
-		public static T? UnpackJsonDeserializable<T>(JsonValue? value, T? missingValue, ICrystalJsonTypeResolver? resolver)
+		[return: NotNullIfNotNull(nameof(defaultValue))]
+		public static T? UnpackJsonDeserializable<T>(JsonValue? value, T? defaultValue, ICrystalJsonTypeResolver? resolver)
 			where T : IJsonDeserializable<T>
 		{
 			if (value is null or JsonNull)
 			{
-				return missingValue;
+				return defaultValue;
 			}
 			return T.JsonDeserialize(value, resolver);
 		}
@@ -1950,14 +1950,14 @@ namespace SnowBank.Data.Json
 		/// <summary>Deserializes a JSON value into an instance of <typeparamref name="T"/></summary>
 		/// <typeparam name="T">Type of the target instance</typeparam>
 		/// <param name="value">JSON value to deserialize</param>
-		/// <param name="missingValue">Fallback value returned when <paramref name="value"/> is null or missing.</param>
+		/// <param name="defaultValue">Fallback value returned when <paramref name="value"/> is null or missing.</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
-		/// <returns>Deserialized instance, or <paramref name="missingValue"/> if <paramref name="value"/> is null or missing</returns>
+		/// <returns>Deserialized instance, or <paramref name="defaultValue"/> if <paramref name="value"/> is null or missing</returns>
 		/// <exception cref="JsonBindingException"> if <paramref name="value"/> could not be bound to the type <typeparamref name="T"/>.</exception>
-		[return: NotNullIfNotNull(nameof(missingValue))]
-		public static T? Unpack<T>(JsonValue? value, T? missingValue, ICrystalJsonTypeResolver? resolver)
+		[return: NotNullIfNotNull(nameof(defaultValue))]
+		public static T? Unpack<T>(JsonValue? value, T? defaultValue, ICrystalJsonTypeResolver? resolver)
 		{
-			return value.As<T>(missingValue, resolver);
+			return value.As<T>(defaultValue, resolver);
 		}
 
 		/// <summary>Deserializes a JSON value into a <see cref="Nullable{T}"/> value.</summary>
@@ -1979,16 +1979,16 @@ namespace SnowBank.Data.Json
 		/// <summary>Deserializes a JSON value into a <see cref="Nullable{T}"/> value.</summary>
 		/// <typeparam name="T">Type of the target value</typeparam>
 		/// <param name="value">JSON value to deserialize</param>
-		/// <param name="missingValue">Fallback value returned when <paramref name="value"/> is null or missing.</param>
+		/// <param name="defaultValue">Fallback value returned when <paramref name="value"/> is null or missing.</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
-		/// <returns>Deserialized instance, or <paramref name="missingValue"/> if <paramref name="value"/> is null or missing</returns>
+		/// <returns>Deserialized instance, or <paramref name="defaultValue"/> if <paramref name="value"/> is null or missing</returns>
 		/// <exception cref="JsonBindingException"> if <paramref name="value"/> could not be bound to the type <typeparamref name="T"/>.</exception>
-		public static T? UnpackNullableJsonDeserializable<T>(JsonValue? value, T? missingValue, ICrystalJsonTypeResolver? resolver)
+		public static T? UnpackNullableJsonDeserializable<T>(JsonValue? value, T? defaultValue, ICrystalJsonTypeResolver? resolver)
 			where T : struct, IJsonDeserializable<T>
 		{
 			if (value is null or JsonNull)
 			{
-				return missingValue;
+				return defaultValue;
 			}
 			return T.JsonDeserialize(value, resolver);
 		}
@@ -2079,9 +2079,9 @@ namespace SnowBank.Data.Json
 			}
 
 			[Pure]
-			public static JsonValue JsonPack(TJsonPackable? value, JsonValue? missingValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			public static JsonValue JsonPack(TJsonPackable? value, JsonValue? defaultValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			{
-				return value?.JsonPack(settings ?? CrystalJsonSettings.Json, resolver ?? CrystalJson.DefaultResolver) ?? missingValue ?? JsonNull.Null;
+				return value?.JsonPack(settings ?? CrystalJsonSettings.Json, resolver ?? CrystalJson.DefaultResolver) ?? defaultValue ?? JsonNull.Null;
 			}
 
 			[Pure]
@@ -2091,9 +2091,9 @@ namespace SnowBank.Data.Json
 			}
 
 			[Pure]
-			public static JsonValue JsonPackReadOnly(TJsonPackable? value, JsonValue? missingValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			public static JsonValue JsonPackReadOnly(TJsonPackable? value, JsonValue? defaultValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			{
-				return value?.JsonPack(settings.AsReadOnly(), resolver ?? CrystalJson.DefaultResolver) ?? missingValue?.ToReadOnly() ?? JsonNull.Null;
+				return value?.JsonPack(settings.AsReadOnly(), resolver ?? CrystalJson.DefaultResolver) ?? defaultValue?.ToReadOnly() ?? JsonNull.Null;
 			}
 
 			[Pure]
@@ -2182,16 +2182,16 @@ namespace SnowBank.Data.Json
 			}
 
 			[Pure]
-			[return: NotNullIfNotNull(nameof(missingValue))]
-			public static TJsonDeserializable JsonDeserialize(Slice jsonBytes, TJsonDeserializable? missingValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			[return: NotNullIfNotNull(nameof(defaultValue))]
+			public static TJsonDeserializable JsonDeserialize(Slice jsonBytes, TJsonDeserializable? defaultValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 				=> JsonDeserialize<TJsonDeserializable>(jsonBytes.Span, settings, resolver);
 
 			[Pure]
-			[return: NotNullIfNotNull(nameof(missingValue))]
-			public static TJsonDeserializable? JsonDeserialize(ReadOnlySpan<byte> jsonBytes, TJsonDeserializable? missingValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			[return: NotNullIfNotNull(nameof(defaultValue))]
+			public static TJsonDeserializable? JsonDeserialize(ReadOnlySpan<byte> jsonBytes, TJsonDeserializable? defaultValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			{
 				var value = CrystalJson.Parse(jsonBytes, settings);
-				return value is not JsonNull ? TJsonDeserializable.JsonDeserialize(value, resolver) : missingValue;
+				return value is not JsonNull ? TJsonDeserializable.JsonDeserialize(value, resolver) : defaultValue;
 			}
 
 			[Pure]
