@@ -24,6 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+// ReSharper disable StringLiteralTypo
+
 namespace SnowBank.Runtime.Converters
 {
 	using System.Globalization;
@@ -84,7 +86,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out int written, default, NumberFormatInfo.InvariantInfo); // will be inlined as Number.TryNegativeInt32ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		/// <summary>Converts a 16-bit unsigned integer into a decimal string literal, using the Invariant culture</summary>
@@ -112,7 +114,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out int written); // will be inlined as Number.TryUInt32ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 #endif
 		}
 
@@ -156,7 +158,7 @@ namespace SnowBank.Runtime.Converters
 				: value.TryFormat(buf, out written, default, NumberFormatInfo.InvariantInfo); // will be inlined as Number.TryNegativeInt32ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		/// <summary>Converts a 16-bit unsigned integer into a decimal string literal, using the Invariant culture</summary>
@@ -188,7 +190,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out int written); // will be inlined as Number.TryUInt32ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -231,7 +233,7 @@ namespace SnowBank.Runtime.Converters
 				: value.TryFormat(buf, out written, default, NumberFormatInfo.InvariantInfo); // will be inlined as Number.TryNegativeInt32ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		/// <summary>Converts a 32-bit unsigned integer into a decimal string literal, using the Invariant culture</summary>
@@ -263,7 +265,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out int written); // will be inlined as Number.TryUInt32ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -307,7 +309,7 @@ namespace SnowBank.Runtime.Converters
 				: value.TryFormat(buf, out written, default, NumberFormatInfo.InvariantInfo); // will be inlined as Number.TryNegativeInt64ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		/// <summary>Converts a 64-bit unsigned integer into a decimal string literal, using the Invariant culture</summary>
@@ -339,7 +341,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out int written); // will be inlined as Number.TryUInt64ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -370,7 +372,7 @@ namespace SnowBank.Runtime.Converters
 				: value.TryFormat(buf, out written, default, NumberFormatInfo.InvariantInfo);
 			if (!success) ReportInternalFormattingError();
 			
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		/// <summary>Converts a 64-bit unsigned integer into a decimal string literal, using the Invariant culture</summary>
@@ -393,7 +395,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out int written); // will be inlined as Number.TryUInt128ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 #endif
@@ -432,7 +434,7 @@ namespace SnowBank.Runtime.Converters
 					: x.TryFormat(buf, out written, default, NumberFormatInfo.InvariantInfo); // will be inlined as Number.TryNegativeInt64ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -468,7 +470,7 @@ namespace SnowBank.Runtime.Converters
 					: x.TryFormat(buf, out written, default, NumberFormatInfo.InvariantInfo); // will be inlined as Number.TryNegativeInt64ToDecStr
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -498,7 +500,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out var written, default, NumberFormatInfo.InvariantInfo);
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -526,7 +528,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out var written, null, NumberFormatInfo.InvariantInfo);
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -554,7 +556,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out var written, "O", CultureInfo.InvariantCulture);
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -582,7 +584,7 @@ namespace SnowBank.Runtime.Converters
 			bool success = value.TryFormat(buf, out var written, "O", CultureInfo.InvariantCulture);
 			if (!success) ReportInternalFormattingError();
 
-			output.Write(buf.Slice(0, written));
+			output.Write(buf[..written]);
 		}
 
 		#endregion
@@ -664,7 +666,7 @@ namespace SnowBank.Runtime.Converters
 		/// <summary>Converts a string literal into its 32-bit signed integer equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1234" or "-5")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid integer</param>
-		/// <returns>Corresponding integer value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding integer value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToInt32("1234", 0) == 1234</code>
 		/// <code>StringConverters.ToInt32("hello", 0) == 0</code>
@@ -694,7 +696,7 @@ namespace SnowBank.Runtime.Converters
 		/// <summary>Converts a string literal into its 32-bit signed integer equivalent, using invariant-culture format</summary>
 		/// <param name="value">string literal to convert (ex: "1234" or "-5")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid integer</param>
-		/// <returns>Corresponding integer value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding integer value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToInt32("1234", 0) == 1234</code>
 		/// <code>StringConverters.ToInt32("hello", 0) == 0</code>
@@ -723,7 +725,7 @@ namespace SnowBank.Runtime.Converters
 
 		/// <summary>Converts a string literal into its 32-bit signed integer equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1234" or "-5")</param>
-		/// <returns>Corresponding integer value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding integer value, or <see langword="null"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToInt32("1234") == 1234</code>
 		/// <code>StringConverters.ToInt32("hello") == null</code>
@@ -752,7 +754,7 @@ namespace SnowBank.Runtime.Converters
 
 		/// <summary>Converts a string literal into its 32-bit signed integer equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1234" or "-5")</param>
-		/// <returns>Corresponding integer value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding integer value, or <see langword="null"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToInt32("1234") == 1234</code>
 		/// <code>StringConverters.ToInt32("hello") == null</code>
@@ -782,7 +784,7 @@ namespace SnowBank.Runtime.Converters
 		/// <summary>Converts a string literal into its 64-bit signed integer equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1234" or "-5")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid integer</param>
-		/// <returns>Corresponding integer value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding integer value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToInt64("1234", 0) == 1234</code>
 		/// <code>StringConverters.ToInt64("hello", 0) == 0</code>
@@ -812,7 +814,7 @@ namespace SnowBank.Runtime.Converters
 		/// <summary>Converts a string literal into its 64-bit signed integer equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1234" or "-5")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid integer</param>
-		/// <returns>Corresponding integer value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding integer value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToInt64("1234", 0) == 1234</code>
 		/// <code>StringConverters.ToInt64("hello", 0) == 0</code>
@@ -841,7 +843,7 @@ namespace SnowBank.Runtime.Converters
 
 		/// <summary>Converts a string literal into its 64-bit signed integer equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1234" or "-5")</param>
-		/// <returns>Corresponding integer value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding integer value, or <see langword="null"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToInt64("1234") == 1234</code>
 		/// <code>StringConverters.ToInt64("hello") == null</code>
@@ -870,7 +872,7 @@ namespace SnowBank.Runtime.Converters
 
 		/// <summary>Converts a string literal into its 64-bit signed integer equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1234" or "-5")</param>
-		/// <returns>Corresponding integer value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding integer value, or <see langword="null"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToInt64("1234") == 1234</code>
 		/// <code>StringConverters.ToInt64("hello") == null</code>
@@ -901,7 +903,7 @@ namespace SnowBank.Runtime.Converters
 		/// <param name="value">Literal to convert (ex: "1.0" or "123" or "123.456e7")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid decimal number</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding double value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding double value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToDouble("1.23", 0) => 1.23d</code>
 		/// <code>StringConverters.ToDouble("hello", 0) => 0</code>
@@ -934,7 +936,7 @@ namespace SnowBank.Runtime.Converters
 		/// <param name="value">Literal to convert (ex: "1.0" or "123" or "123.456e7")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid decimal number</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding double value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding double value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToDouble("1.23", 0) => 1.23d</code>
 		/// <code>StringConverters.ToDouble("hello", 0) => 0</code>
@@ -965,7 +967,7 @@ namespace SnowBank.Runtime.Converters
 
 		/// <summary>Converts a string literal into its 64-bit floating-point number equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1.0" or "123" or "123.456e7")</param>
-		/// <returns>Corresponding double value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding double value, or <see langword="null"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToDouble("1.23") => 1.23d</code>
 		/// <code>StringConverters.ToDouble("hello") => null</code>
@@ -995,7 +997,7 @@ namespace SnowBank.Runtime.Converters
 
 		/// <summary>Converts a string literal into its 64-bit floating-point number equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1.0" or "123" or "123.456e7")</param>
-		/// <returns>Corresponding double value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding double value, or <see langword="null"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToDouble("1.23") => 1.23d</code>
 		/// <code>StringConverters.ToDouble("hello") => null</code>
@@ -1027,7 +1029,7 @@ namespace SnowBank.Runtime.Converters
 		/// <param name="value">Literal to convert (ex: "1.0" or "123" or "123.456e7")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid decimal number</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding single value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding single value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToSingle("1.23", 0) => 1.23d</code>
 		/// <code>StringConverters.ToSingle("hello", 0) => 0</code>
@@ -1059,7 +1061,7 @@ namespace SnowBank.Runtime.Converters
 		/// <param name="value">Literal to convert (ex: "1.0" or "123" or "123.456e7")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid decimal number</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding single value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding single value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToSingle("1.23", 0) => 1.23d</code>
 		/// <code>StringConverters.ToSingle("hello", 0) => 0</code>
@@ -1089,7 +1091,7 @@ namespace SnowBank.Runtime.Converters
 
 		/// <summary>Converts a string literal into its 32-bit floating-point number equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1.0" or "123" or "123.456e7")</param>
-		/// <returns>Corresponding single value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding single value, or <see langword="null"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToSingle("1.23") => 1.23d</code>
 		/// <code>StringConverters.ToSingle("hello") => null</code>
@@ -1119,7 +1121,7 @@ namespace SnowBank.Runtime.Converters
 
 		/// <summary>Converts a string literal into its 32-bit floating-point number equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1.0" or "123" or "123.456e7")</param>
-		/// <returns>Corresponding single value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding single value, or <see langword="null"/> if it could not be decoded</returns>
 		/// <example>
 		/// <code>StringConverters.ToSingle("1.23") => 1.23d</code>
 		/// <code>StringConverters.ToSingle("hello") => null</code>
@@ -1151,7 +1153,7 @@ namespace SnowBank.Runtime.Converters
 		/// <param name="value">Literal to convert (ex: "1.0", "123.456e7")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid decimal number</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding decimal value, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding decimal value, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		[Pure]
 		public static decimal ToDecimal(string? value, decimal defaultValue, IFormatProvider? provider = null)
 		{
@@ -1178,7 +1180,7 @@ namespace SnowBank.Runtime.Converters
 		/// <summary>Converts a string literal into its 128-bit floating-point number equivalent, using invariant-culture format</summary>
 		/// <param name="value">Literal to convert (ex: "1.0", "123.456e7")</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding single value, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding single value, or <see langword="null"/> if it could not be decoded</returns>
 		[Pure]
 		public static decimal? ToDecimal(string? value, IFormatProvider? provider = null)
 		{
@@ -1215,7 +1217,7 @@ namespace SnowBank.Runtime.Converters
 		/// <summary>Converts a string literal into its <see cref="DateTime"/> equivalent</summary>
 		/// <param name="value">Literal to convert (ex: "2025-05-27T16:17:89.456")</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding <see cref="DateTime"/>, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding <see cref="DateTime"/>, or <see langword="null"/> if it could not be decoded</returns>
 		[Pure]
 		public static DateTime? ToDateTime(string? value, CultureInfo? provider = null)
 		{
@@ -1227,7 +1229,7 @@ namespace SnowBank.Runtime.Converters
 		/// <summary>Converts a string literal into its <see cref="NodaTime.Instant"/> equivalent</summary>
 		/// <param name="value">Literal to convert (ex: "2025-05-27T16:17:89.456")</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding <see cref="NodaTime.Instant"/>, or <see langword="null"/> if could not be decoded</returns>
+		/// <returns>Corresponding <see cref="NodaTime.Instant"/>, or <see langword="null"/> if it could not be decoded</returns>
 		[Pure]
 		public static Instant? ToInstant(string? value, CultureInfo? provider = null)
 		{
@@ -1240,7 +1242,7 @@ namespace SnowBank.Runtime.Converters
 		/// <param name="value">Literal to convert (ex: "2025-05-27T16:17:89.456")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid date</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding <see cref="NodaTime.Instant"/>, or <paramref name="defaultValue"/> if could not be decoded</returns>
+		/// <returns>Corresponding <see cref="NodaTime.Instant"/>, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		[Pure]
 		public static Instant ToInstant(string? value, Instant defaultValue, CultureInfo? provider = null)
 		{
@@ -1249,10 +1251,10 @@ namespace SnowBank.Runtime.Converters
 			return res;
 		}
 
-		/// <summary>Convertit une chaîne de caractères en GUID</summary>
-		/// <param name="value">Chaîne (ex: "123456-789")</param>
-		/// <param name="defaultValue">Valeur par défaut si problème de conversion ou null</param>
-		/// <returns>GUID correspondant</returns>
+		/// <summary>Converts a string literal into its <see cref="Guid"/> equivalent</summary>
+		/// <param name="value">Literal to convert (ex: "01234567-89AB-CDEF-0123-456789ABCDEF")</param>
+		/// <param name="defaultValue">Fallback value returned if the string literal is empty or invalid</param>
+		/// <returns>Corresponding <see cref="Guid"/>, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		[Pure]
 		public static Guid ToGuid(string? value, Guid defaultValue)
 		{
@@ -1260,6 +1262,9 @@ namespace SnowBank.Runtime.Converters
 			return Guid.TryParse(value, out Guid result) ? result : defaultValue;
 		}
 
+		/// <summary>Converts a string literal into its <see cref="Guid"/> equivalent</summary>
+		/// <param name="value">Literal to convert (ex: "01234567-89AB-CDEF-0123-456789ABCDEF")</param>
+		/// <returns>Corresponding <see cref="Guid"/>, or <see langword="null"/> if it could not be decoded</returns>
 		[Pure]
 		public static Guid? ToGuid(string? value)
 		{
@@ -1267,12 +1272,11 @@ namespace SnowBank.Runtime.Converters
 			return Guid.TryParse(value, out Guid result) ? result : null;
 		}
 
-		/// <summary>Convertit une chaîne de caractères en Enum</summary>
+		/// <summary>Converts a string literal into its <typeparamref name="TEnum"/> enum equivalent</summary>
 		/// <typeparam name="TEnum">Type de l'Enum</typeparam>
-		/// <param name="value">Chaîne (ex: "Red", "2", ...)</param>
-		/// <param name="defaultValue">Valeur par défaut si problème de conversion ou null</param>
-		/// <returns>Valeur de l'enum correspondante</returns>
-		/// <remarks>Accepte les valeurs sous forme textuelle ou numérique, case insensitive</remarks>
+		/// <param name="value">Literal to convert (ex: <c>"Red"</c>, <c>"2"</c>, ...)</param>
+		/// <param name="defaultValue">Fallback value returned if the string literal is empty or invalid</param>
+		/// <returns>Corresponding <typeparamref name="TEnum"/>, or <paramref name="defaultValue"/> if it could not be decoded</returns>
 		[Pure]
 		public static TEnum ToEnum<TEnum>(string? value, TEnum defaultValue)
 			where TEnum : struct, Enum
@@ -1281,6 +1285,10 @@ namespace SnowBank.Runtime.Converters
 			return Enum.TryParse(value, true, out TEnum result) ? result : defaultValue;
 		}
 
+		/// <summary>Converts a string literal into its <typeparamref name="TEnum"/> enum equivalent</summary>
+		/// <typeparam name="TEnum">Type de l'Enum</typeparam>
+		/// <param name="value">Literal to convert (ex: <c>"Red"</c>, <c>"2"</c>, ...)</param>
+		/// <returns>Corresponding <typeparamref name="TEnum"/>, or <see langword="null"/> if it could not be decoded</returns>
 		[Pure]
 		public static TEnum? ToEnum<TEnum>(string? value)
 			where TEnum : struct, Enum
@@ -1455,9 +1463,9 @@ namespace SnowBank.Runtime.Converters
 
 		#region Dates...
 
-		/// <summary>Convertit une date en une chaîne de caractères au format "YYYYMMDDHHMMSS"</summary>
-		/// <param name="date">Date à formater</param>
-		/// <returns>Date formatée sur 14 caractères au format YYYYMMDDHHMMSS</returns>
+		/// <summary>Converts a <see cref="DateTime"/> value into a string literal with format <c>YYYYMMDDHHMMSS</c></summary>
+		/// <param name="date">Date to format</param>
+		/// <returns>Formated date of length 14, with format <c>YYYYMMDDHHMMSS</c></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static string ToDateTimeString(DateTime date)
 		{
@@ -1465,6 +1473,9 @@ namespace SnowBank.Runtime.Converters
 			return date.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
 		}
 
+		/// <summary>Converts a <see cref="NodaTime.Instant"/> value into a string literal with format <c>YYYYMMDDHHMMSS</c></summary>
+		/// <param name="date">Date to format</param>
+		/// <returns>Formated date of length 14, with format <c>YYYYMMDDHHMMSS</c></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static string ToDateTimeString(Instant date)
 		{
@@ -1472,6 +1483,9 @@ namespace SnowBank.Runtime.Converters
 			return date.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
 		}
 
+		/// <summary>Converts a <see cref="NodaTime.ZonedDateTime"/> value into a string literal with format <c>YYYYMMDDHHMMSS</c></summary>
+		/// <param name="date">Date to format</param>
+		/// <returns>Formated date of length 14, with format <c>YYYYMMDDHHMMSS</c></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static string ToDateTimeString(ZonedDateTime date)
 		{
@@ -1479,9 +1493,9 @@ namespace SnowBank.Runtime.Converters
 			return date.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
 		}
 
-		/// <summary>Convertit une date en une chaîne de caractères au format "AAAAMMJJ"</summary>
-		/// <param name="date">Date à formater</param>
-		/// <returns>Date formatée sur 8 caractères au format AAAAMMJJ</returns>
+		/// <summary>Converts the date component of a <see cref="DateTime"/> value into a string literal with format <c>YYYYMMDD</c></summary>
+		/// <param name="date">Date to format</param>
+		/// <returns>Formated date of length 8, with format <c>YYYYMMDD</c></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static string ToDateString(DateTime date)
 		{
@@ -1489,9 +1503,9 @@ namespace SnowBank.Runtime.Converters
 			return date.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
 		}
 
-		/// <summary>Convertit un heure en une chaîne de caractères au format "HHMMSS"</summary>
-		/// <param name="date">Date à formater</param>
-		/// <returns>Heure formatée sur 6 caractères au format HHMMSS</returns>
+		/// <summary>Converts the time component of a <see cref="DateTime"/> value into a string literal with format <c>HHMMSS</c></summary>
+		/// <param name="date">Time to format</param>
+		/// <returns>Formated time of length 6, with format <c>HHMMSS</c></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static string ToTimeString(DateTime date)
 		{
@@ -1499,51 +1513,21 @@ namespace SnowBank.Runtime.Converters
 			return date.ToString("HHmmss", CultureInfo.InvariantCulture);
 		}
 
-		/// <summary>Convertit une date en une chaîne de caractères au format "yyyy-MM-dd HH:mm:ss"</summary>
-		/// <param name="date">Date à convertir</param>
-		/// <returns>Chaîne au format "yyyy-MM-dd HH:mm:ss"</returns>
-		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static string FormatDateTime(DateTime date)
-		{
-			//PERF: is there a faster way to encode to this format?
-			return date.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
-		}
-
-		/// <summary>Convertit une date en une chaîne de caractères au format "yyyy-MM-dd"</summary>
-		/// <param name="date">Date à convertir</param>
-		/// <returns>Chaîne au format "yyyy-MM-dd"</returns>
-		[Pure]
-		public static string FormatDate(DateTime date)
-		{
-			//REVIEW: PERF: faire une version optimisée?
-			return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-		}
-
-		/// <summary>Convertit une heure en une chaîne de caractères au format "hh:mm:ss"</summary>
-		/// <param name="date">Heure à convertir</param>
-		/// <returns>Chaîne au format "hh:mm:ss"</returns>
-		[Pure]
-		public static string FormatTime(DateTime date)
-		{
-			//PERF: is there a faster way to encode to this format?
-			return date.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-		}
-
-		/// <summary>Convertit une chaîne de caractère au format "YYYY", "YYYYMM", "YYYYMMDD" ou "YYYYMMDDHHMMSS" en DateTime</summary>
-		/// <param name="date">Chaîne de caractères à convertir</param>
-		/// <returns>Objet DateTime correspondant, ou exception si incorrect</returns>
-		/// <exception cref="System.ArgumentException">Si la date est incorrecte</exception>
+		/// <summary>Parses a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <param name="date">String literal to parse</param>
+		/// <returns>Corresponding <see cref="DateTime"/> value if successful</returns>
+		/// <exception cref="System.ArgumentException">If the date is malformed</exception>
 		[Pure]
 		public static DateTime ParseDateTime(string? date)
 		{
 			return ParseDateTime(date, null);
 		}
 
-		/// <summary>Convertit une chaîne de caractère au format "YYYY", "YYYYMM", "YYYYMMDD" ou "YYYYMMDDHHMMSS" en DateTime</summary>
-		/// <param name="date">Chaîne de caractères à convertir</param>
-		/// <param name="culture">Culture (pour le format attendu) ou null</param>
-		/// <returns>Objet DateTime correspondant, ou exception si incorrect</returns>
-		/// <exception cref="System.ArgumentException">Si la date est incorrecte</exception>
+		/// <summary>Parses a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <param name="date">String literal to parse</param>
+		/// <param name="culture">Optional culture provider</param>
+		/// <returns>Corresponding <see cref="DateTime"/> value if successful</returns>
+		/// <exception cref="System.ArgumentException">If the date is malformed</exception>
 		[Pure]
 		public static DateTime ParseDateTime(string? date, CultureInfo? culture)
 		{
@@ -1552,33 +1536,35 @@ namespace SnowBank.Runtime.Converters
 		}
 
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
-		private static Exception FailInvalidDateFormat()
+		private static ArgumentException FailInvalidDateFormat()
 		{
 			// ReSharper disable once NotResolvedInText
-			return new ArgumentException("Invalid date format", "date");
+			return new("Invalid date format", "date");
 		}
 
-		/// <summary>Convertit une chaîne de caractère au format "YYYY", "YYYYMM", "YYYYMMDD" ou "YYYYMMDDHHMMSS" en DateTime</summary>
-		/// <param name="date">Chaîne de caractères à convertir</param>
-		/// <param name="dflt">Valeur par défaut</param>
-		/// <returns>Objet DateTime correspondant, ou dflt si date est null ou vide</returns>
+		/// <summary>Parses a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <param name="date">String literal to parse</param>
+		/// <param name="defaultValue">Default value if null, empty, or malformed</param>
+		/// <returns>Corresponding <see cref="DateTime"/> value if successful; otherwise, <paramref name="defaultValue"/></returns>
+		/// <exception cref="System.ArgumentException">If the date is malformed</exception>
 		[Pure]
-		public static DateTime ParseDateTime(string? date, DateTime dflt)
+		public static DateTime ParseDateTime(string? date, DateTime defaultValue)
 		{
-			if (string.IsNullOrEmpty(date)) return dflt;
-			if (!TryParseDateTime(date, null, out DateTime result, false)) return dflt;
+			if (string.IsNullOrEmpty(date)) return defaultValue;
+			if (!TryParseDateTime(date, null, out DateTime result, false)) return defaultValue;
 			return result;
 		}
 
-		/// <summary>Convertit une chaîne de caractère au format "YYYY", "YYYYMM", "YYYYMMDD" ou "YYYYMMDDHHMMSS" en DateTime</summary>
-		/// <param name="date">Chaîne de caractères à convertir</param>
-		/// <param name="dflt">Valeur par défaut</param>
-		/// <param name="culture">Culture (pour le format attendu) ou null</param>
-		/// <returns>Objet DateTime correspondant, ou dflt si date est null ou vide</returns>
+		/// <summary>Parses a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <param name="date">String literal to parse</param>
+		/// <param name="defaultValue">Default value if null, empty, or malformed</param>
+		/// <param name="culture">Optional culture provider</param>
+		/// <returns>Corresponding <see cref="DateTime"/> value if successful; otherwise, <paramref name="defaultValue"/></returns>
+		/// <exception cref="System.ArgumentException">If the date is malformed</exception>
 		[Pure]
-		public static DateTime ParseDateTime(string? date, DateTime dflt, CultureInfo? culture)
+		public static DateTime ParseDateTime(string? date, DateTime defaultValue, CultureInfo? culture)
 		{
-			if (!TryParseDateTime(date, culture, out DateTime result, false)) return dflt;
+			if (!TryParseDateTime(date, culture, out DateTime result, false)) return defaultValue;
 			return result;
 		}
 
@@ -1588,12 +1574,12 @@ namespace SnowBank.Runtime.Converters
 			return int.TryParse(source, NumberStyles.Integer, CultureInfo.InvariantCulture, out int r) ? r : -1;
 		}
 
-		/// <summary>Essayes de convertir une chaîne de caractères au format "YYYY", "YYYYMM", "YYYYMMDD" ou "YYYYMMDDHHMMSS" en DateTime</summary>
-		/// <param name="date">Chaîne de caractères à convertir</param>
-		/// <param name="culture">Culture (pour le format attendu) ou null</param>
-		/// <param name="result">Date convertie (ou DateTime.MinValue en cas de problème)</param>
-		/// <param name="throwsFail">Si false, absorbe les exceptions éventuelles. Si true, laisse les s'échaper</param>
-		/// <returns>True si la date est correcte, false dans les autres cas</returns>
+		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <param name="date">String literal to parse</param>
+		/// <param name="culture">Optional culture provider</param>
+		/// <param name="result">Receives the parsed <see cref="DateTime"/>, if successful.</param>
+		/// <param name="throwsFail">If <c>false</c>, catch any parsing exception; otherwise, let them bubble up.</param>
+		/// <returns><c>true</c> if the operation was successful; otherwise, <c>false</c></returns>
 		[Pure]
 		public static bool TryParseDateTime(string? date, CultureInfo? culture, out DateTime result, bool throwsFail)
 		{
@@ -1606,12 +1592,12 @@ namespace SnowBank.Runtime.Converters
 			return TryParseDateTime(date.AsSpan(), culture, out result, throwsFail);
 		}
 
-		/// <summary>Essayes de convertir une chaîne de caractères au format "YYYY", "YYYYMM", "YYYYMMDD" ou "YYYYMMDDHHMMSS" en DateTime</summary>
-		/// <param name="date">Chaîne de caractères à convertir</param>
-		/// <param name="culture">Culture (pour le format attendu) ou null</param>
-		/// <param name="result">Date convertie (ou DateTime.MinValue en cas de problème)</param>
-		/// <param name="throwsFail">Si false, absorbe les exceptions éventuelles. Si true, laisse les s'échaper</param>
-		/// <returns>True si la date est correcte, false dans les autres cas</returns>
+		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <param name="date">String literal to parse</param>
+		/// <param name="culture">Optional culture provider</param>
+		/// <param name="result">Receives the parsed <see cref="DateTime"/>, if successful.</param>
+		/// <param name="throwsFail">If <c>false</c>, catch any parsing exception; otherwise, let them bubble up.</param>
+		/// <returns><c>true</c> if the operation was successful; otherwise, <c>false</c></returns>
 		[Pure]
 		public static bool TryParseDateTime(ReadOnlySpan<char> date, CultureInfo? culture, out DateTime result, bool throwsFail)
 		{
@@ -1625,19 +1611,19 @@ namespace SnowBank.Runtime.Converters
 			try
 			{
 				if (char.IsDigit(date[0]))
-				{ // commence par un chiffre, c'est peut etre un timestamp?
+				{ // starts with a digit, maybe a timestamp?
 					switch (date.Length)
 					{
 						case 4:
 						{ // YYYY -> YYYY/01/01 00:00:00.000
-							int y = ParseDateSegment(date.Slice(0, 4));
+							int y = ParseDateSegment(date[..4]);
 							if (y < 1 || y > 9999) break;
 							result = new DateTime(y, 1, 1);
 							return true;
 						}
 						case 6:
 						{ // YYYYMM -> YYYY/MM/01 00:00:00.000
-							int y = ParseDateSegment(date.Slice(0, 4));
+							int y = ParseDateSegment(date[..4]);
 							if (y < 1 || y > 9999) break;
 							int m = ParseDateSegment(date.Slice(4, 2));
 							if (m < 1 || m > 12) break;
@@ -1646,7 +1632,7 @@ namespace SnowBank.Runtime.Converters
 						}
 						case 8:
 						{ // YYYYMMDD -> YYYY/MM/DD 00:00:00.000
-							int y = ParseDateSegment(date.Slice(0, 4));
+							int y = ParseDateSegment(date[..4]);
 							if (y < 1 || y > 9999) break;
 							int m = ParseDateSegment(date.Slice(4, 2));
 							if (m < 1 || m > 12) break;
@@ -1655,9 +1641,21 @@ namespace SnowBank.Runtime.Converters
 							result = new DateTime(y, m, d);
 							return true;
 						}
+						case 10:
+						{ // "YYYY-MM-DD" -> YYYY/MM/DD 00:00:00.000
+							if (date[4] != '-' || date[7] != '-') break;
+							int y = ParseDateSegment(date[..4]);
+							if (y < 1 || y > 9999) break;
+							int m = ParseDateSegment(date[5..7]);
+							if (m < 1 || m > 12) break;
+							int d = ParseDateSegment(date[8..]);
+							if (d < 1 || d > 31) break;
+							result = new DateTime(y, m, d, 0, 0, 0);
+							return true;
+						}
 						case 14:
 						{ // YYYYMMDDHHMMSS -> YYYY/MM/DD HH:MM:SS.000
-							int y = ParseDateSegment(date.Slice(0, 4));
+							int y = ParseDateSegment(date[..4]);
 							if (y < 1 || y > 9999) break;
 							int m = ParseDateSegment(date.Slice(4, 2));
 							if (m < 1 || m > 12) break;
@@ -1674,7 +1672,7 @@ namespace SnowBank.Runtime.Converters
 						}
 						case 17:
 						{ // YYYYMMDDHHMMSSFFF -> YYYY/MM/DD HH:MM:SS.FFF
-							int y = ParseDateSegment(date.Slice(0, 4));
+							int y = ParseDateSegment(date[..4]);
 							if (y < 1 || y > 9999) break;
 							int m = ParseDateSegment(date.Slice(4, 2));
 							if (m < 1 || m > 12) break;
@@ -1690,36 +1688,72 @@ namespace SnowBank.Runtime.Converters
 							result = new DateTime(y, m, d, h, n, s, f);
 							return true;
 						}
+						case 19:
+						{ // "YYYY-MM-DDTHH:mm:ss" -> YYYY/MM/DD HH:mm:ss.000
+							if (date[4] != '-' || date[7] != '-' || date[10] != 'T' || date[13] != ':' || date[16] != ':') break;
+							int y = ParseDateSegment(date[..4]);
+							if (y < 1 || y > 9999) break;
+							int m = ParseDateSegment(date[5..7]);
+							if (m < 1 || m > 12) break;
+							int d = ParseDateSegment(date[8..10]);
+							if (d < 1 || d > 31) break;
+							int h = ParseDateSegment(date[11..13]);
+							if (h < 0 || h > 23) break;
+							int n = ParseDateSegment(date[14..16]);
+							if (n < 0 || n > 59) break;
+							int s = ParseDateSegment(date[17..]);
+							if (s < 0 || s > 60) break; // note: extra UTC second at 23:59:60 !
+							result = new DateTime(y, m, d, h, m, s, DateTimeKind.Unspecified);
+							return true;
+						}
+						case 20:
+						{ // "YYYY-MM-DDTHH:mm:ssZ" -> YYYY/MM/DD HH:mm:ss.000
+							if (date[19] != 'Z' || date[4] != '-' || date[7] != '-' || date[10] != 'T' || date[13] != ':' || date[16] != ':') break;
+							int y = ParseDateSegment(date[..4]);
+							if (y < 1 || y > 9999) break;
+							int m = ParseDateSegment(date[5..7]);
+							if (m < 1 || m > 12) break;
+							int d = ParseDateSegment(date[8..10]);
+							if (d < 1 || d > 31) break;
+							int h = ParseDateSegment(date[11..13]);
+							if (h < 0 || h > 23) break;
+							int n = ParseDateSegment(date[14..16]);
+							if (n < 0 || n > 59) break;
+							int s = ParseDateSegment(date[17..19]);
+							if (s < 0 || s > 60) break; // note: extra UTC second at 23:59:60 !
+							result = new DateTime(y, m, d, h, m, s, DateTimeKind.Utc);
+							return true;
+						}
 					}
 				}
 				else if (char.IsLetter(date[0]))
-				{ // on va tenter un ParseExact ("Vendredi, 37 Trumaire 1789 à 3 heures moins le quart")
-					result = DateTime.ParseExact(date, [ "D", "F", "f" ], culture ?? CultureInfo.InvariantCulture, DateTimeStyles.None);
+				{ // let's try a ParseExact for weird localized dates (ex: "Vendredi, 37 Trumaire 1789 à 3 heures moins le quart")
+					result = DateTime.ParseExact(date, [ "D", "F", "f" ], culture ?? CultureInfo.InvariantCulture);
 					return true;
 				}
 
-				// Je vais tenter le jackpot, mon cher Julien!
+				// Fallback to standard parsing...
 				result = DateTime.Parse(date, culture ?? CultureInfo.InvariantCulture);
 				return true;
 			}
 			catch (FormatException)
-			{ // Dommage! La cagnotte est remise à la fois prochaine...
+			{ // malformed input
 				if (throwsFail) throw;
 				return false;
 			}
 			catch (ArgumentOutOfRangeException)
-			{ // Pb sur un DateTime avec des dates invalides (31 février, ...)
+			{ // happens for invalid dates (Feb-31, Jan-42, ...)
 				if (throwsFail) throw;
 				return false;
 			}
 		}
 
-		/// <summary>Essayes de convertir une chaîne de caractères au format "YYYY", "YYYYMM", "YYYYMMDD" ou "YYYYMMDDHHMMSS" en DateTime</summary>
-		/// <param name="date">Chaîne de caractères à convertir</param>
-		/// <param name="culture">Culture (pour le format attendu) ou null</param>
-		/// <param name="result">Date convertie (ou DateTime.MinValue en cas de problème)</param>
-		/// <param name="throwsFail">Si false, absorbe les exceptions éventuelles. Si true, laisse les s'échapper</param>
-		/// <returns>True si la date est correcte, false dans les autres cas</returns>
+		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="NodaTime.Instant"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <param name="date">String literal to parse</param>
+		/// <param name="culture">Optional culture provider</param>
+		/// <param name="result">Receives the parsed <see cref="NodaTime.Instant"/>, if successful.</param>
+		/// <param name="throwsFail">If <c>false</c>, catch any parsing exception; otherwise, let them bubble up.</param>
+		/// <returns><c>true</c> if the operation was successful; otherwise, <c>false</c></returns>
 		[Pure]
 		public static bool TryParseInstant(string? date, CultureInfo? culture, out Instant result, bool throwsFail)
 		{
@@ -1734,12 +1768,12 @@ namespace SnowBank.Runtime.Converters
 			return TryParseInstant(date.AsSpan(), culture, out result, throwsFail);
 		}
 
-		/// <summary>Essayes de convertir une chaîne de caractères au format "YYYY", "YYYYMM", "YYYYMMDD" ou "YYYYMMDDHHMMSS" en DateTime</summary>
-		/// <param name="date">Chaîne de caractères à convertir</param>
-		/// <param name="culture">Culture (pour le format attendu) ou null</param>
-		/// <param name="result">Date convertie (ou DateTime.MinValue en cas de problème)</param>
-		/// <param name="throwsFail">Si false, absorbe les exceptions éventuelles. Si true, laisse les s'échapper</param>
-		/// <returns>True si la date est correcte, false dans les autres cas</returns>
+		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="NodaTime.Instant"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <param name="date">String literal to parse</param>
+		/// <param name="culture">Optional culture provider</param>
+		/// <param name="result">Receives the parsed <see cref="NodaTime.Instant"/>, if successful.</param>
+		/// <param name="throwsFail">If <c>false</c>, catch any parsing exception; otherwise, let them bubble up.</param>
+		/// <returns><c>true</c> if the operation was successful; otherwise, <c>false</c></returns>
 		[Pure]
 		public static bool TryParseInstant(ReadOnlySpan<char> date, CultureInfo? culture, out Instant result, bool throwsFail)
 		{
@@ -1760,15 +1794,15 @@ namespace SnowBank.Runtime.Converters
 				switch (date.Length)
 				{
 					case 4:
-					{ // YYYY -> YYYY/01/01 00:00:00.000
-						int y = ParseDateSegment(date.Slice(0, 4));
+					{ // "YYYY" -> YYYY/01/01 00:00:00.000
+						int y = ParseDateSegment(date[..4]);
 						if (y < 1 || y > 9999) break;
 						result = Instant.FromUtc(y, 1, 1, 0, 0);
 						return true;
 					}
 					case 6:
-					{ // YYYYMM -> YYYY/MM/01 00:00:00.000
-						int y = ParseDateSegment(date.Slice(0, 4));
+					{ // "YYYYMM" -> YYYY/MM/01 00:00:00.000
+						int y = ParseDateSegment(date[..4]);
 						if (y < 1 || y > 9999) break;
 						int m = ParseDateSegment(date.Slice(4, 2));
 						if (m < 1 || m > 12) break;
@@ -1776,8 +1810,8 @@ namespace SnowBank.Runtime.Converters
 						return true;
 					}
 					case 8:
-					{ // YYYYMMDD -> YYYY/MM/DD 00:00:00.000
-						int y = ParseDateSegment(date.Slice(0, 4));
+					{ // "YYYYMMDD" -> YYYY/MM/DD 00:00:00.000
+						int y = ParseDateSegment(date[..4]);
 						if (y < 1 || y > 9999) break;
 						int m = ParseDateSegment(date.Slice(4, 2));
 						if (m < 1 || m > 12) break;
@@ -1786,62 +1820,111 @@ namespace SnowBank.Runtime.Converters
 						result = Instant.FromUtc(y, m, d, 0, 0);
 						return true;
 					}
-					case 14:
-					{ // YYYYMMDDHHMMSS -> YYYY/MM/DD HH:MM:SS.000
-						int y = ParseDateSegment(date.Slice(0, 4));
+					case 10:
+					{ // "YYYY-MM-DD" -> YYYY/MM/DD 00:00:00.000
+						if (date[4] != '-' || date[7] != '-') break;
+						int y = ParseDateSegment(date[..4]);
 						if (y < 1 || y > 9999) break;
-						int m = ParseDateSegment(date.Slice(4, 2));
+						int m = ParseDateSegment(date[5..7]);
 						if (m < 1 || m > 12) break;
-						int d = ParseDateSegment(date.Slice(6, 2));
+						int d = ParseDateSegment(date[8..]);
 						if (d < 1 || d > 31) break;
-						int h = ParseDateSegment(date.Slice(8, 2));
+						result = Instant.FromUtc(y, m, d, 0, 0);
+						return true;
+					}
+					case 14:
+					{ // "YYYYMMDDHHMMSS" -> YYYY/MM/DD HH:MM:SS.000
+						int y = ParseDateSegment(date[..4]);
+						if (y < 1 || y > 9999) break;
+						int m = ParseDateSegment(date[4..6]);
+						if (m < 1 || m > 12) break;
+						int d = ParseDateSegment(date[6..8]);
+						if (d < 1 || d > 31) break;
+						int h = ParseDateSegment(date[8..10]);
 						if (h < 0 || h > 23) break;
-						int n = ParseDateSegment(date.Slice(10, 2));
+						int n = ParseDateSegment(date[10..12]);
 						if (n < 0 || n > 59) break;
-						int s = ParseDateSegment(date.Slice(12, 2));
+						int s = ParseDateSegment(date[12..]);
 						if (s < 0 || s > 59) break;
 						result = Instant.FromUtc(y, m, d, h, n, s);
 						return true;
 					}
 					case 17:
-					{ // YYYYMMDDHHMMSSFFF -> YYYY/MM/DD HH:MM:SS.FFF
-						int y = ParseDateSegment(date.Slice(0, 4));
+					{ // "YYYYMMDDHHMMSSFFF" -> YYYY/MM/DD HH:MM:SS.FFF
+						int y = ParseDateSegment(date[..4]);
 						if (y < 1 || y > 9999) break;
-						int m = ParseDateSegment(date.Slice(4, 2));
+						int m = ParseDateSegment(date[4..6]);
 						if (m < 1 || m > 12) break;
-						int d = ParseDateSegment(date.Slice(6, 2));
+						int d = ParseDateSegment(date[6..8]);
 						if (d < 1 || d > 31) break;
-						int h = ParseDateSegment(date.Slice(8, 2));
+						int h = ParseDateSegment(date[8..10]);
 						if (h < 0 || h > 23) break;
-						int n = ParseDateSegment(date.Slice(10, 2));
+						int n = ParseDateSegment(date[10..12]);
 						if (n < 0 || n > 59) break;
-						int s = ParseDateSegment(date.Slice(12, 2));
-						if (s < 0 || s > 59) break;
-						int f = ParseDateSegment(date.Slice(14, 3));
+						int s = ParseDateSegment(date[12..14]);
+						if (s < 0 || s > 60) break; // note: extra UTC second at 23:59:60 !
+						int f = ParseDateSegment(date[14..]);
+						if (f < 0 || f > 999) break;
 						result = Instant.FromUtc(y, m, d, h, n, s) + Duration.FromMilliseconds(f);
+						return true;
+					}
+					case 19:
+					{ // "YYYY-MM-DDTHH:mm:ss" -> YYYY/MM/DD HH:mm:ss.000
+						if (date[4] != '-' || date[7] != '-' || date[10] != 'T' || date[13] != ':' || date[16] != ':') break;
+						int y = ParseDateSegment(date[..4]);
+						if (y < 1 || y > 9999) break;
+						int m = ParseDateSegment(date[5..7]);
+						if (m < 1 || m > 12) break;
+						int d = ParseDateSegment(date[8..10]);
+						if (d < 1 || d > 31) break;
+						int h = ParseDateSegment(date[11..13]);
+						if (h < 0 || h > 23) break;
+						int n = ParseDateSegment(date[14..16]);
+						if (n < 0 || n > 59) break;
+						int s = ParseDateSegment(date[17..]);
+						if (s < 0 || s > 60) break; // note: extra UTC second at 23:59:60 !
+						result = Instant.FromUtc(y, m, d, h, m, s);
+						return true;
+					}
+					case 20:
+					{ // "YYYY-MM-DDTHH:mm:ssZ" -> YYYY/MM/DD HH:mm:ss.000
+						if (date[19] != 'Z' || date[4] != '-' || date[7] != '-' || date[10] != 'T' || date[13] != ':' || date[16] != ':') break;
+						int y = ParseDateSegment(date[..4]);
+						if (y < 1 || y > 9999) break;
+						int m = ParseDateSegment(date[5..7]);
+						if (m < 1 || m > 12) break;
+						int d = ParseDateSegment(date[8..10]);
+						if (d < 1 || d > 31) break;
+						int h = ParseDateSegment(date[11..13]);
+						if (h < 0 || h > 23) break;
+						int n = ParseDateSegment(date[14..16]);
+						if (n < 0 || n > 59) break;
+						int s = ParseDateSegment(date[17..19]);
+						if (s < 0 || s > 60) break; // note: extra UTC second at 23:59:60 !
+						result = Instant.FromUtc(y, m, d, h, m, s);
 						return true;
 					}
 				}
 			}
 			catch (FormatException)
-			{ // Dommage! La cagnotte est remise à la fois prochaine...
+			{ // malformed input
 				if (throwsFail) throw;
 				return false;
 			}
 			catch (ArgumentOutOfRangeException)
-			{ // Pb sur un DateTime avec des dates invalides (31 février, ...)
+			{ // happens for invalid dates (Feb-31, Jan-42, ...)
 				if (throwsFail) throw;
 				return false;
 			}
-			if (throwsFail) throw new FormatException("Date must contains only digits");
+			if (throwsFail) throw new FormatException("Date must only contain digits");
 			return false;
 		}
 
-		/// <summary>Convertit une heure "human friendly" en DateTime: "11","11h","11h00","11:00" -> {11:00:00.000}</summary>
-		/// <param name="time">Chaîne contenant l'heure à convertir</param>
-		/// <returns>Object DateTime contenant l'heure. La partie "date" est fixée à aujourd'hui</returns>
+		/// <summary>Converts a string literal containing a "human friendly" representation into a <see cref="TimeOnly"/>, for example <c>"11"</c>,<c>"11h"</c>,<c>"11h00"</c>,<c>"11:00"</c> -> <c>{11:00:00.000}</c></summary>
+		/// <param name="time">String to parse</param>
+		/// <returns>Corresponding <see cref="TimeOnly"/> value.</returns>
 		[Pure]
-		public static DateTime ParseTime(string time)
+		public static TimeOnly ParseTime(string time)
 		{
 			Contract.NotNullOrEmpty(time);
 
@@ -1884,343 +1967,7 @@ namespace SnowBank.Runtime.Converters
 					hour = short.Parse(time, NumberStyles.Integer, CultureInfo.InvariantCulture);
 				}
 			}
-			var d = DateTime.Today;
-			return new DateTime(d.Year, d.Month, d.Day, hour, minute, second, 0);
-		}
-
-		#endregion
-
-		#region Log Helpers...
-
-		/// <summary>Conversion rapide d'une l'heure courante</summary>
-		/// <param name="time">Heure à convertir</param>
-		/// <returns>"hh:mm:ss.fff"</returns>
-		[Pure]
-		public static string FastFormatTime(DateTime time)
-		{
-			unsafe
-			{
-				// on alloue notre buffer sur la stack
-				char* buffer = stackalloc char[16];
-				FastFormatTimeUnsafe(buffer, time);
-				return new string(buffer, 0, 12);
-			}
-		}
-
-		/// <summary>Conversion rapide d'une l'heure courante (<c>hh:mm:ss.fff</c>)</summary>
-		/// <param name="time">Heure à convertir</param>
-		/// <param name="buffer">Buffer a utiliser pour le formattage</param>
-		/// <param name="result">Si la fonction retourne <see langword="true"/>, contient le literal <c>hh:mm:ss.fff</c> formatté</param>
-		/// <returns>Retourne <see langword="true"/> si le buffer était assez grand, <see langword="false"/> s'il fait moins de 12 chars</returns>
-		public static bool TryFastFormatTime(DateTime time, Span<char> buffer, out ReadOnlySpan<char> result)
-		{
-			if (buffer.Length < 12)
-			{
-				result = default;
-				return false;
-			}
-
-			unsafe
-			{
-				fixed (char* ptr = buffer)
-				{
-					FastFormatShortTimeUnsafe(ptr, time);
-				}
-				result = buffer.Slice(0, 12);
-				return true;
-			}
-		}
-
-		/// <summary>Conversion rapide d'une l'heure courante</summary>
-		/// <param name="ptr">Pointer vers un buffer d'au moins 12 caractères</param>
-		/// <param name="time">Heure à convertir</param>
-		/// <returns>"hh:mm:ss.fff"</returns>
-		public static unsafe void FastFormatTimeUnsafe(char* ptr, DateTime time)
-		{
-			// cf: http://geekswithblogs.net/akraus1/archive/2006/04/23/76146.aspx
-			// cf: http://blogs.extremeoptimization.com/jeffrey/archive/2006/04/26/13824.aspx
-
-			long ticks = time.Ticks;
-			
-			// Calculate values by getting the ms values first and do then
-			// shave off the hour minute and second values with multiplications
-			// and bit shifts instead of simple but expensive divisions.
-
-			int ms = (int) ((ticks / 10000) % 86400000); // Get daytime in ms which does fit into an int
-			int hour = (int) (Math.BigMul(ms >> 7, 9773437) >> 38); // well ... it works
-			ms -= 3600000 * hour;
-			int minute = (int) ((Math.BigMul(ms >> 5, 2290650)) >> 32);
-			ms -= 60000 * minute;
-			int second = ((ms >> 3) * 67109) >> 23;
-			ms -= 1000 * second;
-
-			// Hour
-			int temp = (hour * 13) >> 7;  // 13/128 is nearly the same as /10 for values up to 65
-			*ptr++ = (char) (temp + '0');
-			*ptr++ = (char) (hour - 10 * temp + '0'); // Do subtract to get remainder instead of doing % 10
-			*ptr++ = ':';
-
-			// Minute
-			temp = (minute * 13) >> 7;   // 13/128 is nearly the same as /10 for values up to 65
-			*ptr++ = (char) (temp + '0');
-			*ptr++ = (char) (minute - 10 * temp + '0'); // Do subtract to get remainder instead of doing % 10
-			*ptr++ = ':';
-
-			// Second
-			temp = (second * 13) >> 7; // 13/128 is nearly the same as /10 for values up to 65
-			*ptr++ = (char) (temp + '0');
-			*ptr++ = (char) (second - 10 * temp + '0');
-			*ptr++ = '.';
-
-			// Millisecond
-			temp = (ms * 41) >> 12;   // 41/4096 is nearly the same as /100
-			*ptr++ = (char) (temp + '0');
-
-			ms -= 100 * temp;
-			temp = (ms * 205) >> 11;  // 205/2048 is nearly the same as /10
-			*ptr++ = (char) (temp + '0');
-
-			ms -= 10 * temp;
-			*ptr = (char) (ms + '0');
-		}
-
-		/// <summary>Conversion rapide d'une l'heure courante</summary>
-		/// <param name="time">Heure à convertir</param>
-		/// <returns>"hh:mm:ss"</returns>
-		[Pure]
-		public static string FastFormatShortTime(DateTime time)
-		{
-			unsafe
-			{
-				// on alloue notre buffer sur la stack
-				char* buffer = stackalloc char[8];
-				FastFormatShortTimeUnsafe(buffer, time);
-				return new string(buffer, 0, 8);
-			}
-		}
-
-		/// <summary>Conversion rapide d'une l'heure courante (<c>hh:mm:ss</c>)</summary>
-		/// <param name="time">Heure à convertir</param>
-		/// <param name="buffer">Buffer a utiliser pour le formattage</param>
-		/// <param name="result">Si la fonction retourne <see langword="true"/>, contient le literal <c>hh:mm:ss</c> formatté</param>
-		/// <returns>Retourne <see langword="true"/> si le buffer était assez grand, <see langword="false"/> s'il fait moins de 8 chars</returns>
-		public static bool TryFastFormatShortTime(DateTime time, Span<char> buffer, out ReadOnlySpan<char> result)
-		{
-			if (buffer.Length < 8)
-			{
-				result = default;
-				return false;
-			}
-
-			unsafe
-			{
-				fixed (char* ptr = buffer)
-				{
-					FastFormatShortTimeUnsafe(ptr, time);
-				}
-				result = buffer.Slice(0, 8);
-				return true;
-			}
-		}
-
-		/// <summary>Conversion rapide d'une l'heure courante</summary>
-		/// <param name="ptr">Pointer vers un buffer d'au moins 8 caractères</param>
-		/// <param name="time">Heure à convertir</param>
-		/// <returns>"hh:mm:ss"</returns>
-		public static unsafe void FastFormatShortTimeUnsafe(char* ptr, DateTime time)
-		{
-			// cf: http://geekswithblogs.net/akraus1/archive/2006/04/23/76146.aspx
-			// cf: http://blogs.extremeoptimization.com/jeffrey/archive/2006/04/26/13824.aspx
-
-			long ticks = time.Ticks;
-			
-			// Calculate values by getting the ms values first and do then
-			// shave off the hour minute and second values with multiplications
-			// and bit shifts instead of simple but expensive divisions.
-
-			int ms = (int) ((ticks / 10000) % 86400000); // Get daytime in ms which does fit into an int
-			int hour = (int) (Math.BigMul(ms >> 7, 9773437) >> 38); // well ... it works
-			ms -= 3600000 * hour;
-			int minute = (int) ((Math.BigMul(ms >> 5, 2290650)) >> 32);
-			ms -= 60000 * minute;
-			int second = ((ms >> 3) * 67109) >> 23;
-
-			// Hour
-			int temp = (hour * 13) >> 7;  // 13/128 is nearly the same as /10 for values up to 65
-			*ptr++ = (char) (temp + '0');
-			*ptr++ = (char) (hour - 10 * temp + '0'); // Do subtract to get remainder instead of doing % 10
-			*ptr++ = ':';
-
-			// Minute
-			temp = (minute * 13) >> 7;   // 13/128 is nearly the same as /10 for values up to 65
-			*ptr++ = (char) (temp + '0');
-			*ptr++ = (char) (minute - 10 * temp + '0'); // Do subtract to get remainder instead of doing % 10
-			*ptr++ = ':';
-
-			// Second
-			temp = (second * 13) >> 7; // 13/128 is nearly the same as /10 for values up to 65
-			*ptr++ = (char) (temp + '0');
-			*ptr = (char) (second - 10 * temp + '0');
-		}
-
-		/// <summary>Conversion rapide de la date courante au format international (YYYY-MM-DD)</summary>
-		/// <param name="date">Date à convertir</param>
-		/// <returns>"YYYY-MM-DD"</returns>
-		[Pure]
-		public static string FastFormatDate(DateTime date)
-		{
-			// ATTENTION: cette fonction ne peut formatter que des années entre 1000 et 2999 !
-			unsafe
-			{
-				char* buffer = stackalloc char[12]; // on n'utilise que 10 chars
-				FastFormatDateUnsafe(buffer, date);
-				return new string(buffer, 0, 10);
-			}
-		}
-
-		/// <summary>Conversion rapide de la date courante au format international (YYYY-MM-DD)</summary>
-		/// <param name="date">Date à convertir</param>
-		/// <param name="buffer">Buffer a utiliser pour le formattage</param>
-		/// <param name="result">Si la fonction retourne <see langword="true"/>, contient le literal <c>YYYY-MM-DD</c> formatté</param>
-		/// <returns>Retourne <see langword="true"/> si le buffer était assez grand, <see langword="false"/> s'il fait moins de 12 chars</returns>
-		public static bool TryFastFormatDate(DateTime date, Span<char> buffer, out ReadOnlySpan<char> result)
-		{
-			if (buffer.Length < 12)
-			{
-				result = default;
-				return false;
-			}
-
-			unsafe
-			{
-				fixed (char* ptr = buffer)
-				{
-					FastFormatDateUnsafe(ptr, date);
-				}
-				result = buffer.Slice(0, 12);
-				return true;
-			}
-		}
-
-		/// <summary>Conversion rapide de la date courante au format international (YYYY-MM-DD)</summary>
-		/// <param name="ptr">Pointer vers un buffer d'au moins 10 caractères</param>
-		/// <param name="date">Date à convertir</param>
-		/// <returns>"YYYY-MM-DD"</returns>
-		public static unsafe void FastFormatDateUnsafe(char* ptr, DateTime date)
-		{
-			int y = date.Year;
-			int m = date.Month;
-			int d = date.Day;
-
-			#region YEAR
-			// on va d'abord afficher le 1xxx ou le 2xxx (désolé si vous êtes en l'an 3000 !)
-			if (y < 2000)
-			{
-				ptr[0] = '1';
-				y -= 1000;
-			}
-			else
-			{
-				ptr[0] = '2';
-				y -= 2000; // <-- Y3K BUG HERE
-			}
-			// ensuite pour les centaines, on utilise la même technique que pour formatter les millisecondes
-			int temp = (y * 41) >> 12;   // 41/4096 is nearly the same as /100
-			ptr[1] = (char) (temp + '0');
-
-			y -= 100 * temp;
-			temp = (y * 205) >> 11;  // 205/2048 is nearly the same as /10
-			ptr[2] = (char) (temp + '0');
-
-			y -= 10 * temp;
-			ptr[3] = (char) (y + '0');
-			ptr[4] = '-';
-			#endregion
-
-			#region MONTH
-			temp = (m * 13) >> 7;  // 13/128 is nearly the same as /10 for values up to 65
-			ptr[5] = (char) (temp + '0');
-			ptr[6] = (char) (m - 10 * temp + '0'); // Do subtract to get remainder instead of doing % 10
-			ptr[7] = '-';
-			#endregion
-
-			#region DAY
-			temp = (d * 13) >> 7;   // 13/128 is nearly the same as /10 for values up to 65
-			ptr[8] = (char) (temp + '0');
-			ptr[9] = (char) (d - 10 * temp + '0'); // Do subtract to get remainder instead of doing % 10
-			#endregion
-		}
-
-		/// <summary>Conversion rapide de la date courante au format court (MM-DD)</summary>
-		/// <param name="date">Date à convertir</param>
-		/// <returns>"MM-DD"</returns>
-		[Pure]
-		public static string FastFormatShortDate(DateTime date)
-		{
-			unsafe
-			{
-				char* buffer = stackalloc char[8]; // on n'utilise que 5 chars
-				FastFormatShortDateUnsafe(buffer, date);
-				return new string(buffer, 0, 5);
-			}
-		}
-
-		/// <summary>Conversion rapide de la date courante au format court (MM-DD)</summary>
-		/// <param name="date">Date à convertir</param>
-		/// <param name="buffer">Buffer a utiliser pour le formattage</param>
-		/// <param name="result">Si la fonction retourne <see langword="true"/>, contient le literal <c>MM-DD</c> formatté</param>
-		/// <returns>Retourne <see langword="true"/> si le buffer était assez grand, <see langword="false"/> s'il fait moins de 5 chars</returns>
-		public static bool TryFastFormatShortDate(DateTime date, Span<char> buffer, out ReadOnlySpan<char> result)
-		{
-			if (buffer.Length < 5)
-			{
-				result = default;
-				return false;
-			}
-
-			unsafe
-			{
-				fixed (char* ptr = buffer)
-				{
-					FastFormatDateUnsafe(ptr, date);
-				}
-				result = buffer.Slice(0, 5);
-				return true;
-			}
-		}
-
-		/// <summary>Conversion rapide de la date courante au format court (MM-DD)</summary>
-		/// <param name="ptr">Pointer vers un buffer d'au moins 5 caractères</param>
-		/// <param name="date">Date à convertir</param>
-		/// <returns>"MM-DD"</returns>
-		public static unsafe void FastFormatShortDateUnsafe(char* ptr, DateTime date)
-		{
-			int m = date.Month;
-			int d = date.Day;
-
-			int temp = (m * 13) >> 7;  // 13/128 is nearly the same as /10 for values up to 65
-			*ptr++ = (char) (temp + '0');
-			*ptr++ = (char) (m - 10 * temp + '0'); // Do subtract to get remainder instead of doing % 10
-			*ptr++ = '-';
-
-			temp = (d * 13) >> 7;   // 13/128 is nearly the same as /10 for values up to 65
-			*ptr++ = (char) (temp + '0');
-			*ptr = (char) (d - 10 * temp + '0'); // Do subtract to get remainder instead of doing % 10
-		}
-
-		/// <summary>Formate une durée en chaîne compacte ("30s", "45min", "8h32m")</summary>
-		/// <param name="duration">Durée à formater</param>
-		/// <returns>Forme affichable de la durée (minutes arrondies au supérieur)</returns>
-		[Pure]
-		public static string FormatDuration(TimeSpan duration)
-		{
-			long d = (long) Math.Ceiling(duration.TotalSeconds);
-			if (d == 0) return "0s"; //TODO: WMLiser KTL.FormatDuration!
-			if (d <= 60) return d.ToString(CultureInfo.InvariantCulture) + "s";
-			if (d < 3600) return "~" + ((long) Math.Round(duration.TotalMinutes + 0.2, MidpointRounding.AwayFromZero)).ToString(CultureInfo.InvariantCulture) + "min";
-			if (d <= 86400) return ((long) Math.Floor(duration.TotalHours)).ToString(CultureInfo.InvariantCulture) + "h" + ((duration.Minutes >= 1) ? (((long) Math.Ceiling((double) duration.Minutes)).ToString("D2") + "m") : String.Empty);
-			if (d < 259200) return "~" + ((long) Math.Round(duration.TotalHours, MidpointRounding.AwayFromZero)).ToString(CultureInfo.InvariantCulture) + "h";
-			return "~" + ((long) Math.Floor(duration.TotalDays)).ToString(CultureInfo.InvariantCulture) + "d" + (duration.Hours > 0 ? duration.Hours + "h" : "");
+			return new TimeOnly(hour, minute, second, 0);
 		}
 
 		#endregion
