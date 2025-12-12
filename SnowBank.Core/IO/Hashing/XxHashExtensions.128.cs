@@ -104,7 +104,7 @@ namespace System.IO.Hashing
 			/// <param name="encoding">Encoding used to convert the text to bytes (UTF-8 by default)</param>
 			/// <returns>The computed XxHash128 hash.</returns>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
-			public static Uuid128 HashToUUId128(string text, int seed = 0, Encoding? encoding = null)
+			public static Uuid128 HashToUuId128(string text, int seed = 0, Encoding? encoding = null)
 				=> new Uuid128(HashToUInt128(text.AsSpan(), seed, encoding));
 
 			/// <summary>Computes the XxHash128 hash of the provided text</summary>
