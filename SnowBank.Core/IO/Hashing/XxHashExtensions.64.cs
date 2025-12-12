@@ -37,7 +37,7 @@ namespace System.IO.Hashing
 		{
 
 			/// <summary>Computes the XxHash64 hash of the provided data</summary>
-			/// <param name="text">The data to hash</param>
+			/// <param name="bytes">The data to hash</param>
 			/// <param name="seed">The seed value for this hash computation. The default is zero.</param>
 			/// <returns>The computed XxHash64 hash.</returns>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]

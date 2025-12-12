@@ -30,6 +30,7 @@ namespace System.IO.Hashing
 	using System.Text;
 
 	/// <summary>Extension methods for computing XxHash values</summary>
+	[PublicAPI]
 	public static partial class XxHashExtensions
 	{
 
@@ -37,7 +38,7 @@ namespace System.IO.Hashing
 		{
 
 			/// <summary>Computes the XxHash128 hash of the provided data</summary>
-			/// <param name="text">The data to hash</param>
+			/// <param name="bytes">The data to hash</param>
 			/// <param name="seed">The seed value for this hash computation. The default is zero.</param>
 			/// <returns>The computed XxHash128 hash.</returns>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
