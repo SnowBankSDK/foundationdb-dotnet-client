@@ -4412,9 +4412,9 @@ namespace SnowBank.Data.Json
 
 			switch (format)
 			{
-				case "" or "D" or "d":
+				case "" or "D" or "d" or "N" or "n":
 				{
-					return TryFormatDefault(m_items, destination, out charsWritten);
+					return TryFormatNormal(m_items, destination, out charsWritten);
 				}
 				case "C" or "c":
 				{
@@ -4477,7 +4477,7 @@ namespace SnowBank.Data.Json
 				}
 				if (format is "B" or "b")
 				{
-					return JsonEncoding.TryEncodeTo(destination, this.ToString("C"), out bytesWritten);
+					return JsonEncoding.TryEncodeTo(this.ToString("C"), destination, out bytesWritten);
 				}
 
 				// we MUST throw here; otherwise, the caller will infinitely call use back with a larger and larger buffer!

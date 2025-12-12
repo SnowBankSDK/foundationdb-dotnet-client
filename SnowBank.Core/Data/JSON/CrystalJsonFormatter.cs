@@ -219,12 +219,22 @@ namespace SnowBank.Data.Json
 			return FormatIso8601DateTime(buf, date.DateTime, DateTimeKind.Local, date.Offset, quotes: '\0').ToString();
 		}
 
-		internal static ReadOnlySpan<char> FormatIso8601DateTime(Span<char> output, DateTime date, DateTimeKind kind, TimeSpan? utcOffset, char quotes = '\0')
+		public static string ToIso8601String(DateOnly date)
+		{
+			if (date == DateOnly.MinValue) return string.Empty;
+
+			Span<char> buf = stackalloc char[ISO8601_MAX_FORMATTED_SIZE];
+			return FormatIso8601DateTime(buf, date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified, null, quotes: '\0', omitTimeIfZero: true).ToString();
+		}
+
+		internal static ReadOnlySpan<char> FormatIso8601DateTime(Span<char> output, DateTime date, DateTimeKind kind, TimeSpan? utcOffset, char quotes = '\0', bool omitTimeIfZero = false)
 		{
 			// we will need between 28 and 33 (+2 with quotes) characters for the buffer
 			if (output.Length < ISO8601_MAX_FORMATTED_SIZE) ThrowHelper.ThrowArgumentException(nameof(output), "Output buffer size is too small");
 
 			GetDateParts(date.Ticks, out var year, out var month, out var day, out var hour, out var min, out var sec, out var millis);
+
+			bool hasTimePart = !omitTimeIfZero || (hour | min | sec | millis) != 0;
 
 			ref char cursor = ref output[0];
 
@@ -236,10 +246,13 @@ namespace SnowBank.Data.Json
 
 			cursor = ref FormatDatePart(ref cursor, year, month, day);
 
-			cursor = 'T';
-			cursor = ref Unsafe.Add(ref cursor, 1);
+			if (hasTimePart)
+			{
+				cursor = 'T';
+				cursor = ref Unsafe.Add(ref cursor, 1);
 
-			cursor = ref FormatTimePart(ref cursor, hour, min, sec, millis);
+				cursor = ref FormatTimePart(ref cursor, hour, min, sec, millis);
+			}
 
 			if (kind == DateTimeKind.Utc)
 			{ // "Z"
@@ -248,7 +261,7 @@ namespace SnowBank.Data.Json
 			} 
 			else if (utcOffset.HasValue)
 			{
-				cursor = ref FormatTimeZoneOffset(ref cursor, utcOffset.Value, false);
+				cursor = ref FormatTimeZoneOffset(ref cursor, utcOffset.Value, kind == DateTimeKind.Local);
 			}
 			else if (kind == DateTimeKind.Local)
 			{
@@ -264,27 +277,30 @@ namespace SnowBank.Data.Json
 			int offset = (int) (Unsafe.ByteOffset(ref output[0], ref cursor).ToInt64() / Unsafe.SizeOf<char>());
 			if ((uint) offset > output.Length) throw ThrowHelper.InvalidOperationException("Internal formatting error");
 
-			return output.Slice(0, offset);
+			return output[..offset];
 		}
 
-		internal static int ComputeIso8601DateTimeSize(int millis, DateTimeKind kind, TimeSpan? utcOffset, char quotes)
+		internal static int ComputeIso8601DateTimeSize(bool hasTimeComponent, bool hasMilliseconds, DateTimeKind kind, TimeSpan? utcOffset, char quotes)
 		{
 			// Compute the exact required size
-			// - 'YYYY-DD-MMTHH:MM:SS___' => at least 19
+			// - 'YYYY-DD-MM' => at least 10
+			// - '___THH:MM:SS___' => +9
 			// - '"...."' if quotes != 0 => +2
-			// - '___.0000000____" if there are milliseconds => +6
+			// - '___.0000000____" if there are milliseconds => +8
 			// - '___Z" if UTC => +1
 			// - '___' if no offset and kind unspecified => +0
 			// - '___+XX:XX" if offset => +6
 
-			return (quotes == '\0' ? 0 : 2) + 19 + (millis == 0 ? 0 : 8) + ((kind == DateTimeKind.Utc ? 1 : (kind == DateTimeKind.Local || utcOffset != null) ? 6 : 0));
+			return (quotes == '\0' ? 0 : 2) + (hasTimeComponent ? 19 : 10) + (hasMilliseconds ? 8 : 0) + ((kind == DateTimeKind.Utc ? 1 : (kind == DateTimeKind.Local || utcOffset != null) ? 6 : 0));
 		}
 
-		internal static bool TryFormatIso8601DateTime(Span<char> output, out int charsWritten, DateTime date, DateTimeKind kind, TimeSpan? utcOffset, char quotes = '\0')
+		internal static bool TryFormatIso8601DateTime(Span<char> output, out int charsWritten, DateTime date, DateTimeKind kind, TimeSpan? utcOffset, char quotes = '\0', bool omitTimeIfZero = false)
 		{
 			GetDateParts(date.Ticks, out var year, out var month, out var day, out var hour, out var min, out var sec, out var millis);
 
-			int size = ComputeIso8601DateTimeSize(millis, kind, utcOffset, quotes);
+			bool hasTimePart = !omitTimeIfZero || (hour | min | sec | millis) != 0;
+
+			int size = ComputeIso8601DateTimeSize(hasTimePart, millis != 0, kind, utcOffset, quotes);
 
 			// we will need between 28 and 33 (+2 with quotes) characters for the buffer
 			if (output.Length < size)
@@ -303,23 +319,34 @@ namespace SnowBank.Data.Json
 
 			cursor = ref FormatDatePart(ref cursor, year, month, day);
 
-			cursor = 'T';
-			cursor = ref Unsafe.Add(ref cursor, 1);
-
-			cursor = ref FormatTimePart(ref cursor, hour, min, sec, millis);
-
-			if (kind == DateTimeKind.Utc)
-			{ // "Z"
-				cursor = 'Z';
+			if (hasTimePart)
+			{
+				cursor = 'T';
 				cursor = ref Unsafe.Add(ref cursor, 1);
-			} 
-			else if (utcOffset != null)
-			{
-				cursor = ref FormatTimeZoneOffset(ref cursor, utcOffset.Value, false);
+				cursor = ref FormatTimePart(ref cursor, hour, min, sec, millis);
 			}
-			else if (kind == DateTimeKind.Local)
+
+			switch (kind)
 			{
-				cursor = ref FormatTimeZoneOffset(ref cursor, TimeZoneInfo.Local.GetUtcOffset(date), true);
+				case DateTimeKind.Utc:
+				{ // "Z"
+					cursor = 'Z';
+					cursor = ref Unsafe.Add(ref cursor, 1);
+					break;
+				}
+				case DateTimeKind.Local:
+				{
+					cursor = ref FormatTimeZoneOffset(ref cursor, utcOffset ?? TimeZoneInfo.Local.GetUtcOffset(date), true);
+					break;
+				}
+				default:
+				{
+					if (utcOffset is not null)
+					{
+						cursor = ref FormatTimeZoneOffset(ref cursor, utcOffset.Value, true);
+					}
+					break;
+				}
 			}
 
 			if (quotes != '\0')
@@ -330,7 +357,7 @@ namespace SnowBank.Data.Json
 
 			{
 				int offset = (int) (Unsafe.ByteOffset(ref output[0], ref cursor).ToInt64() / Unsafe.SizeOf<char>());
-				if (offset != size) throw ThrowHelper.InvalidOperationException("Internal formatting error");
+				if (offset > size) throw ThrowHelper.InvalidOperationException("Internal formatting error");
 
 				charsWritten = offset;
 				return true;
@@ -365,7 +392,7 @@ namespace SnowBank.Data.Json
 				cursor = ref Unsafe.Add(ref cursor, 1);
 			}
 
-			return output.Slice(0, (int) (Unsafe.ByteOffset(ref output[0], ref cursor).ToInt64() / Unsafe.SizeOf<char>()));
+			return output[..(int) (Unsafe.ByteOffset(ref output[0], ref cursor).ToInt64() / Unsafe.SizeOf<char>())];
 		}
 
 		private static ref char FormatDatePart(ref char ptr, int year, int month, int day)

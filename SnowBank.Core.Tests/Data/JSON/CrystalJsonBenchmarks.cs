@@ -510,7 +510,7 @@ namespace SnowBank.Data.Json.Tests
 				Log($"\"{s}\" [{s.Length}]");
 				ts[p++] = RunBenchOnMethod("   check", () => JsonEncoding.NeedsEscaping(s), measure: false);
 				ts[p++] = RunBenchOnMethod("  unsafe", () => { buffer[0] = '"'; s.CopyTo(buffer.AsSpan(1)); buffer[s.Length + 1] = '"'; }, measure: false);
-				ts[p  ] = RunBenchOnMethod("  append", () => JsonEncoding.TryEncodeTo(buffer, s, out _), measure: false);
+				ts[p  ] = RunBenchOnMethod("  append", () => JsonEncoding.TryEncodeTo(s, buffer, out _), measure: false);
 				nanos[i] = ts;
 			}
 

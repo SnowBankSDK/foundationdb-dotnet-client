@@ -681,76 +681,78 @@ namespace SnowBank.Data.Json
 		{
 			#region <JIT_HACK>
 
-			// En mode RELEASE, le JIT reconnaît les patterns "if (typeof(T) == typeof(VALUETYPE)) { ... }" dans une méthode générique Foo<T> quand T est un ValueType,
-			// et les remplace par des "if (true) { ...}" ce qui permet d'éliminer le reste du code (très efficace si le if contient un return!)
-			// Egalement, le JIT optimise le "(VALUE_TYPE)(object)value" si T == VALUE_TYPE pour éviter le boxing inutile (le cast intermédiaire en object est pour faire taire le compilateur)
-			// => pour le vérifier, il faut inspecter l'asm généré par le JIT au runtime (en mode release, en dehors du debugger, etc...) ce qui n'est pas facile...
-			// => vérifié avec .NET 4.6.1 + RyuJIT x64, la méthode FromValue<int> est directement inlinée en l'appel à JsonNumber.Return(...) !
-
+			// In Release configuration, the JIT will optimize away the "if (typeof(T) == typeof(VALUETYPE)) { ... }" pattern, and should inline this method a call to JsonXYZ.Return(...) for well-known Value Types
+			// In Debug configuration, this is not the case, and would be too slow
 #if !DEBUG
-			if (typeof (T) == typeof (bool)) return JsonBoolean.Return((bool) (object) value!);
-			if (typeof (T) == typeof (char)) return JsonString.Return((char) (object) value!);
-			if (typeof (T) == typeof (byte)) return JsonNumber.Return((byte) (object) value!);
-			if (typeof (T) == typeof (sbyte)) return JsonNumber.Return((sbyte) (object) value!);
-			if (typeof (T) == typeof (short)) return JsonNumber.Return((short) (object) value!);
-			if (typeof (T) == typeof (ushort)) return JsonNumber.Return((ushort) (object) value!);
-			if (typeof (T) == typeof (int)) return JsonNumber.Return((int) (object) value!);
-			if (typeof (T) == typeof (uint)) return JsonNumber.Return((uint) (object) value!);
-			if (typeof (T) == typeof (long)) return JsonNumber.Return((long) (object) value!);
-			if (typeof (T) == typeof (ulong)) return JsonNumber.Return((ulong) (object) value!);
-			if (typeof (T) == typeof (float)) return JsonNumber.Return((float) (object) value!);
-			if (typeof (T) == typeof (double)) return JsonNumber.Return((double) (object) value!);
-			if (typeof (T) == typeof (decimal)) return JsonNumber.Return((decimal) (object) value!);
-			if (typeof (T) == typeof (Guid)) return JsonString.Return((Guid) (object) value!);
-			if (typeof (T) == typeof (Uuid128)) return JsonString.Return((Uuid128) (object) value!);
-			if (typeof (T) == typeof (Uuid96)) return JsonString.Return((Uuid96) (object) value!);
-			if (typeof (T) == typeof (Uuid80)) return JsonString.Return((Uuid80) (object) value!);
-			if (typeof (T) == typeof (Uuid64)) return JsonString.Return((Uuid64) (object) value!);
-			if (typeof (T) == typeof (TimeSpan)) return JsonNumber.Return((TimeSpan) (object) value!);
-			if (typeof (T) == typeof (DateTime)) return JsonDateTime.Return((DateTime) (object) value!);
-			if (typeof (T) == typeof (DateTimeOffset)) return JsonDateTime.Return((DateTimeOffset) (object) value!);
-			if (typeof (T) == typeof (DateOnly)) return JsonDateTime.Return((DateOnly) (object) value!);
-			if (typeof (T) == typeof (TimeOnly)) return JsonNumber.Return((TimeOnly) (object) value!);
-			if (typeof (T) == typeof (NodaTime.Instant)) return JsonString.Return((NodaTime.Instant) (object) value!);
-			if (typeof (T) == typeof (NodaTime.Duration)) return JsonNumber.Return((NodaTime.Duration) (object) value!);
-			if (typeof (T) == typeof (NodaTime.LocalDateTime)) return JsonString.Return((NodaTime.LocalDateTime) (object) value!);
-			if (typeof (T) == typeof (NodaTime.LocalDate)) return JsonString.Return((NodaTime.LocalDate) (object) value!);
-			if (typeof (T) == typeof (NodaTime.LocalTime)) return JsonString.Return((NodaTime.LocalTime) (object) value!);
-			if (typeof (T) == typeof (NodaTime.ZonedDateTime)) return JsonString.Return((NodaTime.ZonedDateTime) (object) value!);
-			// nullable types
-			if (typeof (T) == typeof (bool?)) return JsonBoolean.Return((bool?) (object?) value);
-			if (typeof (T) == typeof (char?)) return JsonString.Return((char?) (object?) value);
-			if (typeof (T) == typeof (byte?)) return JsonNumber.Return((byte?) (object?) value);
-			if (typeof (T) == typeof (sbyte?)) return JsonNumber.Return((sbyte?) (object?) value);
-			if (typeof (T) == typeof (short?)) return JsonNumber.Return((short?) (object?) value);
-			if (typeof (T) == typeof (ushort?)) return JsonNumber.Return((ushort?) (object?) value);
-			if (typeof (T) == typeof (int?)) return JsonNumber.Return((int?) (object?) value);
-			if (typeof (T) == typeof (uint?)) return JsonNumber.Return((uint?) (object?) value);
-			if (typeof (T) == typeof (long?)) return JsonNumber.Return((long?) (object?) value);
-			if (typeof (T) == typeof (ulong?)) return JsonNumber.Return((ulong?) (object?) value);
-			if (typeof (T) == typeof (float?)) return JsonNumber.Return((float?) (object?) value);
-			if (typeof (T) == typeof (double?)) return JsonNumber.Return((double?) (object?) value);
-			if (typeof (T) == typeof (decimal?)) return JsonNumber.Return((decimal?) (object?) value);
-			if (typeof (T) == typeof (Guid?)) return JsonString.Return((Guid?) (object?) value);
-			if (typeof (T) == typeof (Uuid128?)) return JsonString.Return((Uuid128?) (object?) value);
-			if (typeof (T) == typeof (Uuid96?)) return JsonString.Return((Uuid96?) (object?) value);
-			if (typeof (T) == typeof (Uuid80?)) return JsonString.Return((Uuid80?) (object?) value);
-			if (typeof (T) == typeof (Uuid64?)) return JsonString.Return((Uuid64?) (object?) value);
-			if (typeof (T) == typeof (TimeSpan?)) return JsonNumber.Return((TimeSpan?) (object?) value);
-			if (typeof (T) == typeof (DateTime?)) return JsonDateTime.Return((DateTime?) (object?) value);
-			if (typeof (T) == typeof (DateTimeOffset?)) return JsonDateTime.Return((DateTimeOffset?) (object?) value);
-			if (typeof (T) == typeof (DateOnly?)) return JsonDateTime.Return((DateOnly?) (object?) value);
-			if (typeof (T) == typeof (TimeOnly?)) return JsonNumber.Return((TimeOnly?) (object?) value);
-			if (typeof (T) == typeof (NodaTime.Instant?)) return JsonString.Return((NodaTime.Instant?) (object?) value);
-			if (typeof (T) == typeof (NodaTime.Duration?)) return JsonNumber.Return((NodaTime.Duration?) (object?) value);
-			if (typeof (T) == typeof (NodaTime.LocalDateTime?)) return JsonString.Return((NodaTime.LocalDateTime?) (object?) value);
-			if (typeof (T) == typeof (NodaTime.LocalDate?)) return JsonString.Return((NodaTime.LocalDate?) (object?) value);
-			if (typeof (T) == typeof (NodaTime.LocalTime?)) return JsonString.Return((NodaTime.LocalTime?) (object?) value);
-			if (typeof (T) == typeof (NodaTime.ZonedDateTime?)) return JsonString.Return((NodaTime.ZonedDateTime?) (object?) value);
+			if (default(T) is not null)
+			{
+				if (typeof (T) == typeof (bool)) return JsonBoolean.Return((bool) (object) value!);
+				if (typeof (T) == typeof (char)) return JsonString.Return((char) (object) value!);
+				if (typeof (T) == typeof (byte)) return JsonNumber.Return((byte) (object) value!);
+				if (typeof (T) == typeof (sbyte)) return JsonNumber.Return((sbyte) (object) value!);
+				if (typeof (T) == typeof (short)) return JsonNumber.Return((short) (object) value!);
+				if (typeof (T) == typeof (ushort)) return JsonNumber.Return((ushort) (object) value!);
+				if (typeof (T) == typeof (int)) return JsonNumber.Return((int) (object) value!);
+				if (typeof (T) == typeof (uint)) return JsonNumber.Return((uint) (object) value!);
+				if (typeof (T) == typeof (long)) return JsonNumber.Return((long) (object) value!);
+				if (typeof (T) == typeof (ulong)) return JsonNumber.Return((ulong) (object) value!);
+				if (typeof (T) == typeof (float)) return JsonNumber.Return((float) (object) value!);
+				if (typeof (T) == typeof (double)) return JsonNumber.Return((double) (object) value!);
+				if (typeof (T) == typeof (decimal)) return JsonNumber.Return((decimal) (object) value!);
+				if (typeof (T) == typeof (Guid)) return JsonString.Return((Guid) (object) value!);
+				if (typeof (T) == typeof (Uuid128)) return JsonString.Return((Uuid128) (object) value!);
+				if (typeof (T) == typeof (Uuid96)) return JsonString.Return((Uuid96) (object) value!);
+				if (typeof (T) == typeof (Uuid80)) return JsonString.Return((Uuid80) (object) value!);
+				if (typeof (T) == typeof (Uuid64)) return JsonString.Return((Uuid64) (object) value!);
+				if (typeof (T) == typeof (TimeSpan)) return JsonNumber.Return((TimeSpan) (object) value!);
+				if (typeof (T) == typeof (DateTime)) return JsonDateTime.Return((DateTime) (object) value!);
+				if (typeof (T) == typeof (DateTimeOffset)) return JsonDateTime.Return((DateTimeOffset) (object) value!);
+				if (typeof (T) == typeof (DateOnly)) return JsonDateTime.Return((DateOnly) (object) value!);
+				if (typeof (T) == typeof (TimeOnly)) return JsonNumber.Return((TimeOnly) (object) value!);
+				if (typeof (T) == typeof (NodaTime.Instant)) return JsonString.Return((NodaTime.Instant) (object) value!);
+				if (typeof (T) == typeof (NodaTime.Duration)) return JsonNumber.Return((NodaTime.Duration) (object) value!);
+				if (typeof (T) == typeof (NodaTime.LocalDateTime)) return JsonString.Return((NodaTime.LocalDateTime) (object) value!);
+				if (typeof (T) == typeof (NodaTime.LocalDate)) return JsonString.Return((NodaTime.LocalDate) (object) value!);
+				if (typeof (T) == typeof (NodaTime.LocalTime)) return JsonString.Return((NodaTime.LocalTime) (object) value!);
+				if (typeof (T) == typeof (NodaTime.ZonedDateTime)) return JsonString.Return((NodaTime.ZonedDateTime) (object) value!);
+			}
+			else
+			{
+				// nullable types
+				if (typeof (T) == typeof (bool?)) return JsonBoolean.Return((bool?) (object?) value);
+				if (typeof (T) == typeof (char?)) return JsonString.Return((char?) (object?) value);
+				if (typeof (T) == typeof (byte?)) return JsonNumber.Return((byte?) (object?) value);
+				if (typeof (T) == typeof (sbyte?)) return JsonNumber.Return((sbyte?) (object?) value);
+				if (typeof (T) == typeof (short?)) return JsonNumber.Return((short?) (object?) value);
+				if (typeof (T) == typeof (ushort?)) return JsonNumber.Return((ushort?) (object?) value);
+				if (typeof (T) == typeof (int?)) return JsonNumber.Return((int?) (object?) value);
+				if (typeof (T) == typeof (uint?)) return JsonNumber.Return((uint?) (object?) value);
+				if (typeof (T) == typeof (long?)) return JsonNumber.Return((long?) (object?) value);
+				if (typeof (T) == typeof (ulong?)) return JsonNumber.Return((ulong?) (object?) value);
+				if (typeof (T) == typeof (float?)) return JsonNumber.Return((float?) (object?) value);
+				if (typeof (T) == typeof (double?)) return JsonNumber.Return((double?) (object?) value);
+				if (typeof (T) == typeof (decimal?)) return JsonNumber.Return((decimal?) (object?) value);
+				if (typeof (T) == typeof (Guid?)) return JsonString.Return((Guid?) (object?) value);
+				if (typeof (T) == typeof (Uuid128?)) return JsonString.Return((Uuid128?) (object?) value);
+				if (typeof (T) == typeof (Uuid96?)) return JsonString.Return((Uuid96?) (object?) value);
+				if (typeof (T) == typeof (Uuid80?)) return JsonString.Return((Uuid80?) (object?) value);
+				if (typeof (T) == typeof (Uuid64?)) return JsonString.Return((Uuid64?) (object?) value);
+				if (typeof (T) == typeof (TimeSpan?)) return JsonNumber.Return((TimeSpan?) (object?) value);
+				if (typeof (T) == typeof (DateTime?)) return JsonDateTime.Return((DateTime?) (object?) value);
+				if (typeof (T) == typeof (DateTimeOffset?)) return JsonDateTime.Return((DateTimeOffset?) (object?) value);
+				if (typeof (T) == typeof (DateOnly?)) return JsonDateTime.Return((DateOnly?) (object?) value);
+				if (typeof (T) == typeof (TimeOnly?)) return JsonNumber.Return((TimeOnly?) (object?) value);
+				if (typeof (T) == typeof (NodaTime.Instant?)) return JsonString.Return((NodaTime.Instant?) (object?) value);
+				if (typeof (T) == typeof (NodaTime.Duration?)) return JsonNumber.Return((NodaTime.Duration?) (object?) value);
+				if (typeof (T) == typeof (NodaTime.LocalDateTime?)) return JsonString.Return((NodaTime.LocalDateTime?) (object?) value);
+				if (typeof (T) == typeof (NodaTime.LocalDate?)) return JsonString.Return((NodaTime.LocalDate?) (object?) value);
+				if (typeof (T) == typeof (NodaTime.LocalTime?)) return JsonString.Return((NodaTime.LocalTime?) (object?) value);
+				if (typeof (T) == typeof (NodaTime.ZonedDateTime?)) return JsonString.Return((NodaTime.ZonedDateTime?) (object?) value);
+			}
 #endif
 			#endregion </JIT_HACK>
 
-			return CrystalJsonDomWriter.Default.ParseObject(value, typeof (T));
+			return CrystalJsonDomWriter.Default.ParseObject(value, typeof(T));
 		}
 
 		[Obsolete("Please call JsonValue.ReadOnly.FromValue(...) instead")]
@@ -892,16 +894,135 @@ namespace SnowBank.Data.Json
 
 		#region TryFormat Helpers...
 
+		#region Normal...
+
+		public static bool TryFormatNormal(JsonValue value, Span<char> destination, out int charsWritten) => value switch
+		{
+			JsonNull        => "null".TryCopyTo(destination, out charsWritten),
+			JsonBoolean b   => (b.Value ? "true" : "false").TryCopyTo(destination, out charsWritten),
+			JsonString str  => JsonEncoding.TryEncodeTo(str.Value, destination, out charsWritten),
+			JsonNumber num  => num.TryFormat(destination, out charsWritten, "N"),
+			JsonDateTime dt => dt.TryFormat(destination, out charsWritten, "N"),
+			JsonArray arr   => TryFormatNormal(arr.GetSpan(), destination, out charsWritten),
+			JsonObject obj  => TryFormatNormal(obj.GetItems(), destination, out charsWritten),
+			_               => throw new NotSupportedException("Unexpected JsonValue type!")
+		};
+
+		internal static bool TryFormatNormal(ReadOnlySpan<JsonValue> items, Span<char> destination, out int charsWritten)
+		{
+			var buffer = destination;
+			if (buffer.Length < 3) goto too_small;
+
+			if (items.Length == 0)
+			{
+				buffer[0] = '[';
+				buffer[1] = ' ';
+				buffer[2] = ']';
+				charsWritten = 3;
+				return true;
+			}
+
+			buffer[0] = '[';
+			buffer[1] = ' ';
+			int pos = 2;
+			foreach (var item in items)
+			{
+				if (pos > 2)
+				{
+					if (pos + 2 > buffer.Length) goto too_small;
+					buffer[pos] = ',';
+					buffer[pos + 1] = ' ';
+					pos += 2;
+				}
+
+				if (!item.TryFormat(buffer[pos..], out int len, "N"))
+				{
+					goto too_small;
+				}
+
+				pos += len;
+			}
+
+			if (pos + 2 > buffer.Length) goto too_small;
+			buffer[pos] = ' ';
+			buffer[pos + 1] = ']';
+			pos += 2;
+
+			charsWritten = pos;
+			return true;
+
+		too_small:
+			charsWritten = 0;
+			return false;
+		}
+
+		internal static bool TryFormatNormal(Dictionary<string, JsonValue> items, Span<char> destination, out int charsWritten)
+		{
+			if (destination.Length < 3) goto too_small;
+
+			if (items.Count == 0)
+			{
+				destination[0] = '{';
+				destination[1] = ' ';
+				destination[2] = '}';
+				charsWritten = 3;
+				return true;
+			}
+
+			destination[0] = '{';
+			destination[1] = ' ';
+			int pos = 2;
+			foreach (var kv in items)
+			{
+				if (pos > 2)
+				{
+					if (!", ".TryCopyTo(destination[pos..])) goto too_small;
+					pos += 2;
+				}
+
+				// encode the property name
+				if (!JsonEncoding.TryEncodeTo(kv.Key, destination[pos..], out int len, withQuotes: true))
+				{
+					goto too_small;
+				}
+				pos += len;
+
+				if (!": ".TryCopyTo(destination[pos..])) goto too_small;
+				pos += 2;
+
+				// encode the value
+				if (!TryFormatNormal(kv.Value, destination[pos..], out len))
+				{
+					goto too_small;
+				}
+				pos += len;
+			}
+
+			if (!" }".TryCopyTo(destination[pos..])) goto too_small;
+			pos += 2;
+
+			charsWritten = pos;
+			return true;
+
+		too_small:
+			charsWritten = 0;
+			return false;
+		}
+
+		#endregion
+
+		#region Compact...
+
 		public static bool TryFormatCompact(JsonValue value, Span<char> destination, out int charsWritten) => value switch
 		{
-			JsonNull n => n.TryFormat(destination, out charsWritten),
-			JsonBoolean b => b.TryFormat(destination, out charsWritten),
-			JsonString str => str.TryFormat(destination, out charsWritten),
-			JsonNumber num => num.TryFormat(destination, out charsWritten),
-			JsonDateTime dt => dt.TryFormat(destination, out charsWritten),
-			JsonArray arr => TryFormatCompact(arr.GetSpan(), destination, out charsWritten),
-			JsonObject obj => TryFormatCompact(obj.GetItems(), destination, out charsWritten),
-			_ => throw new NotSupportedException("Unexpected JsonValue type!")
+			JsonNull        => "null".TryCopyTo(destination, out charsWritten),
+			JsonBoolean b   => (b.Value ? "true" : "false").TryCopyTo(destination, out charsWritten),
+			JsonString str  => JsonEncoding.TryEncodeTo(str.Value, destination, out charsWritten),
+			JsonNumber num  => num.TryFormat(destination, out charsWritten, "C"),
+			JsonDateTime dt => dt.TryFormat(destination, out charsWritten, "C"),
+			JsonArray arr   => TryFormatCompact(arr.GetSpan(), destination, out charsWritten),
+			JsonObject obj  => TryFormatCompact(obj.GetItems(), destination, out charsWritten),
+			_               => throw new NotSupportedException("Unexpected JsonValue type!")
 		};
 
 		internal static bool TryFormatCompact(ReadOnlySpan<JsonValue> items, Span<char> destination, out int charsWritten)
@@ -967,7 +1088,7 @@ namespace SnowBank.Data.Json
 				}
 
 				// encode the property name
-				if (!JsonEncoding.TryEncodeTo(destination[pos..], kv.Key, out int len, withQuotes: true))
+				if (!JsonEncoding.TryEncodeTo(kv.Key, destination[pos..], out int len, withQuotes: true))
 				{
 					goto too_small;
 				}
@@ -995,118 +1116,7 @@ namespace SnowBank.Data.Json
 			return false;
 		}
 
-		public static bool TryFormatDefault(JsonValue value, Span<char> destination, out int charsWritten) => value switch
-		{
-			JsonNull n => n.TryFormat(destination, out charsWritten),
-			JsonBoolean b => b.TryFormat(destination, out charsWritten),
-			JsonString str => str.TryFormat(destination, out charsWritten),
-			JsonNumber num => num.TryFormat(destination, out charsWritten),
-			JsonDateTime dt => dt.TryFormat(destination, out charsWritten),
-			JsonArray arr => TryFormatDefault(arr.GetSpan(), destination, out charsWritten),
-			JsonObject obj => obj.TryFormat(destination, out charsWritten, "C", null),
-			_ => throw new NotSupportedException("Unexpected JsonValue type!")
-		};
-
-		internal static bool TryFormatDefault(ReadOnlySpan<JsonValue> items, Span<char> destination, out int charsWritten)
-		{
-			var buffer = destination;
-			if (buffer.Length < 3) goto too_small;
-
-			if (items.Length == 0)
-			{
-				buffer[0] = '[';
-				buffer[1] = ' ';
-				buffer[2] = ']';
-				charsWritten = 3;
-				return true;
-			}
-
-			buffer[0] = '[';
-			buffer[1] = ' ';
-			int pos = 2;
-			foreach (var item in items)
-			{
-				if (pos > 2)
-				{
-					if (pos + 2 > buffer.Length) goto too_small;
-					buffer[pos] = ',';
-					buffer[pos + 1] = ' ';
-					pos += 2;
-				}
-
-				if (!item.TryFormat(buffer[pos..], out int len))
-				{
-					goto too_small;
-				}
-
-				pos += len;
-			}
-
-			if (pos + 2 > buffer.Length) goto too_small;
-			buffer[pos] = ' ';
-			buffer[pos + 1] = ']';
-			pos += 2;
-
-			charsWritten = pos;
-			return true;
-
-		too_small:
-			charsWritten = 0;
-			return false;
-		}
-
-		internal static bool TryFormatDefault(Dictionary<string, JsonValue> items, Span<char> destination, out int charsWritten)
-		{
-			if (destination.Length < 3) goto too_small;
-
-			if (items.Count == 0)
-			{
-				destination[0] = '{';
-				destination[1] = ' ';
-				destination[2] = '}';
-				charsWritten = 3;
-				return true;
-			}
-
-			destination[0] = '{';
-			destination[1] = ' ';
-			int pos = 2;
-			foreach (var kv in items)
-			{
-				if (pos > 2)
-				{
-					if (!", ".TryCopyTo(destination[pos..])) goto too_small;
-					pos += 2;
-				}
-
-				// encode the property name
-				if (!JsonEncoding.TryEncodeTo(destination[pos..], kv.Key, out int len, withQuotes: true))
-				{
-					goto too_small;
-				}
-				pos += len;
-
-				if (!": ".TryCopyTo(destination[pos..])) goto too_small;
-				pos += 2;
-
-				// encode the value
-				if (!TryFormatCompact(kv.Value, destination[pos..], out len))
-				{
-					goto too_small;
-				}
-				pos += len;
-			}
-
-			if (!" }".TryCopyTo(destination[pos..])) goto too_small;
-			pos += 2;
-
-			charsWritten = pos;
-			return true;
-
-		too_small:
-			charsWritten = 0;
-			return false;
-		}
+		#endregion
 
 		#endregion
 

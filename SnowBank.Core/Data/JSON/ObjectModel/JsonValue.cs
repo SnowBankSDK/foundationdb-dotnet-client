@@ -185,61 +185,51 @@ namespace SnowBank.Data.Json
 		/// <remarks>Supported values for <paramref name="format"/> are:
 		/// <list type="table">
 		///   <listheader><term>format</term><description>foo</description></listheader>
-		///   <item><term>D</term><description>Default, equivalent to calling <see cref="ToJsonText"/> with <see cref="CrystalJsonSettings.Json"/></description></item>
+		///   <item><term>D</term><description>Default, returns the value in the default format (no quotes for strings, ...)</description></item>
+		///   <item><term>N</term><description>Normal, equivalent to calling <see cref="ToJsonText"/> with <see cref="CrystalJsonSettings.Json"/></description></item>
 		///   <item><term>C</term><description>Compact, equivalent to calling <see cref="ToJsonText"/> with <see cref="CrystalJsonSettings.JsonCompact"/></description></item>
 		///   <item><term>P</term><description>Pretty, equivalent to calling <see cref="ToJsonText"/> with <see cref="CrystalJsonSettings.JsonIndented"/></description></item>
-		///   <item><term>J</term><description>JavaScript, equivalent to calling <see cref="ToJsonText"/> with <see cref="CrystalJsonSettings.JavaScript"/>.</description></item>
 		///   <item><term>Q</term><description>Quick, equivalent to calling <see cref="GetCompactRepresentation"/>, that will return a simplified/partial version, suitable for logs/traces.</description></item>
+		///   <item><term>J</term><description>JavaScript, equivalent to calling <see cref="ToJsonText"/> with <see cref="CrystalJsonSettings.JavaScript"/>.</description></item>
+		///   <item><term>B</term><description>returns a doubly-encoded JSON version of this value, that can be passed through inside another JSON payload, or copy-pasted as a valid C# string literal.</description></item>
 		/// </list>
 		/// </remarks>
 		[Pure]
 		public virtual string ToString(string? format, IFormatProvider? provider = null)
 		{
-			switch(format ?? "D")
+			return (format ?? "") switch
 			{
-				case "D":
-				case "d":
-				{ // "D" is for Default!
-					return this.ToJsonText();
-				}
-				case "C":
-				case "c":
-				{ // "C" is for Compact!
-					return this.ToJsonText(CrystalJsonSettings.JsonCompact);
-				}
-				case "P":
-				case "p":
-				{ // "P" is for Pretty!
-					return this.ToJsonText(CrystalJsonSettings.JsonIndented);
-				}
-				case "Q":
-				case "q":
-				{ // "Q" is for Quick!
-					return GetCompactRepresentation(0);
-				}
-				case "J":
-				case "j":
-				{ // "J" is for Javascript!
-					return this.ToJsonText(CrystalJsonSettings.JavaScript);
-				}
-				case "B":
-				case "b":
-				{ // "B" is for Build!
-					return JsonEncoding.Encode(this.ToJsonText(CrystalJsonSettings.JsonCompact));
-				}
-				default:
-				{
+				"" or "D" or "d" // "D" is for Default!
+					// this is overriden for strings, numbers, boolean
+					=> this.ToJsonText(),
+				"C" or "c" // "C" is for Compact!
+					=> this.ToJsonText(CrystalJsonSettings.JsonCompact),
+				"P" or "p" // "P" is for Pretty!
+					=> this.ToJsonText(CrystalJsonSettings.JsonIndented),
+				"N" or "n" // "N" is for Normal!
+					=> this.ToJsonText(CrystalJsonSettings.Json),
+				"Q" or "q" // "Q" is for Quick!
+					=> this.GetCompactRepresentation(0),
+				"J" or "j" // "J" is for Javascript!
+					=> this.ToJsonText(CrystalJsonSettings.JavaScript),
+				"B" or "b" // "B" is for Build!
+					=> JsonEncoding.Encode(this.ToJsonText(CrystalJsonSettings.JsonCompact)),
+				_ => throw ErrorNotSupportedFormatLiteral(format)
+			};
+		}
+
+		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		protected static NotSupportedException ErrorNotSupportedFormatLiteral(ReadOnlySpan<char> format)
+		{
 #if DEBUG
-					if (format!.EndsWith("}}", StringComparison.Ordinal))
-					{
-						// ATTENTION! you have a typo in a string interpolation format!
-						// If you have written something like "... {{{obj:P}}}", it will parse "P}}" as the string format, which is incorrect.
-						if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
-					}
-#endif
-					throw new NotSupportedException($"Invalid JSON format '{format}' specification");
-				}
+			if (format!.EndsWith("}}", StringComparison.Ordinal))
+			{
+				// ATTENTION! you have a typo in a string interpolation format!
+				// If you have written something like "... {{{obj:P}}}", it will parse "P}}" as the string format, which is incorrect.
+				if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
 			}
+#endif
+			throw new NotSupportedException($"Invalid JSON format '{format}' specification");
 		}
 
 		/// <summary>Creates a deep copy of this value (and all of its children)</summary>

@@ -49,7 +49,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Singleton equivalent to <see cref="DateTime.MinValue"/></summary>
 		public static readonly JsonDateTime MaxValue = new(DateTime.MaxValue, NO_TIMEZONE);
 		
-		private static readonly DateTime MaxValueDate = new(3155378112000000000);
+		internal static readonly DateTime MaxValueDate = new(3155378112000000000);
 		
 		/// <summary>Singleton equivalent to <see cref="DateOnly.MinValue"/></summary>
 		public static readonly JsonDateTime DateOnlyMaxValue = new(MaxValueDate, NO_TIMEZONE);
@@ -459,14 +459,14 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
-			//BUGBUG: TODO: need to validate the format!
-			if (format is "J" or "j")
+			return format switch
 			{
-				return TryFormatJavaScript(destination, out charsWritten);
-			}
-			//BUGBUG: TODO: need to support "J"/"j" format for javascript!
-			return TryFormat(destination, out charsWritten);
-
+				"" or "D" or "d"                       => this.TryFormatIso8601(destination, out charsWritten, quoted: false, omitTimeIfZero: m_value.Kind == DateTimeKind.Unspecified),
+				"P" or "p" or "C" or "c" or "N" or "n" => this.TryFormatIso8601(destination, out charsWritten, quoted: true, omitTimeIfZero: m_value.Kind == DateTimeKind.Unspecified),
+				"J" or "j"                             => this.TryFormatJavaScript(destination, out charsWritten),
+				"Q" or "q"                             => this.GetCompactRepresentation(0).TryCopyTo(destination, out charsWritten),
+				_                                      => throw ErrorNotSupportedFormatLiteral(format)
+			};
 		}
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
@@ -501,13 +501,18 @@ namespace SnowBank.Data.Json
 			return false;
 		}
 
-		public bool TryFormat(Span<char> destination, out int charsWritten)
+		internal bool TryFormatIso8601(Span<char> destination, out int charsWritten, bool quoted, bool omitTimeIfZero)
 		{
 			if (m_offset == NO_TIMEZONE)
 			{ // DateTime
 
 				if (m_value == DateTime.MinValue)
 				{
+					if (!quoted)
+					{
+						charsWritten = 0;
+						return true;
+					}
 					if (destination.Length < 2)
 					{
 						goto too_small;
@@ -520,39 +525,68 @@ namespace SnowBank.Data.Json
 				
 				if (m_value == DateTime.MaxValue)
 				{ // DateTime.MaxValue
-					if (destination.Length < JsonTokens.Iso8601DateTimeMaxValue.Length)
+
+					ReadOnlySpan<char> literal = JsonTokens.Iso8601DateTimeMaxValue;
+					if (!quoted) literal = literal[1..^1];
+
+					if (destination.Length < literal.Length)
 					{
 						goto too_small;
 					}
-					JsonTokens.Iso8601DateTimeMaxValue.CopyTo(destination);
-					charsWritten = JsonTokens.Iso8601DateTimeMaxValue.Length;
+					literal.CopyTo(destination);
+					charsWritten = literal.Length;
 					return true;
 				}
 
 				if (m_value == JsonDateTime.MaxValueDate)
 				{ // DateOnly.MaxValue
-					if (destination.Length < JsonTokens.Iso8601DateOnlyMaxValue.Length)
+					ReadOnlySpan<char> literal = JsonTokens.Iso8601DateOnlyMaxValue;
+					if (!quoted) literal = literal[1..^1];
+					if (destination.Length < literal.Length)
 					{
 						goto too_small;
 					}
-					JsonTokens.Iso8601DateOnlyMaxValue.CopyTo(destination);
-					charsWritten = JsonTokens.Iso8601DateOnlyMaxValue.Length;
+					literal.CopyTo(destination);
+					charsWritten = literal.Length;
 					return true;
 				}
 
-				if (destination.Length < 2 || !CrystalJsonFormatter.TryFormatIso8601DateTime(destination[1..], out int n, m_value, m_value.Kind, null))
+				if (!quoted)
+				{
+					if (!CrystalJsonFormatter.TryFormatIso8601DateTime(destination, out charsWritten, m_value, m_value.Kind, null, omitTimeIfZero: omitTimeIfZero))
+					{
+						goto too_small;
+					}
+
+					return true;
+				}
+
+				if (destination.Length < 2 || !CrystalJsonFormatter.TryFormatIso8601DateTime(destination[1..], out int n, m_value, m_value.Kind, null, omitTimeIfZero: omitTimeIfZero))
 				{
 					goto too_small;
 				}
+
 				destination[0] = '"';
 				destination[n + 1] = '"';
 				charsWritten = n + 2;
 				return true;
-
 			}
 			else
 			{ // DateTimeOffset
 				var dto = new DateTimeOffset(m_value, TimeSpan.FromMinutes(m_offset));
+
+				if (!quoted)
+				{
+					if (dto == DateTimeOffset.MinValue)
+					{
+						charsWritten = 0;
+					}
+					else if (!CrystalJsonFormatter.TryFormatIso8601DateTime(destination, out charsWritten, m_value, m_value.Kind, dto.Offset, omitTimeIfZero: omitTimeIfZero))
+					{
+						goto too_small;
+					}
+					return true;
+				}
 
 				if (dto == DateTimeOffset.MinValue)
 				{
@@ -565,7 +599,8 @@ namespace SnowBank.Data.Json
 				}
 
 				destination[0] = '"';
-				if (!dto.TryFormat(destination[1..], out int n, "O", CultureInfo.InvariantCulture))
+				if (!CrystalJsonFormatter.TryFormatIso8601DateTime(destination[1..], out int n, m_value, m_value.Kind, dto.Offset, omitTimeIfZero: omitTimeIfZero))
+				//if (!dto.TryFormat(destination[1..], out int n, "O", CultureInfo.InvariantCulture))
 				{
 					goto too_small;
 				}
@@ -587,7 +622,7 @@ namespace SnowBank.Data.Json
 		{
 			// we first convert to chars, then to utf-8
 
-			Span<char> chars = stackalloc char[48]; // "xxxx-xx-xxTxx:xx:xx.xxxxxxx+xx:xx"
+			Span<char> chars = stackalloc char[40]; // '\"xxxx-xx-xxTxx:xx:xx.xxxxxxx+xx:xx\"' = max 35
 			if (!TryFormat(chars, out int charsWritten, format, provider) 
 			 || !JsonEncoding.Utf8NoBom.TryGetBytes(chars[..charsWritten], destination, out bytesWritten))
 			{
@@ -694,18 +729,27 @@ namespace SnowBank.Data.Json
 
 		#endregion
 
-		/// <inheritdoc />
-		public override string ToString()
+		public override string ToString(string? format, IFormatProvider? provider = null)
 		{
-			if (this.HasOffset)
+			return (format ?? "") switch
 			{
-				return this.DateWithOffset.ToString("O");
-			}
+				"" or "D" or "d"
+					=> string.Create(CultureInfo.InvariantCulture, $"{this}"),
+				"N" or "n" or "C" or "c" or "P" or "p"
+					=> string.Create(CultureInfo.InvariantCulture, $"{this:N}"),
+				"Q" or "q"
+					=> this.GetCompactRepresentation(0),
+				"B" or "b"
+					=> JsonEncoding.Encode(string.Create(CultureInfo.InvariantCulture, $"{this:N}")),
+				_
+					=> throw ErrorNotSupportedFormatLiteral(format),
+			};
+		}
 
-			var date = this.Date;
-			return date.TimeOfDay == TimeSpan.Zero
-				? DateOnly.FromDateTime(date).ToString("O") // date only
-				: date.ToString("O"); // date with time
+		public bool TryConvertToString(out string value)
+		{
+			value = string.Create(CultureInfo.InvariantCulture, $"{this:N}");
+			return true;
 		}
 
 		/// <inheritdoc />

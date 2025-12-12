@@ -157,7 +157,7 @@ namespace SnowBank.Text.Tests
 
 				// to chars
 				var chars = new char[expectedChars.Length + 16];
-				Assert.That(JsonEncoding.TryEncodeTo(chars, s, out int charsWritten), Is.True, $"'{s}' => '{expectedChars}'");
+				Assert.That(JsonEncoding.TryEncodeTo(s, chars, out int charsWritten), Is.True, $"'{s}' => '{expectedChars}'");
 				Assert.That(chars.AsSpan(0, charsWritten).ToString(), Is.EqualTo(expectedChars), $"'{s}' => '{expectedChars}'");
 
 				var vsw = new ValueStringWriter(chars.Length);
@@ -167,7 +167,7 @@ namespace SnowBank.Text.Tests
 
 				// to utf8
 				var bytes = new byte[expectedBytes.Length + 16];
-				Assert.That(JsonEncoding.TryEncodeTo(bytes, s, out int bytesWritten), Is.True, $"'{s}' => '{expectedChars}'");
+				Assert.That(JsonEncoding.TryEncodeTo(s, bytes, out int bytesWritten), Is.True, $"'{s}' => '{expectedChars}'");
 				if (!bytes.AsSpan(0, bytesWritten).SequenceEqual(expectedBytes))
 				{
 					DumpVersus(bytes.AsSpan(0, bytesWritten), expectedBytes);
@@ -307,7 +307,7 @@ namespace SnowBank.Text.Tests
 
 				// with more than required
 				buf.Fill('#');
-				Assert.That(JsonEncoding.TryEncodeTo(buf, s, out int written), Is.True, $"Should have more than enough to encode '{s}' => '{encoded}'");
+				Assert.That(JsonEncoding.TryEncodeTo(s, buf, out int written), Is.True, $"Should have more than enough to encode '{s}' => '{encoded}'");
 				Assert.That(written, Is.EqualTo(capacity));
 				Assert.That(buf.Slice(0, written).SequenceEqual(encoded));
 #if NET8_0_OR_GREATER
@@ -316,7 +316,7 @@ namespace SnowBank.Text.Tests
 
 				// with just enough
 				buf.Fill('#');
-				Assert.That(JsonEncoding.TryEncodeTo(buf.Slice(0, capacity), s, out written), Is.True, $"Should have EXACTLY enough to encode '{s}' => '{encoded}'");
+				Assert.That(JsonEncoding.TryEncodeTo(s, buf.Slice(0, capacity), out written), Is.True, $"Should have EXACTLY enough to encode '{s}' => '{encoded}'");
 				Assert.That(written, Is.EqualTo(capacity));
 				Assert.That(buf.Slice(0, written).SequenceEqual(encoded));
 #if NET8_0_OR_GREATER
@@ -325,7 +325,7 @@ namespace SnowBank.Text.Tests
 
 				// not enough for the last quote
 				buf.Fill('#');
-				Assert.That(JsonEncoding.TryEncodeTo(buf.Slice(0, capacity - 1), s, out written), Is.False, $"Should have ONE LESS than required to encode '{s}' => '{encoded}'");
+				Assert.That(JsonEncoding.TryEncodeTo(s, buf.Slice(0, capacity - 1), out written), Is.False, $"Should have ONE LESS than required to encode '{s}' => '{encoded}'");
 #if NET8_0_OR_GREATER
 				Assert.That(buf.Slice(capacity - 1).IndexOfAnyExcept('#'), Is.EqualTo(-1), "Should not have overflowed the buffer");
 #endif
@@ -334,7 +334,7 @@ namespace SnowBank.Text.Tests
 				if (capacity > 2)
 				{
 					buf.Fill('#');
-					Assert.That(JsonEncoding.TryEncodeTo(buf.Slice(0, capacity >> 1), s, out written), Is.False, $"Should NOT have enough to encode '{s}' => '{encoded}'");
+					Assert.That(JsonEncoding.TryEncodeTo(s, buf.Slice(0, capacity >> 1), out written), Is.False, $"Should NOT have enough to encode '{s}' => '{encoded}'");
 #if NET8_0_OR_GREATER
 					Assert.That(buf.Slice(capacity >> 1).IndexOfAnyExcept('#'), Is.EqualTo(-1), "Should not have overflowed the buffer");
 #endif

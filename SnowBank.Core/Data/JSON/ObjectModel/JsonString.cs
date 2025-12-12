@@ -1109,12 +1109,20 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
-			//BUGBUG: TODO: need to validate the format!
-			if (format is "J" or "j")
+			return format switch
 			{
-				return TryFormatJavaScript(m_value, destination, out charsWritten);
-			}
-			return JsonEncoding.TryEncodeTo(destination, m_value, out charsWritten);
+				"" or "D" or "d"
+					=> m_value.TryCopyTo(destination, out charsWritten),
+				"C" or "c" or "P" or "p" or "N" or "n"
+					=> JsonEncoding.TryEncodeTo(m_value, destination, out charsWritten),
+				"J" or "j"
+					=> TryFormatJavaScript(m_value, destination, out charsWritten),
+				"Q" or "q"
+					=> this.GetCompactRepresentation(0).TryCopyTo(destination, out charsWritten), //TODO: optimized version?
+				"B" or "b"
+					=> JsonEncoding.Encode(JsonEncoding.Encode(m_value)).TryCopyTo(destination, out charsWritten), //TODO: optimized version?
+				_ => throw new NotSupportedException()
+			};
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
 			static bool TryFormatJavaScript(string value, Span<char> destination, out int charsWritten)
@@ -1141,7 +1149,7 @@ namespace SnowBank.Data.Json
 				throw new NotImplementedException();
 			}
 
-			return JsonEncoding.TryEncodeTo(destination, m_value, out bytesWritten);
+			return JsonEncoding.TryEncodeTo(m_value, destination, out bytesWritten);
 		}
 
 #endif
@@ -1377,6 +1385,19 @@ namespace SnowBank.Data.Json
 		{
 			value = m_value;
 			return true;
+		}
+
+		public override string ToString(string? format, IFormatProvider? provider = null)
+		{
+			return (format ?? "") switch
+			{
+				"" or "D" or "d"                       => this.m_value,
+				"C" or "c" or "P" or "p" or "N" or "n" => JsonEncoding.Encode(this.m_value),
+				"Q" or "q"                             => this.GetCompactRepresentation(0),
+				"J" or "j"                             => JavaScriptEncoding.Encode(this.m_value, true),
+				"B" or "b"                             => JsonEncoding.Encode(JsonEncoding.Encode(this.m_value)),
+				_                                      => throw ErrorNotSupportedFormatLiteral(format)
+			};
 		}
 
 		#endregion

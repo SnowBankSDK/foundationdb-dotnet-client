@@ -2504,10 +2504,14 @@ namespace SnowBank.Data.Json
 			{ // MaxValue should not specify a timezone
 				m_buffer.Write(JsonTokens.Iso8601DateTimeMaxValue);
 			}
+			else if (date == JsonDateTime.MaxValueDate)
+			{ // MaxDate should not include the time part
+				m_buffer.Write(JsonTokens.Iso8601DateOnlyMaxValue);
+			}
 			else
 			{
 				Span<char> buf = stackalloc char[CrystalJsonFormatter.ISO8601_MAX_FORMATTED_SIZE];
-				m_buffer.Write(CrystalJsonFormatter.FormatIso8601DateTime(buf, date, date.Kind, null, '"'));
+				m_buffer.Write(CrystalJsonFormatter.FormatIso8601DateTime(buf, date, date.Kind, null, '"', omitTimeIfZero: date.Kind == DateTimeKind.Unspecified));
 			}
 		}
 

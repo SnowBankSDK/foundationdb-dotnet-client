@@ -386,13 +386,13 @@ namespace SnowBank.Text
 		}
 
 		/// <summary>Attempts to encode the specified text into the provided output span, if it is large enough.</summary>
-		/// <param name="destination">The span to which the encoded text will be written.</param>
 		/// <param name="text">The text to encode.</param>
+		/// <param name="destination">The span to which the encoded text will be written.</param>
 		/// <param name="charsWritten">Outputs the number of characters written to the span, including any double quotes.</param>
 		/// <param name="withQuotes">If <see langword="true"/> (default), includes double quotes around the string (<c>"..."</c>).</param>
 		/// <returns><see langword="true"/> if the buffer was large enough; otherwise, <see langword="false"/>.</returns>
 		/// <remarks>The buffer may contain partially serialized data after this method returns.</remarks>
-		public static bool TryEncodeTo(Span<char> destination, ReadOnlySpan<char> text, out int charsWritten, bool withQuotes = true)
+		public static bool TryEncodeTo(ReadOnlySpan<char> text, Span<char> destination, out int charsWritten, bool withQuotes = true)
 		{
 			// in all cases, we need space for two double quotes!
 			if (withQuotes && destination.Length < 2)
@@ -592,7 +592,7 @@ namespace SnowBank.Text
 			var escapedByteUpperBound = checked(nonEscapedByteCount + (escapedCharsCount - text.Length));
 
 			var span = destination.GetSpan(escapedByteUpperBound);
-			if (!TryEncodeTo(span, text, out int bytesWritten, withQuotes))
+			if (!TryEncodeTo(text, span, out int bytesWritten, withQuotes))
 			{
 				// this is NOT supposed to happen, unless ComputeEscapedSize failed for some reason?
 				throw new InvalidOperationException();
@@ -608,7 +608,7 @@ namespace SnowBank.Text
 		public static void EncodeTo(ref ValueBuffer<byte> destination, ReadOnlySpan<char> text, bool withQuotes = true)
 		{
 			var span = destination.GetSpan(ComputeEscapedSize(text, withQuotes));
-			if (!TryEncodeTo(span, text, out int bytesWritten, withQuotes))
+			if (!TryEncodeTo(text, span, out int bytesWritten, withQuotes))
 			{
 				// this is NOT supposed to happen, unless ComputeEscapedSize failed for some reason?
 				throw new InvalidOperationException();
@@ -617,8 +617,8 @@ namespace SnowBank.Text
 		}
 
 		/// <summary>Attempts to encode the specified text into the provided span as UTF-8 bytes.</summary>
-		/// <param name="destination">The span of bytes where the encoded JSON will be written as UTF-8 bytes.</param>
 		/// <param name="text">The text to encode.</param>
+		/// <param name="destination">The span of bytes where the encoded JSON will be written as UTF-8 bytes.</param>
 		/// <param name="bytesWritten">When this method returns, contains the number of bytes written to the destination span.</param>
 		/// <param name="withQuotes">If set to <see langword="true"/>, the encoded JSON will include surrounding quotes.</param>
 		/// <returns><see langword="true"/> if the encoding was successful and the entire encoded JSON fits within the destination span; otherwise, <see langword="false"/>.</returns>
@@ -627,7 +627,7 @@ namespace SnowBank.Text
 		/// <para>If <paramref name="withQuotes"/> is <see langword="true"/>, the encoded JSON will be surrounded by double quotes.</para>
 		/// <para>If the destination span is too small to hold the encoded JSON, the method returns <see langword="false"/> and <paramref name="bytesWritten"/> is set to <see langword="0"/>.</para>
 		/// </remarks>
-		public static bool TryEncodeTo(Span<byte> destination, ReadOnlySpan<char> text, out int bytesWritten, bool withQuotes = true)
+		public static bool TryEncodeTo(ReadOnlySpan<char> text, Span<byte> destination, out int bytesWritten, bool withQuotes = true)
 		{
 			// in all cases, we need space for two double quotes!
 			if (withQuotes && destination.Length < 2)

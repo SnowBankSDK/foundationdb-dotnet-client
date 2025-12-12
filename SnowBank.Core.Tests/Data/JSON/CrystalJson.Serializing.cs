@@ -39,6 +39,8 @@
 namespace SnowBank.Data.Json.Tests
 {
 	using System.IO.Compression;
+	using System.Text.Json;
+	using System.Text.Json.Serialization;
 	using NodaTime;
 	using SnowBank.Buffers;
 	using SnowBank.Data.Tuples;
@@ -539,8 +541,10 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_JsonValue_ToString_Formattable()
 		{
 			JsonValue num = 123;
-			JsonValue flag = true;
+			JsonValue flg = true;
 			JsonValue txt = "Hello\"World";
+			JsonValue dtz = new DateTime(1969, 7, 20, 13, 32, 00, DateTimeKind.Utc);
+			JsonValue dto = new DateTimeOffset(1969, 7, 20, 9, 32, 00, TimeSpan.FromHours(4));
 			JsonValue arr = JsonArray.FromValues(Enumerable.Range(1, 20));
 			JsonValue obj = JsonObject.Create(
 			[
@@ -550,30 +554,54 @@ namespace SnowBank.Data.Json.Tests
 				("Jazz", JsonArray.FromValues(Enumerable.Range(1, 5)))
 			]);
 
-			// "D" = Default (=> ToJson)
+			// "D" = Default
 			Assert.That(num.ToString("D"), Is.EqualTo("123"));
-			Assert.That(flag.ToString("D"), Is.EqualTo("true"));
-			Assert.That(txt.ToString("D"), Is.EqualTo(@"""Hello\""World"""));
+			Assert.That(flg.ToString("D"), Is.EqualTo("true"));
+			Assert.That(txt.ToString("D"), Is.EqualTo("Hello\"World"), "Strings should not be encoded in default format");
+			Assert.That(dtz.ToString("D"), Is.EqualTo("1969-07-20T13:32:00Z"));
+			Assert.That(dto.ToString("D"), Is.EqualTo("1969-07-20T09:32:00+04:00"));
 			Assert.That(arr.ToString("D"), Is.EqualTo("[ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ]"));
 			Assert.That(obj.ToString("D"), Is.EqualTo(@"{ ""Foo"": 123, ""Bar"": ""Narf Zort!"", ""Baz"": { ""X"": 1, ""Y"": 2, ""Z"": 3 }, ""Jazz"": [ 1, 2, 3, 4, 5 ] }"));
 
+			// "" => "D"
+			Assert.That(num.ToString(), Is.EqualTo("123"));
+			Assert.That(flg.ToString(), Is.EqualTo("true"));
+			Assert.That(txt.ToString(), Is.EqualTo("Hello\"World"), "Strings should not be encoded in default format");
+			Assert.That(dtz.ToString(), Is.EqualTo("1969-07-20T13:32:00Z"));
+			Assert.That(dto.ToString(), Is.EqualTo("1969-07-20T09:32:00+04:00"));
+			Assert.That(arr.ToString(), Is.EqualTo("[ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ]"));
+			Assert.That(obj.ToString(), Is.EqualTo(@"{ ""Foo"": 123, ""Bar"": ""Narf Zort!"", ""Baz"": { ""X"": 1, ""Y"": 2, ""Z"": 3 }, ""Jazz"": [ 1, 2, 3, 4, 5 ] }"));
+
+			// "N" = Normal (=> ToJson)
+			Assert.That(num.ToString("N"), Is.EqualTo("123"));
+			Assert.That(flg.ToString("N"), Is.EqualTo("true"));
+			Assert.That(txt.ToString("N"), Is.EqualTo(@"""Hello\""World"""));
+			Assert.That(dtz.ToString("N"), Is.EqualTo("\"1969-07-20T13:32:00Z\""));
+			Assert.That(dto.ToString("N"), Is.EqualTo("\"1969-07-20T09:32:00+04:00\""));
+			Assert.That(arr.ToString("N"), Is.EqualTo("[ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ]"));
+			Assert.That(obj.ToString("N"), Is.EqualTo(@"{ ""Foo"": 123, ""Bar"": ""Narf Zort!"", ""Baz"": { ""X"": 1, ""Y"": 2, ""Z"": 3 }, ""Jazz"": [ 1, 2, 3, 4, 5 ] }"));
+
 			// "C" = Compact (=> ToJsonCompact)
 			Assert.That(num.ToString("C"), Is.EqualTo("123"));
-			Assert.That(flag.ToString("C"), Is.EqualTo("true"));
+			Assert.That(flg.ToString("C"), Is.EqualTo("true"));
 			Assert.That(txt.ToString("C"), Is.EqualTo(@"""Hello\""World"""));
+			Assert.That(dtz.ToString("C"), Is.EqualTo("\"1969-07-20T13:32:00Z\""));
+			Assert.That(dto.ToString("C"), Is.EqualTo("\"1969-07-20T09:32:00+04:00\""));
 			Assert.That(arr.ToString("C"), Is.EqualTo("[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]"));
 			Assert.That(obj.ToString("C"), Is.EqualTo(@"{""Foo"":123,""Bar"":""Narf Zort!"",""Baz"":{""X"":1,""Y"":2,""Z"":3},""Jazz"":[1,2,3,4,5]}"));
 
 			// "P" = Prettified (=> ToJsonIndented)
 			Assert.That(num.ToString("P"), Is.EqualTo("123"));
-			Assert.That(flag.ToString("P"), Is.EqualTo("true"));
+			Assert.That(flg.ToString("P"), Is.EqualTo("true"));
 			Assert.That(txt.ToString("P"), Is.EqualTo(@"""Hello\""World"""));
+			Assert.That(dtz.ToString("P"), Is.EqualTo("\"1969-07-20T13:32:00Z\""));
+			Assert.That(dto.ToString("P"), Is.EqualTo("\"1969-07-20T09:32:00+04:00\""));
 			Assert.That(arr.ToString("P"), Is.EqualTo("[\r\n\t1,\r\n\t2,\r\n\t3,\r\n\t4,\r\n\t5,\r\n\t6,\r\n\t7,\r\n\t8,\r\n\t9,\r\n\t10,\r\n\t11,\r\n\t12,\r\n\t13,\r\n\t14,\r\n\t15,\r\n\t16,\r\n\t17,\r\n\t18,\r\n\t19,\r\n\t20\r\n]"));
 			Assert.That(obj.ToString("P"), Is.EqualTo("{\r\n\t\"Foo\": 123,\r\n\t\"Bar\": \"Narf Zort!\",\r\n\t\"Baz\": {\r\n\t\t\"X\": 1,\r\n\t\t\"Y\": 2,\r\n\t\t\"Z\": 3\r\n\t},\r\n\t\"Jazz\": [\r\n\t\t1,\r\n\t\t2,\r\n\t\t3,\r\n\t\t4,\r\n\t\t5\r\n\t]\r\n}"));
 
 			// "Q" = Quick (=> GetCompactRepresentation)
 			Assert.That(num.ToString("Q"), Is.EqualTo("123"));
-			Assert.That(flag.ToString("Q"), Is.EqualTo("true"));
+			Assert.That(flg.ToString("Q"), Is.EqualTo("true"));
 			Assert.That(txt.ToString("Q"), Is.EqualTo(@"'Hello""World'"));
 			Assert.That(arr.ToString("Q"), Is.EqualTo("[ 1, 2, 3, 4, /* … 16 more */ ]"));
 			Assert.That(obj.ToString("Q"), Is.EqualTo("{ Foo: 123, Bar: 'Narf Zort!', Baz: { X: 1, Y: 2, Z: 3 }, Jazz: [ 1, 2, 3, /* … 2 more */ ] }"));
@@ -601,7 +629,7 @@ namespace SnowBank.Data.Json.Tests
 
 			// "J" = Javascript
 			Assert.That(num.ToString("J"), Is.EqualTo("123"));
-			Assert.That(flag.ToString("J"), Is.EqualTo("true"));
+			Assert.That(flg.ToString("J"), Is.EqualTo("true"));
 			Assert.That(txt.ToString("J"), Is.EqualTo(@"'Hello\x22World'"));
 			Assert.That(arr.ToString("J"), Is.EqualTo("[ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ]"));
 			Assert.That(obj.ToString("J"), Is.EqualTo(@"{ Foo: 123, Bar: 'Narf Zort\x21', Baz: { X: 1, Y: 2, Z: 3 }, Jazz: [ 1, 2, 3, 4, 5 ] }"));
@@ -1223,12 +1251,12 @@ namespace SnowBank.Data.Json.Tests
 
 			// * 1er Janvier 2000 = GMT + 1 car heure d'hiver
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), settings, "\"2000-01-01T00:00:00Z\"", "2000-01-01 UTC");
-			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0), settings, "\"2000-01-01T00:00:00\"", "2000-01-01 (unspecified)");
+			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0), settings, "\"2000-01-01\"", "2000-01-01 (unspecified)");
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local), settings, "\"2000-01-01T00:00:00+01:00\"", "2000-01-01 GMT+1 (Paris)");
 
 			// * 1er Septembre 2000 = GMT + 2 car heure d'été
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc), settings, "\"2000-09-01T00:00:00Z\"", "2000-09-01 UTC");
-			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0), settings, "\"2000-09-01T00:00:00\"", "2000-09-01 (unspecified)");
+			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0), settings, "\"2000-09-01\"", "2000-09-01 (unspecified)");
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Local), settings, "\"2000-09-01T00:00:00+02:00\"", "2000-09-01 GMT+2 (Paris, DST)");
 		}
 
@@ -1245,14 +1273,14 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(DateTimeOffset.MaxValue, settings, "\"9999-12-31T23:59:59.9999999\"");
 
 			// Unix Epoch
-			CheckSerialize(new DateTimeOffset(new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)), settings, "\"1970-01-01T00:00:00Z\"");
+			CheckSerialize(new DateTimeOffset(new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)), settings, "\"1970-01-01T00:00:00+00:00\"");
 
 			// Now (Utc, Local)
-			CheckSerialize(new DateTimeOffset(new(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Utc)), settings, "\"2013-03-11T12:34:56.7680000Z\"");
+			CheckSerialize(new DateTimeOffset(new(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Utc)), settings, "\"2013-03-11T12:34:56.7680000+00:00\"");
 			CheckSerialize(new DateTimeOffset(new(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local)), settings, "\"2013-03-11T12:34:56.7680000" + ToUtcOffset(TimeZoneInfo.Local.BaseUtcOffset) + "\"");
 
 			// TimeZones
-			CheckSerialize(new DateTimeOffset(2013, 3, 11, 12, 34, 56, 768, TimeSpan.Zero), settings, "\"2013-03-11T12:34:56.7680000Z\"");
+			CheckSerialize(new DateTimeOffset(2013, 3, 11, 12, 34, 56, 768, TimeSpan.Zero), settings, "\"2013-03-11T12:34:56.7680000+00:00\"");
 			CheckSerialize(new DateTimeOffset(2013, 3, 11, 12, 34, 56, 768, TimeSpan.FromHours(1)), settings, "\"2013-03-11T12:34:56.7680000+01:00\"");
 			CheckSerialize(new DateTimeOffset(2013, 3, 11, 12, 34, 56, 768, TimeSpan.FromHours(-1)), settings, "\"2013-03-11T12:34:56.7680000-01:00\"");
 			CheckSerialize(new DateTimeOffset(2013, 3, 11, 12, 34, 56, 768, TimeSpan.FromMinutes(11 * 60 + 30)), settings, "\"2013-03-11T12:34:56.7680000+11:30\"");
@@ -1260,7 +1288,7 @@ namespace SnowBank.Data.Json.Tests
 
 			// Now (UTC)
 			var utcNow = DateTimeOffset.UtcNow;
-			CheckSerialize(utcNow, settings, "\"" + utcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffff") + "Z\"", "DateTime.UtcNow doit finir par Z");
+			CheckSerialize(utcNow, settings, "\"" + utcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffff") + "+00:00\"");
 
 			// Now (local)
 			var localNow = DateTimeOffset.Now;
@@ -1271,11 +1299,11 @@ namespace SnowBank.Data.Json.Tests
 			// Paris: GMT+1 l'hivers, GMT+2 l'état
 
 			// * 1er Janvier 2000 = GMT + 1 car heure d'hiver
-			CheckSerialize(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero), settings, "\"2000-01-01T00:00:00Z\"", "2000-01-01 UTC");
+			CheckSerialize(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero), settings, "\"2000-01-01T00:00:00+00:00\"", "2000-01-01 UTC");
 			CheckSerialize(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1)), settings, "\"2000-01-01T00:00:00+01:00\"", "2000-01-01 GMT+1 (Paris)");
 
 			// * 1er Septembre 2000 = GMT + 2 car heure d'été
-			CheckSerialize(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.Zero), settings, "\"2000-09-01T00:00:00Z\"", "2000-09-01 UTC");
+			CheckSerialize(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.Zero), settings, "\"2000-09-01T00:00:00+00:00\"", "2000-09-01 UTC");
 			CheckSerialize(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.FromHours(2)), settings, "\"2000-09-01T00:00:00+02:00\"", "2000-09-01 GMT+2 (Paris, DST)");
 		}
 
@@ -1503,7 +1531,7 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00", "State": 1, "RatioOfStuff": 8641975.23 }""",
+				"""{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08", "State": 1, "RatioOfStuff": 8641975.23 }""",
 				"Serialize(BOND, JSON)"
 			);
 			CheckSerialize(
@@ -1517,7 +1545,7 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.Json.Compacted(),
-				"""{"Valid":true,"Name":"James Bond","Index":7,"Size":123456789,"Height":1.8,"Amount":0.07,"Created":"1968-05-08T00:00:00","State":1,"RatioOfStuff":8641975.23}""",
+				"""{"Valid":true,"Name":"James Bond","Index":7,"Size":123456789,"Height":1.8,"Amount":0.07,"Created":"1968-05-08","State":1,"RatioOfStuff":8641975.23}""",
 				"Serialize(BOND, JSON+Compact)"
 			);
 			CheckSerialize(
@@ -2898,44 +2926,65 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Deserialize<Uri?>("null", null), Is.EqualTo(default(Uri)));
 		}
 
-		private static void Verify_TryFormat(JsonValue literal)
+		private static void Verify_TryFormat_Json<T>(T literal)
 		{
-			Log($"# {literal:Q}");
-			foreach (var (format, settings) in new [] { ("", CrystalJsonSettings.Json), ("D", CrystalJsonSettings.Json), ("C", CrystalJsonSettings.JsonCompact), ("P", CrystalJsonSettings.JsonIndented), ("J", CrystalJsonSettings.JavaScript) })
+			Verify_TryFormat_Json(JsonValue.FromValue(literal));
+		}
+
+		private static void Verify_TryFormat_Json(JsonValue literal)
+		{
+			foreach (var (format, settings) in new [] { ("C", CrystalJsonSettings.JsonCompact), ("N", CrystalJsonSettings.Json), ("P", CrystalJsonSettings.JsonIndented), ("J", CrystalJsonSettings.JavaScript) })
 			{
-
 				string expected = CrystalJson.ToJsonSlice(literal, settings).ToStringUtf8()!;
-				Log($"# - \"{format}\" => `{expected}`");
+				Verify_TryFormat(literal, format, expected);
+			}
+		}
 
-				// DEFAULT
+		private static void Verify_TryFormat<T>(T literal, string format, string expected)
+		{
+			Verify_TryFormat(JsonValue.FromValue(literal), format, expected);
+		}
 
+		private static void Verify_TryFormat(JsonValue literal, string format, string expected)
+		{
+			Log($"# (<{literal.GetType().Name}> {literal.ToJsonTextCompact()}).ToString(\"{format}\") => `{expected}`");
+			// DEFAULT
+
+			{
+				// with more space than required
+				Span<char> buf = new char[expected.Length + 100];
+				buf.Fill('無');
+				Assert.That(literal.TryFormat(buf, out int charsWritten, format, null), Is.True, $"{literal}.TryFormat([{buf.Length}], \"{format}\")");
+				Assert.That(buf[..charsWritten].ToString(), Is.EqualTo(expected), $"{literal}.TryFormat([{buf.Length}], \"{format}\")");
+				Assert.That(charsWritten, Is.EqualTo(expected.Length), $"{literal}.TryFormat([{buf.Length}], \"{format}\")");
+				Assert.That(buf[charsWritten..].ToString(), Is.EqualTo(new string('無', buf.Length - charsWritten)), $"{literal}.TryFormat([{buf.Length}], \"{format}\")");
+			}
+
+			{
+				// with exactly enough space
+				Span<char> buf = new char[expected.Length + 10];
+				buf.Fill('無');
+				var exactSize = buf[..expected.Length];
+				Assert.That(literal.TryFormat(exactSize, out int charsWritten, format, null), Is.True, $"{literal}.TryFormat([{exactSize.Length}], \"{format}\")");
+				Assert.That(charsWritten, Is.EqualTo(expected.Length), $"{literal}.TryFormat([{exactSize.Length}], \"{format}\")");
+				Assert.That(exactSize.ToString(), Is.EqualTo(expected), $"{literal}.TryFormat([{exactSize.Length}], \"{format}\")");
+				Assert.That(buf[exactSize.Length..].ToString(), Is.EqualTo(new string('無', buf.Length - exactSize.Length)), $"{literal}.TryFormat([{exactSize.Length}], \"{format}\")");
+			}
+
+			{
+				// with empty buffer
+				Span<char> buf = new char[expected.Length];
+				buf.Fill('無');
+				var empty = Span<char>.Empty;
+				if (expected.Length != 0)
 				{
-					// with more space than required
-					Span<char> buf = new char[expected.Length + 10];
-					buf.Fill('無');
-					Assert.That(literal.TryFormat(buf, out int charsWritten, format, null), Is.True, $"{literal}.TryFormat([{buf.Length}], \"{format}\")");
-					Assert.That(buf.Slice(0, charsWritten).ToString(), Is.EqualTo(expected), $"{literal}.TryFormat([{buf.Length}], \"{format}\")");
-					Assert.That(charsWritten, Is.EqualTo(expected.Length), $"{literal}.TryFormat([{buf.Length}], \"{format}\")");
-					Assert.That(buf.Slice(charsWritten).ToString(), Is.EqualTo(new string('無', buf.Length - charsWritten)), $"{literal}.TryFormat([{buf.Length}], \"{format}\")");
-				}
-
-				{
-					// with exactly enough space
-					Span<char> buf = new char[expected.Length + 10];
-					buf.Fill('無');
-					var exactSize = buf.Slice(0, expected.Length);
-					Assert.That(literal.TryFormat(exactSize, out int charsWritten, format, null), Is.True, $"{literal}.TryFormat([{exactSize.Length}], \"{format}\")");
-					Assert.That(charsWritten, Is.EqualTo(expected.Length), $"{literal}.TryFormat([{exactSize.Length}], \"{format}\")");
-					Assert.That(exactSize.ToString(), Is.EqualTo(expected), $"{literal}.TryFormat([{exactSize.Length}], \"{format}\")");
-					Assert.That(buf.Slice(exactSize.Length).ToString(), Is.EqualTo(new string('無', buf.Length - exactSize.Length)), $"{literal}.TryFormat([{exactSize.Length}], \"{format}\")");
-				}
-
-				{
-					// with empty buffer
-					Span<char> buf = new char[expected.Length];
-					buf.Fill('無');
-					var empty = Span<char>.Empty;
 					Assert.That(literal.TryFormat(empty, out int charsWritten, format, null), Is.False, $"{literal}.TryFormat([0], \"{format}\")");
+					Assert.That(charsWritten, Is.Zero, $"{literal}.TryFormat([0], \"{format}\")");
+					Assert.That(buf.ToString(), Is.EqualTo(new string('無', buf.Length)), $"{literal}.TryFormat([0], \"{format}\")");
+				}
+				else
+				{
+					Assert.That(literal.TryFormat(empty, out int charsWritten, format, null), Is.True, $"{literal}.TryFormat([0], \"{format}\")");
 					Assert.That(charsWritten, Is.Zero, $"{literal}.TryFormat([0], \"{format}\")");
 					Assert.That(buf.ToString(), Is.EqualTo(new string('無', buf.Length)), $"{literal}.TryFormat([0], \"{format}\")");
 				}
@@ -2945,92 +2994,195 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonString_TryFormat()
 		{
-			Verify_TryFormat(JsonString.Empty);
+			Verify_TryFormat_Json(JsonString.Empty);
 
-			Verify_TryFormat("a");
-			Verify_TryFormat("hello");
+			Verify_TryFormat("a", "", "a");
+			Verify_TryFormat("hello", "", "hello");
+			Verify_TryFormat_Json("a");
+			Verify_TryFormat_Json("hello");
 
-			Verify_TryFormat("\"");
-			Verify_TryFormat("hello\"world");
-			Verify_TryFormat("Héllö, 世界!");
+			Verify_TryFormat("\"", "", "\"");
+			Verify_TryFormat("hello\"world", "", "hello\"world");
+			Verify_TryFormat("Héllö, 世界!", "", "Héllö, 世界!");
+			Verify_TryFormat_Json("\"");
+			Verify_TryFormat_Json("hello\"world");
+			Verify_TryFormat_Json("Héllö, 世界!");
 
-			Verify_TryFormat("\0");
-			Verify_TryFormat("\x12");
-			Verify_TryFormat("\x7F");
-			Verify_TryFormat("\xFF");
-			Verify_TryFormat("\uDF34");
-			Verify_TryFormat("\uFFFE");
-			Verify_TryFormat("\uFFFF");
+			Verify_TryFormat("\0", "", "\0");
+			Verify_TryFormat("\x12", "", "\x12");
+			Verify_TryFormat("\x7F", "", "\x7F");
+			Verify_TryFormat("\xFF", "", "\xFF");
+			Verify_TryFormat("\uDF34", "", "\uDF34");
+			Verify_TryFormat("\uFFFE", "", "\uFFFE");
+			Verify_TryFormat("\uFFFF", "", "\uFFFF");
+			Verify_TryFormat_Json("\0");
+			Verify_TryFormat_Json("\x12");
+			Verify_TryFormat_Json("\x7F");
+			Verify_TryFormat_Json("\xFF");
+			Verify_TryFormat_Json("\uDF34");
+			Verify_TryFormat_Json("\uFFFE");
+			Verify_TryFormat_Json("\uFFFF");
 
-			Verify_TryFormat(Slice.Random(Random.Shared, 1024).ToBase64());
+			Verify_TryFormat_Json(Slice.Random(Random.Shared, 1024).ToBase64());
 		}
 
 		[Test]
 		public void Test_JsonNumber_TryFormat()
 		{
-			Verify_TryFormat(JsonNumber.Zero);
-			Verify_TryFormat(JsonNumber.DecimalZero);
-			Verify_TryFormat(JsonNumber.One);
-			Verify_TryFormat(JsonNumber.DecimalOne);
-			Verify_TryFormat(JsonNumber.MinusOne);
+			Verify_TryFormat(JsonNumber.Zero, "", "0");
+			Verify_TryFormat(JsonNumber.DecimalZero, "", "0");
+			Verify_TryFormat(JsonNumber.One, "", "1");
+			Verify_TryFormat(JsonNumber.DecimalOne, "", "1");
+			Verify_TryFormat(JsonNumber.MinusOne, "", "-1");
+			Verify_TryFormat_Json(JsonNumber.Zero);
+			Verify_TryFormat_Json(JsonNumber.DecimalZero);
+			Verify_TryFormat_Json(JsonNumber.One);
+			Verify_TryFormat_Json(JsonNumber.DecimalOne);
+			Verify_TryFormat_Json(JsonNumber.MinusOne);
 
-			Verify_TryFormat(123);
-			Verify_TryFormat(-123);
-			Verify_TryFormat(123d);
-			Verify_TryFormat(12.3);
-			Verify_TryFormat(0.123);
+			Verify_TryFormat(123, "", "123");
+			Verify_TryFormat(-123, "", "-123");
+			Verify_TryFormat(123d, "", "123");
+			Verify_TryFormat(12.3, "", "12.3");
+			Verify_TryFormat(0.123, "", "0.123");
+			Verify_TryFormat_Json(123);
+			Verify_TryFormat_Json(-123);
+			Verify_TryFormat_Json(123d);
+			Verify_TryFormat_Json(12.3);
+			Verify_TryFormat_Json(0.123);
 
-			Verify_TryFormat(Math.PI);
-			Verify_TryFormat(double.NaN);
-			Verify_TryFormat(double.PositiveInfinity);
-			Verify_TryFormat(double.NegativeInfinity);
-			Verify_TryFormat(double.Epsilon);
+			Verify_TryFormat(Math.PI, "", "3.141592653589793");
+			Verify_TryFormat(double.NaN, "", "NaN");
+			Verify_TryFormat(double.PositiveInfinity, "", "Infinity");
+			Verify_TryFormat(double.NegativeInfinity, "", "-Infinity");
+			Verify_TryFormat(double.Epsilon, "", "5E-324");
+			Verify_TryFormat_Json(Math.PI);
+			Verify_TryFormat_Json(double.NaN);
+			Verify_TryFormat_Json(double.PositiveInfinity);
+			Verify_TryFormat_Json(double.NegativeInfinity);
+			Verify_TryFormat_Json(double.Epsilon);
 
-			Verify_TryFormat(JsonValue.Parse("123"));
-			Verify_TryFormat(JsonValue.Parse("123.0"));
-			Verify_TryFormat(JsonValue.Parse("123.000"));
+			Verify_TryFormat_Json(JsonValue.Parse("123"));
+			Verify_TryFormat_Json(JsonValue.Parse("123.0"));
+			Verify_TryFormat_Json(JsonValue.Parse("123.000"));
 		}
 
 		[Test]
 		public void Test_JsonBoolean_TryFormat()
 		{
-			Verify_TryFormat(JsonBoolean.False);
-			Verify_TryFormat(JsonBoolean.True);
+			Verify_TryFormat(JsonBoolean.False, "", "false");
+			Verify_TryFormat(JsonBoolean.True, "", "true");
+
+			Verify_TryFormat_Json(JsonBoolean.False);
+			Verify_TryFormat_Json(JsonBoolean.True);
+
+			Verify_TryFormat(JsonBoolean.False, "P", "false");
+			Verify_TryFormat(JsonBoolean.True, "P", "true");
+
+			Verify_TryFormat(JsonBoolean.False, "Q", "false");
+			Verify_TryFormat(JsonBoolean.True, "Q", "true");
 		}
 
 		[Test]
-		public void Test_JsonDateTime_TryFormat()
+		public void Test_JsonDateTime_DateTime_TryFormat()
 		{
-			Verify_TryFormat(DateTime.MinValue);
-			Verify_TryFormat(DateTime.MaxValue);
-			Verify_TryFormat(DateTime.Now);
-			Verify_TryFormat(DateTime.Now.Date);
-			Verify_TryFormat(DateTime.UtcNow);
-			Verify_TryFormat(DateTime.UtcNow.Date);
-			Verify_TryFormat(DateOnly.MinValue);
-			Verify_TryFormat(DateOnly.MaxValue);
-			Verify_TryFormat(DateOnly.FromDateTime(DateTime.Now));
+			Verify_TryFormat(DateTime.MinValue, "", "");
+			Verify_TryFormat(DateTime.MinValue, "D", "");
+			Verify_TryFormat_Json(DateTime.MinValue);
+			Verify_TryFormat(DateTime.MinValue, "P", "\"\"");
+			Verify_TryFormat(DateTime.MinValue, "Q", "\"\"");
+
+			Verify_TryFormat(DateTime.MaxValue, "", "9999-12-31T23:59:59.9999999");
+			Verify_TryFormat(DateTime.MaxValue, "D", "9999-12-31T23:59:59.9999999");
+			Verify_TryFormat_Json(DateTime.MaxValue);
+			Verify_TryFormat(DateTime.MaxValue, "P", "\"9999-12-31T23:59:59.9999999\"");
+			Verify_TryFormat(DateTime.MaxValue, "Q", "\"9999-12-31T23:59:59.9999999\"");
+
+			var now = DateTime.Now;
+			Log($"## {now}");
+			Verify_TryFormat(now, "", $"\"{now:O}\"");
+			Verify_TryFormat(now, "D", now.ToString("O"));
+			Verify_TryFormat_Json(now);
+			Verify_TryFormat(now, "P", $"\"{now:O}\"");
+			Verify_TryFormat(now, "Q", $"\"{now:O}\"");
+			Log($"### {now.Date} ({now.Date.Kind})");
+			Verify_TryFormat(now.Date, "", now.Date.ToString("yyyy-MM-ddTHH:mm:ssK"));
+			Verify_TryFormat(now.Date, "D", now.Date.ToString("yyyy-MM-ddTHH:mm:ssK"));
+			Verify_TryFormat_Json(now.Date);
+			Verify_TryFormat(now.Date, "P", $"\"{now.Date.ToString("yyyy-MM-ddTHH:mm:ssK")}\"");
+			Verify_TryFormat(now.Date, "Q", $"\"{now.Date.ToString("yyyy-MM-ddTHH:mm:ssK")}\"");
+
+			var utcNow = DateTime.UtcNow;
+			Log($"## {utcNow}");
+			Verify_TryFormat(utcNow, "", utcNow.ToString("O"));
+			Verify_TryFormat(utcNow, "D", utcNow.ToString("O"));
+			Verify_TryFormat_Json(utcNow);
+			Log($"### {utcNow.Date} ({utcNow.Date.Kind})");
+			Verify_TryFormat(utcNow.Date, "", utcNow.Date.ToString("yyyy-MM-ddTHH:mm:ssK"));
+			Verify_TryFormat(utcNow.Date, "D", utcNow.Date.ToString("yyyy-MM-ddTHH:mm:ssK"));
+			Verify_TryFormat_Json(utcNow.Date);
+			Verify_TryFormat(utcNow.Date, "P", $"\"{utcNow.Date.ToString("yyyy-MM-ddTHH:mm:ssK")}\"");
+			Verify_TryFormat(utcNow.Date, "Q", $"\"{utcNow.Date.ToString("yyyy-MM-ddTHH:mm:ssK")}\"");
+		}
+
+		[Test]
+		public void Test_JsonDateTime_DateTimeOffset_TryFormat()
+		{
+			Verify_TryFormat(DateTimeOffset.MinValue, "", "");
+			Verify_TryFormat(DateTimeOffset.MaxValue, "", "9999-12-31T23:59:59.9999999");
+			Verify_TryFormat_Json(DateTimeOffset.MinValue);
+			Verify_TryFormat_Json(DateTimeOffset.MaxValue);
+
+			var now = DateTimeOffset.Now;
+			Log($"## {now}");
+			Verify_TryFormat(now, "", now.ToString("O", CultureInfo.InvariantCulture));
+			Verify_TryFormat_Json(now);
+			Log($"### {now.Date} ({now.Date.Kind})");
+			Verify_TryFormat(now.Date, "", now.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+			Verify_TryFormat_Json(now.Date);
+
+			var utcNow = DateTimeOffset.UtcNow;
+			Log($"## {utcNow}");
+			Verify_TryFormat(utcNow, "", utcNow.ToString("O", CultureInfo.InvariantCulture));
+			Verify_TryFormat_Json(utcNow);
+			Log($"### {utcNow.Date} ({utcNow.Date.Kind})");
+			Verify_TryFormat(utcNow.Date, "", utcNow.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+			Verify_TryFormat_Json(utcNow.Date);
+		}
+
+		[Test]
+		public void Test_JsonDateTime_DateOnly_TryFormat()
+		{
+			var today = DateOnly.FromDateTime(DateTime.Now);
+
+			Verify_TryFormat(DateOnly.MinValue, "", "");
+			Verify_TryFormat(DateOnly.MaxValue, "", "9999-12-31");
+			Verify_TryFormat(today, "", today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+
+			Verify_TryFormat_Json(DateOnly.MinValue);
+			Verify_TryFormat_Json(DateOnly.MaxValue);
+			Verify_TryFormat_Json(today);
 		}
 
 		[Test]
 		public void Test_JsonArray_TryFormat()
 		{
-			Verify_TryFormat(JsonArray.ReadOnly.Empty);
-			Verify_TryFormat(JsonArray.Create("Hello"));
-			Verify_TryFormat(JsonArray.Create("Hello", "World"));
-			Verify_TryFormat(JsonArray.Create(123));
-			Verify_TryFormat(JsonArray.Create(true));
-			Verify_TryFormat(JsonArray.Create("Hello", 123, true, "World"));
+			Verify_TryFormat_Json(JsonArray.ReadOnly.Empty);
+			Verify_TryFormat_Json(JsonArray.Create("Hello"));
+			Verify_TryFormat_Json(JsonArray.Create("Hello", "World"));
+			Verify_TryFormat_Json(JsonArray.Create(123));
+			Verify_TryFormat_Json(JsonArray.Create(true));
+			Verify_TryFormat_Json(JsonArray.Create("Hello", 123, true, "World"));
 		}
 
 		[Test]
 		public void Test_JsonObject_TryFormat()
 		{
-			Verify_TryFormat(JsonObject.ReadOnly.Empty);
-			Verify_TryFormat(JsonObject.Create(("Hello", "World")));
-			Verify_TryFormat(JsonObject.Create(("Hello", 123)));
-			Verify_TryFormat(JsonObject.Create(("Hello", true)));
-			Verify_TryFormat(JsonObject.Create([ ("Hello", "World"), ("Foo", 123), ("Bar", true) ]));
+			Verify_TryFormat_Json(JsonObject.ReadOnly.Empty);
+			Verify_TryFormat_Json(JsonObject.Create(("Hello", "World")));
+			Verify_TryFormat_Json(JsonObject.Create(("Hello", 123)));
+			Verify_TryFormat_Json(JsonObject.Create(("Hello", true)));
+			Verify_TryFormat_Json(JsonObject.Create([ ("Hello", "World"), ("Foo", 123), ("Bar", true) ]));
 		}
 
 		[Test]
