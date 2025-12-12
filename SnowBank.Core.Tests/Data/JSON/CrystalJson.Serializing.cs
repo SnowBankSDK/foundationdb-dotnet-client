@@ -3109,8 +3109,8 @@ namespace SnowBank.Data.Json.Tests
 			Verify_TryFormat(now.Date, "", now.Date.ToString("yyyy-MM-ddTHH:mm:ssK"));
 			Verify_TryFormat(now.Date, "D", now.Date.ToString("yyyy-MM-ddTHH:mm:ssK"));
 			Verify_TryFormat_Json(now.Date);
-			Verify_TryFormat(now.Date, "P", $"\"{now.Date.ToString("yyyy-MM-ddTHH:mm:ssK")}\"");
-			Verify_TryFormat(now.Date, "Q", $"\"{now.Date.ToString("yyyy-MM-ddTHH:mm:ssK")}\"");
+			Verify_TryFormat(now.Date, "P", $"\"{now.Date:yyyy-MM-ddTHH:mm:ssK}\"");
+			Verify_TryFormat(now.Date, "Q", $"\"{now.Date:yyyy-MM-ddTHH:mm:ssK}\"");
 
 			var utcNow = DateTime.UtcNow;
 			Log($"## {utcNow}");
@@ -3121,8 +3121,8 @@ namespace SnowBank.Data.Json.Tests
 			Verify_TryFormat(utcNow.Date, "", utcNow.Date.ToString("yyyy-MM-ddTHH:mm:ssK"));
 			Verify_TryFormat(utcNow.Date, "D", utcNow.Date.ToString("yyyy-MM-ddTHH:mm:ssK"));
 			Verify_TryFormat_Json(utcNow.Date);
-			Verify_TryFormat(utcNow.Date, "P", $"\"{utcNow.Date.ToString("yyyy-MM-ddTHH:mm:ssK")}\"");
-			Verify_TryFormat(utcNow.Date, "Q", $"\"{utcNow.Date.ToString("yyyy-MM-ddTHH:mm:ssK")}\"");
+			Verify_TryFormat(utcNow.Date, "P", $"\"{utcNow.Date:yyyy-MM-ddTHH:mm:ssK}\"");
+			Verify_TryFormat(utcNow.Date, "Q", $"\"{utcNow.Date:yyyy-MM-ddTHH:mm:ssK}\"");
 		}
 
 		[Test]

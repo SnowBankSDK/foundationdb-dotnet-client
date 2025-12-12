@@ -56,10 +56,10 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		public void Test_VerifyAssumptions()
 		{
 			// we need to check that given two overloads, one with a string, and one with an interpolated string handler,
-			// the compiler will invoke the former with literal strings, and the later with explict interportaled strings!
+			// the compiler will invoke the former with literal strings, and the latter with explicit interpolated strings!
 
-			var hello = "hello";
-			var world = "world";
+			const string hello = "hello";
+			const string world = "world";
 
 			// should invoke the string overload
 			Assume.That(TrustButVerify.CallMe("hello"), Is.EqualTo("CallMe(string):hello"));
