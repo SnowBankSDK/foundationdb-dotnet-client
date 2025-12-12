@@ -30,7 +30,6 @@
 namespace SnowBank.IO.Hashing.Tests
 {
 	using System.Diagnostics.CodeAnalysis;
-	using SnowBank.IO.Hashing;
 
 	[TestFixture]
 	[Category("Core-SDK")]
