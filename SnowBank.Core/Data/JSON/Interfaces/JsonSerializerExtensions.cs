@@ -2052,9 +2052,8 @@ namespace SnowBank.Data.Json
 		/// <typeparam name="T">Type that implements <see cref="IJsonDeserializable{T}"/></typeparam>
 		/// <param name="converter">Deserializer instance to use</param>
 		/// <param name="value">JSON value to deserialize</param>
+		/// <param name="defaultValue">Default value to return, if <paramref name="value"/> is null or missing.</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
-		/// <param name="parent">Parent JSON object that holds this field (used when throwing exceptions).</param>
-		/// <param name="fieldName">Name of the field in the parent JSON object that holds this value (used when throwing exceptions).</param>
 		/// <returns>Deserialized instance</returns>
 		/// <exception cref="JsonBindingException"> if <paramref name="value"/> is null or missing, or it could not be bound to the type <typeparamref name="T"/>.</exception>
 		[return: NotNullIfNotNull(nameof(defaultValue))]
@@ -2197,7 +2196,7 @@ namespace SnowBank.Data.Json
 				=> JsonPackArray<TJsonPackable>(values, settings.AsReadOnly(), resolver);
 
 			[Pure]
-			public static JsonArray? JsonPackArrayReadOnly(ReadOnlySpan<TJsonPackable?> values, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			public static JsonArray JsonPackArrayReadOnly(ReadOnlySpan<TJsonPackable?> values, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 				=> JsonPackArray<TJsonPackable>(values, settings.AsReadOnly(), resolver);
 
 		}

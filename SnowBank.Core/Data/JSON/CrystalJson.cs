@@ -1290,7 +1290,7 @@ namespace SnowBank.Data.Json
 		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please configure the <paramref name="settings"/> accordingly.</para>
 		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
 		/// </remarks>
-		/// <exception cref="FileNotFoundException">If the file does not exist, and flag <see cref="LoadOptions.ReturnNullIfMissing"/> is not set in <paramref cref="options"/></exception>
+		/// <exception cref="FileNotFoundException">If the file does not exist, and flag <see cref="LoadOptions.ReturnNullIfMissing"/> is not set in <paramref name="options"/></exception>
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue ParseFrom(string path, CrystalJsonSettings? settings = null, LoadOptions options = LoadOptions.None)
@@ -1335,7 +1335,7 @@ namespace SnowBank.Data.Json
 		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please configure the <paramref name="settings"/> accordingly.</para>
 		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
 		/// </remarks>
-		/// <exception cref="FileNotFoundException">If the file does not exist, and flag <see cref="LoadOptions.ReturnNullIfMissing"/> is not set in <paramref cref="options"/></exception>
+		/// <exception cref="FileNotFoundException">If the file does not exist, and flag <see cref="LoadOptions.ReturnNullIfMissing"/> is not set in <paramref name="options"/></exception>
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static Task<JsonValue> ParseFromAsync(string path, CrystalJsonSettings? settings, LoadOptions options, CancellationToken ct)

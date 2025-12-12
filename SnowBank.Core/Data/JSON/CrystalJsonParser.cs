@@ -383,7 +383,10 @@ namespace SnowBank.Data.Json
 #endif
 			result = DateTime.MinValue;
 
-			if (value.Length == 0 || !CouldBeIso8601DateTime(value, out var kind)) return false;
+			if (value.Length == 0 || !CouldBeIso8601DateTime(value, out var kind))
+			{
+				return false;
+			}
 
 			// cf http://msdn.microsoft.com/en-us/library/bb882584.aspx
 			return DateTime.TryParse(value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.RoundtripKind, out result);

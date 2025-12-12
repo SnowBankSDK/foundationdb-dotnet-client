@@ -2497,7 +2497,7 @@ namespace SnowBank.Data.Json
 		public void WriteDateTimeIso8601(DateTime date)
 		{
 			if (date == DateTime.MinValue)
-			{ // MinValue is serialized as the emtpy string
+			{ // MinValue is serialized as the empty string
 				m_buffer.Write("\"\"");
 			}
 			else if (date == DateTime.MaxValue)
