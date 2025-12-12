@@ -1638,6 +1638,44 @@ namespace System
 			return true;
 		}
 
+		/// <summary>Calls <see cref="Span{T}.TryCopyTo"/> and, if successful, sets the number of copied items in <paramref name="written"/></summary>
+		/// <param name="source">The string to copy from</param>
+		/// <param name="destination">The span to copy items into</param>
+		/// <param name="written">Number of characters copied, or <c>0</c> if <paramref name="destination"/> is too small</param>
+		/// <returns>If the destination span is shorter than the source span, this method return false and no data is written to the destination.</returns>
+		/// <remarks><para>This helper method is very useful when implementing <see cref="ISpanFormattable"/>.</para></remarks>
+		[MustUseReturnValue, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static bool TryCopyTo(this ReadOnlySpan<char> source, Span<char> destination, out int written)
+		{
+			if (!source.TryCopyTo(destination))
+			{
+				written = 0;
+				return false;
+			}
+
+			written = source.Length;
+			return true;
+		}
+
+		/// <summary>Calls <see cref="Span{T}.TryCopyTo"/> and, if successful, sets the number of copied items in <paramref name="written"/></summary>
+		/// <param name="source">The string to copy from</param>
+		/// <param name="destination">The span to copy items into</param>
+		/// <param name="written">Number of characters copied, or <c>0</c> if <paramref name="destination"/> is too small</param>
+		/// <returns>If the destination span is shorter than the source span, this method return false and no data is written to the destination.</returns>
+		/// <remarks><para>This helper method is very useful when implementing <see cref="ISpanFormattable"/>.</para></remarks>
+		[MustUseReturnValue, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static bool TryCopyTo(this string source, Span<char> destination, out int written)
+		{
+			if (!source.TryCopyTo(destination))
+			{
+				written = 0;
+				return false;
+			}
+
+			written = source.Length;
+			return true;
+		}
+
 		#endregion
 
 	}
