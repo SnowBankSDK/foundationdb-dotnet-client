@@ -135,10 +135,6 @@ namespace FoundationDB.Client.Tests
 
 				try
 				{
-					// only allow ~20 seconds for the container to start
-					// => most common failure is when Docker Desktop has not started yet on the local machine!
-					await container.StartContainer(TimeSpan.FromSeconds(20), this.Cancellation).ConfigureAwait(false);
-
 					var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
 					if (probe.Path == null)
 					{
@@ -167,12 +163,17 @@ namespace FoundationDB.Client.Tests
 						Assume.That(Fdb.ApiVersion, Is.EqualTo(OverrideApiVersion), "The API version selected is not what this test is expecting!");
 					}
 
+					// only allow ~20 seconds for the container to start
+					// => most common failure is when Docker Desktop has not started yet on the local machine!
+					await container.StartContainer(TimeSpan.FromSeconds(20), this.Cancellation).ConfigureAwait(false);
+
 					Log("FDB Test Server is ready!");
 					FdbTest.ServerReadySignal.TrySetResult();
 				}
 				catch (Exception e)
 				{
 					LogError("FDB Test Server failed to start!", e);
+					Assert.Warn($"Failed to start docker container '{container.Id}': [{e.GetType().Name}] {e.Message}");
 					FdbTest.ServerReadySignal.TrySetException(e);
 				}
 			}
@@ -552,6 +553,7 @@ namespace FoundationDB.Client.Tests
 			Assume.That(this.SharedServices, Is.Null, "Common services can only be configured once per test class!");
 			var server = FdbTest.ServerContainer!;
 			Assume.That(server, Is.Not.Null, "FDB Test Server was not started properly");
+			Assume.That(Fdb.ApiVersion, Is.GreaterThan(0), "The fdb API version was not configured properly!");
 
 			var services = new ServiceCollection();
 			services.AddOptions().AddLogging();
@@ -596,7 +598,10 @@ namespace FoundationDB.Client.Tests
 		/// <summary>Resolve the database instance that can be used by this test</summary>
 		protected async ValueTask<IFdbDatabase> GetDatabaseAsync()
 		{
-			var db = await GetDatabaseProvider().GetDatabase(this.Cancellation);
+			await FdbTest.ServerReadySignal.Task.WaitAsync(TimeSpan.FromSeconds(10), this.Cancellation);
+
+			var dbProvider = GetDatabaseProvider();
+			var db = await dbProvider.GetDatabase(this.Cancellation);
 			//Log("# Using database location /{0}", db.Root.Path);
 			db.SetDefaultLogHandler(null);
 			return db;

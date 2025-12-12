@@ -999,6 +999,8 @@ namespace FoundationDB.Filters.Logging
 
 		private CancellationTokenSource? Lifecycle { get; set; }
 
+		public Exception? LastError { get; private set; }
+
 		public FdbTransactionFileLogger(string filePath, FdbTransactionFileFormat format, int batchSize = DefaultBatchSize, TimeSpan throttlingDelay = default)
 		{
 			Contract.NotNullOrEmpty(filePath);
@@ -1078,12 +1080,14 @@ namespace FoundationDB.Filters.Logging
 				try
 				{
 					await File.AppendAllLinesAsync(path, batch, ct).ConfigureAwait(false);
+					this.LastError = null;
 				}
 				catch (Exception e)
 				{
 #if DEBUG
 					System.Diagnostics.Debug.WriteLine($"ERROR: failed to append to transaction log {path}: {e}");
 #endif
+					this.LastError = e;
 					//TODO: log error
 					//TODO: buffer for a bit?
 					complete = false;

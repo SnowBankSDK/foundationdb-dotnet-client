@@ -8,6 +8,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using System.Net;
+	using Docker.DotNet;
 	using Docker.DotNet.Models;
 	using DotNet.Testcontainers.Builders;
 	using DotNet.Testcontainers.Configurations;
@@ -122,14 +124,26 @@ namespace FoundationDB.Client.Tests
 				{
 					await container.StartAsync(cts.Token).ConfigureAwait(false);
 				}
+				catch (DockerApiException dex)
+				{
+					if (dex.StatusCode == HttpStatusCode.Conflict)
+					{
+						SimpleTest.LogError($"FdbServer test container '{name}' is conflicting with another container! Please delete the old container (but keep the volumes!), and restart the test.", dex);
+					}
+					else
+					{
+						SimpleTest.LogError($"FdbServer test container '{name}' failed to start due to a Docker error", dex);
+					}
+					throw;
+				}
 				catch (Exception e)
 				{
-					SimpleTest.LogError($"FdbServer test container '{this.Container.Name}' failed to start", e);
+					SimpleTest.LogError($"FdbServer test container '{name}' failed to start due to an internal error", e);
 					throw;
 				}
 			}
 
-			SimpleTest.Log($"FdbServer test container '{this.Container.Name}' ready");
+			SimpleTest.Log($"FdbServer test container '{name}' ready");
 		}
 
 		public ValueTask DisposeAsync()

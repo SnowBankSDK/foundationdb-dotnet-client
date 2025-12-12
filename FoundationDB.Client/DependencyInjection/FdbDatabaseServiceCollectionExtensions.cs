@@ -44,7 +44,12 @@ namespace FoundationDB.DependencyInjection
 		public static IFdbDatabaseProviderBuilder AddFoundationDb(this IServiceCollection services, int apiVersion, Action<FdbDatabaseProviderOptions>? configure = null)
 		{
 			Contract.NotNull(services);
-			Contract.GreaterThan(apiVersion, 0, nameof(apiVersion));
+			Contract.Positive(apiVersion);
+
+			if (apiVersion == 0)
+			{ // most probably the API level was not properly configured (Fdb.UseApiVersion not called)
+				throw new InvalidOperationException("You must specify a valid API version that will be used by this provider.");
+			}
 
 			return AddFoundationDb(services, (options) =>
 			{
