@@ -29,7 +29,7 @@ namespace System.IO.Hashing
 	using System.Buffers;
 	using System.Text;
 
-	/// <summary>Extension methods for computing XxHash128 values</summary>
+	/// <summary>Extension methods for computing XxHash values</summary>
 	public static partial class XxHashExtensions
 	{
 
@@ -103,6 +103,22 @@ namespace System.IO.Hashing
 			/// <param name="encoding">Encoding used to convert the text to bytes (UTF-8 by default)</param>
 			/// <returns>The computed XxHash64 hash.</returns>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+			public static ulong HashToUInt64(ref DefaultInterpolatedStringHandler text, int seed = 0, Encoding? encoding = null)
+			{
+#if NET10_0_OR_GREATER
+				var res = HashToUInt64(text.Text, seed, encoding);
+				text.Clear();
+				return res;
+#else
+				return HashToUInt64(text.ToStringAndClear(), seed, encoding);
+#endif
+			}
+			/// <summary>Computes the XxHash64 hash of the provided text</summary>
+			/// <param name="text">The text to hash</param>
+			/// <param name="seed">The seed value for this hash computation. The default is zero.</param>
+			/// <param name="encoding">Encoding used to convert the text to bytes (UTF-8 by default)</param>
+			/// <returns>The computed XxHash64 hash.</returns>
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static Uuid64 HashToUuid64(string text, int seed = 0, Encoding? encoding = null)
 				=> new Uuid64(HashToUInt64(text.AsSpan(), seed, encoding));
 
@@ -113,7 +129,24 @@ namespace System.IO.Hashing
 			/// <returns>The computed XxHash64 hash.</returns>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static Uuid64 HashToUuid64(ReadOnlySpan<char> text, int seed = 0, Encoding? encoding = null)
-				=> new Uuid64(HashToUInt64(text, seed, encoding));
+				=> new(HashToUInt64(text, seed, encoding));
+
+			/// <summary>Computes the XxHash64 hash of the provided text</summary>
+			/// <param name="text">The text to hash</param>
+			/// <param name="seed">The seed value for this hash computation. The default is zero.</param>
+			/// <param name="encoding">Encoding used to convert the text to bytes (UTF-8 by default)</param>
+			/// <returns>The computed XxHash64 hash.</returns>
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+			public static Uuid64 HashToUuid64(ref DefaultInterpolatedStringHandler text, int seed = 0, Encoding? encoding = null)
+			{
+#if NET10_0_OR_GREATER
+				var res = new Uuid64(HashToUInt64(text.Text, seed, encoding));
+				text.Clear();
+				return res;
+#else
+				return new(HashToUInt64(text.ToStringAndClear(), seed, encoding));
+#endif
+			}
 
 		}
 

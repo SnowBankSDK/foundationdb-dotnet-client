@@ -104,6 +104,23 @@ namespace System.IO.Hashing
 			/// <param name="encoding">Encoding used to convert the text to bytes (UTF-8 by default)</param>
 			/// <returns>The computed XxHash128 hash.</returns>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+			public static UInt128 HashToUInt128(ref DefaultInterpolatedStringHandler text, int seed = 0, Encoding? encoding = null)
+			{
+#if NET10_0_OR_GREATER
+				var res = HashToUInt128(text.Text, seed, encoding);
+				text.Clear();
+				return res;
+#else
+				return HashToUInt128(text.ToStringAndClear(), seed, encoding);
+#endif
+			}
+
+			/// <summary>Computes the XxHash128 hash of the provided text</summary>
+			/// <param name="text">The text to hash</param>
+			/// <param name="seed">The seed value for this hash computation. The default is zero.</param>
+			/// <param name="encoding">Encoding used to convert the text to bytes (UTF-8 by default)</param>
+			/// <returns>The computed XxHash128 hash.</returns>
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static Uuid128 HashToUuId128(string text, int seed = 0, Encoding? encoding = null)
 				=> new Uuid128(HashToUInt128(text.AsSpan(), seed, encoding));
 
@@ -114,7 +131,24 @@ namespace System.IO.Hashing
 			/// <returns>The computed XxHash128 hash.</returns>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static Uuid128 HashToUid128(ReadOnlySpan<char> text, int seed = 0, Encoding? encoding = null)
-				=> new Uuid128(HashToUInt128(text, seed, encoding));
+				=> new(HashToUInt128(text, seed, encoding));
+
+			/// <summary>Computes the XxHash128 hash of the provided text</summary>
+			/// <param name="text">The text to hash</param>
+			/// <param name="seed">The seed value for this hash computation. The default is zero.</param>
+			/// <param name="encoding">Encoding used to convert the text to bytes (UTF-8 by default)</param>
+			/// <returns>The computed XxHash128 hash.</returns>
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+			public static Uuid128 HashToUuId128(ref DefaultInterpolatedStringHandler text, int seed = 0, Encoding? encoding = null)
+			{
+#if NET10_0_OR_GREATER
+				var res = new Uuid128(HashToUInt128(text.Text, seed, encoding));
+				text.Clear();
+				return res;
+#else
+				return new(HashToUInt128(text.ToStringAndClear(), seed, encoding));
+#endif
+			}
 
 		}
 

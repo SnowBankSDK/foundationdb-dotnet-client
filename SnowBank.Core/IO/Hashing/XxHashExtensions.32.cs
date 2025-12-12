@@ -95,6 +95,23 @@ namespace System.IO.Hashing
 				}
 			}
 
+			/// <summary>Computes the XxHash32 hash of the provided text</summary>
+			/// <param name="text">The text to hash</param>
+			/// <param name="seed">The seed value for this hash computation. The default is zero.</param>
+			/// <param name="encoding">Encoding used to convert the text to bytes (UTF-8 by default)</param>
+			/// <returns>The computed XxHash32 hash.</returns>
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+			public static uint HashToUInt32(ref DefaultInterpolatedStringHandler text, int seed = 0, Encoding? encoding = null)
+			{
+#if NET10_0_OR_GREATER
+				var res = HashToUInt32(text.Text, seed, encoding);
+				text.Clear();
+				return res;
+#else
+				return HashToUInt32(text.ToStringAndClear(), seed, encoding);
+#endif
+			}
+
 		}
 
 	}

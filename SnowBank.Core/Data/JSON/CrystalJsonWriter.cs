@@ -1317,9 +1317,25 @@ namespace SnowBank.Data.Json
 		/// <summary><b>[CAUTION]</b> Writes a raw JSON literal into the output buffer, without any checks or encoding.</summary>
 		/// <param name="rawJson">JSON snippet that is already encoded</param>
 		/// <remarks>"Danger, Will Robinson !!!" Only use it if you know what you are doing, such as outputting already encoded JSON constants or in very specific use cases where performance supersedes safety!</remarks>
+		public void WriteRaw(ReadOnlySpan<char> rawJson)
+		{
+			if (rawJson.Length != 0)
+			{
+				m_buffer.Write(rawJson);
+			}
+		}
+
+		/// <summary><b>[CAUTION]</b> Writes a raw JSON literal into the output buffer, without any checks or encoding.</summary>
+		/// <param name="rawJson">JSON snippet that is already encoded</param>
+		/// <remarks>"Danger, Will Robinson !!!" Only use it if you know what you are doing, such as outputting already encoded JSON constants or in very specific use cases where performance supersedes safety!</remarks>
 		public void WriteRaw(ref DefaultInterpolatedStringHandler rawJson)
 		{
+#if NET10_0_OR_GREATER
+			WriteRaw(rawJson.Text);
+			rawJson.Clear();
+#else
 			WriteRaw(rawJson.ToStringAndClear());
+#endif
 		}
 
 		/// <summary>Writes a property name that is KNOWN to not require any escaping.</summary>
