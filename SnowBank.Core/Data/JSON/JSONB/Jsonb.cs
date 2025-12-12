@@ -1650,32 +1650,34 @@ namespace SnowBank.Data.Json.Binary
 			private uint WriteScalar(JsonValue value, JsonType type)
 			{
 				Contract.Debug.Requires(value is not null);
-				switch (type)
+				switch (value)
 				{
-					case JsonType.Null:
+					case JsonNull:
 					{
 						return JENTRY_TYPE_NULL;
 					}
-					case JsonType.String:
+					case JsonString str:
 					{
-						int len = AppendUtf8String(value.ToString());
+						int len = AppendUtf8String(str.Value);
 						return JENTRY_TYPE_STRING | (uint) len;
 					}
-					case JsonType.DateTime:
+					case JsonDateTime dt:
 					{
 						//note: warning: this can be either a DateTime or a DateTimeOffset !
-						//REVIEW: PERF: instead of allocating a string, we should serialize directly to bytes!
-						// Dates are always ASCII
-						int len = AppendAsciiString(value.ToString());
-						return JENTRY_TYPE_STRING | (uint)len;
+						Span<byte> tmp = m_output.GetSpan(40); // max 33 chars: "YYYY-MM-DDTHH:mm:ss.fffffff+HH:mm"
+						if (!dt.TryFormat(tmp, out var len))
+						{
+							throw new InvalidOperationException("Failed to serialize JSON DateTime");
+						}
+						m_output.Advance(len);
+						return JENTRY_TYPE_STRING | (uint) len;
 					}
-					case JsonType.Boolean:
+					case JsonBoolean b:
 					{
-						return value.ToBoolean() ? JENTRY_TYPE_TRUE : JENTRY_TYPE_FALSE;
+						return b.Value ? JENTRY_TYPE_TRUE : JENTRY_TYPE_FALSE;
 					}
-					case JsonType.Number:
+					case JsonNumber num:
 					{
-						var num = (JsonNumber) value;
 						if (!num.IsDecimal)
 						{
 							if (num.IsBetween(long.MinValue, long.MaxValue))
