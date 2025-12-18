@@ -3803,51 +3803,58 @@ namespace SnowBank.Data.Json.Tests
 				var orig = JsonArray.ReadOnly.Empty;
 				var tail = JsonArray.Create("hello", "world");
 				var arr = orig.CopyAndConcat(tail);
-				Assert.That(arr, IsJson.ReadOnly.And.EqualTo([ "hello", "world" ]));
+				Assert.That(arr, Is.Json.ReadOnly.And.EqualTo([ "hello", "world" ]));
 				Assert.That(arr, Is.Not.SameAs(orig));
 			}
 			{ // HEAD + Empty
 				var orig = JsonArray.Create("hello", "world");
 				var tail = JsonArray.ReadOnly.Empty;
 				var arr = orig.CopyAndConcat(tail);
-				Assert.That(arr, IsJson.ReadOnly.And.EqualTo([ "hello", "world" ]));
+				Assert.That(arr, Is.Json.ReadOnly.And.EqualTo([ "hello", "world" ]));
 				Assert.That(arr, Is.Not.SameAs(orig));
 			}
 			{ // HEAD + TAIL
 				var orig = JsonArray.Create("say");
 				var tail = JsonArray.Create("hello", "world");
 				var arr = orig.CopyAndConcat(tail);
-				Assert.That(arr, IsJson.ReadOnly.And.EqualTo([ "say", "hello", "world" ]));
-				Assert.That(orig, IsJson.EqualTo([ "say" ]));
-				Assert.That(tail, IsJson.EqualTo([ "hello", "world" ]));
+				Assert.That(arr, Is.Json.ReadOnly.And.EqualTo([ "say", "hello", "world" ]));
+				Assert.That(orig, Is.Json.EqualTo([ "say" ]));
+				Assert.That(tail, Is.Json.EqualTo([ "hello", "world" ]));
+			}
+			{
+				Assert.That(JsonArray.ReadOnly.Create("hello").CopyAndConcat([ "world", "there" ]), Is.Json.EqualTo([ "hello", "world", "there" ]));
 			}
 			{ // Replace Root
 				JsonArray root = JsonArray.ReadOnly.Empty;
 				JsonArray v0 = root;
-				JsonArray.CopyAndConcat(ref root, JsonArray.Create([ "say" ]));
+				var published = JsonArray.CopyAndConcat(ref root, JsonArray.Create([ "say" ]));
 				Assert.That(root, Is.Not.SameAs(v0));
-				Assert.That(root, IsJson.ReadOnly.And.EqualTo([ "say" ]));
-				Assert.That(v0, IsJson.Empty);
+				Assert.That(root, Is.Json.ReadOnly.And.EqualTo([ "say" ]));
+				Assert.That(published, Is.SameAs(root));
+				Assert.That(v0, Is.Json.Empty);
 
 				JsonArray v1 = root;
-				JsonArray.CopyAndConcat(ref root, JsonArray.Create([ "hello" ]));
+				published = JsonArray.CopyAndConcat(ref root, JsonArray.Create([ "hello" ]));
 				Assert.That(root, Is.Not.SameAs(v1));
-				Assert.That(root, IsJson.ReadOnly.And.EqualTo([ "say", "hello" ]));
-				Assert.That(v1, IsJson.EqualTo([ "say" ]));
+				Assert.That(root, Is.Json.ReadOnly.And.EqualTo([ "say", "hello" ]));
+				Assert.That(published, Is.SameAs(root));
+				Assert.That(v1, Is.Json.EqualTo([ "say" ]));
 
 				JsonArray v2 = root;
-				JsonArray.CopyAndConcat(ref root, JsonArray.Create([ "world" ]));
+				published = JsonArray.CopyAndConcat(ref root, JsonArray.Create([ "world" ]));
 				Assert.That(root, Is.Not.SameAs(v2));
-				Assert.That(root, IsJson.ReadOnly.And.EqualTo([ "say", "hello", "world" ]));
-				Assert.That(v2, IsJson.EqualTo([ "say", "hello" ]));
-				Assert.That(v1, IsJson.EqualTo([ "say" ]));
+				Assert.That(root, Is.Json.ReadOnly.And.EqualTo([ "say", "hello", "world" ]));
+				Assert.That(published, Is.SameAs(root));
+				Assert.That(v2, Is.Json.EqualTo([ "say", "hello" ]));
+				Assert.That(v1, Is.Json.EqualTo([ "say" ]));
 
 				JsonArray v3 = root;
-				JsonArray.CopyAndConcat(ref root, JsonArray.ReadOnly.Empty);
+				published = JsonArray.CopyAndConcat(ref root, JsonArray.ReadOnly.Empty);
 				Assert.That(root, Is.SameAs(v3));
-				Assert.That(root, IsJson.ReadOnly.And.EqualTo([ "say", "hello", "world" ]));
-				Assert.That(v2, IsJson.EqualTo([ "say", "hello" ]));
-				Assert.That(v1, IsJson.EqualTo([ "say" ]));
+				Assert.That(root, Is.Json.ReadOnly.And.EqualTo([ "say", "hello", "world" ]));
+				Assert.That(published, Is.SameAs(root));
+				Assert.That(v2, Is.Json.EqualTo([ "say", "hello" ]));
+				Assert.That(v1, Is.Json.EqualTo([ "say" ]));
 			}
 		}
 

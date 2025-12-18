@@ -426,7 +426,10 @@ namespace SnowBank.Data.Json
 		/// <remarks>
 		/// <para>If the array was not read-only, existing non-readonly items will also be converted to read-only.</para>
 		/// <para>For best performance, this should only be used on already read-only arrays.</para>
+		/// <para>>To add the array <i>itself</i> as a new item, please use <see cref="CopyAndAdd(JsonValue?)"/> instead.</para>
 		/// </remarks>
+		/// <seealso cref="CopyAndAdd(JsonValue?)"/>
+		[Pure]
 		public JsonArray CopyAndConcat(JsonArray tail)
 		{
 			if (tail.Count == 0)
@@ -463,12 +466,13 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Returns a new <b>read-only</b> copy of this array concatenated with another array</summary>
-		/// <param name="tail">Array that will be appended to the end of the new copy</param>
+		/// <param name="tail">Span of items that will be appended to the end of the new copy</param>
 		/// <returns>A new instance with the same content of the original array, plus the content of the tail</returns>
 		/// <remarks>
 		/// <para>If the array was not read-only, existing non-readonly items will also be converted to read-only.</para>
 		/// <para>For best performance, this should only be used on already read-only arrays.</para>
 		/// </remarks>
+		[Pure, OverloadResolutionPriority(1)]
 		public JsonArray CopyAndConcat(ReadOnlySpan<JsonValue> tail)
 		{
 			if (tail.Length == 0)
@@ -508,7 +512,10 @@ namespace SnowBank.Data.Json
 		/// <remarks>
 		/// <para>This method will attempt to atomically replace the original <see cref="JsonArray">JSON Array</see> with a new version, unless another thread was able to update it faster, in which case it will simply retry with the newest version, until it is able to successfully update the reference.</para>
 		/// <para>Caution: the order of operation between threads is not guaranteed, and this method _may_ loop infinitely if it is perpetually blocked by another, faster, thread !</para>
+		/// <para>>To add the array <i>itself</i> as a new item, please use <see cref="CopyAndAdd(ref JsonArray,JsonValue?)"/> instead.</para>
 		/// </remarks>
+		/// <seealso cref="CopyAndAdd(ref JsonArray,JsonValue?)"/>
+		[Pure]
 		public static JsonArray CopyAndConcat(ref JsonArray original, JsonArray tail)
 		{
 			var snapshot = Volatile.Read(ref original);
@@ -534,12 +541,47 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+		/// <summary>Replaces a published <see cref="JsonArray">JSON Array</see> with a new version with extra items appended to the end, in a thread-safe manner, using a <see cref="SpinWait"/> if necessary.</summary>
+		/// <param name="original">Reference to the currently published <see cref="JsonArray">JSON Array</see></param>
+		/// <param name="tail">Array of items that will be appended to the end of the new copy</param>
+		/// <returns>New published <see cref="JsonArray">JSON Array</see>, that includes the new items.</returns>
+		/// <remarks>
+		/// <para>This method will attempt to atomically replace the original <see cref="JsonArray">JSON Array</see> with a new version, unless another thread was able to update it faster, in which case it will simply retry with the newest version, until it is able to successfully update the reference.</para>
+		/// <para>Caution: the order of operation between threads is not guaranteed, and this method _may_ loop infinitely if it is perpetually blocked by another, faster, thread !</para>
+		/// </remarks>
+		[Pure]
+		public static JsonArray CopyAndConcat(ref JsonArray original, ReadOnlySpan<JsonValue> tail)
+		{
+			var snapshot = Volatile.Read(ref original);
+			var copy = snapshot.CopyAndConcat(tail);
+
+			return ReferenceEquals(snapshot, Interlocked.CompareExchange(ref original, copy, snapshot))
+				? copy
+				: CopyAndConcatSpin(ref original, tail);
+
+			static JsonArray CopyAndConcatSpin(ref JsonArray original, ReadOnlySpan<JsonValue> tail)
+			{
+				var spinner = new SpinWait();
+				while (true)
+				{
+					spinner.SpinOnce();
+					var snapshot = Volatile.Read(ref original);
+					var copy = snapshot.CopyAndConcat(tail);
+					if (ReferenceEquals(snapshot, Interlocked.CompareExchange(ref original, copy, snapshot)))
+					{
+						return copy;
+					}
+				}
+			}
+		}
+
 		/// <summary>Returns a new <b>read-only</b> copy of this array with an additional item</summary>
 		/// <param name="value">Item that will be appended to the end of the new copy</param>
 		/// <returns>A new instance with the same content of the original array, plus the additional item</returns>
 		/// <remarks>
 		/// <para>If the array was not-readonly, existing non-readonly items will also be converted to read-only.</para>
 		/// <para>For best performance, this should only be used on already read-only arrays, and with read-only values.</para>
+		/// <para>Please note that is <paramref name="value"/> is a JSON Array, it will be added as a child element. To append the <i>items</i> of an array, please use <see cref="CopyAndConcat(SnowBank.Data.Json.JsonArray)"/> instead</para>
 		/// </remarks>
 		[Pure, MustUseReturnValue]
 		public JsonArray CopyAndAdd(JsonValue? value)
@@ -572,6 +614,7 @@ namespace SnowBank.Data.Json
 		/// <remarks>
 		/// <para>This method will attempt to atomically replace the original <see cref="JsonArray">JSON Array</see> with a new version, unless another thread was able to update it faster, in which case it will simply retry with the newest version, until it is able to successfully update the reference.</para>
 		/// <para>Caution: the order of operation between threads is not guaranteed, and this method _may_ loop infinitely if it is perpetually blocked by another, faster, thread !</para>
+		/// <para>Please note that is <paramref name="value"/> is a JSON Array, it will be added as a child element. To append the <i>items</i> of an array, please use <see cref="CopyAndConcat(SnowBank.Data.Json.JsonArray)"/> instead</para>
 		/// </remarks>
 		public static JsonArray CopyAndAdd(ref JsonArray original, JsonValue? value)
 		{
