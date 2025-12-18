@@ -1572,20 +1572,30 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonBindingException">If this node is null, missing, or not a JSON Array.</exception>
 		public JsonArray AsArray() => this.ToJsonValue().AsArray();
 
-		/// <summary>Expose the underlying <see cref="JsonArray"/> of this node</summary>
+		/// <summary>Expose the underlying <see cref="JsonArray"/> of this node, or <c>null</c> if it is null or missing.</summary>
 		/// <remarks>This will we recorded as a full use of the value</remarks>
 		/// <exception cref="JsonBindingException">If this node is not a JSON Array.</exception>
 		public JsonArray? AsArrayOrDefault() => this.ToJsonValue().AsArrayOrDefault();
 
-		/// <summary>Expose the underlying <see cref="JsonObject"/> of this node</summary>
+		/// <summary>Expose the underlying <see cref="JsonArray"/> of this node</summary>
+		/// <remarks>This will we recorded as a full use of the value</remarks>
+		/// <exception cref="JsonBindingException">If this node is not a JSON Array.</exception>
+		public JsonArray AsArrayOrEmpty() => this.ToJsonValue().AsArrayOrEmpty();
+
+		/// <summary>Expose the underlying <see cref="JsonObject"/> of this node, or an empty array if it is null or missing.</summary>
 		/// <remarks>This will we recorded as a full use of the value</remarks>
 		/// <exception cref="JsonBindingException">If this node is null, missing, or not a JSON Object.</exception>
 		public JsonObject AsObject() => this.ToJsonValue().AsObject();
 
-		/// <summary>Expose the underlying <see cref="JsonObject"/> of this node</summary>
+		/// <summary>Expose the underlying <see cref="JsonObject"/> of this node, or <c>null</c> if it is null or missing.</summary>
 		/// <remarks>This will we recorded as a full use of the value</remarks>
 		/// <exception cref="JsonBindingException">If this node is not a JSON Object.</exception>
 		public JsonObject? AsObjectOrDefault() => this.ToJsonValue().AsObjectOrDefault();
+
+		/// <summary>Expose the underlying <see cref="JsonObject"/> of this node, or an empty object if it is null or missing.</summary>
+		/// <remarks>This will we recorded as a full use of the value</remarks>
+		/// <exception cref="JsonBindingException">If this node is not a JSON Object.</exception>
+		public JsonObject AsObjectOrEmpty() => this.ToJsonValue().AsObjectOrEmpty();
 
 		/// <summary>Expose the underlying <see cref="JsonArray"/> of this node</summary>
 		/// <remarks>This will we recorded as a full use of the value</remarks>
