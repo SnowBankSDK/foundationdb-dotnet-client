@@ -40,7 +40,7 @@ Specifying "UseNativeClient(allowSystemFallback: true)" will allow the loader to
 to the operating system mechanism for finding the native libraries, if you intend to deploy
 them separately from your .NET application.
 
-Copyright (c) 2023-2025 SnowBank SAS
+Copyright (c) 2023-2026 SnowBank SAS
 ***********************************************************************************************
 -->
 

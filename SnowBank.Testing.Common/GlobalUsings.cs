@@ -13,5 +13,3 @@ global using SnowBank.Threading;
 global using InstantHandleAttribute = JetBrains.Annotations.InstantHandleAttribute;
 global using PublicAPIAttribute = JetBrains.Annotations.PublicAPIAttribute;
 global using PureAttribute = System.Diagnostics.Contracts.PureAttribute;
-global using StringFormatMethodAttribute = JetBrains.Annotations.StringFormatMethodAttribute;
-

@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2025 SnowBank SAS, (c) 2005-2023 Doxense SAS
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -596,7 +596,7 @@ namespace FdbShell
 			bool stop = false;
 			try
 			{
-				Markup($"[bold white]FdbShell v{this.GetType().Assembly.GetName().Version}[/] - Copyright (c) SnowBank SAS 2023-2025");
+				Markup($"[bold white]FdbShell v{this.GetType().Assembly.GetName().Version}[/] - Copyright (c) SnowBank SAS 2023-2026");
 				Markup($"Using API [cyan]{Fdb.ApiVersion}[/] and client v[cyan]{Fdb.GetClientVersion().Version}[/]");
 
 				string desc = !string.IsNullOrEmpty(this.Db.ProviderOptions.ConnectionOptions.ConnectionString)
