@@ -47,7 +47,7 @@ namespace SnowBank.Data.Json.Tests
 		{
 			// Validate the INumber<T> arithmetic for addition
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonNumber.Zero + JsonNumber.Zero, Is.EqualTo(JsonNumber.Zero));
 				Assert.That(JsonNumber.Zero + JsonNumber.One, Is.EqualTo(JsonNumber.One));
@@ -75,9 +75,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonNumber.NaN + JsonNumber.One, Is.EqualTo(JsonNumber.NaN));
 				Assert.That(JsonNumber.NaN + JsonNumber.Create(2), Is.EqualTo(JsonNumber.NaN));
 				Assert.That(JsonNumber.NaN + JsonNumber.NaN, Is.EqualTo(JsonNumber.NaN));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonNumber.Zero + JsonNumber.Zero, IsJson.EqualTo(0));
 				Assert.That(JsonNumber.Zero + JsonNumber.One, IsJson.EqualTo(1));
@@ -106,7 +106,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonNumber.NaN + JsonNumber.Create(2), IsJson.EqualTo(double.NaN));
 				Assert.That(JsonNumber.NaN + JsonNumber.NaN, IsJson.EqualTo(double.NaN));
 
-			});
+			}
 		}
 
 		[Test]
@@ -114,7 +114,7 @@ namespace SnowBank.Data.Json.Tests
 		{
 			// Validate the INumber<T> arithmetic for subtraction
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonNumber.Zero - JsonNumber.Zero, IsJson.EqualTo(0));
 				Assert.That(JsonNumber.Zero - JsonNumber.One, IsJson.EqualTo(-1));
@@ -143,7 +143,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonNumber.NaN - JsonNumber.One, IsJson.EqualTo(double.NaN));
 				Assert.That(JsonNumber.NaN - JsonNumber.Create(2), IsJson.EqualTo(double.NaN));
 				Assert.That(JsonNumber.NaN - JsonNumber.NaN, IsJson.EqualTo(double.NaN));
-			});
+			}
 		}
 
 		[Test]
@@ -151,7 +151,7 @@ namespace SnowBank.Data.Json.Tests
 		{
 			// Validate the INumber<T> arithmetic for multiplication
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonNumber.Zero * JsonNumber.Zero, Is.EqualTo(JsonNumber.Zero));
 				Assert.That(JsonNumber.Zero * JsonNumber.One, Is.EqualTo(JsonNumber.Zero));
@@ -185,9 +185,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonNumber.NaN * JsonNumber.One, Is.EqualTo(JsonNumber.NaN));
 				Assert.That(JsonNumber.NaN * JsonNumber.Create(2), Is.EqualTo(JsonNumber.NaN));
 				Assert.That(JsonNumber.NaN * JsonNumber.NaN, Is.EqualTo(JsonNumber.NaN));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonNumber.Zero * JsonNumber.Zero, IsJson.EqualTo(0));
 				Assert.That(JsonNumber.Zero * JsonNumber.One, IsJson.EqualTo(0));
@@ -221,7 +221,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonNumber.NaN * JsonNumber.One, IsJson.EqualTo(double.NaN));
 				Assert.That(JsonNumber.NaN * JsonNumber.Create(2), IsJson.EqualTo(double.NaN));
 				Assert.That(JsonNumber.NaN * JsonNumber.NaN, IsJson.EqualTo(double.NaN));
-			});
+			}
 			
 		}
 
@@ -234,17 +234,20 @@ namespace SnowBank.Data.Json.Tests
 
 			static JsonValue Add(JsonValue a, JsonValue b) => AddNumbers(a, b);
 
-			Assert.That(Add(123, 456), IsJson.EqualTo(579));
-			Assert.That(Add(-123, 456), IsJson.EqualTo(333));
-			Assert.That(Add(-123, -456), IsJson.EqualTo(-579));
-			Assert.That(Add(123, -456), IsJson.EqualTo(-333));
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(Add(123, 456), IsJson.EqualTo(579));
+				Assert.That(Add(-123, 456), IsJson.EqualTo(333));
+				Assert.That(Add(-123, -456), IsJson.EqualTo(-579));
+				Assert.That(Add(123, -456), IsJson.EqualTo(-333));
 
-			Assert.That(Add(1.23d, 4.56d), IsJson.EqualTo(5.79d));
-			Assert.That(Add(1.23f, 4.56f), IsJson.EqualTo(5.79f));
-			Assert.That(Add(Math.PI, -Math.PI), IsJson.EqualTo(0));
+				Assert.That(Add(1.23d, 4.56d), IsJson.EqualTo(5.79d));
+				Assert.That(Add(1.23f, 4.56f), IsJson.EqualTo(5.79f));
+				Assert.That(Add(Math.PI, -Math.PI), IsJson.EqualTo(0));
 
-			Assert.That(Add(int.MaxValue, int.MaxValue), IsJson.EqualTo(2L * int.MaxValue));
-			Assert.That(Add(int.MinValue, int.MinValue), IsJson.EqualTo(2L * int.MinValue));
+				Assert.That(Add(int.MaxValue, int.MaxValue), IsJson.EqualTo(2L * int.MaxValue));
+				Assert.That(Add(int.MinValue, int.MinValue), IsJson.EqualTo(2L * int.MinValue));
+			}
 
 		}
 
@@ -303,7 +306,7 @@ namespace SnowBank.Data.Json.Tests
 			JsonValue x1 = JsonNumber.Return(numbers[1]);
 			JsonValue x2 = JsonNumber.Return(numbers[2]);
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(Equal(x0, x0), Is.True);
 				Assert.That(Equal(x0, x1), Is.False);
@@ -328,7 +331,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(GreaterOrEqual(x0, x0), Is.True);
 				Assert.That(GreaterOrEqual(x0, x1), Is.False);
 				Assert.That(GreaterOrEqual(x0, x2), Is.False);
-			});
+			}
 		}
 
 #endif

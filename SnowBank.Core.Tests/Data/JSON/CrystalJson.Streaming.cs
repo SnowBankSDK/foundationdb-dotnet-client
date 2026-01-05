@@ -83,7 +83,7 @@ namespace SnowBank.Data.Json.Tests
 			}
 			arr = CrystalJson.LoadFrom<List<int>>(path);
 			Assert.That(arr, Is.Not.Null);
-			Assert.That(arr, Is.EqualTo(new[] { 42 }));
+			Assert.That(arr, Is.EqualTo([ 42 ]));
 
 			// single batch
 			path = GetTemporaryPath("one_batch.json");

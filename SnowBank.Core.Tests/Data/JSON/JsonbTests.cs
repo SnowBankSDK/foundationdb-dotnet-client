@@ -308,7 +308,6 @@ namespace SnowBank.Data.Json.Binary.Tests
 
 			// random guids
 			VerifyRoundtrip(Enumerable.Range(0, 10).Select(_ => Guid.NewGuid()).ToJsonArray());
-			//note: étrangement, ca se compresse très bien avec Zstd (probablement que les GUID textuels de 36 chars repassent sur ~16 bytes)
 
 			// array of arrays
 			VerifyRoundtrip(JsonArray.Create(JsonArray.Create(1, 2, 3), JsonArray.Create(4, 5, 6)));
@@ -393,8 +392,8 @@ namespace SnowBank.Data.Json.Binary.Tests
 			var rnd = new Random(123456);
 			var randomIds = Enumerable.Range(0, 1_000).Select(i => (Key: $"AAAAAAAAAAAAAAAAAA_{Guid.NewGuid()}_{rnd.Next():X}_{i}", Value: i)).ToArray();
 
-			RobustHistogram histo = new();
-			var min = histo.FromNanoseconds(100); // It is very unlikely to take less than 100ns to perform a lookup!
+			RobustHistogram h = new();
+			var min = h.FromNanoseconds(100); // It is very unlikely to take less than 100ns to perform a lookup!
 
 			// perform a warmup run, so that the Tiered JIT does not interfer with us!
 			{
@@ -402,13 +401,13 @@ namespace SnowBank.Data.Json.Binary.Tests
 				var tmp = PackObject(randomIds.AsSpan(0, 50), true);
 				for (int i = 0; i < 10; i++)
 				{
-					RunIteration(randomIds.AsSpan(0, 50), tmp, histo);
+					RunIteration(randomIds.AsSpan(0, 50), tmp, h);
 					System.Threading.Thread.Sleep(25);
 				}
 				tmp = PackObject(randomIds.AsSpan(0, 50), false);
 				for (int i = 0; i < 10; i++)
 				{
-					RunIteration(randomIds.AsSpan(0, 50), tmp, histo);
+					RunIteration(randomIds.AsSpan(0, 50), tmp, h);
 					System.Threading.Thread.Sleep(25);
 				}
 				Log("Ready to rumble!");
@@ -423,12 +422,12 @@ namespace SnowBank.Data.Json.Binary.Tests
 				var packed = PackObject(ids, disableHashing);
 				Shuffle(rnd, ids);
 
-				histo.Clear();
+				h.Clear();
 				for (int k = 0; k < RUNS; k++)
 				{
-					RunIteration(ids, packed, histo);
+					RunIteration(ids, packed, h);
 				}
-				Log($"║ N={numFields,5} | SZ={packed.Count,7:N0} | {(disableHashing ? "NO_HASH" : "HASH   ")} ║ P05={histo.ToNanoseconds(histo.Percentile(5)),10:N1} ns | MED={histo.ToNanoseconds(histo.Median),10:N1} ns | P95={histo.ToNanoseconds(histo.Percentile(95)),10:N1} ns ║ {histo.GetDistribution(begin: min, end: 2_000)} ║");
+				Log($"║ N={numFields,5} | SZ={packed.Count,7:N0} | {(disableHashing ? "NO_HASH" : "HASH   ")} ║ P05={h.ToNanoseconds(h.Percentile(5)),10:N1} ns | MED={h.ToNanoseconds(h.Median),10:N1} ns | P95={h.ToNanoseconds(h.Percentile(95)),10:N1} ns ║ {h.GetDistribution(begin: min, end: 2_000)} ║");
 
 			}
 
@@ -449,15 +448,6 @@ namespace SnowBank.Data.Json.Binary.Tests
 					sw.Restart();
 					// we have an issue where it is "too fast" in Release and the stopwatch may or may not have enough precision pour measure the time taken
 					int x = Jsonb.Get<int>(packed, k, -1);
-					//int y = Jsonb.Get<int>(packed, k, x);
-					//y = Jsonb.Get<int>(packed, k, y);
-					//y = Jsonb.Get<int>(packed, k, y);
-					//y = Jsonb.Get<int>(packed, k, y);
-					//y = Jsonb.Get<int>(packed, k, y);
-					//y = Jsonb.Get<int>(packed, k, y);
-					//y = Jsonb.Get<int>(packed, k, y);
-					//y = Jsonb.Get<int>(packed, k, y);
-					//y = Jsonb.Get<int>(packed, k, y);
 					histo.Add(sw.Elapsed);
 					if (x != idx) Assert.That(x, Is.EqualTo(items[idx].Value), "Found the wrong field!");
 				}
@@ -504,7 +494,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 
 			var packed = Jsonb.Encode(original);
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(Jsonb.Test(packed, "Hello", "World!"), Is.True);
 				Assert.That(Jsonb.Test(packed, "Hello", JsonString.Return("World!")), Is.True);
@@ -592,7 +582,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 
 				Assert.That(Jsonb.Test(packed, "Items[2]", "C"), Is.True);
 				Assert.That(Jsonb.Test(packed, "Items[2]", "c"), Is.False);
-			});
+			}
 		}
 		
 		[Test]
@@ -611,7 +601,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 
 			var packed = Jsonb.Encode(original);
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(Jsonb.Select(packed, "Hello"), IsJson.EqualTo("World!"));
 				Assert.That(Jsonb.Select(packed, "Foo"), IsJson.EqualTo(123));
@@ -627,9 +617,9 @@ namespace SnowBank.Data.Json.Binary.Tests
 				Assert.That(Jsonb.Select(packed, "Items[0]"), IsJson.EqualTo("A"));
 				Assert.That(Jsonb.Select(packed, "Items[1]"), IsJson.EqualTo("B"));
 				Assert.That(Jsonb.Select(packed, "Items[2]"), IsJson.EqualTo("C"));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(Jsonb.Select(packed, JsonPath.Create("Hello")), IsJson.EqualTo("World!"));
 				Assert.That(Jsonb.Select(packed, JsonPath.Create("Foo")), IsJson.EqualTo(123));
@@ -645,7 +635,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 				Assert.That(Jsonb.Select(packed, JsonPath.Empty["Items"][0]), IsJson.EqualTo("A"));
 				Assert.That(Jsonb.Select(packed, JsonPath.Empty["Items"][1]), IsJson.EqualTo("B"));
 				Assert.That(Jsonb.Select(packed, JsonPath.Empty["Items"][2]), IsJson.EqualTo("C"));
-			});
+			}
 
 		}
 
@@ -688,10 +678,13 @@ namespace SnowBank.Data.Json.Binary.Tests
 			// use these selectors on multiple different documents
 			for(int i = 0; i < batch.Length; i++)
 			{
-				Assert.That(Jsonb.Select(batch[i], selId), IsJson.EqualTo(data[i].Get<Guid>("Id")));
-				Assert.That(Jsonb.Select(batch[i], selX), IsJson.Missing);
-				Assert.That(Jsonb.Select(batch[i], selY), IsJson.EqualTo(-i));
-				Assert.That(Jsonb.Select(batch[i], selFooBarBaz), IsJson.EqualTo("Hello, there!"));
+				using (Assert.EnterMultipleScope())
+				{
+					Assert.That(Jsonb.Select(batch[i], selId), IsJson.EqualTo(data[i].Get<Guid>("Id")));
+					Assert.That(Jsonb.Select(batch[i], selX), IsJson.Missing);
+					Assert.That(Jsonb.Select(batch[i], selY), IsJson.EqualTo(-i));
+					Assert.That(Jsonb.Select(batch[i], selFooBarBaz), IsJson.EqualTo("Hello, there!"));
+				}
 			}
 
 		}

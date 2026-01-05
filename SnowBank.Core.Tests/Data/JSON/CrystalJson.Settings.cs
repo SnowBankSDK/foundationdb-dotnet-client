@@ -34,137 +34,154 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_JsonSettings_DefaultValues()
 		{
 			// By default, should have mostly default values for the properties (0 / false)
-
-			var settings = CrystalJsonSettings.Json;
-			Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.Json));
-			Assert.That(settings.IsJsonTarget(), Is.True);
-			Assert.That(settings.IsJavascriptTarget(), Is.False);
-			Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Formatted));
-			Assert.That(settings.IsCompactLayout(), Is.False);
-			Assert.That(settings.IsFormattedLayout(), Is.True);
-			Assert.That(settings.IsIndentedLayout(), Is.False);
-			Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
-			Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
-			Assert.That(settings.HideDefaultValues, Is.False);
-			Assert.That(settings.ShowNullMembers, Is.False);
-			Assert.That(settings.UseCamelCasingForNames, Is.False);
-			Assert.That(settings.OptimizeForLargeData, Is.False);
-			Assert.That(settings.ReadOnly, Is.False);
-			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.None));
-			Assert.That(CrystalJsonSettings.Json, Is.SameAs(settings));
+			using (Assert.EnterMultipleScope())
+			{
+				var settings = CrystalJsonSettings.Json;
+				Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.Json));
+				Assert.That(settings.IsJsonTarget(), Is.True);
+				Assert.That(settings.IsJavascriptTarget(), Is.False);
+				Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Formatted));
+				Assert.That(settings.IsCompactLayout(), Is.False);
+				Assert.That(settings.IsFormattedLayout(), Is.True);
+				Assert.That(settings.IsIndentedLayout(), Is.False);
+				Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
+				Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
+				Assert.That(settings.HideDefaultValues, Is.False);
+				Assert.That(settings.ShowNullMembers, Is.False);
+				Assert.That(settings.UseCamelCasingForNames, Is.False);
+				Assert.That(settings.OptimizeForLargeData, Is.False);
+				Assert.That(settings.ReadOnly, Is.False);
+				Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.None));
+				Assert.That(CrystalJsonSettings.Json, Is.SameAs(settings));
+			}
 
 			// JsonImmutable
-			settings = CrystalJsonSettings.JsonReadOnly;
-			Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.Json));
-			Assert.That(settings.IsJsonTarget(), Is.True);
-			Assert.That(settings.IsJavascriptTarget(), Is.False);
-			Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Formatted));
-			Assert.That(settings.IsCompactLayout(), Is.False);
-			Assert.That(settings.IsFormattedLayout(), Is.True);
-			Assert.That(settings.IsIndentedLayout(), Is.False);
-			Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
-			Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
-			Assert.That(settings.HideDefaultValues, Is.False);
-			Assert.That(settings.ShowNullMembers, Is.False);
-			Assert.That(settings.UseCamelCasingForNames, Is.False);
-			Assert.That(settings.OptimizeForLargeData, Is.False);
-			Assert.That(settings.ReadOnly, Is.True);
-			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Mutability_ReadOnly));
-			Assert.That(CrystalJsonSettings.JsonReadOnly, Is.SameAs(settings));
+			using (Assert.EnterMultipleScope())
+			{
+				var settings = CrystalJsonSettings.JsonReadOnly;
+				Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.Json));
+				Assert.That(settings.IsJsonTarget(), Is.True);
+				Assert.That(settings.IsJavascriptTarget(), Is.False);
+				Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Formatted));
+				Assert.That(settings.IsCompactLayout(), Is.False);
+				Assert.That(settings.IsFormattedLayout(), Is.True);
+				Assert.That(settings.IsIndentedLayout(), Is.False);
+				Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
+				Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
+				Assert.That(settings.HideDefaultValues, Is.False);
+				Assert.That(settings.ShowNullMembers, Is.False);
+				Assert.That(settings.UseCamelCasingForNames, Is.False);
+				Assert.That(settings.OptimizeForLargeData, Is.False);
+				Assert.That(settings.ReadOnly, Is.True);
+				Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Mutability_ReadOnly));
+				Assert.That(CrystalJsonSettings.JsonReadOnly, Is.SameAs(settings));
+			}
 
 			// JsonIndented: Only the TextLayout must be different
-
-			settings = CrystalJsonSettings.JsonIndented;
-			Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.Json));
-			Assert.That(settings.IsJsonTarget(), Is.True);
-			Assert.That(settings.IsJavascriptTarget(), Is.False);
-			Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Indented));
-			Assert.That(settings.IsCompactLayout(), Is.False);
-			Assert.That(settings.IsFormattedLayout(), Is.False);
-			Assert.That(settings.IsIndentedLayout(), Is.True);
-			Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
-			Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
-			Assert.That(settings.HideDefaultValues, Is.False);
-			Assert.That(settings.ShowNullMembers, Is.False);
-			Assert.That(settings.UseCamelCasingForNames, Is.False);
-			Assert.That(settings.OptimizeForLargeData, Is.False);
-			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Layout_Indented));
-			Assert.That(CrystalJsonSettings.JsonIndented, Is.SameAs(settings));
+			using (Assert.EnterMultipleScope())
+			{
+				var settings = CrystalJsonSettings.JsonIndented;
+				Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.Json));
+				Assert.That(settings.IsJsonTarget(), Is.True);
+				Assert.That(settings.IsJavascriptTarget(), Is.False);
+				Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Indented));
+				Assert.That(settings.IsCompactLayout(), Is.False);
+				Assert.That(settings.IsFormattedLayout(), Is.False);
+				Assert.That(settings.IsIndentedLayout(), Is.True);
+				Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
+				Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
+				Assert.That(settings.HideDefaultValues, Is.False);
+				Assert.That(settings.ShowNullMembers, Is.False);
+				Assert.That(settings.UseCamelCasingForNames, Is.False);
+				Assert.That(settings.OptimizeForLargeData, Is.False);
+				Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Layout_Indented));
+				Assert.That(CrystalJsonSettings.JsonIndented, Is.SameAs(settings));
+			}
 
 			// JsonCompact: Only the TextLayout must be different
-
-			settings = CrystalJsonSettings.JsonCompact;
-			Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.Json));
-			Assert.That(settings.IsJsonTarget(), Is.True);
-			Assert.That(settings.IsJavascriptTarget(), Is.False);
-			Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Compact));
-			Assert.That(settings.IsCompactLayout(), Is.True);
-			Assert.That(settings.IsFormattedLayout(), Is.False);
-			Assert.That(settings.IsIndentedLayout(), Is.False);
-			Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
-			Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
-			Assert.That(settings.HideDefaultValues, Is.False);
-			Assert.That(settings.ShowNullMembers, Is.False);
-			Assert.That(settings.UseCamelCasingForNames, Is.False);
-			Assert.That(settings.OptimizeForLargeData, Is.False);
-			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Layout_Compact));
-			Assert.That(CrystalJsonSettings.JsonCompact, Is.SameAs(settings));
+			using (Assert.EnterMultipleScope())
+			{
+				var settings = CrystalJsonSettings.JsonCompact;
+				Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.Json));
+				Assert.That(settings.IsJsonTarget(), Is.True);
+				Assert.That(settings.IsJavascriptTarget(), Is.False);
+				Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Compact));
+				Assert.That(settings.IsCompactLayout(), Is.True);
+				Assert.That(settings.IsFormattedLayout(), Is.False);
+				Assert.That(settings.IsIndentedLayout(), Is.False);
+				Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
+				Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
+				Assert.That(settings.HideDefaultValues, Is.False);
+				Assert.That(settings.ShowNullMembers, Is.False);
+				Assert.That(settings.UseCamelCasingForNames, Is.False);
+				Assert.That(settings.OptimizeForLargeData, Is.False);
+				Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Layout_Compact));
+				Assert.That(CrystalJsonSettings.JsonCompact, Is.SameAs(settings));
+			}
 
 			// JavaScript: should target the JavaScript language (single quotes, dates with the form "new Date(...)")
-
-			settings = CrystalJsonSettings.JavaScript;
-			Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.JavaScript));
-			Assert.That(settings.IsJsonTarget(), Is.False);
-			Assert.That(settings.IsJavascriptTarget(), Is.True);
-			Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Formatted));
-			Assert.That(settings.IsCompactLayout(), Is.False);
-			Assert.That(settings.IsFormattedLayout(), Is.True);
-			Assert.That(settings.IsIndentedLayout(), Is.False);
-			Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
-			Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
-			Assert.That(settings.HideDefaultValues, Is.False);
-			Assert.That(settings.ShowNullMembers, Is.False);
-			Assert.That(settings.UseCamelCasingForNames, Is.False);
-			Assert.That(settings.OptimizeForLargeData, Is.False);
-			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Target_JavaScript));
-			Assert.That(CrystalJsonSettings.JavaScript, Is.SameAs(settings));
+			using (Assert.EnterMultipleScope())
+			{
+				var settings = CrystalJsonSettings.JavaScript;
+				Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.JavaScript));
+				Assert.That(settings.IsJsonTarget(), Is.False);
+				Assert.That(settings.IsJavascriptTarget(), Is.True);
+				Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Formatted));
+				Assert.That(settings.IsCompactLayout(), Is.False);
+				Assert.That(settings.IsFormattedLayout(), Is.True);
+				Assert.That(settings.IsIndentedLayout(), Is.False);
+				Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
+				Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
+				Assert.That(settings.HideDefaultValues, Is.False);
+				Assert.That(settings.ShowNullMembers, Is.False);
+				Assert.That(settings.UseCamelCasingForNames, Is.False);
+				Assert.That(settings.OptimizeForLargeData, Is.False);
+				Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Target_JavaScript));
+				Assert.That(CrystalJsonSettings.JavaScript, Is.SameAs(settings));
+			}
 
 			// JavaScriptIndented: same as JavaScript, but with a different TextLayout
-
-			settings = CrystalJsonSettings.JavaScriptIndented;
-			Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.JavaScript));
-			Assert.That(settings.IsJsonTarget(), Is.False);
-			Assert.That(settings.IsJavascriptTarget(), Is.True);
-			Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Indented));
-			Assert.That(settings.IsCompactLayout(), Is.False);
-			Assert.That(settings.IsFormattedLayout(), Is.False);
-			Assert.That(settings.IsIndentedLayout(), Is.True);
-			Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
-			Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
-			Assert.That(settings.HideDefaultValues, Is.False);
-			Assert.That(settings.ShowNullMembers, Is.False);
-			Assert.That(settings.UseCamelCasingForNames, Is.False);
-			Assert.That(settings.OptimizeForLargeData, Is.False);
-			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Target_JavaScript | CrystalJsonSettings.OptionFlags.Layout_Indented));
-			Assert.That(CrystalJsonSettings.JavaScriptIndented, Is.SameAs(settings));
+			using (Assert.EnterMultipleScope())
+			{
+				var settings = CrystalJsonSettings.JavaScriptIndented;
+				Assert.That(settings.TargetLanguage, Is.EqualTo(CrystalJsonSettings.Target.JavaScript));
+				Assert.That(settings.IsJsonTarget(), Is.False);
+				Assert.That(settings.IsJavascriptTarget(), Is.True);
+				Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Indented));
+				Assert.That(settings.IsCompactLayout(), Is.False);
+				Assert.That(settings.IsFormattedLayout(), Is.False);
+				Assert.That(settings.IsIndentedLayout(), Is.True);
+				Assert.That(settings.DateFormatting, Is.EqualTo(CrystalJsonSettings.DateFormat.Default));
+				Assert.That(settings.InterningMode, Is.EqualTo(CrystalJsonSettings.StringInterning.Default));
+				Assert.That(settings.HideDefaultValues, Is.False);
+				Assert.That(settings.ShowNullMembers, Is.False);
+				Assert.That(settings.UseCamelCasingForNames, Is.False);
+				Assert.That(settings.OptimizeForLargeData, Is.False);
+				Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Target_JavaScript | CrystalJsonSettings.OptionFlags.Layout_Indented));
+				Assert.That(CrystalJsonSettings.JavaScriptIndented, Is.SameAs(settings));
+			}
 
 			// null
-			Assert.That(default(CrystalJsonSettings).IsJsonTarget(), Is.True);
-			Assert.That(default(CrystalJsonSettings).IsJavascriptTarget(), Is.False);
-			Assert.That(default(CrystalJsonSettings).IsCompactLayout(), Is.False);
-			Assert.That(default(CrystalJsonSettings).IsFormattedLayout(), Is.True);
-			Assert.That(default(CrystalJsonSettings).IsIndentedLayout(), Is.False);
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(default(CrystalJsonSettings).IsJsonTarget(), Is.True);
+				Assert.That(default(CrystalJsonSettings).IsJavascriptTarget(), Is.False);
+				Assert.That(default(CrystalJsonSettings).IsCompactLayout(), Is.False);
+				Assert.That(default(CrystalJsonSettings).IsFormattedLayout(), Is.True);
+				Assert.That(default(CrystalJsonSettings).IsIndentedLayout(), Is.False);
+			}
 
 		}
 
 		[Test]
 		public void Test_JsonSettings_Flags()
 		{
+
 			var settings = CrystalJsonSettings.Json;
-
-			// Set
-
 			Assert.That(settings.HideDefaultValues, Is.False);
+
+			// Set options...
+
 			settings = settings.WithoutDefaultValues();
 			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.HideDefaultValues));
 			Assert.That(settings.HideDefaultValues, Is.True);
@@ -184,7 +201,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.HideDefaultValues | CrystalJsonSettings.OptionFlags.ShowNullMembers | CrystalJsonSettings.OptionFlags.UseCamelCasingForName | CrystalJsonSettings.OptionFlags.OptimizeForLargeData));
 			Assert.That(settings.OptimizeForLargeData, Is.True);
 
-			// Clear
+			// Clear options...
 
 			settings = settings.PascalCased();
 			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.HideDefaultValues | CrystalJsonSettings.OptionFlags.ShowNullMembers | CrystalJsonSettings.OptionFlags.OptimizeForLargeData));
@@ -213,7 +230,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.None));
 			Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Formatted));
 
-			// Layout => Indentend
+			// Layout => Indented
 			settings = settings.Indented();
 			Assert.That(settings.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.Layout_Indented));
 			Assert.That(settings.TextLayout, Is.EqualTo(CrystalJsonSettings.Layout.Indented));

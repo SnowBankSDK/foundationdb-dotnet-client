@@ -112,14 +112,22 @@ namespace SnowBank.Data.Json.Binary.Tests
 				// 4 bits par caractère
 				res <<= 4;
 				int c = hexa[i];
-				if (c >= 48 && c <= 57) // '0'..'9'
+				if (c is >= 48 and <= 57) // '0'..'9'
+				{
 					res += c - 48;
-				else if (c >= 65 && c <= 90) // 'A'..'F'
+				}
+				else if (c is >= 65 and <= 90) // 'A'..'F'
+				{
 					res += c - 55;
-				else if (c >= 97 && c <= 102) // 'a'..'f'
+				}
+				else if (c is >= 97 and <= 102) // 'a'..'f'
+				{
 					res += c - 87;
+				}
 				else
+				{
 					return res >> 4; // ERREUR !
+				}
 			}
 			return res;
 		}
@@ -343,7 +351,6 @@ namespace SnowBank.Data.Json.Binary.Tests
 
 			// random guids
 			VerifyRoundtrip(Enumerable.Range(0, 10).Select(_ => Guid.NewGuid()).ToJsonArray());
-			//note: étrangement, ca se compresse très bien avec Zstd (probablement que les GUID textuels de 36 chars repassent sur ~16 bytes)
 
 			// array of arrays
 			VerifyRoundtrip(JsonArray.Create(JsonArray.Create(1, 2, 3), JsonArray.Create(4, 5, 6)));
@@ -568,13 +575,13 @@ namespace SnowBank.Data.Json.Binary.Tests
 					Version = 1,
 					Vendors =
 					[
-						new Vendor { Id = Guid.NewGuid(), Label = "hp", Name = "Hewlett-Packard", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
-						new Vendor { Id = Guid.NewGuid(), Label = "xerox", Name = "Xerox", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
-						new Vendor { Id = Guid.NewGuid(), Label = "lex", Name = "Lexmark", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
-						new Vendor { Id = Guid.NewGuid(), Label = "km", Name = "Konica Minolta", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
-						new Vendor { Id = Guid.NewGuid(), Label = "kyo", Name = "Kyocera", Models = Enumerable.Range(0, 1000).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
-						new Vendor { Id = Guid.NewGuid(), Label = "samsung", Name = "Samsung", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
-						new Vendor { Id = Guid.NewGuid(), Label = "tosh", Name = "Toshiba", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
+						new() { Id = Guid.NewGuid(), Label = "hp", Name = "Hewlett-Packard", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
+						new() { Id = Guid.NewGuid(), Label = "xerox", Name = "Xerox", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
+						new() { Id = Guid.NewGuid(), Label = "lex", Name = "Lexmark", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
+						new() { Id = Guid.NewGuid(), Label = "km", Name = "Konica Minolta", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
+						new() { Id = Guid.NewGuid(), Label = "kyo", Name = "Kyocera", Models = Enumerable.Range(0, 1000).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
+						new() { Id = Guid.NewGuid(), Label = "samsung", Name = "Samsung", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
+						new() { Id = Guid.NewGuid(), Label = "tosh", Name = "Toshiba", Models = Enumerable.Range(0, 500).Select(_ => Model.MakeRandom(rnd)).ToDictionary(x => x.Id) },
 					]
 				};
 

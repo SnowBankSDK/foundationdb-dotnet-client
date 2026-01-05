@@ -26,10 +26,6 @@
 
 namespace SnowBank.Data.Json.Tests
 {
-	using System.Drawing;
-	using System.Reflection.Emit;
-
-	using NUnit.Framework.Interfaces;
 
 	[TestFixture]
 	[Category("Core-SDK")]
@@ -106,6 +102,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(obj, Is.Not.Null);
 			Assert.That(obj.GetContext(), Is.Null);
 
+			using (Assert.EnterMultipleScope())
 			{ // the root should reflect the wrapped json
 				Assert.That(obj.ToJsonValue(), Is.SameAs(source));
 				Assert.That(obj.Type, Is.EqualTo(JsonType.Object));
@@ -120,6 +117,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(obj.Equals(source), Is.True);
 			}
 
+			using (Assert.EnterMultipleScope())
 			{ // direct child that contains a string literal
 				var hello = obj["hello"];
 				Assert.That(hello, Is.Not.Null);
@@ -141,6 +139,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(obj.GetValue("!!!hello???".AsMemory(3, 5)), IsJson.EqualTo("world"));
 			}
 
+			using (Assert.EnterMultipleScope())
 			{ // direct child that contains a number literal
 				var level = obj["level"];
 				Assert.That(level, Is.Not.Null);
@@ -162,6 +161,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(obj.GetValue("!!!level???".AsMemory(3, 5)), IsJson.EqualTo(8001));
 			}
 
+			using (Assert.EnterMultipleScope())
 			{ // nested object
 				var point = obj["point"];
 				Assert.That(point, Is.Not.Null);
@@ -180,6 +180,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(point.ContainsKey("w"), Is.False);
 			}
 
+			using (Assert.EnterMultipleScope())
 			{ // field of nested object
 				var point = obj["point"];
 				var x = point["x"];
@@ -196,6 +197,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(x.Equals(JsonNumber.Return(123)), Is.True);
 			}
 
+			using (Assert.EnterMultipleScope())
 			{ // nested array
 				var items = obj["items"];
 				Assert.That(items, Is.Not.Null);
@@ -216,6 +218,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(items.Get<string?>(4, null), Is.Null);
 			}
 
+			using (Assert.EnterMultipleScope())
 			{ // item of nested array
 				var items = obj["items"];
 				var item = items[2];

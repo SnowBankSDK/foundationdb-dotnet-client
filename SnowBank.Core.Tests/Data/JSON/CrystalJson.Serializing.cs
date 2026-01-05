@@ -456,14 +456,14 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(float.MaxValue, default, float.MaxValue.ToString("R"));
 			CheckSerialize(float.MinValue, default, float.MinValue.ToString("R"));
 			CheckSerialize(float.Epsilon, default, float.Epsilon.ToString("R"));
-			CheckSerialize(float.NaN, default, "NaN", "Pas standard, mais la plupart des serializers se comportent comme cela");
-			CheckSerialize(float.PositiveInfinity, default, "Infinity", "Pas standard, mais la plupart des serializers se comportent comme cela");
-			CheckSerialize(float.NegativeInfinity, default, "-Infinity", "Pas standard, mais la plupart des serializers se comportent comme cela");
+			CheckSerialize(float.NaN, default, "NaN", "Not a standard, but most serializers behave like this");
+			CheckSerialize(float.PositiveInfinity, default, "Infinity", "Not a standard, but most serializers behave like this");
+			CheckSerialize(float.NegativeInfinity, default, "-Infinity", "Not a standard, but most serializers behave like this");
 			{ // NaN => 'NaN'
 				var settings = CrystalJsonSettings.Json.WithFloatFormat(CrystalJsonSettings.FloatFormat.Symbol);
-				CheckSerialize(float.NaN, settings, "NaN", "Pas standard, mais la plupart des serializers se comportent comme cela");
-				CheckSerialize(float.PositiveInfinity, settings, "Infinity", "Pas standard, mais la plupart des serializers se comportent comme cela");
-				CheckSerialize(float.NegativeInfinity, settings, "-Infinity", "Pas standard, mais la plupart des serializers se comportent comme cela");
+				CheckSerialize(float.NaN, settings, "NaN", "Not a standard, but most serializers behave like this");
+				CheckSerialize(float.PositiveInfinity, settings, "Infinity", "Not a standard, but most serializers behave like this");
+				CheckSerialize(float.NegativeInfinity, settings, "-Infinity", "Not a standard, but most serializers behave like this");
 			}
 			{ // NaN => '"NaN"'
 				var settings = CrystalJsonSettings.Json.WithFloatFormat(CrystalJsonSettings.FloatFormat.String);
@@ -488,15 +488,14 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(double.MaxValue, default, double.MaxValue.ToString("R"));
 			CheckSerialize(double.MinValue, default, double.MinValue.ToString("R"));
 			CheckSerialize(double.Epsilon, default, double.Epsilon.ToString("R"));
-			//BUGBUG: pour l'instant "default" utilise FloatFormat.Symbol mais on risque de changer en String par défaut!
-			CheckSerialize(double.NaN, default, "NaN", "Pas standard, mais la plupart des serializers se comportent comme cela");
-			CheckSerialize(double.PositiveInfinity, default, "Infinity", "Pas standard, mais la plupart des serializers se comportent comme cela");
-			CheckSerialize(double.NegativeInfinity, default, "-Infinity", "Pas standard, mais la plupart des serializers se comportent comme cela");
+			CheckSerialize(double.NaN, default, "NaN", "Not a standard, but most serializers behave like this");
+			CheckSerialize(double.PositiveInfinity, default, "Infinity", "Not a standard, but most serializers behave like this");
+			CheckSerialize(double.NegativeInfinity, default, "-Infinity", "Not a standard, but most serializers behave like this");
 			{ // NaN => 'NaN'
 				var settings = CrystalJsonSettings.Json.WithFloatFormat(CrystalJsonSettings.FloatFormat.Symbol);
-				CheckSerialize(double.NaN, settings, "NaN", "Pas standard, mais la plupart des serializers se comportent comme cela");
-				CheckSerialize(double.PositiveInfinity, settings, "Infinity", "Pas standard, mais la plupart des serializers se comportent comme cela");
-				CheckSerialize(double.NegativeInfinity, settings, "-Infinity", "Pas standard, mais la plupart des serializers se comportent comme cela");
+				CheckSerialize(double.NaN, settings, "NaN", "Not a standard, but most serializers behave like this");
+				CheckSerialize(double.PositiveInfinity, settings, "Infinity", "Not a standard, but most serializers behave like this");
+				CheckSerialize(double.NegativeInfinity, settings, "-Infinity", "Not a standard, but most serializers behave like this");
 			}
 			{ // NaN => '"NaN"'
 				var settings = CrystalJsonSettings.Json.WithFloatFormat(CrystalJsonSettings.FloatFormat.String);
@@ -684,7 +683,7 @@ namespace SnowBank.Data.Json.Tests
 
 			//Value Type
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonNumber.Return(123).As<int>(), Is.EqualTo(123));
 				Assert.That(JsonString.Return("123").As<int>(), Is.EqualTo(123));
@@ -724,10 +723,10 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(default(JsonValue).As<Guid>(guid), Is.EqualTo(guid));
 				Assert.That(default(JsonValue).As<DateTime>(), Is.EqualTo(DateTime.MinValue));
 				Assert.That(default(JsonValue).As<DateTime>(now), Is.EqualTo(now));
-			});
+			}
 
 			//Nullable Type
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonNumber.Return(123).As<int?>(), Is.Not.Null.And.EqualTo(123));
 				Assert.That(JsonString.Return("123").As<int?>(), Is.Not.Null.And.EqualTo(123));
@@ -747,11 +746,11 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(default(JsonValue).As<bool?>(true), Is.True);
 				Assert.That(default(JsonValue).As<Guid?>(), Is.Null);
 				Assert.That(default(JsonValue).As<Guid?>(guid), Is.EqualTo(guid));
-			});
+			}
 
 			//Reference Primitive Type
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				//Nullable Type
 				Assert.That(JsonNumber.Return(123).As<string>(), Is.Not.Null.And.EqualTo("123"));
@@ -764,16 +763,16 @@ namespace SnowBank.Data.Json.Tests
 				//Value Type Array
 				Assert.That(JsonArray.Create(1, 2, 3).As<int[]>(), Is.Not.Null.And.EqualTo(new [] { 1, 2, 3 }));
 				Assert.That(JsonNull.Null.As<int[]>(), Is.Null);
-				Assert.That(JsonNull.Null.As<int[]>([ 1, 2, 3 ]), Is.EqualTo(new [] { 1, 2, 3 }));
+				Assert.That(JsonNull.Null.As<int[]>([ 1, 2, 3 ]), Is.EqualTo([ 1, 2, 3 ]));
 				Assert.That(default(JsonValue).As<int[]>(), Is.Null);
-				Assert.That(default(JsonValue).As<int[]>([ 1, 2, 3 ]), Is.EqualTo(new [] { 1, 2, 3 }));
+				Assert.That(default(JsonValue).As<int[]>([ 1, 2, 3 ]), Is.EqualTo([ 1, 2, 3 ]));
 
 				//Ref Type Array
 				Assert.That(JsonArray.Create("a", "b", "c").As<string[]>(), Is.Not.Null.And.EqualTo(new[] { "a", "b", "c" }));
 				Assert.That(JsonNull.Null.As<string[]>(), Is.Null);
-				Assert.That(JsonNull.Null.As<string[]>([ "a", "b", "c" ]), Is.EqualTo(new[] { "a", "b", "c" }));
+				Assert.That(JsonNull.Null.As<string[]>([ "a", "b", "c" ]), Is.EqualTo([ "a", "b", "c" ]));
 				Assert.That(default(JsonValue).As<string[]>(), Is.Null);
-				Assert.That(default(JsonValue).As<string[]>([ "a", "b", "c" ]), Is.EqualTo(new[] { "a", "b", "c" }));
+				Assert.That(default(JsonValue).As<string[]>([ "a", "b", "c" ]), Is.EqualTo([ "a", "b", "c" ]));
 
 				//Value Type List
 				Assert.That(JsonArray.Create(1, 2, 3).As<List<int>>(), Is.Not.Null.And.EqualTo(new[] { 1, 2, 3 }));
@@ -782,10 +781,10 @@ namespace SnowBank.Data.Json.Tests
 				//Ref Type List
 				Assert.That(JsonArray.Create("a", "b", "c").As<List<string>>(), Is.Not.Null.And.EqualTo(new[] { "a", "b", "c" }));
 				Assert.That(JsonNull.Null.As<List<string>>(), Is.Null);
-			});
+			}
 
 			// JsonNull
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonNull.Null.As<JsonValue>(), Is.SameAs(JsonNull.Null));
 				Assert.That(JsonNull.Null.As<JsonNull>(), Is.SameAs(JsonNull.Null));
@@ -793,15 +792,15 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonNull.Missing.As<JsonNull>(), Is.SameAs(JsonNull.Missing));
 				Assert.That(default(JsonValue).As<JsonValue>(), Is.SameAs(JsonNull.Null));
 				Assert.That(default(JsonValue).As<JsonNull>(), Is.SameAs(JsonNull.Null));
-			});
+			}
 
 			//Format Exceptions
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(() => JsonString.Return("foo").As<int>(), Throws.InstanceOf<FormatException>());
 				Assert.That(() => JsonArray.Create("foo").As<int[]>(), Throws.InstanceOf<FormatException>());
 				Assert.That(() => JsonArray.Create("foo").As<List<int>>(), Throws.InstanceOf<FormatException>());
-			});
+			}
 		}
 
 		[Test]
@@ -1169,7 +1168,7 @@ namespace SnowBank.Data.Json.Tests
 				"\"\\/Date(" + (946684800000 - 1 * 3600 * 1000).ToString() + "+0100)\\/\"",
 				"2000-01-01 GMT+1 (Paris)"
 			);
-			// * 1er Août 2000 = GMT + 2 car heure d'été
+			// * 1er Août 2000 = GMT + 2, car heure d'été
 			CheckSerialize(
 				new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc),
 				settings,
@@ -1188,8 +1187,6 @@ namespace SnowBank.Data.Json.Tests
 				"\"\\/Date(967759200000" + "+0200)\\/\"",
 				"2000-08-01 GMT+2 (Paris, DST)"
 			);
-
-			//TODO: DateTimeOffset ?
 		}
 
 		[Test]
@@ -1249,12 +1246,12 @@ namespace SnowBank.Data.Json.Tests
 			// IMPORTANT: this test only works if you are in the "Romance Standard Time" (Paris, Bruxelles, ...), sorry! (or use the pretext to visit Paris, all expenses paid by the QA dept. !)
 			// Paris: GMT+1 l'hivers, GMT+2 l'état
 
-			// * 1er Janvier 2000 = GMT + 1 car heure d'hiver
+			// * 1er Janvier 2000 = GMT + 1, car heure d'hiver
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), settings, "\"2000-01-01T00:00:00Z\"", "2000-01-01 UTC");
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0), settings, "\"2000-01-01\"", "2000-01-01 (unspecified)");
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local), settings, "\"2000-01-01T00:00:00+01:00\"", "2000-01-01 GMT+1 (Paris)");
 
-			// * 1er Septembre 2000 = GMT + 2 car heure d'été
+			// * 1er Septembre 2000 = GMT + 2, car heure d'été
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc), settings, "\"2000-09-01T00:00:00Z\"", "2000-09-01 UTC");
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0), settings, "\"2000-09-01\"", "2000-09-01 (unspecified)");
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Local), settings, "\"2000-09-01T00:00:00+02:00\"", "2000-09-01 GMT+2 (Paris, DST)");
@@ -1302,7 +1299,7 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero), settings, "\"2000-01-01T00:00:00+00:00\"", "2000-01-01 UTC");
 			CheckSerialize(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1)), settings, "\"2000-01-01T00:00:00+01:00\"", "2000-01-01 GMT+1 (Paris)");
 
-			// * 1er Septembre 2000 = GMT + 2 car heure d'été
+			// * 1er Septembre 2000 = GMT + 2, car heure d'été
 			CheckSerialize(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.Zero), settings, "\"2000-09-01T00:00:00+00:00\"", "2000-09-01 UTC");
 			CheckSerialize(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.FromHours(2)), settings, "\"2000-09-01T00:00:00+02:00\"", "2000-09-01 GMT+2 (Paris, DST)");
 		}
@@ -1821,7 +1818,7 @@ namespace SnowBank.Data.Json.Tests
 			// deserialize the container instance
 			var y = CrystalJson.Deserialize<DummyOuterClass>(CrystalJson.Serialize(x));
 			Assert.That(y, Is.Not.Null);
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(y.Id, Is.EqualTo(7));
 				Assert.That(y.Agent, Is.Not.Null);
@@ -1834,7 +1831,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(y.Agent.Created, Is.EqualTo(new DateTime(1968, 5, 8, 0, 0, 0, DateTimeKind.Utc)));
 				Assert.That(y.Agent.Modified, Is.EqualTo(new DateTime(2010, 10, 28, 15, 39, 0, DateTimeKind.Utc)));
 				Assert.That(y.Agent.State, Is.EqualTo(DummyJsonEnum.Bar));
-			});
+			}
 		}
 
 		[Test]
@@ -1900,7 +1897,7 @@ namespace SnowBank.Data.Json.Tests
 			// Deserialize
 			var y = CrystalJson.Deserialize<DummyOuterDerivedClass>(CrystalJson.Serialize(x, CrystalJsonSettings.Json.Indented()));
 			Assert.That(y, Is.Not.Null);
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(y.Id, Is.EqualTo(7));
 				Assert.That(y.Agent, Is.Not.Null);
@@ -1913,7 +1910,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(y.Agent.Created, Is.EqualTo(new DateTime(1968, 5, 8, 0, 0, 0, DateTimeKind.Utc)));
 				Assert.That(y.Agent.Modified, Is.EqualTo(new DateTime(2010, 10, 28, 15, 39, 0, DateTimeKind.Utc)));
 				Assert.That(y.Agent.State, Is.EqualTo(DummyJsonEnum.Bar));
-			});
+			}
 		}
 
 		[Test]
@@ -1970,7 +1967,7 @@ namespace SnowBank.Data.Json.Tests
 			var y = CrystalJson.Deserialize<DummyOuterDerivedClass>(CrystalJson.Serialize(x));
 			Assert.That(y, Is.Not.Null);
 			Assert.That(y.Agent, Is.Not.Null);
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(y.Id, Is.EqualTo(7));
 				Assert.That(y.Agent, Is.InstanceOf<DummyDerivedJsonClass>(), "Should have instantianted the derived inner class, not the base class!");
@@ -1982,7 +1979,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(y.Agent.Created, Is.EqualTo(new DateTime(1968, 5, 8, 0, 0, 0, DateTimeKind.Utc)));
 				Assert.That(y.Agent.Modified, Is.EqualTo(new DateTime(2010, 10, 28, 15, 39, 0, DateTimeKind.Utc)));
 				Assert.That(y.Agent.State, Is.EqualTo(DummyJsonEnum.Bar));
-			});
+			}
 
 			var z = (DummyDerivedJsonClass) y.Agent;
 			Assert.That(z.DoubleAgentName, Is.EqualTo("Janov Bondovicz"), "Should have deserialized the members specific to the derived class");
@@ -3100,7 +3097,7 @@ namespace SnowBank.Data.Json.Tests
 
 			var now = DateTime.Now;
 			Log($"## {now}");
-			Verify_TryFormat(now, "", $"\"{now:O}\"");
+			Verify_TryFormat(now, "", now.ToString("O"));
 			Verify_TryFormat(now, "D", now.ToString("O"));
 			Verify_TryFormat_Json(now);
 			Verify_TryFormat(now, "P", $"\"{now:O}\"");

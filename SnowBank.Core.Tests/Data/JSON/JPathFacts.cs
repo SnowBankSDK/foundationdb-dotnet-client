@@ -110,17 +110,17 @@ namespace SnowBank.Data.Json.Tests
 		private static string GetType(JsonValue? value)
 		{
 			if (value == null) return "---";
-			switch (value.Type)
+			return value.Type switch
 			{
-				case JsonType.Null: return "nil";
-				case JsonType.Array: return "arr";
-				case JsonType.Object: return "obj";
-				case JsonType.Boolean: return "bol";
-				case JsonType.Number: return "num";
-				case JsonType.String: return "str";
-				case JsonType.DateTime: return "dat";
-				default: return "???";
-			}
+				JsonType.Null     => "nil",
+				JsonType.Array    => "arr",
+				JsonType.Object   => "obj",
+				JsonType.Boolean  => "bol",
+				JsonType.Number   => "num",
+				JsonType.String   => "str",
+				JsonType.DateTime => "dat",
+				_                 => "???"
+			};
 		}
 
 		private static void CheckMultiple(JsonValue node, string query, params JsonValue[] results)
@@ -186,18 +186,21 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_Expression_Factories()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				var expr = JPathExpression.Root;
 				Assert.That(expr, Is.InstanceOf<JPathSpecialToken>());
 				Assert.That(((JPathSpecialToken) expr).Token, Is.EqualTo('$'));
 				Assert.That(expr.ToString(), Is.EqualTo("$"));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var expr = JPathExpression.Current;
 				Assert.That(expr, Is.InstanceOf<JPathSpecialToken>());
 				Assert.That(((JPathSpecialToken) expr).Token, Is.EqualTo('@'));
 				Assert.That(expr.ToString(), Is.EqualTo("@"));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var expr = JPathExpression.Property(JPathExpression.Current, "hello");
 				Assert.That(expr, Is.InstanceOf<JPathObjectIndexer>());
@@ -205,6 +208,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(((JPathObjectIndexer) expr).Name, Is.EqualTo("hello"));
 				Assert.That(expr.ToString(), Is.EqualTo("@['hello']"));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var expr = JPathExpression.At(JPathExpression.Current, 42);
 				Assert.That(expr, Is.InstanceOf<JPathArrayIndexer>());
@@ -212,6 +216,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(((JPathArrayIndexer) expr).Index, Is.EqualTo(42));
 				Assert.That(expr.ToString(), Is.EqualTo("@[42]"));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var expr = JPathExpression.EqualTo(JPathExpression.Current, "Hello World");
 				Assert.That(expr, Is.InstanceOf<JPathBinaryOperator>());
@@ -220,6 +225,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(((JPathBinaryOperator) expr).Right, Is.EqualTo("Hello World"));
 				Assert.That(expr.ToString(), Is.EqualTo("Equal(@, 'Hello World')"));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var expr = JPathExpression.EqualTo(JPathExpression.Current, 42);
 				Assert.That(expr, Is.InstanceOf<JPathBinaryOperator>());
@@ -233,7 +239,6 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_Expression_Equality()
 		{
-
 			CheckEqual(JPathExpression.Current, JPathExpression.Current);
 			CheckNotEqual(JPathExpression.Current, JPathExpression.Root);
 			CheckEqual(JPathExpression.Root, JPathExpression.Root);
@@ -691,11 +696,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSingle(obj, "store.book[-1].title", "The Lord of the Rings");
 			CheckSingle(obj, "store.book[^1].title", "The Lord of the Rings");
 
+			// "typos"
 			CheckSingle(obj, "ztore", JsonNull.Missing);
 			CheckSingle(obj, "Store", JsonNull.Missing);
 			CheckSingle(obj, "store.not_found", JsonNull.Missing);
 			CheckSingle(obj, "store.Book", JsonNull.Missing); // case sensitive!
 
+			// array indexing
 			CheckSingle(obj, "store.book[42]", JsonNull.Missing);
 			CheckSingle(obj, "store.book[-42]", JsonNull.Missing);
 			CheckSingle(obj, "store.book[^42]", JsonNull.Missing);

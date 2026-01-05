@@ -69,7 +69,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(JsonNull.Null, Is.SameAs(json), "JsonNull.Null should be a singleton");
 
 			var value = (JsonNull) json;
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value.Type, Is.EqualTo(JsonType.Null), "value.Type");
 				Assert.That(value.IsNull, Is.True, "value.IsNull");
@@ -78,9 +78,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.IsDefault, Is.True, "value.IsDefault");
 				Assert.That(value.ToObject(), Is.Null, "value.ToObject()");
 				Assert.That(value.ToString(), Is.EqualTo(""), "value.ToString()");
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value.Equals(JsonNull.Null), Is.True, "EQ null");
 				Assert.That(value.Equals(JsonNull.Missing), Is.False, "NEQ missing");
@@ -112,14 +112,14 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.CompareTo(123), Is.EqualTo(-1));
 				Assert.That(value.CompareTo(""), Is.EqualTo(-1));
 				Assert.That(value.CompareTo("hello"), Is.EqualTo(-1));
-			});
+			}
 
 			// we must check a few corner cases when binding Null:
 			// - for Value Types, null must bind into default(T) (ex: JsonNull.Null.As<int>() => 0)
 			// - for JsonValue or JsonNull types, it must bind into the JsonNull.Null singleton (and not return a null reference!)
 			// - for all other types, it should bind into a null reference
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{ // Bind(typeof(T), ...)
 				Assert.That(json.Bind<string>(), Is.Null);
 				Assert.That(json.Bind<int>(), Is.Zero);
@@ -138,9 +138,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(json.Bind<JsonBoolean>(), Is.Null, "JsonNull.Bind<JsonBoolean>() should return null, because a JsonBoolean instance cannot represent null itself!");
 				Assert.That(json.Bind<JsonObject>(), Is.Null, "JsonNull.Bind<JsonObject>() should return null, because a JsonObject instance cannot represent null itself!");
 				Assert.That(json.Bind<JsonArray>(), Is.Null, "JsonNull.Bind<JsonArray>() should return null, because a JsonArray instance cannot represent null itself!");
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{ // Required<T>()
 				Assert.That(() => json.Required<string>(), Throws.InstanceOf<JsonBindingException>());
 				Assert.That(() => json.Required<int>(), Throws.InstanceOf<JsonBindingException>());
@@ -153,9 +153,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(() => json.Required<JsonNull>(), Throws.InstanceOf<JsonBindingException>());
 				Assert.That(() => json.Required<JsonValue>(), Throws.InstanceOf<JsonBindingException>());
 				Assert.That(() => json.Required<JsonString>(), Throws.InstanceOf<JsonBindingException>());
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{ // OrDefault<T>()
 				Assert.That(json.As<string>(), Is.Null);
 				Assert.That(json.As<int>(), Is.Zero);
@@ -174,9 +174,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(json.As<JsonBoolean>(), Is.Null, "JsonNull.OrDefault<JsonBoolean>() should return null, because a JsonBoolean instance cannot represent null itself!");
 				Assert.That(json.As<JsonObject>(), Is.Null, "JsonNull.OrDefault<JsonObject>() should return null, because a JsonObject instance cannot represent null itself!");
 				Assert.That(json.As<JsonArray>(), Is.Null, "JsonNull.OrDefault<JsonArray>() should return null, because a JsonArray instance cannot represent null itself!");
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{ // Embedded Fields with explicit null
 
 				//note: anonymous class that is used as a template to create an inline class
@@ -211,11 +211,11 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(j.JsonString, Is.Null);
 				Assert.That(j.JsonArray, Is.Null);
 				Assert.That(j.JsonObject, Is.Null);
-			});
+			}
 
 			Assert.That(SerializeToSlice(json), Is.EqualTo(Slice.FromString("null")));
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value, Is.Not.EqualTo((object) 0));
 				Assert.That(value, Is.Not.EqualTo((object) false));
@@ -231,7 +231,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.ValueEquals<int?>(null), Is.True);
 				Assert.That(value.ValueEquals<bool?>(false), Is.False);
 				Assert.That(value.ValueEquals<bool?>(null), Is.True);
-			});
+			}
 		}
 
 		[Test]
@@ -242,7 +242,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(missing, Is.InstanceOf<JsonNull>());
 
 			var value = (JsonNull) missing;
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value.Type, Is.EqualTo(JsonType.Null), "value.Type");
 				Assert.That(value.IsNull, Is.True, "value.IsNull");
@@ -251,9 +251,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.IsDefault, Is.True, "value.IsDefault");
 				Assert.That(value.ToObject(), Is.Null, "value.ToObject()");
 				Assert.That(value.ToString(), Is.EqualTo(""), "value.ToString()");
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value.Equals(JsonNull.Missing), Is.True, "EQ missing");
 				Assert.That(value.Equals(JsonNull.Null), Is.False, "NEQ null");
@@ -285,12 +285,12 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.CompareTo(123), Is.EqualTo(-1));
 				Assert.That(value.CompareTo(""), Is.EqualTo(-1));
 				Assert.That(value.CompareTo("hello"), Is.EqualTo(-1));
-			});
+			}
 
 			//note: JsonNull.Missing sould bind the same way as JsonNull.Null (=> default(T))
 			// except for T == JsonValue or JsonNull, in which case it should return itself as the JsonNull.Missing singleton
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(missing.Bind(typeof(JsonValue)), Is.SameAs(JsonNull.Missing));
 				Assert.That(missing.Bind<JsonValue>(), Is.SameAs(JsonNull.Missing));
@@ -304,11 +304,11 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(() => missing.Required<JsonNull>(), Throws.InstanceOf<JsonBindingException>());
 				Assert.That(missing.As<JsonNull>(), Is.SameAs(JsonNull.Missing));
 				Assert.That(missing.As<JsonNull>(null, resolver: CrystalJson.DefaultResolver), Is.SameAs(JsonNull.Missing));
-			});
+			}
 
 			Assert.That(SerializeToSlice(missing), Is.EqualTo(Slice.FromString("null")));
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value, Is.Not.EqualTo((object) 0));
 				Assert.That(value, Is.Not.EqualTo((object) false));
@@ -324,7 +324,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.ValueEquals<int?>(null), Is.True);
 				Assert.That(value.ValueEquals<bool?>(false), Is.False);
 				Assert.That(value.ValueEquals<bool?>(null), Is.True);
-			});
+			}
 		}
 
 		[Test]
@@ -335,7 +335,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(error, Is.InstanceOf<JsonNull>());
 
 			var value = (JsonNull) error;
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value.Type, Is.EqualTo(JsonType.Null), "value.Type");
 				Assert.That(value.IsNull, Is.True, "value.IsNull");
@@ -344,9 +344,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.IsDefault, Is.True, "value.IsDefault");
 				Assert.That(value.ToObject(), Is.Null, "value.ToObject()");
 				Assert.That(value.ToString(), Is.EqualTo(""), "value.ToString()");
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value.Equals(JsonNull.Error), Is.True, "EQ error");
 				Assert.That(value.Equals(JsonNull.Null), Is.False, "NEQ null");
@@ -378,11 +378,11 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.CompareTo(123), Is.EqualTo(-1));
 				Assert.That(value.CompareTo(""), Is.EqualTo(-1));
 				Assert.That(value.CompareTo("hello"), Is.EqualTo(-1));
-			});
+			}
 
 			Assert.That(SerializeToSlice(error), Is.EqualTo(Slice.FromString("null")));
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(value, Is.Not.EqualTo((object) 0));
 				Assert.That(value, Is.Not.EqualTo((object) false));
@@ -398,7 +398,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(value.ValueEquals<int?>(null), Is.True);
 				Assert.That(value.ValueEquals<bool?>(false), Is.False);
 				Assert.That(value.ValueEquals<bool?>(null), Is.True);
-			});
+			}
 		}
 
 		#endregion
@@ -3004,15 +3004,15 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_JsonArray_Cast()
 		{
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var cast = JsonArray.Create().AsArrayOf<int>();
 				Assert.That(cast, Has.Count.EqualTo(0));
 				Assert.That(cast.ToArray(), Is.Empty);
 				Assert.That(cast.ToList(), Is.Empty);
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var arr = JsonArray.Create(123, 456, 789);
 
@@ -3055,9 +3055,9 @@ namespace SnowBank.Data.Json.Tests
 					}
 					++p;
 				}
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{ // should fail if no default and value if missing
 				var cast = JsonArray.Create(123, null, 789).AsArrayOf<int>();
 				Assert.That(cast, Has.Count.EqualTo(3));
@@ -3067,9 +3067,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(cast[^1], Is.EqualTo(789));
 				Assert.That(() => cast.ToArray(), Throws.InstanceOf<JsonBindingException>());
 				Assert.That(() => cast.ToList(), Throws.InstanceOf<JsonBindingException>());
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{ // should return default value if missing
 				var cast = JsonArray.Create(123, null, 789).Cast<int?>(null);
 				Assert.That(cast, Has.Count.EqualTo(3));
@@ -3079,9 +3079,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(cast[^1], Is.EqualTo(789));
 				Assert.That(cast.ToArray(), Is.EqualTo((int?[]) [ 123, null, 789 ]));
 				Assert.That(cast.ToList(), Is.EqualTo((List<int?>) [ 123, null, 789 ]));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var cast = JsonArray.Create(123, null, 789).Cast<int>(-1);
 				Assert.That(cast, Has.Count.EqualTo(3));
@@ -3091,9 +3091,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(cast[^1], Is.EqualTo(789));
 				Assert.That(cast.ToArray(), Is.EqualTo((int[]) [ 123, -1, 789 ]));
 				Assert.That(cast.ToList(), Is.EqualTo((List<int>) [ 123, -1, 789 ]));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var cast = JsonArray.Create("hello", "world", "!!!").AsArrayOf<string>();
 				Assert.That(cast, Has.Count.EqualTo(3));
@@ -3103,9 +3103,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(cast[^1], Is.EqualTo("!!!"));
 				Assert.That(cast.ToArray(), Is.EqualTo((string[]) [ "hello", "world", "!!!" ]));
 				Assert.That(cast.ToList(), Is.EqualTo((List<string>) [ "hello", "world", "!!!" ]));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var cast = JsonArray.Create("hello", null, "!!!").Cast<string?>("???");
 				Assert.That(cast, Has.Count.EqualTo(3));
@@ -3115,9 +3115,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(cast[^1], Is.EqualTo("!!!"));
 				Assert.That(cast.ToArray(), Is.EqualTo((string[]) [ "hello", "???", "!!!" ]));
 				Assert.That(cast.ToList(), Is.EqualTo((List<string>) [ "hello", "???", "!!!" ]));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{ // we can cast to tuples
 				var arr = JsonArray.Create([
 					JsonArray.Create("one", 111),
@@ -3134,9 +3134,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(cast[^1], Is.EqualTo(("three", 333)));
 				Assert.That(cast.ToArray(), Is.EqualTo(((string, int)[]) [ ("one", 111), ("two", 222), ("three", 333) ]));
 				Assert.That(cast.ToList(), Is.EqualTo((List<(string, int)>) [ ("one", 111), ("two", 222), ("three", 333) ]));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{ // we can cast to anonymous types
 
 				var a = new { GivenName = "James", FamilyName = "Bond" };
@@ -3154,7 +3154,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(cast[^1], Is.EqualTo(c));
 				Assert.That(cast.ToArray(), Is.EqualTo((object[]) [ a, b, c]));
 				Assert.That(cast.ToList(), Is.EqualTo((List<object>) [ a, b,c ]));
-			});
+			}
 		}
 
 		[Test]
@@ -3861,7 +3861,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonArray_IndexOf()
 		{
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				// find string
 				Assert.That(JsonArray.Create().IndexOf("hello"), Is.EqualTo(-1));
@@ -3902,7 +3902,7 @@ namespace SnowBank.Data.Json.Tests
 				var arr = JsonArray.Create([ "hello", "there" ]);
 				Assert.That(JsonArray.Create("foo", arr, "bar").IndexOf(arr), Is.EqualTo(1));
 
-			});
+			}
 		}
 
 		[Test]
@@ -3910,7 +3910,7 @@ namespace SnowBank.Data.Json.Tests
 		{
 			// note: do not confuse ValueEquals<TCollection>(TCollection) vs ValuesEqual<TItem>(IEnumerable<TItem>) !
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var arr = JsonArray.ReadOnly.Empty;
 
@@ -3928,9 +3928,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(arr.ValuesEqual(Enumerable.Empty<bool>()), Is.True);
 
 				Assert.That(arr.ValuesEqual(new JsonArray()), Is.True);
-			});
+			}
 		
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var arr = JsonArray.Create([ "foo", "bar" ]);
 
@@ -3964,10 +3964,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(arr.ValuesEqual(Enumerable.Range(0, 1).Select(_ => "foo")), Is.False);
 				Assert.That(arr.ValuesEqual(Enumerable.Range(0, 2).Select(i => i == 0 ? "foo" : "baz")), Is.False);
 				Assert.That(arr.ValuesEqual(Enumerable.Range(0, 3).Select(i => i == 0 ? "foo" : i == 1 ? "bar" : "baz")), Is.False);
+			}
 
-			});
-
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var arr = JsonArray.Create([ 1, 2, 3 ]);
 
@@ -4003,14 +4002,13 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(arr.ValuesEqual([ 1.0, 2.0, 3.0 ]), Is.True);
 				Assert.That(arr.ValuesEqual([ 1.0f, 2.0f, 3.0f ]), Is.True);
 				Assert.That(arr.ValuesEqual([ 1.0m, 2.0m, 3.0m ]), Is.True);
-
-			});
+			}
 		}
 
 		[Test]
 		public void Test_JsonArray_StrictEquals()
 		{
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var arr = JsonArray.ReadOnly.Empty;
 
@@ -4031,9 +4029,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(arr.StrictEquals(Array.Empty<JsonValue>()), Is.True);
 				Assert.That(arr.StrictEquals(new List<JsonValue>()), Is.True);
 				Assert.That(arr.StrictEquals(Enumerable.Empty<JsonValue>()), Is.True);
+			}
 
-			});
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var arr = JsonArray.Create([ "hello", 123, true ]);
 
@@ -4059,8 +4057,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(arr.StrictEquals((JsonValue[]) [ "hello", 123, true ]), Is.True);
 				Assert.That(arr.StrictEquals((List<JsonValue>) [ "hello", 123, true ]), Is.True);
 				Assert.That(arr.StrictEquals(Enumerable.Range(0, 3).Select(i => ((ReadOnlySpan<JsonValue>) [ "hello", 123, true ])[i])), Is.True);
-			});
-			Assert.Multiple(() =>
+			}
+
+			using (Assert.EnterMultipleScope())
 			{
 				var arr = JsonArray.Create(JsonArray.Create(1, 2, 3), JsonArray.Create("foo", "bar", "baz"), JsonArray.Create(true, false), JsonObject.Create("hello", "there"));
 
@@ -4070,8 +4069,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(arr.StrictEquals(JsonArray.Create(JsonArray.Create("1", 2, 3), JsonArray.Create("foo", "bar", "baz"), JsonArray.Create(true, false), JsonObject.Create("hello", "there"))), Is.False);
 				Assert.That(arr.StrictEquals(JsonArray.Create(JsonArray.Create(1, 2, 3), JsonArray.Create("foo", "baz", "bar"), JsonArray.Create(true, false), JsonObject.Create("hello", "there"))), Is.False);
 				Assert.That(arr.StrictEquals(JsonArray.Create(JsonArray.Create(1, 2, 3), JsonArray.Create("foo", "bar", "baz"), JsonArray.Create(1, 0), JsonObject.Create("hello", "there"))), Is.False);
-			});
-			Assert.Multiple(() =>
+			}
+
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonArray.Create(default(string)).StrictEquals(JsonArray.Create(JsonNull.Null)), Is.True);
 				Assert.That(JsonArray.Create(JsonNull.Null).StrictEquals(JsonArray.Create(default(string))), Is.True);
@@ -4086,7 +4086,7 @@ namespace SnowBank.Data.Json.Tests
 
 				Assert.That(JsonArray.Create(Guid.Empty).StrictEquals(JsonArray.Create(JsonNull.Null)), Is.True); // Guid.Empty <=> null
 				Assert.That(JsonArray.Create(JsonNull.Null).StrictEquals(JsonArray.Create(Guid.Empty)), Is.True); // Guid.Empty <=> null
-			});
+			}
 		}
 
 		#endregion
@@ -5812,7 +5812,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonObject_StrictEquals()
 		{
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonObject.ReadOnly.Empty.StrictEquals(JsonObject.ReadOnly.Empty), Is.True);
 				Assert.That(JsonObject.ReadOnly.Empty.StrictEquals(new JsonObject()), Is.True);
@@ -5820,8 +5820,8 @@ namespace SnowBank.Data.Json.Tests
 
 				Assert.That(JsonObject.ReadOnly.Empty.StrictEquals(JsonObject.Create("hello", "world")), Is.False);
 				Assert.That(JsonObject.ReadOnly.Empty.StrictEquals(JsonObject.Create("hello", null)), Is.True);
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				var obj = JsonObject.Create([ ("hello", "world"), ("foo", 123), ("bar", true) ]);
 
@@ -5846,16 +5846,16 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(obj.StrictEquals(new Dictionary<string, JsonValue> { { "hello", "there" }, { "foo", 123 }, { "bar", true } }), Is.False);
 				Assert.That(obj.StrictEquals(new Dictionary<string, JsonValue> { { "hello", "world" }, { "foo", 456 }, { "bar", true } }), Is.False);
 				Assert.That(obj.StrictEquals(new Dictionary<string, JsonValue> { { "hello", "world" }, { "foo", 123 }, { "bar", false } }), Is.False);
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				var obj = JsonObject.Create("foo", JsonObject.Create("bar", JsonArray.Create("baz", 123, true)));
 
 				Assert.That(obj.StrictEquals(JsonObject.Create("foo", JsonObject.Create("bar", JsonArray.Create("baz", 123, true)))), Is.True);
 				Assert.That(obj.StrictEquals(JsonObject.Create("foo", JsonObject.Create("bar", JsonArray.Create("baz", "123", true)))), Is.False);
 				Assert.That(obj.StrictEquals(JsonObject.Create("foo", JsonObject.Create("bar", JsonArray.Create("baz", 123, 456)))), Is.False);
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				// check that explicit null/missing are equivalent to "not present" on the other side
 				Assert.That(JsonObject.Create([ ("foo", 123), ("bar", null) ]).StrictEquals(JsonObject.Create([ ("foo", 123), ("baz", null) ])), Is.True);
@@ -5866,7 +5866,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonObject.Create([ ("foo", 123), ("bar", 456) ]).StrictEquals(JsonObject.Create([ ("foo", 123), ("baz", JsonNull.Missing) ])), Is.False);
 				Assert.That(JsonObject.Create([ ("foo", 123), ("bar", null) ]).StrictEquals(JsonObject.Create([ ("foo", 123), ("baz", 456) ])), Is.False);
 				Assert.That(JsonObject.Create([ ("foo", 123), ("bar", JsonNull.Missing) ]).StrictEquals(JsonObject.Create([ ("foo", 123), ("baz", 456) ])), Is.False);
-			});
+			}
 		}
 
 		#endregion

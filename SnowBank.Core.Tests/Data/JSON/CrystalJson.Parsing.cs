@@ -65,7 +65,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(() => JsonValue.Parse("truee"), Throws.InstanceOf<JsonSyntaxException>());
 			Assert.That(() => JsonValue.Parse("falsee"), Throws.InstanceOf<JsonSyntaxException>());
 
-			// it is case senstitive
+			// it is case-sensitive
 			Assert.That(() => JsonValue.Parse("True"), Throws.InstanceOf<JsonSyntaxException>());
 			Assert.That(() => JsonValue.Parse("Frue"), Throws.InstanceOf<JsonSyntaxException>());
 
@@ -77,8 +77,9 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_Parse_String()
 		{
-			// Parsing
+			using var _ = Assert.EnterMultipleScope();
 
+			// Parsing
 			Assert.That(JsonValue.Parse(@""""""), Is.EqualTo(JsonString.Empty));
 			Assert.That(JsonValue.Parse(@"""Hello World"""), Is.EqualTo(JsonString.Return("Hello World")));
 			Assert.That(JsonValue.Parse(@"""0123456789ABCDE"""), Is.EqualTo(JsonString.Return("0123456789ABCDE")));
@@ -281,11 +282,11 @@ namespace SnowBank.Data.Json.Tests
 			// Parsing
 
 			// Unix Epoch (1970-1-1 UTC)
-			//ParseAreEqual(new JsonDateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc), "\"\\/Date(0)\\/\"");
+			ParseAreEqual(new JsonDateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc), "\"\\/Date(0)\\/\"");
 
 			// Min/Max Value
 			ParseAreEqual(JsonDateTime.MinValue, "\"\\/Date(-62135596800000)\\/\"", "DateTime.MinValue");
-			ParseAreEqual(JsonDateTime.MaxValue, "\"\\/Date(253402300799999)\\/\"", "DateTime.MaxValue (auto-ajusted)"); // note: doit ajouter automatiquement les .99999 millisecondes manquantes !
+			ParseAreEqual(JsonDateTime.MaxValue, "\"\\/Date(253402300799999)\\/\"", "DateTime.MaxValue (auto-ajusted)"); // note: should automatically add the missing ".99999" part for milliseconds!
 
 			// 2000-01-01 (heure d'hivers)
 			ParseAreEqual(new JsonDateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), "\"\\/Date(946684800000)\\/\"", "2000-01-01 UTC");
@@ -298,7 +299,7 @@ namespace SnowBank.Data.Json.Tests
 			// RoundTrip !
 			DateTime utcNow = DateTime.UtcNow;
 			Assert.That(utcNow.Kind, Is.EqualTo(DateTimeKind.Utc));
-			// /!\ JSON a une résolution a la milliseconde mais UtcNow a une précision au 'tick', donc il faut tronquer la date car elle a une précision supérieure
+			// /!\ The produced JSON has a millisecond precision, which is lower than UtcNow which has a "BCL tick" precision. We roundtrip it once to truncate it to the same precision
 			var utcRoundTrip = JsonValue.Parse(CrystalJson.Serialize(utcNow));
 			Assert.That(utcRoundTrip, Is.EqualTo(new JsonDateTime(utcNow)), "RoundTrip DateTime.UtcNow");
 
@@ -656,9 +657,12 @@ namespace SnowBank.Data.Json.Tests
 			{
 				Log($"# {JsonEncoding.Encode(literal)}");
 				var value = CrystalJson.ParseFragment(literal, out int charsRead);
-				Log($"- read {charsRead}, ({value?.GetType().Name}) {value:Q}, consumed: {JsonEncoding.Encode(literal[..charsRead])}, remaining: {JsonEncoding.Encode(literal[charsRead..])}");
-				Assert.That(value, Is.Json.EqualTo(expected));
-				Assert.That(charsRead, Is.EqualTo(read));
+				Log($"- read {charsRead}, ({value.GetType().Name}) {value:Q}, consumed: {JsonEncoding.Encode(literal[..charsRead])}, remaining: {JsonEncoding.Encode(literal[charsRead..])}");
+				using (Assert.EnterMultipleScope())
+				{
+					Assert.That(value, Is.Json.EqualTo(expected));
+					Assert.That(charsRead, Is.EqualTo(read));
+				}
 			}
 
 			Verify("123", 123, 3);

@@ -42,32 +42,35 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPath_Empty()
 		{
-			Assert.That(JsonPath.Empty.IsEmpty(), Is.True);
-			Assert.That(JsonPath.Empty.ToString(), Is.EqualTo(""));
-			Assert.That(JsonPath.Empty.Equals(JsonPath.Empty), Is.True);
-			Assert.That(JsonPath.Empty, Is.EqualTo(""));
-			Assert.That(JsonPath.Empty.Equals(default(string)), Is.True);
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(JsonPath.Empty.IsEmpty(), Is.True);
+				Assert.That(JsonPath.Empty.ToString(), Is.EqualTo(""));
+				Assert.That(JsonPath.Empty.Equals(JsonPath.Empty), Is.True);
+				Assert.That(JsonPath.Empty, Is.EqualTo(""));
+				Assert.That(JsonPath.Empty.Equals(default(string)), Is.True);
 
-			Assert.That(JsonPath.Empty.IsParentOf(JsonPath.Empty), Is.False);
-			Assert.That(JsonPath.Empty.IsChildOf(JsonPath.Empty), Is.False);
+				Assert.That(JsonPath.Empty.IsParentOf(JsonPath.Empty), Is.False);
+				Assert.That(JsonPath.Empty.IsChildOf(JsonPath.Empty), Is.False);
 
-			Assert.That(JsonPath.Empty.TryGetLastKey(out var key), Is.False);
-			Assert.That(key.Length, Is.Zero);
-			Assert.That(JsonPath.Empty.GetLastKey().Length, Is.Zero);
+				Assert.That(JsonPath.Empty.TryGetLastKey(out var key), Is.False);
+				Assert.That(key.Length, Is.Zero);
+				Assert.That(JsonPath.Empty.GetLastKey().Length, Is.Zero);
 
-			Assert.That(JsonPath.Empty.TryGetLastIndex(out var index), Is.False);
-			Assert.That(index, Is.EqualTo(default(Index)));
-			Assert.That(JsonPath.Empty.GetLastIndex(), Is.Null);
+				Assert.That(JsonPath.Empty.TryGetLastIndex(out var index), Is.False);
+				Assert.That(index, Is.EqualTo(default(Index)));
+				Assert.That(JsonPath.Empty.GetLastIndex(), Is.Null);
 
-			Assert.That(JsonPath.ParseNext(default, out var keyLength, out var idx), Is.EqualTo(0));
-			Assert.That(keyLength, Is.Zero);
-			Assert.That(idx, Is.Default);
+				Assert.That(JsonPath.ParseNext(default, out var keyLength, out var idx), Is.Zero);
+				Assert.That(keyLength, Is.Zero);
+				Assert.That(idx, Is.Default);
+			}
 		}
 
 		[Test]
 		public void Test_JsonPath_Basics()
 		{
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo");
 				Assert.That(path.IsEmpty(), Is.False);
@@ -85,8 +88,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.GetParent(), Is.EqualTo(JsonPath.Empty));
 				Assert.That(path.GetSegmentCount(), Is.EqualTo(1));
 				Assert.That(path.GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "foo", ]));
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("[42]");
 				Assert.That(path.IsEmpty(), Is.False);
@@ -96,7 +99,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.Equals("[42]"), Is.True);
 
 				Assert.That(JsonPath.ParseNext("[42]", out var keyLength, out var idx), Is.EqualTo(4));
-				Assert.That(keyLength, Is.EqualTo(0));
+				Assert.That(keyLength, Is.Zero);
 				Assert.That(idx, Is.EqualTo(new Index(42)));
 
 				Assert.That(path.GetLastKey().ToString(), Is.EqualTo(""));
@@ -104,8 +107,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.GetParent(), Is.EqualTo(JsonPath.Empty));
 				Assert.That(path.GetSegmentCount(), Is.EqualTo(1));
 				Assert.That(path.GetSegments(), Is.EqualTo((JsonPathSegment[]) [ 42, ]));
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo.bar");
 				Assert.That(path.IsEmpty(), Is.False);
@@ -124,8 +127,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.GetParent(), Is.EqualTo("foo"));
 				Assert.That(path.GetSegmentCount(), Is.EqualTo(2));
 				Assert.That(path.GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "foo", "bar" ]));
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo[42]");
 				Assert.That(path.IsEmpty(), Is.False);
@@ -146,8 +149,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.GetParent(), Is.EqualTo("foo"));
 				Assert.That(path.GetSegmentCount(), Is.EqualTo(2));
 				Assert.That(path.GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "foo", 42 ]));
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("[42].foo");
 				Assert.That(path.IsEmpty(), Is.False);
@@ -160,7 +163,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.Equals("[42].foo"), Is.True);
 
 				Assert.That(JsonPath.ParseNext("[42].foo", out var keyLength, out var idx), Is.EqualTo(5));
-				Assert.That(keyLength, Is.EqualTo(0));
+				Assert.That(keyLength, Is.Zero);
 				Assert.That(idx, Is.EqualTo(new Index(42)));
 
 				Assert.That(path.GetLastKey().ToString(), Is.EqualTo("foo"));
@@ -168,8 +171,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.GetParent(), Is.EqualTo("[42]"));
 				Assert.That(path.GetSegmentCount(), Is.EqualTo(2));
 				Assert.That(path.GetSegments(), Is.EqualTo((JsonPathSegment[]) [ 42, "foo" ]));
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo.bar.baz");
 				Assert.That(path.IsEmpty(), Is.False);
@@ -188,8 +191,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.GetParent(), Is.EqualTo("foo.bar"));
 				Assert.That(path.GetSegmentCount(), Is.EqualTo(3));
 				Assert.That(path.GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "foo", "bar", "baz" ]));
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo[42].bar");
 				Assert.That(path.IsEmpty(), Is.False);
@@ -208,8 +211,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.GetParent(), Is.EqualTo("foo[42]"));
 				Assert.That(path.GetSegmentCount(), Is.EqualTo(3));
 				Assert.That(path.GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "foo", 42, "bar" ]));
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{ // spaces are not special...
 				var path = JsonPath.Create("foo bar.baz");
 				Assert.That(path.IsEmpty(), Is.False);
@@ -229,8 +232,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.GetParent().GetLastIndex(), Is.Null);
 				Assert.That(path.GetParent().GetParent(), Is.EqualTo(JsonPath.Empty));
 				Assert.That(path.GetSegmentCount(), Is.EqualTo(2));
-			});
-			Assert.Multiple(() =>
+			}
+			using (Assert.EnterMultipleScope())
 			{ // escaping
 				Assert.That(JsonPath.Create(@"foo\.bar.baz").GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "foo.bar", "baz" ]));
 				Assert.That(JsonPath.Create(@"hosts.192\.168\.1\.23.name").GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "hosts", "192.168.1.23", "name" ]));
@@ -238,12 +241,13 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonPath.Create(@"domains.\[::1\].allowed").GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "domains", "[::1]", "allowed" ]));
 				Assert.That(JsonPath.Create(@"foos.foo\.0.bars.bar\.1\.2.baz").GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "foos", "foo.0", "bars", "bar.1.2", "baz" ]));
 				Assert.That(JsonPath.Create(@"foos.foo\[0\].bars.bar\[1\]\[2\].baz").GetSegments(), Is.EqualTo((JsonPathSegment[]) [ "foos", "foo[0]", "bars", "bar[1][2]", "baz" ]));
-			});
+			}
 		}
 
 		[Test]
 		public void Test_JsonPath_TryGetSegments()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo");
 				var buffer = new JsonPathSegment[2];
@@ -253,6 +257,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.TryGetSegments([], out segments), Is.False);
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 1), out segments), Is.True);
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo.bar");
 				var buffer = new JsonPathSegment[3];
@@ -264,6 +269,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 1), out segments), Is.False);
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 2), out segments), Is.True);
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo[42]");
 				var buffer = new JsonPathSegment[3];
@@ -275,6 +281,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 1), out segments), Is.False);
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 2), out segments), Is.True);
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo[^1]");
 				var buffer = new JsonPathSegment[3];
@@ -286,6 +293,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 1), out segments), Is.False);
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 2), out segments), Is.True);
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("[42].foo");
 				var buffer = new JsonPathSegment[3];
@@ -297,6 +305,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 1), out segments), Is.False);
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 2), out segments), Is.True);
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo.bar.baz");
 				var buffer = new JsonPathSegment[4];
@@ -310,6 +319,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 2), out segments), Is.False);
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 3), out segments), Is.True);
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create("foo bar.baz");
 				var buffer = new JsonPathSegment[3];
@@ -321,6 +331,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 1), out segments), Is.False);
 				Assert.That(path.TryGetSegments(buffer.AsSpan(0, 2), out segments), Is.True);
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				var path = JsonPath.Create(@"hosts.192\.168\.1\.23.name");
 				var buffer = new JsonPathSegment[4];
@@ -339,7 +350,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPath_Concat()
 		{
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonPath.Empty["foo"], Is.EqualTo(JsonPath.Create("foo")));
 				Assert.That(JsonPath.Empty["foo"]["bar"], Is.EqualTo(JsonPath.Create("foo.bar")));
@@ -354,11 +365,11 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonPath.Empty[42][^1], Is.EqualTo(JsonPath.Create("[42][^1]")));
 				Assert.That(JsonPath.Empty["thisisaverylargestringthatwilltakemorethansixtyfourcharacterstoencodewithnoinvalidchars"], Is.EqualTo(JsonPath.Create("thisisaverylargestringthatwilltakemorethansixtyfourcharacterstoencodewithnoinvalidchars")));
 				Assert.That(JsonPath.Empty["foo"]["thisisaverylargestringthatwilltakemorethansixtyfourcharacterstoencodewithnoinvalidchars"], Is.EqualTo(JsonPath.Create("foo.thisisaverylargestringthatwilltakemorethansixtyfourcharacterstoencodewithnoinvalidchars")));
-			});
+			}
 
 			// test that we can index an object with weird keys like "foo bar" or "foo.bar" or "foo\bar" are escaped properly
 			// We use a similar encoding as json string where '\' is encoded as '\\', '.' as '\.', '[' as '\[' and ']' as '\]'
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonPath.Empty["foo"]["bar.baz"].ToString(), Is.EqualTo(@"foo.bar\.baz"));
 				Assert.That(JsonPath.Empty["foo"]["bar[baz"].ToString(), Is.EqualTo(@"foo.bar\[baz"));
@@ -372,9 +383,9 @@ namespace SnowBank.Data.Json.Tests
 
 				Assert.That(JsonPath.Empty["""this.is.a[very.large]string.that.will\take.more.than.sixty.four.characters.to.encode.with.invalid.chars"""], Is.EqualTo(JsonPath.Create("""this\.is\.a\[very\.large\]string\.that\.will\\take\.more\.than\.sixty\.four\.characters\.to\.encode\.with\.invalid\.chars""")));
 				Assert.That(JsonPath.Empty["foo"]["""this.is.a[very.large]string.that.will\take.more.than.sixty.four.characters.to.encode.with.invalid.chars"""], Is.EqualTo(JsonPath.Create("""foo.this\.is\.a\[very\.large\]string\.that\.will\\take\.more\.than\.sixty\.four\.characters\.to\.encode\.with\.invalid\.chars""")));
-			});
+			}
 
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonPath.Empty[JsonPathSegment.Empty], Is.EqualTo(JsonPath.Empty));
 				Assert.That(JsonPath.Empty["foo"][JsonPathSegment.Empty].ToString(), Is.EqualTo("foo"));
@@ -385,13 +396,13 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonPath.Empty["foo"][new JsonPathSegment("bar")].ToString(), Is.EqualTo("foo.bar"));
 				Assert.That(JsonPath.Empty["foo"][new JsonPathSegment(42)].ToString(), Is.EqualTo("foo[42]"));
 				Assert.That(JsonPath.Empty["foo"][new JsonPathSegment(^1)].ToString(), Is.EqualTo("foo[^1]"));
-			});
+			}
 		}
 
 		[Test]
 		public void Test_JsonPath_FromSegments()
 		{
-			Assert.Multiple(() =>
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(JsonPath.FromSegments([ "foo" ]).ToString(), Is.EqualTo("foo"));
 				Assert.That(JsonPath.FromSegments([ 42 ]).ToString(), Is.EqualTo("[42]"));
@@ -402,7 +413,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonPath.FromSegments([ 42, "foo" ]).ToString(), Is.EqualTo("[42].foo"));
 				Assert.That(JsonPath.FromSegments([ ^1, "foo" ]).ToString(), Is.EqualTo("[^1].foo"));
 				Assert.That(JsonPath.FromSegments([ "foo", 42, "bar", ^1, "baz" ]).ToString(), Is.EqualTo("foo[42].bar[^1].baz"));
-			});
+			}
 		}
 
 		[Test]
@@ -559,14 +570,17 @@ namespace SnowBank.Data.Json.Tests
 				var parentPath = JsonPath.Create(parent);
 
 				Log($"# '{child}'.IsChildOf('{parent}') => (true, '{relative}')");
-				Assert.That(childPath.IsChildOf(parentPath), Is.True, $"Path '{child}' should be a child of '{parent}'");
-				Assert.That(childPath.IsChildOf(parent.AsSpan()), Is.True, $"Path '{child}' should be a child of '{parent}'");
+				using (Assert.EnterMultipleScope())
+				{
+					Assert.That(childPath.IsChildOf(parentPath), Is.True, $"Path '{child}' should be a child of '{parent}'");
+					Assert.That(childPath.IsChildOf(parent.AsSpan()), Is.True, $"Path '{child}' should be a child of '{parent}'");
 
-				Assert.That(childPath.IsChildOf(parentPath, out var rp), Is.True, $"Path '{child}' should be a child of '{parent}'");
-				Assert.That(rp.ToString(), Is.EqualTo(relative), $"Relative path from '{child}' to '{parent}' should be '{relative}'");
+					Assert.That(childPath.IsChildOf(parentPath, out var rp), Is.True, $"Path '{child}' should be a child of '{parent}'");
+					Assert.That(rp.ToString(), Is.EqualTo(relative), $"Relative path from '{child}' to '{parent}' should be '{relative}'");
 
-				Assert.That(childPath.IsChildOf(parent.AsSpan(), out rp), Is.True, $"Path '{child}' should be a child of '{parent}'");
-				Assert.That(rp.ToString(), Is.EqualTo(relative), $"Relative path from '{child}' to '{parent}' should be '{relative}'");
+					Assert.That(childPath.IsChildOf(parent.AsSpan(), out rp), Is.True, $"Path '{child}' should be a child of '{parent}'");
+					Assert.That(rp.ToString(), Is.EqualTo(relative), $"Relative path from '{child}' to '{parent}' should be '{relative}'");
+				}
 			}
 
 			static void ShouldNotBeChild(string child, string parent)
@@ -575,9 +589,12 @@ namespace SnowBank.Data.Json.Tests
 				var parentPath = JsonPath.Create(parent);
 
 				Log($"# '{child}'.IsChildOf('{parent}') => false");
-				Assert.That(childPath.IsChildOf(parentPath), Is.False, $"Path '{child}' should NOT be a child of '{parent}'");
-				Assert.That(childPath.IsChildOf(parent.AsSpan()), Is.False, $"Path '{child}' should NOT be a child of '{parent}'");
-				Assert.That(childPath.IsChildOf(parentPath, out _), Is.False, $"Path '{child}' should NOT be a child of '{parent}'");
+				using (Assert.EnterMultipleScope())
+				{
+					Assert.That(childPath.IsChildOf(parentPath), Is.False, $"Path '{child}' should NOT be a child of '{parent}'");
+					Assert.That(childPath.IsChildOf(parent.AsSpan()), Is.False, $"Path '{child}' should NOT be a child of '{parent}'");
+					Assert.That(childPath.IsChildOf(parentPath, out _), Is.False, $"Path '{child}' should NOT be a child of '{parent}'");
+				}
 			}
 
 			// PARENT
@@ -614,9 +631,12 @@ namespace SnowBank.Data.Json.Tests
 				var c = JsonPath.Create(a).GetCommonAncestor(JsonPath.Create(b), out var l, out var r);
 				Log($"- '{c}' > '{l}'");
 				Log($"- '{c}' > '{r}'");
-				Assert.That(c.ToString(), Is.EqualTo(common), $"Common path must be '{common}'");
-				Assert.That(l.ToString(), Is.EqualTo(left), $"Left path must be '{left}'");
-				Assert.That(r.ToString(), Is.EqualTo(right), $"Right path must be '{right}'");
+				using (Assert.EnterMultipleScope())
+				{
+					Assert.That(c.ToString(), Is.EqualTo(common), $"Common path must be '{common}'");
+					Assert.That(l.ToString(), Is.EqualTo(left), $"Left path must be '{left}'");
+					Assert.That(r.ToString(), Is.EqualTo(right), $"Right path must be '{right}'");
+				}
 			}
 
 			{
@@ -695,25 +715,29 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(it.MoveNext(), Is.True, $"Expected Next() to be {key}/{index}/{parent}");
 				var current = it.Current;
 				Log($"- Current: key={(current.Segment.Name.IsEmpty ? "<null>" : $"'{current.Segment.Name.ToString()}'")} / idx={current.Segment.Index.GetValueOrDefault().ToString()} / path='{current.Parent}'");
-				if (key != null)
+				using (Assert.EnterMultipleScope())
 				{
-					Assert.That(current.Segment.Name.ToString(), Is.EqualTo(key), $"Expected next token to be key '{key}' with parent '{parent}'");
-				}
-				else
-				{
-					Assert.That(current.Segment.Name.Length, Is.Zero, $"Expected next token to be index '{index}' with parent '{parent}'");
-				}
+					if (key != null)
+					{
+						Assert.That(current.Segment.Name.ToString(), Is.EqualTo(key), $"Expected next token to be key '{key}' with parent '{parent}'");
+					}
+					else
+					{
+						Assert.That(current.Segment.Name.Length, Is.Zero, $"Expected next token to be index '{index}' with parent '{parent}'");
+					}
 
-				if (index != null)
-				{
-					Assert.That(current.Segment.Index, Is.EqualTo(index), $"Expected next token to be index '{index}' with parent '{parent}'");
+					if (index != null)
+					{
+						Assert.That(current.Segment.Index, Is.EqualTo(index), $"Expected next token to be index '{index}' with parent '{parent}'");
+					}
+					else
+					{
+						Assert.That(current.Segment.Index, Is.Null, $"Expected next token to be key '{key}' with parent '{parent}'");
+					}
+
+					Assert.That(current.Parent.ToString(), Is.EqualTo(parent));
+					Assert.That(current.Last, Is.EqualTo(last), last ? "Should be the last segment" : "Should not be the last segment");
 				}
-				else
-				{
-					Assert.That(current.Segment.Index, Is.Null, $"Expected next token to be key '{key}' with parent '{parent}'");
-				}
-				Assert.That(current.Parent.ToString(), Is.EqualTo(parent));
-				Assert.That(current.Last, Is.EqualTo(last), last ? "Should be the last segment" : "Should not be the last segment");
 			}
 
 			static void End(ref JsonPath.Tokenizator it)
@@ -821,6 +845,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathSegment_Basics()
 		{
+			using (Assert.EnterMultipleScope())
 			{ // Empty
 				Assert.That(JsonPathSegment.Empty.ToString(), Is.EqualTo(""));
 				Assert.That(JsonPathSegment.Empty.IsEmpty(), Is.True);
@@ -837,6 +862,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonPathSegment.Empty.Equals(0), Is.False);
 				Assert.That(JsonPathSegment.Empty.Equals(^1), Is.False);
 			}
+			using (Assert.EnterMultipleScope())
 			{ // "hello"
 				var segment = new JsonPathSegment("hello");
 				Assert.That(segment.ToString(), Is.EqualTo("hello"));
@@ -856,6 +882,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(segment.Equals(0), Is.False);
 				Assert.That(segment.Equals(^1), Is.False);
 			}
+			using (Assert.EnterMultipleScope())
 			{ // 42
 				var segment = new JsonPathSegment(42);
 				Assert.That(segment.ToString(), Is.EqualTo("[42]"));
@@ -875,6 +902,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(segment.Equals(0), Is.False);
 				Assert.That(segment.Equals(^1), Is.False);
 			}
+			using (Assert.EnterMultipleScope())
 			{ // ^1
 				var segment = new JsonPathSegment(^1);
 				Assert.That(segment.ToString(), Is.EqualTo("[^1]"));
@@ -893,6 +921,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(segment.Equals(""), Is.False);
 				Assert.That(segment.Equals(0), Is.False);
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(new JsonPathSegment("foo bar").ToString(), Is.EqualTo("foo bar"));
 				Assert.That(new JsonPathSegment("foo.bar").ToString(), Is.EqualTo("foo\\.bar"));
@@ -907,15 +936,18 @@ namespace SnowBank.Data.Json.Tests
 		{
 			var obj = JsonObject.Create([ ("hello", "world"), ("foo", 123), ("bar", true), ("baz", JsonArray.Create([ "a", "bb", "ccc" ])) ]);
 
-			Assert.That(obj[JsonPathSegment.Create("hello")], IsJson.EqualTo("world"));
-			Assert.That(obj[JsonPathSegment.Create("foo".AsMemory())], IsJson.EqualTo(123));
-			Assert.That(obj[JsonPathSegment.Create("notbar".AsMemory(3))], IsJson.True);
-			Assert.That(obj[JsonPathSegment.Create("baz")], IsJson.Array.And.EqualTo(["a", "bb", "ccc" ]));
-			Assert.That(obj[JsonPathSegment.Create("baz")][JsonPathSegment.Create(1)], IsJson.EqualTo("bb"));
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(obj[JsonPathSegment.Create("hello")], IsJson.EqualTo("world"));
+				Assert.That(obj[JsonPathSegment.Create("foo".AsMemory())], IsJson.EqualTo(123));
+				Assert.That(obj[JsonPathSegment.Create("notbar".AsMemory(3))], IsJson.True);
+				Assert.That(obj[JsonPathSegment.Create("baz")], IsJson.Array.And.EqualTo([ "a", "bb", "ccc" ]));
+				Assert.That(obj[JsonPathSegment.Create("baz")][JsonPathSegment.Create(1)], IsJson.EqualTo("bb"));
 
-			Assert.That(obj[JsonPathSegment.Empty], Is.SameAs(obj));
-			Assert.That(obj[JsonPathSegment.Create("NotFound")], IsJson.Missing);
-			Assert.That(() => obj[JsonPathSegment.Create(1)], Throws.InvalidOperationException);
+				Assert.That(obj[JsonPathSegment.Empty], Is.SameAs(obj));
+				Assert.That(obj[JsonPathSegment.Create("NotFound")], IsJson.Missing);
+				Assert.That(() => obj[JsonPathSegment.Create(1)], Throws.InvalidOperationException);
+			}
 
 			obj[JsonPathSegment.Create("hello")] = "world!";
 			Assert.That(obj["hello"], IsJson.EqualTo("world!"));
@@ -932,18 +964,21 @@ namespace SnowBank.Data.Json.Tests
 		{
 			var arr = JsonArray.Create("hello", "world", 123, true);
 
-			Assert.That(arr[JsonPathSegment.Create(0)], IsJson.EqualTo("hello"));
-			Assert.That(arr[JsonPathSegment.Create(1)], IsJson.EqualTo("world"));
-			Assert.That(arr[JsonPathSegment.Create(2)], IsJson.EqualTo(123));
-			Assert.That(arr[JsonPathSegment.Create(3)], IsJson.True);
-			Assert.That(arr[JsonPathSegment.Create(4)], IsJson.Error);
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(arr[JsonPathSegment.Create(0)], IsJson.EqualTo("hello"));
+				Assert.That(arr[JsonPathSegment.Create(1)], IsJson.EqualTo("world"));
+				Assert.That(arr[JsonPathSegment.Create(2)], IsJson.EqualTo(123));
+				Assert.That(arr[JsonPathSegment.Create(3)], IsJson.True);
+				Assert.That(arr[JsonPathSegment.Create(4)], IsJson.Error);
 
-			Assert.That(arr[JsonPathSegment.Create(new Index(0))], IsJson.EqualTo("hello"));
-			Assert.That(arr[JsonPathSegment.Create(^3)], IsJson.EqualTo("world"));
-			Assert.That(arr[JsonPathSegment.Create(new Index(2))], IsJson.EqualTo(123));
-			Assert.That(arr[JsonPathSegment.Create(^1)], IsJson.True);
-			Assert.That(arr[JsonPathSegment.Create(^0)], IsJson.Error);
-			Assert.That(arr[JsonPathSegment.Create(^5)], IsJson.Error);
+				Assert.That(arr[JsonPathSegment.Create(new Index(0))], IsJson.EqualTo("hello"));
+				Assert.That(arr[JsonPathSegment.Create(^3)], IsJson.EqualTo("world"));
+				Assert.That(arr[JsonPathSegment.Create(new Index(2))], IsJson.EqualTo(123));
+				Assert.That(arr[JsonPathSegment.Create(^1)], IsJson.True);
+				Assert.That(arr[JsonPathSegment.Create(^0)], IsJson.Error);
+				Assert.That(arr[JsonPathSegment.Create(^5)], IsJson.Error);
+			}
 
 			Assert.That(() => arr[JsonPathSegment.Create("hello")], Throws.InvalidOperationException);
 

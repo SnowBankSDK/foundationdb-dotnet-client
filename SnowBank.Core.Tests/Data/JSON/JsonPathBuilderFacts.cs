@@ -42,9 +42,9 @@ namespace SnowBank.Data.Json.Tests
 			Span<char> scratch = stackalloc char[32];
 			var builder = new JsonPathBuilder(scratch);
 
-			Assert.That(builder.Length, Is.EqualTo(0));
+			Assert.That(builder.Length, Is.Zero);
 			Assert.That(builder.Capacity, Is.EqualTo(32));
-			Assert.That(builder.Span.Length, Is.EqualTo(0));
+			Assert.That(builder.Span.Length, Is.Zero);
 			Assert.That(builder.ToString(), Is.EqualTo(""));
 			Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty));
 
@@ -54,13 +54,14 @@ namespace SnowBank.Data.Json.Tests
 
 			builder.Dispose();
 
-			Assert.That(builder.Length, Is.EqualTo(0));
-			Assert.That(builder.Capacity, Is.EqualTo(0));
+			Assert.That(builder.Length, Is.Zero);
+			Assert.That(builder.Capacity, Is.Zero);
 		}
 
 		[Test]
 		public void Test_JsonPathBuilder_Append_Name()
 		{
+			using (Assert.EnterMultipleScope())
 			{ // "Hello"
 				using var builder = new JsonPathBuilder(32);
 
@@ -69,6 +70,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["Hello"]));
 				Assert.That(builder.ToString(), Is.EqualTo("Hello"));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // "He\\o"
 				using var builder = new JsonPathBuilder(32);
 
@@ -77,6 +79,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo(@"He\\\\o"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[@"He\\o"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // "He][o"
 				using var builder = new JsonPathBuilder(32);
 
@@ -85,6 +88,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo(@"He\]\[o"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["He][o"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // "192.168.1.23"
 				using var builder = new JsonPathBuilder(32);
 
@@ -98,6 +102,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Prepend_Name()
 		{
+			using (Assert.EnterMultipleScope())
 			{ // "Hello"
 				using var builder = new JsonPathBuilder(32);
 
@@ -106,6 +111,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("Hello"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["Hello"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // "He\\o"
 				using var builder = new JsonPathBuilder(32);
 
@@ -114,6 +120,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo(@"He\\\\o"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[@"He\\o"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // "He][o"
 				using var builder = new JsonPathBuilder(32);
 
@@ -122,6 +129,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo(@"He\]\[o"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["He][o"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // "192.168.1.23"
 				using var builder = new JsonPathBuilder(32);
 
@@ -135,6 +143,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Append_Index()
 		{
+			using (Assert.EnterMultipleScope())
 			{ // 0
 				using var builder = new JsonPathBuilder(32);
 
@@ -143,6 +152,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[0]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[0]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // 1
 				using var builder = new JsonPathBuilder(32);
 
@@ -151,6 +161,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[1]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[1]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // 123
 				using var builder = new JsonPathBuilder(32);
 
@@ -159,6 +170,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[123]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[123]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // ^1
 				using var builder = new JsonPathBuilder(32);
 
@@ -167,6 +179,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[^1]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[^1]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // ^123
 				using var builder = new JsonPathBuilder(32);
 
@@ -180,6 +193,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Prepend_Index()
 		{
+			using (Assert.EnterMultipleScope())
 			{ // 0
 				using var builder = new JsonPathBuilder(32);
 
@@ -188,6 +202,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[0]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[0]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // 1
 				using var builder = new JsonPathBuilder(32);
 
@@ -196,6 +211,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[1]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[1]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // 123
 				using var builder = new JsonPathBuilder(32);
 
@@ -204,6 +220,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[123]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[123]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // ^1
 				using var builder = new JsonPathBuilder(32);
 
@@ -212,6 +229,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[^1]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[^1]));
 			}
+			using (Assert.EnterMultipleScope())
 			{ // ^123
 				using var builder = new JsonPathBuilder(32);
 
@@ -225,6 +243,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Append_Name_Name()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -234,6 +253,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("Hello.World"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["Hello"]["World"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -248,6 +268,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Prepend_Name_Name()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -257,6 +278,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("Hello.World"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["Hello"]["World"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -271,6 +293,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Append_Index_Index()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -280,6 +303,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[123][456]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[123][456]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -294,6 +318,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Prepend_Index_Index()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -303,6 +328,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[456][123]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[456][123]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -317,6 +343,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Append_Name_Index()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -326,6 +353,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("Hello[123]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["Hello"][123]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -344,6 +372,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Prepend_Name_Index()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -353,6 +382,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("[123].Hello"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[123]["Hello"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -367,18 +397,22 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Append_Index_Name()
 		{
-			using var builder = new JsonPathBuilder(32);
+			using (Assert.EnterMultipleScope())
+			{
+				using var builder = new JsonPathBuilder(32);
 
-			builder.Append(123);
-			builder.Append("Hello");
+				builder.Append(123);
+				builder.Append("Hello");
 
-			Assert.That(builder.ToString(), Is.EqualTo("[123].Hello"));
-			Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[123]["Hello"]));
+				Assert.That(builder.ToString(), Is.EqualTo("[123].Hello"));
+				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[123]["Hello"]));
+			}
 		}
 
 		[Test]
 		public void Test_JsonPathBuilder_Prepend_Index_Name()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -388,6 +422,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("Hello[123]"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["Hello"][123]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -402,6 +437,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Append_Name_Index_Name()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -412,6 +448,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("Hello[123].World"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["Hello"][123]["World"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -427,6 +464,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Prepend_Name_Index_Name()
 		{
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -437,6 +475,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(builder.ToString(), Is.EqualTo("Hello[123].World"));
 				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty["Hello"][123]["World"]));
 			}
+			using (Assert.EnterMultipleScope())
 			{
 				using var builder = new JsonPathBuilder(32);
 
@@ -452,16 +491,19 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonPathBuilder_Append_Index_Name_Name()
 		{
-			using var builder = new JsonPathBuilder(32);
+			using (Assert.EnterMultipleScope())
+			{
+				using var builder = new JsonPathBuilder(32);
 
-			builder.Append(123);
-			builder.Append("Hello");
-			builder.Append(456);
+				builder.Append(123);
+				builder.Append("Hello");
+				builder.Append(456);
 
-			Assert.That(builder.ToString(), Is.EqualTo("[123].Hello[456]"));
-			Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[123]["Hello"][456]));
+				Assert.That(builder.ToString(), Is.EqualTo("[123].Hello[456]"));
+				Assert.That(builder.ToPath(), Is.EqualTo(JsonPath.Empty[123]["Hello"][456]));
+			}
 		}
 
-
 	}
+
 }

@@ -26,6 +26,7 @@
 
 namespace SnowBank.Data.Json.Tests
 {
+
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -255,11 +256,14 @@ namespace SnowBank.Data.Json.Tests
 
 			var trace = CaptureTrace(obj, (doc) => _ = doc.Get<int>("foo"));
 
-			Assert.That(trace.IsMatch(obj), Is.True, "Same object should match the trace");
-			Assert.That(trace.IsMatch(obj.Copy()), Is.True, "A perfect copy of the object should match the trace");
-			Assert.That(trace.IsMatch(obj.CopyAndSet("bar", false)), Is.True, "Changing another field should match");
-			Assert.That(trace.IsMatch(obj.CopyAndSet("foo", 124)), Is.False, "Changing a field with Value access should not match");
-			Assert.That(trace.IsMatch(obj.CopyAndRemove("foo")), Is.False, "Removing a captured field should not match");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(trace.IsMatch(obj), Is.True, "Same object should match the trace");
+				Assert.That(trace.IsMatch(obj.Copy()), Is.True, "A perfect copy of the object should match the trace");
+				Assert.That(trace.IsMatch(obj.CopyAndSet("bar", false)), Is.True, "Changing another field should match");
+				Assert.That(trace.IsMatch(obj.CopyAndSet("foo", 124)), Is.False, "Changing a field with Value access should not match");
+				Assert.That(trace.IsMatch(obj.CopyAndRemove("foo")), Is.False, "Removing a captured field should not match");
+			}
 		}
 
 		[Test]
@@ -268,13 +272,16 @@ namespace SnowBank.Data.Json.Tests
 			var obj = GetSampleObject();
 			var trace = CaptureTrace(obj, (doc) => _ = doc["point"].Get<double>("x"));
 
-			Assert.That(trace.IsMatch(obj), Is.True, "Same object should match the trace");
-			Assert.That(trace.IsMatch(obj.Copy()), Is.True, "A perfect copy of the object should match the trace");
-			Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["point"]["y"], Math.E)), Is.True, "Changing another field should match");
-			Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["point"]["x"], 42)), Is.False, "Changing a field with Value access should not match");
-			Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["point"]["x"], JsonNull.Null)), Is.False, "Removing a field with Value access should not match");
-			Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["point"]["x"], JsonNull.Missing)), Is.False, "Removing a field with Value access should not match");
-			Assert.That(trace.IsMatch(obj.CopyAndRemove("point")), Is.False, "Removing a parent of a captured field should not match");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(trace.IsMatch(obj), Is.True, "Same object should match the trace");
+				Assert.That(trace.IsMatch(obj.Copy()), Is.True, "A perfect copy of the object should match the trace");
+				Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["point"]["y"], Math.E)), Is.True, "Changing another field should match");
+				Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["point"]["x"], 42)), Is.False, "Changing a field with Value access should not match");
+				Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["point"]["x"], JsonNull.Null)), Is.False, "Removing a field with Value access should not match");
+				Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["point"]["x"], JsonNull.Missing)), Is.False, "Removing a field with Value access should not match");
+				Assert.That(trace.IsMatch(obj.CopyAndRemove("point")), Is.False, "Removing a parent of a captured field should not match");
+			}
 		}
 
 		[Test]
@@ -283,11 +290,14 @@ namespace SnowBank.Data.Json.Tests
 			var obj = GetSampleObject();
 			var trace = CaptureTrace(obj, (doc) => _ = doc.ContainsKey("foo"));
 
-			Assert.That(trace.IsMatch(obj), Is.True, "Same object should match the trace");
-			Assert.That(trace.IsMatch(obj.Copy()), Is.True, "A perfect copy of the object should match the trace");
-			Assert.That(trace.IsMatch(obj.CopyAndSet("bar", false)), Is.True, "Changing another field should match");
-			Assert.That(trace.IsMatch(obj.CopyAndSet("foo", 124)), Is.True, "Changing a field with Exists access should match");
-			Assert.That(trace.IsMatch(obj.CopyAndRemove("foo")), Is.False, "Removing a field with Exists access should not match");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(trace.IsMatch(obj), Is.True, "Same object should match the trace");
+				Assert.That(trace.IsMatch(obj.Copy()), Is.True, "A perfect copy of the object should match the trace");
+				Assert.That(trace.IsMatch(obj.CopyAndSet("bar", false)), Is.True, "Changing another field should match");
+				Assert.That(trace.IsMatch(obj.CopyAndSet("foo", 124)), Is.True, "Changing a field with Exists access should match");
+				Assert.That(trace.IsMatch(obj.CopyAndRemove("foo")), Is.False, "Removing a field with Exists access should not match");
+			}
 		}
 
 		[Test]
@@ -296,12 +306,15 @@ namespace SnowBank.Data.Json.Tests
 			var obj = GetSampleObject();
 			var trace = CaptureTrace(obj, (doc) => _ = doc.Get<bool>("bar") ? doc["hello"].Get<int>("world") : doc["hello"].Get<int>("there"));
 
-			Assert.That(trace.IsMatch(obj), Is.True, "Same object should match the trace");
-			Assert.That(trace.IsMatch(obj.Copy()), Is.True, "A perfect copy of the object should match the trace");
-			Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["foo"], 456)), Is.True, "Changing another field should match");
-			Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["bar"], false)), Is.False, "Changing the value of the conditional should not match");
-			Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["hello"]["there"], -555)), Is.True, "Changing the condition branch not taken should match");
-			Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["hello"]["world"], -555)), Is.False, "Changing the condition branch taken should match");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(trace.IsMatch(obj), Is.True, "Same object should match the trace");
+				Assert.That(trace.IsMatch(obj.Copy()), Is.True, "A perfect copy of the object should match the trace");
+				Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["foo"], 456)), Is.True, "Changing another field should match");
+				Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["bar"], false)), Is.False, "Changing the value of the conditional should not match");
+				Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["hello"]["there"], -555)), Is.True, "Changing the condition branch not taken should match");
+				Assert.That(trace.IsMatch(obj.CopyAndSet(JsonPath.Empty["hello"]["world"], -555)), Is.False, "Changing the condition branch taken should match");
+			}
 		}
 
 	}

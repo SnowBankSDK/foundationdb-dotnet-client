@@ -51,7 +51,6 @@ namespace SnowBank.Data.Json.Tests
 			return (offset < TimeSpan.Zero ? "-" : "+") + Math.Abs(offset.Hours).ToString("D2") + ":" + Math.Abs(offset.Minutes).ToString("D2");
 		}
 
-
 	}
 
 }
