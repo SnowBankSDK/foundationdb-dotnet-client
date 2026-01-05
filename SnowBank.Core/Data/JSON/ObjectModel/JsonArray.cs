@@ -426,15 +426,10 @@ namespace SnowBank.Data.Json
 			return readOnly ? JsonArray.ReadOnly.Create(items) : Create(items);
 		}
 
-#if NET9_0_OR_GREATER
-
-		//note: we only add this for .NET9+ because we require overload resolution priority to be able to fix ambiguous calls between IEnumerable<> en ReadOnlySpan<>
-
 		/// <summary>Creates a new <b>mutable</b> <see cref="JsonArray">JSON Array</see> from a sequence of elements</summary>
 		/// <param name="items">Elements of the new array</param>
 		/// <remarks>For a <b>read-only</b> array, see <see cref="JsonArray.ReadOnly.Create(IEnumerable{JsonValue?})"/></remarks>
-		[Pure]
-		[OverloadResolutionPriority(-1)]
+		[Pure, OverloadResolutionPriority(-1)]
 		public static JsonArray Create(IEnumerable<JsonValue?> items)
 		{
 			Contract.NotNull(items);
@@ -449,14 +444,11 @@ namespace SnowBank.Data.Json
 		/// <para>If <paramref name="readOnly"/> is <c>true</c>, any <see cref="JsonValue"/> in <paramref name="items"/> will replaced by a read-only equivalent, if they are mutable.</para>
 		/// </remarks>
 		/// <seealso cref="JsonObject.ReadOnly.Create(System.Collections.Generic.IEnumerable{System.Collections.Generic.KeyValuePair{string,SnowBank.Data.Json.JsonValue}})"/>
-		[Pure]
-		[OverloadResolutionPriority(-1)]
+		[Pure, OverloadResolutionPriority(-1)]
 		public static JsonArray Create(bool readOnly, IEnumerable<JsonValue?> items)
 		{
 			return readOnly ? JsonArray.ReadOnly.Create(items) : Create(items);
 		}
-
-#endif
 
 		#endregion
 

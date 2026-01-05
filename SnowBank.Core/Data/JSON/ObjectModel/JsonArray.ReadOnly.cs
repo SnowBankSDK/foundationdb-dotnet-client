@@ -132,15 +132,15 @@ namespace SnowBank.Data.Json
 					{
 						return new([
 							(values[0] ?? JsonNull.Null).ToReadOnly(),
-						(values[1] ?? JsonNull.Null).ToReadOnly()
+							(values[1] ?? JsonNull.Null).ToReadOnly()
 						], 2, readOnly: true);
 					}
 					case 3:
 					{
 						return new([
 							(values[0] ?? JsonNull.Null).ToReadOnly(),
-						(values[1] ?? JsonNull.Null).ToReadOnly(),
-						(values[2] ?? JsonNull.Null).ToReadOnly()
+							(values[1] ?? JsonNull.Null).ToReadOnly(),
+							(values[2] ?? JsonNull.Null).ToReadOnly()
 						], 3, readOnly: true);
 					}
 				}
@@ -159,8 +159,7 @@ namespace SnowBank.Data.Json
 
 			/// <summary>Create a new <b>read-only</b> <see cref="JsonArray">JSON Array</see> from a sequence of elements</summary>
 			/// <remarks>For a mutable array, see <see cref="JsonArray.Create(IEnumerable{JsonValue?})"/></remarks>
-			[Pure]
-			[OverloadResolutionPriority(-1)]
+			[Pure, OverloadResolutionPriority(-1)]
 			public static JsonArray Create(IEnumerable<JsonValue?> values)
 			{
 				Contract.NotNull(values);
