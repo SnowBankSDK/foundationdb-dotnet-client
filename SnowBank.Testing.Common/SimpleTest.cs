@@ -1788,6 +1788,13 @@ namespace SnowBank.Testing
 
 		/// <summary>Outputs a hexadecimal dump of the buffer, similar to the view in a binary file editor.</summary>
 		[DebuggerNonUserCode]
+		public static void DumpHexa(ReadOnlyMemory<byte> buffer, HexaDump.Options options = HexaDump.Options.Default)
+		{
+			WriteToLog(HexaDump.Format(buffer.Span, options), lineBreak: false);
+		}
+
+		/// <summary>Outputs a hexadecimal dump of the buffer, similar to the view in a binary file editor.</summary>
+		[DebuggerNonUserCode]
 		public static void DumpHexa<T>(ReadOnlySpan<T> array, HexaDump.Options options = HexaDump.Options.Default)
 			where T : struct
 		{
@@ -1814,6 +1821,13 @@ namespace SnowBank.Testing
 		public static void DumpVersus(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
 		{
 			WriteToLog(HexaDump.Versus(left, right), lineBreak: false);
+		}
+
+		/// <summary>Outputs a hexadecimal dump of two buffers, side by side, similar to the view in a binary diff tool.</summary>
+		[DebuggerNonUserCode]
+		public static void DumpVersus(ReadOnlyMemory<byte> left, ReadOnlyMemory<byte> right)
+		{
+			WriteToLog(HexaDump.Versus(left.Span, right.Span), lineBreak: false);
 		}
 
 		#endregion
