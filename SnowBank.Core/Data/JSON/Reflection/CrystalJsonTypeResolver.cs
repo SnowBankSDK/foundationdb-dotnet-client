@@ -495,6 +495,10 @@ namespace SnowBank.Data.Json
 						{
 							filler = nameof(FillImmutableList);
 						}
+						else if (type.IsGenericInstanceOf(typeof(ImmutableArray<>)))
+						{
+							filler = nameof(FillImmutableArray);
+						}
 						else if (type.IsGenericInstanceOf(typeof(IImmutableSet<>)))
 						{ // => ImmutableHashSet<T>
 							filler = nameof(FillImmutableHashSet);
@@ -800,6 +804,27 @@ namespace SnowBank.Data.Json
 		{
 			var type = typeof(TOutput);
 			var list = ImmutableList.CreateBuilder<TOutput>();
+			foreach (var item in array)
+			{
+				try
+				{
+					list.Add((TOutput) convert(type, item));
+				}
+				catch (Exception ex)
+				{
+					if (TryMapException(ex, list.Count, typeof(TOutput), item as JsonValue, out var mapped))
+					{
+						throw mapped;
+					}
+				}
+			}
+			return list.ToImmutable();
+		}
+
+		public static ImmutableArray<TOutput> FillImmutableArray<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
+		{
+			var type = typeof(TOutput);
+			var list = ImmutableArray.CreateBuilder<TOutput>();
 			foreach (var item in array)
 			{
 				try

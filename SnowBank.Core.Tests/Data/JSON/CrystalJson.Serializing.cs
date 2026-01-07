@@ -38,6 +38,7 @@
 
 namespace SnowBank.Data.Json.Tests
 {
+	using System.Collections.Immutable;
 	using System.IO.Compression;
 	using System.Text.Json;
 	using System.Text.Json.Serialization;
@@ -2103,6 +2104,39 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
+		public void Test_JsonSerialize_ImmutableArrays()
+		{
+			static ImmutableArray<T> Make<T>(params ReadOnlySpan<T> items) => [ ..items ];
+
+			// int[]
+			CheckSerialize(ImmutableArray<int>.Empty, default, "[ ]");
+			CheckSerialize(new int[1].ToImmutableArray(), default, "[ 0 ]");
+			CheckSerialize(Make(1, 2, 3), default, "[ 1, 2, 3 ]");
+
+			CheckSerialize(ImmutableArray<int>.Empty, CrystalJsonSettings.JsonCompact, "[]");
+			CheckSerialize(new int[1].ToImmutableArray(), CrystalJsonSettings.JsonCompact, "[0]");
+			CheckSerialize(Make(1, 2, 3), CrystalJsonSettings.JsonCompact, "[1,2,3]");
+
+			// string[]
+			CheckSerialize(ImmutableArray<string>.Empty, default, "[ ]");
+			CheckSerialize(new string[1].ToImmutableArray(), default, "[ null ]");
+			CheckSerialize(Make("foo"), default, """[ "foo" ]""");
+			CheckSerialize(Make("foo", "bar", "baz"), default, """[ "foo", "bar", "baz" ]""");
+			CheckSerialize(Make("foo"), CrystalJsonSettings.JavaScript, "[ 'foo' ]");
+			CheckSerialize(Make("foo", "bar", "baz"), CrystalJsonSettings.JavaScript, "[ 'foo', 'bar', 'baz' ]");
+
+			// compact
+			CheckSerialize(ImmutableArray<string>.Empty, CrystalJsonSettings.JsonCompact, "[]");
+			CheckSerialize(new string[] { "foo", "bar", "baz" }, CrystalJsonSettings.JsonCompact, """["foo","bar","baz"]""");
+			CheckSerialize(new string[] { "foo", "bar", "baz" }, CrystalJsonSettings.JavaScriptCompact, "['foo','bar','baz']");
+
+			// bool[]
+			CheckSerialize(ImmutableArray<bool>.Empty, default, "[ ]");
+			CheckSerialize(new bool[1].ToImmutableArray(), default, "[ false ]");
+			CheckSerialize(Make(true, false, true), default, "[ true, false, true ]");
+		}
+
+		[Test]
 		public void Test_JsonSerialize_Lists()
 		{
 			// Collections
@@ -2140,6 +2174,47 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(new List<bool>(), default, "[ ]");
 			CheckSerialize(new List<bool> { false }, default, "[ false ]");
 			CheckSerialize(new List<bool> { true, false, true }, default, "[ true, false, true ]");
+		}
+
+		[Test]
+		public void Test_JsonSerialize_ImmutableLists()
+		{
+			static ImmutableList<T> Make<T>(params ReadOnlySpan<T> items) => [ ..items ];
+
+			// Collections
+			var listOfStrings = ImmutableList<string>.Empty;
+			CheckSerialize(listOfStrings, default, "[ ]");
+			listOfStrings = listOfStrings.Add("foo");
+			CheckSerialize(listOfStrings, default, """[ "foo" ]""");
+			listOfStrings = listOfStrings.Add("bar");
+			listOfStrings = listOfStrings.Add("baz");
+			CheckSerialize(listOfStrings, default, """[ "foo", "bar", "baz" ]""");
+			CheckSerialize(listOfStrings, CrystalJsonSettings.JavaScript, "[ 'foo', 'bar', 'baz' ]");
+
+			var listOfObjects = ImmutableList.CreateRange<object?>([ 123, "Narf", true, DummyJsonEnum.Bar ]);
+			CheckSerialize(listOfObjects, default, """[ 123, "Narf", true, 42 ]""");
+			CheckSerialize(listOfObjects, CrystalJsonSettings.JavaScript, "[ 123, 'Narf', true, 42 ]");
+
+			// ImmutableList<int>
+			CheckSerialize(ImmutableList<int>.Empty, default, "[ ]");
+			CheckSerialize(Make(0), default, "[ 0 ]");
+			CheckSerialize(Make(1, 2, 3), default, "[ 1, 2, 3 ]");
+			CheckSerialize(ImmutableList<int>.Empty, CrystalJsonSettings.JsonCompact, "[]");
+			CheckSerialize(Make(0), CrystalJsonSettings.JsonCompact, "[0]");
+			CheckSerialize(Make(1, 2, 3), CrystalJsonSettings.JsonCompact, "[1,2,3]");
+
+			// ImmutableList<string>
+			CheckSerialize(ImmutableList<string>.Empty, default, "[ ]");
+			CheckSerialize(Make(default(string)), default, "[ null ]");
+			CheckSerialize(Make("foo"), default, """[ "foo" ]""");
+			CheckSerialize(Make("foo", "bar", "baz"), default, """[ "foo", "bar", "baz" ]""");
+			CheckSerialize(Make("foo"), CrystalJsonSettings.JavaScript, "[ 'foo' ]");
+			CheckSerialize(Make("foo", "bar", "baz"), CrystalJsonSettings.JavaScript, "[ 'foo', 'bar', 'baz' ]");
+
+			// ImmutableList<bool>
+			CheckSerialize(ImmutableList<bool>.Empty, default, "[ ]");
+			CheckSerialize(Make(false), default, "[ false ]");
+			CheckSerialize(Make(true, false, true), default, "[ true, false, true ]");
 		}
 
 		[Test]

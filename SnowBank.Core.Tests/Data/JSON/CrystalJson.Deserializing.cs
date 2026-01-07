@@ -33,6 +33,7 @@
 namespace SnowBank.Data.Json.Tests
 {
 	using System.Collections;
+	using System.Collections.Immutable;
 	using System.Net;
 	using SnowBank.Data.Tuples;
 	using SnowBank.Runtime.Converters;
@@ -436,13 +437,13 @@ namespace SnowBank.Data.Json.Tests
 		{
 			{ // empty
 				var res = CrystalJson.Deserialize<int[]>("[]");
-				Assert.That(res, Has.Length.EqualTo(0));
-				//Assert.That(res, Is.SameAs(Array.Empty<int[]>()));
+				Assert.That(res, Is.Empty);
+				Assert.That(res, Is.SameAs(Array.Empty<int>()));
 			}
 			{ // empty, with extra spaces
 				var res = CrystalJson.Deserialize<int[]>("[\t\t \t]");
-				Assert.That(res, Has.Length.EqualTo(0));
-				//Assert.That(res, Is.SameAs(Array.Empty<int[]>()));
+				Assert.That(res, Is.Empty);
+				Assert.That(res, Is.SameAs(Array.Empty<int>()));
 			}
 
 			// single value
@@ -483,7 +484,110 @@ namespace SnowBank.Data.Json.Tests
 
 			// nested
 			Assert.That(CrystalJson.Deserialize<int[][]>("[[1,2],[3,4]]"), Is.EqualTo(new int[][] { [ 1, 2 ], [ 3, 4 ] }));
+		}
 
+		[Test]
+		public void Test_JsonDeserialize_ImmutableArray()
+		{
+			{ // empty
+				var res = CrystalJson.Deserialize<ImmutableArray<int>>("[]");
+				Assert.That(res, Is.Empty);
+			}
+			{ // empty, with extra spaces
+				var res = CrystalJson.Deserialize<ImmutableArray<int>>("[\t\t \t]");
+				Assert.That(res, Is.Empty);
+			}
+
+			// single value
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<int>>("[1]"), Is.EqualTo([ 1 ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<int>>("[ 1 ]"), Is.EqualTo([ 1 ]));
+
+			// multiple value
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<int>>("[1,2,3]"), Is.EqualTo([ 1, 2, 3 ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<int>>("[ 1, 2, 3 ]"), Is.EqualTo([ 1, 2, 3 ]));
+
+			// strings
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<string>>(@"[""foo"",""bar""]"), Is.EqualTo([ "foo", "bar" ]));
+
+			// mixed array
+			Assert.That(
+				CrystalJson.Deserialize<ImmutableArray<object>>(@"[123,true,""foo""]"),
+				Is.EqualTo(new object[] { 123, true, "foo" })
+			);
+
+			// jagged arrays
+			Assert.That(
+				CrystalJson.Deserialize<ImmutableArray<object>>(@"[ [1,2,3], [true,false], [""foo"",""bar""] ]"),
+				Is.EqualTo(new object[]
+				{
+					new[] { 1, 2, 3 },
+					new[] { true, false },
+					new[] { "foo", "bar" }
+				})
+			);
+
+			// directed
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<int>>("[1,2,3]"), Is.EqualTo([ 1, 2, 3 ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<long>>("[1,2,3]"), Is.EqualTo([ 1L, 2L, 3L ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<float>>("[1.1,2.2,3.3]"), Is.EqualTo([ 1.1f, 2.2f, 3.3f ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<double>>("[1.1,2.2,3.3]"), Is.EqualTo([ 1.1d, 2.2d, 3.3d ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<bool>>("[true,false,true]"), Is.EqualTo([ true, false, true ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<string>>(@"[""foo"",""bar"",""baz""]"), Is.EqualTo([ "foo", "bar", "baz" ]));
+
+			// nested
+			Assert.That(CrystalJson.Deserialize<ImmutableArray<ImmutableArray<int>>>("[[1,2],[3,4]]"), Is.EqualTo(new int[][] { [ 1, 2 ], [ 3, 4 ] }));
+		}
+
+		[Test]
+		public void Test_JsonDeserialize_ImmutableList()
+		{
+			{ // empty
+				var res = CrystalJson.Deserialize<ImmutableList<int>>("[]");
+				Assert.That(res, Is.Empty);
+			}
+			{ // empty, with extra spaces
+				var res = CrystalJson.Deserialize<ImmutableList<int>>("[\t\t \t]");
+				Assert.That(res, Is.Empty);
+			}
+
+			// single value
+			Assert.That(CrystalJson.Deserialize<ImmutableList<int>>("[1]"), Is.EqualTo([ 1 ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableList<int>>("[ 1 ]"), Is.EqualTo([ 1 ]));
+
+			// multiple value
+			Assert.That(CrystalJson.Deserialize<ImmutableList<int>>("[1,2,3]"), Is.EqualTo([ 1, 2, 3 ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableList<int>>("[ 1, 2, 3 ]"), Is.EqualTo([ 1, 2, 3 ]));
+
+			// strings
+			Assert.That(CrystalJson.Deserialize<ImmutableList<string>>(@"[""foo"",""bar""]"), Is.EqualTo([ "foo", "bar" ]));
+
+			// mixed array
+			Assert.That(
+				CrystalJson.Deserialize<ImmutableList<object>>(@"[123,true,""foo""]"),
+				Is.EqualTo(new object[] { 123, true, "foo" })
+			);
+
+			// jagged arrays
+			Assert.That(
+				CrystalJson.Deserialize<ImmutableList<object>>(@"[ [1,2,3], [true,false], [""foo"",""bar""] ]"),
+				Is.EqualTo(new object[]
+				{
+					new[] { 1, 2, 3 },
+					new[] { true, false },
+					new[] { "foo", "bar" }
+				})
+			);
+
+			// directed
+			Assert.That(CrystalJson.Deserialize<ImmutableList<int>>("[1,2,3]"), Is.EqualTo([ 1, 2, 3 ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableList<long>>("[1,2,3]"), Is.EqualTo([ 1L, 2L, 3L ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableList<float>>("[1.1,2.2,3.3]"), Is.EqualTo([ 1.1f, 2.2f, 3.3f ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableList<double>>("[1.1,2.2,3.3]"), Is.EqualTo([ 1.1d, 2.2d, 3.3d ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableList<bool>>("[true,false,true]"), Is.EqualTo([ true, false, true ]));
+			Assert.That(CrystalJson.Deserialize<ImmutableList<string>>(@"[""foo"",""bar"",""baz""]"), Is.EqualTo([ "foo", "bar", "baz" ]));
+
+			// nested
+			Assert.That(CrystalJson.Deserialize<ImmutableList<ImmutableList<int>>>("[[1,2],[3,4]]"), Is.EqualTo(new int[][] { [ 1, 2 ], [ 3, 4 ] }));
 		}
 
 		[Test]

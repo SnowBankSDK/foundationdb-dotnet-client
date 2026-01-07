@@ -33,6 +33,7 @@
 namespace SnowBank.Data.Json
 {
 	using System.Collections;
+	using System.Collections.Immutable;
 	using System.Globalization;
 	using System.Linq.Expressions;
 	using System.Reflection;
@@ -467,6 +468,48 @@ namespace SnowBank.Data.Json
 			writer.EndArray(state);
 		}
 
+		private static CrystalJsonTypeVisitor CreateVisitorForImmutableArrayType(Type type)
+		{
+			var args = type.GetGenericArguments();
+			if (args.Length != 1) throw new InvalidOperationException("Type must be an ImmutableArray<T>");
+
+			if (args[0] == typeof(byte))
+			{ // byte => Base64
+				return (v, _, _, w) => w.WriteBuffer(((ImmutableArray<byte>) v!).AsSpan());
+			}
+			else
+			{ // T => array
+				var method = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitImmutableArray), BindingFlags.Static | BindingFlags.NonPublic);
+				if (method == null) throw new InvalidOperationException("Missing method CrystalJsonVisitor.VisitImmutableArray<T>()");
+
+				// create the concrete version of this method, and convert it into a delegate
+				var gen = method.MakeGenericMethod(args);
+				return (CrystalJsonTypeVisitor) gen.CreateDelegate(typeof(CrystalJsonTypeVisitor));
+			}
+		}
+
+		[UsedImplicitly]
+		private static void VisitImmutableArray<T>(object? value, Type declaringType, Type? runtimeType, CrystalJsonWriter writer)
+		{
+			var array = (value != null ? (ImmutableArray<T>) value : default).AsSpan();
+			if (array.Length == 0)
+			{
+				writer.WriteEmptyArray();
+				return;
+			}
+
+			// '[ KEY, VALUE ]'
+			var state = writer.BeginArray();
+			{
+				for (int i = 0; i < array.Length; i++)
+				{
+					writer.WriteFieldSeparator();
+					VisitValue<T>(array[i], writer);
+				}
+			}
+			writer.EndArray(state);
+		}
+
 		private static CrystalJsonTypeVisitor CreateVisitorForArraySegmentType(Type type)
 		{
 			var args = type.GetGenericArguments();
@@ -479,7 +522,7 @@ namespace SnowBank.Data.Json
 			else
 			{ // T => array
 				var method = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitArraySegment), BindingFlags.Static | BindingFlags.NonPublic);
-				if (method == null) throw new InvalidOperationException("Missing method CrystalJsonVisitor.VisitArraySegment<K,V>()");
+				if (method == null) throw new InvalidOperationException("Missing method CrystalJsonVisitor.VisitArraySegment<T>()");
 
 				// create the concrete version of this method, and convert it into a delegate
 				var gen = method.MakeGenericMethod(args);
@@ -608,6 +651,10 @@ namespace SnowBank.Data.Json
 				{
 					return CreateVisitorForTaskLikeType(type);
 				}
+				if (type.IsGenericInstanceOf(typeof(ImmutableArray<>)))
+				{
+					return CreateVisitorForImmutableArrayType(type);
+				}
 			}
 
 			if (type == typeof(Slice))
@@ -617,12 +664,7 @@ namespace SnowBank.Data.Json
 
 			if (type == typeof (System.Drawing.Color))
 			{ // Color => we will output the "Name" property of the color
-#if !NET461 && !NET472
-				//TODO: HACKHACK: how to convert color into HTML name in .NET Standard 2.0 ?
-				return static (v, _, _, writer) => writer.WriteValue(((System.Drawing.Color) v!).ToString());
-#else
-				return static (v, _, _, writer) => writer.WriteValue(System.Drawing.ColorTranslator.ToHtml((System.Drawing.Color) v));
-#endif
+				return static (v, _, _, writer) => writer.WriteValue(System.Drawing.ColorTranslator.ToHtml((System.Drawing.Color) v!));
 			}
 
 			#region NodaTime...
