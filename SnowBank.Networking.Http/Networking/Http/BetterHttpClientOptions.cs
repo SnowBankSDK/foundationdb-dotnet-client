@@ -29,6 +29,7 @@ namespace SnowBank.Networking.Http
 	using System.Net.Security;
 	using System.Security.Authentication;
 	using System.Security.Cryptography.X509Certificates;
+	using Microsoft.Extensions.DependencyInjection;
 
 	/// <summary>Base class of generic options for <see cref="BetterHttpClient">HTTP clients</see></summary>
 	[PublicAPI]
@@ -90,12 +91,32 @@ namespace SnowBank.Networking.Http
 		/// <summary>Specifies a custom collection for the certificates used by this client to authenticate with the remote server</summary>
 		public X509CertificateCollection? ClientCertificates { get; set; }
 
+		/// <summary>Accepts any server certificate, even if they are self-signed or expired.</summary>
+		/// <remarks>This is a convenience method that will set <see cref="ServerCertificateCustomValidationCallback"/> to a cached callback that always returns <c>true</c></remarks>
 		[Obsolete("This is dangerous! Please acknowledge this by using a #pragma to disable this warning.")]
 		public void DangerousAcceptAnyServerCertificate()
 		{
 			this.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
 		}
 
+		/// <summary>Adds a delegating handler to the chain of handlers used by this client</summary>
+		/// <typeparam name="THandler">Type of handler, that must be constructible using the <see cref="IServiceProvider"/> that will be used to build the client</typeparam>
+		/// <remarks>
+		/// <para>The handlers are applied, in order, to wrap the previous <see cref="HttpMessageHandler"/>.</para>
+		/// <para>This handler will wrap all previously defined handlers, and will be wrapped by any following handler.</para>
+		/// </remarks>
+		public void WithDelegatingHandler<THandler>()
+			where THandler : DelegatingHandler
+		{
+			this.Handlers.Add((inner, services) =>
+			{
+				var handler = ActivatorUtilities.CreateInstance<THandler>(services);
+				handler.InnerHandler = inner;
+				return handler;
+			});
+		}
+
+		/// <summary>Applies any default configuration to the specified handler</summary>
 		protected virtual HttpMessageHandler ConfigureDefaults(HttpMessageHandler handler)
 		{
 			if (handler is HttpClientHandler clientHandler)
@@ -107,9 +128,11 @@ namespace SnowBank.Networking.Http
 			return handler;
 		}
 
+		/// <summary>Update the specified handler to properly handle cookies, if they are required</summary>
+		/// <remarks><para>If the top handler is <see cref="HttpClientHandler"/> it will be configured directly; otherwise, it will be wrapped with an instance of <see cref="CookieContainerMessageHandler"/> that will handle the <c>Cookie</c> and <c>Set-Cookie</c> headers automatically.</para></remarks>
 		protected virtual HttpMessageHandler ConfigureCookies(HttpMessageHandler handler)
 		{
-			if (this.Cookies != null)
+			if (this.Cookies is not null)
 			{
 				if (handler is HttpClientHandler clientHandler)
 				{
@@ -124,6 +147,7 @@ namespace SnowBank.Networking.Http
 			return handler;
 		}
 
+		/// <summary>Update the specified handler to properly handle authentication, if it is required.</summary>
 		protected virtual HttpMessageHandler ConfigureAuthentication(HttpMessageHandler handler)
 		{
 			if (handler is HttpClientHandler clientHandler)

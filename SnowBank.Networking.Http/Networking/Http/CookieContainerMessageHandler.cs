@@ -54,7 +54,7 @@ namespace SnowBank.Networking.Http
 
 			if (res.Headers.TryGetValues(HeaderNames.SetCookie, out var values))
 			{
-				foreach (SetCookieHeaderValue cookieHeader in SetCookieHeaderValue.ParseList(values.ToList()))
+				foreach (var cookieHeader in SetCookieHeaderValue.ParseList(values.ToList()))
 				{
 					Cookie cookie = new Cookie(cookieHeader.Name.Value!, cookieHeader.Value.Value, cookieHeader.Path.Value);
 					if (cookieHeader.Expires.HasValue)
