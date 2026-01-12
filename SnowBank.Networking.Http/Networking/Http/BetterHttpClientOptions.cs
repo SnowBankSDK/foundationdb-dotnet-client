@@ -116,13 +116,47 @@ namespace SnowBank.Networking.Http
 			});
 		}
 
+		/// <summary>Checks if a type implementing <see cref="HttpMessageHandler"/> is considered a "test" client that is emulating requests "in-process"</summary>
+		private static bool IsTestClient(Type type)
+		{
+			// Microsoft.AspNetCore.TestHost.ClientHandler
+			if (type.Name == "ClientHandler" && type.Namespace == "Microsoft.AspNetCore.TestHost")
+			{
+				return true;
+			}
+
+			return false;
+		}
+
 		/// <summary>Applies any default configuration to the specified handler</summary>
 		protected virtual HttpMessageHandler ConfigureDefaults(HttpMessageHandler handler)
 		{
-			if (handler is HttpClientHandler clientHandler)
+			if (this.AllowAutoRedirect is not null || this.AutomaticDecompression is not null)
 			{
-				if (this.AllowAutoRedirect != null) clientHandler.AllowAutoRedirect = this.AllowAutoRedirect.Value;
-				if (this.AutomaticDecompression != null) clientHandler.AutomaticDecompression = this.AutomaticDecompression.Value;
+				switch (handler)
+				{
+					case BetterHttpClientHandler clientHandler:
+					{
+						if (this.AllowAutoRedirect is not null) clientHandler.AllowAutoRedirect = this.AllowAutoRedirect.Value;
+						if (this.AutomaticDecompression is not null) clientHandler.AutomaticDecompression = this.AutomaticDecompression.Value;
+						return clientHandler;
+					}
+					case HttpClientHandler clientHandler:
+					{
+						if (this.AllowAutoRedirect is not null) clientHandler.AllowAutoRedirect = this.AllowAutoRedirect.Value;
+						if (this.AutomaticDecompression is not null) clientHandler.AutomaticDecompression = this.AutomaticDecompression.Value;
+						return clientHandler;
+					}
+					default:
+					{
+#if DEBUG
+						//TODO: for delegating handlers, maybe we could try going up the chain of inner handlers until we find something? or should be wrap the handler (similar to how we handle cookies)
+						if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
+#endif
+
+						return handler;
+					}
+				}
 			}
 
 			return handler;
@@ -134,14 +168,30 @@ namespace SnowBank.Networking.Http
 		{
 			if (this.Cookies is not null)
 			{
-				if (handler is HttpClientHandler clientHandler)
+				switch (handler)
 				{
-					clientHandler.UseCookies = true;
-					clientHandler.CookieContainer = this.Cookies;
-				}
-				else
-				{
-					return new CookieContainerMessageHandler(this.Cookies, handler);
+					case BetterHttpClientHandler clientHandler:
+					{
+						clientHandler.UseCookies = true;
+						clientHandler.CookieContainer = this.Cookies;
+
+						return clientHandler;
+					}
+					case HttpClientHandler clientHandler:
+					{
+						clientHandler.UseCookies = true;
+						clientHandler.CookieContainer = this.Cookies;
+
+						return clientHandler;
+					}
+					case CookieContainerMessageHandler:
+					{
+						throw new InvalidOperationException("Cannot wrap cookies twice on the same HTTP handler");
+					}
+					default:
+					{
+						return new CookieContainerMessageHandler(this.Cookies, handler);
+					}
 				}
 			}
 			return handler;
@@ -150,10 +200,39 @@ namespace SnowBank.Networking.Http
 		/// <summary>Update the specified handler to properly handle authentication, if it is required.</summary>
 		protected virtual HttpMessageHandler ConfigureAuthentication(HttpMessageHandler handler)
 		{
-			if (handler is HttpClientHandler clientHandler)
+			if (this.Credentials is not null || this.UseDefaultCredentials is not null)
 			{
-				if (this.Credentials != null) clientHandler.Credentials = this.Credentials;
-				if (this.UseDefaultCredentials != null) clientHandler.UseDefaultCredentials = this.UseDefaultCredentials.Value;
+				switch (handler)
+				{
+					case BetterHttpClientHandler clientHandler:
+					{
+						if (this.Credentials is not null) clientHandler.Credentials = this.Credentials;
+						if (this.UseDefaultCredentials is not null) clientHandler.UseDefaultCredentials = this.UseDefaultCredentials.Value;
+
+						return clientHandler;
+					}
+					case HttpClientHandler clientHandler:
+					{
+						if (this.Credentials is not null) clientHandler.Credentials = this.Credentials;
+						if (this.UseDefaultCredentials is not null) clientHandler.UseDefaultCredentials = this.UseDefaultCredentials.Value;
+
+						return clientHandler;
+					}
+					default:
+					{
+						if (IsTestClient(handler.GetType()))
+						{ // this is in-memory, there will be no TLS negotiation, so we can simply skip all of this
+							return handler;
+						}
+
+#if DEBUG
+						//TODO: for delegating handlers, maybe we could try going up the chain of inner handlers until we find something? or should be wrap the handler (similar to how we handle cookies)
+						if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
+#endif
+
+						return handler;
+					}
+				}
 			}
 
 			return handler;
@@ -161,16 +240,54 @@ namespace SnowBank.Networking.Http
 
 		protected virtual HttpMessageHandler ConfigureProxy(HttpMessageHandler handler)
 		{
-			if (handler is HttpClientHandler clientHandler)
+			if (this.Proxy is not null || this.DefaultProxyCredentials is not null)
 			{
-				if (this.Proxy != null)
+				switch (handler)
 				{
-					clientHandler.UseProxy = true;
-					clientHandler.Proxy = this.Proxy;
-				}
-				if (this.DefaultProxyCredentials != null)
-				{
-					clientHandler.DefaultProxyCredentials = this.DefaultProxyCredentials;
+					case BetterHttpClientHandler clientHandler:
+					{
+						if (this.Proxy is not null)
+						{
+							clientHandler.UseProxy = true;
+							clientHandler.Proxy = this.Proxy;
+						}
+
+						if (this.DefaultProxyCredentials is not null)
+						{
+							clientHandler.DefaultProxyCredentials = this.DefaultProxyCredentials;
+						}
+
+						return handler;
+					}
+					case HttpClientHandler clientHandler:
+					{
+						if (this.Proxy is not null)
+						{
+							clientHandler.UseProxy = true;
+							clientHandler.Proxy = this.Proxy;
+						}
+
+						if (this.DefaultProxyCredentials is not null)
+						{
+							clientHandler.DefaultProxyCredentials = this.DefaultProxyCredentials;
+						}
+
+						return handler;
+					}
+					default:
+					{
+						if (IsTestClient(handler.GetType()))
+						{ // this is in-memory, there will be no concept of proxy, so we can simply skip all of this
+							return handler;
+						}
+
+#if DEBUG
+						//TODO: for delegating handlers, maybe we could try going up the chain of inner handlers until we find something? or should be wrap the handler (similar to how we handle cookies)
+						if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
+#endif
+
+						return handler;
+					}
 				}
 			}
 
@@ -179,22 +296,52 @@ namespace SnowBank.Networking.Http
 
 		protected virtual HttpMessageHandler ConfigureHttps(HttpMessageHandler handler)
 		{
-			if (handler is BetterHttpClientHandler betterHandler)
+			if (this.ClientCertificates is not null
+			 || this.ServerCertificateCustomValidationCallback is not null
+			 || this.ClientCertificateOptions is not null
+			 || this.CheckCertificateRevocationList is not null
+			 || this.SslProtocols is not null)
 			{
-				if (this.ClientCertificates != null) betterHandler.ClientCertificates.AddRange(this.ClientCertificates);
-				if (this.ServerCertificateCustomValidationCallback != null) betterHandler.ServerCertificateCustomValidationCallback = this.ServerCertificateCustomValidationCallback;
-				if (this.ClientCertificateOptions != null) betterHandler.ClientCertificateOptions = this.ClientCertificateOptions.Value;
-				if (this.CheckCertificateRevocationList != null) betterHandler.CheckCertificateRevocationList = this.CheckCertificateRevocationList.Value;
-				if (this.SslProtocols != null) betterHandler.SslProtocols = this.SslProtocols.Value;
+				switch (handler)
+				{
+					case BetterHttpClientHandler betterHandler:
+					{
+						if (this.ClientCertificates is not null) betterHandler.ClientCertificates.AddRange(this.ClientCertificates);
+						if (this.ServerCertificateCustomValidationCallback is not null) betterHandler.ServerCertificateCustomValidationCallback = this.ServerCertificateCustomValidationCallback;
+						if (this.ClientCertificateOptions is not  null) betterHandler.ClientCertificateOptions = this.ClientCertificateOptions.Value;
+						if (this.CheckCertificateRevocationList is not  null) betterHandler.CheckCertificateRevocationList = this.CheckCertificateRevocationList.Value;
+						if (this.SslProtocols is not  null) betterHandler.SslProtocols = this.SslProtocols.Value;
+
+						return betterHandler;
+					}
+					case HttpClientHandler clientHandler:
+					{
+						if (this.ClientCertificates is not null) clientHandler.ClientCertificates.AddRange(this.ClientCertificates);
+						if (this.ServerCertificateCustomValidationCallback is not null) clientHandler.ServerCertificateCustomValidationCallback = this.ServerCertificateCustomValidationCallback;
+						if (this.ClientCertificateOptions is not null) clientHandler.ClientCertificateOptions = this.ClientCertificateOptions.Value;
+						if (this.CheckCertificateRevocationList is not null) clientHandler.CheckCertificateRevocationList = this.CheckCertificateRevocationList.Value;
+						if (this.SslProtocols is not null) clientHandler.SslProtocols = this.SslProtocols.Value;
+
+						return clientHandler;
+					}
+					default:
+					{
+						if (IsTestClient(handler.GetType()))
+						{ // this is in-memory, there will be no TLS negotiation, so we can simply skip all of this
+							return handler;
+						}
+
+#if DEBUG
+						// this is an unsupported handler type, and we don't really know how to configure TLS
+						// => if this is a DelegatingHandler, maybe walk the chain of inner handlers to find a HttpClientHandler?
+						if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
+#endif
+
+						return handler;
+					}
+				}
 			}
-			else if (handler is HttpClientHandler clientHandler)
-			{
-				if (this.ClientCertificates != null) clientHandler.ClientCertificates.AddRange(this.ClientCertificates);
-				if (this.ServerCertificateCustomValidationCallback != null) clientHandler.ServerCertificateCustomValidationCallback = this.ServerCertificateCustomValidationCallback;
-				if (this.ClientCertificateOptions != null) clientHandler.ClientCertificateOptions = this.ClientCertificateOptions.Value;
-				if (this.CheckCertificateRevocationList != null) clientHandler.CheckCertificateRevocationList = this.CheckCertificateRevocationList.Value;
-				if (this.SslProtocols != null) clientHandler.SslProtocols = this.SslProtocols.Value;
-			}
+
 			return handler;
 		}
 
