@@ -379,8 +379,6 @@ namespace SnowBank.Networking.Http
 		{
 			Contract.Debug.Requires(request != null && handler != null);
 
-			var filters = this.Options.Filters;
-
 			var startedAt = this.Clock.GetCurrentInstant();
 			var context = new BetterHttpClientContext()
 			{
@@ -402,7 +400,7 @@ namespace SnowBank.Networking.Http
 				#region Configure...
 
 				context.SetStage(BetterHttpClientStage.Configure);
-				foreach (var filter in filters)
+				foreach (var filter in this.Options.Filters)
 				{
 					Contract.Debug.Assert(filter != null);
 					try
@@ -450,7 +448,7 @@ namespace SnowBank.Networking.Http
 						context.SetStage(BetterHttpClientStage.PrepareResponse);
 						try
 						{
-							foreach (var filter in filters)
+							foreach (var filter in this.Options.Filters)
 							{
 								try
 								{
@@ -462,7 +460,7 @@ namespace SnowBank.Networking.Http
 								}
 							}
 
-							this.Options.Hooks?.OnPrepareResponse(context);
+							this.Options.Hooks?.OnResponsePrepared(context);
 						}
 						catch (Exception)
 						{
@@ -503,7 +501,7 @@ namespace SnowBank.Networking.Http
 								default:
 								{
 #if DEBUG
-									// c'est pas normal! normalement on controle exactement le type de handler passé a cette fonction!
+									// somehow we got an unexpected delegate type?
 									if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
 #endif
 									throw new ArgumentException("Unexpected delegate type", nameof(handler));
@@ -521,7 +519,7 @@ namespace SnowBank.Networking.Http
 
 							context.ReceiveCompletedAt = this.Clock.GetCurrentInstant();
 							context.SetStage(BetterHttpClientStage.CompleteResponse);
-							foreach (var filter in filters)
+							foreach (var filter in this.Options.Filters)
 							{
 								try
 								{
@@ -535,7 +533,7 @@ namespace SnowBank.Networking.Http
 									}
 								}
 							}
-							this.Options.Hooks?.OnCompleteResponse(context);
+							this.Options.Hooks?.OnResponseCompleted(context);
 
 							#endregion
 						}
@@ -566,7 +564,7 @@ namespace SnowBank.Networking.Http
 			try
 			{
 				context.SetStage(BetterHttpClientStage.Finalize);
-				foreach (var filter in filters)
+				foreach (var filter in this.Options.Filters)
 				{
 					try
 					{
@@ -580,11 +578,11 @@ namespace SnowBank.Networking.Http
 						}
 					}
 				}
-				this.Options.Hooks?.OnFinalizeQuery(context);
 			}
 			finally
 			{
 				context.CompletedAt = this.Clock.GetCurrentInstant();
+				this.Options.Hooks?.OnQueryFinalized(context);
 			}
 		}
 

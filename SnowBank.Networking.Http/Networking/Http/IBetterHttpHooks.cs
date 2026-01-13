@@ -51,19 +51,69 @@ namespace SnowBank.Networking.Http
 		void OnRequestCompleted(BetterHttpClientContext context);
 
 		/// <summary>The response message has been received, but not yet processed</summary>
-		void OnPrepareResponse(BetterHttpClientContext context);
+		void OnResponsePrepared(BetterHttpClientContext context);
 
 		/// <summary>The response message has been processed</summary>
-		void OnCompleteResponse(BetterHttpClientContext context);
+		void OnResponseCompleted(BetterHttpClientContext context);
 
 		/// <summary>The execution of the query has completed</summary>
-		void OnFinalizeQuery(BetterHttpClientContext context);
+		void OnQueryFinalized(BetterHttpClientContext context);
 
 		/// <summary>A socket connection was established with the remote server</summary>
 		void OnSocketConnected(BetterHttpClientContext context, Socket socket);
 
 		/// <summary>A socket connection attempt has failed</summary>
 		void OnSocketFailed(BetterHttpClientContext context, Socket socket, Exception error);
+
+	}
+
+	/// <summary>Default hooks implementation that forwards calls to optional callbacks</summary>
+	public class DefaultBetterHttpHooks : IBetterHttpHooks
+	{
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnStageChanged"/>
+		public Action<BetterHttpClientContext, BetterHttpClientStage>? StageChanged { get; set; }
+		void IBetterHttpHooks.OnStageChanged(BetterHttpClientContext context, BetterHttpClientStage stage) => this.StageChanged?.Invoke(context, stage);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnStageChanged"/>
+		public Action<BetterHttpClientContext>? Configured { get; set; }
+		void IBetterHttpHooks.OnConfigured(BetterHttpClientContext context) => this.Configured?.Invoke(context);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnStageChanged"/>
+		public Action<BetterHttpClientContext, Exception>? Failed { get; set; }
+		void IBetterHttpHooks.OnError(BetterHttpClientContext context, Exception error) => this.Failed?.Invoke(context, error);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnFilterError"/>
+		public Func<BetterHttpClientContext, Exception, bool>? FilterFailed { get; set; }
+		bool IBetterHttpHooks.OnFilterError(BetterHttpClientContext context, Exception error) => this.FilterFailed?.Invoke(context, error) ?? false;
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnRequestCompleted"/>
+		public Action<BetterHttpClientContext>? RequestCompleted { get; set; }
+		void IBetterHttpHooks.OnRequestCompleted(BetterHttpClientContext context) => this.RequestCompleted?.Invoke(context);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnRequestPrepared"/>
+		public Action<BetterHttpClientContext>? RequestPrepared { get; set; }
+		void IBetterHttpHooks.OnRequestPrepared(BetterHttpClientContext context) => this.RequestPrepared?.Invoke(context);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnResponsePrepared"/>
+		public Action<BetterHttpClientContext>? ResponsePrepared { get; set; }
+		void IBetterHttpHooks.OnResponsePrepared(BetterHttpClientContext context) => this.ResponsePrepared?.Invoke(context);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnResponseCompleted"/>
+		public Action<BetterHttpClientContext>? ResponseCompleted { get; set; }
+		void IBetterHttpHooks.OnResponseCompleted(BetterHttpClientContext context) => this.ResponseCompleted?.Invoke(context);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnSocketConnected"/>
+		public Action<BetterHttpClientContext>? SocketConnected { get; set; }
+		void IBetterHttpHooks.OnSocketConnected(BetterHttpClientContext context, Socket socket) => this.SocketConnected?.Invoke(context);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnSocketFailed"/>
+		public Action<BetterHttpClientContext>? SocketFailed { get; set; }
+		void IBetterHttpHooks.OnSocketFailed(BetterHttpClientContext context, Socket socket, Exception error) => this.SocketFailed?.Invoke(context);
+
+		/// <inheritdoc cref="IBetterHttpHooks.OnQueryFinalized"/>
+		public Action<BetterHttpClientContext>? Finalized { get; set; }
+		void IBetterHttpHooks.OnQueryFinalized(BetterHttpClientContext context) => this.Finalized?.Invoke(context);
 
 	}
 
