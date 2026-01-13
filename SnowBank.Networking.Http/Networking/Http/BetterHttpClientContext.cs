@@ -116,6 +116,10 @@ namespace SnowBank.Networking.Http
 		/// </remarks>
 		public Duration Elapsed => (this.CompletedAt ?? this.Client.Clock.GetCurrentInstant()) - this.CreatedAt;
 
+		/// <summary>Gets HTTP status code returned by the server</summary>
+		/// <remarks>Returns <c>0</c> if the query was not sent, canceled, the server did not respond in time, or an error prevented from processing the response.</remarks>
+		public HttpStatusCode StatusCode => this.OriginalResponse?.StatusCode ?? default; //note: we return "0", is there a better value?
+
 		/// <summary>Changes the current stage in the execution pipeline</summary>
 		internal void SetStage(BetterHttpClientStage stage)
 		{
