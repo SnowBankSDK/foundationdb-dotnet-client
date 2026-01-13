@@ -381,6 +381,7 @@ namespace SnowBank.Networking.Http
 
 			var filters = this.Options.Filters;
 
+			var startedAt = this.Clock.GetCurrentInstant();
 			var context = new BetterHttpClientContext()
 			{
 				Id = NewRequestId(),
@@ -388,6 +389,7 @@ namespace SnowBank.Networking.Http
 				Cancellation = ct,
 				State = new(StringComparer.Ordinal),
 				Request = request,
+				CreatedAt = startedAt,
 			};
 
 			try
@@ -428,11 +430,13 @@ namespace SnowBank.Networking.Http
 					HttpResponseMessage res;
 					try
 					{
+						context.SendStartedAt = this.Clock.GetCurrentInstant();
 						res = await this.Client.SendAsync(context.Request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
 						context.OriginalResponse = res;
 					}
 					catch (Exception)
 					{
+						context.SendCompletedAt = this.Clock.GetCurrentInstant();
 						context.FailedStage ??= context.Stage;
 						throw;
 					}
@@ -473,6 +477,7 @@ namespace SnowBank.Networking.Http
 						context.SetStage(BetterHttpClientStage.HandleResponse);
 						try
 						{
+							context.ReceiveStartedAt = this.Clock.GetCurrentInstant();
 							switch (handler)
 							{
 								case Func<BetterHttpClientContext, Task<TResult>> asyncResultHandler:
@@ -514,6 +519,7 @@ namespace SnowBank.Networking.Http
 						{
 							#region Complete Response...
 
+							context.ReceiveCompletedAt = this.Clock.GetCurrentInstant();
 							context.SetStage(BetterHttpClientStage.CompleteResponse);
 							foreach (var filter in filters)
 							{
@@ -549,6 +555,16 @@ namespace SnowBank.Networking.Http
 			{
 				#region Finalize...
 
+				await this.FinalizeQuery(context).ConfigureAwait(false);
+
+				#endregion
+			}
+		}
+
+		private async Task FinalizeQuery(BetterHttpClientContext context)
+		{
+			try
+			{
 				context.SetStage(BetterHttpClientStage.Finalize);
 				foreach (var filter in filters)
 				{
@@ -565,8 +581,10 @@ namespace SnowBank.Networking.Http
 					}
 				}
 				this.Options.Hooks?.OnFinalizeQuery(context);
-
-				#endregion
+			}
+			finally
+			{
+				context.CompletedAt = this.Clock.GetCurrentInstant();
 			}
 		}
 

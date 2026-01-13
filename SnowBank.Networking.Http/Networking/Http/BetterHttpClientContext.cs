@@ -77,6 +77,45 @@ namespace SnowBank.Networking.Http
 		/// <summary>Box that captured any error that happened during the processing of the request</summary>
 		public ExceptionDispatchInfo? Error { get; internal set; }
 
+		/// <summary>Instant when the query was created</summary>
+		/// <remarks>
+		/// <para>This value is measured when the context for the query is created, before any other action is performed.</para>
+		/// </remarks>
+		public Instant CreatedAt { get; init; }
+
+		/// <summary>Instant when the client started sending the request to the server</summary>
+		/// <remarks>
+		/// <para>This value is measured when the client has prepared the request, and will start sending the first byte to the server.</para>
+		/// </remarks>
+		public Instant? SendStartedAt { get; internal set; }
+
+		/// <summary>Instant when the client completed sending the request to the server</summary>
+		public Instant? SendCompletedAt { get; internal set; }
+
+		/// <summary>Instant when the client started receiving the response to the server</summary>
+		/// <remarks>
+		/// <para>This value is measured when the client will start waiting for the response from the server.</para>
+		/// </remarks>
+		public Instant? ReceiveStartedAt { get; internal set; }
+
+		/// <summary>Instant when the client completed receiving the response to the server</summary>
+		/// <remarks>
+		/// <para>This value is measured after the response from the server has been received and processed locally, but before finalization</para>
+		/// <para>The delay will include both the "time to first byte", the time to receive the response body (and trailers), and the time required to post-process the body (decompression, deserialization, ...)</para>
+		/// </remarks>
+		public Instant? ReceiveCompletedAt { get; internal set; }
+
+		/// <summary>Instant when the query was completed</summary>
+		/// <remarks>This value is measured after the response from the server has been received and processed locally, and all filters have been finalized.</remarks>
+		public Instant? CompletedAt { get; internal set; }
+
+		/// <summary>Elapsed duration of the query</summary>
+		/// <remarks>
+		/// <para>This returns the time elapsed between <see cref="CreatedAt"/> and either <see cref="CompletedAt"/>, or the current system time (if <c>null</c>).</para>
+		/// <para>This value will always be greater than the <i>actual</i> network operation between the client and the server, since it includes pre- and post-processing steps.</para>
+		/// </remarks>
+		public Duration Elapsed => (this.CompletedAt ?? this.Client.Clock.GetCurrentInstant()) - this.CreatedAt;
+
 		/// <summary>Changes the current stage in the execution pipeline</summary>
 		internal void SetStage(BetterHttpClientStage stage)
 		{
