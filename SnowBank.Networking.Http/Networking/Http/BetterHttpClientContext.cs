@@ -65,11 +65,16 @@ namespace SnowBank.Networking.Http
 		internal HttpResponseMessage? OriginalResponse { get; set; }
 
 		/// <summary>Response that was received from the remote HTTP server</summary>
+		/// <exception cref="InvalidOperationException">If no response was received by the HTTP server (error when sending the request, timeout, malformed response, ...)</exception>
+		/// <seealso cref="HasResponse"/>
 		public HttpResponseMessage Response
 		{
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			get => this.OriginalResponse ?? FailErrorNotAvailable();
 		}
+
+		/// <summary>Indicates if we have received a response from the remote HTTP server</summary>
+		public bool HasResponse => this.OriginalResponse is not null;
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		private static HttpResponseMessage FailErrorNotAvailable() => throw new InvalidOperationException("The response message is not available.");
