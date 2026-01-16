@@ -106,6 +106,29 @@ namespace SnowBank.Networking
 			return host;
 		}
 
+		/// <inheritdoc/>
+		public IPAddress? GetPublicIPAddressForHost(IVirtualNetworkHost target)
+		{
+			Contract.NotNull(target);
+
+			// use localhost for self-referencing requests
+			if (ReferenceEquals(target, this.Host))
+			{
+				return IPAddress.Loopback;
+			}
+
+			foreach (var adapter in this.Host.Adapters)
+			{
+				if (target.Locations.Contains(adapter.Location) && adapter.UnicastAddresses.Length > 0)
+				{
+					//BUGBUG: IPv4 or IPv6 first?
+					return adapter.UnicastAddresses[0].Address;
+				}
+			}
+
+			return null;
+		}
+
 		/// <inheritdoc />
 		[Obsolete("Use CreateBetterHttpHandler instead")]
 		[EditorBrowsable(EditorBrowsableState.Never)]

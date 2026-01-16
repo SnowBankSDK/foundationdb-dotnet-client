@@ -183,6 +183,17 @@ namespace SnowBank.Networking
 		/// <returns>Corresponding host, or <see langword="null"/> if not found (or not in the same context as the current host)</returns>
 		IVirtualNetworkHost? FindHost(string hostOrAddress);
 
+		/// <summary>Resolves the public IP address of the specified target, as seen by the local host</summary>
+		/// <param name="target">Remote target that we will attempt to reach other the network</param>
+		/// <returns>The IP address of the local host that would be used to connect to <paramref name="target"/> other the simulated network</returns>
+		/// <remarks>
+		/// <para>If <paramref name="target"/> is the same as the local host, this method will return <see cref="IPAddress.Loopback"/>.</para>
+		/// <para>If the local host only has one "virtual NIC", the main address of this adapter will be used.</para>
+		/// <para>Please note that this method does not consider complex routing between virtual networks (NAT, reverse proxy, load balancers, ...).</para>
+		/// </remarks>
+		// ReSharper disable once InconsistentNaming
+		IPAddress? GetPublicIPAddressForHost(IVirtualNetworkHost target);
+
 	}
 
 	/// <summary>Configuration options for a <see cref="IVirtualNetworkLocation">virtual network location</see></summary>
@@ -329,7 +340,7 @@ namespace SnowBank.Networking
 	public interface IVirtualNetworkHost : IEquatable<IVirtualNetworkHost>
 	{
 
-		/// <summary>List of virtual network adapteres available to this host</summary>
+		/// <summary>List of virtual network adapters available to this host</summary>
 		IReadOnlyList<IVirtualNetworkAdapter> Adapters { get; }
 
 		/// <summary>List or virtual network locations that his host can reach</summary>
