@@ -30,13 +30,15 @@
 namespace System.IO.Hashing.Tests
 {
 
+	[Category("Core-SDK")]
+	[Parallelizable(ParallelScope.All)]
 	public class XxHashFacts : SimpleTest
 	{
 
 		[Test]
 		public void Test_XxHash32_HashToUInt32()
 		{
-			// verify assumtions
+			// verify assumptions
 			Assume.That(XxHash32.HashToUInt32(""u8), Is.EqualTo(0x02CC5D05));
 			Assume.That(XxHash32.HashToUInt32("ABC"u8), Is.EqualTo(0x80712ED5));
 			Assume.That(XxHash32.HashToUInt32("foobar"u8), Is.EqualTo(3986901679));
