@@ -39,7 +39,7 @@ namespace SnowBank.Networking.Http
 		public List<IBetterHttpFilter> GlobalFilters { get; set; } = [ ];
 
 		/// <summary>List of global handlers that will be called to configure the HTTP Handlers of all requests performed by the client</summary>
-		public List<Func<HttpMessageHandler, IServiceProvider, HttpMessageHandler>> GlobalHandlers { get; set; } = [ ];
+		public List<Func<HttpMessageHandler, BetterHttpClientOptions, IServiceProvider, HttpMessageHandler>> GlobalHandlers { get; set; } = [ ];
 
 	}
 
@@ -89,7 +89,7 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Adds a global HTTP message handler filter to all clients used by this process</summary>
 		/// <remarks>The handler will be added to the pipeline, and called whenever a new <see cref="HttpMessageHandler"/> is prepared, before executing a request.</remarks>
-		public static IServiceCollection AddGlobalHttpHandler(this IServiceCollection services, Func<HttpMessageHandler, IServiceProvider, HttpMessageHandler> factory)
+		public static IServiceCollection AddGlobalHttpHandler(this IServiceCollection services, Func<HttpMessageHandler, BetterHttpClientOptions, IServiceProvider, HttpMessageHandler> factory)
 		{
 			services
 				.AddOptions<BetterHttpClientOptionsBuilder>()

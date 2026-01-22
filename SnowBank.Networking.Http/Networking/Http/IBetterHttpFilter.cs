@@ -34,28 +34,32 @@ namespace SnowBank.Networking.Http
 		/// <summary>Name of the filter (for logging/troubleshooting purpose)</summary>
 		string Name { get; }
 
+		/// <summary>Optionally wrap the http handler</summary>
+		/// <returns>Wrapped handler, or the same handler if this filter does not need to inject any custom step</returns>
+		HttpMessageHandler Wrap(BetterHttpClientOptions options, HttpMessageHandler handler) => handler;
+
 		/// <summary>Called when the request is being configured</summary>
-		ValueTask Configure(BetterHttpClientContext context);
+		ValueTask Configure(BetterHttpClientContext context) => default;
 
 		/// <summary>Called when before the request will be sent</summary>
 		/// <remarks>This is where the filter can customize the request to add/modify headers or intercept the request stream.</remarks>
-		ValueTask PrepareRequest(BetterHttpClientContext context);
+		ValueTask PrepareRequest(BetterHttpClientContext context) => default;
 
 		/// <summary>Called when the request has been sent</summary>
 		/// <remarks>This is where the filter can release early any resources allocated for preparing the request.</remarks>
-		ValueTask CompleteRequest(BetterHttpClientContext context);
+		ValueTask CompleteRequest(BetterHttpClientContext context) => default;
 
 		/// <summary>Called when the response has been received, but not yet processed</summary>
 		/// <remarks>This is where the filter can customize how the response will be processed, or intercept the response stream.</remarks>
-		ValueTask PrepareResponse(BetterHttpClientContext context);
+		ValueTask PrepareResponse(BetterHttpClientContext context) => default;
 
 		/// <summary>Called when the response has been processed</summary>
 		/// <remarks>This is where the filter can release early any resources allocated for processing the response.</remarks>
-		ValueTask CompleteResponse(BetterHttpClientContext context);
+		ValueTask CompleteResponse(BetterHttpClientContext context) => default;
 
 		/// <summary>Called when the operation has been completed</summary>
 		/// <remarks>This is where the filter can release any resources allocated during the operation</remarks>
-		ValueTask Finalize(BetterHttpClientContext context);
+		ValueTask Finalize(BetterHttpClientContext context) => default;
 
 	}
 

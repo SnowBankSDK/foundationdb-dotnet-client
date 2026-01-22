@@ -50,7 +50,7 @@ namespace SnowBank.Networking.Http
 		public List<IBetterHttpFilter> Filters { get; } = [ ];
 
 		/// <summary>List of wrappers that can be applied to the underlying HTTP message handler</summary>
-		public List<Func<HttpMessageHandler, IServiceProvider, HttpMessageHandler>> Handlers { get; set; } = [ ];
+		public List<Func<HttpMessageHandler, BetterHttpClientOptions, IServiceProvider, HttpMessageHandler>> Handlers { get; set; } = [ ];
 
 		/// <summary>List of default headers applied to each requests</summary>
 		public BetterDefaultHeaders DefaultRequestHeaders { get; set; } = new();
@@ -108,7 +108,7 @@ namespace SnowBank.Networking.Http
 		public void WithDelegatingHandler<THandler>()
 			where THandler : DelegatingHandler
 		{
-			this.Handlers.Add((inner, services) =>
+			this.Handlers.Add((inner, _, services) =>
 			{
 				var handler = ActivatorUtilities.CreateInstance<THandler>(services);
 				handler.InnerHandler = inner;
@@ -117,7 +117,7 @@ namespace SnowBank.Networking.Http
 		}
 
 		/// <summary>Checks if a type implementing <see cref="HttpMessageHandler"/> is considered a "test" client that is emulating requests "in-process"</summary>
-		private static bool IsTestClient(Type type)
+		internal static bool IsTestClient(Type type)
 		{
 			// Microsoft.AspNetCore.TestHost.ClientHandler
 			if (type.Name == "ClientHandler" && type.Namespace == "Microsoft.AspNetCore.TestHost")
@@ -126,6 +126,27 @@ namespace SnowBank.Networking.Http
 			}
 
 			return false;
+		}
+
+		internal BetterHttpClient.MagicalHandler WrapHandler(HttpMessageHandler handler, IServiceProvider services)
+		{
+			this.Credentials?.Configure(this, services);
+
+			// add any optional wrappers on top of that
+			foreach (var factory in this.Handlers)
+			{
+				handler = factory(handler, this, services);
+				Contract.Debug.Assert(handler is not null);
+			}
+
+			// filters may also wrap handlers
+			foreach (var filter in this.Filters)
+			{
+				handler = filter.Wrap(this, handler);
+				Contract.Debug.Assert(handler is not null);
+			}
+
+			return new BetterHttpClient.MagicalHandler(handler);
 		}
 
 		/// <summary>Applies any default configuration to the specified handler</summary>
@@ -197,44 +218,13 @@ namespace SnowBank.Networking.Http
 			return handler;
 		}
 
-		/// <summary>Update the specified handler to properly handle authentication, if it is required.</summary>
-		protected virtual HttpMessageHandler ConfigureAuthentication(HttpMessageHandler handler)
+		/// <summary>Apply filters to the specified handler.</summary>
+		protected virtual HttpMessageHandler ConfigureFilters(HttpMessageHandler handler)
 		{
-			if (this.Credentials is not null || this.UseDefaultCredentials is not null)
+			foreach (var filter in this.Filters)
 			{
-				switch (handler)
-				{
-					case BetterHttpClientHandler clientHandler:
-					{
-						if (this.Credentials is not null) clientHandler.Credentials = this.Credentials;
-						if (this.UseDefaultCredentials is not null) clientHandler.UseDefaultCredentials = this.UseDefaultCredentials.Value;
-
-						return clientHandler;
-					}
-					case HttpClientHandler clientHandler:
-					{
-						if (this.Credentials is not null) clientHandler.Credentials = this.Credentials;
-						if (this.UseDefaultCredentials is not null) clientHandler.UseDefaultCredentials = this.UseDefaultCredentials.Value;
-
-						return clientHandler;
-					}
-					default:
-					{
-						if (IsTestClient(handler.GetType()))
-						{ // this is in-memory, there will be no TLS negotiation, so we can simply skip all of this
-							return handler;
-						}
-
-#if DEBUG
-						//TODO: for delegating handlers, maybe we could try going up the chain of inner handlers until we find something? or should be wrap the handler (similar to how we handle cookies)
-						if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
-#endif
-
-						return handler;
-					}
-				}
+				handler = filter.Wrap(this, handler);
 			}
-
 			return handler;
 		}
 
@@ -358,15 +348,15 @@ namespace SnowBank.Networking.Http
 				betterHandler.Setup(this);
 			}
 
+			handler = ConfigureHttps(handler);
+
 			handler = ConfigureDefaults(handler);
 
-			handler = ConfigureCookies(handler);
-
-			handler = ConfigureAuthentication(handler);
+			handler = ConfigureFilters(handler);
 
 			handler = ConfigureProxy(handler);
 
-			handler = ConfigureHttps(handler);
+			handler = ConfigureCookies(handler);
 
 			return handler;
 		}

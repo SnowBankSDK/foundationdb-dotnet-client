@@ -63,19 +63,7 @@ namespace SnowBank.Networking.Http
 			if (this.Map == null) throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use this method.");
 			var handler = this.Map.CreateBetterHttpHandler(hostAddress, options);
 
-			// add our own delegating handler that will be able to hook into the request lifecycle
-			handler = new BetterHttpClient.MagicalHandler(handler);
-
-			// add any optional wrappers on top of that
-			if (options.Handlers.Count > 0)
-			{
-				foreach (var factory in options.Handlers)
-				{
-					handler = factory(handler, this.Services);
-				}
-			}
-
-			return handler;
+			return options.WrapHandler(handler, this.Services);
 		}
 
 		/// <inheritdoc />

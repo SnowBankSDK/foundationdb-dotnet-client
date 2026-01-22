@@ -95,10 +95,11 @@ namespace SnowBank.Networking.Http
 				}
 
 				var client = context.Client;
-				var filters = client.Options.Filters;
 
 				context.SetStage(BetterHttpClientStage.PrepareRequest);
-				foreach (var filter in filters)
+
+				// notify all filters
+				foreach (var filter in client.Options.Filters)
 				{
 					try
 					{
@@ -118,7 +119,7 @@ namespace SnowBank.Networking.Http
 				var res = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
 				context.SetStage(BetterHttpClientStage.CompleteRequest);
-				foreach (var filter in filters)
+				foreach (var filter in client.Options.Filters)
 				{
 					try
 					{
@@ -132,6 +133,7 @@ namespace SnowBank.Networking.Http
 						}
 					}
 				}
+
 				client.Options.Hooks?.OnRequestCompleted(context);
 
 				//note: handling of the response is deferred to the caller!
@@ -144,7 +146,7 @@ namespace SnowBank.Networking.Http
 			BetterHttpClientOptions options,
 			HttpMessageHandler handler,
 			ILogger<BetterHttpClient> logger,
-			NodaTime.IClock? clock,
+			NodaTime.IClock? clock, //REVIEW: TimeProvider?
 			IServiceProvider services)
 		{
 			this.Id = CorrelationIdGenerator.GetNextId();
@@ -158,47 +160,26 @@ namespace SnowBank.Networking.Http
 			this.CreatedAt = this.Clock.GetCurrentInstant();
 			this.Services = services;
 
-			this.Client = CreateClientState();
-		}
+			// apply the filters and custom handlers, as well as our own delegating handler that will be able to hook into the request lifecycle
+			var wrappedHandler = this.Options.WrapHandler(this.Handler, this.Services);
 
-		public HttpRequestHeaders DefaultRequestHeaders => this.Client.DefaultRequestHeaders;
-
-		private HttpClient CreateClientState()
-		{
 			// note: we _could_ skip HttpClient altogether, and directly invoke the HttpMessageHandler, BUT:
 			// 1) there is a lot of cancellation/timeout/error handling logic that is already implemented by HttpClient
 			// 2) all the methods to copy over the default headers are "internal" and cannot be accessed easily, without using reflection or unsafe shenanigans! :(
-
-			var client = CreateClient(this.Handler);
-
-			// copy all the default headers
-			this.Options.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
-
-			return client;
-		}
-
-		private HttpClient CreateClient(HttpMessageHandler handler)
-		{
-			// add our own delegating handler that will be able to hook into the request lifecycle
-			handler = new MagicalHandler(handler);
-
-			// add any optional wrappers on top of that
-			if (this.Options.Handlers.Count > 0)
-			{
-				foreach (var factory in this.Options.Handlers)
-				{
-					handler = factory(handler, this.Services);
-				}
-			}
-
-			var client = new HttpClient(handler, disposeHandler: true)
+			var client = new HttpClient(wrappedHandler, disposeHandler: true)
 			{
 				BaseAddress = this.HostAddress,
 				DefaultRequestVersion = this.Options.DefaultRequestVersion,
 				DefaultVersionPolicy = this.Options.DefaultVersionPolicy,
 			};
-			return client;
+
+			// copy all the default headers
+			this.Options.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
+
+			this.Client = client;
 		}
+
+		public HttpRequestHeaders DefaultRequestHeaders => this.Client.DefaultRequestHeaders;
 
 		public string NewRequestId()
 		{
@@ -421,7 +402,7 @@ namespace SnowBank.Networking.Http
 
 				using (request)
 				{
-					//note: handling of the request is performed inse the delegating handler
+					//note: handling of the request is performed inside the delegating handler
 
 					#region Send...
 
