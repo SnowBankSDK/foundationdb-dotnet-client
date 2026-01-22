@@ -65,10 +65,7 @@ namespace SnowBank.Networking.Http
 		public CookieContainer? Cookies { get; set; }
 
 		/// <summary>Default credentials that will be used by each request.</summary>
-		public ICredentials? Credentials { get; set; }
-
-		/// <summary>Specifies whether default credentials are sent with requests by the client.</summary>
-		public bool? UseDefaultCredentials { get; set; }
+		public IBetterCredentials? Credentials { get; set; }
 
 		/// <summary>Specifies the proxy information used by the client.</summary>
 		public IWebProxy? Proxy { get; set; }
@@ -130,7 +127,13 @@ namespace SnowBank.Networking.Http
 
 		internal BetterHttpClient.MagicalHandler WrapHandler(HttpMessageHandler handler, IServiceProvider services)
 		{
-			this.Credentials?.Configure(this, services);
+			Contract.Debug.Requires(handler is not null);
+
+			if (this.Credentials is not null)
+			{
+				handler = this.Credentials.Configure(handler, this, services);
+				Contract.Debug.Assert(handler is not null);
+			}
 
 			// add any optional wrappers on top of that
 			foreach (var factory in this.Handlers)

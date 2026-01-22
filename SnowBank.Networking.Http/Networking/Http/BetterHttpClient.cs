@@ -113,6 +113,13 @@ namespace SnowBank.Networking.Http
 						}
 					}
 				}
+
+				// handle authentication
+				if (context.Client.Options.Credentials is not null)
+				{
+					await context.Client.Options.Credentials.OnBeforeRequest(context);
+				}
+
 				client.Options.Hooks?.OnRequestPrepared(context);
 
 				context.SetStage(BetterHttpClientStage.Send);
