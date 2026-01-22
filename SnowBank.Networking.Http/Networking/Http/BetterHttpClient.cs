@@ -70,7 +70,7 @@ namespace SnowBank.Networking.Http
 		public IClock Clock { get; }
 
 		/// <summary>Provider for services used by this client when creating filters</summary>
-		private IServiceProvider Services { get; }
+		internal IServiceProvider Services { get; }
 
 		/// <summary>Internal logger</summary>
 		private ILogger Logger { get; }

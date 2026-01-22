@@ -82,6 +82,9 @@ namespace SnowBank.Networking.Http
 		/// <summary>Box that captured any error that happened during the processing of the request</summary>
 		public ExceptionDispatchInfo? Error { get; internal set; }
 
+		/// <summary>Provider for services used by this client when creating filters</summary>
+		public IServiceProvider Services => this.Client.Services;
+
 		/// <summary>Instant when the query was created</summary>
 		/// <remarks>
 		/// <para>This value is measured when the context for the query is created, before any other action is performed.</para>
