@@ -98,6 +98,16 @@ namespace SnowBank.Networking.Http
 
 				context.SetStage(BetterHttpClientStage.PrepareRequest);
 
+				// inject any custom request option
+				if (client.Options.Options is not null)
+				{
+					IDictionary<string, object?> dict = request.Options;
+					foreach (var kv in client.Options.Options)
+					{
+						dict.Add(kv);
+					}
+				}
+
 				// notify all filters
 				foreach (var filter in client.Options.Filters)
 				{
@@ -117,7 +127,7 @@ namespace SnowBank.Networking.Http
 				// handle authentication
 				if (context.Client.Options.Credentials is not null)
 				{
-					await context.Client.Options.Credentials.OnBeforeRequest(context);
+					await context.Client.Options.Credentials.OnBeforeRequest(context).ConfigureAwait(false);
 				}
 
 				client.Options.Hooks?.OnRequestPrepared(context);

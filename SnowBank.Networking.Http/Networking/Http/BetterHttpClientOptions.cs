@@ -67,6 +67,10 @@ namespace SnowBank.Networking.Http
 		/// <summary>Default credentials that will be used by each request.</summary>
 		public IBetterCredentials? Credentials { get; set; }
 
+		/// <summary>List of custom options that will be added to the <see cref="HttpRequestMessage.Options"/> of the request, before evaluated any filters</summary>
+		/// <remarks>Use this to "inject" any custom option that could be used to override the behavior of filters</remarks>
+		public List<KeyValuePair<string, object?>>? Options { get; set; }
+
 		/// <summary>Specifies the proxy information used by the client.</summary>
 		public IWebProxy? Proxy { get; set; }
 
