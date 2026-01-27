@@ -350,6 +350,18 @@ namespace SnowBank.Data.Json
 		/// <param name="jsonBytes">JSON document to parse, encoded as UTF-8 bytes</param>
 		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
 		/// <param name="result">Corresponding JSON value. If <paramref name="jsonBytes"/> is empty, will return <see cref="JsonNull.Missing"/></param>
+		/// <returns><c>true</c> if <paramref name="jsonBytes"/> contained valid JSON; otherwise, <c>false</c></returns>
+		/// <remarks>
+		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please configure the <paramref name="settings"/> accordingly.</para>
+		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
+		/// </remarks>
+		public static bool TryParse(Slice jsonBytes, CrystalJsonSettings? settings, [MaybeNullWhen(false)] out JsonValue result)
+			=> TryParse(jsonBytes.Span, settings, out result);
+
+		/// <summary>Parses a JSON text literal, and returns the corresponding JSON value if it is valid.</summary>
+		/// <param name="jsonBytes">JSON document to parse, encoded as UTF-8 bytes</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
+		/// <param name="result">Corresponding JSON value. If <paramref name="jsonBytes"/> is empty, will return <see cref="JsonNull.Missing"/></param>
 		/// <param name="error">If the parsing fails, receives the exception that represents the issue</param>
 		/// <returns><c>true</c> if <paramref name="jsonBytes"/> contained valid JSON; otherwise, <c>false</c></returns>
 		/// <remarks>
@@ -371,6 +383,19 @@ namespace SnowBank.Data.Json
 				return false;
 			}
 		}
+
+		/// <summary>Parses a JSON text literal, and returns the corresponding JSON value if it is valid.</summary>
+		/// <param name="jsonBytes">JSON document to parse, encoded as UTF-8 bytes</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
+		/// <param name="result">Corresponding JSON value. If <paramref name="jsonBytes"/> is empty, will return <see cref="JsonNull.Missing"/></param>
+		/// <param name="error">If the parsing fails, receives the exception that represents the issue</param>
+		/// <returns><c>true</c> if <paramref name="jsonBytes"/> contained valid JSON; otherwise, <c>false</c></returns>
+		/// <remarks>
+		/// <para>The value may be mutable (for objects and arrays) and can be modified. If you require an immutable thread-safe value, please configure the <paramref name="settings"/> accordingly.</para>
+		/// <para>If the result is always expected to be an Array or an Object, please call <see cref="JsonValueExtensions.AsArray"/> or <see cref="JsonValueExtensions.AsObject"/> on the result.</para>
+		/// </remarks>
+		public static bool TryParse(Slice jsonBytes, CrystalJsonSettings? settings, [MaybeNullWhen(false)] out JsonValue result, out Exception? error)
+			=> TryParse(jsonBytes.Span, settings, out result, out error);
 
 		/// <summary>Parses a JSON text literal that is expected to contain an Array</summary>
 		/// <param name="jsonText">JSON text document to parse</param>
