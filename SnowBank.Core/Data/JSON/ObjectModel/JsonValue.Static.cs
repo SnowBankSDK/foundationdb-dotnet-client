@@ -358,6 +358,54 @@ namespace SnowBank.Data.Json
 		public static bool TryParse(Slice jsonBytes, CrystalJsonSettings? settings, [MaybeNullWhen(false)] out JsonValue result)
 			=> TryParse(jsonBytes.Span, settings, out result);
 
+		/// <summary>Parses a JSON text literal, and returns the corresponding JSON Object if it is valid.</summary>
+		/// <param name="jsonBytes">JSON document to parse, encoded as UTF-8 bytes</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if <c>null</c>)</param>
+		/// <param name="result">Corresponding JSON Object.</param>
+		/// <returns><c>true</c> if <paramref name="jsonBytes"/> contained valid JSON Object; otherwise, <c>false</c></returns>
+		public static bool TryParseObject(ReadOnlySpan<byte> jsonBytes, CrystalJsonSettings? settings, [MaybeNullWhen(false)] out JsonObject result)
+		{
+			if (!TryParse(jsonBytes, settings, out var value) || value is not JsonObject obj)
+			{
+				result = null;
+				return false;
+			}
+			result = obj;
+			return true;
+		}
+
+		/// <summary>Parses a JSON text literal, and returns the corresponding JSON Object if it is valid.</summary>
+		/// <param name="jsonBytes">JSON document to parse, encoded as UTF-8 bytes</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if <c>null</c>)</param>
+		/// <param name="result">Corresponding JSON Object.</param>
+		/// <returns><c>true</c> if <paramref name="jsonBytes"/> contained valid JSON Object; otherwise, <c>false</c></returns>
+		public static bool TryParseObject(Slice jsonBytes, CrystalJsonSettings? settings, [MaybeNullWhen(false)] out JsonObject result)
+			=> TryParseObject(jsonBytes.Span, settings, out result);
+
+		/// <summary>Parses a JSON text literal, and returns the corresponding JSON Array if it is valid.</summary>
+		/// <param name="jsonBytes">JSON document to parse, encoded as UTF-8 bytes</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if <c>null</c>)</param>
+		/// <param name="result">Corresponding JSON Array.</param>
+		/// <returns><c>true</c> if <paramref name="jsonBytes"/> contained valid a JSON Array; otherwise, <c>false</c></returns>
+		public static bool TryParseArray(ReadOnlySpan<byte> jsonBytes, CrystalJsonSettings? settings, [MaybeNullWhen(false)] out JsonArray result)
+		{
+			if (!TryParse(jsonBytes, settings, out var value) || value is not JsonArray arr)
+			{
+				result = null;
+				return false;
+			}
+			result = arr;
+			return true;
+		}
+
+		/// <summary>Parses a JSON text literal, and returns the corresponding JSON Array if it is valid.</summary>
+		/// <param name="jsonBytes">JSON document to parse, encoded as UTF-8 bytes</param>
+		/// <param name="settings">Serialization settings (use default JSON settings if <c>null</c>)</param>
+		/// <param name="result">Corresponding JSON Array.</param>
+		/// <returns><c>true</c> if <paramref name="jsonBytes"/> contained valid a JSON Array; otherwise, <c>false</c></returns>
+		public static bool TryParseArray(Slice jsonBytes, CrystalJsonSettings? settings, [MaybeNullWhen(false)] out JsonArray result)
+			=> TryParseArray(jsonBytes.Span, settings, out result);
+
 		/// <summary>Parses a JSON text literal, and returns the corresponding JSON value if it is valid.</summary>
 		/// <param name="jsonBytes">JSON document to parse, encoded as UTF-8 bytes</param>
 		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
