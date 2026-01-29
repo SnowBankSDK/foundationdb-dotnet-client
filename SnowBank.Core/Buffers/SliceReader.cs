@@ -1375,7 +1375,7 @@ namespace SnowBank.Buffers
 		public ushort ReadVarInt16()
 		{
 			//note: this could read up to 21 bits of data, so we check for overflow
-			return checked((ushort)ReadVarInt(3));
+			return checked((ushort) ReadVarInt(3));
 		}
 
 		/// <summary>Reads a 7-bit encoded unsigned int (aka 'Varint32') from the buffer, and advances the cursor</summary>
@@ -1384,10 +1384,24 @@ namespace SnowBank.Buffers
 		public uint ReadVarInt32()
 		{
 			//note: this could read up to 35 bits of data, so we check for overflow
-			return checked((uint)ReadVarInt(5));
+			return checked((uint) ReadVarInt(5));
 		}
 
-		/// <summary>Reads a 7-bit encoded unsigned long (aka 'Varint32') from the buffer, and advances the cursor</summary>
+		/// <summary>Reads a 7-bit encoded unsigned int (aka 'Varint32') from the buffer, and advances the cursor if successful.</summary>
+		/// <remarks>Can Read up to 5 bytes from the input</remarks>
+		public bool TryReadVarInt32(out uint value)
+		{
+			if (TryReadVarInt(5, out var x) && x <= uint.MaxValue)
+			{
+				value = unchecked((uint) x);
+				return true;
+			}
+
+			value = 0;
+			return false;
+		}
+
+		/// <summary>Reads a 7-bit encoded unsigned long (aka 'Varint64') from the buffer, and advances the cursor</summary>
 		/// <remarks>Can Read up to 10 bytes from the input</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public ulong ReadVarInt64()
@@ -1395,8 +1409,17 @@ namespace SnowBank.Buffers
 			return ReadVarInt(10);
 		}
 
+		/// <summary>Reads a 7-bit encoded unsigned long (aka 'Varint64') from the buffer, and advances the cursor if successful.</summary>
+		/// <remarks>Can Read up to 5 bytes from the input</remarks>
+		public bool TryReadVarInt64(out ulong value)
+		{
+			return TryReadVarInt(10, out value);
+		}
+
 		/// <summary>Reads a Base 128 Varint from the input</summary>
 		/// <param name="count">Maximum number of bytes allowed (5 for 32 bits, 10 for 64 bits)</param>
+		/// <remarks>Decoded value</remarks>
+		/// <exception cref="FormatException">If the value is not a valid Varint encoding, or the buffer is too small</exception>
 		private ulong ReadVarInt(int count)
 		{
 			var buffer = this.Buffer.Array;
@@ -1423,6 +1446,40 @@ namespace SnowBank.Buffers
 			throw ThrowHelper.FormatException("Malformed Varint");
 		}
 
+		/// <summary>Attempts to read a Base 128 Varint from the input</summary>
+		/// <param name="count">Maximum number of bytes allowed (5 for 32 bits, 10 for 64 bits)</param>
+		/// <param name="value">Receive the decoded value, if successful</param>
+		/// <remarks><c>true</c> if the value was decoded successfully.</remarks>
+		private bool TryReadVarInt(int count, out ulong value)
+		{
+			var buffer = this.Buffer.Array;
+			int p = this.Buffer.Offset + this.Position;
+			int end = this.Buffer.Offset + this.Buffer.Count;
+
+			ulong x = 0;
+			int s = 0;
+
+			// read bytes until the MSB is unset
+			while (count-- > 0)
+			{
+				if (p > end) goto invalid;
+				byte b = buffer[p++];
+
+				x |= (b & 0x7FUL) << s;
+				if (b < 0x80)
+				{
+					this.Position = p - this.Buffer.Offset;
+					value = x;
+					return true;
+				}
+				s += 7;
+			}
+
+		invalid:
+			value = 0;
+			return false;
+		}
+
 		/// <summary>Reads a variable sized slice, by first reading its size (stored as a Varint32) and then the data</summary>
 		[Pure]
 		public Slice ReadVarBytes()
@@ -1431,6 +1488,20 @@ namespace SnowBank.Buffers
 			if (size > int.MaxValue) throw ThrowHelper.FormatException("Malformed variable-sized array");
 			if (size == 0) return Slice.Empty;
 			return ReadBytes((int)size);
+		}
+
+		/// <summary>Attempts to read a variable sized slice, by first reading its size (stored as a Varint32) and then the data.</summary>
+		/// <param name="bytes">Decoded bytes, if successful.</param>
+		/// <returns><c>true</c> if the read was successful, or <c>false</c> if the length is incorrect, or the buffer is too small.</returns>
+		public bool TryReadVarBytes(out Slice bytes)
+		{
+			if (TryReadVarInt32(out var len) && len <= int.MaxValue)
+			{
+				return TryReadBytes(unchecked((int) len), out bytes);
+			}
+
+			bytes = default;
+			return false;
 		}
 
 		/// <summary>Reads an utf-8 encoded string prefixed by a variable-sized length</summary>
