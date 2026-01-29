@@ -38,7 +38,7 @@ namespace Aspire.Hosting
 	{
 
 		/// <summary>Tag for the latest v7.4 docker image</summary>
-		public static readonly Version LatestVersion74 = new Version(7, 4, 4);
+		public static readonly Version LatestVersion74 = new Version(7, 4, 6);
 
 		/// <summary>Tag for the latest v7.3 docker image</summary>
 		public static readonly Version LatestVersion73 = new Version(7, 3, 70);
@@ -173,7 +173,7 @@ namespace Aspire.Hosting
 		/// <param name="apiVersion">API version that is requested by the application</param>
 		/// <param name="root">Root subspace location used by the application, in the cluster keyspace.</param>
 		/// <param name="port">Custom port for the docker container</param>
-		/// <param name="clusterVersion">If not <c>null</c>, specifies the targeted version for the cluster nodes (ex: "7.4.4", "7.3.27", "7.4.*", "7.*", ...)</param>
+		/// <param name="clusterVersion">If not <c>null</c>, specifies the targeted version for the cluster nodes (ex: "7.4.6", "7.3.27", "7.4.*", "7.*", ...)</param>
 		/// <param name="rollForward">Specifies the policy used to optionally select a more recent version</param>
 		public static IResourceBuilder<FdbClusterResource> AddFoundationDb(this IDistributedApplicationBuilder builder, string name, int apiVersion, string root, int? port = null, string? clusterVersion = null, FdbVersionPolicy? rollForward = null)
 		{
@@ -186,7 +186,7 @@ namespace Aspire.Hosting
 		/// <param name="apiVersion">API version that is requested by the application</param>
 		/// <param name="root">Root subspace location used by the application, in the cluster keyspace.</param>
 		/// <param name="port">The host port to bind the underlying container to (defaults to <c>4550</c>)</param>
-		/// <param name="clusterVersion">If not <c>null</c>, specifies the targeted version for the cluster nodes (ex: "7.4.4", "7.3.27", "7.4.*", "7.*", ...)</param>
+		/// <param name="clusterVersion">If not <c>null</c>, specifies the targeted version for the cluster nodes (ex: "7.4.6", "7.3.27", "7.4.*", "7.*", ...)</param>
 		/// <param name="rollForward">Specifies the policy used to optionally select a more recent version</param>
 		/// <param name="imageRegistry">Specifies a custom image registry for the container (defaults to <c>"docker.io"</c>)</param>
 		public static IResourceBuilder<FdbClusterResource> AddFoundationDb(

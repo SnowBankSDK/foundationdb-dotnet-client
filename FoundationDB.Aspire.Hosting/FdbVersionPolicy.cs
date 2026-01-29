@@ -39,7 +39,7 @@ namespace Aspire.Hosting.ApplicationModel
 
 		/// <summary>Select the latest compatible version published to the docker registry, that is greater than or equal to the version requested.</summary>
 		/// <remarks>
-		/// <para>For example, if version <c>6.0.3</c> is requested, but <c>7.4.4</c> is currently available, it will be used instead.</para>
+		/// <para>For example, if version <c>6.0.3</c> is requested, but <c>7.4.6</c> is currently available, it will be used instead.</para>
 		/// <para>If a newer version is available, but is known to break compatibility (by removing support for the API level selected), then it will not be included in the selection process.</para>
 		/// <para>Please note that there is no guarantee that the latest major version will be compatible with this version of the .NET binding, and that request API level is still supported!</para>
 		/// </remarks>
@@ -47,7 +47,7 @@ namespace Aspire.Hosting.ApplicationModel
 
 		/// <summary>Select the latest compatible minor version published to the docker registry, that is greater than or equal to the version requested.</summary>
 		/// <remarks>
-		/// <para>For example, if version <c>7.1.3</c> is requested, but <c>7.4.4</c> is the latest <c>7.x</c> version available, it will be used even if there is a more recent <c>8.x</c> version.</para>
+		/// <para>For example, if version <c>7.1.3</c> is requested, but <c>7.4.6</c> is the latest <c>7.x</c> version available, it will be used even if there is a more recent <c>8.x</c> version.</para>
 		/// <para>If a newer version is available, but is known to break compatibility (by removing support for the API level selected), then it will not be included in the selection process.</para>
 		/// </remarks>
 		LatestMinor,

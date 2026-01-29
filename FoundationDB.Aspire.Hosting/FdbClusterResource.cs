@@ -51,7 +51,7 @@ namespace Aspire.Hosting.ApplicationModel
 		/// <remarks>The strategy works similarly to the <c>rollForward</c> property of the <c>global.json</c> file, see https://learn.microsoft.com/en-us/dotnet/core/tools/global-json.</remarks>
 		public required FdbVersionPolicy RollForward { get; set; }
 
-		/// <summary>Tag of the docker image that will be used to run the cluster locally. (ex: <c>"latest"</c>, <c>"7.4.4"</c>, <c>"7.3.68"</c>, ...)</summary>
+		/// <summary>Tag of the docker image that will be used to run the cluster locally. (ex: <c>"latest"</c>, <c>"7.4.6"</c>, <c>"7.3.68"</c>, ...)</summary>
 		public required string DockerTag { get; set; }
 
 		/// <summary>Path to the local native client library (<c>fdb_c.dll</c> on Windows, <c>libfdb_c.so</c> on Linux, <c>libfdb_c.dylib</c> on macOS, ...)</summary>

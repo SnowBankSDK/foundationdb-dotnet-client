@@ -100,7 +100,7 @@ private static void Main(string[] args)
         .AddFoundationDb("fdb",
             apiVersion: 730,
             root: "/Tenant/ACME/MySuperApp/v1",
-            clusterVersion: "7.4.4",
+            clusterVersion: "7.4.6",
             rollForward: FdbVersionPolicy.Exact
          );
 
@@ -273,7 +273,7 @@ In your AppHost:
         .AddFoundationDb("fdb",
             apiVersion: 730,
             root: "/Tenant/ACME/MySuperApp/v1",
-            clusterVersion: "7.4.4",
+            clusterVersion: "7.4.6",
             rollForward: FdbVersionPolicy.Exact
         );
 ```
@@ -533,7 +533,7 @@ Example of a `Dockerfile` that will grab v7.4.x binaries and inject them into yo
 
 ```Dockerfile
 # Version of the FoundationDB Client Library
-ARG FDB_VERSION=7.4.4
+ARG FDB_VERSION=7.4.6
 
 # We will need the official fdb docker image to obtain the client binaries
 FROM foundationdb/foundationdb:${FDB_VERSION} as fdb
