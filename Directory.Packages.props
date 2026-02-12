@@ -14,11 +14,10 @@
     <PackageVersion Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.Testing.Extensions.Telemetry" Version="2.0.2" />
-    <PackageVersion Include="Microsoft.Testing.Extensions.VSTestBridge" Version="2.0.2" />
-    <PackageVersion Include="Microsoft.Testing.Platform" Version="2.0.2" />
-    <PackageVersion Include="Microsoft.Testing.Platform.MSBuild" Version="2.0.2" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.Telemetry" Version="2.1.0" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.VSTestBridge" Version="2.1.0" />
+    <PackageVersion Include="Microsoft.Testing.Platform" Version="2.1.0" />
+    <PackageVersion Include="Microsoft.Testing.Platform.MSBuild" Version="2.1.0" />
     <PackageVersion Include="Microsoft.TestPlatform.TestHost" Version="18.0.1" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="NodaTime" Version="3.2.2" />
@@ -39,71 +38,74 @@
   </ItemGroup>
   <!-- Packages for .NET 10 -->
   <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net10.0'))">
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="10.0.0" />
-    <PackageVersion Include="System.Collections.Immutable" Version="10.0.0" />
-    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.0" />
-    <PackageVersion Include="System.IO.Hashing" Version="10.0.0" />
-    <PackageVersion Include="System.IO.Pipelines" Version="10.0.0" />
-    <PackageVersion Include="System.Reflection.Metadata" Version="10.0.0" />
-    <PackageVersion Include="System.Text.Encoding.CodePages" Version="10.0.0" />
-    <PackageVersion Include="System.Text.Json" Version="10.0.0" />
-    <PackageVersion Include="System.Threading.Channels" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.103" />
+    <PackageVersion Include="System.Collections.Immutable" Version="10.0.3" />
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.3" />
+    <PackageVersion Include="System.IO.Hashing" Version="10.0.3" />
+    <PackageVersion Include="System.IO.Pipelines" Version="10.0.3" />
+    <PackageVersion Include="System.Reflection.Metadata" Version="10.0.3" />
+    <PackageVersion Include="System.Text.Encoding.CodePages" Version="10.0.3" />
+    <PackageVersion Include="System.Text.Json" Version="10.0.3" />
+    <PackageVersion Include="System.Threading.Channels" Version="10.0.3" />
   </ItemGroup>
   <!-- Packages for .NET 9 -->
   <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0')) and !$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net10.0'))">
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="9.0.11" />
-    <PackageVersion Include="System.Collections.Immutable" Version="9.0.11" />
-    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="9.0.11" />
-    <PackageVersion Include="System.IO.Hashing" Version="9.0.11" />
-    <PackageVersion Include="System.IO.Pipelines" Version="9.0.11" />
-    <PackageVersion Include="System.Reflection.Metadata" Version="9.0.11" />
-    <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.11" />
-    <PackageVersion Include="System.Text.Json" Version="9.0.11" />
-    <PackageVersion Include="System.Threading.Channels" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <PackageVersion Include="System.Collections.Immutable" Version="9.0.13" />
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="9.0.13" />
+    <PackageVersion Include="System.IO.Hashing" Version="9.0.13" />
+    <PackageVersion Include="System.IO.Pipelines" Version="9.0.13" />
+    <PackageVersion Include="System.Reflection.Metadata" Version="9.0.13" />
+    <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.13" />
+    <PackageVersion Include="System.Text.Json" Version="9.0.13" />
+    <PackageVersion Include="System.Threading.Channels" Version="9.0.13" />
   </ItemGroup>
   <!-- Packages for .NET 8 or lower -->
   <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))">
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.11" />
-    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="8.0.22" />
-    <PackageVersion Include="System.Collections.Immutable" Version="9.0.11" />
-    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="9.0.11" />
-    <PackageVersion Include="System.IO.Hashing" Version="9.0.11" />
-    <PackageVersion Include="System.IO.Pipelines" Version="9.0.11" />
-    <PackageVersion Include="System.Reflection.Metadata" Version="9.0.11" />
-    <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.11" />
-    <PackageVersion Include="System.Text.Json" Version="9.0.11" />
-    <PackageVersion Include="System.Threading.Channels" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.13" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="8.0.24" />
+    <PackageVersion Include="System.Collections.Immutable" Version="9.0.13" />
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="9.0.13" />
+    <PackageVersion Include="System.IO.Hashing" Version="9.0.13" />
+    <PackageVersion Include="System.IO.Pipelines" Version="9.0.13" />
+    <PackageVersion Include="System.Reflection.Metadata" Version="9.0.13" />
+    <PackageVersion Include="System.Text.Encoding.CodePages" Version="9.0.13" />
+    <PackageVersion Include="System.Text.Json" Version="9.0.13" />
+    <PackageVersion Include="System.Threading.Channels" Version="9.0.13" />
   </ItemGroup>
 </Project>
