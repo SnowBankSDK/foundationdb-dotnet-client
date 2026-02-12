@@ -21,7 +21,8 @@ jobs:
     - name: Install .NET SDK
       uses: actions/setup-dotnet@6bd8b7f7774af54e05809fcc5431931b3eb1ddee # v4.0.1
       with:
-        dotnet-version: 10.0.x
+        dotnet-version: 11.0.x
+        dotnet-quality: 'preview'
     - name: Download Binaries
       shell: pwsh
       run: |

@@ -26,11 +26,11 @@
 		
 		<!-- Framework versions for the core libraries (Core, FoundationDb.Client, ...) -->
 		<CoreSdkRuntimeVersions Condition="'$(CoreSdkRuntimeVersions)' == ''">$(CoreSdkVersions)</CoreSdkRuntimeVersions>
-		<CoreSdkRuntimeVersions Condition="'$(CoreSdkRuntimeVersions)' == ''">net10.0;net9.0;net8.0</CoreSdkRuntimeVersions>
+		<CoreSdkRuntimeVersions Condition="'$(CoreSdkRuntimeVersions)' == ''">net11.0;net10.0;net8.0</CoreSdkRuntimeVersions>
 		
 		<!-- Framework versions for tools that are packed (FdbTop, FdbShell, ...) -->
 		<CoreSdkToolsVersions Condition="'$(CoreSdkToolsVersions)' == ''">$(CoreSdkVersions)</CoreSdkToolsVersions>
-		<CoreSdkToolsVersions Condition="'$(CoreSdkToolsVersions)' == ''">net10.0;net9.0;net8.0</CoreSdkToolsVersions>
+		<CoreSdkToolsVersions Condition="'$(CoreSdkToolsVersions)' == ''">net11.0;net10.0;net8.0</CoreSdkToolsVersions>
 		
 		<!-- Framework versions for local tools that are not packed (FdbBurner, Sandboxes, ...) -->
 		<CoreSdkUtilityVersions Condition="'$(CoreSdkUtilityVersions)' == ''">$(CoreSdkVersions)</CoreSdkUtilityVersions>
@@ -38,7 +38,7 @@
 		
 		<!-- Framework versions for Aspire (only .NET8+) -->
 		<CloudSdkRuntimeVersions Condition="'$(CloudSdkRuntimeVersions)' == ''">$(CoreSdkVersions)</CloudSdkRuntimeVersions>
-		<CloudSdkRuntimeVersions Condition="'$(CloudSdkRuntimeVersions)' == ''">net10.0;net9.0;net8.0</CloudSdkRuntimeVersions>
+		<CloudSdkRuntimeVersions Condition="'$(CloudSdkRuntimeVersions)' == ''">net11.0;net10.0;net8.0</CloudSdkRuntimeVersions>
 	</PropertyGroup>
 
 </Project>
