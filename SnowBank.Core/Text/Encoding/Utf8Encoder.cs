@@ -2,6 +2,7 @@
 
 namespace SnowBank.Text
 {
+	using System.Buffers;
 	using System.Text;
 	using SnowBank.Buffers;
 
@@ -663,5 +664,74 @@ namespace SnowBank.Text
 			return bytes;
 		}
 
+		/// <summary>Tests if a buffer containing a UTF-8 string is equal to a UTF-16 string, by comparing each Rune</summary>
+		/// <param name="left">Buffer that points to a UTF-8 encoded string</param>
+		/// <param name="right">String that contains a UTF-16 encoded string</param>
+		/// <returns><c>true</c> if they both contain the same sequences of runes (they are "equal"), or <c>false</c> if they are different, or <paramref name="left"/> is an invalid UTF-8 sequence</returns>
+		/// <remarks>This method does not normalize either of the arguments. The caller must ensure that they both are in the canonical form (by calling <see cref="string.Normalize()"/>, or only using "safe" constants)</remarks>
+		[Pure]
+		public static bool Equals(ReadOnlySpan<byte> left, string right) => Equals(left, right.AsSpan());
+
+		/// <summary>Tests if a buffer containing a UTF-8 string is equal to a UTF-16 string, by comparing each Rune</summary>
+		/// <param name="left">Buffer that points to a UTF-8 encoded string</param>
+		/// <param name="right">String that contains a UTF-16 encoded string</param>
+		/// <returns><c>true</c> if they both contain the same sequences of runes (they are "equal"), or <c>false</c> if they are different, or <paramref name="left"/> is an invalid UTF-8 sequence</returns>
+		/// <remarks>This method does not normalize either of the arguments. The caller must ensure that they both are in the canonical form (by calling <see cref="string.Normalize()"/>, or only using "safe" constants)</remarks>
+		public static bool Equals(Slice left, string right) => Equals(left.Span, right);
+
+		/// <summary>Tests if a buffer containing a UTF-8 string is equal to a UTF-16 string, by comparing each Rune</summary>
+		/// <param name="left">Buffer that points to a UTF-8 encoded string</param>
+		/// <param name="right">Buffer that points to a UTF-16 encoded string</param>
+		/// <returns><c>true</c> if they both contain the same sequences of runes (they are "equal"), or <c>false</c> if they are different, or <paramref name="left"/> is an invalid UTF-8 sequence</returns>
+		/// <remarks>This method does not normalize either of the arguments. The caller must ensure that they both are in the canonical form (by calling <see cref="string.Normalize()"/>, or only using "safe" constants)</remarks>
+		[Pure]
+		public static bool Equals(ReadOnlySpan<byte> left, ReadOnlySpan<char> right)
+		{
+			// both string empty?
+			if (left.Length == 0)
+			{
+				return right.Length == 0;
+			}
+
+			// the UTF-8 string cannot be smaller than the number of characters in the UTF-16 string, since each character require _at least_ one byte
+			if (left.Length < right.Length)
+			{
+				return false;
+			}
+
+			if (left.Length == right.Length)
+			{ // this is only possible if the encoding is ASCII
+				return Ascii.Equals(left, right);
+			}
+
+			// slow path
+			return RuneEquals(left, right);
+		}
+
+		public static bool Equals(Slice left, ReadOnlySpan<char> right) => Equals(left.Span, right);
+
+		private static bool RuneEquals(ReadOnlySpan<byte> leftUtf8, ReadOnlySpan<char> rightUtf16)
+		{
+			// scan each character using the Rune API
+			var leftRemaining = leftUtf8;
+			var rightRemaining = rightUtf16;
+
+			while (leftRemaining.Length != 0 && rightRemaining.Length != 0)
+			{
+				if (Rune.DecodeFromUtf8(leftRemaining, out Rune leftRune, out int bytesConsumed) is not OperationStatus.Done
+				 || Rune.DecodeFromUtf16(rightRemaining, out Rune rightRune, out int charsConsumed) is not OperationStatus.Done
+				 || leftRune != rightRune)
+				{
+					return false;
+				}
+
+				leftRemaining = leftRemaining[bytesConsumed..];
+				rightRemaining = rightRemaining[charsConsumed..];
+			}
+
+			return (leftRemaining.Length | rightRemaining.Length) == 0;
+		}
+
 	}
+
 }
