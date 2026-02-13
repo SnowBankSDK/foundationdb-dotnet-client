@@ -107,16 +107,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public static string Constant(char c) => SymbolDisplay.FormatLiteral(c, quote: true);
 
 		/// <summary>Encodes a value into the corresponding C# number literal</summary>
-		public static string Constant(int literal) => SymbolDisplay.FormatPrimitive(literal, false, false);
+		public static string Constant(int literal) => SymbolDisplay.FormatPrimitive(literal, false, false)!;
 
 		/// <summary>Encodes a value into the corresponding C# number literal</summary>
-		public static string Constant(long literal) => SymbolDisplay.FormatPrimitive(literal, false, false);
+		public static string Constant(long literal) => SymbolDisplay.FormatPrimitive(literal, false, false)!;
 
 		/// <summary>Encodes a value into the corresponding C# number literal</summary>
-		public static string Constant(float literal) => float.IsNaN(literal) ? "float.NaN" : SymbolDisplay.FormatPrimitive(literal, false, false);
+		public static string Constant(float literal) => float.IsNaN(literal) ? "float.NaN" : SymbolDisplay.FormatPrimitive(literal, false, false)!;
 
 		/// <summary>Encodes a value into the corresponding C# number literal</summary>
-		public static string Constant(double literal) => double.IsNaN(literal) ? "double.NaN" : SymbolDisplay.FormatPrimitive(literal, false, false);
+		public static string Constant(double literal) => double.IsNaN(literal) ? "double.NaN" : SymbolDisplay.FormatPrimitive(literal, false, false)!;
 
 		/// <summary>Encodes a value into the corresponding C# Guid construction</summary>
 		public static string Constant(Guid literal)
