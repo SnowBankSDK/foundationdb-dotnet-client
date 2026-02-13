@@ -3512,7 +3512,7 @@ namespace System
 		/// Span&lt;byte> data = stackalloc byte[128];
 		/// Random.Shared.NextInt64().TryFormatTo(data, out int written);
 		/// // copy the formatted data to a rented buffer
-		/// using(var buffer = data[..writen].ToSlice(ArrayPool&lt;byte>.Shared))
+		/// using(var buffer = data[..written].ToSlice(ArrayPool&lt;byte>.Shared))
 		/// {
 		///    // use buffer.Data or buffer.Memory or buffer.Span
 		/// }

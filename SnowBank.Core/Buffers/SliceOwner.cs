@@ -24,14 +24,11 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// We cannot use Interlocked.Exchange(ref bool) until .NET 9+
-#if NET9_0_OR_GREATER
-#define USE_BOOLEAN_DISPOSE_FLAG
-#endif
-
 namespace System
 {
-	using System.Buffers;using SnowBank.Buffers;using SnowBank.Data.Binary;
+	using System.Buffers;
+	using Security.Cryptography;
+	using SnowBank.Buffers;using SnowBank.Data.Binary;
 
 	/// <summary>A container for rented <see cref="Slice"/> that can be returned into a <see cref="ArrayPool{T}"/> after it is not needed anymore.</summary>
 	/// <remarks>
@@ -44,10 +41,10 @@ namespace System
 	{
 
 		/// <summary>Rented buffer that is equivalent to the <see cref="Slice.Nil"/> slice</summary>
-		public static SliceOwner Nil => new(Slice.Nil);
+		public static SliceOwner Nil => new(Slice.Nil, 0);
 
 		/// <summary>Rented buffer that is equivalent to the <see cref="Slice.Empty"/> slice</summary>
-		public static SliceOwner Empty => new(Slice.Empty);
+		public static SliceOwner Empty => new(Slice.Empty, 0);
 
 		/// <summary>The rented slice</summary>
 		private Slice m_data;
@@ -56,19 +53,20 @@ namespace System
 		private ArrayPool<byte>? m_pool;
 
 		/// <summary>Flag that is set to <see langword="true"/> when <see cref="Dispose"/> is called</summary>
-#if USE_BOOLEAN_DISPOSE_FLAG
-		private volatile bool m_disposed;
-#else
-		private volatile int m_disposed;
-#endif
+		/// <remarks>If the sign bit is set, the buffer has been returned to be pool; otherwise, the other bits are used as various flags</remarks>
+		private volatile int m_flags; // positive: not disposed yet, zero: disposed
 
-		private SliceOwner(Slice data)
+		private const int FLAG_CLEAR_WHEN_RETURNED = 1;
+		private const int FLAG_DISPOSED = -1;
+
+		private SliceOwner(Slice data, int flags)
 		{
 			m_data = data;
 			m_pool = null;
+			m_flags = flags;
 		}
 
-		private SliceOwner(Slice data, ArrayPool<byte> pool)
+		private SliceOwner(Slice data, ArrayPool<byte> pool, int flags)
 		{
 			Contract.NotNull(pool);
 			if (data.Count > 0)
@@ -78,27 +76,38 @@ namespace System
 			}
 			else
 			{
-				m_data = data.IsNull ? Slice.Nil : Slice.Empty;
+				m_data = data.IsNull ? default : Slice.Empty;
 				m_pool = null;
 			}
+			m_flags = flags;
 		}
 
 		/// <summary>Returns a <see cref="SliceOwner"/> that wraps an existing <see cref="Slice"/> that is not allocated from a pool</summary>
 		/// <param name="data">Slice of data, that is either <see cref="Slice.Nil"/>, <see cref="Slice.Empty"/></param>
 		/// <returns><see cref="SliceOwner"/> that will do nothing when disposed.</returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static SliceOwner Wrap(Slice data) => new(data);
+		public static SliceOwner Wrap(Slice data) => new(data, 0);
+
+		/// <summary>Returns a <see cref="SliceOwner"/> that wraps an existing <see cref="Slice"/> that is not allocated from a pool</summary>
+		/// <param name="data">Slice of data, that is either <see cref="Slice.Nil"/>, <see cref="Slice.Empty"/></param>
+		/// <param name="clearAfterUse">If <c>true</c>, the buffer will be cleared when Dispose is called, before optionally being returned to the pool</param>
+		/// <returns><see cref="SliceOwner"/> that will do nothing when disposed.</returns>
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static SliceOwner Wrap(Slice data, bool clearAfterUse) => new(data, clearAfterUse ? FLAG_CLEAR_WHEN_RETURNED : 0);
 
 		/// <summary>Returns a <see cref="SliceOwner"/> that will dispose the content of a slice allocated from a pool</summary>
 		/// <param name="data">Slice of data, that is either <see cref="Slice.Nil"/>, <see cref="Slice.Empty"/>, or uses an array rented from <paramref name="pool"/></param>
 		/// <param name="pool">Pool (optional) that was used to allocate the content of <paramref name="data"/>, or <see langword="null"/> if the content was allocated on the heap or must not be returned to any pool.</param>
+		/// <param name="clearAfterUse">If <c>true</c>, the buffer will be cleared when Dispose is called, before optionally being returned to the pool</param>
 		/// <returns><see cref="SliceOwner"/> that will return the buffer to the pool once disposed (if one was provided).</returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static SliceOwner Create(Slice data, ArrayPool<byte>? pool = null)
+		public static SliceOwner Create(Slice data, ArrayPool<byte>? pool = null, bool clearAfterUse = false)
 		{
+			int flags = clearAfterUse ? FLAG_CLEAR_WHEN_RETURNED : 0;
+
 			return
-				  pool == null ? new(data)
-				: data.Count != 0 ? new(data, pool)
+				  pool == null ? new(data, flags)
+				: data.Count != 0 ? new(data, pool, flags)
 				: CreateEmpty(data, pool);
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
@@ -127,34 +136,34 @@ namespace System
 		/// <summary>Returns a <see cref="SliceOwner"/> with a copy of <see cref="Slice"/>, using a buffer allocated from a pool</summary>
 		/// <param name="data">Slice to copy</param>
 		/// <param name="pool">Pool that will be used to allocate the content of <paramref name="data"/>.</param>
+		/// <param name="clearAfterUse">If <c>true</c>, the buffer will be cleared when Dispose is called, before optionally being returned to the pool</param>
 		/// <returns><see cref="SliceOwner"/> that will return the buffer to the pool once disposed.</returns>
 		[Pure]
-		public static SliceOwner Copy(Slice data, ArrayPool<byte> pool)
+		public static SliceOwner Copy(Slice data, ArrayPool<byte> pool, bool clearAfterUse = false)
 		{
-			return data.IsNull ? Nil : Copy(data.Span, pool);
+			return data.IsNull ? Nil : Copy(data.Span, pool, clearAfterUse);
 		}
 
 		/// <summary>Returns a <see cref="SliceOwner"/> with a copy of a span of bytes, stored in a slice allocated from a pool</summary>
 		/// <param name="data">Span of bytes to copy</param>
 		/// <param name="pool">Pool that will be used to allocate the content of <paramref name="data"/>.</param>
+		/// <param name="clearAfterUse">If <c>true</c>, the buffer will be cleared when Dispose is called, before optionally being returned to the pool</param>
 		/// <returns><see cref="SliceOwner"/> that will return the buffer to the pool once disposed.</returns>
 		[Pure]
-		public static SliceOwner Copy(ReadOnlySpan<byte> data, ArrayPool<byte> pool)
+		public static SliceOwner Copy(ReadOnlySpan<byte> data, ArrayPool<byte> pool, bool clearAfterUse = false)
 		{
 			if (data.Length == 0) return Empty;
+			int flags = clearAfterUse ? FLAG_CLEAR_WHEN_RETURNED : 0;
 			var tmp = pool.Rent(data.Length);
 			data.CopyTo(tmp);
-			return new(new Slice(tmp, 0, data.Length), pool);
+			return new(new Slice(tmp, 0, data.Length), pool, flags);
 		}
 
 		/// <inheritdoc />
 		public void Dispose()
 		{
-#if USE_BOOLEAN_DISPOSE_FLAG
-			if (Interlocked.Exchange(ref m_disposed, false))
-#else
-			if (Interlocked.Exchange(ref m_disposed, 1) != 0)
-#endif
+			int flags = Interlocked.Exchange(ref m_flags, FLAG_DISPOSED);
+			if (flags == FLAG_DISPOSED)
 			{ // already disposed
 				return;
 			}
@@ -166,6 +175,14 @@ namespace System
 			{
 				Contract.Debug.Assert(array is not null && array.Length > 0);
 				m_pool = null;
+
+				// optionally clear the buffer
+				if ((flags & FLAG_CLEAR_WHEN_RETURNED) != 0)
+				{
+					// recognized by the JIT that will never omit this call
+					CryptographicOperations.ZeroMemory(array.AsSpan(m_data.Offset, m_data.Count));
+				}
+
 				pool.Return(array);
 			}
 		}
@@ -173,11 +190,7 @@ namespace System
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private readonly void ThrowIfDisposed()
 		{
-#if USE_BOOLEAN_DISPOSE_FLAG
-			if (m_disposed)
-#else
-			if (m_disposed != 0)
-#endif
+			if (m_flags == FLAG_DISPOSED)
 			{
 				throw ThrowHelper.ObjectDisposedException<SliceOwner>("The content has already been returned to the pool");
 			}
@@ -209,7 +222,7 @@ namespace System
 		}
 
 		/// <summary>Returns a copy of the original content, stored using the specified pool</summary>
-		public readonly SliceOwner Copy(ArrayPool<byte> pool)
+		public readonly SliceOwner Copy(ArrayPool<byte> pool, bool clearAfterUse = false)
 		{
 			Contract.NotNull(pool);
 
@@ -228,7 +241,8 @@ namespace System
 			var tmp = pool.Rent(data.Count);
 			data.Span.CopyTo(tmp);
 
-			return new (tmp.AsSlice(0, data.Count), pool);
+			int flags = clearAfterUse ? FLAG_CLEAR_WHEN_RETURNED : 0;
+			return new (tmp.AsSlice(0, data.Count), pool, flags);
 		}
 
 		/// <summary><see cref="ArrayPool{T}">Pool</see> used to allocate the buffer.</summary>
@@ -248,11 +262,7 @@ namespace System
 		/// <summary>Returns the content as a <see cref="Slice"/>, unless the container has been disposed.</summary>
 		public readonly bool TryGetSlice(out Slice data)
 		{
-#if USE_BOOLEAN_DISPOSE_FLAG
-			if (m_disposed)
-#else
-			if (m_disposed != 0)
-#endif
+			if (m_flags == FLAG_DISPOSED)
 			{
 				data = default;
 				return false;
@@ -267,11 +277,7 @@ namespace System
 		/// <summary>Returns the content as a <see cref="T:System.ReadOnlySpan`1"/>, unless the container has been disposed.</summary>
 		public readonly bool TryGetSpan(out ReadOnlySpan<byte> data)
 		{
-#if USE_BOOLEAN_DISPOSE_FLAG
-			if (m_disposed)
-#else
-			if (m_disposed != 0)
-#endif
+			if (m_flags == FLAG_DISPOSED)
 			{
 				data = default;
 				return false;
@@ -285,11 +291,7 @@ namespace System
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		readonly bool ISpanEncodable.TryGetSizeHint(out int sizeHint)
 		{
-#if USE_BOOLEAN_DISPOSE_FLAG
-			if (m_disposed)
-#else
-			if (m_disposed != 0)
-#endif
+			if (m_flags == FLAG_DISPOSED)
 			{
 				sizeHint = 0;
 				return false;
@@ -331,11 +333,7 @@ namespace System
 		/// <summary>Returns the content as a <see cref="T:System.ReadOnlyMemory`1"/>, unless the container has been disposed.</summary>
 		public readonly bool TryGetMemory(out ReadOnlyMemory<byte> data)
 		{
-#if USE_BOOLEAN_DISPOSE_FLAG
-			if (m_disposed)
-#else
-			if (m_disposed != 0)
-#endif
+			if (m_flags == FLAG_DISPOSED)
 			{
 				data = default;
 				return false;

@@ -286,6 +286,21 @@ namespace SnowBank.Buffers
 			return SliceOwner.Create(slice, this.Pool);
 		}
 
+		/// <summary>Returns a <see cref="SliceOwner"/> with the content that was written to this writer, with optional clearing of the buffer after use.</summary>
+		/// <param name="clearAfterUse">If <c>true</c>, the content of the buffer will be cleared when the returned <see cref="SliceOwner"/> is disposed</param>
+		/// <remarks>
+		/// <para>The caller <b>MUST</b> dispose the returned instance, otherwise the buffer will not be returned to the pool</para>
+		/// <para>The writer is reset to 0, and can be reused immediately</para>
+		/// </remarks>
+		[Pure]
+		public SliceOwner ToSliceOwner(bool clearAfterUse)
+		{
+			var slice = ToSlice();
+			this.Buffer = [ ];
+			this.Position = 0;
+			return SliceOwner.Create(slice, this.Pool, clearAfterUse);
+		}
+
 		/// <summary>Returns a slice pointing to the first <paramref name="count"/> bytes of the buffer</summary>
 		/// <param name="count">Size of the segment to return.</param>
 		/// <returns>Slice that contains the first <paramref name="count"/> bytes written to this buffer</returns>
