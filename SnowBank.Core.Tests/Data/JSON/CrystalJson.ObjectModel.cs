@@ -39,6 +39,7 @@
 // ReSharper disable ConvertClosureToMethodGroup
 // ReSharper disable UseCollectionExpression
 #pragma warning disable CS8714 // The type cannot be used as type parameter in the generic type or method. Nullability of type argument doesn't match 'notnull' constraint.
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
 #pragma warning disable IDE0004 // Remove Unnecessary Cast
 #pragma warning disable IDE0017 // Simplify object initialization
 #pragma warning disable NUnit2009 // The same value has been provided as both the actual and the expected argument
