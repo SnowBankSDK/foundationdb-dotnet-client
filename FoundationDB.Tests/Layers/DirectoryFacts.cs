@@ -37,7 +37,6 @@ namespace FoundationDB.Client.Tests
 	using FoundationDB.Filters.Logging;
 #endif
 	using FoundationDB.Layers.Allocators;
-	using NUnit.Framework.Constraints;
 
 	[TestFixture]
 	public class DirectoryLayerFacts : FdbTest
@@ -1060,12 +1059,12 @@ namespace FoundationDB.Client.Tests
 			Log(dl);
 
 			// the constraint will always be the same for all the checks
-			void ShouldFail<T>(ActualValueDelegate<T> del)
+			void ShouldFail<T>(Func<T> del)
 			{
 				Assert.That(del, Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("root of directory partition"));
 			}
 
-			void ShouldPass<T>(ActualValueDelegate<T> del)
+			void ShouldPass<T>(Func<T> del)
 			{
 				Assert.That(del, Throws.Nothing);
 			}
