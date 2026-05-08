@@ -5,11 +5,13 @@
     <Project Path="FoundationDB.BindingTester/FoundationDB.BindingTester.csproj" />
     <Project Path="FoundationDB.Client.Native/FoundationDB.Client.Native.csproj" />
     <Project Path="FoundationDB.Client/FoundationDB.Client.csproj" />
+    <Project Path="FoundationDB.FakeDb/FoundationDB.FakeDb.csproj" />
     <Project Path="FoundationDB.Layers.Common/FoundationDB.Layers.Common.csproj" />
     <Project Path="FoundationDB.Layers.Experimental/FoundationDB.Layers.Experimental.csproj" />
     <Project Path="FoundationDB.Linq.Providers/FoundationDB.Linq.Providers.csproj" />
     <Project Path="FoundationDB.Samples/FoundationDB.Samples.csproj" />
     <Project Path="FoundationDB.Testing/FoundationDB.Testing.csproj" />
+    <Project Path="FoundationDB.FakeDb.Tests/FoundationDB.FakeDb.Tests.csproj" />
     <Project Path="FoundationDB.Tests.Sandbox/FoundationDB.Tests.Sandbox.csproj" />
     <Project Path="FoundationDB.Tests/FoundationDB.Tests.csproj" />
   </Folder>

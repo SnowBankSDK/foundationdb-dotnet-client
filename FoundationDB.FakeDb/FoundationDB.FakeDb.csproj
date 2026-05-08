@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Library</OutputType>
+		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<LangVersion>preview</LangVersion>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<SignAssembly>true</SignAssembly>
+		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>
+		<Deterministic>true</Deterministic>
+		<ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<PropertyGroup>
+		<AssemblyTitle>FoundationDB In-Memory Emulator</AssemblyTitle>
+		<Description>In-memory emulation of a FoundationDB Cluster, for easy testing of distributed .NET applications</Description>
+		<PackageTags>foundationdb fdb nosql database snowbank sdk nunit testing distributed</PackageTags>
+		<!--<PackageReadmeFile>README.md</PackageReadmeFile>-->
+		<PackageIcon>foundationdb.png</PackageIcon>
+		<GenerateDocumentationFile Condition="'$(Configuration)' != 'Debug'">true</GenerateDocumentationFile>
+		<IsPackable>true</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="../Common/foundationdb.png" Pack="true" Visible="false" PackagePath="\" />
+		<!--<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />-->
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
+	</ItemGroup>
+
+</Project>

@@ -41,7 +41,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Compile Include="..\SnowBank.Core\NetFxShim.cs" Link="Utils\NetFxShim.cs" />
+		<Compile Include="..\SnowBank.Core\NetFxShim.cs" Link="Utils\NetFxShim.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
