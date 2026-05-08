@@ -8,6 +8,8 @@
     <PackageVersion Include="Aspire.Hosting" Version="13.0.1" />
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.0.1" />
     <PackageVersion Include="Bogus" Version="35.6.5" />
+    <PackageVersion Include="Grpc.AspNetCore" Version="2.80.0" />
+    <PackageVersion Include="Grpc.Tools" Version="2.80.0" />
     <PackageVersion Include="MathNet.Numerics.Signed" Version="5.0.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
@@ -28,7 +30,15 @@
     <PackageVersion Include="NUnit.ConsoleRunner" Version="3.22.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.2.0" />
     <PackageVersion Include="OpenTelemetry.Api" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.HttpListener" Version="1.15.3-beta.1" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.GrpcNetClient" Version="1.15.1-beta.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Process" Version="1.15.1-beta.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
     <PackageVersion Include="protobuf-net" Version="3.2.56" />
     <PackageVersion Include="Spectre.Console" Version="0.55.2" />
     <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
@@ -52,6 +62,7 @@
     <PackageVersion Include="Microsoft.Net.Http.Headers" Version="11.0.0-preview.3.26207.106" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100-preview.3.26207.106" />
     <PackageVersion Include="System.Collections.Immutable" Version="11.0.0-preview.3.26207.106" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="11.0.0-preview.3.26207.106" />
     <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="11.0.0-preview.3.26207.106" />
     <PackageVersion Include="System.IO.Hashing" Version="11.0.0-preview.3.26207.106" />
     <PackageVersion Include="System.IO.Pipelines" Version="11.0.0-preview.3.26207.106" />
@@ -76,6 +87,7 @@
     <PackageVersion Include="Microsoft.Net.Http.Headers" Version="10.0.7" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.203" />
     <PackageVersion Include="System.Collections.Immutable" Version="10.0.7" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.7" />
     <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="10.0.7" />
     <PackageVersion Include="System.IO.Hashing" Version="10.0.7" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.7" />
@@ -100,6 +112,7 @@
     <PackageVersion Include="Microsoft.Net.Http.Headers" Version="9.0.15" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.103" />
     <PackageVersion Include="System.Collections.Immutable" Version="9.0.15" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="9.0.15" />
     <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="9.0.15" />
     <PackageVersion Include="System.IO.Hashing" Version="9.0.15" />
     <PackageVersion Include="System.IO.Pipelines" Version="9.0.15" />
@@ -124,6 +137,7 @@
     <PackageVersion Include="Microsoft.Net.Http.Headers" Version="8.0.24" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
     <PackageVersion Include="System.Collections.Immutable" Version="9.0.15" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="9.0.15" />
     <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="9.0.15" />
     <PackageVersion Include="System.IO.Hashing" Version="9.0.15" />
     <PackageVersion Include="System.IO.Pipelines" Version="9.0.15" />
