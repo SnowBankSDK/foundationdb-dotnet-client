@@ -15,7 +15,7 @@
 		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
 	</PropertyGroup>
 
-	<Import Project="..\..\VersionInfo.props" />
+	<Import Project="..\Common\VersionInfo.props" />
 
 	<PropertyGroup>
 		<ServerGarbageCollection>true</ServerGarbageCollection>
