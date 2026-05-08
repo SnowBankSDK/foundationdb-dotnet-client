@@ -26,7 +26,6 @@
 
 namespace FoundationDB.Layers.Collections
 {
-	using System.Numerics;
 	using SnowBank.Buffers;
 
 	/// <summary>Multimap that tracks the number of times a specific key/value pair has been inserted or removed.</summary>
@@ -119,7 +118,7 @@ namespace FoundationDB.Layers.Collections
 				trans.AtomicIncrement64(this.Subspace.Key(pk, pv));
 			}
 
-			/// <summary>Increments the count of an (<paramref name="key"/>, <paramref name="value"/>) pair in the multimap.</summary>
+			/// <summary>Increments the count of each (<paramref name="key"/>, <paramref name="values"/>) pair combination in the multimap.</summary>
 			/// <param name="trans">Transaction used for the operation</param>
 			/// <param name="key">Key of the entry</param>
 			/// <param name="values">Span of values for the <paramref name="key"/> to increment</param>
@@ -137,7 +136,7 @@ namespace FoundationDB.Layers.Collections
 				}
 			}
 
-			/// <summary>Increments the count of an (<paramref name="key"/>, <paramref name="value"/>) pair in the multimap.</summary>
+			/// <summary>Increments the count of each (<paramref name="key"/>, <paramref name="values"/>) pair combination in the multimap.</summary>
 			/// <param name="trans">Transaction used for the operation</param>
 			/// <param name="key">Key of the entry</param>
 			/// <param name="values">Span of values for the <paramref name="key"/> to increment</param>

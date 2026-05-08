@@ -20,9 +20,14 @@
 		<AssemblyTitle>SnowBank HTTP Package Capture</AssemblyTitle>
 		<Description>Core HTTP SDK for writing distributed .NET applications</Description>
 		<PackageTags>snowbank sdk http https rest</PackageTags>
-		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<!--<PackageReadmeFile>README.md</PackageReadmeFile>-->
 		<PackageIcon>snowbank.png</PackageIcon>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="../Common/snowbank.png" Pack="true" Visible="false" PackagePath="\" />
+		<!--<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />-->
+	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Grpc.AspNetCore" />

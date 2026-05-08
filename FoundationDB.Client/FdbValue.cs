@@ -195,7 +195,7 @@ namespace FoundationDB.Client
 		/// <summary>Returns a value that copies the contents of a span of char, encoded as UTF-8 bytes</summary>
 		/// <remarks>
 		/// <para><b>WARNING:</b> on .NET 8.0 (or lower) this method has to copy the span into a string, which causes memory allocations.</para>
-		/// <para>Please consider using <see cref="ReadOnlyMemory{char}"/> instead, or upgrade to .NET 9.0 or higher.</para>
+		/// <para>Please consider using <see cref="ReadOnlyMemory{T}">ReadOnlyMemory&lt;char&gt;</see> instead, or upgrade to .NET 9.0 or higher.</para>
 		/// </remarks>
 		[OverloadResolutionPriority(-1)]
 		public static FdbUtf8Value ToTextUtf8(ReadOnlySpan<char> value) => new(value.ToArray().AsMemory());
@@ -227,7 +227,7 @@ namespace FoundationDB.Client
 		/// <summary>Returns a value that copies the contents of a span of char, encoded as UTF-16 bytes</summary>
 		/// <remarks>
 		/// <para><b>WARNING:</b> on .NET 8.0 (or lower) this method has to copy the span into a string, which causes memory allocations.</para>
-		/// <para>Please consider using <see cref="ReadOnlyMemory{char}"/> instead, or upgrade to .NET 9.0 or higher.</para>
+		/// <para>Please consider using <see cref="ReadOnlyMemory{T}">ReadOnlyMemory&lt;char&gt;</see> instead, or upgrade to .NET 9.0 or higher.</para>
 		/// </remarks>
 		[OverloadResolutionPriority(-1)]
 		public static FdbUtf16Value ToTextUtf16(ReadOnlySpan<char> value) => new(value.ToArray().AsMemory());
