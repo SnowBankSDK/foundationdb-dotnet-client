@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
-		<TargetFrameworks>$(CloudLayerSdkRuntimeVersions)</TargetFrameworks>
+		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<IsTestProject>true</IsTestProject>
 		<IsPackable>false</IsPackable>
