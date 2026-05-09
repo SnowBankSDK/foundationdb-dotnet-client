@@ -44,8 +44,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\FoundationDB\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
-		<ProjectReference Include="..\..\FoundationDB\SnowBank.Networking.PacketCapture\SnowBank.Networking.PacketCapture.csproj" />
+		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
+		<ProjectReference Include="..\SnowBank.Networking.PacketCapture\SnowBank.Networking.PacketCapture.csproj" />
 	</ItemGroup>
 
 </Project>
