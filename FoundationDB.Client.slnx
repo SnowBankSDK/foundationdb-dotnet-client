@@ -24,6 +24,7 @@
     <Project Path="SnowBank.Serialization.Json.CodeGen/SnowBank.Serialization.Json.CodeGen.csproj" />
     <Project Path="SnowBank.Shell/SnowBank.Shell.csproj" />
     <Project Path="SnowBank.Testing.Common/SnowBank.Testing.Common.csproj" />
+    <Project Path="SnowBank.Testing.Framework/SnowBank.Testing.Framework.csproj" />
   </Folder>
   <Folder Name="/Core/Tests/">
     <Project Path="SnowBank.Core.Tests/SnowBank.Core.Tests.csproj" />
