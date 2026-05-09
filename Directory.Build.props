@@ -13,6 +13,9 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<!-- Embed symbols in the assembly -->
 		<DebugType>embedded</DebugType>
+
+		<!-- Silences the .NET SDK preview message/banner (NETSDK1057) -->
+		<SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
 	</PropertyGroup>
 
 	<!--

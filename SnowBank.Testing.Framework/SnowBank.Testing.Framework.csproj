@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Library</OutputType>
+		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<LangVersion>preview</LangVersion>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+		<SignAssembly>true</SignAssembly>
+		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>
+		<Deterministic>true</Deterministic>
+		<ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<PropertyGroup>
+		<AssemblyTitle>SnowBank Distributed Testing SDK</AssemblyTitle>
+		<Description>SDK for writing tests for distributed .NET applications</Description>
+		<PackageTags>snowbank sdk nunit testing distributed</PackageTags>
+		<!--<PackageReadmeFile>README.md</PackageReadmeFile>-->
+		<PackageIcon>snowbank.png</PackageIcon>
+		<GenerateDocumentationFile Condition="'$(Configuration)' != 'Debug'">true</GenerateDocumentationFile>
+		<IsPackable>true</IsPackable> <!-- must be forced to true, otherwise 'dotnet pack' does nothing on this project, for some reason... ? -->
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="../Common/snowbank.png" Pack="true" Visible="false" PackagePath="\" />
+		<!--<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />-->
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+		<PackageReference Include="Microsoft.Extensions.Logging" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+		<PackageReference Include="NodaTime.Testing" />
+		<PackageReference Include="NUnit" />
+		<PackageReference Include="StructuredFieldValues" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\FoundationDB\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
+		<ProjectReference Include="..\..\FoundationDB\SnowBank.Networking.PacketCapture\SnowBank.Networking.PacketCapture.csproj" />
+	</ItemGroup>
+
+</Project>
