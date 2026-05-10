@@ -18,7 +18,7 @@
 		<AssemblyTitle>FoundationDB In-Memory Emulator</AssemblyTitle>
 		<Description>In-memory emulation of a FoundationDB Cluster, for easy testing of distributed .NET applications</Description>
 		<PackageTags>foundationdb fdb nosql database snowbank sdk nunit testing distributed</PackageTags>
-		<!--<PackageReadmeFile>README.md</PackageReadmeFile>-->
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>foundationdb.png</PackageIcon>
 		<GenerateDocumentationFile Condition="'$(Configuration)' != 'Debug'">true</GenerateDocumentationFile>
 		<IsPackable>true</IsPackable>
@@ -26,7 +26,7 @@
 
 	<ItemGroup>
 		<None Include="../Common/foundationdb.png" Pack="true" Visible="false" PackagePath="\" />
-		<!--<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />-->
+		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
 	</ItemGroup>
 
 	<ItemGroup>

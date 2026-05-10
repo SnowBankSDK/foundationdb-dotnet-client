@@ -1737,8 +1737,18 @@ namespace FoundationDB.Testing
 
 		public Dictionary<long, Snapshot> Snapshots { get; } = new();
 
+		/// <summary>Returns the current snapshot of the database</summary>
+		/// <remarks>
+		/// <para>Each snapshot is immutable, and a new snapshot is produced whenever a transaction successfully commits.</para>
+		/// <para>Please note that, by the time this property returns, the snapshot may already have been replaced by a more recent one!</para>
+		/// </remarks>
 		public Snapshot CurrentSnapshotUnsafe { get; set; }
 
+		/// <summary>Returns a map of all currently monitored watches in the cluster</summary>
+		/// <remarks>
+		/// <para>This returns a copy of the list of active watches.</para>
+		/// <para>Please note that, by the time this property returns, new watches may have been added, and existing ones may already have triggered</para>
+		/// </remarks>
 		public Dictionary<Slice, List<WatchNode>> ActiveWatches { get; } = new(Slice.Comparer.Default);
 
 		private ReaderWriterLockSlim GlobalLock { get; set; } = new();
