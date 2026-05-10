@@ -11,6 +11,7 @@
 		<Nullable>enable</Nullable>
 		<SignAssembly>true</SignAssembly>
 		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>
+		<IsPackable>false</IsPackable>
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
