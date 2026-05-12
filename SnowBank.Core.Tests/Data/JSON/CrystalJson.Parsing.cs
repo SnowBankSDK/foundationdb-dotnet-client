@@ -406,6 +406,28 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(arr[5], Is.SameAs(JsonNumber.Return(-128)));
 			}
 
+			// JsonArray.TryParse
+			{
+				JsonArray? arr;
+
+				Assert.That(JsonValue.TryParseArray("[ ]", CrystalJsonSettings.JsonReadOnly, out arr), Is.True);
+				Assert.That(arr, Is.Json.EmptyArray);
+				Assert.That(JsonValue.TryParseArray("[ 1, 2, 3 ]", CrystalJsonSettings.JsonReadOnly, out arr), Is.True);
+				Assert.That(arr, Is.Json.EqualTo([ 1, 2, 3]));
+				Assert.That(JsonValue.TryParseArray("[ 1, 2, 3, ]", CrystalJsonSettings.JsonReadOnly, out arr), Is.True);
+				Assert.That(arr, Is.Json.EqualTo([ 1, 2, 3]));
+
+				// malformed array
+				Assert.That(JsonValue.TryParseArray("[", CrystalJsonSettings.JsonReadOnly, out arr), Is.False);
+				Assert.That(JsonValue.TryParseArray("[ 1, 2, 3", CrystalJsonSettings.JsonReadOnly, out arr), Is.False);
+
+				// not an array
+				Assert.That(JsonValue.TryParseArray("", CrystalJsonSettings.JsonReadOnly, out arr), Is.False);
+				Assert.That(JsonValue.TryParseArray("hello", CrystalJsonSettings.JsonReadOnly, out arr), Is.False);
+				Assert.That(JsonValue.TryParseArray("123", CrystalJsonSettings.JsonReadOnly, out arr), Is.False);
+				Assert.That(JsonValue.TryParseArray("{ }", CrystalJsonSettings.JsonReadOnly, out arr), Is.False);
+			}
+
 			static void ParseAreEqual(JsonValue expected, string jsonText, string? message = null)
 			{
 				{ // JsonValue, string
