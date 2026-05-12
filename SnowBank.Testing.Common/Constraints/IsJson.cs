@@ -1206,6 +1206,8 @@ namespace SnowBank.Testing
 
 			public JsonConstraintExpression() => this.Expression = new ResolvableConstraintExpression();
 
+			public JsonConstraintExpression(ResolvableConstraintExpression expression) => this.Expression = expression;
+
 			public JsonConstraintExpression(ConstraintBuilder builder) => this.Expression = new ResolvableConstraintExpression(builder);
 
 			internal JsonConstraintExpression Append(ConstraintOperator op)
@@ -1220,7 +1222,17 @@ namespace SnowBank.Testing
 				return this;
 			}
 
-			IConstraint IResolveConstraint.Resolve() => ((IResolveConstraint) this.Expression).Resolve();
+			IConstraint IResolveConstraint.Resolve()
+			{
+				if (this.Expression is IResolveConstraint resolvable)
+				{
+					return resolvable.Resolve();
+				}
+				else
+				{
+					throw new NotSupportedException("Only resolvable constraint expressions are allowed!");
+				}
+			}
 
 			private JsonConstraintExpression AddTypeConstraint(JsonType expected) => this.Append(new JsonTypeConstraint(expected));
 
@@ -1248,8 +1260,14 @@ namespace SnowBank.Testing
 			/// <summary>Assert that the value is a JSON Object</summary>
 			public JsonConstraintExpression Object => AddTypeConstraint(JsonType.Object);
 
+			/// <summary>Assert that the value is a empty JSON Object</summary>
+			public JsonConstraintExpression EmptyObject => AddEqualConstraint(JsonObject.ReadOnly.Empty);
+
 			/// <summary>Assert that the value is a JSON Array</summary>
 			public JsonConstraintExpression Array => AddTypeConstraint(JsonType.Array);
+
+			/// <summary>Assert that the value is an empty JSON Array</summary>
+			public JsonConstraintExpression EmptyArray => AddEqualConstraint(JsonArray.ReadOnly.Empty);
 
 			/// <summary>Assert that the value is a JSON String</summary>
 			public JsonConstraintExpression String => AddTypeConstraint(JsonType.String);

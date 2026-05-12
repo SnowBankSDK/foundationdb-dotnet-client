@@ -127,7 +127,7 @@ namespace SnowBank.Testing
 			/// Assert.That(dict.TryGetValue("hello", out var value), Is.True.WithOutput(value).EqualTo("world"));
 			/// Assert.That(dict.TryGetValue("not_found", out var value), Is.False.WithOutput(value).Default);
 			/// </code></example>
-			public ConstraintExpression WithOutput<T>(T? actual, [CallerArgumentExpression(nameof(actual))] string literal = "")
+			public WithOutputConstraintExpression WithOutput<T>(T? actual, [CallerArgumentExpression(nameof(actual))] string literal = "")
 			{
 				var builder = self.Builder;
 				if (builder == null)
@@ -138,6 +138,17 @@ namespace SnowBank.Testing
 				builder.Append(new WithOutputOperator<T>(actual, literal));
 				return new(builder);
 			}
+
+		}
+
+		public sealed class WithOutputConstraintExpression : ConstraintExpression
+		{
+
+			public WithOutputConstraintExpression() { }
+
+			public WithOutputConstraintExpression(ConstraintBuilder builder) : base(builder) { }
+
+			public ConstraintBuilder Builder => this.builder;
 
 		}
 
