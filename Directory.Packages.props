@@ -130,8 +130,8 @@
   </ItemGroup>
   <!-- Packages for .NET 8 or lower -->
   <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))">
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.22" />
-    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.22" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.25" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.25" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.15" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.15" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.15" />
@@ -143,7 +143,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.15" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="9.0.15" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.15" />
-    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="8.0.24" />
+    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="8.0.25" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
     <PackageVersion Include="System.Collections.Immutable" Version="9.0.15" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="9.0.15" />
