@@ -268,7 +268,7 @@ namespace FoundationDB.Client
 			ReferenceEquals(other, this)
 			|| (other is not null
 			 && other.Path == this.Path
-			 && other.Prefix.Equals(other.Prefix)
+			 && other.Prefix.Equals(this.Prefix)
 			);
 
 		/// <inheritdoc />
