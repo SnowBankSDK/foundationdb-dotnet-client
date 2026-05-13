@@ -4,14 +4,15 @@
 		<TargetFramework>netstandard2.0</TargetFramework>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
+		
 		<IsRoslynComponent>true</IsRoslynComponent>
 		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-		<CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
-		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-
 		<AnalyzerRoslynVersion>4.4</AnalyzerRoslynVersion>
 		<RoslynApiVersion>$(MicrosoftCodeAnalysisVersion_4_4)</RoslynApiVersion>
 		<DefineConstants>$(DefineConstants);ROSLYN4_0_OR_GREATER;ROSLYN4_4_OR_GREATER</DefineConstants>
+		
+		<CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
+		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
@@ -31,8 +32,8 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
-		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
-		<PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" PrivateAssets="all" />
+		<PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.300" PrivateAssets="all" />
 	</ItemGroup>
 
 	<!-- For redistributing a source generator/analyzer as a nuget package, we need to manually change a few things: -->
