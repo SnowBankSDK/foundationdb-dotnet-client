@@ -72,8 +72,7 @@ namespace FoundationDB.Client.Tests
 			string portBindingName = this.PortName; // ex: "4530/tcp"
 
 			// Create a new instance of a container.
-			var container = new ContainerBuilder()
-				.WithImage(this.Image)
+			var container = new ContainerBuilder(this.Image)
 				.WithName(name)
 				.WithReuse(reuse: true)
 				.WithPortBinding(port, port)
