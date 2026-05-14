@@ -40,7 +40,7 @@ namespace FdbShell
 	public static class Program
 	{
 
-		public static async Task Main(string[] args)
+		public static async Task<int> Main(string[] args)
 		{
 			//TODO: move this to the main, and add a command line argument to on/off ?
 
@@ -87,7 +87,7 @@ namespace FdbShell
 					Console.Error.WriteLine($"CRASHED: {e}");
 					Environment.ExitCode = -1;
 				}
-				return;
+				return 0;
 			}
 
 			try
@@ -97,21 +97,26 @@ namespace FdbShell
 				#region Options Parsing...
 
 				var cmd = new FdbShellCommand(go.Token);
-
-				try
+				var result = cmd.Parse(args);
+				if (result.Errors.Count != 0)
 				{
-					await cmd.InvokeAsync(args);
-				}
-				catch (Exception e)
-				{
-					Console.Error.WriteLine("Crash: " + e);
+					foreach (var parseError in result.Errors)
+					{
+						Console.Error.WriteLine(parseError.Message);
+					}
+					return 1;
 				}
 
 				#endregion
+
+				await result.InvokeAsync(cancellationToken: go.Token);
+
+				return 0;
 			}
 			catch (Exception e)
 			{
 				Console.Error.WriteLine("CRASH: " + e);
+				return 1;
 			}
 			finally
 			{
@@ -125,95 +130,106 @@ namespace FdbShell
 			public FdbShellCommand(CancellationToken cancel)
 				: base("Hello, there!")
 			{
-				this.AddGlobalOption(ClusterFileOption);
-				this.AddGlobalOption(ConnectionStringOption);
-				this.AddGlobalOption(ApiVersionOption);
-				this.AddGlobalOption(PartitionOption);
-				this.AddGlobalOption(TimeoutOption);
-				this.AddGlobalOption(RetriesOption);
-				this.AddGlobalOption(AspireOption);
-				this.AddGlobalOption(DockerOption);
-				this.AddGlobalOption(ChildHashOption);
-				this.AddGlobalOption(ParentProcessOption);
-				this.AddOption(ExecOption);
+				this.Options.Add(ClusterFileOption);
+				this.Options.Add(ConnectionStringOption);
+				this.Options.Add(ApiVersionOption);
+				this.Options.Add(PartitionOption);
+				this.Options.Add(TimeoutOption);
+				this.Options.Add(RetriesOption);
+				this.Options.Add(AspireOption);
+				this.Options.Add(DockerOption);
+				this.Options.Add(ChildHashOption);
+				this.Options.Add(ParentProcessOption);
+				this.Options.Add(ExecOption);
 
-				this.SetHandler(RunShell);
+				this.SetAction((result) => RunShell(result, cancel));
 
 				this.Cancellation = cancel;
 			}
 
 			public CancellationToken Cancellation { get; }
 
-			private static readonly System.CommandLine.Option<string?> ClusterFileOption = new (
-				["--connfile", "-c", "-C"],
-				"The path of a file containing the connection string for the FoundationDB cluster."
-			);
-
-			private static readonly System.CommandLine.Option<string?> ConnectionStringOption = new (
-				["--connStr"],
-				"The connection string for the FoundationDB cluster."
-			);
-
-			private static readonly System.CommandLine.Option<int?> ApiVersionOption = new(
-				[ "--api" ],
-				"The API version level that should be used."
-			);
-
-			private static readonly System.CommandLine.Option<string?> PartitionOption = new(
-				[ "--partition", "-p" ],
-				"The name of the database partition to open."
-			);
-
-			private static readonly System.CommandLine.Option<int?> TimeoutOption = new(
-				[ "--timeout", "-t" ],
-				getDefaultValue: () => 30,
-				"Default timeout (in seconds) for failed transactions."
-			);
-
-			private static readonly System.CommandLine.Option<int?> RetriesOption = new(
-				[ "--retries", "-r" ],
-				getDefaultValue: () => 10,
-				"Default max retry count for failed transactions."
-			);
-
-			private static readonly System.CommandLine.Option<string?> ExecOption = new(
-				[ "--exec" ],
-				"Execute this command, and exits immediately."
-			);
-
-			private static readonly Option<bool> AspireOption = new(
-				[ "--aspire" ],
-				"Connect to a local docker instance managed by .NET Aspire"
-			);
-
-			private static readonly Option<int?> DockerOption = new(
-				[ "--docker" ],
-				"Connect to a local docker instance running on the given port"
-			);
-
-			private static readonly Option<string> ChildHashOption = new(
-				[ "--child" ],
-				"Hash of the arguments of the parent process that spawned this instance"
-			);
-
-			private static readonly Option<int?> ParentProcessOption = new(
-				[ "--parent" ],
-				"PID of the parent process that spawned this instance"
-			);
-
-			private async Task RunShell(InvocationContext context)
+			private static readonly System.CommandLine.Option<string?> ClusterFileOption = new("--connfile", ["-c", "-C"])
 			{
-				var clusterFile = context.ParseResult.GetValueForOption(ClusterFileOption);
-				var connectionString = context.ParseResult.GetValueForOption(ConnectionStringOption);
-				var apiVersion = context.ParseResult.GetValueForOption(ApiVersionOption);
-				var partition = context.ParseResult.GetValueForOption(PartitionOption);
-				var timeout = context.ParseResult.GetValueForOption(TimeoutOption) ?? 30;
-				var maxRetries = context.ParseResult.GetValueForOption(RetriesOption) ?? 10;
-				var execCommand = context.ParseResult.GetValueForOption(ExecOption);
-				var aspire = context.ParseResult.GetValueForOption(AspireOption);
-				var docker = context.ParseResult.GetValueForOption(DockerOption);
-				var childHash = context.ParseResult.GetValueForOption(ChildHashOption);
-				var parentProcess = context.ParseResult.GetValueForOption(ParentProcessOption);
+				Description = "The path of a file containing the connection string for the FoundationDB cluster.",
+				Recursive = true,
+			};
+
+			private static readonly System.CommandLine.Option<string?> ConnectionStringOption = new ("--connStr")
+			{
+				Description = "The connection string for the FoundationDB cluster.",
+				Recursive = true,
+			};
+
+			private static readonly System.CommandLine.Option<int?> ApiVersionOption = new("--api")
+			{
+				Description = "The API version level that should be used.",
+				Recursive = true,
+			};
+
+			private static readonly System.CommandLine.Option<string?> PartitionOption = new("--partition", [ "-p" ])
+			{
+				Description = "The name of the database partition to open.",
+				Recursive = true,
+			};
+
+			private static readonly System.CommandLine.Option<int?> TimeoutOption = new("--timeout", [ "-t" ])
+			{
+				DefaultValueFactory = (_) => 30,
+				Description = "Default timeout (in seconds) for failed transactions.",
+				Recursive = true,
+			};
+
+			private static readonly System.CommandLine.Option<int?> RetriesOption = new("--retries", [ "-r" ])
+			{
+				DefaultValueFactory = (_) => 10,
+				Description = "Default max retry count for failed transactions.",
+				Recursive = true,
+			};
+
+			private static readonly System.CommandLine.Option<string?> ExecOption = new("--exec")
+			{
+				Description = "Execute this command, and exits immediately.",
+				//*****
+			};
+
+			private static readonly Option<bool> AspireOption = new("--aspire")
+			{
+				Description = "Connect to a local docker instance managed by .NET Aspire",
+				Recursive = true,
+			};
+
+			private static readonly Option<int?> DockerOption = new("--docker")
+			{
+				Description = "Connect to a local docker instance running on the given port",
+				Recursive = true,
+			};
+
+			private static readonly Option<string> ChildHashOption = new("--child")
+			{
+				Description = "Hash of the arguments of the parent process that spawned this instance",
+				Recursive = true,
+			};
+
+			private static readonly Option<int?> ParentProcessOption = new("--parent")
+			{
+				Description = "PID of the parent process that spawned this instance",
+				Recursive = true,
+			};
+
+			private async Task RunShell(ParseResult result, CancellationToken cancel)
+			{
+				var clusterFile = result.GetValue(ClusterFileOption);
+				var connectionString = result.GetValue(ConnectionStringOption);
+				var apiVersion = result.GetValue(ApiVersionOption);
+				var partition = result.GetValue(PartitionOption);
+				var timeout = result.GetValue(TimeoutOption) ?? 30;
+				var maxRetries = result.GetValue(RetriesOption) ?? 10;
+				var execCommand = result.GetValue(ExecOption);
+				var aspire = result.GetValue(AspireOption);
+				var docker = result.GetValue(DockerOption);
+				var childHash = result.GetValue(ChildHashOption);
+				var parentProcess = result.GetValue(ParentProcessOption);
 
 				if (aspire || docker != null)
 				{

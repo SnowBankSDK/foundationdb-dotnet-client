@@ -1392,7 +1392,7 @@ namespace FdbTop
 				SetColor(memRatio >= 0.95 ? ConsoleColor.Red : memRatio >= 0.79 ? ConsoleColor.DarkYellow : ConsoleColor.Green);
 				WriteAt(COL_MEM_TOTAL + 6, y, $"{BarGraph(machine.Memory.CommittedBytes, machine.Memory.TotalBytes, MEM_BARSZ, '=', ":", "."),-5}");
 
-				if (map.Log | map.Storage)
+				if (map.Log || map.Storage)
 				{
 					SetColor(MapQueueSizeToColor(totalQueueSize));
 					WriteAt(COL_DISK, y, $"{FriendlyBytes(totalQueueSize),8}");
@@ -1474,7 +1474,7 @@ namespace FdbTop
 						SetColor(memoryUsed >= 0.9 * proc.Memory.LimitBytes ? ConsoleColor.DarkRed : memoryUsed >= 0.75 * proc.Memory.LimitBytes ? ConsoleColor.DarkYellow : ConsoleColor.DarkGreen);
 						WriteAt(COL_MEM_TOTAL + 6, y, $"{BarGraph(memoryUsed, machine.Memory.CommittedBytes, MEM_BARSZ, '|', ":", "."),-5}");
 
-						if (map.Log | map.Storage)
+						if (map.Log || map.Storage)
 						{
 							SetColor(MapQueueSizeToColor(queueSize));
 							WriteAt(COL_DISK, y, $"{FriendlyBytes(queueSize),8}");

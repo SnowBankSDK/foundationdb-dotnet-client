@@ -40,7 +40,7 @@
     <PackageVersion Include="protobuf-net" Version="3.2.56" />
     <PackageVersion Include="Spectre.Console" Version="0.55.2" />
     <PackageVersion Include="StructuredFieldValues" Version="0.7.7" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.8" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />
     <PackageVersion Include="Testcontainers" Version="4.8.1" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.8" />
