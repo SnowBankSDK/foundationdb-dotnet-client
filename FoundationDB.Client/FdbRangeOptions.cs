@@ -139,7 +139,7 @@ namespace FoundationDB.Client
 			}
 
 			if ((options.Streaming == null && mode != FdbStreamingMode.Iterator)
-			  | (options.Fetch == null && fetch != FdbFetchMode.KeysAndValues))
+			 || (options.Fetch == null && fetch != FdbFetchMode.KeysAndValues))
 			{
 				// the default is Iterator, so only change if that is not what we want
 				options = options with

@@ -1452,7 +1452,7 @@ namespace SnowBank.Data.Json
 			{
 				c = reader.ReadOne();
 			}
-			while (c != '\n' & c != CrystalJsonParser.EndOfStream);
+			while (c is not ('\n' or CrystalJsonParser.EndOfStream));
 		}
 
 		/// <summary>Skip a multi-line comment</summary>

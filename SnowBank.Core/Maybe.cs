@@ -265,7 +265,7 @@ namespace System
 		{
 			if (m_hasValue) return other.m_hasValue && EqualityComparer<T>.Default.Equals(m_value, other.m_value);
 			if (m_errorContainer != null) return !m_hasValue && m_errorContainer.Equals(other.m_errorContainer);
-			return !other.m_hasValue & other.m_errorContainer == null;
+			return !other.m_hasValue && other.m_errorContainer == null;
 		}
 		public bool Equals(T? other)
 		{
@@ -309,7 +309,7 @@ namespace System
 			}
 
 			// Nothing comes before everything except nothing
-			return other.m_hasValue | other.m_errorContainer != null ? -1 : 0;
+			return other.m_hasValue || other.m_errorContainer != null ? -1 : 0;
 		}
 
 		public int CompareTo(T? other)
