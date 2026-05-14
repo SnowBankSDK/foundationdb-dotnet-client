@@ -18,6 +18,11 @@
 		<SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
 	</PropertyGroup>
 
+	<!-- Enable Runtime Async by default on .NET 11+ -->
+	<PropertyGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net11.0'))">
+		<Features>$(Features);runtime-async=on</Features>
+	</PropertyGroup>
+
 	<!--
 		These settings are used by all other projects to define the build target.
 		When this repository is included as a submodule, the parent folder can override these values
