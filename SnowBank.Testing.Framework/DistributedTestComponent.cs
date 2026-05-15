@@ -176,7 +176,11 @@ namespace SnowBank.Testing.Framework
 			this.SubComponents.Add(component);
 		}
 
-		public Uri GetUri(string? path = null) => new($"https://{this.NetworkMap.Host.Fqdn}{path}"); //HACKHACK: BUGBUG: encoding?
+		/// <summary>Returns the absolute uri for an endpoint hosted by this virtual host</summary>
+		/// <param name="path">Relative path, with optional query string (ex: <c>"/api/hello?world=42"</c>)</param>
+		/// <returns>Corresponding external uri (ex: <c>"https://host.domain.simulated/hello?world=42"</c>)</returns>
+		/// <remarks>Returns just the scheme and FQDN if <paramref name="path"/> is null (ex: <c>"https://host.domain.simulated"</c>)</remarks>
+		public Uri GetUri(string? path = null) => new($"https://{this.NetworkMap.Host.Fqdn}{path}");
 
 		/// <inheritdoc />
 		public bool Offline => this.NetworkMap.Host.Offline;
@@ -210,14 +214,14 @@ namespace SnowBank.Testing.Framework
 				if (sourceIp is not null)
 				{
 					int port = 12345; //BUGBUG: dynamically allocate a temporary port?
-					originPeer = string.Create(CultureInfo.InvariantCulture, $"{sourceIp}:{port}");
+					originPeer = string.CreateInvariant($"{sourceIp}:{port}");
 				}
 
 				var targetIp = target.NetworkMap.GetPublicIPAddressForHost(origin.NetworkMap.Host);
 				if (targetIp is not null)
 				{
 					int port = uri?.Port ?? 443; //REVIEW: require uri to be not null?
-					targetPeer = string.Create(CultureInfo.InvariantCulture, $"{targetIp}:{port}");
+					targetPeer = string.CreateInvariant($"{targetIp}:{port}");
 				}
 			}
 
@@ -228,18 +232,18 @@ namespace SnowBank.Testing.Framework
 			}
 		}
 
-		/// <summary>Returns an HTTP client that will talk to this virtual host</summary>
+		/// <summary>Returns an HTTP client that will send requests to this virtual host</summary>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
 		public BetterHttpClient GetLocalBetterHttpClient(BetterHttpClientOptions? options = null) => GetBetterHttpClient(this, options);
 
-		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
+		/// <summary>Returns an HTTP client that will send requests from this virtual host to another host in the virtual network</summary>
 		/// <param name="remote">Remote host</param>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
 		public BetterHttpClient GetBetterHttpClient(IDistributedWebTestComponent remote, BetterHttpClientOptions? options = null)
 		{
-			options ??= new BetterHttpClientOptions();
+			options ??= new();
 			var uri = remote.GetUri();
 			TagPath(options, this, remote, uri);
 
@@ -254,6 +258,7 @@ namespace SnowBank.Testing.Framework
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
 		public BetterHttpClient GetBetterHttpClient(Uri hostOrAddress, BetterHttpClientOptions? options = null)
 		{
+			EnsureStarted();
 			options ??= new();
 
 			var remote = this.NetworkMap.FindHost(hostOrAddress.Host);
@@ -1151,27 +1156,373 @@ namespace SnowBank.Testing.Framework
 			return new Uri(url + query?.ToString(), UriKind.RelativeOrAbsolute);
 		}
 
+		private static void EnsureIsExternalUri(Uri uri)
+		{
+			Contract.NotNull(uri);
+			if (!uri.IsAbsoluteUri)
+			{
+				//REVIEW: TODO: maybe accept if hostname is the same as the current node ?
+				throw new ArgumentException("The URI must be absolute, as the request will be sent to a different node.");
+			}
+		}
+
+		private static void EnsureIsLocalUri(Uri uri)
+		{
+			Contract.NotNull(uri);
+			if (uri.IsAbsoluteUri)
+			{
+				//REVIEW: TODO: maybe accept if hostname is the same as the current node ?
+				throw new ArgumentException("The uri must be relative, as the request will be sent to this node.");
+			}
+		}
+
+		/// <summary>Helper for sending HTTP requests to or from this virtual host</summary>
+		public HttpHelper Http => new(this);
+
+		public readonly struct HttpHelper
+		{
+
+			private readonly DistributedTestComponent Component;
+
+			internal HttpHelper(DistributedTestComponent component)
+			{
+				this.Component = component;
+			}
+
+			/// <summary>Helper methods for send HTTP requests to the host itself</summary>
+			public HttpLocalHelper Local => new(this.Component);
+
+			#region Binary...
+
+			/// <summary>Sends an HTTP GET request that expects a binary response from this node</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to <paramref name="target"/>.</para>
+			/// </remarks>
+			public Task<(HttpStatusCode Result, Slice Body)> GetBinaryAsync(DistributedTestComponent target, string pathOnTarget, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> target == this.Component
+					? this.Local.GetBinaryAsync(pathOnTarget, options, ct)
+					: GetBinaryAsync(target.GetUri(pathOnTarget), options, ct);
+
+			/// <summary>Sends an HTTP GET request that expects a binary response from this node</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to the host name referenced in <paramref name="uri"/>.</para>
+			/// <para>To send a request <i>to</i> this host (from the outside), use the <see cref="Local"/> helper instead.</para>
+			/// </remarks>
+			public Task<(HttpStatusCode Result, Slice Body)> GetBinaryAsync(string uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> GetBinaryAsync(new Uri(uri, UriKind.Absolute), options, ct);
+
+			/// <summary>Sends an HTTP GET request that expects a binary response from this node</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to the host name referenced in <paramref name="uri"/>.</para>
+			/// <para>To send a request <i>to</i> this host (from the outside), use the <see cref="Local"/> helper instead.</para>
+			/// </remarks>
+			public async Task<(HttpStatusCode Result, Slice Body)> GetBinaryAsync(Uri uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsExternalUri(uri);
+				using var client = this.Component.GetBetterHttpClient(uri, options);
+
+				return await this.Component.ExecuteHttpGetBinaryAsync(client, uri, ct);
+			}
+
+			#endregion
+
+			#region Text...
+
+			/// <summary>Executes an HTTP GET request from this host to another node, and returns the response body decoded as a string</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to <paramref name="target"/>.</para>
+			/// <para>To send a request <i>to</i> this host (from the outside), use the <see cref="Local"/> helper instead.</para>
+			/// </remarks>
+			public Task<(HttpStatusCode Result, string? Body)> GetTextAsync(DistributedTestComponent target, string pathOnTarget, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> target == this.Component
+					? this.Local.GetTextAsync(pathOnTarget, options, ct)
+					: GetTextAsync(target.GetUri(pathOnTarget), options, ct);
+
+			/// <summary>Executes an HTTP GET request from this host to another node, and returns the response body decoded as a string</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to the host name referenced in <paramref name="uri"/>.</para>
+			/// <para>To send a request <i>to</i> this host (from the outside), use the <see cref="Local"/> helper instead.</para>
+			/// </remarks>
+			public Task<(HttpStatusCode Result, string? Body)> GetTextAsync(string uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> GetTextAsync(new Uri(uri, UriKind.Absolute), options, ct);
+
+			/// <summary>Executes an HTTP GET request from this host to another node, and returns the response body decoded as a string</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to the host name referenced in <paramref name="uri"/>.</para>
+			/// <para>To send a request <i>to</i> this host (from the outside), use the <see cref="Local"/> helper instead.</para>
+			/// </remarks>
+			public async Task<(HttpStatusCode Result, string? Body)> GetTextAsync(Uri uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				Assert.That(uri, Is.Not.Null);
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsExternalUri(uri);
+				using var client = this.Component.GetLocalBetterHttpClient(options);
+
+				return await this.Component.ExecuteHttpGetTextAsync(client, uri, ct);
+			}
+
+			/// <summary>Executes an HTTP POST request from this host to another node, and returns the response body decoded as a string</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to <paramref name="target"/>.</para>
+			/// <para>To send a request <i>to</i> this host (from the outside), use the <see cref="Local"/> helper instead.</para>
+			/// </remarks>
+			public Task<(HttpStatusCode Result, string? Body)> PostTextAsync(DistributedTestComponent target, string pathOnTarget, string body, Encoding? encoding = null, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> target == this.Component
+					? this.Local.PostTextAsync(pathOnTarget, body, encoding, options, ct)
+					: PostTextAsync(target.GetUri(pathOnTarget), body, encoding, options, ct);
+
+			/// <summary>Executes an HTTP POST request from this host to another node, and returns the response body decoded as a string</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to the host name referenced in <paramref name="uri"/>.</para>
+			/// <para>To send a request <i>to</i> this host (from the outside), use the <see cref="Local"/> helper instead.</para>
+			/// </remarks>
+			public Task<(HttpStatusCode Result, string? Body)> PostTextAsync(string uri, string body, Encoding? encoding = null, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> PostTextAsync(new Uri(uri, UriKind.Absolute), body, encoding, options, ct);
+
+			/// <summary>Executes an HTTP POST request from this host to another node, and returns the response body decoded as a string</summary>
+			/// <remarks>
+			/// <para>The request is performed by this host, and will be sent to the host name referenced in <paramref name="uri"/>.</para>
+			/// <para>To send a request <i>to</i> this host (from the outside), use the <see cref="Local"/> helper instead.</para>
+			/// </remarks>
+			public async Task<(HttpStatusCode Result, string? Body)> PostTextAsync(Uri uri, string body, Encoding? encoding = null, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				Assert.That(uri, Is.Not.Null);
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsExternalUri(uri);
+				using var client = this.Component.GetLocalBetterHttpClient(options);
+
+				return await this.Component.ExecuteHttpPostTextAsync(client, uri, body, encoding, options, ct);
+			}
+
+			#endregion
+
+			#region JSON...
+
+			/// <summary>Sends an HTTP GET request that expects a JSON-encoded response from this node</summary>
+			public Task<(HttpStatusCode Result, JsonObject Body)> GetJsonAsync(DistributedTestComponent target, string pathOnTarget, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> target == this.Component
+					? this.Local.GetJsonAsync(pathOnTarget, options, ct)
+					: GetJsonAsync(target.GetUri(pathOnTarget), options, ct);
+
+			/// <summary>Sends an HTTP GET request that expects a JSON-encoded response from this node</summary>
+			public Task<(HttpStatusCode Status, JsonObject Body)> GetJsonAsync(string uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> GetJsonAsync(new Uri(uri, UriKind.RelativeOrAbsolute), options, ct);
+
+			/// <summary>Sends an HTTP GET request that expects a JSON-encoded response from this node</summary>
+			public async Task<(HttpStatusCode Status, JsonObject Body)> GetJsonAsync(Uri uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsExternalUri(uri);
+				using var client = this.Component.GetBetterHttpClient(uri, options);
+
+				return await this.Component.ExecuteHttpGetJsonAsync(client, uri, options, ct);
+			}
+
+			/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+			public Task<(HttpStatusCode Result, JsonObject Body)> PostJsonAsync<T>(DistributedTestComponent target, string pathOnTarget, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> target == this.Component
+					? this.Local.PostJsonAsync(pathOnTarget, body, options, ct)
+					: PostJsonAsync(target.GetUri(pathOnTarget), body, options, ct);
+
+			/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+			public Task<(HttpStatusCode Status, JsonObject Body)> PostJsonAsync<T>(string uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> PostJsonAsync<T>(new Uri(uri, UriKind.RelativeOrAbsolute), body, options, ct);
+
+			/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+			public async Task<(HttpStatusCode Status, JsonObject Body)> PostJsonAsync<T>(Uri uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsExternalUri(uri);
+				using var client = this.Component.GetBetterHttpClient(uri, options);
+
+				return await this.Component.ExecuteHttpPostJsonAsync<T>(client, uri, body, options, ct);
+			}
+
+			/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+			public Task<HttpStatusCode> PutJsonAsync<T>(DistributedTestComponent target, string pathOnTarget, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> target == this.Component
+					? this.Local.PutJsonAsync(pathOnTarget, body, options, ct)
+					: PutJsonAsync(target.GetUri(pathOnTarget), body, options, ct);
+
+			/// <summary>Sends an HTTP PUT request with a JSON-encoded body to this node</summary>
+			public Task<HttpStatusCode> PutJsonAsync<T>(string uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> PutJsonAsync<T>(new Uri(uri, UriKind.RelativeOrAbsolute), body, options, ct);
+
+			/// <summary>Sends an HTTP PUT request with a JSON-encoded body to this node</summary>
+			public async Task<HttpStatusCode> PutJsonAsync<T>(Uri uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsExternalUri(uri);
+				using var client = this.Component.GetBetterHttpClient(uri, options);
+
+				return await this.Component.ExecuteHttpPutJsonAsync(client, uri, body, options, ct);
+			}
+
+			#endregion
+
+		}
+
+		public readonly struct HttpLocalHelper
+		{
+
+			private readonly DistributedTestComponent Component;
+
+			internal HttpLocalHelper(DistributedTestComponent component)
+			{
+				this.Component = component;
+			}
+
+			#region Binary...
+
+			public Task<(HttpStatusCode Result, Slice Body)> GetBinaryAsync(string relativePath, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> GetBinaryAsync(new Uri(relativePath, UriKind.Relative), options, ct);
+
+			public async Task<(HttpStatusCode Result, Slice Body)> GetBinaryAsync(Uri relativePath, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsLocalUri(relativePath);
+
+				var uri = this.Component.GetUri(relativePath.PathAndQuery);
+				using var client = this.Component.GetLocalBetterHttpClient(options);
+				return await this.Component.ExecuteHttpGetBinaryAsync(client, uri, ct);
+			}
+
+			#endregion
+
+			#region Text...
+
+			public Task<(HttpStatusCode Result, string? Body)> GetTextAsync(string relativePath, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> GetTextAsync(new Uri(relativePath, UriKind.Relative), options, ct);
+
+			public async Task<(HttpStatusCode Result, string? Body)> GetTextAsync(Uri relativePath, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsLocalUri(relativePath);
+
+				var uri = this.Component.GetUri(relativePath.PathAndQuery);
+				using var client = this.Component.GetLocalBetterHttpClient(options);
+				return await this.Component.ExecuteHttpGetTextAsync(client, uri, ct);
+			}
+
+			public Task<(HttpStatusCode Result, string? Body)> PostTextAsync(string relativePath, string body, Encoding? encoding = null, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> PostTextAsync(new Uri(relativePath, UriKind.Relative), body, encoding, options, ct);
+
+			public async Task<(HttpStatusCode Result, string? Body)> PostTextAsync(Uri relativePath, string body, Encoding? encoding = null, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsLocalUri(relativePath);
+				var uri = this.Component.GetUri(relativePath.PathAndQuery);
+				using var client = this.Component.GetLocalBetterHttpClient(options);
+
+				return await this.Component.ExecuteHttpGetTextAsync(client, uri, ct);
+			}
+
+			#endregion
+
+			#region JSON...
+
+			/// <summary>Sends an HTTP GET request that expects a JSON-encoded response from this node</summary>
+			public Task<(HttpStatusCode Status, JsonObject Body)> GetJsonAsync(string relativePath, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> GetJsonAsync(new Uri(relativePath, UriKind.RelativeOrAbsolute), options, ct);
+
+			/// <summary>Sends an HTTP GET request that expects a JSON-encoded response from this node</summary>
+			public async Task<(HttpStatusCode Status, JsonObject Body)> GetJsonAsync(Uri relativePath, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsLocalUri(relativePath);
+				var uri = this.Component.GetUri(relativePath.PathAndQuery);
+				using var client = this.Component.GetBetterHttpClient(uri, options);
+
+				return await this.Component.ExecuteHttpGetJsonAsync(client, uri, options, ct);
+			}
+
+			/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+			public Task<(HttpStatusCode Status, JsonObject Body)> PostJsonAsync<T>(string relativePath, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> PostJsonAsync<T>(new Uri(relativePath, UriKind.RelativeOrAbsolute), body, options, ct);
+
+			/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+			public async Task<(HttpStatusCode Status, JsonObject Body)> PostJsonAsync<T>(Uri relativePath, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsLocalUri(relativePath);
+				var uri = this.Component.GetUri(relativePath.PathAndQuery);
+				using var client = this.Component.GetBetterHttpClient(uri, options);
+
+				return await this.Component.ExecuteHttpPostJsonAsync<T>(client, uri, body, options, ct);
+			}
+
+			/// <summary>Sends an HTTP PUT request with a JSON-encoded body to this node</summary>
+			public Task<HttpStatusCode> PutJsonAsync<T>(string relativePath, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+				=> PutJsonAsync<T>(new Uri(relativePath, UriKind.RelativeOrAbsolute), body, options, ct);
+
+			/// <summary>Sends an HTTP PUT request with a JSON-encoded body to this node</summary>
+			public async Task<HttpStatusCode> PutJsonAsync<T>(Uri relativePath, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+			{
+				ct = ct.CanBeCanceled ? ct : this.Component.Cancellation;
+				ct.ThrowIfCancellationRequested();
+
+				EnsureIsLocalUri(relativePath);
+				var uri = this.Component.GetUri(relativePath.PathAndQuery);
+				using var client = this.Component.GetBetterHttpClient(uri, options);
+
+				return await this.Component.ExecuteHttpPutJsonAsync(client, uri, body, options, ct);
+			}
+
+			#endregion
+		}
+
 		#region Binary...
 
-		private async Task<(HttpStatusCode Status, Slice Body)> ParsBinaryResponse(HttpResponseMessage res)
+		private async Task<(HttpStatusCode Status, Slice Body)> ParseBinaryResponse(HttpResponseMessage res)
 		{
 			var bytes = await res.Content.ReadAsByteArrayAsync(this.Cancellation);
 			return (res.StatusCode, bytes.AsSlice());
 		}
 
 		/// <summary>Sends an HTTP GET request that expects a binary response from this node</summary>
+		[Obsolete("Use host.Http.GetBinaryAsync() instead")]
 		public Task<(HttpStatusCode Status, Slice Body)> HttpGetBinaryAsync(string uri, CancellationToken ct = default)
 			=> HttpGetBinaryAsync(new Uri(uri, UriKind.RelativeOrAbsolute), ct);
 
 		/// <summary>Sends an HTTP GET request that expects a binary response from this node</summary>
+		[Obsolete("Use host.Http.GetBinaryAsync() instead")]
 		public async Task<(HttpStatusCode Status, Slice Body)> HttpGetBinaryAsync(Uri uri, CancellationToken ct = default)
 		{
-			Assert.That(uri, Is.Not.Null);
 			ct = ct.CanBeCanceled ? ct : this.Cancellation;
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
+			EnsureIsExternalUri(uri);
+
 			using var client = this.GetBetterHttpClient(uri);
+			return await ExecuteHttpGetBinaryAsync(client, uri, ct);
+		}
+
+		private async Task<(HttpStatusCode Status, Slice Body)> ExecuteHttpGetBinaryAsync(BetterHttpClient client, Uri uri, CancellationToken ct)
+		{
 			var req = new HttpRequestMessage(HttpMethod.Get, uri);
 			this.Log($"# => GET {req.RequestUri}");
 
@@ -1179,7 +1530,7 @@ namespace SnowBank.Testing.Framework
 			{
 				var res = query.Response;
 				this.Log($"# <= {(int) res.StatusCode} {res.ReasonPhrase} ({res.Content.Headers.ContentType}, {res.Content.Headers.ContentLength:N0} bytes)");
-				return await this.ParsBinaryResponse(res);
+				return await this.ParseBinaryResponse(res);
 			}, ct);
 		}
 
@@ -1193,19 +1544,39 @@ namespace SnowBank.Testing.Framework
 			return (res.StatusCode, text);
 		}
 
-		/// <summary>Sends an HTTP GET request that expects a text response from this node</summary>
+		/// <summary>Executes an HTTP GET request from this host to another node, and returns the response body decoded as a string</summary>
+		/// <remarks>
+		/// <para>The request is performed by this host, and will be sent to the host name referenced in <paramref name="uri"/>.</para>
+		/// <para>To send a request <i>to</i> this host (from the outside), use XXX instead.</para>
+		/// </remarks>
+		[Obsolete("Use host.Http.GetTextAsync() instead")]
 		public Task<(HttpStatusCode Status, string? Body)> HttpGetTextAsync(string uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
-			=> HttpGetTextAsync(new Uri(uri, UriKind.RelativeOrAbsolute), options, ct);
+			=> HttpGetTextAsync(new Uri(uri, UriKind.Absolute), options, ct);
 
-		/// <summary>Sends an HTTP GET request that expects a text response from this node</summary>
+		/// <summary>Executes an HTTP GET request from this host to another node, and returns the response body decoded as a string</summary>
+		/// <remarks>
+		/// <para>The request is performed by this host, and will be sent to the host name referenced in <paramref name="uri"/>.</para>
+		/// <para>To send a request <i>to</i> this host (from the outside), use XXX instead.</para>
+		/// </remarks>
+		[Obsolete("Use host.Http.GetTextAsync() instead")]
 		public async Task<(HttpStatusCode Status, string? Body)> HttpGetTextAsync(Uri uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
 		{
-			Assert.That(uri, Is.Not.Null);
 			ct = ct.CanBeCanceled ? ct : this.Cancellation;
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
+			EnsureIsExternalUri(uri);
+
 			using var client = this.GetBetterHttpClient(uri, options);
+			return await ExecuteHttpGetTextAsync(client, uri, ct);
+		}
+
+		private async Task<(HttpStatusCode Status, string? Body)> ExecuteHttpGetTextAsync(BetterHttpClient client, Uri uri, CancellationToken ct)
+		{
+			ct = ct.CanBeCanceled ? ct : this.Cancellation;
+			ct.ThrowIfCancellationRequested();
+			EnsureStarted();
+
 			var req = new HttpRequestMessage(HttpMethod.Get, uri);
 			this.Log($"# => GET {req.RequestUri}");
 
@@ -1217,20 +1588,28 @@ namespace SnowBank.Testing.Framework
 			}, ct);
 		}
 
-		/// <summary>Sends an HTTP GET request that expects a text response from this node</summary>
+		/// <summary>Executes an HTTP POST request from this host to another node, and returns the response body decoded as a string</summary>
+		[Obsolete("Use host.Http.PostTextAsync() instead")]
 		public Task<(HttpStatusCode Status, string? Body)> HttpPostTextAsync(string uri, string body, Encoding? encoding = null, BetterHttpClientOptions? options = null, CancellationToken ct = default)
-			=> HttpPostTextAsync(new Uri(uri, UriKind.RelativeOrAbsolute), body, encoding, options, ct);
+			=> HttpPostTextAsync(new Uri(uri, UriKind.Absolute), body, encoding, options, ct);
 
-		/// <summary>Sends an HTTP GET request that expects a text response from this node</summary>
+		/// <summary>Executes an HTTP POST request from this host to another node, and returns the response body decoded as a string</summary>
+		[Obsolete("Use host.Http.PostTextAsync() instead")]
 		public async Task<(HttpStatusCode Status, string? Body)> HttpPostTextAsync(Uri uri, string body, Encoding? encoding = null, BetterHttpClientOptions? options = null, CancellationToken ct = default)
 		{
-			Assert.That(uri, Is.Not.Null);
 			encoding ??= Encoding.UTF8;
 			ct = ct.CanBeCanceled ? ct : this.Cancellation;
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
+			EnsureIsExternalUri(uri);
+
 			using var client = this.GetBetterHttpClient(uri, options);
+			return await ExecuteHttpPostTextAsync(client, uri, body, encoding, options, ct);
+		}
+
+		private async Task<(HttpStatusCode Status, string? Body)> ExecuteHttpPostTextAsync(BetterHttpClient client, Uri uri, string body, Encoding? encoding = null, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+		{
 			var req = new HttpRequestMessage(HttpMethod.Post, uri) { Content = new StringContent(body, encoding) };
 			this.Log($"# => POST {req.RequestUri}");
 
@@ -1256,18 +1635,24 @@ namespace SnowBank.Testing.Framework
 		private static readonly MediaTypeWithQualityHeaderValue MediaTypeJson = new("application/json", 1);
 
 		/// <summary>Sends an HTTP GET request that expects a JSON-encoded response from this node</summary>
+		[Obsolete("Use host.Http.GetJsonAsync() instead")]
 		public Task<(HttpStatusCode Status, JsonObject Body)> HttpGetJsonAsync(string uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
 			=> HttpGetJsonAsync(new Uri(uri, UriKind.RelativeOrAbsolute), options, ct);
 
 		/// <summary>Sends an HTTP GET request that expects a JSON-encoded response from this node</summary>
+		[Obsolete("Use host.Http.GetJsonAsync() instead")]
 		public async Task<(HttpStatusCode Status, JsonObject Body)> HttpGetJsonAsync(Uri uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
 		{
-			Assert.That(uri, Is.Not.Null);
 			ct = ct.CanBeCanceled ? ct : this.Cancellation;
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
 			using var client = this.GetBetterHttpClient(uri, options);
+			return await ExecuteHttpGetJsonAsync(client, uri, options, ct);
+		}
+
+		private async Task<(HttpStatusCode Status, JsonObject Body)> ExecuteHttpGetJsonAsync(BetterHttpClient client, Uri uri, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+		{
 			var req = new HttpRequestMessage(HttpMethod.Get, uri);
 			req.Headers.Accept.Add(MediaTypeJson);
 			this.Log($"# => GET {req.RequestUri}");
@@ -1281,19 +1666,29 @@ namespace SnowBank.Testing.Framework
 		}
 
 		/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+		[Obsolete("Use host.Http.PostJsonAsync() instead")]
 		public Task<(HttpStatusCode Status, JsonObject Body)> HttpPostJsonAsync<T>(string uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
 			=> HttpPostJsonAsync<T>(new Uri(uri, UriKind.RelativeOrAbsolute), body, options, ct);
 
 		/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+		[Obsolete("Use host.Http.PostJsonAsync() instead")]
 		public async Task<(HttpStatusCode Status, JsonObject Body)> HttpPostJsonAsync<T>(Uri uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
 		{
-			Assert.That(uri, Is.Not.Null);
 			ct = ct.CanBeCanceled ? ct : this.Cancellation;
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
-			
+
 			using var client = this.GetBetterHttpClient(uri, options);
-			var req = new HttpRequestMessage(HttpMethod.Post, uri) { Content = CrystalJsonContent.Create(body) };
+			return await ExecuteHttpPostJsonAsync<T>(client, uri, body, options, ct);
+		}
+
+		/// <summary>Sends an HTTP POST request with a JSON-encoded request body to this node, and expects a JSON-encoded response.</summary>
+		private async Task<(HttpStatusCode Status, JsonObject Body)> ExecuteHttpPostJsonAsync<T>(BetterHttpClient client, Uri uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+		{
+			var req = new HttpRequestMessage(HttpMethod.Post, uri)
+			{
+				Content = CrystalJsonContent.Create(body)
+			};
 			this.Log($"# => POST {req.RequestUri} ({req.Content.Headers.ContentType}, {req.Content.Headers.ContentLength:N0} bytes)");
 
 			return await client.SendAsync(req, async query =>
@@ -1305,18 +1700,24 @@ namespace SnowBank.Testing.Framework
 		}
 
 		/// <summary>Sends an HTTP PUT request with a JSON-encoded body to this node</summary>
+		[Obsolete("Use host.Http.PutJsonAsync() instead")]
 		public Task<HttpStatusCode> HttpPutJsonAsync<T>(string uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
 			=> HttpPutJsonAsync<T>(new Uri(uri, UriKind.RelativeOrAbsolute), body, options, ct);
 
 		/// <summary>Sends an HTTP PUT request with a JSON-encoded body to this node</summary>
+		[Obsolete("Use host.Http.PutJsonAsync() instead")]
 		public async Task<HttpStatusCode> HttpPutJsonAsync<T>(Uri uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
 		{
-			Assert.That(uri, Is.Not.Null);
 			ct = ct.CanBeCanceled ? ct : this.Cancellation;
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
 			using var client = this.GetBetterHttpClient(uri, options);
+			return await ExecuteHttpPutJsonAsync(client, uri, body, options, ct);
+		}
+
+		private async Task<HttpStatusCode> ExecuteHttpPutJsonAsync<T>(BetterHttpClient client, Uri uri, T body, BetterHttpClientOptions? options = null, CancellationToken ct = default)
+		{
 			var req = new HttpRequestMessage(HttpMethod.Put, uri) { Content = CrystalJsonContent.Create(body) };
 			this.Log($"# => PUT {req.RequestUri} ({req.Content.Headers.ContentType}, {req.Content.Headers.ContentLength:N0} bytes)");
 
