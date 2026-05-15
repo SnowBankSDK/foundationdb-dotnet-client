@@ -26,6 +26,7 @@
 
 namespace SnowBank.Testing
 {
+	using System.Buffers;
 	using System.ComponentModel;
 	using System.IO;
 	using System.Net;
@@ -36,12 +37,12 @@ namespace SnowBank.Testing
 	using System.Runtime.ExceptionServices;
 	using System.Runtime.InteropServices;
 	using System.Xml;
-	using SnowBank.Data.Tuples;
-	using SnowBank.Reactive.Disposables;
 	using Microsoft.Extensions.DependencyInjection;
 	using Microsoft.Extensions.Logging;
 	using NodaTime;
+	using SnowBank.Data.Tuples;
 	using SnowBank.Numerics;
+	using SnowBank.Reactive.Disposables;
 	using SnowBank.Runtime.Converters;
 	using ILogger = Microsoft.Extensions.Logging.ILogger;
 
@@ -1398,25 +1399,35 @@ namespace SnowBank.Testing
 		[DebuggerNonUserCode]
 		protected static string Stringify(object? item)
 		{
-			if (item is null) return "<null>";
-
 			switch (item)
 			{
-				case string s: return $"\"{s.Replace(@"\", @"\\").Replace("\r", @"\r").Replace("\n", @"\n").Replace("\0", @"\0").Replace(@"""", @"\""")}\"";
-				case int i: return i.ToString(NumberFormatInfo.InvariantInfo);
-				case long l: return string.Create(CultureInfo.InvariantCulture, $"{l:R}L");
-				case uint ui: return string.Create(CultureInfo.InvariantCulture, $"{ui:R}U");
-				case ulong ul: return string.Create(CultureInfo.InvariantCulture, $"{ul:R}UL");
-				case double d: return string.Create(CultureInfo.InvariantCulture, $"{d:R}");
-				case float f: return string.Create(CultureInfo.InvariantCulture, $"{f:R}f");
-				case DateTime dt: return string.Create(CultureInfo.InvariantCulture, $"(DateTime) {dt:O}");
-				case DateTimeOffset dto: return string.Create(CultureInfo.InvariantCulture, $"(DateTimeOffset) {dto:O}");
-				case Guid g: return string.Create(CultureInfo.InvariantCulture, $"(Guid) {g:B}");
-				case Uuid128 uuid: return string.Create(CultureInfo.InvariantCulture, $"(Uuid128) {uuid:B}");
-				case Slice s: return "(Slice) " + s.PrettyPrint();
-				case StringBuilder sb: return $"\"{sb.ToString().Replace(@"\", @"\\").Replace("\r", @"\r").Replace("\n", @"\n").Replace("\0", @"\0").Replace(@"""", @"\""")}\"";
+				case null: return "<null>";
 
+				case string s: return Escape(s);
+				case int i: return i.ToString(NumberFormatInfo.InvariantInfo);
+				case long l: return string.CreateInvariant($"{l:R}L");
+				case uint ui: return string.CreateInvariant($"{ui:R}U");
+				case ulong ul: return string.CreateInvariant($"{ul:R}UL");
+				case double d: return string.CreateInvariant($"{d:R}");
+				case float f: return string.CreateInvariant($"{f:R}f");
+				case TimeSpan ts: return string.CreateInvariant($"(TimeSpan) {ts:c}");
+				case DateTime dt: return string.CreateInvariant($"(DateTime) {dt:O}");
+				case DateTimeOffset dto: return string.CreateInvariant($"(DateTimeOffset) {dto:O}");
+				case DateOnly dt: return string.CreateInvariant($"(DateOnly) {dt:O}");
+				case TimeOnly dt: return string.CreateInvariant($"(TimeOnly) {dt:O}");
+				case Guid g: return string.CreateInvariant($"(Guid) {g:B}");
+				case Uuid128 uuid: return string.CreateInvariant($"(Uuid128) {uuid:B}");
+				case Uuid96 uuid: return string.CreateInvariant($"(Uuid96) {uuid:B}");
+				case Uuid80 uuid: return string.CreateInvariant($"(Uuid80) {uuid:B}");
+				case Uuid64 uuid: return string.CreateInvariant($"(Uuid64) {uuid:B}");
+				case Uuid48 uuid: return string.CreateInvariant($"(Uuid48) {uuid:B}");
+
+				case StringBuilder sb: return Escape(sb);
+				case char[] s: return Escape(s);
 				case byte[] buf: return "(byte[]) " + buf.AsSlice().PrettyPrint();
+				case Slice s: return "(Slice) " + s.PrettyPrint();
+				case MemoryStream ms: return "(MemoryStream) " + ms.ToSlice().PrettyPrint();
+
 				case JsonValue j: return j.ToJsonText();
 				case ITuple t: return t.ToString()!;
 				case IJsonSerializable j: return $"({j.GetType().GetFriendlyName()}) {j.ToJsonText()}";
@@ -1441,6 +1452,143 @@ namespace SnowBank.Testing
 			}
 
 			return $"({type.GetFriendlyName()}) {item}";
+		}
+
+		private static readonly SearchValues<char> QuotedCharacters = SearchValues.Create(['\\', '\r', '\n', '\0', '\"']);
+
+#if NET9_0_OR_GREATER
+		private static string Escape(ReadOnlySpan<char> text)
+		{
+			int len = text.Length;
+			if (len == 0) return "\"\"";
+
+			// pre-compute the final string size
+			int extra = text.CountAny(SimpleTest.QuotedCharacters);
+
+			if (extra == 0)
+			{ // clean string
+				return $"\"{text}\"";
+			}
+
+			// add the number of extra '\', plus 2 for the surrounding double quotes
+			int finalLength = checked(len + extra + 2);
+
+			// format the string
+			return string.Create(finalLength, text, (dest, state) =>
+			{
+				var buffer = dest;
+
+				buffer[0] = '"';
+				buffer = buffer[1..];
+
+				var source = state;
+				while (!source.IsEmpty)
+				{
+					int index = source.IndexOfAny(SimpleTest.QuotedCharacters);
+
+					if (index == -1)
+					{ // the rest of the chunk is clean
+						source.CopyTo(buffer);
+						buffer = buffer[source.Length..];
+						break;
+					}
+
+					if (index > 0)
+					{ // the head of the chunk is clean
+						source[..index].CopyTo(buffer);
+						buffer = buffer[index..];
+						source = source[index..];
+					}
+
+					char c = source[0];
+					buffer[0] = '\\';
+					buffer[1] = c != '\0' ? c : '0'; // only '\0' uses a different token
+
+					buffer = buffer[2..];
+					source = source[1..];
+				}
+				Contract.Debug.Ensures(buffer.Length == 1);
+				buffer[0] = '"';
+			});
+		}
+#else // fallback that allocates on .NET 8
+		private static string Escape(string text)
+		{
+			// old school Replace chain!
+			return string.IsNullOrEmpty(text)
+				? "\"\""
+				: $"\"{text.Replace(@"\", @"\\").Replace("\r", @"\r").Replace("\n", @"\n").Replace("\0", @"\0").Replace(@"""", @"\""")}\"";
+		}
+
+		private static string Escape(char[] text)
+		{
+			return text.Length == 0
+				? "\"\""
+				: Escape(new string(text));
+		}
+#endif
+
+		private static string Escape(StringBuilder sb)
+		{
+			Contract.Debug.Requires(sb is not null);
+
+			int len = sb.Length;
+			if (len == 0) return "\"\"";
+
+#if NET9_0_OR_GREATER
+
+			// pre-compute the final string size
+			int extra = 0;
+			foreach (ReadOnlyMemory<char> chunk in sb.GetChunks())
+			{
+				// all quoted characters will require an extra '\'
+				extra += chunk.Span.CountAny(SimpleTest.QuotedCharacters);
+			}
+			// add the number of extra '\', plus 2 for the surrounding double quotes
+			int finalLength = checked(len + extra + 2);
+
+			// format the string
+			return string.Create(finalLength, sb, (dest, state) =>
+			{
+				var buffer = dest;
+				buffer[0] = '"';
+				buffer = buffer[1..];
+
+				foreach (var chunk in state.GetChunks())
+				{
+					var source = chunk.Span;
+					while (!source.IsEmpty)
+					{
+						int index = source.IndexOfAny(SimpleTest.QuotedCharacters);
+
+						if (index == -1)
+						{ // the rest of the chunk is clean
+							source.CopyTo(buffer);
+							buffer = buffer[source.Length..];
+							break;
+						}
+
+						if (index > 0)
+						{ // the head of the chunk is clean
+							source[..index].CopyTo(buffer);
+							buffer = buffer[index..];
+							source = source[index..];
+						}
+
+						char c = source[0];
+						buffer[0] = '\\';
+						buffer[1] = c != '\0' ? c : '0'; // only '\0' uses a different token
+
+						buffer = buffer[2..];
+						source = source[1..];
+					}
+				}
+				Contract.Debug.Ensures(buffer.Length == 1);
+				buffer[0] = '"';
+			});
+#else
+			return Escape(sb.ToString());
+#endif
 		}
 
 		/// <summary>Returns a factory that can create <see cref="ILogger{TCategoryName}"/> instances that will output to the test log.</summary>
