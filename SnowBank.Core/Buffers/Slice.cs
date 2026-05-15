@@ -3907,7 +3907,7 @@ namespace System
 		{
 			if (buffer.Count <= 0)
 			{
-				throw new ArgumentException(nameof(buffer));
+				throw new ArgumentException(null, nameof(buffer));
 			}
 			return ref MemoryMarshal.GetReference(buffer.Span);
 		}
@@ -3921,7 +3921,7 @@ namespace System
 		{
 			if (buffer.Count <= 0)
 			{
-				throw new ArgumentException(nameof(buffer));
+				throw new ArgumentException(null, nameof(buffer));
 			}
 			if ((uint) index >= buffer.Count)
 			{
@@ -3946,7 +3946,7 @@ namespace System
 		{
 			if (buffer.Count <= 0)
 			{
-				throw new ArgumentException(nameof(buffer));
+				throw new ArgumentException(null, nameof(buffer));
 			}
 			return ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer.Span), buffer.Count - 1);
 		}

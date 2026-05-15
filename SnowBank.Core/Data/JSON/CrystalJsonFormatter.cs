@@ -37,8 +37,6 @@ namespace SnowBank.Data.Json
 	public static class CrystalJsonFormatter
 	{
 
-		#region Formatting
-
 		public static void WriteJavaScriptPropertyName(ref ValueStringWriter writer, string name)
 		{
 			Contract.NotNull(name);
@@ -173,7 +171,7 @@ namespace SnowBank.Data.Json
 				CrystalJsonSettings.FloatFormat.String => JsonTokens.StringNaN,
 				CrystalJsonSettings.FloatFormat.Null => JsonTokens.Null,
 				CrystalJsonSettings.FloatFormat.JavaScript => JsonTokens.JavaScriptNaN,
-				_ => throw new ArgumentException(nameof(format))
+				_ => throw new ArgumentException(null, nameof(format))
 			};
 
 		internal static string GetPositiveInfinityToken(CrystalJsonSettings.FloatFormat format) =>
@@ -184,7 +182,7 @@ namespace SnowBank.Data.Json
 				CrystalJsonSettings.FloatFormat.String => JsonTokens.StringInfinityPos,
 				CrystalJsonSettings.FloatFormat.Null => JsonTokens.Null,
 				CrystalJsonSettings.FloatFormat.JavaScript => JsonTokens.JavaScriptInfinityPos,
-				_ => throw new ArgumentException(nameof(format))
+				_ => throw new ArgumentException(null, nameof(format))
 			};
 
 		internal static string GetNegativeInfinityToken(CrystalJsonSettings.FloatFormat format) =>
@@ -195,7 +193,7 @@ namespace SnowBank.Data.Json
 				CrystalJsonSettings.FloatFormat.String => JsonTokens.StringInfinityNeg,
 				CrystalJsonSettings.FloatFormat.Null => JsonTokens.Null,
 				CrystalJsonSettings.FloatFormat.JavaScript => JsonTokens.JavaScriptInfinityNeg,
-				_ => throw new ArgumentException(nameof(format))
+				_ => throw new ArgumentException(null, nameof(format))
 			};
 
 		private static readonly int[] DaysToMonth365 = [ 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 ];
@@ -529,8 +527,6 @@ namespace SnowBank.Data.Json
 			second = (int)((ticks / 10000000L) % 60L);
 			remainder = (int)(ticks % TimeSpan.TicksPerSecond);
 		}
-
-		#endregion
 
 	}
 

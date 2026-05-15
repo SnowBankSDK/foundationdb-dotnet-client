@@ -113,7 +113,7 @@ namespace FoundationDB.Linq
 			Contract.NotNull(selector);
 			if (query.Expression is not FdbQuerySequenceExpression<TSource> sourceExpr)
 			{
-				throw new ArgumentException(nameof(query));
+				throw new ArgumentException(null, nameof(query));
 			}
 
 			var expr = FdbQueryExpressions.Transform(sourceExpr, selector);
@@ -128,7 +128,7 @@ namespace FoundationDB.Linq
 			Contract.NotNull(predicate);
 			if (query.Expression is not FdbQuerySequenceExpression<T> sourceExpr)
 			{
-				throw new ArgumentException(nameof(query));
+				throw new ArgumentException(null, nameof(query));
 			}
 
 			var expr = FdbQueryExpressions.Filter(sourceExpr, predicate);

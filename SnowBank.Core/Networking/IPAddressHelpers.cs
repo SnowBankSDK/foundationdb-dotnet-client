@@ -647,7 +647,7 @@ namespace SnowBank.Networking
 		/// <remarks>This implementation supports cancellation</remarks>
 		public static async Task<PingReply> PingAsync(IPAddress addr, TimeSpan timeout, byte[] buffer, PingOptions options, CancellationToken ct)
 		{
-			if (timeout <= TimeSpan.Zero) throw new ArgumentException(nameof(timeout));
+			if (timeout <= TimeSpan.Zero) throw new ArgumentException(null, nameof(timeout));
 			ct.ThrowIfCancellationRequested();
 
 			//note: Ping.SendPingAsync does NOT support any direct form of cancellation!
