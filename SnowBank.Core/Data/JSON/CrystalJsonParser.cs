@@ -29,9 +29,7 @@
 
 namespace SnowBank.Data.Json
 {
-#if NET8_0_OR_GREATER
 	using System.Buffers;
-#endif
 	using System.Globalization;
 	using System.Reflection;
 	using SnowBank.Buffers;
@@ -67,28 +65,11 @@ namespace SnowBank.Data.Json
 	{
 		internal const char EndOfStream = '\xFFFF'; // == -1
 
-#if NET8_0_OR_GREATER
-		
-
 		internal static readonly SearchValues<char> WhiteCharsMap = SearchValues.Create("\t\r\n ");
 		//REVIEW: is '\xA0' (&#160;) considered a whitespace in the JSON spec and/or popular parser implementations ?
 
-#else
-		internal static readonly bool[] WhiteCharsMap = ComputeWhiteCharMap();
-
-		internal const int WHITE_CHAR_MAP = 33; // 0..32
-
-		[Pure]
-		private static bool[] ComputeWhiteCharMap()
-		{
-			var map = new bool[WHITE_CHAR_MAP];
-			map['\t'] = true;
-			map['\r'] = true;
-			map['\n'] = true;
-			map[' '] = true;
-			return map;
-		}
-#endif
+		/// <summary>List of characters that are allowed to follow after a number</summary>
+		internal static readonly SearchValues<char> ValidNumberTrailingCharacters = SearchValues.Create(",}]: \t\r\n");
 
 		internal static readonly JsonTokenType[] TokenMap =
 		[
@@ -146,12 +127,12 @@ namespace SnowBank.Data.Json
 #endif
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		internal static JsonNumber? ParseJsonNumber(string? literal)
+		public static JsonNumber? ParseJsonNumber(string? literal)
 		{
 			return ParseJsonNumber(literal.AsSpan(), literal);
 		}
 
-		internal static JsonNumber? ParseJsonNumber(ReadOnlySpan<char> literal, string? original = null)
+		public static JsonNumber? ParseJsonNumber(ReadOnlySpan<char> literal, string? original = null)
 		{
 #if DEBUG_JSON_PARSER
 			Debug.WriteLine("CrystalJsonParser.ParseJsonNumber('{0}')", (object)literal);
@@ -328,7 +309,7 @@ namespace SnowBank.Data.Json
 		/// <param name="kind">Receives <see cref="DateTimeKind.Utc"/> if ends with <c>'Z'</c>, <see cref="DateTimeKind.Local"/> if could end with a time offset, or <see cref="DateTimeKind.Unspecified"/> if no offset indication was found</param>
 		/// <remarks>This is a fast heuristic that <i>may</i> have false positives</remarks>
 		[Pure]
-		private static bool CouldBeIso8601DateTime(ReadOnlySpan<char> value, out DateTimeKind kind)
+		public static bool CouldBeIso8601DateTime(ReadOnlySpan<char> value, out DateTimeKind kind)
 		{
 			// look for markers like '-', 'T' and ':' at the correct place
 			// must end with either 'Z' (UTC) or '+##:##' / '-##:##'
@@ -375,15 +356,15 @@ namespace SnowBank.Data.Json
 			return false;
 		}
 
-		[Pure, ContractAnnotation("value:null => false")]
-		internal static bool TryParseIso8601DateTime(ReadOnlySpan<char> value, out DateTime result)
+		[Pure]
+		public static bool TryParseIso8601DateTime(ReadOnlySpan<char> value, out DateTime result)
 		{
 #if DEBUG_JSON_PARSER
 			Debug.WriteLine("CrystalJsonConverter.TryParseMicrosoftDateTime(" + value +")");
 #endif
 			result = DateTime.MinValue;
 
-			if (value.Length == 0 || !CouldBeIso8601DateTime(value, out var kind))
+			if (value.Length == 0 || !CouldBeIso8601DateTime(value, out _))
 			{
 				return false;
 			}
@@ -392,8 +373,8 @@ namespace SnowBank.Data.Json
 			return DateTime.TryParse(value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.RoundtripKind, out result);
 		}
 
-		[Pure, ContractAnnotation("value:null => false")]
-		internal static bool TryParseIso8601DateTimeOffset(ReadOnlySpan<char> value, out DateTimeOffset result)
+		[Pure]
+		public static bool TryParseIso8601DateTimeOffset(ReadOnlySpan<char> value, out DateTimeOffset result)
 		{
 #if DEBUG_JSON_PARSER
 			Debug.WriteLine("CrystalJsonConverter.TryParseMicrosoftDateTime(" + value +")");
@@ -613,13 +594,13 @@ namespace SnowBank.Data.Json
 		}
 
 		[Pure]
-		private static bool CouldBeJsonMicrosoftDateTime(ReadOnlySpan<char> value)
+		public static bool CouldBeJsonMicrosoftDateTime(ReadOnlySpan<char> value)
 		{
 			return value.Length >= 9 && value.StartsWith("/Date(") && value.EndsWith(")/");
 		}
 
 		[Pure, ContractAnnotation("value:null => false")]
-		internal static bool TryParseMicrosoftDateTime(ReadOnlySpan<char> value, out DateTime result, out TimeSpan? tz)
+		public static bool TryParseMicrosoftDateTime(ReadOnlySpan<char> value, out DateTime result, out TimeSpan? tz)
 		{
 #if DEBUG_JSON_PARSER
 			Debug.WriteLine("CrystalJsonConverter.TryParseMicrosoftDateTime(" + value +")");
@@ -1039,9 +1020,6 @@ namespace SnowBank.Data.Json
 			return (char) x;
 		}
 
-		/// <summary>List of characters that are allowed to follow after a number</summary>
-		private static readonly SearchValues<char> ValidNumberTrailingCharacters = SearchValues.Create(",}]: \t\r\n");
-
 		private static unsafe JsonNumber ParseJsonNumber(ref CrystalJsonTokenizer<TReader> reader, char first)
 		{
 #if DEBUG_JSON_PARSER
@@ -1069,7 +1047,7 @@ namespace SnowBank.Data.Json
 					num = (num * 10) + (ulong)(c - '0');
 					//REVIEW: fail if more than 17 digits? (ulong.MaxValue) unless we want to handle BigIntegers?
 				}
-				else if (ValidNumberTrailingCharacters.Contains(c))
+				else if (CrystalJsonParser.ValidNumberTrailingCharacters.Contains(c))
 				{ // this is a valid end-of-stream character
 				  // rewind this character
 					reader.Push(c);
@@ -1251,12 +1229,8 @@ namespace SnowBank.Data.Json
 			string? name = null;
 			var createReadOnly = reader.Settings.ReadOnly;
 
-#if NET8_0_OR_GREATER
 			var scratch = new SegmentedValueBuffer<KeyValuePair<string, JsonValue>>.Scratch();
 			using var props = new SegmentedValueBuffer<KeyValuePair<string, JsonValue>>(scratch);
-#else
-			using var props = new ValueBuffer<KeyValuePair<string, JsonValue>>(0);
-#endif
 
 			while (true)
 			{
@@ -1487,21 +1461,17 @@ namespace SnowBank.Data.Json
 #endif
 			// on a déjà le ']'
 
-			char c;
 			bool commaRequired = false;
 			bool valueRequired = false;
 			bool readOnly = reader.Settings.ReadOnly;
 
-#if NET8_0_OR_GREATER
 			var scratch = new SegmentedValueBuffer<JsonValue>.Scratch();
 			using var buffer = new SegmentedValueBuffer<JsonValue>(scratch);
-#else
-			using var buffer = new ValueBuffer<JsonValue>(0);
-#endif
 
 			while (true)
 			{
-				c = reader.ReadNextToken();
+				char c = reader.ReadNextToken();
+
 				if (c == CrystalJsonParser.EndOfStream)
 				{
 					throw reader.FailUnexpectedEndOfStream("Array is incomplete");

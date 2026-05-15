@@ -210,7 +210,7 @@ namespace SnowBank.Data.Json
 					}
 					else
 					{
-						throw FailInvalidSyntax($"Invalid character '{c}' found while expecting '{value}'");
+						throw FailInvalidCharacterWhileExpecting(c, value);
 					}
 				}
 			}
@@ -227,8 +227,9 @@ namespace SnowBank.Data.Json
 
 			if (char.IsLetterOrDigit(c))
 			{
-				throw FailInvalidSyntax($"Invalid character '{c}' found after expected keyword");
+				throw FailInvalidCharacterFoundAfterExpectedKeyword(c);
 			}
+
 		}
 
 #if ENABLE_SOURCE_POSITION
@@ -244,16 +245,29 @@ namespace SnowBank.Data.Json
 
 #else
 
-		[Pure]
+		// cannot be static, in case we build with Source Position support
+		#pragma warning disable CA1822
+
+		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		internal readonly JsonSyntaxException FailInvalidSyntax(string reason) => new("Invalid JSON syntax", reason);
 
-		[Pure]
+		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		internal readonly JsonSyntaxException FailInvalidSyntax(ref DefaultInterpolatedStringHandler reason) => new("Invalid JSON syntax", reason.ToStringAndClear());
 
-		[Pure]
+		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		internal readonly JsonSyntaxException FailUnexpectedEndOfStream(string? reason) => new("Unexpected end of stream", reason);
 
+		#pragma warning restore CA1822
+
 #endif
+
+		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		private JsonSyntaxException FailInvalidCharacterWhileExpecting(char c, char value)
+			=> FailInvalidSyntax($"Invalid character '{c}' found while expecting '{value}'");
+
+		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		private JsonSyntaxException FailInvalidCharacterFoundAfterExpectedKeyword(char c)
+			=> FailInvalidSyntax($"Invalid character '{c}' found after expected keyword");
 
 		internal StringTable? GetStringTable(JsonLiteralKind kind)
 		{

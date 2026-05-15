@@ -630,7 +630,9 @@ namespace SnowBank.Data.Json
 			var prmWriter = Expression.Parameter(typeof(CrystalJsonDomWriter), "writer");
 			var prmContext = Expression.Parameter(typeof(VisitingContext).MakeByRefType(), "context");
 			var prmObj = Expression.Parameter(typeof(object), "obj");
+#pragma warning disable IL3050 // Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.
 			var m = typeof(CrystalJsonDomWriter).GetMethod(nameof(VisitKeyValuePairGeneric), BindingFlags.Static | BindingFlags.NonPublic)!.MakeGenericMethod(kvType.GetGenericArguments());
+#pragma warning restore IL3050 // Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.
 			var body = Expression.Call(m, prmWriter, prmContext, Expression.Convert(prmObj, kvType));
 
 			return Expression.Lambda<KeyValuePairVisitor>(body, true, [ prmWriter, prmContext, prmObj ]).Compile();
@@ -758,7 +760,9 @@ namespace SnowBank.Data.Json
 			Contract.Debug.Requires(values != null && listType != null);
 
 			Type elemType = typeof(object);
+#pragma warning disable IL2067 // Target parameter argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method. The parameter of method does not have matching annotations.
 			var genType = listType.FindGenericType(typeof(IList<>));
+#pragma warning restore IL2067 // Target parameter argument does not satisfy 'DynamicallyAccessedMembersAttribute' in call to target method. The parameter of method does not have matching annotations.
 			if (genType != null)
 			{
 				elemType = genType.GetGenericArguments()[0];

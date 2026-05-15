@@ -56,7 +56,7 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Read the next JSON fragment from this stream</summary>
 		/// <returns>Next fragment, or <see langword="null"/> if we reached the end of the stream</returns>
-		[Pure]
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public JsonValue? ReadNextFragment()
 		{
 			if (this.Disposed) throw FailObjectDisposed();
