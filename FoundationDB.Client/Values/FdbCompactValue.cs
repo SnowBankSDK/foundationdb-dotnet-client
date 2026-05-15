@@ -52,7 +52,7 @@ namespace FoundationDB.Client
 		{
 			"" or "D" or "d" or "V" or "v" => this.Value.ToString(null, null),
 			"X" or "x" => this.ToSlice().ToString(format),
-			"G" or "g" => string.Create(CultureInfo.InvariantCulture, $"{nameof(FdbCompactLittleEndianUInt32Value)}({this.Value})"),
+			"G" or "g" => string.CreateInvariant($"{nameof(FdbCompactLittleEndianUInt32Value)}({this.Value})"),
 			_ => throw new FormatException(),
 		};
 
@@ -152,7 +152,7 @@ namespace FoundationDB.Client
 		{
 			"" or "D" or "d" or "V" or "v" => this.Value.ToString(null, null),
 			"X" or "x" => this.ToSlice().ToString(format),
-			"G" or "g" => string.Create(CultureInfo.InvariantCulture, $"{nameof(FdbCompactLittleEndianUInt64Value)}({this.Value})"),
+			"G" or "g" => string.CreateInvariant($"{nameof(FdbCompactLittleEndianUInt64Value)}({this.Value})"),
 			_ => throw new FormatException(),
 		};
 
@@ -252,7 +252,7 @@ namespace FoundationDB.Client
 		{
 			"" or "D" or "d" or "V" or "v" => this.Value.ToString(null, null),
 			"X" or "x" => this.ToSlice().ToString(format),
-			"G" or "g" => string.Create(CultureInfo.InvariantCulture, $"{nameof(FdbCompactBigEndianUInt32Value)}({this.Value})"),
+			"G" or "g" => string.CreateInvariant($"{nameof(FdbCompactBigEndianUInt32Value)}({this.Value})"),
 			_ => throw new FormatException(),
 		};
 
@@ -352,7 +352,7 @@ namespace FoundationDB.Client
 		{
 			"" or "D" or "d" or "V" or "v" => this.Value.ToString(null, null),
 			"X" or "x" => this.ToSlice().ToString(format),
-			"G" or "g" => string.Create(CultureInfo.InvariantCulture, $"{nameof(FdbCompactBigEndianUInt64Value)}({this.Value})"),
+			"G" or "g" => string.CreateInvariant($"{nameof(FdbCompactBigEndianUInt64Value)}({this.Value})"),
 			_ => throw new FormatException(),
 		};
 

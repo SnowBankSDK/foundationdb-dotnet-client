@@ -3,7 +3,7 @@
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
 		<TargetFrameworks>$(CoreSdkUtilityVersions)</TargetFrameworks>
-		<LangVersion>11.0</LangVersion>
+		<LangVersion>preview</LangVersion>
 		<ProjectGuid>{CC36F01C-64E4-4B2E-8376-19D72EDE7D47}</ProjectGuid>
 		<RestorePackages>true</RestorePackages>
 		<AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

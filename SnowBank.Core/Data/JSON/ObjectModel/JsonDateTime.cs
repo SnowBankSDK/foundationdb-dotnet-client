@@ -734,13 +734,13 @@ namespace SnowBank.Data.Json
 			return (format ?? "") switch
 			{
 				"" or "D" or "d"
-					=> string.Create(CultureInfo.InvariantCulture, $"{this}"),
+					=> string.CreateInvariant($"{this}"),
 				"N" or "n" or "C" or "c" or "P" or "p"
-					=> string.Create(CultureInfo.InvariantCulture, $"{this:N}"),
+					=> string.CreateInvariant($"{this:N}"),
 				"Q" or "q"
 					=> this.GetCompactRepresentation(0),
 				"B" or "b"
-					=> JsonEncoding.Encode(string.Create(CultureInfo.InvariantCulture, $"{this:N}")),
+					=> JsonEncoding.Encode(string.CreateInvariant($"{this:N}")),
 				_
 					=> throw ErrorNotSupportedFormatLiteral(format),
 			};
@@ -748,7 +748,7 @@ namespace SnowBank.Data.Json
 
 		public bool TryConvertToString(out string value)
 		{
-			value = string.Create(CultureInfo.InvariantCulture, $"{this:N}");
+			value = string.CreateInvariant($"{this:N}");
 			return true;
 		}
 

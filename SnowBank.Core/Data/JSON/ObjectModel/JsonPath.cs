@@ -2092,7 +2092,7 @@ namespace SnowBank.Data.Json
 		public override string ToString() => ToString(null, null);
 
 		/// <inheritdoc />
-		public string ToString(string? format, IFormatProvider? formatProvider)
+		public string ToString(string? format, IFormatProvider? provider = null)
 		{
 			if (TryGetName(out var name))
 			{
@@ -2108,7 +2108,8 @@ namespace SnowBank.Data.Json
 			
 			if (TryGetIndex(out var index))
 			{
-				return string.Create(CultureInfo.InvariantCulture, $"[{index}]");
+				provider ??= CultureInfo.InvariantCulture;
+				return string.Create(provider, $"[{index}]");
 			}
 
 			return "";

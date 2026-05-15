@@ -48,7 +48,7 @@ namespace FoundationDB.Client.Tests
 			this.Description = "docker";
 			this.Id = "docker";
 			this.Port = port;
-			this.PortName = string.Create(CultureInfo.InvariantCulture, $"{port}/tcp");
+			this.PortName = string.CreateInvariant($"{port}/tcp");
 			this.Tag = tag;
 			this.Image = "foundationdb/foundationdb:" + tag;
 			this.VolumeName = volumeName;

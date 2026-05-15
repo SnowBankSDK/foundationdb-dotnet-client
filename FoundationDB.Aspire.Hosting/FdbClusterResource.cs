@@ -129,7 +129,7 @@ namespace Aspire.Hosting.ApplicationModel
 			// Cluster File format: "<DESC>:<ID>@<HOST1>:<PORT1>[,<HOST2>:<PORT2>,...]"
 			// By default, the docker image uses "docker:docker@127.0.0.1:4550"
 
-			string contents = string.Create(CultureInfo.InvariantCulture, $"{clusterDesc}:{clusterId}@{coordinatorHost}:{coordinatorPort}");
+			string contents = string.CreateInvariant($"{clusterDesc}:{clusterId}@{coordinatorHost}:{coordinatorPort}");
 
 			//TODO: replace this with a proper use of ReferenceExpression?
 

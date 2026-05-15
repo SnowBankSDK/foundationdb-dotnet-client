@@ -304,12 +304,12 @@ namespace SnowBank.Numerics
 					value *= xs;
 					return value switch
 					{
-						< 0.000001 => string.Create(CultureInfo.InvariantCulture, $"{value * 1E9:N1} ns"), // 100.0 - 999.9 ns
-						< 0.001    => string.Format(CultureInfo.InvariantCulture, "{0:N1} µs", value * 1_000_000), // 100.0 - 999.9 µs
-						< 1        => string.Format(CultureInfo.InvariantCulture, "{0:N1} ms", value * 1_000), // 100.0 - 999.9 ms
-						< 10       => string.Format(CultureInfo.InvariantCulture, "{0:N2} sec", value), // 1.00 - 9.99 sec
-						< 60       => string.Format(CultureInfo.InvariantCulture, "{0:N1} sec", value), // 10.0 - 59.9 sec
-						_          => string.Format(CultureInfo.InvariantCulture, "{0:N0} sec", value) // 60 sec - 9999 sec
+						< 0.000001 => string.CreateInvariant($"{value * 1E9:N1} ns"), // 100.0 - 999.9 ns
+						< 0.001    => string.CreateInvariant($"{value * 1_000_000:N1} µs"), // 100.0 - 999.9 µs
+						< 1        => string.CreateInvariant($"{value * 1_000:N1} ms"), // 100.0 - 999.9 ms
+						< 10       => string.CreateInvariant($"{value:N2} sec"), // 1.00 - 9.99 sec
+						< 60       => string.CreateInvariant($"{value:N1} sec"), // 10.0 - 59.9 sec
+						_          => string.CreateInvariant($"{value:N0} sec") // 60 sec - 9999 sec
 					};
 				}
 				case DimensionType.Size:
@@ -1087,7 +1087,7 @@ namespace SnowBank.Numerics
 		[MustUseReturnValue, Pure]
 		public string GetPercentiles()
 		{
-			return string.Create(CultureInfo.InvariantCulture, $"{this.Percentile(5),5:#,##0.0} --| {this.Percentile(25),5:#,##0.0} ==[ {this.Percentile(50),5:#,##0.0} ]== {this.Percentile(75),5:#,##0.0} |-- {this.Percentile(95),5:#,##0.0}");
+			return string.CreateInvariant($"{this.Percentile(5),5:#,##0.0} --| {this.Percentile(25),5:#,##0.0} ==[ {this.Percentile(50),5:#,##0.0} ]== {this.Percentile(75),5:#,##0.0} |-- {this.Percentile(95),5:#,##0.0}");
 		}
 
 		/// <summary>Generate a text report of the measurements, that can be written to the console or in a log file</summary>
@@ -1100,12 +1100,7 @@ namespace SnowBank.Numerics
 			var unit = GetScaleUnit(this.Scale);
 			var xs = GetScaleFactor(this.Scale);
 
-			r.AppendLine(string.Format(CultureInfo.InvariantCulture,
-				"- Total : {0:N0} ops in {1:0.0##} sec ({2:N0} ops/sec)",
-				this.Count,
-				ToTimeSpan(this.Sum).TotalSeconds,
-				this.Count / ToTimeSpan(this.Sum).TotalSeconds
-			));
+			r.AppendLine(CultureInfo.InvariantCulture, $"- Total : {this.Count:N0} ops in {ToTimeSpan(this.Sum).TotalSeconds:0.0##} sec ({this.Count / ToTimeSpan(this.Sum).TotalSeconds:N0} ops/sec)");
 
 			if (this.Count > 0)
 			{
@@ -1113,22 +1108,10 @@ namespace SnowBank.Numerics
 				double max = this.Max;
 				double median = this.Median;
 
-				r.AppendLine(string.Format(CultureInfo.InvariantCulture,
-					"- Min/Max: {0} {2} .. {1} {2}",
-					Friendly(min, xs), Friendly(max, xs), unit
-				));
-				r.AppendLine(string.Format(CultureInfo.InvariantCulture,
-					"- Average: {0} {2} (+/-{1} {2})",
-					Friendly(this.Average, xs), Friendly(this.StandardDeviation, xs), unit
-				));
-				r.AppendLine(string.Format(CultureInfo.InvariantCulture,
-					"- Median : {0} {2} (+/-{1} {2})",
-					Friendly(median, xs), Friendly(this.MAD(), xs), unit
-				));
-				r.AppendLine(string.Format(CultureInfo.InvariantCulture,
-					"- Distrib: ({0}) - {1} =[ {2} ]= {3} - ({4})",
-					Friendly(Percentile(5),  xs), Friendly(Percentile(25),  xs), Friendly(median,  xs), Friendly(Percentile(75),  xs), Friendly(Percentile(95), xs)
-				));
+				r.AppendLine(CultureInfo.InvariantCulture, $"- Min/Max: {Friendly(min, xs)} {unit} .. {Friendly(max, xs)} {unit}");
+				r.AppendLine(CultureInfo.InvariantCulture, $"- Average: {Friendly(this.Average, xs)} {unit} (+/-{Friendly(this.StandardDeviation, xs)} {unit})");
+				r.AppendLine(CultureInfo.InvariantCulture, $"- Median : {Friendly(median, xs)} {unit} (+/-{Friendly(this.MAD(), xs)} {unit})");
+				r.AppendLine(CultureInfo.InvariantCulture, $"- Distrib: ({Friendly(Percentile(5), xs)}) - {Friendly(Percentile(25), xs)} =[ {Friendly(median, xs)} ]= {Friendly(Percentile(75), xs)} - ({Friendly(Percentile(95), xs)})");
 
 				if (detailed)
 				{
@@ -1155,7 +1138,7 @@ namespace SnowBank.Numerics
 					double left = ((b == 0) ? 0.0 : limits[b - 1]);
 					double right = limits[b];
 
-					r.Append(string.Format(CultureInfo.InvariantCulture,
+					r.AppendFormat(CultureInfo.InvariantCulture,
 						"  | {0,8} - {1,-8} | {2,10:#,###,###} | {3,7:##0.000}% " + (detailed ? "{5,50} " : "{5, 16} ") + "| {4,7:##0.000}%" + (detailed ? " {6,10} | {7,10:N0}" : ""),
 						/* 0 */ Friendly(left, xs),			// left
 						/* 1 */ Friendly(right, xs),		// right
@@ -1165,7 +1148,7 @@ namespace SnowBank.Numerics
 						/* 5 */ FormatHistoBar((double)count / this.Count, detailed ? 50 : 16, pad: ' '),
 						/* 6 */ detailed ? FormatHistoBar(sum / this.Count, 10, pad: '-', sparse: true) : string.Empty,
 						/* 7 */ detailed ? Friendly((count * (left + right) / 2), xs) : ""
-					));
+					);
 					r.AppendLine(" |");
 				}
 				if (detailed)
@@ -1183,7 +1166,7 @@ namespace SnowBank.Numerics
 		/// <inheritdoc />
 		public override string ToString()
 		{
-			return string.Create(CultureInfo.InvariantCulture, $"Count={this.Count}, Avg={this.Average}, Min={(this.Count > 0 ? this.Min : 0)}, Max={this.Max}, Med={this.Median}");
+			return string.CreateInvariant($"Count={this.Count}, Avg={this.Average}, Min={(this.Count > 0 ? this.Min : 0)}, Max={this.Max}, Med={this.Median}");
 		}
 
 	}

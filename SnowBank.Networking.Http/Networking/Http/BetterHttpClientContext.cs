@@ -354,7 +354,7 @@ namespace SnowBank.Networking.Http
 
 		public override string ToString()
 		{
-			return string.Create(CultureInfo.InvariantCulture, $"{this.Request.Method} {this.Request.RequestUri} => {(this.OriginalResponse != null ? $"{(int) this.Response.StatusCode} {this.Response.ReasonPhrase}" : "<no response>")}");
+			return string.CreateInvariant($"{this.Request.Method} {this.Request.RequestUri} => {(this.OriginalResponse != null ? $"{(int) this.Response.StatusCode} {this.Response.ReasonPhrase}" : "<no response>")}");
 		}
 
 	}

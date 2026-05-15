@@ -1119,10 +1119,10 @@ namespace FoundationDB.Filters.Logging
 					return values.Length switch
 					{
 						0 => "<empty>",
-						1 => string.Create(CultureInfo.InvariantCulture, $"[1] {{ {values[0]:P} }}"),
-						2 => string.Create(CultureInfo.InvariantCulture, $"[2] {{ {values[0]:P}, {values[1]:P} }}"),
-						3 => string.Create(CultureInfo.InvariantCulture, $"[3] {{ {values[0]:P}, {values[1]:P}, {values[2]:P} }}"),
-						_ => string.Create(CultureInfo.InvariantCulture, $"[{values.Length:N0}] {{ {values[0]:P}, {values[1]:P}, ..., {values[^1]:P} }}")
+						1 => string.CreateInvariant($"[1] {{ {values[0]:P} }}"),
+						2 => string.CreateInvariant($"[2] {{ {values[0]:P}, {values[1]:P} }}"),
+						3 => string.CreateInvariant($"[3] {{ {values[0]:P}, {values[1]:P}, {values[2]:P} }}"),
+						_ => string.CreateInvariant($"[{values.Length:N0}] {{ {values[0]:P}, {values[1]:P}, ..., {values[^1]:P} }}")
 					};
 				}
 				else
@@ -1130,10 +1130,10 @@ namespace FoundationDB.Filters.Logging
 					return values.Length switch
 					{
 						0 => "<empty>",
-						1 => string.Create(CultureInfo.InvariantCulture, $"[1] {{ {values[0]} }}"),
-						2 => string.Create(CultureInfo.InvariantCulture, $"[2] {{ {values[0]}, {values[1]} }}"),
-						3 => string.Create(CultureInfo.InvariantCulture, $"[3] {{ {values[0]}, {values[1]}, {values[2]} }}"),
-						_ => string.Create(CultureInfo.InvariantCulture, $"[{values.Length:N0}] {{ {values[0]}, {values[1]}, ..., {values[^1]} }}")
+						1 => string.CreateInvariant($"[1] {{ {values[0]} }}"),
+						2 => string.CreateInvariant($"[2] {{ {values[0]}, {values[1]} }}"),
+						3 => string.CreateInvariant($"[3] {{ {values[0]}, {values[1]}, {values[2]} }}"),
+						_ => string.CreateInvariant($"[{values.Length:N0}] {{ {values[0]}, {values[1]}, ..., {values[^1]} }}")
 					};
 				}
 			}
@@ -1340,7 +1340,7 @@ namespace FoundationDB.Filters.Logging
 				var chunk = this.Result.GetValueOrDefault();
 				if (chunk != null)
 				{
-					return string.Create(CultureInfo.InvariantCulture, $"{chunk.Count:N0} result(s){(chunk.HasMore ? ", has_more" : "")}");
+					return string.CreateInvariant($"{chunk.Count:N0} result(s){(chunk.HasMore ? ", has_more" : "")}");
 				}
 				return base.GetResult(resolver);
 			}
@@ -1424,7 +1424,7 @@ namespace FoundationDB.Filters.Logging
 				var result = this.Result.GetValueOrDefault();
 				if (result != null)
 				{
-					return string.Create(CultureInfo.InvariantCulture, $"{result.Count:N0} result(s){(result.HasMore ? ", has_more" : "")}");
+					return string.CreateInvariant($"{result.Count:N0} result(s){(result.HasMore ? ", has_more" : "")}");
 				}
 				return base.GetResult(resolver);
 			}

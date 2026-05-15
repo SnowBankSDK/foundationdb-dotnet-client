@@ -367,7 +367,7 @@ namespace Aspire.Hosting
 			var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 			var host = Environment.MachineName;
 			var pid = Environment.ProcessId;
-			var prefix = string.Create(CultureInfo.InvariantCulture, $"{now}_{host}_{pid:D05}");
+			var prefix = string.CreateInvariant($"{now}_{host}_{pid:D05}");
 
 			return builder.WithLogSessionId(prefix);
 		}
@@ -435,7 +435,7 @@ namespace Aspire.Hosting
 			{
 				case FdbVersionPolicy.Exact:
 				{
-					return string.Create(CultureInfo.InvariantCulture, $"{version.Major}.{version.Minor}.{version.Build}");
+					return string.CreateInvariant($"{version.Major}.{version.Minor}.{version.Build}");
 				}
 				case FdbVersionPolicy.Latest:
 				{ // I like to live dangerously!
@@ -484,7 +484,7 @@ namespace Aspire.Hosting
 							}
 
 							return version.Minor == 4 && version.Build > LatestVersion74.Build
-								? string.Create(CultureInfo.InvariantCulture, $"7.4.{version.Build}")
+								? string.CreateInvariant($"7.4.{version.Build}")
 								: LatestVersion74.ToString();
 						}
 						default:
@@ -503,7 +503,7 @@ namespace Aspire.Hosting
 
 					if (version.Minor == 4 && version.Build > LatestVersion74.Build)
 					{ // this 7.4 version was probably released after this code was packaged, we'll allow it
-						return string.Create(CultureInfo.InvariantCulture, $"7.4.{version.Build}");
+						return string.CreateInvariant($"7.4.{version.Build}");
 					}
 					return LatestVersion74.ToString();
 				}

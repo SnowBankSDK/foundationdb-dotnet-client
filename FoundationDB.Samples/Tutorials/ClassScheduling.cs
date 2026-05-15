@@ -37,7 +37,7 @@ namespace FoundationDB.Samples.Tutorials
 			// create a bunch of random classes
 			string[] levels = [ "intro", "for dummies", "remedial", "101", "201", "301", "mastery", "lab", "seminar" ];
 			string[] types = [ "chem", "bio", "cs", "geometry", "calc", "alg", "film", "music", "art", "dance" ];
-			var times = Enumerable.Range(2, 20).Select(h => string.Create(CultureInfo.InvariantCulture, $"{h}:00")).ToArray();
+			var times = Enumerable.Range(2, 20).Select(h => string.CreateInvariant($"{h}:00")).ToArray();
 
 			this.ClassNames = times
 				.SelectMany((h) => types.Select(t => $"{h} {t}"))

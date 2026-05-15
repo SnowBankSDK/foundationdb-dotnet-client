@@ -167,7 +167,7 @@ namespace FoundationDB.Layers.Experimental.Indexing
 			return bitmap.GetView();
 		}
 		
-		public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"BitmapIndex['{this.Name}']");
+		public override string ToString() => string.CreateInvariant($"BitmapIndex['{this.Name}']");
 
 	}
 

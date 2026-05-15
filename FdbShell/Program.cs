@@ -418,7 +418,7 @@ namespace FdbShell
 		}
 
 		public void StdOut(ref DefaultInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true)
-			=> StdOut(string.Create(CultureInfo.InvariantCulture, ref msg), color, newLine);
+			=> StdOut(string.CreateInvariant(ref msg), color, newLine);
 
 		public string Escape(string? msg)
 		{

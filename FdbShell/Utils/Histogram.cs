@@ -267,7 +267,7 @@ namespace FdbShell
 			return new string(cs);
 		}
 
-		public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"Count={this.Count}, Avg={this.Average}, Min={(this.Count > 0 ? this.Min : 0)}, Max={this.Max}");
+		public override string ToString() => string.CreateInvariant($"Count={this.Count}, Avg={this.Average}, Min={(this.Count > 0 ? this.Min : 0)}, Max={this.Max}");
 
 	}
 

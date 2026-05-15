@@ -4,7 +4,7 @@
 		<TargetFrameworks>$(CoreSdkUtilityVersions)</TargetFrameworks>
 		<RootNamespace>FoundationDB.Client.Testing</RootNamespace>
 		<AssemblyName>FoundationDB.BindingTester</AssemblyName>
-		<LangVersion>12.0</LangVersion>
+		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
 		<SignAssembly>true</SignAssembly>
 		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>

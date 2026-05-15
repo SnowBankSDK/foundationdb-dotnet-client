@@ -270,14 +270,14 @@ namespace System
 			if (this.HasUserVersion)
 			{
 				return this.IsIncomplete
-					? string.Create(CultureInfo.InvariantCulture, $"@?#{this.UserVersion:x}")
-					: string.Create(CultureInfo.InvariantCulture, $"@{this.TransactionVersion:x}-{this.TransactionOrder:x}#{this.UserVersion:x}");
+					? string.CreateInvariant($"@?#{this.UserVersion:x}")
+					: string.CreateInvariant($"@{this.TransactionVersion:x}-{this.TransactionOrder:x}#{this.UserVersion:x}");
 			}
 			else
 			{
 				return this.IsIncomplete
 					? "@?"
-					: string.Create(CultureInfo.InvariantCulture, $"@{this.TransactionVersion:x}-{this.TransactionOrder:x}");
+					: string.CreateInvariant($"@{this.TransactionVersion:x}-{this.TransactionOrder:x}");
 			}
 		}
 

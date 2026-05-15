@@ -299,7 +299,7 @@ namespace FoundationDB.Client
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void Annotate(ref DefaultInterpolatedStringHandler comment)
 		{
-			m_log?.Annotate(string.Create(CultureInfo.InvariantCulture, ref comment));
+			m_log?.Annotate(string.CreateInvariant(ref comment));
 		}
 
 		/// <summary>If logging was previously enabled on this transaction, clear the log and stop logging any new operations</summary>

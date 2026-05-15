@@ -725,7 +725,7 @@ namespace FdbTop
 
 		private static void WriteAt(int x, int y, ref DefaultInterpolatedStringHandler message)
 		{
-			Screen.Write(x, y, string.Create(CultureInfo.InvariantCulture, ref message), CurrentColor, CurrentBackground);
+			Screen.Write(x, y, string.CreateInvariant(ref message), CurrentColor, CurrentBackground);
 		}
 
 		private static double GetMax(RingBuffer<HistoryMetric> metrics, Func<HistoryMetric, double> selector)

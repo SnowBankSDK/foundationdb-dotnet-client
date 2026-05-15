@@ -200,7 +200,7 @@ namespace SnowBank.Networking.Http
 
 		public string NewRequestId()
 		{
-			return string.Create(CultureInfo.InvariantCulture, $"{this.Id}:{Interlocked.Increment(ref this.RequestCounter):D8}");
+			return string.CreateInvariant($"{this.Id}:{Interlocked.Increment(ref this.RequestCounter):D8}");
 		}
 
 		#region Request Creation...

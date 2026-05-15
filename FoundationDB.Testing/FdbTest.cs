@@ -69,7 +69,7 @@ namespace FoundationDB.Client.Tests
 			// We use the name of the .NET runtime version as part of the name of the container, in order to run the tests on multiple targets concurrently.
 			// ex: for .NET 10, the container will use the "-net10.0" suffix
 			var targetFrameworkVersion = GetRuntimeFrameworkVersion();
-			var targetMoniker = string.Create(CultureInfo.InvariantCulture, $"net{targetFrameworkVersion.Major}.{targetFrameworkVersion.Minor}");
+			var targetMoniker = string.CreateInvariant($"net{targetFrameworkVersion.Major}.{targetFrameworkVersion.Minor}");
 
 			// We also use fdb version present in the docker image tag, in order to be able to test on multiple versions of fdb concurrently (that may use a different on-disk format).
 			// the tag will start with the version number, which we will use to have a different set of containers for the various version (73, 74, ...)
@@ -84,7 +84,7 @@ namespace FoundationDB.Client.Tests
 			}
 
 			// Suffix that we will use the for container and data volumes. ex: "-7.3-net9.0" or "-7.4-net10.0"
-			var containerSuffix = string.Create(CultureInfo.InvariantCulture, $"-{targetServerVersion.Major}.{targetServerVersion.Minor}-{targetMoniker}");
+			var containerSuffix = string.CreateInvariant($"-{targetServerVersion.Major}.{targetServerVersion.Minor}-{targetMoniker}");
 
 			//Note: We need a solution to allocate a dynamic port for the container _before_ starting the container itself, since we need to inject env variables with the port.
 			// We cannot use the dynamic port allocation of the builder itself, since we would know the port after the start when it's too late!

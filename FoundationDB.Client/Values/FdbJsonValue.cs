@@ -59,7 +59,7 @@ namespace FoundationDB.Client
 		{
 			"" or "D" or "d" or "V" or "v" => this.Data.ToString("C"),
 			"X" or "x" => this.ToSlice().ToString(format),
-			"G" or "g" => string.Create(CultureInfo.InvariantCulture, $"{nameof(FdbJsonValue)}({this.Data})"),
+			"G" or "g" => string.CreateInvariant($"{nameof(FdbJsonValue)}({this.Data})"),
 			_ => throw new FormatException(),
 		};
 
@@ -205,7 +205,7 @@ namespace FoundationDB.Client
 		{
 			"" or "D" or "d" or "V" or "v" => this.Data?.ToString() ?? "",
 			"X" or "x" => this.ToSlice().ToString(format),
-			"G" or "g" => string.Create(CultureInfo.InvariantCulture, $"{nameof(FdbJsonValue)}({this.Data})"),
+			"G" or "g" => string.CreateInvariant($"{nameof(FdbJsonValue)}({this.Data})"),
 			_ => throw new FormatException(),
 		};
 
