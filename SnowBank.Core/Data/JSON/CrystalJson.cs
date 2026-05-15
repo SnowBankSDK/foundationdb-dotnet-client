@@ -2064,6 +2064,44 @@ namespace SnowBank.Data.Json
 		}
 
 		#endregion
+
+		#region Test Warmup...
+
+		/// <summary>Runs a warmup sequence that will force the JIT visit the most commonly used types and methods at least once</summary>
+		/// <remarks>You should only call this from a custom unit test or benchmark framework.</remarks>
+		[EditorBrowsable(EditorBrowsableState.Advanced)]
+		public static void Warmup()
+		{
+			try
+			{
+				var arr = JsonArray.Create(
+				[
+					JsonBoolean.True,
+					JsonNumber.One,
+					JsonString.Return("hello"),
+					JsonString.Return(Guid.NewGuid()),
+					JsonDateTime.Return(DateTimeOffset.Now),
+					JsonArray.Create([ 1, 2, 3 ]),
+					JsonObject.Create(("foo", "bar")),
+				]);
+				_ = arr[0].As<bool>();
+				_ = arr[1].As<int>();
+				_ = arr[2].As<string>();
+				_ = arr[3].As<Guid>();
+				_ = arr[4].As<DateTimeOffset>();
+				_ = arr[5].As<int[]>();
+				_ = arr[5].Get<string>("foo", "baz");
+				_ = CrystalJson.Parse(CrystalJson.Serialize(arr), CrystalJsonSettings.JsonReadOnly);
+				_ = arr.StrictEquals(arr);
+			}
+			// ReSharper disable once EmptyGeneralCatchClause
+			catch { }
+		}
+
+		#endregion
+
+
+
 	}
 
 }

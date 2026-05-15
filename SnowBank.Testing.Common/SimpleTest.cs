@@ -147,28 +147,9 @@ namespace SnowBank.Testing
 #endif
 
 			// JIT warmup of a few common types
+			RobustHistogram.Warmup();
 			RobustBenchmark.Warmup();
-			PlatformHelpers.PreJit([
-				typeof(CrystalJson),
-				typeof(CrystalJsonSettings),
-				typeof(JsonValue),
-				typeof(JsonNull),
-				typeof(JsonBoolean),
-				typeof(JsonString),
-				typeof(JsonNumber),
-				typeof(JsonArray),
-				typeof(JsonObject),
-				typeof(JsonNull),
-				typeof(JsonDateTime),
-				typeof(JsonValueExtensions),
-				typeof(CrystalJsonFormatter),
-				typeof(CrystalJsonVisitor),
-				typeof(CrystalJsonTypeVisitor),
-				typeof(CrystalJsonStreamReader),
-				typeof(CrystalJsonStreamWriter),
-				typeof(CrystalJsonParser),
-				typeof(CrystalJsonDomWriter),
-			]);
+			CrystalJson.Warmup();
 
 			if (!GCSettings.IsServerGC)
 			{

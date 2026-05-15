@@ -2204,6 +2204,36 @@ namespace SnowBank.Data.Json.Binary
 
 		#endregion
 
+		#region Test Warmup...
+
+		[EditorBrowsable(EditorBrowsableState.Advanced)]
+		public static void Warmup()
+		{
+			try
+			{
+				var bytes = Jsonb.Encode(
+					JsonObject.Create(
+						[
+							("num", 42),
+							("str", "hello"),
+							("bool", true),
+							("array", JsonArray.Create(1, 2, 3)),
+							("obj", JsonObject.Create(("hello", "world"))),
+						]
+					)
+				);
+				_ = Jsonb.Decode(bytes);
+				_ = Jsonb.Get<bool>(bytes, "bool");
+				_ = Jsonb.Get<string>(bytes, "str");
+				_ = Jsonb.Get<int>(bytes, "num");
+				_ = Jsonb.Get<int[]>(bytes, "array");
+			}
+			// ReSharper disable once EmptyGeneralCatchClause
+			catch { }
+		}
+
+		#endregion
+
 	}
 
 	/// <summary>Options to configure the behavior of the <see cref="Jsonb"/> parser</summary>

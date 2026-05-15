@@ -26,13 +26,16 @@
 
 namespace SnowBank.Runtime
 {
+#if DEPRECATED
 	using System.Reflection;
+#endif
 
 	[DebuggerNonUserCode]
 	[PublicAPI]
 	public static class PlatformHelpers
 	{
 
+#if DEPRECATED
 		/// <summary>JIT a method, if possible</summary>
 		private static void PreJit(MethodInfo? m)
 		{
@@ -44,26 +47,30 @@ namespace SnowBank.Runtime
 				}
 				catch (PlatformNotSupportedException)
 				{
-					// sous .NET Core (observé en 2.2), certains méthodes déclenchent cette exception, en particulier certains pattern "IAsyncResult BeginXYZ(...)" et "... EndXYZ(IAsyncResult, ....)".
-					// => je n'ai pas vraiment trouvé de point distinctif sur les méthodes pour les filtrer en amont (comme on le fait pour les méthode abstract ou génériques)
 #if FULL_DEBUG
 					System.Diagnostics.Debug.WriteLine($"// Skipping JIT for unsupported method {m.DeclaringType?.Name}.{m}");
 #endif
 				}
 			}
 		}
+#endif
 
+		[Obsolete("This is not well supported on modern .NET. Use BenchmarkDotNet for proper benchmarks, or call dedicated 'warm up' method for each type")]
 		public static void PreJit(params Type[] types)
 		{
+#if DEPRECATED
 			foreach (var type in types)
 			{
 				PreJit(type);
 			}
+#endif
 		}
 
 		/// <summary>JIT all the methods of the specified type</summary>
+		[Obsolete("This is not well supported on modern .NET. Use BenchmarkDotNet for proper benchmarks, or call dedicated 'warm up' method for this type")]
 		public static void PreJit(Type type)
 		{
+#if DEPRECATED
 			// JIT all the methods and properties
 #if FULL_DEBUG
 			int nm = 0;
@@ -85,6 +92,7 @@ namespace SnowBank.Runtime
 			{
 				PreJit(nested);
 			}
+#endif
 		}
 
 		[Pure]

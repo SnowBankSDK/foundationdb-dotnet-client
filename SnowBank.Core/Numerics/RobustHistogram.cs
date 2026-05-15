@@ -223,7 +223,15 @@ namespace SnowBank.Numerics
 		/// <summary>Pre-JIT this type, before running a benchmark</summary>
 		public static void Warmup()
 		{
-			PlatformHelpers.PreJit(typeof(RobustHistogram));
+			try
+			{
+				var h = new RobustHistogram();
+				h.Add(42);
+				h.Add(67);
+				_ = h.GetReport(detailed: true);
+			}
+			// ReSharper disable once EmptyGeneralCatchClause
+			catch { }
 		}
 
 		[Pure]

@@ -37,7 +37,8 @@ namespace SnowBank.Numerics
 		/// <summary>Pre-JIT this type before starting a benchmark</summary>
 		public static void Warmup()
 		{
-			PlatformHelpers.PreJit(typeof(RobustBenchmark));
+			_ = RobustBenchmark.Median([ RobustBenchmark.GetElapsedTime(Stopwatch.GetTimestamp()), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2) ]);
+			_ = RobustBenchmark.Run(() => { }, 1, 1, new RobustHistogram());
 		}
 
 		/// <summary>Data for a run of the benchmark</summary>

@@ -43,11 +43,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 
 		static JsonbTest()
 		{
-			PlatformHelpers.PreJit(typeof(Jsonb));
-
-			try { _ = Jsonb.Decode(Jsonb.Encode(JsonObject.Create([ ("Hello", "World"), ("Foo", 123) ]))); }
-			// ReSharper disable once EmptyGeneralCatchClause
-			catch { }
+			Jsonb.Warmup();
 		}
 
 		private void VerifyRoundtrip(JsonValue value)
