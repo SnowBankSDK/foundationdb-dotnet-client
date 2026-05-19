@@ -27,6 +27,9 @@
 namespace SnowBank.Testing.Framework
 {
 	using Microsoft.AspNetCore.Builder;
+	using Microsoft.AspNetCore.Http;
+	using Microsoft.AspNetCore.Mvc;
+	using Microsoft.AspNetCore.Mvc.Abstractions;
 	using Microsoft.AspNetCore.Routing;
 
 	/// <summary>Interface for host or host builders that can add additional routes (aka "Minimal API")</summary>
@@ -57,6 +60,16 @@ namespace SnowBank.Testing.Framework
 			}
 
 			/// <summary>Maps a new HTTP route on this host</summary>
+			public void MapMethods([StringSyntax("Route")] string pattern, IEnumerable<string> httpMethods, RequestDelegate handler, bool isFallback, Action<IEndpointConventionBuilder>? configure = null)
+			{
+				@this.AddRoute((ep) =>
+				{
+					var builder = ep.MapMethods(pattern, httpMethods, handler);
+					configure?.Invoke(builder);
+				});
+			}
+
+			/// <summary>Maps a new HTTP route on this host</summary>
 			public void Map([StringSyntax("Route")] string pattern, Delegate handler, Action<RouteHandlerBuilder>? configure = null)
 			{
 				@this.AddRoute((ep) =>
@@ -65,6 +78,18 @@ namespace SnowBank.Testing.Framework
 					configure?.Invoke(builder);
 				});
 			}
+
+			/// <summary>Maps a new HTTP route on this host</summary>
+			public void Map([StringSyntax("Route")] string pattern, RequestDelegate handler, Action<IEndpointConventionBuilder>? configure = null)
+			{
+				@this.AddRoute((ep) =>
+				{
+					var builder = ep.Map(pattern, handler);
+					configure?.Invoke(builder);
+				});
+			}
+
+			#region GET...
 
 			/// <summary>Maps a new HTTP GET route on this host</summary>
 			public void MapGet([StringSyntax("Route")] string pattern, Delegate handler, Action<RouteHandlerBuilder>? configure = null)
@@ -76,6 +101,28 @@ namespace SnowBank.Testing.Framework
 				});
 			}
 
+			/// <summary>Maps a new HTTP GET route on this host</summary>
+			public void MapGet([StringSyntax("Route")] string pattern, RequestDelegate handler, Action<IEndpointConventionBuilder>? configure = null)
+			{
+				@this.AddRoute((ep) =>
+				{
+					var builder = ep.MapGet(pattern, handler);
+					configure?.Invoke(builder);
+				});
+			}
+
+			/// <summary>Maps a new HTTP GET route on this host</summary>
+			public void MapActionGet([StringSyntax("Route")] string pattern, Func<HttpContext, Task<IActionResult>> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapGet(pattern, MapActionResultToResult(handler), configure);
+
+			/// <summary>Maps a new HTTP GET route on this host</summary>
+			public void MapActionGet([StringSyntax("Route")] string pattern, Func<HttpContext, IActionResult> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapGet(pattern, MapActionResultToResult(handler), configure);
+
+			#endregion
+
+			#region POST...
+
 			/// <summary>Maps a new HTTP POST route on this host</summary>
 			public void MapPost([StringSyntax("Route")] string pattern, Delegate handler, Action<RouteHandlerBuilder>? configure = null)
 			{
@@ -85,6 +132,28 @@ namespace SnowBank.Testing.Framework
 					configure?.Invoke(builder);
 				});
 			}
+
+			/// <summary>Maps a new HTTP POST route on this host</summary>
+			public void MapPost([StringSyntax("Route")] string pattern, RequestDelegate handler, Action<IEndpointConventionBuilder>? configure = null)
+			{
+				@this.AddRoute((ep) =>
+				{
+					var builder = ep.MapPost(pattern, handler);
+					configure?.Invoke(builder);
+				});
+			}
+
+			/// <summary>Maps a new HTTP POST route on this host</summary>
+			public void MapActionPost([StringSyntax("Route")] string pattern, Func<HttpContext, Task<IActionResult>> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapPost(pattern, MapActionResultToResult(handler), configure);
+
+			/// <summary>Maps a new HTTP POST route on this host</summary>
+			public void MapActionPost([StringSyntax("Route")] string pattern, Func<HttpContext, IActionResult> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapPost(pattern, MapActionResultToResult(handler), configure);
+
+			#endregion
+
+			#region PUT...
 
 			/// <summary>Maps a new HTTP PUT route on this host</summary>
 			public void MapPut([StringSyntax("Route")] string pattern, Delegate handler, Action<RouteHandlerBuilder>? configure = null)
@@ -96,6 +165,28 @@ namespace SnowBank.Testing.Framework
 				});
 			}
 
+			/// <summary>Maps a new HTTP PUT route on this host</summary>
+			public void MapPut([StringSyntax("Route")] string pattern, RequestDelegate handler, Action<IEndpointConventionBuilder>? configure = null)
+			{
+				@this.AddRoute((ep) =>
+				{
+					var builder = ep.MapPut(pattern, handler);
+					configure?.Invoke(builder);
+				});
+			}
+
+			/// <summary>Maps a new HTTP PUT route on this host</summary>
+			public void MapActionPut([StringSyntax("Route")] string pattern, Func<HttpContext, Task<IActionResult>> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapPut(pattern, MapActionResultToResult(handler), configure);
+
+			/// <summary>Maps a new HTTP PUT route on this host</summary>
+			public void MapActionPut([StringSyntax("Route")] string pattern, Func<HttpContext, IActionResult> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapPut(pattern, MapActionResultToResult(handler), configure);
+
+			#endregion
+
+			#region PATCH...
+
 			/// <summary>Maps a new HTTP PATCH route on this host</summary>
 			public void MapPatch([StringSyntax("Route")] string pattern, Delegate handler, Action<RouteHandlerBuilder>? configure = null)
 			{
@@ -105,6 +196,28 @@ namespace SnowBank.Testing.Framework
 					configure?.Invoke(builder);
 				});
 			}
+
+			/// <summary>Maps a new HTTP PATCH route on this host</summary>
+			public void MapPatch([StringSyntax("Route")] string pattern, RequestDelegate handler, Action<IEndpointConventionBuilder>? configure = null)
+			{
+				@this.AddRoute((ep) =>
+				{
+					var builder = ep.MapPatch(pattern, handler);
+					configure?.Invoke(builder);
+				});
+			}
+
+			/// <summary>Maps a new HTTP PATCH route on this host</summary>
+			public void MapActionPatch([StringSyntax("Route")] string pattern, Func<HttpContext, Task<IActionResult>> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapPatch(pattern, MapActionResultToResult(handler), configure);
+
+			/// <summary>Maps a new HTTP PATCH route on this host</summary>
+			public void MapActionPatch([StringSyntax("Route")] string pattern, Func<HttpContext, IActionResult> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapPatch(pattern, MapActionResultToResult(handler), configure);
+
+			#endregion
+
+			#region DELETE...
 
 			/// <summary>Maps a new HTTP DELETE route on this host</summary>
 			public void MapDelete([StringSyntax("Route")] string pattern, Delegate handler, Action<RouteHandlerBuilder>? configure = null)
@@ -116,6 +229,28 @@ namespace SnowBank.Testing.Framework
 				});
 			}
 
+			/// <summary>Maps a new HTTP DELETE route on this host</summary>
+			public void MapDelete([StringSyntax("Route")] string pattern, RequestDelegate handler, Action<IEndpointConventionBuilder>? configure = null)
+			{
+				@this.AddRoute((ep) =>
+				{
+					var builder = ep.MapDelete(pattern, handler);
+					configure?.Invoke(builder);
+				});
+			}
+
+			/// <summary>Maps a new HTTP DELETE route on this host</summary>
+			public void MapActionDelete([StringSyntax("Route")] string pattern, Func<HttpContext, Task<IActionResult>> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapDelete(pattern, MapActionResultToResult(handler), configure);
+
+			/// <summary>Maps a new HTTP DELETE route on this host</summary>
+			public void MapActionDelete([StringSyntax("Route")] string pattern, Func<HttpContext, IActionResult> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapDelete(pattern, MapActionResultToResult(handler), configure);
+
+			#endregion
+
+			#region Fallback...
+
 			/// <summary>Maps a new HTTP fallback route on this host</summary>
 			public void MapFallback([StringSyntax("Route")] string pattern, Delegate handler, Action<RouteHandlerBuilder>? configure = null)
 			{
@@ -126,6 +261,61 @@ namespace SnowBank.Testing.Framework
 				});
 			}
 
+			/// <summary>Maps a new HTTP fallback route on this host</summary>
+			public void MapFallback([StringSyntax("Route")] string pattern, RequestDelegate handler, Action<IEndpointConventionBuilder>? configure = null)
+			{
+				@this.AddRoute((ep) =>
+				{
+					var builder = ep.MapFallback(pattern, handler);
+					configure?.Invoke(builder);
+				});
+			}
+
+			/// <summary>Maps a new HTTP fallback route on this host</summary>
+			public void MapActionFallback([StringSyntax("Route")] string pattern, Func<HttpContext, Task<IActionResult>> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapFallback(pattern, MapActionResultToResult(handler), configure);
+
+			/// <summary>Maps a new HTTP fallback route on this host</summary>
+			public void MapActionFallback([StringSyntax("Route")] string pattern, Func<HttpContext, IActionResult> handler, Action<RouteHandlerBuilder>? configure = null)
+				=> @this.MapFallback(pattern, MapActionResultToResult(handler), configure);
+
+			#endregion
+
+		}
+
+		static Delegate MapActionResultToResult(Func<HttpContext, IActionResult> handler)
+		{
+			return (HttpContext ctx) => new MinimalActionResultAdapter(handler(ctx));
+		}
+
+		static Delegate MapActionResultToResult(Func<HttpContext, Task<IActionResult>> handler)
+		{
+			return async (HttpContext ctx) => new MinimalActionResultAdapter(await handler(ctx));
+		}
+
+		/// <summary>Type that will wrap an <see cref="IActionResult"/> into a <see cref="IResult"/> usable with Minimal API</summary>
+		private sealed class MinimalActionResultAdapter : IResult
+		{
+
+			private IActionResult Result { get; }
+
+			public MinimalActionResultAdapter(IActionResult result)
+			{
+				this.Result = result;
+			}
+
+			public Task ExecuteAsync(HttpContext httpContext)
+			{
+				// we have to "fake" a valid ActionContext from the request:
+				var routeData = httpContext.GetRouteData();
+				//BUGBUG: TODO: for now use en empty descriptor, which may break some IActionResult types that expect a valid Action/Controller name.
+				var descriptor = new ActionDescriptor();
+
+				var actionContext = new ActionContext(httpContext, routeData, descriptor);
+
+				// execute the wrapped result, and hope for the best!
+				return this.Result.ExecuteResultAsync(actionContext);
+			}
 		}
 
 	}
