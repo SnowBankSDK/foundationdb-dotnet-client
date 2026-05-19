@@ -96,6 +96,9 @@ namespace SnowBank.Text
 				else if (b < 0x20)
 				{ // C0 Controls
 					if (b <= 9) sb.Append((char)(0x2080 + b)); // subscript '₁' to '₉'
+					else if (b == 0x0A) sb.Append('\u240A'); // LF
+					else if (b == 0x0D) sb.Append('\u240D'); // CR
+					else if (b == 0x1B) sb.Append('\u241B'); // ESC
 					else sb.Append('\u02DA'); // '˚'
 				}
 				else
