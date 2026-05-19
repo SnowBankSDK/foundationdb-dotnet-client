@@ -37,8 +37,13 @@ namespace SnowBank.Numerics
 		/// <summary>Pre-JIT this type before starting a benchmark</summary>
 		public static void Warmup()
 		{
-			_ = RobustBenchmark.Median([ RobustBenchmark.GetElapsedTime(Stopwatch.GetTimestamp()), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2) ]);
-			_ = RobustBenchmark.Run(() => { }, 1, 1, new RobustHistogram());
+			try
+			{
+				_ = RobustBenchmark.Median([ RobustBenchmark.GetElapsedTime(Stopwatch.GetTimestamp()), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2) ]);
+				_ = RobustBenchmark.Run(() => { }, 3, 10, new RobustHistogram());
+			}
+			// ReSharper disable once EmptyGeneralCatchClause
+			catch { }
 		}
 
 		/// <summary>Data for a run of the benchmark</summary>
@@ -359,12 +364,12 @@ namespace SnowBank.Numerics
 				GC2 = totalGc2, //(totalGC2 * 1000000.0) / (runs * iterations),
 			};
 
-			var filtered = PeirceCriterion.FilterOutliers(times, x => x.Ticks, out var outliers);
-
-			var outliersMap = outliers.ToArray();
+			List<int>? outliers = null;
+			var filtered = times.Count >= 3 ? PeirceCriterion.FilterOutliers(times, x => x.Ticks, out outliers) : times;
+			var outliersMap = outliers?.ToArray() ?? [ ];
 
 			report.Times = filtered;
-			report.RejectedRuns = outliers.Count;
+			report.RejectedRuns = outliersMap.Length;
 			report.Runs = times.Select((ticks, i) => new RunData<TResult>
 			{
 				Index = i,
