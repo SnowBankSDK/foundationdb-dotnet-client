@@ -1,0 +1,367 @@
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+// All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// 	* Redistributions of source code must retain the above copyright
+// 	  notice, this list of conditions and the following disclaimer.
+// 	* Redistributions in binary form must reproduce the above copyright
+// 	  notice, this list of conditions and the following disclaimer in the
+// 	  documentation and/or other materials provided with the distribution.
+// 	* Neither the name of SnowBank nor the
+// 	  names of its contributors may be used to endorse or promote products
+// 	  derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL SNOWBANK SAS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#endregion
+
+namespace SnowBank.Testing.Framework
+{
+	using System.Reflection;
+	using Microsoft.AspNetCore.Builder;
+	using Microsoft.AspNetCore.HttpOverrides;
+	using Microsoft.AspNetCore.Routing;
+	using SnowBank.Networking.PacketCapture;
+
+    /// <summary>Base class for simulated Web Hosts (microservices, API endpoints, ...).</summary>
+    public abstract class WebHostTestComponentBase<TComponent> : DistributedTestComponent
+        where TComponent : WebHostTestComponentBase<TComponent>
+    {
+
+        internal List<Action<WebApplicationBuilder>> ConfigureServicesHandlers { get; set; } = [];
+
+        internal List<Action<WebApplication>> ConfigureApplicationHandlers { get; set; } = [];
+
+        internal Action<IVirtualNetworkMap> ConfigureNetworkHandler { get; set; } = (_) => { };
+
+        internal List<Action<IEndpointRouteBuilder>> RouteHandlers { get; set; } = [];
+
+        internal Func<TComponent, CancellationToken, ValueTask> StartingHandler { get; set; } = (_, _) => default;
+
+        internal Func<TComponent, CancellationToken, ValueTask> StoppingHandler { get; set; } = (_, _) => default;
+
+        internal Func<ValueTask> DisposingHandler { get; set; } = () => default;
+
+        internal List<object> Disposables { get; } = [];
+
+        public Assembly? StaticAssetsAssembly { get; set; }
+
+        protected WebHostTestComponentBase(string id, IVirtualNetworkLocation location, CancellationToken lifetime)
+            : base(id, location, lifetime)
+        { }
+
+        protected sealed override void ConfigureServices(WebApplicationBuilder builder)
+        {
+            builder.Services.AddSingleton<VirtualNetworkProxyMiddleware>();
+            builder.Services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+            });
+
+            builder.Services.AddRouting();
+
+            // common configuration logic for all instances of this type of host
+            OnConfiguringServices(builder);
+
+            // configuration logic customized for this specific instance
+            foreach (var handler in this.ConfigureServicesHandlers)
+            {
+                handler(builder);
+            }
+        }
+
+        protected virtual void OnConfiguringServices(WebApplicationBuilder builder)
+        {
+            // override this to inject custom configuration logic
+        }
+
+        protected sealed override void ConfigureApplication(WebApplication app)
+        {
+            app.UsePacketCapture(); //IMPORTANT: must be *AFTER* response compression, but *BEFORE* the rest!
+            app.UseVirtualNetworkProxy();
+            app.UseRouting();
+
+            OnConfiguringApplication(app);
+
+            foreach (var handler in this.ConfigureApplicationHandlers)
+            {
+                handler(app);
+            }
+
+            foreach (var route in this.RouteHandlers)
+            {
+                route(app);
+            }
+        }
+
+        public virtual void OnConfiguringApplication(WebApplication app)
+        {
+            // override this to inject custom configuration logic
+        }
+
+        protected override Assembly? GetStaticAssetsRuntimeAssembly() => this.StaticAssetsAssembly;
+
+        protected sealed override async ValueTask OnStarting(CancellationToken ct)
+        {
+            var packet = this.Services.GetService<PacketCaptureManager>();
+            if (packet != null && !packet.IsRunning) packet.Start();
+
+            await OnStartingApplication(ct);
+
+            await this.StartingHandler((TComponent) this, ct);
+        }
+
+        protected virtual ValueTask OnStartingApplication(CancellationToken ct)
+        {
+            return default;
+        }
+
+        protected sealed override async ValueTask OnStopping(CancellationToken ct)
+        {
+            var packet = this.Services.GetService<PacketCaptureManager>();
+            if (packet != null && packet.IsRunning) packet.PrepareShutdown();
+
+            foreach (var instance in this.Disposables)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    if (instance is IAsyncDisposable asyncDisposable)
+                    {
+                        await asyncDisposable.DisposeAsync();
+                    }
+                    else if (instance is IDisposable disposable)
+                    {
+                        disposable.Dispose();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Failed to dispose registered {instance.GetType().GetFriendlyName()} instance: [{ex.GetType().Name}] {ex.Message}");
+                }
+            }
+
+            await this.StoppingHandler((TComponent) this, ct);
+
+            await OnStoppingApplication(ct);
+        }
+
+        protected virtual ValueTask OnStoppingApplication(CancellationToken ct)
+        {
+            return default;
+        }
+
+        protected sealed override async ValueTask OnDisposing()
+        {
+            var packet = this.Services.GetService<PacketCaptureManager>();
+            packet?.Shutdown();
+
+            await this.DisposingHandler();
+
+            await OnDestroyingApplication();
+        }
+
+        protected virtual ValueTask OnDestroyingApplication()
+        {
+            return default;
+        }
+
+        protected sealed override void RegisterWithNetwork(IVirtualNetworkMap map)
+        {
+            map.Host.Bind(this.Location, 443, this.CreateHttpHandler);
+            var loopback = this.NetworkMap.Host.Loopback;
+            if (loopback != null)
+            {
+                map.Host.Bind(loopback, 443, this.CreateHttpHandler);
+            }
+
+            OnRegisteringWithNetwork(map);
+
+            this.ConfigureNetworkHandler(map);
+        }
+
+        protected virtual void OnRegisteringWithNetwork(IVirtualNetworkMap map)
+        {
+            //
+        }
+
+    }
+
+    /// <summary>Builder for a <see cref="WebHostTestComponentBase{T}"/></summary>
+    public abstract class WebHostTestComponentBuilderBase<TComponent> : IHostTestBuilder, IMinimalApiTestComponentBuilder
+        where TComponent : WebHostTestComponentBase<TComponent>
+    {
+
+        /// <inheritdoc/>
+        public string Id => this.Component.Id;
+
+        public required TComponent Component { get; init; }
+
+        /// <inheritdoc/>
+        IDistributedTestComponent IHostTestBuilder.Component => this.Component;
+
+        /// <inheritdoc/>
+        public required IDistributedTestNetworkBuilder Parent { get; init; }
+
+        /// <inheritdoc/>
+        public IDistributedTestContext Context => this.Component.Context;
+
+        public IVirtualNetworkLocation Location => this.Component.Location;
+
+        /// <inheritdoc/>
+        public VirtualHostIdentity Identity => this.Component.NetworkIdentity;
+
+        internal List<Action<WebApplicationBuilder>> ServiceHandlers { get; } = [];
+
+        internal List<Action<WebApplication>> ApplicationHandlers { get; } = [];
+
+        internal Func<TComponent, CancellationToken, ValueTask>? StartingHandler { get; private set; }
+
+        internal Func<TComponent, CancellationToken, ValueTask>? StoppingHandler { get; private set; }
+
+        internal List<Action<IEndpointRouteBuilder>> RouteHandlers { get; } = [];
+
+        internal List<object> Disposables { get; } = [];
+
+        /// <summary>Registers a callback that will be able to add custom services to this host</summary>
+        /// <remarks>This method can be called multiple times to register multiple callbacks. They will execute in the same order as they were registered.</remarks>
+        public void ConfigureServices(Action<WebApplicationBuilder> handler) => this.ServiceHandlers.Add(handler);
+
+        /// <summary>Registers a callback that will be able to configure the simulated application host</summary>
+        /// <remarks>This method can be called multiple times to register multiple callbacks. They will execute in the same order as they were registered.</remarks>
+        public void ConfigureApplication(Action<WebApplication> handler) => this.ApplicationHandlers.Add(handler);
+
+        /// <summary>Adds a subcomponent to this component</summary>
+        public void AddSubComponent(IDistributedTestComponent component)
+        {
+            this.Component.AddSubComponent(component);
+        }
+
+        /// <summary>This instance will be disposed when this host is stopped</summary>
+        public void Using(object instance)
+        {
+            if (instance is not IDisposable or IAsyncDisposable)
+            {
+                throw new ArgumentException("Instance must either implement IDisposable or IAsyncDisposable");
+            }
+
+            this.Disposables.Add(instance);
+        }
+
+        /// <summary>Registers a callback that will run when the host becomes ready, but before the test method can use it.</summary>
+        /// <remarks>Please note that each simulated host can start in a non-deterministic order, and this method cannot rely on other hosts to be ready as well.</remarks>
+        public void OnStartup(Action handler) => this.StartingHandler = (_, ct) =>
+        {
+            if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
+            handler();
+            return default;
+        };
+
+        /// <summary>Registers a callback that will run when the host becomes ready, but before the test method can use it.</summary>
+        /// <remarks>Please note that each simulated host can start in a non-deterministic order, and this method cannot rely on other hosts to be ready as well.</remarks>
+        public void OnStartup(Action<IServiceProvider> handler) => this.StartingHandler = (host, ct) =>
+        {
+            if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
+            handler(host.Services);
+            return default;
+        };
+
+        /// <summary>Registers a callback that will run when the host becomes ready, but before the test method can use it.</summary>
+        /// <remarks>Please note that each simulated host can start in a non-deterministic order, and this method cannot rely on other hosts to be ready as well.</remarks>
+        public void OnStartup(Func<TComponent, CancellationToken, ValueTask> handler) => this.StartingHandler = handler;
+
+        /// <summary>Registers a callback that will run when the host becomes ready, but before the test method can use it.</summary>
+        /// <remarks>Please note that all simulated hosts will start in a non-deterministic order, so this callback cannot rely on other hosts to be ready as well.</remarks>
+        public void OnStartup(Delegate handler)
+        {
+            var magic = MagicDelegate.Create(handler);
+            this.StartingHandler = (host, ct) =>
+            {
+                if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
+                magic.Invoke(host.Services);
+                return default;
+            };
+        }
+
+        /// <summary>Registers a callback that will run when the test has completed (successfully or not), to help release any resources used by this host.</summary>
+        /// <remarks>Please note that all simulated hosts will stop in a non-deterministic order, so this callback cannot on other hosts still being alive.</remarks>
+        public void OnShutdown(Action handler) => this.StoppingHandler = (_, ct) =>
+        {
+            if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
+            handler();
+            return default;
+        };
+
+        /// <summary>Registers a callback that will run when the test has completed (successfully or not), to help release any resources used by this host.</summary>
+        /// <remarks>Please note that all simulated hosts will stop in a non-deterministic order, so this callback cannot on other hosts still being alive.</remarks>
+        public void OnShutdown(Action<TComponent> handler) => this.StoppingHandler = (host, ct) =>
+        {
+            if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
+            handler(host);
+            return default;
+        };
+
+        /// <summary>Registers a callback that will run when the test has completed (successfully or not), to help release any resources used by this host.</summary>
+        /// <remarks>Please note that all simulated hosts will stop in a non-deterministic order, so this callback cannot on other hosts still being alive.</remarks>
+        public void OnShutdown(Func<TComponent, CancellationToken, ValueTask> handler) => this.StoppingHandler = handler;
+
+        /// <summary>Registers a callback that will run when the test has completed (successfully or not), to help release any resources used by this host.</summary>
+        /// <remarks>Please note that all simulated hosts will stop in a non-deterministic order, so this callback cannot on other hosts still being alive.</remarks>
+        public void OnShutdown(Delegate handler)
+        {
+            var magic = MagicDelegate.Create(handler);
+            this.StoppingHandler = (host, ct) =>
+            {
+                if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
+                magic.Invoke(host.Services);
+                return default;
+            };
+        }
+
+        /// <inheritdoc/>
+        public void AddRoute(Action<IEndpointRouteBuilder> handler)
+        {
+            Contract.NotNull(handler);
+            this.RouteHandlers.Add(handler);
+        }
+
+        public void Activate(TComponent host)
+        {
+            Contract.NotNull(host);
+
+            Apply(host);
+
+            host.ConfigureServicesHandlers.AddRange(this.ServiceHandlers);
+            host.ConfigureApplicationHandlers.AddRange(this.ApplicationHandlers);
+            host.StartingHandler = this.StartingHandler ?? host.StartingHandler;
+            host.StoppingHandler = this.StoppingHandler ?? host.StoppingHandler;
+
+            host.RouteHandlers.AddRange(this.RouteHandlers);
+            host.Disposables.AddRange(this.Disposables);
+
+            this.Parent.RegisterComponent(host);
+            this.Parent.SetNamedComponent(this.Id, host);
+
+            var category = this.NetworkHostCategory;
+            Contract.Debug.Assert(category is not null);
+            this.Parent.Location.RegisterNetworkService("host", this.Id, category);
+            this.Parent.Location.RegisterNetworkService(category, this.Id, null);
+        }
+
+        protected abstract string NetworkHostCategory { get; }
+
+        /// <summary>Applies any custom settings on this build to a newly created <typeparamref name="TComponent"/> instance.</summary>
+        protected abstract void Apply(TComponent host);
+
+    }
+
+}
