@@ -1084,6 +1084,24 @@ namespace SnowBank.Testing.Framework
 			SimpleTest.Log($"{this.Id}: {message}");
 		}
 
+		protected void Log(ref DefaultInterpolatedStringHandler message)
+		{
+			//REVIEW: do we have a better way to forward logs ?
+			SimpleTest.Log($"{this.Id}: {message.ToStringAndClear()}");
+		}
+
+		protected void LogError(string message)
+		{
+			//REVIEW: do we have a better way to forward logs ?
+			SimpleTest.LogError($"{this.Id}: {message}");
+		}
+
+		protected void LogError(ref DefaultInterpolatedStringHandler message)
+		{
+			//REVIEW: do we have a better way to forward logs ?
+			SimpleTest.LogError($"{this.Id}: {message.ToStringAndClear()}");
+		}
+
 		#endregion
 
 		#region Asset Files...
