@@ -116,7 +116,6 @@ namespace FoundationDB.Layers.Collections
 				tr.Annotate($"Push({value})");
 #endif
 
-				//BUGBUG: can be called multiple times per transaction, so need a unique stamp _per_ transaction!!
 				tr.SetVersionStampedKey(this.Subspace.Key(tr.CreateUniqueVersionStamp()), this.Parent.Codec.EncodeValue(value));
 			}
 
@@ -176,8 +175,6 @@ namespace FoundationDB.Layers.Collections
 			Contract.NotNull(db);
 			Contract.NotNull(handler);
 
-			//REVIEW: is this approach correct ?
-
 			return Fdb.Bulk.ExportAsync(
 				db,
 				this.Location,
@@ -201,8 +198,6 @@ namespace FoundationDB.Layers.Collections
 			Contract.NotNull(db);
 			Contract.NotNull(handler);
 
-			//REVIEW: is this approach correct ?
-
 			return Fdb.Bulk.ExportAsync(
 				db,
 				this.Location,
@@ -225,8 +220,6 @@ namespace FoundationDB.Layers.Collections
 			Contract.NotNull(db);
 			Contract.NotNull(handler);
 
-			//REVIEW: is this approach correct ?
-
 			return Fdb.Bulk.ExportAsync(
 				db,
 				this.Location,
@@ -248,8 +241,6 @@ namespace FoundationDB.Layers.Collections
 		{
 			Contract.NotNull(db);
 			Contract.NotNull(handler);
-
-			//REVIEW: is this approach correct ?
 
 			return Fdb.Bulk.ExportAsync(
 				db,
