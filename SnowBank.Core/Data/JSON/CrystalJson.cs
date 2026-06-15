@@ -1055,6 +1055,7 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue Parse(Slice jsonBytes, CrystalJsonSettings? settings = null)
 		{
+			if (jsonBytes.IsNullOrEmpty) return JsonNull.Null;
 			return ParseFromReader(new JsonSliceReader(jsonBytes), settings);
 		}
 
@@ -1070,6 +1071,7 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public static JsonValue Parse(ReadOnlySpan<byte> jsonBytes, CrystalJsonSettings? settings = null)
 		{
+			if (jsonBytes.Length == 0) return JsonNull.Null;
 			unsafe
 			{
 				fixed (byte* first = jsonBytes)
@@ -1139,6 +1141,7 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public static JsonValue Parse(ReadOnlySpan<char> jsonText, CrystalJsonSettings? settings = null)
 		{
+			if (jsonText.Length == 0) return JsonNull.Null;
 			unsafe
 			{
 				fixed (char* first = jsonText)
