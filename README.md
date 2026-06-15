@@ -396,14 +396,14 @@ public sealed class BooksProvider
         this.Options = options.Value;
 
         // get the location that corresponds to this path
-        this.Location = this.Db.Root[this.Options.Value.BasePath].AsDynamic();
+        this.Location = this.Db.Root[this.Options.BasePath];
     }
 
     public IFdbDatabaseProvider Db { get; }
 
     public BooksProviderOptions Options { get; }
 
-    public DynamicKeySubspaceLocation Location { get; }
+    public ISubspaceLocation Location { get; }
 
     public async Task InsertAsync(IFdbTransaction tr, Book book)
     {

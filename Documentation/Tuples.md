@@ -1,6 +1,6 @@
-Tuples are made of stuff and things...*
-==
-*: _Working Title_
+# Tuples
+
+> This page explains the tuple model in depth. In this library, tuples are how you encode **keys** (and sometimes values): the tuple binary encoding produces bytes whose sort order matches the logical order of the elements — exactly what FoundationDB's ordered keyspace needs. For how tuples become database keys via subspaces, see the [Keys, Values & Layers guide](guide/keys-and-layers.md).
 
 _"A tuple is an ordered list of elements."_ - [Wikipedia](http://en.wikipedia.org/wiki/Tuple)
 
@@ -68,29 +68,26 @@ And quite frankly, if you have used other languages where tuples are first-class
     
 That's why we need a better API, in order to help us be more productive.
 
-## ITuple
+## IVarTuple
 
-The `ITuple` interface, defined in `FoundationDB.Layers.Tuples` (TODO: update this if we rename it!), is the base of all the different tuples implementation, all targetting a specific use case.
-    
-This interface has the bare minimum API, thats must be implemented by each variant, and is in turn used by a set of extension methods that add more generic behavior that does NOT need to be replicated in all the variants.
+The `IVarTuple` interface, defined in `SnowBank.Data.Tuples`, is the base of all the different tuple implementations, each targeting a specific use case.
 
-There is also a static class, called `STuple`, which holds a bunch of methods to create and handle all the different variants of tuples.
+This interface has the bare-minimum API that every variant must implement, and is in turn used by a set of extension methods that add more generic behavior without needing to be reimplemented in each variant.
 
-_note: the interface is not called `ITuple` because 1) there is already an `ITuple` interface in the BCL (even though it is internal), and 2) we wouldn't be able to call our static helper class `Tuple` since it would collide with the BCL._
+There is also a static class, `STuple`, which holds methods to create and manipulate all the variants.
+
+_note: the interface is called `IVarTuple` (not `ITuple`) because the BCL already defines an `ITuple`, and we couldn't name our static helper `Tuple` without colliding with the BCL's `Tuple` class. `IVarTuple` does implement the BCL `System.Runtime.CompilerServices.ITuple` for interop._
 
 ### Types of tuples
 
-Tuples need to adapt to different use case: some tuples should have a fixed size and types (like the BCL Tuples), some should have a variable length (like a vector or list). Some tuples should probably be structs (to reduce the number of allocation in tight loops), while others need to be reference types. And finally, some tuples could be thin wrappers around encoded binary blobs, and defer the decoding of items until they are accessed.
+Tuples adapt to different use cases: some have a fixed size and types (like the BCL tuples), some are variable-length (like a vector). Some should be structs (to avoid allocations in tight loops), others reference types. And some are thin wrappers around an encoded binary blob that defer decoding until the elements are accessed.
 
-That's why there is multiple variants of tuples, all implementing the `ITuple` interface:
+That's why there are several variants, all implementing `IVarTuple`:
 
-- `STuple<T1>`, `STuple<T1, T2>` (up to T5 right now) are the equivalent of the BCL's `Tuple<T1, ...>` except that they are implemented as a struct. They are efficient when used as a temporary step to create bigger tuples, or when you have control of the actual type (in LINQ queries, inside your own private methods, ...). They are also ideal if you want type safety and nice intellisense support, since the types are known at compile time.
-- `ListTuple` wraps an array of object[] and exposes a subset of this array. Getting a substring of this cheap since it does not have to copy the items.
-- `JoinedTuple` is a wrapper that glues together two tuples (of any type).
-- `LinkedTuple` is a special case of an FdbJoinedTupel, where we are only adding one value to an existing tuple.
-- `SlicedTuple` is a wrapper around a half-parsed binary representation of a tuple, and which will only decode items if they are accessed. In cases where you are only interested in part of a key, you won't waste CPU cycles decoding the other items.
-- `MemoizedTuple` will cache its binary representation, which is usefull when you have a common tuple prefix which is used everytime to construct other tuples.
-- `PrefixedTuple` is some sort of hybrid tuples whose binary representation always have a constant binary prefix, which may or may not be a valid binary tuple representation itself (need to use tuples with prefixes generated from a different encoding).
+- `STuple<T1>` … `STuple<T1, …, T8>` are the equivalent of the BCL's `Tuple<…>`, but implemented as **structs** (up to 8 elements). They're efficient as a temporary step when building larger tuples, and ideal when you want type safety and good IntelliSense, since the element types are known at compile time.
+- `ListTuple` wraps an `object[]` and exposes a subset of it; taking a sub-range is cheap because it doesn't copy the items.
+- `JoinedTuple` glues two tuples together (of any type); `LinkedTuple` is the special case of appending a single value to an existing tuple.
+- Plus internal variants for parsed and cached representations — for example, ones that lazily decode only the elements you actually access, or that cache the binary encoding of a frequently-reused prefix.
 
 ### Creating a tuple
 
@@ -115,7 +112,7 @@ If we have a variable-size list of items, we can also create a tuple from it:
 ```CSharp
 IEnumerable<MyFoo> xs = ....;
 // xs is a sequence of MyFoo objects, with an Id property (of type Guid)
-var t = STuple.FromSequence(xs.Select(x => x.Id));
+var t = STuple.FromEnumerable(xs.Select(x => x.Id));
 ```
 
 When all the elements or a tuple are of the same type, you can use specialized versions:
@@ -164,7 +161,7 @@ To help you verify that a tuple has the correct size before accessing its elemen
 
 - `t.IsNullOrEmpty()` returns `true` if either `t == null` or `t.Count == 0`
 - `t.OfSize(3)` checks that `t` is not null, and that `t.Count` is equal to 3, and then returns the tuple itself, so you can write: `t.OfSize(3).DoSomethingWichExceptsThreeElements()`
-- `t.OfSizeAtLeast(3)` (and `t.OfSizeAtMost(3)`) work the same, except they check that `t.Count >= 3` (or `t.Count <= 3`)
+- `t.OfSizeAtLeast(3)` works the same, except it checks that `t.Count >= 3`
 
 Of course, if you have one of the `STuple<T1, ...>` struct, you can skip this step, since the size if known at compile time.
 
@@ -213,7 +210,7 @@ Since a tuple is just a vector of elements, you can of course put a tuple inside
 This works:
 
 ```CSharp
-var t1 = STuple.Create("hello", STuple(123, 456), Guid.NewGuid());
+var t1 = STuple.Create("hello", STuple.Create(123, 456), Guid.NewGuid());
 // t1 = ("hello", (123, 456), {773166b7-de74-4fcc-845c-84080cc89533})
 var t2 = STuple.Create(STuple.Create("a", "b"));
 // t2 = ((a, b),)
@@ -319,7 +316,7 @@ var v = t.Truncate(-3);
 When decoding keys using tuple, you wil often find yourself extracting a fixed number of arguments into local variables, and then constructing an instance of a Model class from your application.
 
 ```CSharp
-public MyFooBar DecodeFoobar(ITuple tuple)
+public MyFooBar DecodeFoobar(IVarTuple tuple)
 {
     var x = tuple.Get<string>(0);
     var y = tuple.Get<int>(1);
@@ -335,10 +332,10 @@ The keen eye will see the problems with this method:
 - what if tuple.Count is only 2 ?
 - you probably copy/pasted `var x = tuple.Get<...>(0)` two more times, and forgot to change the index to 1 and 2! _(even Notch does it!)_
 
-One solution is to use the set of `t.As<T1, ..., TN>()` helper methods to convert a tuple of type `ITuple` into a more friendly `STuple<T1, ..., TN>` introducing tape safety and intellisence.
+One solution is to use the set of `t.As<T1, ..., TN>()` helper methods to convert a tuple of type `IVarTuple` into a more friendly `STuple<T1, ..., TN>`, introducing type safety and IntelliSense.
 
 ```CSharp
-public MyFooBar DecodeFoobar(ITuple tuple)
+public MyFooBar DecodeFoobar(IVarTuple tuple)
 {
     var t = tuple.As<string, int, Guid>();
     // this throws if tuple is null, or not of size 3
@@ -351,7 +348,7 @@ That's better, but you can still swap two arguments by mistake, if they have the
 To combat this, you can use on of the `t.With<T1, ..., TN>(Action<T1, ..., TN>)` or `t.With<T1, ..., TN, TResult>(Func<T1, ..., TN, TResult>)` which can give names to the elements.
 
 ```CSharp
-public MyFooBar DecodeFoobar(ITuple tuple)
+public MyFooBar DecodeFoobar(IVarTuple tuple)
 {
     return tuple.With((Guid productId, Guid categoryId, Guid orderId) => new MyFooBar(productId, categoriyId, orderId));
     // all three elements are GUID, but adding name help you catch argument inversion errors

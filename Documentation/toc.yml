@@ -2,3 +2,21 @@
   href: introduction.md
 - name: Getting Started
   href: getting-started.md
+- name: Guide
+  items:
+    - name: Overview
+      href: guide/index.md
+    - name: Keys, Values & Layers
+      href: guide/keys-and-layers.md
+    - name: Transactions
+      href: guide/transactions.md
+    - name: Advanced Layers
+      href: guide/advanced-layers.md
+    - name: Binary Data (Slice & Buffers)
+      href: guide/slices-and-buffers.md
+- name: Reference
+  items:
+    - name: Tuples
+      href: Tuples.md
+    - name: Transaction Basics
+      href: Transaction_Basics.md
