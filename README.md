@@ -560,6 +560,26 @@ If, for any reason, you cannot copy the client binary to the default platform lo
 
 If you need to troubleshoot the connection to the FoundationDB cluster, from the point of view of your application, it is also recommended to install `fdbcli` (comes with the `foundationdb-clients` package, needs to be manually deployed if not).
 
+# AI-assisted development (Claude Code / Agent Skills)
+
+This repository ships a set of **Agent Skills** that teach AI coding agents how to use this library *correctly* — the parts that are easy to get wrong when "vibe-coded": key/value encoding, subspaces and the Directory layer, writing custom Layers, the transaction retry loop, advanced/distributed patterns (change feeds, leases, retention, fencing), and the `Slice` binary toolkit. They live under [`.claude/skills/`](.claude/skills/) and follow the open [Agent Skills](https://agentskills.io) `SKILL.md` format, so they also work with other agents that support it.
+
+The skills are **not** included in the NuGet packages. The easiest way to get them into your own projects (whether you consume this library via NuGet or as a submodule) is to install them as a **Claude Code plugin** from this repository, which doubles as a plugin marketplace:
+
+```text
+/plugin marketplace add SnowBankSDK/foundationdb-dotnet-client
+/plugin install foundationdb-dotnet-skills@snowbank
+```
+
+Update later with `/plugin update foundationdb-dotnet-skills@snowbank`.
+
+Alternatives, if you'd rather not use the plugin system:
+- **Personal (all your projects):** copy the skill folders into `~/.claude/skills/`.
+- **Per-project:** copy them into your app's `.claude/skills/` and commit them.
+- **Submodule users:** point Claude at the checked-out submodule with `claude --add-dir path/to/foundationdb-dotnet-client` (or `/add-dir`), which loads its `.claude/skills/`.
+
+The same material is available as human-readable documentation under [`Documentation/guide/`](Documentation/guide/) for developers (and agents that don't support Agent Skills).
+
 # How to build
 
 ## Visual Studio Solution

@@ -1,0 +1,12 @@
+{
+  "name": "snowbank",
+  "owner": { "name": "SnowBank SAS", "url": "https://github.com/SnowBankSDK" },
+  "plugins": [
+    {
+      "name": "foundationdb-dotnet-skills",
+      "source": "./plugins/foundationdb-skills",
+      "description": "Agent Skills for the FoundationDB .NET client: keys & layers, transactions, advanced/distributed layers, and the Slice binary toolkit.",
+      "version": "0.1.0"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "foundationdb-dotnet-skills",
+  "description": "Agent Skills for building correctly on the FoundationDB .NET client (FoundationDB.Client / SnowBank): key & value encoding, subspaces and the Directory layer, writing custom Layers, transactions and the retry loop, advanced/distributed patterns (change feeds, leases, retention, fencing), and the Slice binary toolkit.",
+  "version": "0.1.0",
+  "author": { "name": "SnowBank SAS", "url": "https://github.com/SnowBankSDK" },
+  "homepage": "https://github.com/SnowBankSDK/foundationdb-dotnet-client",
+  "repository": "https://github.com/SnowBankSDK/foundationdb-dotnet-client",
+  "license": "BSD-3-Clause"
+}
