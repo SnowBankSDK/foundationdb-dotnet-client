@@ -189,7 +189,9 @@ namespace FoundationDB.Layers.Collections
 				Contract.NotNull(trans);
 				Contract.NotNull(id);
 
-				trans.Clear(this.Subspace.Key(id));
+				var pk = this.Parent.KeyCodec.EncodeKey(id);
+
+				trans.Clear(this.Subspace.Key(pk));
 			}
 
 			/// <summary>Creates a query that will attempt to read all the entries in the map within a single transaction.</summary>
