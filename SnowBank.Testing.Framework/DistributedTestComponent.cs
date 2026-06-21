@@ -452,9 +452,10 @@ namespace SnowBank.Testing.Framework
 				var hostBuilder = WebApplication.CreateBuilder(new WebApplicationOptions()
 				{
 					ContentRootPath = contentRoot,
+					EnvironmentName = Environments.Development, // must be set at creation: WebHost.UseEnvironment() after CreateBuilder is no longer supported
 				});
 
-				hostBuilder.WebHost.UseEnvironment(Environments.Development);
+
 				hostBuilder.WebHost.UseTestServer(options =>
 				{
 					//TODO: if this is a component without any http ports (ex: web browser?) we should not configure this ?
