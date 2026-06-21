@@ -6,7 +6,7 @@
       "name": "foundationdb-dotnet-skills",
       "source": "./plugins/foundationdb-skills",
       "description": "Agent Skills for the FoundationDB .NET client: keys & layers, transactions, advanced/distributed layers, the Slice binary toolkit, and running/connecting (Aspire hosting & client, the native client).",
-      "version": "0.2.0"
+      "version": "0.2.2"
     }
   ]
 }
