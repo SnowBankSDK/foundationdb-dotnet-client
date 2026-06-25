@@ -6,8 +6,11 @@ description: >-
   model, the CrystalJson static API (Serialize / Parse / Deserialize) and CrystalJsonSettings, the Roslyn source generator
   for fast reflection-free serializers and read-only/writable proxies ([CrystalJsonConverter] / [CrystalJsonSerializable]),
   the IJsonSerializable / IJsonPackable / IJsonDeserializable interfaces, MutableJsonValue / ObservableJsonValue and
-  JsonPath. Use whenever code parses, builds, reads, mutates, or serializes JSON with these types, declares a generated
-  JSON converter/proxy, or implements custom JSON (de)serialization. CrystalJson is NOT System.Text.Json or Newtonsoft.
+  JsonPath. Use whenever code parses, builds, reads, mutates, or serializes JSON with these types, reads optional fields
+  with defaults, declares a generated JSON converter/proxy, or implements custom JSON (de)serialization. Use it even when
+  the request only says "serializer", "converter", or "serialize/deserialize a record, document, or model" without naming
+  JSON: in SnowBank-based code (DocStore, Teleport, Layers, models) document and message (de)serialization goes through
+  CrystalJson, not System.Text.Json or Newtonsoft.
 ---
 
 # CrystalJson (SnowBank.Data.Json)
@@ -275,6 +278,10 @@ MyJson.Book.Writable w = ro.ToMutable();
 w.Year = 2025;
 ```
 
+Note: `.With(...)` (copy-on-write edit) is a method on the GENERATED typed proxies shown here, not on a raw DOM
+`JsonObject`/`JsonArray`. For a plain DOM value there is no `.With(...)`: freeze with `value.ToReadOnly()` and edit a
+copy with `value.ToMutable()` (section 2), then set fields via the indexer.
+
 ---
 
 ## 6. Mutating JSON: MutableJsonValue (and ObservableJsonValue)
@@ -322,7 +329,8 @@ public interface IJsonPackable              { JsonValue JsonPack(CrystalJsonSett
 public interface IJsonDeserializable<TSelf> { static abstract TSelf JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver); }
 ```
 
-`JsonPack` (to DOM) and `JsonDeserialize` (from DOM) must be inverses - round-trip them in a test. Build values with
+By convention the concrete `JsonDeserialize` implementation declares the resolver with a default (`ICrystalJsonTypeResolver? resolver = null`)
+so callers can omit it; that still satisfies the interface. `JsonPack` (to DOM) and `JsonDeserialize` (from DOM) must be inverses - round-trip them in a test. Build values with
 `JsonString.Return(...)`, `JsonNumber.Return(...)`, `JsonArray.ReadOnly.Create(...)`. Handle null/missing defensively in
 `JsonDeserialize`. (Example in the wild: a compact id type packed as a `JsonArray` of its parts.)
 
