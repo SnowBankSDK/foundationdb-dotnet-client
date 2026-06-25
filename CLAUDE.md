@@ -37,6 +37,7 @@ dotnet test  FoundationDB.Client.slnx          # run all tests
 ### Tests
 
 - **NUnit 4**, and the runner **must be 64-bit** (the native client is 64-bit only).
+- ⚠️ **On the .NET 10+ SDK, `dotnet test` can fail** for these NUnit/Microsoft.Testing.Platform projects with *"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform"*. Fallback: build, then **run the test assembly directly** — `dotnet artifacts/bin/<Project>/debug_net11.0/<Project>.dll`, filtering with `--filter "FullyQualifiedName~<NamePart>"` (not `--treenode-filter`) and `--output Detailed` for per-assert output.
 - `SnowBank.*.Tests` are pure and need no database.
 - **`FoundationDB.Tests` requires a running local FoundationDB cluster** and the native `fdb_c` library (`libfdb_c.dylib` on macOS, `libfdb_c.so` on Linux, `fdb_c.dll` on Windows). `FoundationDB.Client.Native` redistributes these.
   - ⚠️ Tests write to a dedicated subspace but **can corrupt data** — only point them at a throwaway local cluster.
