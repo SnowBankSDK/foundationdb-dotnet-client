@@ -76,6 +76,11 @@ namespace SnowBank.Testing.Framework
 		public TestServer Server => m_server ?? throw new InvalidOperationException("Server not yet initialized");
 		private TestServer? m_server;
 
+		/// <summary>The web application host that owns the DI container (and the TestServer). Retained so it can be
+		/// ASYNC-disposed at teardown, which disposes the container and its IAsyncDisposable singletons (e.g. a TeleportHub
+		/// and its sinks/connections). Disposing only the TestServer leaves those alive until GC.</summary>
+		private WebApplication? m_host;
+
 		public IDistributedTestContext Context => m_context ?? throw new InvalidOperationException("Context not yet initialized");
 		private IDistributedTestContext? m_context;
 
@@ -650,8 +655,9 @@ namespace SnowBank.Testing.Framework
 
 				ConfigureServices(hostBuilder);
 
-				// build it
+				// build it (retained in m_host so it - and its DI container - can be async-disposed at teardown)
 				var host = hostBuilder.Build();
+				m_host = host;
 
 				// configure it
 				{
@@ -1045,8 +1051,18 @@ namespace SnowBank.Testing.Framework
 			finally
 			{
 				m_state = TestComponentState.Destroyed;
-				m_server?.Dispose();
+				// Dispose the WHOLE host, not just the TestServer: this disposes the DI container and ASYNC-disposes its
+				// IAsyncDisposable singletons - notably a TeleportHub, which disposes its sinks and tears down their peer
+				// connections. Disposing only the TestServer left the hub (and its open connections) alive until GC.
+				var host = m_host;
+				m_host = null;
 				m_server = null;
+				if (host is not null)
+				{
+					try { await host.StopAsync().ConfigureAwait(false); }
+					catch { /* best-effort graceful stop during teardown */ }
+					await host.DisposeAsync().ConfigureAwait(false);
+				}
 			}
 		}
 

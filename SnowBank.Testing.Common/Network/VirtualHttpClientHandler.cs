@@ -52,6 +52,20 @@ namespace SnowBank.Networking
 		/// <summary>Options used for the request</summary>
 		public BetterHttpClientOptions Options { get; }
 
+		/// <summary>Simulated source port for this handler, used only to give the host a distinct peer address in the
+		/// <c>X-SBK-ORIGIN</c> tag (see <see cref="SendAsync"/>).</summary>
+		/// <remarks>Stable for the life of the handler - i.e. one port per virtualized client/channel. This handler is the
+		/// generic transport for ALL virtual HTTP and cannot observe the real socket/connection lifecycle from inside
+		/// <c>SendAsync</c>, so it does NOT try to model "a reconnect opens a new ephemeral port". Distinguishing a
+		/// reconnecting peer from a new one is the protocol's job (a stable connection id in the handshake), not the
+		/// transport's.</remarks>
+		private int SourcePort { get; } = AllocateSourcePort();
+
+		private static int SourcePortCounter;
+
+		/// <summary>Allocates a distinct simulated source port (in the 49152-65535 range) for a new virtualized client.</summary>
+		private static int AllocateSourcePort() => 49152 + (System.Threading.Interlocked.Increment(ref SourcePortCounter) & 0x3FFF);
+
 		protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
 			// note: we _could_ support non-async request, but I think this would be enough pressure to force the caller to transition to async requests!
@@ -119,6 +133,25 @@ namespace SnowBank.Networking
 				throw SimulateNameResolutionError(hostName, $"Found no matching host for name '{hostName}' visible from simulated host '{this.Map.Host.Id}' ({this.Map.Host.Fqdn})");
 			}
 
+			// The in-process virtual transport has no real socket, so the server's HttpContext.Connection.RemoteIpAddress
+			// (and therefore gRPC's ServerCallContext.Peer) would be unset - making every client look like the same "unknown"
+			// peer. Tag the request with this host's address as an X-SBK-ORIGIN header so VirtualNetworkProxyMiddleware can
+			// reconstruct RemoteIpAddress/RemotePort on the server side (the "Forwarded-For" trick). We only add it when the
+			// caller did not already set it: REST/SignalR clients tag via BetterHttpClientOptions.DefaultRequestHeaders, but
+			// the gRPC channel bypasses those (it uses the raw handler), so this is what makes distinct gRPC peers possible.
+			if (!request.Headers.Contains("X-SBK-ORIGIN"))
+			{
+				// Use this host's own primary address as the simulated source. We deliberately do NOT use
+				// GetPublicIPAddressForHost (which only resolves a source IP for same-network peers and returns null across
+				// networks, e.g. @lan -> @cloud): for peer DISTINCTION any stable, unique-per-connection address works, and
+				// the origin's own address + SourcePort is distinct across hosts AND across connections from the same host.
+				var originIp = this.Map.Host.Addresses.Length > 0 ? this.Map.Host.Addresses[0] : System.Net.IPAddress.Loopback;
+				request.Headers.TryAddWithoutValidation(
+					"X-SBK-ORIGIN",
+					string.CreateInvariant($"\"{this.Map.Host.Id}\"; host=\"{this.Map.Host.Fqdn}\"; peer=\"{originIp}:{this.SourcePort}\"")
+				);
+			}
+
 			if (host.Passthrough)
 			{ // this is an actual real physical host, and the request will be sent "to the real world".
 				var handler = new HttpClientHandler()
@@ -169,7 +202,18 @@ namespace SnowBank.Networking
 					var handler = factory();
 					handler = this.Options.Configure(handler);
 					var invoker = new HttpMessageInvoker(handler);
-					return invoker.SendAsync(request, cancellationToken);
+
+					// Link the call to BOTH endpoints' "online" tokens, so that if either host goes offline mid-flight, the
+					// in-flight request - and, for a long-lived gRPC duplex stream, the whole connection in both directions -
+					// is aborted, like a severed TCP link. The Offline checks above only reject NEW connections; this is what
+					// severs ESTABLISHED ones (the connect path never re-runs for a live stream). Tokens are captured here, so
+					// a later offline/online cycle leaves this connection aborted (latched) while a freshly-opened one uses
+					// the renewed token.
+					var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.Map.Host.OnlineToken, host.OnlineToken);
+					// `linked` registers callbacks on the hosts' long-lived OnlineTokens, so it MUST be disposed or they pile
+					// up. It has to outlive SendAsync (a streaming body is read after the headers return), so we release it when
+					// the body is done: its read stream ends/errors/disposes, or the response is disposed (see SendAndReleaseAsync).
+					return SendAndReleaseAsync(invoker, request, linked);
 				}
 
 				throw SimulatePortNotBoundFailure(hostName, port, $"Found no port {port} bound on location '{remote}' of target host '{host.Id}', visible from host '{this.Map.Host.Id}' ({this.Map.Host.Fqdn})");
@@ -183,6 +227,74 @@ namespace SnowBank.Networking
 			else
 			{ // request included a host name ("https://somehost/...") so it would most probably fail the name resolution
 				throw SimulateNameResolutionError(hostName, $"Found no matching host for name '{hostName}' visible from simulated host '{this.Map.Host.Id}' ({this.Map.Host.Fqdn})");
+			}
+		}
+
+		/// <summary>Sends the request and releases <paramref name="linked"/> (unlinking it from the hosts' long-lived
+		/// OnlineTokens) when the response is disposed. The linked source must outlive <c>SendAsync</c> (a streaming body is
+		/// read after the headers return), so its lifetime is tied to the response rather than to this call.</summary>
+		/// <remarks>NOTE: this still relies on the consumer disposing the response. A long-lived connection whose consumer
+		/// never disposes its response (e.g. a SignalR connection kept open for the host's whole life) holds its linked
+		/// source until GC. That is bounded (one per live connection) and not a per-request leak - completed and
+		/// reconnected calls release deterministically. Releasing those at host-teardown would require either the sinks
+		/// disposing their calls/connections, or a host-teardown signal plumbed into the virtual transport.</remarks>
+		private static async Task<HttpResponseMessage> SendAndReleaseAsync(HttpMessageInvoker invoker, HttpRequestMessage request, CancellationTokenSource linked)
+		{
+			try
+			{
+				var response = await invoker.SendAsync(request, linked.Token).ConfigureAwait(false);
+				if (response.Content is not null)
+				{
+					response.Content = new ReleasingContent(response.Content, linked);
+				}
+				else
+				{ // no body to attach the lifetime to -> release now
+					linked.Dispose();
+				}
+				return response;
+			}
+			catch
+			{ // SendAsync faulted before ownership was handed off -> release now
+				linked.Dispose();
+				throw;
+			}
+		}
+
+		/// <summary>Forwards an <see cref="HttpContent"/> and disposes the linked token source when the content is disposed.</summary>
+		private sealed class ReleasingContent : HttpContent
+		{
+			private readonly HttpContent Inner;
+			private readonly CancellationTokenSource Linked;
+
+			public ReleasingContent(HttpContent inner, CancellationTokenSource linked)
+			{
+				this.Inner = inner;
+				this.Linked = linked;
+				foreach (var header in inner.Headers)
+				{
+					this.Headers.TryAddWithoutValidation(header.Key, header.Value);
+				}
+			}
+
+			protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => this.Inner.CopyToAsync(stream);
+
+			protected override Task<Stream> CreateContentReadStreamAsync() => this.Inner.ReadAsStreamAsync();
+
+			protected override bool TryComputeLength(out long length)
+			{
+				var len = this.Inner.Headers.ContentLength;
+				length = len ?? 0;
+				return len.HasValue;
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					this.Inner.Dispose();
+					this.Linked.Dispose();
+				}
+				base.Dispose(disposing);
 			}
 		}
 

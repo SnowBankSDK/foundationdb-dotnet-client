@@ -114,6 +114,13 @@ namespace SnowBank.Networking
 			/// <inheritdoc />
 			public bool Offline { get; private set; }
 
+			/// <summary>Source of cancellation that is tripped when this host goes offline, and renewed when it comes back online.</summary>
+			/// <remarks>Linked into every virtual connection that originates from or terminates at this host (see <see cref="SnowBank.Networking.VirtualHttpClientHandler"/>), so that going offline aborts all in-flight connections - like a severed link - while connections opened after coming back online use a fresh token.</remarks>
+			private CancellationTokenSource OnlineCts { get; set; } = new();
+
+			/// <summary>Token that stays valid while this host is online and is cancelled when it goes offline. Captured per-connection, so an offline/online cycle leaves connections opened before the cut aborted (latched), while connections opened after are allowed.</summary>
+			public CancellationToken OnlineToken => this.OnlineCts.Token;
+
 			/// <summary>Map of all handlers attached to each network location</summary>
 			/// <remarks>The key is the network location id, and the value is the map of the ports that are bound: <c>Location => (Port => Handler)</c></remarks>
 			public Dictionary<string, Dictionary<int, Func<HttpMessageHandler>>> Handlers { get; } = new(StringComparer.Ordinal);
@@ -146,8 +153,24 @@ namespace SnowBank.Networking
 			public void SetOffline(bool offline)
 			{
 				//TODO: maybe add a parameter to specify which kind of "offline" fault the host should simulate: powered-down? ethernet is off? currently rebooting but not yet ready? some big crash?
-				this.Offline = offline;
-				//TODO: maybe have a way to "cancel" any in-flight requests to this host?
+				if (offline)
+				{
+					if (!this.Offline)
+					{
+						this.Offline = true;
+						// abort every in-flight connection that originates from or terminates at this host (severed link)
+						this.OnlineCts.Cancel();
+					}
+				}
+				else
+				{
+					if (this.Offline)
+					{
+						this.Offline = false;
+						// renew the token: connections opened from now on are allowed again, while those cut above stay cut (latched)
+						this.OnlineCts = new CancellationTokenSource();
+					}
+				}
 			}
 
 			/// <inheritdoc />
