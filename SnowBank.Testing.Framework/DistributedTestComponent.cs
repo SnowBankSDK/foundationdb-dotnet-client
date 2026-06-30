@@ -50,18 +50,61 @@ namespace SnowBank.Testing.Framework
 	using SnowBank.Networking.PacketCapture;
 	using SnowBank.Runtime.Converters;
 
+	/// <summary>Lifecycle state of a <see cref="DistributedTestComponent"/> (a virtual host).</summary>
 	[PublicAPI]
 	public enum TestComponentState
 	{
+		/// <summary>A lifecycle phase (Init or Start) threw: the component is broken and cannot run.</summary>
 		Failed = -2,
+
+		/// <summary>The component has been stopped and disposed for good (terminal teardown).</summary>
 		Destroyed = -1,
+
+		/// <summary>Default uninitialized value; not a real lifecycle state.</summary>
 		Invalid = 0,
+
+		/// <summary>The component has been constructed but not yet prepared (no context or network identity yet).</summary>
 		Building = 1,
+
+		/// <summary>The component is being prepared: it acquires its context, clock and network identity (IP address).</summary>
 		Preparing = 2,
+
+		/// <summary>The component is being initialized: it builds its WebApplication, DI container and TestServer.</summary>
 		Initializing = 3,
+
+		/// <summary>The component is starting: it runs its startup handlers and enables normal logging.</summary>
 		Starting = 4,
+
+		/// <summary>The component is up and running, ready to accept requests.</summary>
 		Started = 5,
+
+		/// <summary>The component is being stopped (draining and tearing down its host).</summary>
 		Stopping = 6,
+
+		/// <summary>The host's incarnation has been stopped via StopHost, but the component can be (re)started via StartHost
+		/// (it keeps its identity, network registration, RestartCount and Data bag).</summary>
+		Stopped = 7,
+	}
+
+	/// <summary>Coarse public status of a virtual host, used by test methods (a simplification of the internal <see cref="TestComponentState"/>).</summary>
+	public enum HostStatus
+	{
+		/// <summary>The host is being (re)started but is not yet ready.</summary>
+		Starting,
+		/// <summary>The host is up and ready.</summary>
+		Started,
+		/// <summary>The host is being stopped.</summary>
+		Stopping,
+		/// <summary>The host is stopped (the initial state, or after StopHost). It can be (re)started.</summary>
+		Stopped,
+	}
+
+	/// <summary>Options controlling how a virtual host is (re)started
+	/// via <see cref="DistributedTestComponent.StartHost(HostStartOptions?, CancellationToken)"/>.</summary>
+	/// <remarks>Currently a placeholder. Future properties will control what happens to the host's NETWORK IDENTITY on restart: by default the host keeps the same IP and re-registers on the same ports (today's behavior); a future option will model the fake DHCP assigning a DIFFERENT IP, to verify that the system keys on the logical identity (handshake) and NOT on the IP address (so that two hosts swapping IPs across restarts does not cause havoc).</remarks>
+	public sealed record HostStartOptions
+	{
+		// (placeholder for future network-identity / restart options)
 	}
 
 	/// <summary>Represents an independent "actor" in the test environment (ex: a client, a backend or API server, a web browser or mobile app, an IoT device, ...)</summary>
@@ -141,6 +184,27 @@ namespace SnowBank.Testing.Framework
 		public IClock Clock { get; private set; }
 
 		public IClock RealClock { get; }
+
+		/// <summary>Number of times this host has been restarted (0 = the initial start, 1 = after the first restart, ...). Stable across restarts.</summary>
+		public int RestartCount { get; private set; }
+
+		/// <summary>True on the initial start of this host (<see cref="RestartCount"/> == 0).</summary>
+		public bool IsFirstStart => this.RestartCount == 0;
+
+		/// <summary>True if this host has been restarted at least once (<see cref="RestartCount"/> &gt; 0).</summary>
+		public bool IsRestart => this.RestartCount > 0;
+
+		/// <summary>Opaque per-host "handoff" bag that PERSISTS across restarts (disposed and cleared only at the end of the test).</summary>
+		/// <remarks>
+		/// <para>An in-memory stand-in for what a real process would keep on disk: config files, data files, or other asset files.
+		/// Use it to model the application's DURABLE local state that a restarted process inherits,
+		/// like a fresh "clone" picking up its predecessor's local work.</para>
+		/// <para>Store ONLY POCOs or handles your test owns. Do NOT use it for process-scoped framework or connection state
+		/// (e.g. a ConnectionId): a restart is a NEW process and is supposed to reset that.</para>
+		/// <para>NEVER store anything resolved from the host's DI container: it is disposed when the incarnation stops,
+		/// leaving a dangling reference. <see cref="IDisposable"/> / <see cref="IAsyncDisposable"/> values are disposed at final teardown.</para>
+		/// </remarks>
+		public Dictionary<object, object> Data { get; } = new();
 
 		public IEventBus EventBus => this.Services.GetRequiredService<IEventBus>();
 
@@ -664,8 +728,10 @@ namespace SnowBank.Testing.Framework
 					// grab the services as soon as possible
 					m_services = host.Services;
 
-					if (m_networkMap is not null)
+					if (m_networkMap is not null && this.IsFirstStart)
 					{
+						// Only bind on the FIRST start. The binding resolves m_server live (via CreateHttpHandler), so after a restart it
+						// already points at the fresh server - re-binding would throw on the duplicate port (and would be redundant).
 						RegisterWithNetwork(m_networkMap);
 					}
 
@@ -969,6 +1035,119 @@ namespace SnowBank.Testing.Framework
 			}
 		}
 
+		/// <summary>Stops this host's current incarnation - tears down the WebApplication, DI container, hub and its peer connections -
+		/// while KEEPING the host's identity, network registration, <see cref="RestartCount"/> and <see cref="Data"/> bag,
+		/// so it can be brought back up with <see cref="StartHost"/>.</summary>
+		/// <remarks>Models a node going down (reboot, scale-in).
+		/// Any durable backing store (e.g. a shared FakeDb) is external and survives.
+		/// Other nodes' connections to this host break; their reconnect loops retry against the fresh incarnation once it starts.</remarks>
+		public async ValueTask StopHost(CancellationToken stopToken)
+		{
+			if (m_state is TestComponentState.Stopped or TestComponentState.Destroyed) return; // already down
+			if (m_state != TestComponentState.Started) throw new InvalidOperationException($"Cannot stop host {this.Id}: it is in the {m_state} state.");
+
+			var tsStart = this.RealClock.GetCurrentInstant();
+			m_state = TestComponentState.Stopping;
+
+			// stop sub-components first (they run "under" this host, e.g. a browser talking to https://localhost/),
+			// so their own hosts are torn down too
+			foreach (var sub in this.SubComponents)
+			{
+				if (sub is DistributedTestComponent dc && dc.State == TestComponentState.Started)
+				{
+					try { await dc.StopHost(stopToken).ConfigureAwait(false); }
+					catch (Exception e) { this.Context.LogOutputError.WriteLine($"Failed to stop sub-component {sub.Id} of host {this.Id}: {e}"); }
+				}
+			}
+
+			// sever live connections so peers' in-flight calls abort cleanly, like an abrupt node death
+			try { this.NetworkMap.Host.SetOffline(true); } catch { /* the network may already be gone */ }
+
+			// drain captured packets into the journal BEFORE the DI container is disposed
+			if (m_services is not null)
+			{
+				try
+				{
+					var packetManager = m_services.GetService<PacketCaptureManager>();
+					if (packetManager is { IsRunning: true }) await packetManager.DrainAsync(stopToken).ConfigureAwait(false);
+				}
+				catch (Exception e) { this.Context.LogOutputError.WriteLine($"Failed to drain captured HTTP packets for host {this.Id}: {e}"); }
+
+				try { await OnStopping(stopToken).ConfigureAwait(false); }
+				catch (Exception e) { this.Context.LogOutputError.WriteLine($"Failed to stop host {this.Id}: {e}"); }
+			}
+
+			// tear down the host: disposing the WebApplication disposes the DI container, which ASYNC-disposes the hub (and its sinks/connections)
+			var host = m_host;
+			m_host = null;
+			m_server = null;
+			m_services = null;
+			m_configuration = null;
+			if (host is not null)
+			{
+				try { await host.StopAsync().ConfigureAwait(false); } catch { /* best-effort graceful stop */ }
+				await host.DisposeAsync().ConfigureAwait(false);
+			}
+
+			m_state = TestComponentState.Stopped;
+			this.Context.Timeline.Record(new() { Source = this.Id, Start = tsStart, End = this.RealClock.GetCurrentInstant(), Category = "TEST", Label = $"### {this.Id} STOP (incarnation #{this.RestartCount}) ###" });
+		}
+
+		/// <summary>Brings a stopped host back up (with default options).</summary>
+		public ValueTask StartHost(CancellationToken startToken) => StartHost(null, startToken);
+
+		/// <summary>Brings a stopped host back up: re-runs the SAME configuration and startup callbacks
+		/// on a fresh WebApplication / DI container / hub, with the SAME identity and network position,
+		/// and increments <see cref="RestartCount"/> so callbacks can branch on <see cref="IsRestart"/>.
+		/// Sub-components are restarted with it.</summary>
+		/// <param name="options">Options controlling the (re)start (currently a placeholder; defaults are used when <c>null</c>).</param>
+		public async ValueTask StartHost(HostStartOptions? options, CancellationToken startToken)
+		{
+			options ??= new HostStartOptions();
+
+			if (m_state == TestComponentState.Started) return;
+			if (m_state != TestComponentState.Stopped) throw new InvalidOperationException($"Cannot start host {this.Id}: it is in the {m_state} state (only a Stopped host can be (re)started).");
+
+			this.RestartCount++;
+			this.Context.Timeline.Record(new() { Source = this.Id, Start = this.RealClock.GetCurrentInstant(), Category = "TEST", Label = $"### {this.Id} RESTART #{this.RestartCount} ###" });
+
+			// bring the network back online (renew the OnlineToken so new connections are accepted again)
+			try { this.NetworkMap.Host.SetOffline(false); } catch { }
+
+			// re-run the standard bring-up: Init (build host + DI + TestServer) then Start (user startup handler), both of which
+			// require the Preparing state and recurse into sub-components - so put the whole subtree back into Preparing first.
+			m_state = TestComponentState.Preparing;
+			foreach (var sub in this.SubComponents)
+			{
+				if (sub is DistributedTestComponent dc) dc.PrepareSubtreeForRestart();
+			}
+			await Init(startToken).ConfigureAwait(false);
+			await Start(startToken).ConfigureAwait(false);
+		}
+
+		/// <summary>Recursively bumps <see cref="RestartCount"/> and puts this component and its sub-components back into the Preparing state,
+		/// so the parent's Init/Start loops can rebuild the whole subtree on a restart.</summary>
+		private void PrepareSubtreeForRestart()
+		{
+			this.RestartCount++;
+			m_state = TestComponentState.Preparing;
+			foreach (var sub in this.SubComponents)
+			{
+				if (sub is DistributedTestComponent dc) dc.PrepareSubtreeForRestart();
+			}
+		}
+
+		/// <summary>Restarts this host (and its sub-components): <see cref="StopHost"/> immediately followed by <see cref="StartHost"/>.
+		/// For a delayed restart, call StopHost, await your delay, then StartHost.</summary>
+		public ValueTask Restart(CancellationToken ct) => Restart(null, ct);
+
+		/// <summary>Restarts this host with the given <paramref name="options"/>.</summary>
+		public async ValueTask Restart(HostStartOptions? options, CancellationToken ct)
+		{
+			await StopHost(ct).ConfigureAwait(false);
+			await StartHost(options, ct).ConfigureAwait(false);
+		}
+
 		/// <summary>Called when the component is being stopped (whether the test ran successfully or not)</summary>
 		protected virtual ValueTask OnStopping(CancellationToken ct)
 		{
@@ -982,21 +1161,25 @@ namespace SnowBank.Testing.Framework
 			m_state = TestComponentState.Stopping;
 			try
 			{
-				// disable normal logging while we are shutting down...
-				GetRequiredService<NUnitLoggerProvider>().SetLogLevel(LogLevel.Warning);
-
-				// drain any remaining HTTP packets that where captured but not yet processed
-				var packetManager = this.Services.GetService<PacketCaptureManager>();
-				if (packetManager != null && packetManager.IsRunning)
+				// note: m_services is null if the incarnation was already torn down via StopHost - skip the service-dependent shutdown in that case.
+				if (m_services is not null)
 				{
-					try
+					// disable normal logging while we are shutting down...
+					GetRequiredService<NUnitLoggerProvider>().SetLogLevel(LogLevel.Warning);
+
+					// drain any remaining HTTP packets that where captured but not yet processed
+					var packetManager = this.Services.GetService<PacketCaptureManager>();
+					if (packetManager != null && packetManager.IsRunning)
 					{
-						// TO
-						 await packetManager.DrainAsync(stopToken);
-					}
-					catch (Exception e)
-					{
-						this.Context.LogOutputError.WriteLine($"Failed to drain captured HTTP packets for component {this.Id}: {e}");
+						try
+						{
+							// TO
+							 await packetManager.DrainAsync(stopToken);
+						}
+						catch (Exception e)
+						{
+							this.Context.LogOutputError.WriteLine($"Failed to drain captured HTTP packets for component {this.Id}: {e}");
+						}
 					}
 				}
 
@@ -1007,13 +1190,16 @@ namespace SnowBank.Testing.Framework
 				}
 
 				// stop le reste du component
-				try
+				if (m_services is not null)
 				{
-					await OnStopping(stopToken);
-				}
-				catch (Exception e)
-				{
-					this.Context.LogOutputError.WriteLine($"Failed to stop component {this.Id}: {e}");
+					try
+					{
+						await OnStopping(stopToken);
+					}
+					catch (Exception e)
+					{
+						this.Context.LogOutputError.WriteLine($"Failed to stop component {this.Id}: {e}");
+					}
 				}
 			}
 			finally
@@ -1063,6 +1249,24 @@ namespace SnowBank.Testing.Framework
 					catch { /* best-effort graceful stop during teardown */ }
 					await host.DisposeAsync().ConfigureAwait(false);
 				}
+
+				// dispose any IDisposable/IAsyncDisposable handed off via the Data bag (test-owned handles that persisted across restarts)
+				foreach (var value in this.Data.Values)
+				{
+					try
+					{
+						switch (value)
+						{
+							case IAsyncDisposable ad: await ad.DisposeAsync().ConfigureAwait(false); break;
+							case IDisposable d: d.Dispose(); break;
+						}
+					}
+					catch (Exception e)
+					{
+						m_context?.LogOutputError.WriteLine($"Failed to dispose a Data entry for host {this.Id}: {e}");
+					}
+				}
+				this.Data.Clear();
 			}
 		}
 

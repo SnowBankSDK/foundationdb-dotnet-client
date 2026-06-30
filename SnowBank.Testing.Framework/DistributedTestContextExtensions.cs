@@ -341,6 +341,36 @@ namespace SnowBank.Testing.Framework
 				: throw new AssertionException($"There is no virtual test host named '{id}'");
 		}
 
+		/// <summary>Stops a virtual host's current incarnation (it can be brought back up with <see cref="StartHost"/>). Models a node going down (reboot, scale-in).</summary>
+		public static ValueTask StopHost(this IDistributedTestFeatureCollection collection, string id, CancellationToken ct)
+			=> ((DistributedTestComponent) collection.GetHost(id)).StopHost(ct);
+
+		/// <summary>(Re)starts a stopped virtual host on a fresh DI container / hub with the SAME identity (increments its <see cref="DistributedTestComponent.RestartCount"/>).</summary>
+		public static ValueTask StartHost(this IDistributedTestFeatureCollection collection, string id, CancellationToken ct)
+			=> ((DistributedTestComponent) collection.GetHost(id)).StartHost(ct);
+
+		/// <summary>(Re)starts a stopped virtual host with the given <paramref name="options"/>.</summary>
+		public static ValueTask StartHost(this IDistributedTestFeatureCollection collection, string id, HostStartOptions? options, CancellationToken ct)
+			=> ((DistributedTestComponent) collection.GetHost(id)).StartHost(options, ct);
+
+		/// <summary>Restarts a virtual host (StopHost then StartHost). For a delayed restart, call StopHost, await a delay, then StartHost.</summary>
+		public static ValueTask RestartHost(this IDistributedTestFeatureCollection collection, string id, CancellationToken ct)
+			=> ((DistributedTestComponent) collection.GetHost(id)).Restart(ct);
+
+		/// <summary>Restarts a virtual host with the given <paramref name="options"/>.</summary>
+		public static ValueTask RestartHost(this IDistributedTestFeatureCollection collection, string id, HostStartOptions? options, CancellationToken ct)
+			=> ((DistributedTestComponent) collection.GetHost(id)).Restart(options, ct);
+
+		/// <summary>Returns the coarse <see cref="HostStatus"/> of a virtual host.</summary>
+		public static HostStatus GetHostStatus(this IDistributedTestFeatureCollection collection, string id)
+			=> ((DistributedTestComponent) collection.GetHost(id)).State switch
+			{
+				TestComponentState.Started  => HostStatus.Started,
+				TestComponentState.Stopping => HostStatus.Stopping,
+				TestComponentState.Stopped or TestComponentState.Destroyed or TestComponentState.Failed or TestComponentState.Invalid or TestComponentState.Building => HostStatus.Stopped,
+				_ => HostStatus.Starting,
+			};
+
 		#endregion
 
 		#region Feature: Test Knobs...

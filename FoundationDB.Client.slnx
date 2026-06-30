@@ -16,6 +16,7 @@
     <Project Path="FoundationDB.Samples/FoundationDB.Samples.csproj" />
     <Project Path="FoundationDB.Tests.Sandbox/FoundationDB.Tests.Sandbox.csproj" />
     <Project Path="FoundationDB.Tests/FoundationDB.Tests.csproj" />
+    <Project Path="SnowBank.Testing.Framework.Tests/SnowBank.Testing.Framework.Tests.csproj" />
   </Folder>
   <Folder Name="/Core/">
     <Project Path="SnowBank.Core/SnowBank.Core.csproj" />
