@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -26,6 +26,7 @@
 
 namespace SnowBank.Testing.Framework
 {
+	using Microsoft.Extensions.Logging;
 
 	/// <summary>Options used to configure the behavior of a <see cref="Timeline"/></summary>
 	public sealed record TimelineOptions
@@ -40,6 +41,7 @@ namespace SnowBank.Testing.Framework
 	}
 
 	/// <summary>Container for events that occurred during the execution of a test</summary>
+	/// <remarks>This is the unified test journal: ILogger messages, harness lifecycle, captured packets and fdb traces all funnel into one chronologically ordered stream (see <see cref="DumpReport"/>).</remarks>
 	public class Timeline
 	{
 
@@ -75,6 +77,9 @@ namespace SnowBank.Testing.Framework
 			/// <summary>Specifies if this event represents an error or failed operation</summary>
 			public bool Failed { get; init; }
 
+			/// <summary>Severity of this event when it originates from an <see cref="ILogger{T}"/>, or <c>null</c> for structural events (lifecycle, packets, fdb traces)</summary>
+			public LogLevel? Level { get; init; }
+
 			/// <summary>Options source of this event (usually the id of the test component that emitted the event)</summary>
 			public string? Source { get; init; }
 
@@ -84,11 +89,22 @@ namespace SnowBank.Testing.Framework
 			/// <summary>Additional details for this event</summary>
 			public JsonObject? Details { get; init; }
 
+			/// <summary>High-resolution monotonic timestamp (from <see cref="Stopwatch.GetTimestamp"/>) used to order events precisely</summary>
+			/// <remarks>Assigned automatically by <see cref="Record"/> when left at <c>0</c>; a source that captured its own tick at the real event time (e.g. a packet) may set it explicitly so it is not overwritten. This is the real (wall) clock ordering axis, immune to a virtual/fake <see cref="IClock"/>.</remarks>
+			public long Ticks { get; init; }
+
+			/// <summary>Monotonic per-timeline sequence number assigned when the event was recorded, used as the tiebreaker for events that share the same <see cref="Ticks"/></summary>
+			/// <remarks>Assigned automatically by <see cref="Record"/>; do not set manually.</remarks>
+			public long Sequence { get; init; }
+
 		}
 
 		private List<List<Datum>> Chunks { get; } = [ ];
 
 		private List<Datum> Current { get; set; }
+
+		/// <summary>Monotonic counter used to assign <see cref="Datum.Sequence"/>. A field (not a property) because it is mutated via <see cref="Interlocked.Increment(ref long)"/>.</summary>
+		private long SeqCounter;
 
 		public TimelineOptions Options { get; set; }
 
@@ -96,6 +112,16 @@ namespace SnowBank.Testing.Framework
 		public void Record(Datum datum)
 		{
 			Contract.Debug.Requires(datum != null && datum.Category != null && datum.Label != null);
+
+			// Capture the ordering key BEFORE taking the lock,
+			// so that any contention on the storage cannot reorder or skew the recorded timeline.
+			// GetTimestamp() is high-resolution, monotonic and process-global; it needs no shared instance.
+			// A source that already captured its own tick at the real event time (e.g. a packet observed earlier)
+			// sets Ticks explicitly, so we keep it.
+			var ticks = datum.Ticks != 0 ? datum.Ticks : Stopwatch.GetTimestamp();
+			var seq = Interlocked.Increment(ref this.SeqCounter);
+			datum = datum with { Ticks = ticks, Sequence = seq };
+
 			lock (this.Chunks)
 			{
 				var chunk = this.Current;
@@ -147,157 +173,88 @@ namespace SnowBank.Testing.Framework
 			}
 		}
 
-		private const string BarTicksChars = "<[[((|))]]>";
-		private const string BarChartChars = ".:;+=xX$&##"; //note: an extra block "just in case" rounding overflows
-		private const char FillerChar = '#';
+		/// <summary>Maps a log level to a fixed-width 5-char token, using Watchdoc-style severity weighting: loud levels uppercase, info lowercase, debug/trace reduced to dashes/dots so they recede when scrolling a monochrome log.</summary>
+		private static string FormatLevel(LogLevel? level, bool failed) => level switch
+		{
+			LogLevel.Critical    => "FATAL",
+			LogLevel.Error       => "ERROR",
+			LogLevel.Warning     => "WARN ",
+			LogLevel.Information => "info ",
+			LogLevel.Debug       => "-----",
+			LogLevel.Trace       => ".....",
+			_                    => failed ? "ERROR" : "     ",
+		};
 
-		/// <summary>Generates a textual report of the timeline, that can be output in a text log or console</summary>
+		/// <summary>Returns a 2-char left gutter so that loud events stand out when scrolling: "!!" for error/fatal, "! " for warning, blank otherwise.</summary>
+		private static string FormatGutter(LogLevel? level, bool failed)
+			=> (failed || level is LogLevel.Critical or LogLevel.Error) ? "!!"
+			 : level is LogLevel.Warning ? "! "
+			 : "  ";
+
+		/// <summary>Maps an event category to a single-letter kind code (L=log, P=packet, F=fdb, T=timeline/harness, X=probe/hook).</summary>
+		private static char FormatKind(string category) => category switch
+		{
+			"LOG"             => 'L',
+			"MSG"             => 'M',
+			"PKT"             => 'P',
+			"FDB"             => 'F',
+			"TEST" or "TML"   => 'T',
+			"PROBE" or "HOOK" => 'X',
+			_                 => category.Length > 0 ? char.ToUpperInvariant(category[0]) : '?',
+		};
+
+		/// <summary>Generates a textual report of the timeline, suitable for a test log or console.</summary>
+		/// <remarks>Events are ordered chronologically by the high-resolution <see cref="Datum.Ticks"/> (real/wall clock), and the whole block is bracketed by grep-able START/END markers carrying the test name so it can be located in an aggregated parallel test output.</remarks>
 		public void DumpReport(StringBuilder sb, string name, Instant testStart, Instant testEnd, TimelineRenderOptions options = TimelineRenderOptions.Default)
 		{
-			const int DRAW_WIDTH = 60;
+			sb.AppendLine($"===== TELEPORT JOURNAL START test={name} =====");
+			sb.AppendLine("# columns: <gutter> #seq | T+elapsed | level | kind | source | detail   ::   kind L=log M=message P=packet F=fdb T=timeline X=probe   ::   level ERROR/WARN/FATAL loud, info normal, -----=debug, .....=trace   ::   gutter !!=error/fatal !=warn");
 
-			const int TOTAL_WIDTH = 70 + DRAW_WIDTH;
-
-			bool showStartup = (options & TimelineRenderOptions.ShowStartup) != 0;
-
-			sb.Append('═', TOTAL_WIDTH);
-			sb.AppendLine();
-			sb.AppendLine($"Timeline for {name}");
-			List<Datum> data  = Query();
-
+			var data = Query();
 			if (data.Count == 0)
 			{
-				sb.AppendLine("Timeline is empty!");
+				sb.AppendLine("# (timeline is empty)");
 			}
 			else
 			{
-				data = data.OrderBy(d => d.Start).ToList();
+				data = data.OrderBy(d => d.Ticks).ThenBy(d => d.Sequence).ToList();
 
-				var min = testStart;
-				if (showStartup)
-				{
-					min = data.Min(d => d.Start);
-				}
-
-				var max = testEnd;
-				if (showStartup)
-				{
-					max = data.Max(d => d.End ?? d.Start);
-				}
-
-				var range = (max - min).TotalMilliseconds;
-				var scale = DRAW_WIDTH / range;
-
-				var originOffset = (testStart - min).TotalMilliseconds * scale;
-				var originStart = (int) originOffset;
-
-				sb.AppendLine($"Recorded {data.Count:N0} events from {min} to {max} ({range:N1} ms)");
-
-				sb.Append('╌', TOTAL_WIDTH);
-				sb.AppendLine();
+				var min = data.Min(d => d.Start);
+				sb.AppendLine(FormattableString.Invariant($"# {data.Count:N0} events, test body {(testEnd - testStart).TotalMilliseconds:N1} ms (setup started at T-{(testStart - min).TotalSeconds:N3})"));
 
 				foreach (var datum in data)
 				{
-					var start = datum.Start;
-					var end = datum.End ?? datum.Start;
-					double ratioStart = (start - min).TotalMilliseconds * scale;
-					double ratioEnd = (end - min).TotalMilliseconds * scale;
-					double l = ratioEnd - ratioStart;
+					// Point events are placed at their instant; span events are recorded (and ordered) at completion, so we display the completion time so the T+ column stays monotonic, and append the elapsed duration.
+					var when = datum.End ?? datum.Start;
+					var delta = (when - testStart).TotalSeconds;
 
-					sb.Append(datum.Failed ? "!!! " : "    ");
+					sb.Append(FormatGutter(datum.Level, datum.Failed));
+					sb.Append($" #{datum.Sequence:D4} | ");
+					sb.Append(delta >= 0 ? FormattableString.Invariant($"T+{delta,7:N3}") : FormattableString.Invariant($"T-{-delta,7:N3}"));
+					sb.Append(" | ");
+					sb.Append(FormatLevel(datum.Level, datum.Failed));
+					sb.Append(" | ");
+					sb.Append(FormatKind(datum.Category));
+					sb.Append(" | ");
+					sb.Append((datum.Source ?? "-").PadRight(8));
+					sb.Append(" | ");
+					sb.Append(datum.Label);
 
-					if (start < testStart)
+					if (datum.End is { } end && end != datum.Start)
 					{
-						sb.Append($"T-{(testStart - start).TotalSeconds,7:N03} ︙ ");
+						sb.Append(FormattableString.Invariant($"  ({(end - datum.Start).TotalMilliseconds:N1} ms)"));
 					}
-					else
+
+					if (datum.CorrelationId is { Length: > 0 } cid)
 					{
-						sb.Append($"T+{(start - testStart).TotalSeconds,7:N03} ︙ ");
+						sb.Append("  <").Append(cid).Append('>');
 					}
 
-					if (end == start)
-					{
-						sb.Append("          ￤ ");
-					}
-					else if (end < testStart)
-					{
-						sb.Append($"T-{(testStart - end).TotalSeconds,7:N03} ￤ ");
-					}
-					else
-					{
-						sb.Append($"T+{(end - testStart).TotalSeconds,7:N03} ￤ ");
-					}
-
-					if (l == 0) sb.Append("           ");
-					else sb.Append($"{(end - start).TotalMilliseconds,8:N1} ms");
-
-					sb.Append(" │ ");
-
-					if (start > max)
-					{ // overshoots on the right
-						sb.Append('_', DRAW_WIDTH - 1);
-						sb.Append('>');
-					}
-					else
-					{
-						int padLeft;
-						int w;
-
-						if (start < min)
-						{ // overshoots on the left
-							padLeft = 0;
-							w = 1;
-							sb.Append('<');
-						}
-						else
-						{
-							padLeft = (int) ratioStart;
-							if (padLeft >= originStart)
-							{
-								sb.Append('=', originStart);
-								sb.Append('-', padLeft - originStart);
-							}
-							else
-							{
-								sb.Append('-', padLeft);
-							}
-
-							if (l == 0)
-							{
-								sb.Append(BarTicksChars[(int) ((ratioStart - padLeft) * 11)]);
-								w = 1;
-							}
-							else
-							{
-								w = (int) (Math.Ceiling(ratioEnd) - Math.Floor(ratioStart));
-								if (w <= 1)
-								{
-									sb.Append(BarChartChars[(int) (l * 10)]);
-								}
-								else
-								{
-									sb.Append(BarChartChars[(int) ((ratioStart - padLeft) * 10)]);
-									if (w > 2) sb.Append(FillerChar, w - 2);
-									sb.Append(BarChartChars[(int) ((1.0 - (Math.Ceiling(ratioEnd) - ratioEnd)) * 10)]);
-								}
-							}
-						}
-
-						int padRight = DRAW_WIDTH - padLeft - w;
-						if (padRight > 0)
-						{
-							sb.Append(' ', padRight);
-						}
-					}
-
-					sb.Append($" │ {datum.Source,-10} ︙ {datum.Category,-8}");
-					sb.Append(" │ ").Append(datum.Label);
 					sb.AppendLine();
 				}
-
 			}
-			sb.Append('═', TOTAL_WIDTH);
-			sb.AppendLine();
+
+			sb.AppendLine($"===== TELEPORT JOURNAL END test={name} =====");
 		}
 
 	}
@@ -314,6 +271,25 @@ namespace SnowBank.Testing.Framework
 		ShowStartup = 128,
 
 		Default = None, //TODO!
+	}
+
+	/// <summary>Maps a specially-tagged log event (identified by its EventName) to a distinct Timeline "kind".</summary>
+	/// <remarks>
+	/// <para>Lets a library that emits trace events via <c>ILogger</c> with a well-known <c>EventId</c> name surface them in the
+	/// unified test journal as their own kind, without the generic test framework needing any knowledge of that library.</para>
+	/// <para>Such events are captured whenever they are emitted (gated only by the logger level), independent of the regular
+	/// timeline log-level threshold. Register via the test environment builder's <c>RegisterTimelineEvent</c>.</para>
+	/// </remarks>
+	[PublicAPI]
+	public sealed record TimelineEventRule
+	{
+
+		/// <summary>Journal kind to record these events under (e.g. <c>"MSG"</c>, <c>"FDB"</c>); rendered as a single letter in the report.</summary>
+		public required string Category { get; init; }
+
+		/// <summary>Optional formatter that turns the log message into the journal label; when <c>null</c>, the message is used as-is.</summary>
+		public Func<string?, string>? FormatLabel { get; init; }
+
 	}
 
 }

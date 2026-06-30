@@ -71,6 +71,18 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Add a new network location to the current <see cref="Topology">network topology</see> of the test environment</summary>
 		IVirtualNetworkLocation AddLocation(string id, string name, VirtualNetworkType type, Action<IDistributedTestNetworkBuilder> configureHosts, Action<VirtualNetworkLocationOptions>? configureNetwork = null);
 
+		/// <summary>Mappings from a log EventName to a distinct Timeline kind, registered via <see cref="RegisterTimelineEvent"/>.</summary>
+		IReadOnlyDictionary<string, TimelineEventRule> TimelineEventRules { get; }
+
+		/// <summary>Registers a mapping from a log <paramref name="eventName"/> (the name of an <c>ILogger</c> <c>EventId</c>) to a
+		/// distinct Timeline kind, so a library's specially-tagged trace events are surfaced in the unified journal - captured whenever
+		/// emitted (gated only by the logger level), independent of the regular timeline log-level threshold.</summary>
+		/// <remarks>This keeps the generic test framework free of any knowledge of a specific library that produces such events.</remarks>
+		/// <param name="eventName">The <c>EventId</c> name the producing library tags its events with (e.g. <c>"WireOut"</c>).</param>
+		/// <param name="category">The journal kind to record these events under (e.g. <c>"MSG"</c>, <c>"FDB"</c>).</param>
+		/// <param name="formatLabel">Optional formatter turning the log message into the journal label; defaults to the message.</param>
+		void RegisterTimelineEvent(string eventName, string category, Func<string?, string>? formatLabel = null);
+
 	}
 
 	/// <summary>Represents a single network environment</summary>
@@ -239,6 +251,9 @@ namespace SnowBank.Testing.Framework
 
 		/// <summary>Timeline of all the events that occured during the test execution</summary>
 		Timeline Timeline { get; }
+
+		/// <summary>Mappings from a log EventName to a distinct Timeline kind (registered by libraries via the environment builder).</summary>
+		IReadOnlyDictionary<string, TimelineEventRule> TimelineEventRules { get; }
 
 		/// <summary>Instant when the test environment was created (but not started)</summary>
 		Instant CreatedAt { get; }

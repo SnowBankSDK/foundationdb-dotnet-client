@@ -50,6 +50,10 @@ namespace SnowBank.Testing.Framework
 			var builder = new DistributedTestEnvironmentBuilder(this, $"{test.FullName}({test.ID})", logStdOut, logStdErr, ct);
 			configure(builder);
 
+			// let a derived test base register library-specific instrumentation (e.g. timeline event rules) on the environment,
+			// so individual tests do not have to - and the generic framework stays free of any knowledge of those libraries.
+			OnConfigureEnvironment(builder);
+
 			// before take-off checks
 			Assume.That(builder.TestSubject, Is.Not.Null, "Test environment subject is missing");
 			Assume.That(builder.Clock, Is.Not.Null, "Test environment clock is missing");
@@ -66,6 +70,14 @@ namespace SnowBank.Testing.Framework
 			}
 
 			return context;
+		}
+
+		/// <summary>Hook for a derived test base class to register library-specific instrumentation on the test environment
+		/// (e.g. <see cref="IDistributedTestEnvironmentBuilder.RegisterTimelineEvent"/> mappings), once for all of its tests.</summary>
+		/// <remarks>Called by <see cref="MakeItSo"/> after the test's own <c>configure</c> callback, before the environment starts.</remarks>
+		protected virtual void OnConfigureEnvironment(IDistributedTestEnvironmentBuilder builder)
+		{
+			// nothing by default
 		}
 
 		/// <summary>Runs part of the test under a root <see cref="Activity"/></summary>

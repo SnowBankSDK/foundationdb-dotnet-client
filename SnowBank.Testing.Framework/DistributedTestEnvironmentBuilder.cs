@@ -89,6 +89,19 @@ namespace SnowBank.Testing.Framework
 			return location;
 		}
 
+		public Dictionary<string, TimelineEventRule> TimelineEventRules { get; } = new(StringComparer.Ordinal);
+
+		/// <inheritdoc/>
+		IReadOnlyDictionary<string, TimelineEventRule> IDistributedTestEnvironmentBuilder.TimelineEventRules => this.TimelineEventRules;
+
+		/// <inheritdoc/>
+		public void RegisterTimelineEvent(string eventName, string category, Func<string?, string>? formatLabel = null)
+		{
+			Contract.NotNullOrEmpty(eventName);
+			Contract.NotNullOrEmpty(category);
+			this.TimelineEventRules[eventName] = new() { Category = category, FormatLabel = formatLabel };
+		}
+
 		public Dictionary<Type, object> Features { get; } = new();
 
 		/// <inheritdoc/>

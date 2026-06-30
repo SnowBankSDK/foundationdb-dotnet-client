@@ -658,21 +658,29 @@ namespace SnowBank.Testing.Framework
 						options.LogLevel = LogLevel.Warning; // only while we are starting, will be changed later
 						options.MessageHandler = (msg) =>
 						{
-							// only include in the timeline if it is at or above the minimum level (that can be changed by the test)
+							// Library-registered trace events (e.g. wire messages, fdb transaction summaries) are surfaced as their own
+							// journal kind, captured whenever the producing library emits them (gated only by the logger level, e.g.
+							// WithLogLevel(Trace)), independent of MinimumTimelineLogLevel which governs only regular log lines.
+							// The mapping (EventName -> kind/label) is registered by the relevant library via the environment builder,
+							// so this generic framework needs no knowledge of any specific library that produces such events.
+							if (msg.EventName is { } eventName && this.Context.TimelineEventRules.TryGetValue(eventName, out var rule))
+							{
+								this.Context.Timeline.Record(new()
+								{
+									Source = this.Id,
+									Start = this.RealClock.GetCurrentInstant(),
+									Category = rule.Category,
+									Label = rule.FormatLabel?.Invoke(msg.Message) ?? msg.Message ?? "",
+								});
+								return;
+							}
+
+							// only include regular logs in the timeline if at or above the minimum level (that can be changed by the test)
 							if (msg.Level >= this.MinimumTimelineLogLevel)
 							{
 								string s = msg.Message ?? msg.LogName;
 
-								// prefix depending on log level
-								var prefix = msg.Level switch
-								{
-									LogLevel.Trace       => "trace",
-									LogLevel.Debug       => "debug",
-									LogLevel.Information => "info ",
-									LogLevel.Warning     => "WARN",
-									LogLevel.Error       => "ERROR",
-									_                    => "",
-								};
+								// the level is carried on the Datum (Level, set below) and rendered as its own column by the journal, so it is intentionally left out of the label here.
 
 								//note: the "LogName" is formatted as '[...]', but we want to include the event name inside the brackets "[LogName:EventName]"
 								var logName = msg.EventName is null ? msg.LogName : $"{msg.LogName.AsSpan()[..^1]}:{msg.EventName}]";
@@ -683,16 +691,16 @@ namespace SnowBank.Testing.Framework
 									if (msg.Exception is NullReferenceException or ArgumentException or IndexOutOfRangeException or KeyNotFoundException)
 									{
 										//TODO: maybe only include the last N frames of the stack? (enough to be able to locate the failing code)
-										s = $"{prefix} {logName} \"{s}\": [{msg.Exception.GetType().GetFriendlyName()}] {msg.Exception}";
+										s = $"{logName} \"{s}\": [{msg.Exception.GetType().GetFriendlyName()}] {msg.Exception}";
 									}
 									else
 									{
-										s = $"{prefix} {logName} \"{s}\": [{msg.Exception.GetType().GetFriendlyName()}] {msg.Exception.Message}";
+										s = $"{logName} \"{s}\": [{msg.Exception.GetType().GetFriendlyName()}] {msg.Exception.Message}";
 									}
 								}
 								else
 								{
-									s = $"{prefix} {logName} \"{s}\"";
+									s = $"{logName} \"{s}\"";
 								}
 
 								this.Context.Timeline.Record(new()
@@ -701,6 +709,7 @@ namespace SnowBank.Testing.Framework
 									Start = this.RealClock.GetCurrentInstant(),
 									Category = "LOG",
 									Label = s,
+									Level = msg.Level,
 									Failed = msg.Level >= LogLevel.Warning,
 								});
 							}

@@ -75,6 +75,9 @@ namespace SnowBank.Testing.Framework
 
 		public Timeline Timeline { get; }
 
+		/// <summary>Mappings from a log EventName to a distinct Timeline kind (registered by libraries via the environment builder).</summary>
+		public IReadOnlyDictionary<string, TimelineEventRule> TimelineEventRules => this.Builder.TimelineEventRules;
+
 		public Instant CreatedAt { get; }
 
 		public Instant StartedAt { get; private set; }
