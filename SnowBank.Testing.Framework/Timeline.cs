@@ -207,7 +207,7 @@ namespace SnowBank.Testing.Framework
 		/// <remarks>Events are ordered chronologically by the high-resolution <see cref="Datum.Ticks"/> (real/wall clock), and the whole block is bracketed by grep-able START/END markers carrying the test name so it can be located in an aggregated parallel test output.</remarks>
 		public void DumpReport(StringBuilder sb, string name, Instant testStart, Instant testEnd, TimelineRenderOptions options = TimelineRenderOptions.Default)
 		{
-			sb.AppendLine($"===== TELEPORT JOURNAL START test={name} =====");
+			sb.AppendLine($"===== TEST JOURNAL START test={name} =====");
 			sb.AppendLine("# columns: <gutter> #seq | T+elapsed | level | kind | source | detail   ::   kind L=log M=message P=packet F=fdb T=timeline X=probe   ::   level ERROR/WARN/FATAL loud, info normal, -----=debug, .....=trace   ::   gutter !!=error/fatal !=warn");
 
 			var data = Query();
@@ -254,7 +254,7 @@ namespace SnowBank.Testing.Framework
 				}
 			}
 
-			sb.AppendLine($"===== TELEPORT JOURNAL END test={name} =====");
+			sb.AppendLine($"===== TEST JOURNAL END test={name} =====");
 		}
 
 	}
