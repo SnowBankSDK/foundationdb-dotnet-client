@@ -120,7 +120,7 @@ namespace SnowBank.Networking.PacketCapture
 					responseInterceptor = new StandardOutputInterceptorStream(responseBodyOriginal, responseBodyMirror);
 				}
 
-				var requestSession = new PacketCaptureRequestContext(
+				var requestContext = new PacketCaptureRequestContext(
 					connection: this,
 					fields,
 					startedAt: manager.Clock.GetCurrentInstant(),
@@ -133,15 +133,15 @@ namespace SnowBank.Networking.PacketCapture
 					responseBodyMirror
 				);
 
-				context.Features.Set(requestSession);
+				context.Features.Set(requestContext);
 
 				if (responseInterceptor is GrpcOutputInterceptorStream gRpcOutputInterceptorStream)
 				{
-					gRpcOutputInterceptorStream.OnMessageWritten = () => CompleteMessage(requestSession);
+					gRpcOutputInterceptorStream.OnMessageWritten = () => CompleteMessage(requestContext);
 				}
 				
 				Interlocked.Increment(ref this.StartedRequests);
-				context.Response.OnCompleted(CompleteRequest, requestSession);
+				context.Response.OnCompleted(CompleteRequest, requestContext);
 
 				context.Request.Body = requestInterceptor;
 				context.Response.Body = responseInterceptor;
@@ -155,57 +155,57 @@ namespace SnowBank.Networking.PacketCapture
 
 			static async Task CompleteRequest(object state)
 			{
-				var context = (PacketCaptureRequestContext) state;
-				context.EndedAt = context.Connection.Manager.Clock.GetCurrentInstant();
+				var requestContext = (PacketCaptureRequestContext) state;
+				requestContext.EndedAt = requestContext.Connection.Manager.Clock.GetCurrentInstant();
 
-				Interlocked.Increment(ref context.Connection.CompletedRequests);
-				var httpContext = context.HttpContext;
+				Interlocked.Increment(ref requestContext.Connection.CompletedRequests);
+				var httpContext = requestContext.HttpContext;
 				try
 				{
 					// restore request to its original configuration
 					httpContext.Features.Set(default(PacketCaptureRequestContext));
-					httpContext.Request.Body = context.RequestBodyOriginal;
-					httpContext.Response.Body = context.ResponseBodyOriginal;
+					httpContext.Request.Body = requestContext.RequestBodyOriginal;
+					httpContext.Response.Body = requestContext.ResponseBodyOriginal;
 
 					// Le gRPC Interceptor fonctionne sur la base de messages et non de requêtes
 					// Car on ne peut pas distinguer un stream d'un single, donc le single a le même fonctionnement que le stream
 					// Des qu'un message complet est écrit sur le stream, alors on envoie le packet au manager
-					var isGrpc = context.ResponseInterceptor is GrpcOutputInterceptorStream;
+					var isGrpc = requestContext.ResponseInterceptor is GrpcOutputInterceptorStream;
 
 					//note: we must NOT dispose the inner streams ourselves! (only if someone down the line explicitly called Disposed() on the streams!)
-					context.RequestInterceptor = null;
-					context.ResponseInterceptor = null;
+					requestContext.RequestInterceptor = null;
+					requestContext.ResponseInterceptor = null;
 
-					CapturedPacketMetadata metadata = context.GetMetadata();
+					CapturedPacketMetadata metadata = requestContext.GetMetadata();
 					//TODO: conserver le stream?
-					Slice requestBody = context.GetRequestBody();
-					Slice responseBody = context.GetResponseBody();
+					Slice requestBody = requestContext.GetRequestBody();
+					Slice responseBody = requestContext.GetResponseBody();
 
 					if (!isGrpc)
 					{
 						// Si on est pas un GrpcOutputInterceptorStream alors besoin d'emettre le packet de la requête lors du complete
-						await context.Connection.Manager.Emit(metadata, requestBody, responseBody);
+						await requestContext.Connection.Manager.Emit(metadata, requestBody, responseBody);
 					}
 					else
 					{
 						// Si on est gRPC, et que le Header de la Request contient TE:Trailers et qu'on est en mode Streaming, alors il faut emit un packet avec juste les Trailers
-						var isStreaming = context.HttpContext.Features.Get<IEndpointFeature>()?.Endpoint?.Metadata.GetMetadata<GrpcMethodMetadata>()?.Method.Type != MethodType.Unary;
-						if (isStreaming && context.HttpContext.Request.Headers.TE == "trailers")
+						var isStreaming = requestContext.HttpContext.Features.Get<IEndpointFeature>()?.Endpoint?.Metadata.GetMetadata<GrpcMethodMetadata>()?.Method.Type != MethodType.Unary;
+						if (isStreaming && requestContext.HttpContext.Request.Headers.TE == "trailers")
 						{
-							Interlocked.Increment(ref context.CompletedMessages);
+							Interlocked.Increment(ref requestContext.CompletedMessages);
 							// On a besoin d'emit les trailers de fin de requête
-							await context.Connection.Manager.Emit(metadata, requestBody, responseBody);
+							await requestContext.Connection.Manager.Emit(metadata, requestBody, responseBody);
 						}
 					}
 					
 					// return the intercepted streams to the pool!
 					//REVIEW: si on décide de garder les streams dans le store, ca ne sera plus a nous de les dispose!
-					context.RequestBodyMirror?.Dispose();
-					context.ResponseBodyMirror?.Dispose();
+					requestContext.RequestBodyMirror?.Dispose();
+					requestContext.ResponseBodyMirror?.Dispose();
 				}
 				catch (Exception e)
 				{
-					context.Connection.Manager.ReportCaptureError(context.HttpContext, ExceptionDispatchInfo.Capture(e));
+					requestContext.Connection.Manager.ReportCaptureError(requestContext.HttpContext, ExceptionDispatchInfo.Capture(e));
 					//note: do not bubble up the error to the caller!
 				}
 			}

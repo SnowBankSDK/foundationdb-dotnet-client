@@ -35,6 +35,7 @@ namespace SnowBank.Networking.PacketCapture
 	using Microsoft.Extensions.Hosting;
 
 	/// <summary>Helper methods for configuration the Package Capture in an application</summary>
+	[PublicAPI]
 	public static class PacketCaptureDependencyInjectionExtensions
 	{
 
@@ -48,7 +49,7 @@ namespace SnowBank.Networking.PacketCapture
 					case nameof(PacketCaptureManager):
 						throw new InvalidOperationException($"{typeof(T).Name} is not registered with the DI container! You must call {nameof(AddPacketCapture)}() on {nameof(IServiceCollection)} during startup.");
 					default:
-						throw new InvalidOperationException($"{typeof(T).Name} is not registered with the DI container! You must call the appropriate Addxxx method on {nameof(IServiceCollection)} during startup.");
+						throw new InvalidOperationException($"{typeof(T).Name} is not registered with the DI container! You must call the appropriate AddXYZ method on {nameof(IServiceCollection)} during startup.");
 				}
 			}
 			return manager;
@@ -91,8 +92,8 @@ namespace SnowBank.Networking.PacketCapture
 					var rootSection = config.GetSection("PacketCapture");
 					if (rootSection.Exists())
 					{
-						options.Enabled = rootSection.GetValue<bool>("Enabled", false);
-						options.AllowedFields = rootSection.GetValue<CapturedHttpFields>("AllowedFields", CapturedHttpFields.All);
+						options.Enabled = rootSection.GetValue("Enabled", false);
+						options.AllowedFields = rootSection.GetValue("AllowedFields", CapturedHttpFields.All);
 
 						//TODO: Parsing policy!
 						options.CapturePolicy = PacketCapturePolicies.All;
@@ -157,9 +158,9 @@ namespace SnowBank.Networking.PacketCapture
 						}
 
 						// On ajoute les options du viewer
-						options.AssetsPath = rootSection.GetValue<string>("AssetsPath", PacketCaptureOptions.DefaultAssetsPath);
+						options.AssetsPath = rootSection.GetValue("AssetsPath", PacketCaptureOptions.DefaultAssetsPath);
 
-						options.CaptureStackTraces = rootSection.GetValue<bool>("StackTraces", false);
+						options.CaptureStackTraces = rootSection.GetValue("StackTraces", false);
 					}
 
 					// optional user-provided callback
