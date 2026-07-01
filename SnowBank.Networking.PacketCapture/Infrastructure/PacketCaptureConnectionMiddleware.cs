@@ -52,10 +52,21 @@ namespace SnowBank.Networking.PacketCapture
 			try
 			{
 				ctx.Features.Set(session);
+
+				if (this.Manager.Options.OnConnectionStarted is { } onStarted)
+				{
+					await onStarted(session);
+				}
+
 				await next(ctx);
 			}
 			finally
 			{
+				if (this.Manager.Options.OnConnectionCompleted is { } onCompleted)
+				{
+					await onCompleted(session);
+				}
+
 				ctx.Features.Set(default(PacketCaptureConnectionContext));
 				session.Dispose();
 			}

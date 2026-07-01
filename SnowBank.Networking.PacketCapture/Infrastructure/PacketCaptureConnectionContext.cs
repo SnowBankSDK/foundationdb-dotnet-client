@@ -78,7 +78,7 @@ namespace SnowBank.Networking.PacketCapture
 			return this.Manager.ShouldCaptureRequest(context);
 		}
 
-		public void BeginRequest(HttpContext context, CapturedHttpFields fields)
+		public async ValueTask BeginRequest(HttpContext context, CapturedHttpFields fields)
 		{
 			try
 			{
@@ -145,6 +145,11 @@ namespace SnowBank.Networking.PacketCapture
 
 				context.Request.Body = requestInterceptor;
 				context.Response.Body = responseInterceptor;
+
+				if (this.Manager.Options.OnRequestCaptureStarted is { } onStarted)
+				{
+					await onStarted(requestContext);
+				}
 			}
 			catch (Exception e)
 			{
@@ -202,6 +207,11 @@ namespace SnowBank.Networking.PacketCapture
 					//REVIEW: si on décide de garder les streams dans le store, ca ne sera plus a nous de les dispose!
 					requestContext.RequestBodyMirror?.Dispose();
 					requestContext.ResponseBodyMirror?.Dispose();
+
+					if (requestContext.Connection.Manager.Options.OnRequestCaptureCompleted is { } onCompleted)
+					{
+						await onCompleted(requestContext);
+					}
 				}
 				catch (Exception e)
 				{

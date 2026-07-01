@@ -52,9 +52,9 @@ namespace SnowBank.Networking.PacketCapture
 
 		public Func<PacketCaptureConnectionContext, ValueTask>? OnConnectionCompleted { get; set; }
 
-		public Func<PacketCaptureConnectionContext, ValueTask>? OnRequestCaptureStarted { get; set; }
+		public Func<PacketCaptureRequestContext, ValueTask>? OnRequestCaptureStarted { get; set; }
 
-		public Func<PacketCaptureConnectionContext, ValueTask>? OnRequestCaptureCompleted { get; set; }
+		public Func<PacketCaptureRequestContext, ValueTask>? OnRequestCaptureCompleted { get; set; }
 
 		public RecyclableMemoryStreamManager? StreamPool { get; set; }
 

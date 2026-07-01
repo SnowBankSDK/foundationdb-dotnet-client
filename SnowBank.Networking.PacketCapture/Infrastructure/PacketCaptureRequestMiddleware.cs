@@ -45,7 +45,7 @@ namespace SnowBank.Networking.PacketCapture
 
 			static async Task PerformCapture(PacketCaptureConnectionContext session, CapturedHttpFields fields, HttpContext context, RequestDelegate next)
 			{
-				session.BeginRequest(context, fields);
+				await session.BeginRequest(context, fields);
 				try
 				{
 					await next(context);
