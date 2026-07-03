@@ -1657,40 +1657,6 @@ namespace System
 			return true;
 		}
 
-		/// <param name="source">The string to copy from</param>
-		extension(string source)
-		{
-
-			/// <summary>Calls <see cref="Span{T}.TryCopyTo"/> and, if successful, sets the number of copied items in <paramref name="written"/></summary>
-			/// <param name="destination">The span to copy items into</param>
-			/// <param name="written">Number of characters copied, or <c>0</c> if <paramref name="destination"/> is too small</param>
-			/// <returns>If the destination span is shorter than the source span, this method return false and no data is written to the destination.</returns>
-			/// <remarks><para>This helper method is very useful when implementing <see cref="ISpanFormattable"/>.</para></remarks>
-			[MustUseReturnValue, MethodImpl(MethodImplOptions.AggressiveInlining)]
-			public bool TryCopyTo(Span<char> destination, out int written)
-			{
-				if (!source.TryCopyTo(destination))
-				{
-					written = 0;
-					return false;
-				}
-
-				written = source.Length;
-				return true;
-			}
-
-			/// <summary>Creates a new string by using the <see cref="CultureInfo.InvariantCulture"/> to control the formatting of the specified interpolated string.</summary>
-			/// <param name="handler">The interpolated string.</param>
-			/// <returns>The string that results for formatting the interpolated string using the invariant format provider.</returns>
-			/// <remarks><para>This is a shortcut to <c>string.Create(CultureInfo.InvariantCulture, $"...");</c></para></remarks>
-			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-			public static string CreateInvariant(ref DefaultInterpolatedStringHandler handler)
-			{
-				return string.Create(CultureInfo.InvariantCulture, ref handler);
-			}
-
-		}
-
 		#endregion
 
 	}

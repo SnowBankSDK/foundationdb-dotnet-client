@@ -261,7 +261,7 @@ namespace SnowBank.Buffers.Text
 		}
 
 		/// <summary>Appends an interpolated string at the end of the buffer</summary>
-		public void Append(ref DefaultInterpolatedStringHandler handler)
+		public void Append(ref InvariantInterpolatedStringHandler handler)
 		{
 #if NET10_0_OR_GREATER
 			Append(handler.Text);
@@ -284,7 +284,7 @@ namespace SnowBank.Buffers.Text
 
 		/// <summary>Appends an interpolated string, followed by a line return, at the end of the buffer</summary>
 		/// <remarks>This method uses CRLF (<c>\r\n</c>) as the new line, independent of the current operating system.</remarks>
-		public void AppendLine(ref DefaultInterpolatedStringHandler handler)
+		public void AppendLine(ref InvariantInterpolatedStringHandler handler)
 		{
 #if NET10_0_OR_GREATER
 			AppendLine(handler.Text);
