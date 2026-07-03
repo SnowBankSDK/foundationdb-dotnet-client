@@ -351,17 +351,17 @@ namespace FdbShell
 
 		void StdOut(string? msg = null, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true);
 
-		void StdOut(ref DefaultInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true);
+		void StdOut(ref InvariantInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true);
 
 		string Escape(string? msg);
 
 		void Markup(string? msg = null, bool newLine = true);
 
-		void Markup(ref DefaultInterpolatedStringHandler msg, bool newLine = true);
+		void Markup(ref InvariantInterpolatedStringHandler msg, bool newLine = true);
 
 		void StdErr(string msg, ConsoleColor color = ConsoleColor.DarkRed);
 
-		void StdErr(ref DefaultInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkRed);
+		void StdErr(ref InvariantInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkRed);
 
 		void Beep();
 
@@ -417,8 +417,8 @@ namespace FdbShell
 			}
 		}
 
-		public void StdOut(ref DefaultInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true)
-			=> StdOut(string.CreateInvariant(ref msg), color, newLine);
+		public void StdOut(ref InvariantInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true)
+			=> StdOut(msg.ToStringAndClear(), color, newLine);
 
 		public string Escape(string? msg)
 		{
@@ -432,8 +432,8 @@ namespace FdbShell
 			AnsiConsole.Markup(newLine ? (msg + Environment.NewLine) : msg);
 		}
 
-		public void Markup(ref DefaultInterpolatedStringHandler msg, bool newLine = true)
-			=> Markup(string.Create(CultureInfo.InvariantCulture, ref msg), newLine);
+		public void Markup(ref InvariantInterpolatedStringHandler msg, bool newLine = true)
+			=> Markup(msg.ToStringAndClear(), newLine);
 
 		public void StdErr(string msg, ConsoleColor color = ConsoleColor.DarkRed)
 		{
@@ -458,8 +458,8 @@ namespace FdbShell
 			}
 		}
 
-		public void StdErr(ref DefaultInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkRed)
-			=> StdErr(string.Create(CultureInfo.InvariantCulture, ref msg), color);
+		public void StdErr(ref InvariantInterpolatedStringHandler msg, ConsoleColor color = ConsoleColor.DarkRed)
+			=> StdErr(msg.ToStringAndClear(), color);
 
 		public bool SetWindowSize(int? width, int? height)
 		{
@@ -496,19 +496,19 @@ namespace FdbShell
 
 		public static void Comment(this IFdbShellTerminal terminal, string msg) => terminal.StdOut(msg);
 
-		public static void Comment(this IFdbShellTerminal terminal, ref DefaultInterpolatedStringHandler msg) => terminal.StdOut(ref msg);
+		public static void Comment(this IFdbShellTerminal terminal, ref InvariantInterpolatedStringHandler msg) => terminal.StdOut(ref msg);
 
 		public static void Error(this IFdbShellTerminal terminal, string msg) => terminal.StdErr(msg, ConsoleColor.Red);
 
-		public static void Error(this IFdbShellTerminal terminal, ref DefaultInterpolatedStringHandler msg) => terminal.StdErr(ref msg, ConsoleColor.Red);
+		public static void Error(this IFdbShellTerminal terminal, ref InvariantInterpolatedStringHandler msg) => terminal.StdErr(ref msg, ConsoleColor.Red);
 
 		public static void Success(this IFdbShellTerminal terminal, string msg) => terminal.StdOut(msg, ConsoleColor.Green);
 
-		public static void Success(this IFdbShellTerminal terminal, ref DefaultInterpolatedStringHandler msg) => terminal.StdOut(ref msg, ConsoleColor.Green);
+		public static void Success(this IFdbShellTerminal terminal, ref InvariantInterpolatedStringHandler msg) => terminal.StdOut(ref msg, ConsoleColor.Green);
 
 		public static void Progress(this IFdbShellTerminal terminal, string msg) => terminal.StdOut(msg, newLine: false);
 
-		public static void Progress(this IFdbShellTerminal terminal, ref DefaultInterpolatedStringHandler msg) => terminal.StdOut(ref msg, newLine: false);
+		public static void Progress(this IFdbShellTerminal terminal, ref InvariantInterpolatedStringHandler msg) => terminal.StdOut(ref msg, newLine: false);
 
 	}
 
@@ -542,15 +542,15 @@ namespace FdbShell
 
 		private void Markup(string? log, bool newLine = true) => this.Terminal.Markup(log, newLine);
 
-		private void Markup(ref DefaultInterpolatedStringHandler log, bool newLine = true) => this.Terminal.Markup(ref log, newLine);
+		private void Markup(ref InvariantInterpolatedStringHandler log, bool newLine = true) => this.Terminal.Markup(ref log, newLine);
 
 		private void StdOut(string? log = null, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true) => this.Terminal.StdOut(log, color, newLine);
 
-		private void StdOut(ref DefaultInterpolatedStringHandler log, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true) => this.Terminal.StdOut(ref log, color, newLine);
+		private void StdOut(ref InvariantInterpolatedStringHandler log, ConsoleColor color = ConsoleColor.DarkGray, bool newLine = true) => this.Terminal.StdOut(ref log, color, newLine);
 
 		private void StdErr(string log, ConsoleColor color = ConsoleColor.DarkRed) => this.Terminal.StdErr(log, color);
 
-		private void StdErr(ref DefaultInterpolatedStringHandler log, ConsoleColor color = ConsoleColor.DarkRed) => this.Terminal.StdErr(ref log, color);
+		private void StdErr(ref InvariantInterpolatedStringHandler log, ConsoleColor color = ConsoleColor.DarkRed) => this.Terminal.StdErr(ref log, color);
 
 		private static readonly Dictionary<string, string> KnownCommands = new (StringComparer.OrdinalIgnoreCase)
 		{

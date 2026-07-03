@@ -355,7 +355,7 @@ namespace FoundationDB.Client
 		/// <param name="comment">Line of text that will be added to the log</param>
 		/// <remarks>This method does nothing if logging is disabled. To prevent unnecessary allocations, you may check <see cref="IsLogged"/> first</remarks>
 		/// <example><code>tr.Annotate($"Reticulated {splines.Count} splines");</code></example>
-		void Annotate(ref DefaultInterpolatedStringHandler comment);
+		void Annotate(ref InvariantInterpolatedStringHandler comment);
 
 		/// <summary>If logging was previously enabled on this transaction, clear the log and stop logging any new operations</summary>
 		/// <remarks>Any log handler attached to this transaction will not be called</remarks>

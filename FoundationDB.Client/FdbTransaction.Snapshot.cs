@@ -405,7 +405,7 @@ namespace FoundationDB.Client
 
 			public void Annotate(string comment) => m_parent.Annotate(comment);
 
-			public void Annotate(ref DefaultInterpolatedStringHandler comment) => m_parent.Annotate(ref comment);
+			public void Annotate(ref InvariantInterpolatedStringHandler comment) => m_parent.Annotate(ref comment);
 
 		}
 

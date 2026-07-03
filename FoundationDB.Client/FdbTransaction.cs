@@ -297,9 +297,9 @@ namespace FoundationDB.Client
 		/// <remarks>This method does nothing if logging is disabled. To prevent unnecessary allocations, you may check <see cref="IsLogged"/> first</remarks>
 		/// <example><code>tr.Annonate($"Reticulated {splines.Count:N0} splines");</code></example>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void Annotate(ref DefaultInterpolatedStringHandler comment)
+		public void Annotate(ref InvariantInterpolatedStringHandler comment)
 		{
-			m_log?.Annotate(string.CreateInvariant(ref comment));
+			m_log?.Annotate(comment.ToStringAndClear());
 		}
 
 		/// <summary>If logging was previously enabled on this transaction, clear the log and stop logging any new operations</summary>
