@@ -107,12 +107,12 @@ namespace SnowBank.Testing.Framework
 			if (packets.Count == 0) return null;
 			var sb = new StringBuilder();
 			sb.AppendLine("# ======================================================================================================================");
-			sb.AppendLine($"# Dumping network packets: {packets.Count}");
+			sb.AppendLineInvariant($"# Dumping network packets: {packets.Count}");
 			int i = 1;
 			foreach (var packet in packets)
 			{
-				sb.AppendLine($"# --- {i:N0} / {packets.Count} --- T+{ElapsedSinceTestStart(packet.Metadata.StartedAt).TotalSeconds:N3}: {packet.Id} [{packet.Metadata.ActorId} => {packet.Metadata.Connection.RemoteHost}:{packet.Metadata.Connection.RemotePort}] <{packet.Metadata.TraceId}>");
-				sb.AppendLine($"# {packet}");
+				sb.AppendLineInvariant($"# --- {i:N0} / {packets.Count} --- T+{ElapsedSinceTestStart(packet.Metadata.StartedAt).TotalSeconds:N3}: {packet.Id} [{packet.Metadata.ActorId} => {packet.Metadata.Connection.RemoteHost}:{packet.Metadata.Connection.RemotePort}] <{packet.Metadata.TraceId}>");
+				sb.AppendLineInvariant($"# {packet}");
 				sb.AppendLine(packet.GetBasicDump(includeBody: true));
 				++i;
 			}

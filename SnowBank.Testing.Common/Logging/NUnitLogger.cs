@@ -159,7 +159,7 @@ namespace SnowBank.Testing
 			// event id
 			if (this.Options.IncludeEventId && eventId != 0)
 			{
-				logBuilder.Append($" (ID {eventId:X})");
+				logBuilder.Append(CultureInfo.InvariantCulture, $" (ID {eventId:X})");
 			}
 
 			// scope information

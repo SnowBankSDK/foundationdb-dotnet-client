@@ -264,8 +264,8 @@ namespace FoundationDB.Layers.Experimental.Indexing.Tests
 			int x = 0;
 			for (int p = 0; p <= bits.Length; p += 31)
 			{
-				if (x == 0) sb.Append($"{p,7} ");
-				else if ((x & 7) == 0) sb.Append($"\r\n{p,7} ");
+				if (x == 0) sb.AppendInvariant($"{p,7} ");
+				else if ((x & 7) == 0) sb.AppendInvariant($"\r\n{p,7} ");
 				else sb.Append(' ');
 
 				bool noBits = true;

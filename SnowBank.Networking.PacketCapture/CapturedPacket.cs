@@ -142,16 +142,16 @@ namespace SnowBank.Networking.PacketCapture
 			var response = metadata.Response;
 
 			var sb = StringBuilderCache.Acquire(128);
-			sb.AppendLine($"# Captured Packet: {this.Id} from {metadata.Connection.RemoteHost} [{metadata.TraceId}]");
-			sb.AppendLine($"# Started  : {metadata.StartedAt:yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff}");
-			sb.AppendLine($"# Connection: {metadata.Connection.Id}, {metadata.Connection.RemoteHost}:{metadata.Connection.RemotePort}");
+			sb.AppendLineInvariant($"# Captured Packet: {this.Id} from {metadata.Connection.RemoteHost} [{metadata.TraceId}]");
+			sb.AppendLineInvariant($"# Started  : {metadata.StartedAt:yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff}");
+			sb.AppendLineInvariant($"# Connection: {metadata.Connection.Id}, {metadata.Connection.RemoteHost}:{metadata.Connection.RemotePort}");
 			if (metadata.ProcessedAt != null)
 			{
-				sb.AppendLine($"# Processed: {metadata.ProcessedAt.Value:yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff} ({(metadata.ProcessedAt.Value - metadata.StartedAt).ToTimeSpan().TotalMilliseconds:N3} ms)");
+				sb.AppendLineInvariant($"# Processed: {metadata.ProcessedAt.Value:yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff} ({(metadata.ProcessedAt.Value - metadata.StartedAt).ToTimeSpan().TotalMilliseconds:N3} ms)");
 			}
 			if (metadata.EndedAt != null)
 			{
-				sb.AppendLine($"# Completed: {metadata.EndedAt.Value:yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff} ({(metadata.EndedAt.Value - metadata.StartedAt).ToTimeSpan().TotalMilliseconds:N3} ms)");
+				sb.AppendLineInvariant($"# Completed: {metadata.EndedAt.Value:yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffff} ({(metadata.EndedAt.Value - metadata.StartedAt).ToTimeSpan().TotalMilliseconds:N3} ms)");
 			}
 
 			sb.AppendLine("## REQUEST:");
@@ -160,7 +160,7 @@ namespace SnowBank.Networking.PacketCapture
 			{
 				foreach (var (name, value) in request.Headers)
 				{
-					sb.AppendLine($"{name}: {value}");
+					sb.AppendLineInvariant($"{name}: {value}");
 				}
 			}
 			sb.AppendLine();
@@ -187,7 +187,7 @@ namespace SnowBank.Networking.PacketCapture
 				{
 					foreach (var x in response.Headers)
 					{
-						sb.AppendLine($"{x.Key}: {x.Value}");
+						sb.AppendLineInvariant($"{x.Key}: {x.Value}");
 					}
 				}
 

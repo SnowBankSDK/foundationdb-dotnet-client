@@ -478,14 +478,14 @@ namespace SnowBank.Testing
 			var typeName = typeof(T).GetFriendlyName();
 			lock (this.PadLock)
 			{
-				sb.AppendLine($"# ArrayPool<{typeName}>: {this.Rented.Count:N0} rented, {this.Returned.Count:N0} returned, {this.NotReturned.Count:N0} borrowed");
+				sb.AppendLineInvariant($"# ArrayPool<{typeName}>: {this.Rented.Count:N0} rented, {this.Returned.Count:N0} returned, {this.NotReturned.Count:N0} borrowed");
 
 				if (this.Returned.Count > 0)
 				{
 					foreach (var ret in this.Returned)
 					{
 						var cs = ret.Callstack?.FrameCount > 0 ? (" | caller: " + FormatCallstack(ret.Callstack, 2)) : null;
-						sb.AppendLine($"# - | returned | {ret.Token,3} | tag: <{ret.Tag:X08}> | req: {ret.RequestedSize,9:N0} | alloc: {ret.AllocatedSize,9:N0} | {(ret.Cleared ? "cleared" : ret.AllZeroes ? "zeroed " : "LEAKED!")}{cs}");
+						sb.AppendLineInvariant($"# - | returned | {ret.Token,3} | tag: <{ret.Tag:X08}> | req: {ret.RequestedSize,9:N0} | alloc: {ret.AllocatedSize,9:N0} | {(ret.Cleared ? "cleared" : ret.AllZeroes ? "zeroed " : "LEAKED!")}{cs}");
 					}
 				}
 
@@ -495,7 +495,7 @@ namespace SnowBank.Testing
 					{
 						var rent = this.Rented[token];
 						var cs = rent.Callstack?.FrameCount > 0 ? (" | caller: " + FormatCallstack(rent.Callstack, 2)) : null;
-						sb.AppendLine($"# - | PENDING  | {rent.Token,3} | tag: <{rent.Tag:X08}> | req: {rent.RequestedSize,9:N0} | alloc: {rent.AllocatedSize,9:N0}{cs}");
+						sb.AppendLineInvariant($"# - | PENDING  | {rent.Token,3} | tag: <{rent.Tag:X08}> | req: {rent.RequestedSize,9:N0} | alloc: {rent.AllocatedSize,9:N0}{cs}");
 					}
 				}
 				return sb;

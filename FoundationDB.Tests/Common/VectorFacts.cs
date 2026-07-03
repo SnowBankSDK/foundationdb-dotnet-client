@@ -424,7 +424,7 @@ namespace FoundationDB.Layers.Collections.Tests
 				{
 					first = false;
 				}
-				sb.Append($"{vector.Subspace.DecodeLast<long>(kvp.Key)}:{kvp.Value:P}");
+				sb.AppendInvariant($"{vector.Subspace.DecodeLast<long>(kvp.Key)}:{kvp.Value:P}");
 			}
 
 			Log($"> Vector: ({sb})");

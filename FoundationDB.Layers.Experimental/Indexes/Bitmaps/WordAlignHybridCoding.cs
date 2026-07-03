@@ -322,11 +322,11 @@ namespace FoundationDB.Layers.Experimental.Indexing
 
 			var reader = new SliceReader(compressed);
 
-			output.Append($"Compressed [{compressed.Count:N0} bytes]:");
+			output.AppendInvariant($"Compressed [{compressed.Count:N0} bytes]:");
 
 			uint header = reader.ReadUInt32();
 			int highestBit = (int)header;
-			output.Append($" {(compressed.Count >> 2) - 1:N0} words");
+			output.AppendInvariant($" {(compressed.Count >> 2) - 1:N0} words");
 
 			uint p = 0;
 			int i = 0;
@@ -335,21 +335,21 @@ namespace FoundationDB.Layers.Experimental.Indexing
 				uint word = reader.ReadUInt32();
 				if ((word & TYPE_MASK) == BIT_TYPE_LITERAL)
 				{
-					output.Append($", ({i}:{p}) 0x{word:X8}");
+					output.AppendInvariant($", ({i}:{p}) 0x{word:X8}");
 					p += 31;
 				}
 				else
 				{
 					uint len = (word & LENGTH_MASK) + 1;
-					output.Append($", ({i}:{p}) {(((word & WordAlignHybridEncoder.FILL_MASK) >> WordAlignHybridEncoder.FILL_SHIFT) == 0 ? "zero" : "one")} x {len}");
+					output.AppendInvariant($", ({i}:{p}) {(((word & WordAlignHybridEncoder.FILL_MASK) >> WordAlignHybridEncoder.FILL_SHIFT) == 0 ? "zero" : "one")} x {len}");
 					p += len * 31;
 				}
 				i++;
 			}
-			output.Append(", MSB ").Append(highestBit);
+			output.AppendInvariant($", MSB {highestBit}");
 			if (reader.Remaining > 0)
 			{
-				output.AppendLine($", ERROR: {reader.Remaining:N0} trailing byte(s)");
+				output.AppendLineInvariant($", ERROR: {reader.Remaining:N0} trailing byte(s)");
 			}
 			return output;
 		}

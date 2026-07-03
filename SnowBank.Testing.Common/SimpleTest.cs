@@ -85,7 +85,7 @@ namespace SnowBank.Testing
 
 				if (skipped > 0)
 				{
-					sb.AppendLine($"   ... (omitted {skipped:N0})");
+					sb.AppendLineInvariant($"   ... (omitted {skipped:N0})");
 					skipped = 0;
 				}
 

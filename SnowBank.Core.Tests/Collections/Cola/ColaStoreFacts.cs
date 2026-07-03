@@ -404,7 +404,7 @@ namespace SnowBank.Collections.CacheOblivious.Test
 			Log("----");
 			for (int i = 0; i < timings.Count; i++)
 			{
-				csv.AppendLine($"{((i + 1) * BS)}\t{timings[i].TotalSeconds}");
+				csv.AppendLineInvariant($"{((i + 1) * BS)}\t{timings[i].TotalSeconds}");
 			}
 			Log(csv.ToString());
 			Log("----");
@@ -488,7 +488,7 @@ namespace SnowBank.Collections.CacheOblivious.Test
 			csv.Clear();
 			for (int i = 0; i < timings.Count;i++)
 			{
-				csv.AppendLine($"{((i + 1) * BS)}\t{timings[i].TotalSeconds}");
+				csv.AppendLineInvariant($"{((i + 1) * BS)}\t{timings[i].TotalSeconds}");
 			}
 			Log(csv.ToString());
 			Log("----");

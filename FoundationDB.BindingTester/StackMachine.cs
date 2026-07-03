@@ -253,13 +253,13 @@ namespace FoundationDB.Client.Testing
 #if true
 					{
 						var sb = new StringBuilder();
-						sb.AppendLine($"LogStack: {prefix}");
+						sb.AppendLineInvariant($"LogStack: {prefix}");
 						for(int i = 0; i < stack.Count; i++)
 						{
 							var item = stack[i].Item;
 							var result = stack[i].Result;
 							var (k, v) = KeyValuePair.Create(prefix + TuPack.EncodeKey(i, result.Index), TuPack.Pack(result.Value).Truncate(40_000));
-							sb.AppendLine($"- {TuPack.Unpack(k)} = {TuPack.Unpack(v)} // {item.Instruction}");
+							sb.AppendLineInvariant($"- {TuPack.Unpack(k)} = {TuPack.Unpack(v)} // {item.Instruction}");
 						}
 						this.Log.LogInformation(sb.ToString());
 					}

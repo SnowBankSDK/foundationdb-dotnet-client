@@ -89,7 +89,8 @@ namespace SnowBank.Threading.Tests
 				var scale = 200.0 / buckets.Max();
 				for (int i = 0; i <= MAX; i++)
 				{
-					sb.AppendLine($"[{i:D03} | {new string('#', (int) Math.Ceiling(buckets[i] * scale))}");
+					sb.AppendLineInvariant($"[{i:D03} | ");
+					sb.Append('#', (int) Math.Ceiling(buckets[i] * scale));
 				}
 				Log(sb);
 			}
@@ -102,7 +103,8 @@ namespace SnowBank.Threading.Tests
 				{
 					s += buckets[i];
 					int x = (int) Math.Ceiling(s * scale);
-					sb.AppendLine($"[{i:D03} | {new string(x < 100 ? '%' : '#', x)}");
+					sb.AppendLineInvariant($"[{i:D03} | ");
+					sb.Append(x < 100 ? '%' : '#', x);
 				}
 				Log(sb);
 			}

@@ -4277,7 +4277,7 @@ namespace SnowBank.Data.Json
 			int i = 0;
 			foreach (var kv in m_items)
 			{
-				if (i >= MAX_ITEMS) { sb.Append($", /* \u2026 {(m_items.Count - MAX_ITEMS):N0} more */"); break; }
+				if (i >= MAX_ITEMS) { sb.AppendInvariant($", /* \u2026 {(m_items.Count - MAX_ITEMS):N0} more */"); break; }
 				if (i > 0) sb.Append(", ");
 
 				sb.Append(kv.Key).Append(": ");

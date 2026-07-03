@@ -521,24 +521,24 @@ namespace SnowBank.Networking
 			{
 				var sb = new StringBuilder();
 				sb.AppendLine("# Network Topology:");
-				sb.AppendLine($"# - Hosts: {this.HostsById.Count:N0}");
+				sb.AppendLineInvariant($"# - Hosts: {this.HostsById.Count:N0}");
 				foreach (var host in this.HostsById.Values)
 				{
-					sb.AppendLine($"#   - {host}:");
+					sb.AppendLineInvariant($"#   - {host}:");
 					foreach (var adapter in host.Adapters)
 					{
 						host.Handlers.TryGetValue(adapter.Location.Id, out var ports);
-						sb.AppendLine($"#     - {adapter.Location.Id}: {(ports != null ? string.Join(", ", ports.Keys) : "<none>")}");
+						sb.AppendLineInvariant($"#     - {adapter.Location.Id}: {(ports != null ? string.Join(", ", ports.Keys) : "<none>")}");
 					}
 				}
 
-				sb.AppendLine($"# - Locations: {this.Locations.Count:N0}");
+				sb.AppendLineInvariant($"# - Locations: {this.Locations.Count:N0}");
 				foreach (var loc in this.Locations.Values)
 				{
-					sb.AppendLine("#   - " + loc);
+					sb.AppendLineInvariant($"#   - {loc}");
 					foreach (var host in loc.HostsById.Values)
 					{
-						sb.AppendLine($"#     - {host.Id}: {host.Fqdn}, {string.Join<IPAddress>(", ", host.Addresses)}, {string.Join<string>(", ", host.Aliases)}");
+						sb.AppendLineInvariant($"#     - {host.Id}: {host.Fqdn}, {string.Join<IPAddress>(", ", host.Addresses)}, {string.Join<string>(", ", host.Aliases)}");
 					}
 				}
 

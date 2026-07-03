@@ -3160,12 +3160,12 @@ namespace SnowBank.Data.Json
 			{ // we allow up to 4 items
 				if (size >= 4) sb.Append(", ").Append(items[3].GetCompactRepresentation(depth));
 				if (size == 5) sb.Append(", ").Append(items[4].GetCompactRepresentation(depth));
-				else if (size > 5) sb.Append($", /* … {size - 4:N0} more */");
+				else if (size > 5) sb.AppendInvariant($", /* … {size - 4:N0} more */");
 			}
 			else
 			{ // we allow up to 3 items
 				if (size == 4) sb.Append(", ").Append(items[3].GetCompactRepresentation(depth));
-				else if (size > 4) sb.Append($", /* … {size - 3:N0} more */");
+				else if (size > 4) sb.AppendInvariant($", /* … {size - 3:N0} more */");
 			}
 			sb.Append(" ]");
 			return sb.ToString();

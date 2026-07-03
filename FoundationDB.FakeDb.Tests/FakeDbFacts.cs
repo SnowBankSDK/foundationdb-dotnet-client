@@ -71,21 +71,21 @@ namespace FoundationDB.Testing.Tests
 		{
 			Log();
 			var sb = new StringBuilder();
-			sb.AppendLine($"### {label}");
-			sb.AppendLine($"* Version: {snapshot.Version:X}");
+			sb.AppendLineInvariant($"### {label}");
+			sb.AppendLineInvariant($"* Version: {snapshot.Version:X}");
 
 			var data = FakeDbDebugger.GetSnapshotData(snapshot);
-			sb.AppendLine($"* Keys: {data.Count:N0}");
+			sb.AppendLineInvariant($"* Keys: {data.Count:N0}");
 			foreach (var x in data)
 			{
-				sb.AppendLine($"| - {x.Key:K} = {x.Value:P}");
+				sb.AppendLineInvariant($"| - {x.Key:K} = {x.Value:P}");
 			}
 
 			var conflicts = FakeDbDebugger.GetSnapshotConflictRanges(snapshot);
-			sb.AppendLine($"* Ranges: {conflicts.Count:N0}");
+			sb.AppendLineInvariant($"* Ranges: {conflicts.Count:N0}");
 			foreach (var x in conflicts)
 			{
-				sb.AppendLine($"| - {x.Begin:K}..{x.End:K}: {x.Value:N0}");
+				sb.AppendLineInvariant($"| - {x.Begin:K}..{x.End:K}: {x.Value:N0}");
 			}
 			LogPartial(sb);
 		}

@@ -220,7 +220,7 @@ namespace SnowBank.Testing.Framework
 				data = data.OrderBy(d => d.Ticks).ThenBy(d => d.Sequence).ToList();
 
 				var min = data.Min(d => d.Start);
-				sb.AppendLine(FormattableString.Invariant($"# {data.Count:N0} events, test body {(testEnd - testStart).TotalMilliseconds:N1} ms (setup started at T-{(testStart - min).TotalSeconds:N3})"));
+				sb.AppendLineInvariant($"# {data.Count:N0} events, test body {(testEnd - testStart).TotalMilliseconds:N1} ms (setup started at T-{(testStart - min).TotalSeconds:N3})");
 
 				foreach (var datum in data)
 				{
@@ -229,8 +229,15 @@ namespace SnowBank.Testing.Framework
 					var delta = (when - testStart).TotalSeconds;
 
 					sb.Append(FormatGutter(datum.Level, datum.Failed));
-					sb.Append($" #{datum.Sequence:D4} | ");
-					sb.Append(delta >= 0 ? FormattableString.Invariant($"T+{delta,7:N3}") : FormattableString.Invariant($"T-{-delta,7:N3}"));
+					sb.AppendInvariant($" #{datum.Sequence:D4} | ");
+					if (delta >= 0)
+					{
+						sb.AppendInvariant($"T+{delta,7:N3}");
+					}
+					else
+					{
+						sb.AppendInvariant($"T-{-delta,7:N3}");
+					}
 					sb.Append(" | ");
 					sb.Append(FormatLevel(datum.Level, datum.Failed));
 					sb.Append(" | ");
@@ -242,7 +249,7 @@ namespace SnowBank.Testing.Framework
 
 					if (datum.End is { } end && end != datum.Start)
 					{
-						sb.Append(FormattableString.Invariant($"  ({(end - datum.Start).TotalMilliseconds:N1} ms)"));
+						sb.AppendInvariant($"  ({(end - datum.Start).TotalMilliseconds:N1} ms)");
 					}
 
 					if (datum.CorrelationId is { Length: > 0 } cid)

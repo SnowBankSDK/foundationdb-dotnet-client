@@ -409,7 +409,7 @@ namespace FoundationDB.Client.Tests
 
 			var sb = new StringBuilder();
 
-			sb.AppendLine($"Dumping content of {subspace} at {subspace.GetPrefix():K}:");
+			sb.AppendLineInvariant($"Dumping content of {subspace} at {subspace.GetPrefix():K}:");
 
 			int count = 0;
 			await tr
@@ -430,7 +430,7 @@ namespace FoundationDB.Client.Tests
 						keyDump = $"'{key}'";
 					}
 						
-					sb.AppendLine($"- {keyDump} = {kvp.Value}");
+					sb.AppendLineInvariant($"- {keyDump} = {kvp.Value}");
 				});
 
 			if (count == 0)
@@ -439,7 +439,7 @@ namespace FoundationDB.Client.Tests
 			}
 			else
 			{
-				sb.AppendLine($"> Found {count:N0} values");
+				sb.AppendLineInvariant($"> Found {count:N0} values");
 			}
 			Log(sb.ToString());
 		}
