@@ -6,6 +6,8 @@
 
 #endregion
 
+// ReSharper disable MethodOverloadWithOptionalParameter
+
 namespace System
 {
 
@@ -33,7 +35,7 @@ namespace System
 				return true;
 			}
 
-			/// <summary>Creates a new string by using the <see cref="CultureInfo.InvariantCulture"/> to control the formatting of the specified interpolated string.</summary>
+			/// <summary>Creates a new string by using the <see cref="System.Globalization.CultureInfo.InvariantCulture"/> to control the formatting of the specified interpolated string.</summary>
 			/// <param name="handler">The interpolated string.</param>
 			/// <returns>The string that results for formatting the interpolated string using the invariant format provider.</returns>
 			/// <remarks><para>This is a shortcut to <c>string.Create(CultureInfo.InvariantCulture, $"...");</c></para></remarks>
@@ -102,7 +104,7 @@ namespace System.Runtime.CompilerServices
 
 		/// <see cref="DefaultInterpolatedStringHandler.AppendFormatted{T}(T, string)"/>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void AppendFormatted<T>(T value, string format)
+		public void AppendFormatted<T>(T value, string? format)
 			=> this.Inner.AppendFormatted(value, format);
 
 		/// <see cref="DefaultInterpolatedStringHandler.AppendFormatted{T}(T, int)"/>
@@ -127,7 +129,7 @@ namespace System.Runtime.CompilerServices
 
 		/// <see cref="DefaultInterpolatedStringHandler.AppendFormatted(string)"/>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void AppendFormatted(string value)
+		public void AppendFormatted(string? value)
 			=> this.Inner.AppendFormatted(value);
 
 		/// <see cref="DefaultInterpolatedStringHandler.AppendFormatted(string, int, string?)"/>
