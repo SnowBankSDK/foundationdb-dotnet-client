@@ -690,6 +690,8 @@ namespace SnowBank.Core.Tests
 				// Parse(chars)
 				Assert.That(VersionStamp.Parse(literal), Is.EqualTo(expected));
 
+#if NET8_0_OR_GREATER
+				// UTF-8 parsing requires the .NET 8+ byte-span overloads
 				var bytes = Encoding.UTF8.GetBytes(literal);
 
 				// TryParse (bytes)
@@ -698,6 +700,7 @@ namespace SnowBank.Core.Tests
 
 				// Parse(bytes)
 				Assert.That(VersionStamp.Parse(bytes), Is.EqualTo(expected));
+#endif
 
 			}
 
@@ -725,9 +728,12 @@ namespace SnowBank.Core.Tests
 				Assert.That(VersionStamp.TryParse(literal, null, out _), Is.False);
 				Assert.That(() => VersionStamp.Parse(literal), Throws.InstanceOf<FormatException>());
 
+#if NET8_0_OR_GREATER
+				// UTF-8 parsing requires the .NET 8+ byte-span overloads
 				var bytes = Encoding.UTF8.GetBytes(literal);
 				Assert.That(VersionStamp.TryParse(bytes, null, out _), Is.False);
 				Assert.That(() => VersionStamp.Parse(bytes), Throws.InstanceOf<FormatException>());
+#endif
 			}
 
 			VerifyFail("");
@@ -758,6 +764,8 @@ namespace SnowBank.Core.Tests
 			{
 				byte[] expectedBytes = Encoding.UTF8.GetBytes(expected);
 
+#if NET8_0_OR_GREATER
+				// UTF-8 formatting requires the .NET 8+ byte-span TryFormat overloads
 				{
 					// with large enough buffer
 					var arr = new byte[expectedBytes.Length + 100];
@@ -772,6 +780,9 @@ namespace SnowBank.Core.Tests
 
 					Assert.That(arr.AsSpan(bytesWritten).ContainsAnyExcept((byte)0xAA), Is.False);
 				}
+#if NET8_0_OR_GREATER
+				// UTF-8 formatting requires the .NET 8+ byte-span TryFormat overloads
+#endif
 				{
 					// with exactly sized buffer
 					var arr = new byte[expectedBytes.Length + 100];
@@ -786,11 +797,17 @@ namespace SnowBank.Core.Tests
 
 					Assert.That(arr.AsSpan(bytesWritten).ContainsAnyExcept((byte)0xAA), Is.False);
 				}
+#if NET8_0_OR_GREATER
+				// UTF-8 formatting requires the .NET 8+ byte-span TryFormat overloads
+#endif
 				{
 					// with empty buffer
 					Assert.That(vs.TryFormat(Span<byte>.Empty, out int bytesWritten, format), Is.False);
 					Assert.That(bytesWritten, Is.Zero);
 				}
+#if NET8_0_OR_GREATER
+				// UTF-8 formatting requires the .NET 8+ byte-span TryFormat overloads
+#endif
 				{
 					// with buffer just one short
 					var arr = new byte[expectedBytes.Length + 100];
@@ -800,6 +817,7 @@ namespace SnowBank.Core.Tests
 					Assert.That(bytesWritten, Is.Zero);
 					Assert.That(arr.AsSpan(expectedBytes.Length - 1).ContainsAnyExcept((byte)0xAA), Is.False);
 				}
+#endif
 			}
 
 			// "default" format

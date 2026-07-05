@@ -24,6 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+// This file is not compiled for the net472 validation target: FastDtoa is not part of the netstandard2.0 build of SnowBank.Core.
+#if !NETFRAMEWORK
+
 // ReSharper disable CompareOfFloatsByEqualityOperator
 
 namespace SnowBank.Numerics.Test
@@ -188,3 +191,5 @@ namespace SnowBank.Numerics.Test
 	}
 
 }
+
+#endif

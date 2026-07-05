@@ -1699,7 +1699,7 @@ namespace SnowBank.Testing
 				public FloatToleranceComparer(float tolerance) => this.Tolerance = tolerance;
 
 				/// <inheritdoc />
-				public bool Equals(float x, float y) => MathF.Abs(x - y) <= this.Tolerance;
+				public bool Equals(float x, float y) => Math.Abs(x - y) <= this.Tolerance;
 
 				/// <inheritdoc />
 				int IEqualityComparer<float>.GetHashCode(float obj) => throw new NotSupportedException("This type is only expected to test for equality");

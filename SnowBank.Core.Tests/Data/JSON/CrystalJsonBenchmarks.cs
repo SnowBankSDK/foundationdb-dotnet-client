@@ -36,6 +36,7 @@ namespace SnowBank.Data.Json.Tests
 	using System.Buffers;
 	using System.Collections;
 	using System.IO.Compression;
+	using System.Text.Json.Serialization;
 	using SnowBank.Numerics;
 	using SnowBank.Runtime;
 	using SnowBank.Text;
@@ -619,8 +620,9 @@ namespace SnowBank.Data.Json.Tests
 			var jsonText = CrystalJson.Serialize<T>(model, settings);
 			{
 				_ = CrystalJson.Parse(jsonText, settings);
-				_ = CrystalJson.Deserialize<T>(jsonText, settings, resolver);
 				_ = JsonValue.FromValue<T>(model, settings, resolver);
+				// can sometime fail if T is an abstract type
+				try { _ = CrystalJson.Deserialize<T>(jsonText, settings, resolver); } catch(JsonBindingException) { }
 			}
 
 			int iterationsPerRun = jsonText.Length <= 100 ? ITERATIONS_FAST : jsonText.Length <= 1000 ? ITERATIONS_NORMAL : jsonText.Length <= 10000 ? ITERATIONS_MEDIUM : ITERATIONS_SLOW;
@@ -918,7 +920,12 @@ namespace SnowBank.Data.Json.Tests
 			Log("Saving simple flat object...");
 			var path = GetTemporaryPath("empty.json");
 			File.Delete(path);
+#if NET5_0_OR_GREATER
 			await using (var fs = File.Create(path))
+#else
+			// FileStream does not implement IAsyncDisposable on .NET Framework
+			using (var fs = File.Create(path))
+#endif
 			{
 				await using (var writer = new CrystalJsonStreamWriter(fs, CrystalJsonSettings.Json, null, true))
 				{
@@ -1015,8 +1022,14 @@ namespace SnowBank.Data.Json.Tests
 			Log("Saving object with large streamed array to compressed file...");
 			File.Delete(path + ".gz");
 			clock.Restart();
+#if NET5_0_OR_GREATER
 			await using (var fs = File.Create(path + ".gz"))
 			await using (var gz = new GZipStream(fs, CompressionMode.Compress, false))
+#else
+			// FileStream/GZipStream do not implement IAsyncDisposable on .NET Framework
+			using (var fs = File.Create(path + ".gz"))
+			using (var gz = new GZipStream(fs, CompressionMode.Compress, false))
+#endif
 			await using (var writer = new CrystalJsonStreamWriter(gz, CrystalJsonSettings.Json))
 			{
 				using (var obj = writer.BeginObjectFragment(cancel))
@@ -1042,8 +1055,14 @@ namespace SnowBank.Data.Json.Tests
 
 			// verify
 			Log("> reloading...");
+#if NET5_0_OR_GREATER
 			await using(var fs = File.OpenRead(path + ".gz"))
 			await using (var gs = new GZipStream(fs, CompressionMode.Decompress, false))
+#else
+			// FileStream/GZipStream do not implement IAsyncDisposable on .NET Framework
+			using (var fs = File.OpenRead(path + ".gz"))
+			using (var gs = new GZipStream(fs, CompressionMode.Decompress, false))
+#endif
 			{
 				verify = CrystalJson.ParseFrom(gs).AsObject();
 			}
@@ -1269,6 +1288,8 @@ namespace SnowBank.Data.Json.Tests
 		public required DateTime Joined { get; init; }
 	}
 
+	[JsonPolymorphic]
+	[JsonDerivedType(typeof(UserDerived), "user")]
 	public abstract record UserAbstract
 	{
 		public required Guid Id { get; init; }

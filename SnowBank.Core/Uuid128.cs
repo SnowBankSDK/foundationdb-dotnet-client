@@ -47,6 +47,10 @@ namespace System
 		, ISpanParsable<Uuid128>
 		, IUtf8SpanFormattable
 		, IUtf8SpanParsable<Uuid128>
+#else
+		// ISpanFormattable (package-provided) extends IFormattable: REQUIRED so that interpolated strings honor the
+		// format specifier (the polyfilled handler would otherwise silently fall back to the parameterless ToString)
+		, ISpanFormattable
 #endif
 	{
 		// This is just a wrapper struct on System.Guid that makes sure that ToByteArray() and Parse(byte[]) and new(byte[]) will parse according to RFC 4122 (http://www.ietf.org/rfc/rfc4122.txt)
@@ -401,7 +405,11 @@ namespace System
 		/// <exception cref="T:System.FormatException"><paramref name="input" /> is not in the correct format.</exception>
 		/// <exception cref="T:System.OverflowException"><paramref name="input" /> is not representable by a <see cref="Uuid128" />.</exception>
 		/// <returns>The result of parsing <paramref name="input" />.</returns>
+#if NET5_0_OR_GREATER
 		public static Uuid128 Parse(ReadOnlySpan<char> input) => new(Guid.Parse(input));
+#else
+		public static Uuid128 Parse(ReadOnlySpan<char> input) => new(Guid.Parse(input.ToString())); // Guid.Parse(ReadOnlySpan<char>) is not on netstandard2.0
+#endif
 
 		/// <summary>Parses a span of characters into a <see cref="Uuid128"/></summary>
 		/// <param name="input">The span of characters to parse.</param>
@@ -410,7 +418,11 @@ namespace System
 		/// <exception cref="T:System.OverflowException"><paramref name="input" /> is not representable by a <see cref="Uuid128" />.</exception>
 		/// <returns>The result of parsing <paramref name="input" />.</returns>
 		[EditorBrowsable(EditorBrowsableState.Never)]
+#if NET5_0_OR_GREATER
 		public static Uuid128 Parse(ReadOnlySpan<char> input, IFormatProvider? provider) => new(Guid.Parse(input));
+#else
+		public static Uuid128 Parse(ReadOnlySpan<char> input, IFormatProvider? provider) => new(Guid.Parse(input.ToString()));
+#endif
 
 #if NET8_0_OR_GREATER
 
@@ -463,7 +475,11 @@ namespace System
 				{
 					Span<char> tmp = stackalloc char[36];
 					System.Text.Encoding.ASCII.GetChars(utf8Text, tmp);
+#if NET5_0_OR_GREATER
 					if (Guid.TryParse(tmp, out Guid g))
+#else
+					if (Guid.TryParse(tmp.ToString(), out Guid g))
+#endif
 					{
 						return new(g);
 					}
@@ -513,7 +529,11 @@ namespace System
 				{
 					Span<char> tmp = stackalloc char[36];
 					System.Text.Encoding.ASCII.GetChars(utf8Text, tmp);
+#if NET5_0_OR_GREATER
 					if (Guid.TryParse(tmp, out Guid g))
+#else
+					if (Guid.TryParse(tmp.ToString(), out Guid g))
+#endif
 					{
 						result = new(g);
 						return true;
@@ -554,7 +574,11 @@ namespace System
 			[StringSyntax(StringSyntaxAttribute.GuidFormat)]
 #endif
 			ReadOnlySpan<char> format
+#if NET5_0_OR_GREATER
 		) => new(Guid.ParseExact(input, format));
+#else
+		) => new(Guid.ParseExact(input.ToString(), format.ToString()));
+#endif
 
 		/// <summary>Tries to parse a string into a <see cref="Uuid128"/></summary>
 		/// <param name="input">The string to parse.</param>
@@ -587,7 +611,11 @@ namespace System
 		/// <returns> <see langword="true" /> if <paramref name="input" /> was successfully parsed; otherwise, <see langword="false" />.</returns>
 		public static bool TryParse(ReadOnlySpan<char> input, out Uuid128 result)
 		{
+#if NET5_0_OR_GREATER
 			if (!Guid.TryParse(input, out var g))
+#else
+			if (!Guid.TryParse(input.ToString(), out var g))
+#endif
 			{
 				result = default;
 				return false;
@@ -622,7 +650,11 @@ namespace System
 		/// <summary>Parse a string representation of an UUid128</summary>
 		public static bool TryParseExact(ReadOnlySpan<char> input, ReadOnlySpan<char> format, out Uuid128 result)
 		{
+#if NET5_0_OR_GREATER
 			if (!Guid.TryParseExact(input, format, out Guid guid))
+#else
+			if (!Guid.TryParseExact(input.ToString(), format.ToString(), out Guid guid))
+#endif
 			{
 				result = default;
 				return false;

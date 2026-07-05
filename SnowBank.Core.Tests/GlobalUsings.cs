@@ -15,3 +15,8 @@ global using SnowBank.Text;
 
 // JetBrains Annotations
 global using MustDisposeResourceAttribute = JetBrains.Annotations.MustDisposeResourceAttribute;
+
+#if NETFRAMEWORK
+// the netstandard2.0 build of SnowBank.Core publicly ships the BCL extension polyfills (span overloads, TryFormat, ...)
+global using SnowBank.Compat;
+#endif

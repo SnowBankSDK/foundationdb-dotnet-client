@@ -32,7 +32,10 @@ namespace SnowBank.Data.Json
 	/// <summary>JSON null</summary>
 	[DebuggerDisplay("JSON Null({m_kind})")]
 	[PublicAPI]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(CrystalJsonCustomJsonConverter))]
+#endif
 	[DebuggerNonUserCode]
 	public sealed class JsonNull : JsonValue, IEquatable<JsonNull>
 	{
@@ -465,11 +468,14 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override double? ToDoubleOrDefault(double? defaultValue = null) => defaultValue;
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <inheritdoc />
 		public override Half ToHalf(Half defaultValue = default) => defaultValue;
 
 		/// <inheritdoc />
 		public override Half? ToHalfOrDefault(Half? defaultValue = null) => defaultValue;
+#endif
 
 		/// <inheritdoc />
 		public override decimal ToDecimal(decimal defaultValue = 0m) => defaultValue;

@@ -60,6 +60,13 @@ namespace SnowBank.Threading
 
 		private Random Rng { get; }
 
+		private static Random SharedRng
+#if !NETSTANDARD2_0
+			=> Random.Shared;
+#else
+			{ get; } = new();
+#endif
+
 		/// <summary>Create a new state machine</summary>
 		/// <param name="initial">Initial delay (after the first failure)</param>
 		/// <param name="maximum">Maximum retry delay (before taking into account the randomization)</param>
@@ -82,7 +89,7 @@ namespace SnowBank.Threading
 			this.RandomLow = randomLow;
 			this.RandomHigh = randomHigh;
 			this.Current = initial;
-			this.Rng = rng ?? Random.Shared;
+			this.Rng = rng ?? SharedRng;
 		}
 
 		/// <summary>Computes a randomized delay</summary>
@@ -94,7 +101,7 @@ namespace SnowBank.Threading
 		/// <example><code>await Task.Delay(ExponentialRandomizedBackoff.GetNext(TimeSpan.FromSecondes(30), 0.75, 1.25), ct);</code></example>
 		public static TimeSpan GetNext(TimeSpan baseDelay, double low = 1.0d, double high = 1.5d, Random? rng = null)
 		{
-			rng ??= Random.Shared;
+			rng ??= SharedRng;
 			var f =  low == high ? 1 : low + (rng.NextDouble() * (high - low));
 			return TimeSpan.FromMilliseconds(baseDelay.TotalMilliseconds * f);
 		}

@@ -135,8 +135,11 @@ namespace SnowBank.Data.Tuples
 		/// <inheritdoc />
 		public int Count { get; }
 
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		int ITuple.Length => this.Count;
+#endif
 
 		/// <inheritdoc cref="IVarTuple.this[int]"/>
 		public object? this[int index]

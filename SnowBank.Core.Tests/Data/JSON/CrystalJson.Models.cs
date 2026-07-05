@@ -292,7 +292,12 @@ namespace SnowBank.Data.Json.Tests
 			return JsonObject.Create("custom", m_secret);
 		}
 
+#if NET7_0_OR_GREATER
 		static DummyJsonCustomClass IJsonDeserializable<DummyJsonCustomClass>.JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver)
+#else
+		// static abstract interface members are not supported: the netstandard2.0 build discovers this method by reflection (it must be public and static)
+		public static DummyJsonCustomClass JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver)
+#endif
 		{
 			Assert.That(value, Is.Not.Null, "value");
 			Assert.That(resolver, Is.Not.Null, "resolver");
@@ -375,7 +380,12 @@ namespace SnowBank.Data.Json.Tests
 			writer.WriteRaw("{ \"custom\":" + JsonEncoding.Encode(m_secret) + " }");
 		}
 
+#if NET7_0_OR_GREATER
 		static DummyStaticCustomJson IJsonDeserializable<DummyStaticCustomJson>.JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? _)
+#else
+		// static abstract interface members are not supported: the netstandard2.0 build discovers this method by reflection (it must be public and static)
+		public static DummyStaticCustomJson JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? _)
+#endif
 		{
 			Assert.That(value, Is.Not.Null);
 

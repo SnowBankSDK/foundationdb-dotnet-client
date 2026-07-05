@@ -952,7 +952,7 @@ namespace SnowBank.Numerics
 				int p = Math.Min((int)Math.Ceiling(rr * data[i]), 10);
 				cs[i] = VerticalChartChars[p];
 			}
-			return new string(cs);
+			return cs.ToString();
 		}
 
 		/// <summary>Computes the distribution of data between the specified bounds</summary>
@@ -998,7 +998,18 @@ namespace SnowBank.Numerics
 			int offset = GetBucketIndex(begin);
 			int len = Math.Max(GetBucketIndex(end) - offset, 0);
 
-			return string.Create(len, (Histo: this, Offset: offset), static (cs, s) =>
+#if NET5_0_OR_GREATER
+			return string.Create(len, (Histo: this, Offset: offset), static (cs, s) => FillPercentileChars(cs, s));
+#else
+			// string.Create(SpanAction) is not available: fill a transient buffer (extra copy + allocation)
+			var tmp = new char[len];
+			FillPercentileChars(tmp, (Histo: this, Offset: offset));
+			return new string(tmp);
+#endif
+		}
+
+		private static void FillPercentileChars(Span<char> cs, (RobustHistogram Histo, int Offset) s)
+		{
 			{
 				var h = s.Histo;
 
@@ -1037,7 +1048,7 @@ namespace SnowBank.Numerics
 				Write(cs, offset, s.Histo.Min, '¤'); // MIN
 				Write(cs, offset, s.Histo.Max, '@'); // MAX
 				Write(cs, offset, percentiles[50], '#'); // MEDIAN
-			});
+			}
 		}
 
 		/// <summary>Formats the percentile distribution between the computed <see cref="LowThreshold"/> and <see cref="HighThreshold"/></summary>

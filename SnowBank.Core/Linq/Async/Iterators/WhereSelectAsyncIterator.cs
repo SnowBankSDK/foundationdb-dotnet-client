@@ -692,7 +692,7 @@ namespace SnowBank.Linq.Async.Iterators
 		private IAsyncEnumerator<TSource>? Iterator { get; set; }
 
 		/// <inheritdoc />
-		protected override SelectAsyncIterator<TSource, TResult> Clone() => new(this.Source, this.Transform);
+		protected override AsyncLinqIterator<TResult> Clone() => new SelectAsyncIterator<TSource, TResult>(this.Source, this.Transform);
 
 		/// <inheritdoc />
 		protected override ValueTask<bool> OnFirstAsync()
@@ -903,25 +903,25 @@ namespace SnowBank.Linq.Async.Iterators
 			return map;
 		}
 		/// <inheritdoc />
-		public override SelectAsyncIterator<TSource, TNew> Select<TNew>(Func<TResult, TNew> selector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TResult, TNew> selector)
 		{
-			return new(this.Source, Combine(this.Transform, selector));
+			return new SelectAsyncIterator<TSource, TNew>(this.Source, Combine(this.Transform, selector));
 
 			static Func<TSource, TNew> Combine(Func<TSource, TResult> inner, Func<TResult, TNew> outer) => (item) => outer(inner(item));
 		}
 
 		/// <inheritdoc />
-		public override SelectTaskAsyncIterator<TSource, TNew> Select<TNew>(Func<TResult, CancellationToken, Task<TNew>> selector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TResult, CancellationToken, Task<TNew>> selector)
 		{
-			return new(this.Source, Combine(this.Transform, selector));
+			return new SelectTaskAsyncIterator<TSource, TNew>(this.Source, Combine(this.Transform, selector));
 
 			static Func<TSource, CancellationToken, Task<TNew>> Combine(Func<TSource, TResult> inner, Func<TResult, CancellationToken, Task<TNew>> outer) => (item, ct) => outer(inner(item), ct);
 		}
 
 		/// <inheritdoc />
-		public override WhereSelectAsyncIterator<TSource, TResult> Where(Func<TResult, bool> predicate)
+		public override IAsyncLinqQuery<TResult> Where(Func<TResult, bool> predicate)
 		{
-			return new(this.Source, null, this.Transform, predicate);
+			return new WhereSelectAsyncIterator<TSource, TResult>(this.Source, null, this.Transform, predicate);
 		}
 
 	}
@@ -949,7 +949,7 @@ namespace SnowBank.Linq.Async.Iterators
 		private IAsyncEnumerator<TSource>? Iterator { get; set; }
 
 		/// <inheritdoc />
-		protected override SelectTaskAsyncIterator<TSource, TResult> Clone() => new(this.Source, this.Transform);
+		protected override AsyncLinqIterator<TResult> Clone() => new SelectTaskAsyncIterator<TSource, TResult>(this.Source, this.Transform);
 
 		/// <inheritdoc />
 		protected override ValueTask<bool> OnFirstAsync()
@@ -1167,25 +1167,25 @@ namespace SnowBank.Linq.Async.Iterators
 		}
 
 		/// <inheritdoc />
-		public override SelectTaskAsyncIterator<TSource, TNew> Select<TNew>(Func<TResult, TNew> selector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TResult, TNew> selector)
 		{
-			return new(this.Source, Combine(this.Transform, selector));
+			return new SelectTaskAsyncIterator<TSource, TNew>(this.Source, Combine(this.Transform, selector));
 
 			static Func<TSource, CancellationToken, Task<TNew>> Combine(Func<TSource, CancellationToken, Task<TResult>> inner, Func<TResult, TNew> outer) => async (item, ct) => outer(await inner(item, ct).ConfigureAwait(false));
 		}
 
 		/// <inheritdoc />
-		public override SelectTaskAsyncIterator<TSource, TNew> Select<TNew>(Func<TResult, CancellationToken, Task<TNew>> selector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TResult, CancellationToken, Task<TNew>> selector)
 		{
-			return new(this.Source, Combine(this.Transform, selector));
+			return new SelectTaskAsyncIterator<TSource, TNew>(this.Source, Combine(this.Transform, selector));
 
 			static Func<TSource, CancellationToken, Task<TNew>> Combine(Func<TSource, CancellationToken, Task<TResult>> inner, Func<TResult, CancellationToken, Task<TNew>> outer) => async (item, ct) => await outer(await inner(item, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
 		}
 
 		/// <inheritdoc />
-		public override WhereSelectTaskAsyncIterator<TSource, TResult> Where(Func<TResult, bool> predicate)
+		public override IAsyncLinqQuery<TResult> Where(Func<TResult, bool> predicate)
 		{
-			return new(this.Source, null, this.Transform, predicate);
+			return new WhereSelectTaskAsyncIterator<TSource, TResult>(this.Source, null, this.Transform, predicate);
 		}
 
 	}
@@ -1219,7 +1219,7 @@ namespace SnowBank.Linq.Async.Iterators
 		private IAsyncEnumerator<TSource>? Iterator { get; set; }
 
 		/// <inheritdoc />
-		protected override WhereSelectAsyncIterator<TSource, TResult> Clone() => new(this.Source, this.PreFilter, this.Transform, this.PostFilter);
+		protected override AsyncLinqIterator<TResult> Clone() => new WhereSelectAsyncIterator<TSource, TResult>(this.Source, this.PreFilter, this.Transform, this.PostFilter);
 
 		/// <inheritdoc />
 		protected override ValueTask<bool> OnFirstAsync()
@@ -1483,9 +1483,9 @@ namespace SnowBank.Linq.Async.Iterators
 		}
 
 		/// <inheritdoc />
-		public override WhereSelectAsyncIterator<TSource, TResult> Where(Func<TResult, bool> predicate)
+		public override IAsyncLinqQuery<TResult> Where(Func<TResult, bool> predicate)
 		{
-			return new(this.Source, this.PreFilter, this.Transform, this.PostFilter == null ? predicate : Combine(this.PostFilter, predicate));
+			return new WhereSelectAsyncIterator<TSource, TResult>(this.Source, this.PreFilter, this.Transform, this.PostFilter == null ? predicate : Combine(this.PostFilter, predicate));
 
 			static Func<TResult, bool> Combine(Func<TResult, bool> first, Func<TResult, bool> second) => (item) => first(item) && second(item);
 		}
@@ -1521,7 +1521,7 @@ namespace SnowBank.Linq.Async.Iterators
 		private IAsyncEnumerator<TSource>? Iterator { get; set; }
 
 		/// <inheritdoc />
-		protected override WhereSelectTaskAsyncIterator<TSource, TResult> Clone() => new(this.Source, this.PreFilter, this.Transform, this.PostFilter);
+		protected override AsyncLinqIterator<TResult> Clone() => new WhereSelectTaskAsyncIterator<TSource, TResult>(this.Source, this.PreFilter, this.Transform, this.PostFilter);
 
 		/// <inheritdoc />
 		protected override ValueTask<bool> OnFirstAsync()
@@ -1649,9 +1649,9 @@ namespace SnowBank.Linq.Async.Iterators
 		}
 
 		/// <inheritdoc />
-		public override WhereSelectTaskAsyncIterator<TSource, TResult> Where(Func<TResult, bool> predicate)
+		public override IAsyncLinqQuery<TResult> Where(Func<TResult, bool> predicate)
 		{
-			return new(this.Source, this.PreFilter, this.Transform, this.PostFilter == null ? predicate : Combine(this.PostFilter, predicate));
+			return new WhereSelectTaskAsyncIterator<TSource, TResult>(this.Source, this.PreFilter, this.Transform, this.PostFilter == null ? predicate : Combine(this.PostFilter, predicate));
 
 			static Func<TResult, bool> Combine(Func<TResult, bool> first, Func<TResult, bool> second) => (item) => first(item) && second(item);
 		}

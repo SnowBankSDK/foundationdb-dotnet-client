@@ -41,7 +41,10 @@ namespace SnowBank.Data.Json
 	/// <summary>JSON number</summary>
 	[DebuggerDisplay("JSON Number({" + nameof(m_literal) + ",nq})")]
 	[PublicAPI]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(CrystalJsonCustomJsonConverter))]
+#endif
 	[DebuggerNonUserCode]
 	public sealed class JsonNumber : JsonValue, IEquatable<JsonNumber>, IComparable<JsonNumber>
 		, IEquatable<JsonString>
@@ -63,7 +66,10 @@ namespace SnowBank.Data.Json
 		, IEquatable<short>
 		, IEquatable<ushort>
 		, IEquatable<TimeSpan>
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		, IEquatable<Half>
+#endif
 		, IEquatable<Uuid48>
 #if NET8_0_OR_GREATER
 		, IEquatable<Int128>
@@ -145,7 +151,12 @@ namespace SnowBank.Data.Json
 		public static readonly JsonNumber PI = new(new Number(Math.PI), Kind.Double, "3.1415926535897931");
 
 		/// <summary><see langword="τ"/> ~= <see langword="6.283185307179586"/> (double)</summary>
+#if NET5_0_OR_GREATER
 		public static readonly JsonNumber Tau = new(new Number(Math.Tau), Kind.Double, "6.283185307179586");
+#else
+		// Math.Tau is not on netstandard2.0
+		public static readonly JsonNumber Tau = new(new Number(6.283185307179586), Kind.Double, "6.283185307179586");
+#endif
 
 		#region Nested Types...
 
@@ -501,6 +512,8 @@ namespace SnowBank.Data.Json
 				_ => 0
 			};
 
+#if NET5_0_OR_GREATER
+			// System.Half does not exist on netstandard2.0
 			[Pure]
 			public Half ToHalf(Kind kind) => kind switch
 			{
@@ -510,6 +523,7 @@ namespace SnowBank.Data.Json
 				Kind.Unsigned => (Half) this.Unsigned,
 				_ => default
 			};
+#endif
 
 			[Pure]
 			public decimal ToDecimal(Kind kind) => kind switch
@@ -1418,6 +1432,8 @@ namespace SnowBank.Data.Json
 
 #else
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		private static readonly Half HalfZero = (Half) 0;
 		private static readonly Half HalfOne = (Half) 1;
 
@@ -1427,6 +1443,7 @@ namespace SnowBank.Data.Json
 			: value == HalfOne ? DecimalOne
 			: Half.IsNaN(value) ? NaN
 			: new JsonNumber(new Number((double) value), Kind.Double, StringConverters.ToString(value));
+#endif
 
 #endif
 
@@ -1503,7 +1520,12 @@ namespace SnowBank.Data.Json
 		public static JsonNumber Create(DateOnly value)
 			=> value == DateOnly.MinValue ? DecimalZero
 				: value == DateOnly.MaxValue ? NaN
+#if NET6_0_OR_GREATER
 				: Create((value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) - DateTime.UnixEpoch).TotalDays);
+#else
+				// DateTime.UnixEpoch is not on netstandard2.0
+				: Create((value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) - new DateTime(621355968000000000L, DateTimeKind.Utc)).TotalDays);
+#endif
 
 		/// <summary>Returns a <see cref="JsonNumber"/> corresponding to the number of seconds elapsed since midnight</summary>
 		/// <param name="value">Time to convert</param>
@@ -1641,6 +1663,8 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue Return(float? value) => value.HasValue ? Create(value.Value) : JsonNull.Null;
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <summary>Returns the equivalent <see cref="JsonNumber"/></summary>
 		/// <param name="value">Decimal value</param>
 		/// <returns>JSON value that will be serialized as a decimal value.</returns>
@@ -1651,6 +1675,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the equivalent <see cref="JsonNumber"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue Return(Half? value) => value.HasValue ? Create(value.Value) : JsonNull.Null;
+#endif
 
 		/// <summary>Returns the equivalent <see cref="JsonNumber"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1873,6 +1898,7 @@ namespace SnowBank.Data.Json
 		{
 			if (value.Length <= 0) throw ThrowHelper.ArgumentException(nameof(value), "Size must be at least one");
 
+#if NET5_0_OR_GREATER
 			if (value.Length <= 32)
 			{
 				Span<char> buffer = stackalloc char[value.Length];
@@ -1881,6 +1907,23 @@ namespace SnowBank.Data.Json
 					return Parse(buffer[..written]);
 				}
 			}
+#else
+			// Ascii.ToUtf16 is not on netstandard2.0: manual widening loop
+			if (value.Length <= 32)
+			{
+				Span<char> buffer = stackalloc char[value.Length];
+				int written = 0;
+				while (written < value.Length && value[written] <= 0x7F)
+				{
+					buffer[written] = (char) value[written];
+					++written;
+				}
+				if (written == value.Length)
+				{
+					return Parse(buffer[..written]);
+				}
+			}
+#endif
 
 			unsafe
 			{
@@ -2362,8 +2405,11 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override double ToDouble(double _ = 0) => m_value.ToDouble(m_kind);
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <inheritdoc />
 		public override Half ToHalf(Half _ = default) => m_value.ToHalf(m_kind);
+#endif
 
 #if NET8_0_OR_GREATER
 
@@ -2577,7 +2623,10 @@ namespace SnowBank.Data.Json
 				if (typeof(TValue) == typeof(short?)) return comparer?.Equals((TValue) (object) ToInt16(), value) ?? Equals((short) (object) value);
 				if (typeof(TValue) == typeof(ushort?)) return comparer?.Equals((TValue) (object) ToUInt16(), value) ?? Equals((ushort) (object) value);
 				if (typeof(TValue) == typeof(decimal?)) return comparer?.Equals((TValue) (object) ToDecimal(), value) ?? Equals((decimal) (object) value);
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (typeof(TValue) == typeof(Half?)) return comparer?.Equals((TValue) (object) ToHalf(), value) ?? Equals((Half) (object) value);
+#endif
 #if NET8_0_OR_GREATER
 				if (typeof(TValue) == typeof(Int128?)) return comparer?.Equals((TValue) (object) ToInt128(), value) ?? Equals((Int128) (object) value);
 				if (typeof(TValue) == typeof(UInt128?)) return comparer?.Equals((TValue) (object) ToUInt128(), value) ?? Equals((UInt128) (object) value);
@@ -2596,7 +2645,10 @@ namespace SnowBank.Data.Json
 				if (typeof(TValue) == typeof(short)) return comparer?.Equals((TValue) (object) ToInt16(), value) ?? Equals((short) (object) value!);
 				if (typeof(TValue) == typeof(ushort)) return comparer?.Equals((TValue) (object) ToUInt16(), value) ?? Equals((ushort) (object) value!);
 				if (typeof(TValue) == typeof(decimal)) return comparer?.Equals((TValue) (object) ToDecimal(), value) ?? Equals((decimal) (object) value!);
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (typeof(TValue) == typeof(Half)) return comparer?.Equals((TValue) (object) ToHalf(), value) ?? Equals((Half) (object) value!);
+#endif
 #if NET8_0_OR_GREATER
 				if (typeof(TValue) == typeof(Int128)) return comparer?.Equals((TValue) (object) ToInt128(), value) ?? Equals((Int128) (object) value!);
 				if (typeof(TValue) == typeof(UInt128)) return comparer?.Equals((TValue) (object) ToUInt128(), value) ?? Equals((UInt128) (object) value!);
@@ -2776,6 +2828,8 @@ namespace SnowBank.Data.Json
 			_ => false
 		};
 #else
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		public bool Equals(Half value) => m_kind switch
 		{
 			Kind.Decimal => m_value.Decimal == (decimal) (double) value,
@@ -2784,6 +2838,7 @@ namespace SnowBank.Data.Json
 			Kind.Unsigned => (double) value >= 0 && m_value.Unsigned == (double) value,
 			_ => false
 		};
+#endif
 #endif
 
 		/// <inheritdoc />
@@ -2954,9 +3009,12 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static implicit operator JsonNumber(decimal value) => Create(value);
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <summary>Returns the equivalent <see cref="JsonNumber"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static implicit operator JsonNumber(System.Half value) => Create(value);
+#endif
 
 		/// <summary>Tests if two <see cref="JsonNumber"/> are considered equal</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -3475,7 +3533,12 @@ namespace SnowBank.Data.Json
 			Kind.Double => double.IsInteger(value.m_value.Double),
 			Kind.Decimal => decimal.IsInteger(value.m_value.Decimal),
 #else
+#if NET5_0_OR_GREATER
 			Kind.Double => double.IsFinite(value.m_value.Double) && Math.Truncate(value.m_value.Double) == value.m_value.Double,
+#else
+			// double.IsFinite is not on netstandard2.0
+			Kind.Double => !double.IsNaN(value.m_value.Double) && !double.IsInfinity(value.m_value.Double) && Math.Truncate(value.m_value.Double) == value.m_value.Double,
+#endif
 			Kind.Decimal => decimal.Truncate(value.m_value.Decimal) == value.m_value.Decimal,
 #endif
 			_ => false,
@@ -3542,12 +3605,22 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public static bool IsNormal(JsonNumber value) => value.m_kind switch
 		{
+#if NET5_0_OR_GREATER
 			Kind.Double => double.IsNormal(value.m_value.Double),
+#else
+			// double.IsNormal is not on netstandard2.0: finite, non-zero, and at least the smallest normal double
+			Kind.Double => !double.IsInfinity(value.m_value.Double) && Math.Abs(value.m_value.Double) >= 2.2250738585072014E-308,
+#endif
 			_ => !IsZero(value),
 		};
 
 		/// <inheritdoc />
+#if NET5_0_OR_GREATER
 		public static bool IsSubnormal(JsonNumber value) => value.m_kind == Kind.Double && double.IsSubnormal(value.m_value.Double);
+#else
+		// double.IsSubnormal is not on netstandard2.0: non-zero and strictly below the smallest normal double
+		public static bool IsSubnormal(JsonNumber value) => value.m_kind == Kind.Double && value.m_value.Double != 0 && Math.Abs(value.m_value.Double) < 2.2250738585072014E-308;
+#endif
 
 		/// <inheritdoc />
 		public static JsonNumber MaxMagnitude(JsonNumber x, JsonNumber y) => Abs(x).CompareTo(Abs(y)) < 0 ? y : x;

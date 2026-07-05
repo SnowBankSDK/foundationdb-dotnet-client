@@ -24,6 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+// This file is not compiled for the net472 validation target: the COLA collections are not part of the netstandard2.0 build of SnowBank.Core.
+#if !NETFRAMEWORK
+
 namespace SnowBank.Collections.CacheOblivious.Test
 {
 	using System.Buffers;
@@ -864,3 +867,5 @@ namespace SnowBank.Collections.CacheOblivious.Test
 	}
 
 }
+
+#endif

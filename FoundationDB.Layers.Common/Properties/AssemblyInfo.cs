@@ -31,6 +31,7 @@ using System.Runtime.InteropServices;
 [assembly: Guid("0fce138d-cb61-49fd-bb0a-a0ecb37abe79")]
 
 // we exclude this assembly from test coverage by default when it is being consumed as a NuGet package
-#if RELEASE
+// (the assembly-level target on this attribute only exists on .NET 5+)
+#if RELEASE && NET5_0_OR_GREATER
 [assembly: System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
 #endif

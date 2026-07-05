@@ -242,7 +242,10 @@ namespace SnowBank.Data.Tuples
 			return left is null ? other is null : other switch
 			{
 				IVarTuple t => Equals(left, t, comparer),
+#if !NETSTANDARD2_0
+				// ITuple is not visible to netstandard2.0
 				ITuple t => Equals(left, t, comparer),
+#endif
 				_ => false
 			};
 		}
@@ -253,7 +256,10 @@ namespace SnowBank.Data.Tuples
 			return other switch
 			{
 				IVarTuple t => Equals(in left, t, comparer),
+#if !NETSTANDARD2_0
+				// ITuple is not visible to netstandard2.0
 				ITuple t => Equals(in left, t, comparer),
+#endif
 				_ => false
 			};
 		}
@@ -297,6 +303,9 @@ namespace SnowBank.Data.Tuples
 			return !ys.MoveNext();
 		}
 
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
+
 		public static bool Equals<TTuple>(TTuple? x, ITuple? y, IEqualityComparer comparer)
 			where TTuple : class, IVarTuple
 		{
@@ -338,6 +347,8 @@ namespace SnowBank.Data.Tuples
 			return i == len;
 		}
 
+#endif
+
 		public static int Compare<TTuple>(TTuple? left, object? other, IComparer comparer)
 			where TTuple : class, IVarTuple
 		{
@@ -345,7 +356,10 @@ namespace SnowBank.Data.Tuples
 			{
 				null => +1,
 				IVarTuple t => Compare(left, t, comparer),
+#if !NETSTANDARD2_0
+				// ITuple is not visible to netstandard2.0
 				ITuple t => Compare(left, t, comparer),
+#endif
 				_ => throw new ArgumentException($"Cannot compare {left.GetType().GetFriendlyName()} with an instance of {other.GetType().GetFriendlyName()}", nameof(other)),
 			};
 		}
@@ -356,7 +370,10 @@ namespace SnowBank.Data.Tuples
 			{
 				null => +1,
 				IVarTuple t => Compare(left, t, comparer),
+#if !NETSTANDARD2_0
+				// ITuple is not visible to netstandard2.0
 				ITuple t => Compare(left, t, comparer),
+#endif
 				_ => throw new ArgumentException($"Cannot compare {left.GetType().GetFriendlyName()} with an instance of {other.GetType().GetFriendlyName()}", nameof(other)),
 			};
 
@@ -397,6 +414,9 @@ namespace SnowBank.Data.Tuples
 
 			return !ys.MoveNext() ? 0 : -1;
 		}
+
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
 
 		public static int Compare<TTuple>(TTuple? x, ITuple? y, IComparer comparer)
 			where TTuple : class, IVarTuple
@@ -439,6 +459,8 @@ namespace SnowBank.Data.Tuples
 
 			return i == len ? 0 : -1;
 		}
+
+#endif
 
 		public static int StructuralGetHashCode(IVarTuple? tuple, IEqualityComparer comparer)
 		{

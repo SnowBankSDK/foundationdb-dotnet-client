@@ -336,6 +336,8 @@ namespace SnowBank.Linq.Async.Tests
 			}
 		}
 
+#if NET8_0_OR_GREATER
+		// AsyncQuery.Between over JsonNumber uses the generic-math overload (.NET 7+) and JsonNumber's operator interfaces (.NET 8+)
 		[Test]
 		public async Task Test_Between_Generic_Number()
 		{
@@ -369,6 +371,7 @@ namespace SnowBank.Linq.Async.Tests
 				Assert.That(async () => await AsyncQuery.Between(five, ten).SingleOrDefaultAsync(-1L), Throws.InvalidOperationException);
 			}
 		}
+#endif
 
 		[Test]
 		public async Task Test_Between_Generic_Non_Number()
@@ -1284,7 +1287,7 @@ namespace SnowBank.Linq.Async.Tests
 			public override CancellationToken Cancellation { get; }
 
 			/// <inheritdoc />
-			protected override CustomAsyncLinqIterator<T> Clone() => new(this.Items, this.Cancellation);
+			protected override AsyncLinqIterator<T> Clone() => new CustomAsyncLinqIterator<T>(this.Items, this.Cancellation);
 
 			/// <inheritdoc />
 			protected override ValueTask<bool> OnFirstAsync()
@@ -1687,9 +1690,13 @@ namespace SnowBank.Linq.Async.Tests
 				long expected = items.Sum();
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<int>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<int>(), Is.EqualTo(expected));
+#endif
 			}
 
 			{ // int?
@@ -1699,9 +1706,13 @@ namespace SnowBank.Linq.Async.Tests
 				int? expected = items.Sum().GetValueOrDefault();
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<int>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<int>(), Is.EqualTo(expected));
+#endif
 			}
 
 			{ // long
@@ -1711,9 +1722,13 @@ namespace SnowBank.Linq.Async.Tests
 				long expected = items.Sum();
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<long>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<long>(), Is.EqualTo(expected));
+#endif
 			}
 			{ // long?
 				Assert.That(await AsyncQuery.Empty<long?>().SumAsync(), Is.EqualTo(0L));
@@ -1722,9 +1737,13 @@ namespace SnowBank.Linq.Async.Tests
 				long expected = items.Sum(x => x ?? 0);
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<long>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<long>(), Is.EqualTo(expected));
+#endif
 			}
 
 			{ // float
@@ -1735,9 +1754,13 @@ namespace SnowBank.Linq.Async.Tests
 				//note: Sum(IEnumerable<float>) uses a double accumulator internally, and the sum will be slightly different from using a float as accumulator!
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<float>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<float>(), Is.EqualTo(expected));
+#endif
 			}
 
 			{ // float?
@@ -1748,9 +1771,13 @@ namespace SnowBank.Linq.Async.Tests
 				//note: Sum(IEnumerable<float>) uses a double accumulator internally, and the sum will be slightly different from using a float as accumulator!
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<float>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<float>(), Is.EqualTo(expected));
+#endif
 			}
 
 			{ // double
@@ -1760,9 +1787,13 @@ namespace SnowBank.Linq.Async.Tests
 				double expected = items.Sum();
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<double>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<double>(), Is.EqualTo(expected));
+#endif
 			}
 			{ // double?
 				Assert.That(await AsyncQuery.Empty<double?>().SumAsync(), Is.EqualTo(0d));
@@ -1771,9 +1802,13 @@ namespace SnowBank.Linq.Async.Tests
 				double expected = items.Sum(x => x ?? 0d);
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<double>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<double>(), Is.EqualTo(expected));
+#endif
 			}
 
 			{ // decimal
@@ -1783,9 +1818,13 @@ namespace SnowBank.Linq.Async.Tests
 				decimal expected = items.Sum();
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<decimal>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<decimal>(), Is.EqualTo(expected));
+#endif
 			}
 			{ // decimal?
 				Assert.That(await AsyncQuery.Empty<decimal?>().SumAsync(), Is.EqualTo(0d));
@@ -1794,11 +1833,17 @@ namespace SnowBank.Linq.Async.Tests
 				decimal expected = items.Sum(x => x ?? 0m);
 
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync<decimal>(), Is.EqualTo(expected));
+#endif
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
+#if NET7_0_OR_GREATER
 				Assert.That(await FakeAsyncQuery(items).SumAsync<decimal>(), Is.EqualTo(expected));
+#endif
 			}
 
+#if NET7_0_OR_GREATER
+			// the generic-math SumAsync<T> requires .NET 7+
 			{ // ulong (generic math)
 				Assert.That(await AsyncQuery.Empty<ulong>().SumAsync(), Is.EqualTo(0UL));
 
@@ -1809,6 +1854,8 @@ namespace SnowBank.Linq.Async.Tests
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
 			}
+#endif
+#if NET7_0_OR_GREATER
 			{ // ulong? (generic math)
 				Assert.That(await AsyncQuery.Empty<ulong?>().SumAsync(), Is.EqualTo(0UL));
 
@@ -1819,7 +1866,10 @@ namespace SnowBank.Linq.Async.Tests
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
 			}
+#endif
 
+#if NET8_0_OR_GREATER
+			// JsonNumber only implements the generic-math interfaces on .NET 8+
 			{ // JsonNumber (generic math)
 				Assert.That(await AsyncQuery.Empty<JsonNumber>().SumAsync(), Is.SameAs(JsonNumber.Zero));
 
@@ -1830,16 +1880,19 @@ namespace SnowBank.Linq.Async.Tests
 				Assert.That(await FakeAsyncLinqIterator(items).SumAsync(), Is.EqualTo(expected));
 				Assert.That(await FakeAsyncQuery(items).SumAsync(), Is.EqualTo(expected));
 			}
+#endif
 
 			// overflow detection
 
 			Assert.That(async () => await FakeAsyncQuery([ int.MaxValue, int.MaxValue ]).SumAsync(), Throws.InstanceOf<OverflowException>());
 			Assert.That(async () => await FakeAsyncQuery([ long.MaxValue, long.MaxValue ]).SumAsync(), Throws.InstanceOf<OverflowException>());
 
+#if NET7_0_OR_GREATER
 			Assert.That(async () => await FakeAsyncQuery([ int.MaxValue, int.MaxValue ]).SumAsync<int>(), Throws.InstanceOf<OverflowException>());
 			Assert.That(async () => await FakeAsyncQuery([ uint.MaxValue, uint.MaxValue ]).SumAsync<uint>(), Throws.InstanceOf<OverflowException>());
 			Assert.That(async () => await FakeAsyncQuery([ long.MaxValue, long.MaxValue ]).SumAsync<long>(), Throws.InstanceOf<OverflowException>());
 			Assert.That(async () => await FakeAsyncQuery([ ulong.MaxValue, ulong.MaxValue ]).SumAsync<ulong>(), Throws.InstanceOf<OverflowException>());
+#endif
 		}
 
 		[Test]
@@ -1867,6 +1920,8 @@ namespace SnowBank.Linq.Async.Tests
 
 			// The others are generic over INumberBase
 
+#if NET7_0_OR_GREATER
+			// the generic-math SumAsync<T> dispatch requires .NET 7+
 			{ // uint
 				var source = items.ToAsyncQuery(this.Cancellation);
 				uint sum = await source.Select(x => (uint) x.Integer).SumAsync();
@@ -1874,6 +1929,7 @@ namespace SnowBank.Linq.Async.Tests
 				foreach (var x in items) expected = checked(expected + (uint) x.Integer);
 				Assert.That(sum, Is.EqualTo(expected));
 			}
+#endif
 
 			{ // long
 				var source = items.ToAsyncQuery(this.Cancellation);
@@ -1883,6 +1939,8 @@ namespace SnowBank.Linq.Async.Tests
 				Assert.That(sum, Is.EqualTo(expected));
 			}
 
+#if NET7_0_OR_GREATER
+			// the generic-math SumAsync<T> dispatch requires .NET 7+
 			{ // ulong
 				var source = items.ToAsyncQuery(this.Cancellation);
 				ulong sum = await source.Select(x => (ulong) x.Integer).SumAsync();
@@ -1890,6 +1948,7 @@ namespace SnowBank.Linq.Async.Tests
 				foreach (var x in items) expected = checked(expected + (ulong) x.Integer);
 				Assert.That(sum, Is.EqualTo(expected));
 			}
+#endif
 
 			{ // float
 				var source = items.ToAsyncQuery(this.Cancellation);
@@ -1906,6 +1965,8 @@ namespace SnowBank.Linq.Async.Tests
 				Assert.That(sum, Is.EqualTo(expected));
 			}
 
+#if NET8_0_OR_GREATER
+			// JsonNumber only implements the generic-math interfaces on .NET 8+
 			{ // custom INumber<T> implementation
 				var source = items.ToAsyncQuery(this.Cancellation);
 				JsonNumber sum = await source.Select(x => x.Json).SumAsync();
@@ -1913,11 +1974,15 @@ namespace SnowBank.Linq.Async.Tests
 				foreach (var x in items) expected += x.Json.ToInt64();
 				Assert.That(sum, Is.EqualTo(expected));
 			}
+#endif
 
 			// overflow detection
 			Assert.That(async () => await FakeAsyncQuery([ "FOO", "BAR" ]).Select(_ => long.MaxValue).SumAsync(), Throws.InstanceOf<OverflowException>());
+#if NET7_0_OR_GREATER
+			// uint/ulong sums dispatch to the generic-math SumAsync<T>, which requires .NET 7+
 			Assert.That(async () => await FakeAsyncQuery([ "FOO", "BAR" ]).Select(_ => uint.MaxValue).SumAsync(), Throws.InstanceOf<OverflowException>());
 			Assert.That(async () => await FakeAsyncQuery([ "FOO", "BAR" ]).Select(_ => ulong.MaxValue).SumAsync(), Throws.InstanceOf<OverflowException>());
+#endif
 		}
 
 		[Test]

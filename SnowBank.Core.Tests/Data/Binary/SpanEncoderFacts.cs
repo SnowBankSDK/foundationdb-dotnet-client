@@ -24,6 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+// This file is not compiled for the net472 validation target: the test helpers are built on static abstract interface members (ISpanEncoder<T>).
+#if !NETFRAMEWORK
+
 // ReSharper disable UseUtf8StringLiteral
 #pragma warning disable IDE0230
 #pragma warning disable CS8602 // Dereference of a possibly null reference.
@@ -690,3 +693,5 @@ namespace SnowBank.Data.Binary.Tests
 	}
 
 }
+
+#endif

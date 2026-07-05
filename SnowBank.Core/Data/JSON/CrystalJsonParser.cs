@@ -268,14 +268,24 @@ namespace SnowBank.Data.Json
 			{
 				if (!negative)
 				{ // unsigned
+#if NET5_0_OR_GREATER
 					if (ulong.TryParse(literal, styles, NumberFormatInfo.InvariantInfo, out var u64))
+#else
+					// span-based TryParse is not on netstandard2.0
+					if (ulong.TryParse(literal.ToString(), styles, NumberFormatInfo.InvariantInfo, out var u64))
+#endif
 					{
 						return JsonNumber.ParseUnsigned(u64, literal, original);
 					}
 				}
 				else
 				{ // signed
+#if NET5_0_OR_GREATER
 					if (long.TryParse(literal, styles, NumberFormatInfo.InvariantInfo, out var s64))
+#else
+					// span-based TryParse is not on netstandard2.0
+					if (long.TryParse(literal.ToString(), styles, NumberFormatInfo.InvariantInfo, out var s64))
+#endif
 					{
 						return JsonNumber.ParseSigned(s64, literal, original);
 					}
@@ -285,14 +295,24 @@ namespace SnowBank.Data.Json
 			{ // decimal, or a very large integer (1.23E10)
 				styles |= NumberStyles.AllowDecimalPoint;
 				// maybe it fits in a double...?
+#if NET5_0_OR_GREATER
 				if (double.TryParse(literal, styles, NumberFormatInfo.InvariantInfo, out var dbl))
+#else
+				// span-based TryParse is not on netstandard2.0
+				if (double.TryParse(literal.ToString(), styles, NumberFormatInfo.InvariantInfo, out var dbl))
+#endif
 				{
 					return JsonNumber.Parse(dbl, literal, original);
 				}
 			}
 
 			// use decimal has the last resort fallback...
+#if NET5_0_OR_GREATER
 			if (decimal.TryParse(literal, styles, NumberFormatInfo.InvariantInfo, out var dec))
+#else
+			// span-based TryParse is not on netstandard2.0
+			if (decimal.TryParse(literal.ToString(), styles, NumberFormatInfo.InvariantInfo, out var dec))
+#endif
 			{
 				return JsonNumber.Parse(dec, literal, original);
 			}
@@ -315,7 +335,12 @@ namespace SnowBank.Data.Json
 			// must end with either 'Z' (UTC) or '+##:##' / '-##:##'
 			kind = DateTimeKind.Unspecified;
 
+#if NET7_0_OR_GREATER
 			if (value.Length < 10 || !char.IsAsciiDigit(value[0]))
+#else
+			// char.IsAsciiDigit is not on netstandard2.0
+			if (value.Length < 10 || !(value[0] is >= '0' and <= '9'))
+#endif
 			{
 				return false;
 			}
@@ -347,7 +372,12 @@ namespace SnowBank.Data.Json
 				return true;
 			}
 
+#if NET7_0_OR_GREATER
 			if (char.IsAsciiDigit(value[^1]))
+#else
+			// char.IsAsciiDigit is not on netstandard2.0
+			if (value[^1] is >= '0' and <= '9')
+#endif
 			{
 				kind = DateTimeKind.Unspecified;
 				return true;
@@ -370,7 +400,12 @@ namespace SnowBank.Data.Json
 			}
 
 			// cf http://msdn.microsoft.com/en-us/library/bb882584.aspx
+#if NET5_0_OR_GREATER
 			return DateTime.TryParse(value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.RoundtripKind, out result);
+#else
+			// span-based TryParse is not on netstandard2.0
+			return DateTime.TryParse(value.ToString(), DateTimeFormatInfo.InvariantInfo, DateTimeStyles.RoundtripKind, out result);
+#endif
 		}
 
 		[Pure]
@@ -389,7 +424,12 @@ namespace SnowBank.Data.Json
 			if (nanos != 0)
 			{ // add the nanoseconds to the time
 				Contract.Debug.Requires((ulong) nanos < 1_000_000_000);
+#if NET5_0_OR_GREATER
 				time = time.Add(TimeSpan.FromTicks(nanos / TimeSpan.NanosecondsPerTick)); // note: 100 nanos per BCL tick
+#else
+				// TimeSpan.NanosecondsPerTick is not on netstandard2.0
+				time = time.Add(TimeSpan.FromTicks(nanos / 100)); // note: 100 nanos per BCL tick
+#endif
 			}
 
 			switch (kind)
@@ -397,7 +437,12 @@ namespace SnowBank.Data.Json
 				case DateTimeKind.Unspecified:
 				{ // use the local server offset
 					Contract.Debug.Assert(offset == TimeSpan.Zero);
+#if NET6_0_OR_GREATER
 					var dt = new DateTime(date, time, DateTimeKind.Unspecified);
+#else
+					// the DateTime(DateOnly, TimeOnly, DateTimeKind) ctor is not on netstandard2.0
+					var dt = date.ToDateTime(time, DateTimeKind.Unspecified);
+#endif
 					result = dt == DateTime.MinValue ? DateTimeOffset.MinValue
 						: dt == DateTime.MaxValue ? DateTimeOffset.MaxValue
 						: new(dt);
@@ -406,13 +451,23 @@ namespace SnowBank.Data.Json
 				case DateTimeKind.Local:
 				{ // there is an offset specified
 					// the ctor for DTO insists on subtracting the offset to the time, so we have to compensate!
+#if NET8_0_OR_GREATER
 					result = new(date, time, offset);
+#else
+					// the DateTimeOffset(DateOnly, TimeOnly, TimeSpan) ctor is not on netstandard2.0
+					result = new DateTimeOffset(date.ToDateTime(time), offset);
+#endif
 					break;
 				}
 				default:
 				{ // the time is UTC
 					Contract.Debug.Assert(kind == DateTimeKind.Utc);
+#if NET8_0_OR_GREATER
 					result = new(date, time, TimeSpan.Zero);
+#else
+					// the DateTimeOffset(DateOnly, TimeOnly, TimeSpan) ctor is not on netstandard2.0
+					result = new DateTimeOffset(date.ToDateTime(time), TimeSpan.Zero);
+#endif
 					break;
 				}
 			}
@@ -422,9 +477,16 @@ namespace SnowBank.Data.Json
 
 		public static bool TryParseDateTimeOffsetComponents(ReadOnlySpan<char> value, out DateOnly date, out TimeOnly time, out long nanos, out TimeSpan offset, out DateTimeKind kind)
 		{
+#if NET7_0_OR_GREATER
 			if (value.Length < 10
 			 || !char.IsAsciiDigit(value[0])
 			 || !TryParseDateOnlyComponent(value, out date, out var remainder))
+#else
+			// char.IsAsciiDigit is not on netstandard2.0
+			if (value.Length < 10
+			 || !(value[0] is >= '0' and <= '9')
+			 || !TryParseDateOnlyComponent(value, out date, out var remainder))
+#endif
 			{
 				goto invalid;
 			}
@@ -492,6 +554,7 @@ namespace SnowBank.Data.Json
 		{
 			// YYYY-MM-DD
 
+#if NET5_0_OR_GREATER
 			if (value.Length >= 10
 			 && value[4] == '-' && value[7] == '-'
 			 && int.TryParse(value[..4], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var year)
@@ -501,6 +564,18 @@ namespace SnowBank.Data.Json
 			 && int.TryParse(value[8..10], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var day)
 			 && day is >= 1 && day <= DateTime.DaysInMonth(year, month)
 			)
+#else
+			// span-based TryParse is not on netstandard2.0
+			if (value.Length >= 10
+			 && value[4] == '-' && value[7] == '-'
+			 && int.TryParse(value[..4].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var year)
+			 && year is (>= 1 and <= 9999)
+			 && int.TryParse(value[5..7].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var month)
+			 && month is (>= 1 and <= 12)
+			 && int.TryParse(value[8..10].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var day)
+			 && day is >= 1 && day <= DateTime.DaysInMonth(year, month)
+			)
+#endif
 			{
 				date = new DateOnly(year, month, day);
 				remainder = value[10..];
@@ -516,6 +591,7 @@ namespace SnowBank.Data.Json
 		{
 			// hh:mm:ss[.ffffff]
 
+#if NET5_0_OR_GREATER
 			if (value.Length >= 8
 				&& value[2] == ':' && value[5] == ':'
 				&& int.TryParse(value[..2], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
@@ -525,6 +601,18 @@ namespace SnowBank.Data.Json
 				&& int.TryParse(value[6..8], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var second)
 				&& second is >= 0 && second <= 60 /* leap second! */
 			)
+#else
+			// span-based TryParse is not on netstandard2.0
+			if (value.Length >= 8
+				&& value[2] == ':' && value[5] == ':'
+				&& int.TryParse(value[..2].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
+				&& hour is (>= 0 and <= 23)
+				&& int.TryParse(value[3..5].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
+				&& minute is (>= 0 and <= 59)
+				&& int.TryParse(value[6..8].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var second)
+				&& second is >= 0 && second <= 60 /* leap second! */
+			)
+#endif
 			{
 				value = value[8..];
 				nanos = 0;
@@ -534,9 +622,27 @@ namespace SnowBank.Data.Json
 					{ // ".f" minimum, up to any number of digits?
 						value = value[1..];
 						// count the number of digits
+#if NET5_0_OR_GREATER
 						int digits = value.IndexOfAnyExceptInRange('0', '9');
+#else
+						// IndexOfAnyExceptInRange is not on netstandard2.0
+						int digits = -1;
+						for (int i = 0; i < value.Length; i++)
+						{
+							if (value[i] is < '0' or > '9')
+							{
+								digits = i;
+								break;
+							}
+						}
+#endif
 						if (digits == -1) digits = value.Length;
+#if NET5_0_OR_GREATER
 						if (digits is (0 or > 15) || !ulong.TryParse(value[..digits], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var fractional))
+#else
+						// span-based TryParse is not on netstandard2.0
+						if (digits is (0 or > 15) || !ulong.TryParse(value[..digits].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var fractional))
+#endif
 						{
 							goto invalid;
 						}
@@ -574,6 +680,7 @@ namespace SnowBank.Data.Json
 		private static bool TryParseTimeOffsetComponent(ReadOnlySpan<char> value, out TimeSpan offset, out ReadOnlySpan<char> remainder)
 		{
 			// +hh:mm or -hh:mm
+#if NET5_0_OR_GREATER
 			if (value.Length >= 6
 			 && value[0] is ('+' or '-') && value[3] == ':'
 			 && int.TryParse(value[1..3], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
@@ -581,6 +688,16 @@ namespace SnowBank.Data.Json
 			 && int.TryParse(value[4..6], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
 			 && minute is (>= 0 and < 60)
 			)
+#else
+			// span-based TryParse is not on netstandard2.0
+			if (value.Length >= 6
+			 && value[0] is ('+' or '-') && value[3] == ':'
+			 && int.TryParse(value[1..3].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
+			 && hour is (>= 0 and <= 12)
+			 && int.TryParse(value[4..6].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
+			 && minute is (>= 0 and < 60)
+			)
+#endif
 			{
 				var minutes = (hour * 60) + minute;
 				offset = TimeSpan.FromMinutes(value[0] == '+' ? minutes : -minutes);
@@ -623,7 +740,12 @@ namespace SnowBank.Data.Json
 				isLocal = true;
 				endOffset -= 5;
 			}
+#if NET5_0_OR_GREATER
 			if (!long.TryParse(value[6..endOffset], out var ticks)) // 6 = "/Date(".Length
+#else
+			// span-based TryParse is not on netstandard2.0
+			if (!long.TryParse(value[6..endOffset].ToString(), out var ticks)) // 6 = "/Date(".Length
+#endif
 			{
 				return false;
 			}
@@ -642,7 +764,12 @@ namespace SnowBank.Data.Json
 				DateTime date = CrystalJson.JavaScriptTicksToDate(ticks);
 				if (isLocal)
 				{
+#if NET5_0_OR_GREATER
 					if (!int.TryParse(value[(endOffset + 1)..^2], out var offset))
+#else
+					// span-based TryParse is not on netstandard2.0
+					if (!int.TryParse(value[(endOffset + 1)..^2].ToString(), out var offset))
+#endif
 					{
 						return false;
 					}
@@ -1229,8 +1356,13 @@ namespace SnowBank.Data.Json
 			string? name = null;
 			var createReadOnly = reader.Settings.ReadOnly;
 
+#if NET8_0_OR_GREATER
 			var scratch = new SegmentedValueBuffer<KeyValuePair<string, JsonValue>>.Scratch();
 			using var props = new SegmentedValueBuffer<KeyValuePair<string, JsonValue>>(scratch);
+#else
+			// SegmentedValueBuffer requires inline-array runtime support that netstandard2.0/netfx lacks: use a plain List instead
+			var props = new List<KeyValuePair<string, JsonValue>>();
+#endif
 
 			while (true)
 			{
@@ -1465,8 +1597,13 @@ namespace SnowBank.Data.Json
 			bool valueRequired = false;
 			bool readOnly = reader.Settings.ReadOnly;
 
+#if NET8_0_OR_GREATER
 			var scratch = new SegmentedValueBuffer<JsonValue>.Scratch();
 			using var buffer = new SegmentedValueBuffer<JsonValue>(scratch);
+#else
+			// SegmentedValueBuffer requires inline-array runtime support that netstandard2.0/netfx lacks: use a plain List instead
+			var buffer = new List<JsonValue>();
+#endif
 
 			while (true)
 			{

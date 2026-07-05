@@ -1664,11 +1664,25 @@ namespace SnowBank.Data.Json.Binary
 					case JsonDateTime dt:
 					{
 						//note: warning: this can be either a DateTime or a DateTimeOffset !
+#if NET5_0_OR_GREATER
 						Span<byte> tmp = m_output.GetSpan(40); // max 33 chars: "YYYY-MM-DDTHH:mm:ss.fffffff+HH:mm"
 						if (!dt.TryFormat(tmp, out var len))
 						{
 							throw new InvalidOperationException("Failed to serialize JSON DateTime");
 						}
+#else
+						// JsonDateTime has no UTF-8 TryFormat on netstandard2.0: format to chars, then narrow the ASCII literal to bytes
+						Span<char> chars = stackalloc char[40]; // max 33 chars: "YYYY-MM-DDTHH:mm:ss.fffffff+HH:mm"
+						if (!dt.TryFormat(chars, out var len))
+						{
+							throw new InvalidOperationException("Failed to serialize JSON DateTime");
+						}
+						Span<byte> tmp = m_output.GetSpan(40);
+						for (int i = 0; i < len; i++)
+						{
+							tmp[i] = (byte) chars[i];
+						}
+#endif
 						m_output.Advance(len);
 						return JENTRY_TYPE_STRING | (uint) len;
 					}
@@ -1905,7 +1919,16 @@ namespace SnowBank.Data.Json.Binary
 						indexes[i] = i;
 					}
 
+#if NET5_0_OR_GREATER
 					hashes.Sort(indexes);
+#else
+					// Span.Sort(keys, items) is not available on netstandard2.0: sort via transient arrays
+					var sortedHashes = hashes.ToArray();
+					var sortedIndexes = indexes.ToArray();
+					Array.Sort(sortedHashes, sortedIndexes);
+					sortedHashes.AsSpan().CopyTo(hashes);
+					sortedIndexes.AsSpan().CopyTo(indexes);
+#endif
 
 					var spanHashes = m_output.ToSpan().Slice(hashesOffset, hashMapSize);
 					ref byte ptrHashes = ref MemoryMarshal.GetReference(spanHashes);

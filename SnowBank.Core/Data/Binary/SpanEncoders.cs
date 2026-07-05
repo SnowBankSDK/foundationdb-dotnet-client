@@ -38,6 +38,9 @@ namespace SnowBank.Data.Binary
 
 		#region Encoding Helper Methods...
 
+#if NET7_0_OR_GREATER
+		// calling static abstract interface members through a type parameter needs runtime support that netstandard2.0/NetFX lacks
+
 		/// <summary>Encodes a value, using a pool if necessary</summary>
 		/// <typeparam name="TEncoder">Encoder used for this operation</typeparam>
 		/// <typeparam name="TValue">Type of the encoded value</typeparam>
@@ -163,6 +166,7 @@ namespace SnowBank.Data.Binary
 				? SliceOwner.Copy(span, pool)
 				: SliceOwner.Create(buffer.AsSlice(range));
 		}
+#endif
 
 		/// <summary>Writes a byte at the start of the destination buffer, if it is large enough.</summary>
 		/// <param name="destination">Destination buffer</param>
@@ -314,21 +318,55 @@ namespace SnowBank.Data.Binary
 
 			#region ReadOnlySpan<byte>...
 
+#if NET5_0_OR_GREATER
 			/// <inheritdoc />
+#else
+			/// <summary>Returns a span of the encoded representation of the value, if it can be done without any memory allocations</summary>
+			/// <param name="value">Value to encode</param>
+			/// <param name="span">Receives a span with the encoded value</param>
+			/// <returns><c>true</c> if the span is available; otherwise, <c>false</c></returns>
+			/// <remarks>
+			/// <para>This should only return true when the in-memory layout of the value is the same as its encoded representation.</para>
+			/// <para>If this method returns <c>false</c>, use <see cref="TryEncode(Span{byte}, out int, in ReadOnlySpan{byte})"/> to encode the value into a temporary buffer.</para>
+			/// </remarks>
+#endif
 			public static bool TryGetSpan(scoped in ReadOnlySpan<byte> value, out ReadOnlySpan<byte> span)
 			{
 				span = value;
 				return true;
 			}
 
+#if NET5_0_OR_GREATER
 			/// <inheritdoc />
+#else
+			/// <summary>Returns a hint for the minimum capacity required to format the value.</summary>
+			/// <param name="value">Value that needs to be encoded</param>
+			/// <param name="sizeHint">Receives the minimum buffer size that should be passed to <see cref="TryEncode(Span{byte}, out int, in ReadOnlySpan{byte})"/></param>
+			/// <returns><c>true</c> if a minimum size is known, or <c>false</c> if computing this size would be too costly</returns>
+			/// <remarks>
+			/// <para>The returned capacity <b>MAY</b> be smaller than the actual size required: some encoders may return a good estimate for 99%+ of the cases, in which case the capacity is a good starting point.</para>
+			/// <para>For example, a UTF-8 encoder may assume that each character will take 2 bytes <i>on average</i>, which is smaller than the maximum of 3 bytes.</para>
+			/// </remarks>
+#endif
 			public static bool TryGetSizeHint(in ReadOnlySpan<byte> value, out int sizeHint)
 			{
 				sizeHint = value.Length;
 				return true;
 			}
 
+#if NET6_0_OR_GREATER
 			/// <inheritdoc />
+#else
+			/// <summary>Encodes the value to the destination buffer, if it is large enough.</summary>
+			/// <param name="destination">Destination buffer that will receive the encoded representation of the value</param>
+			/// <param name="bytesWritten">Number of bytes that where written to the buffer, if the operation is successful</param>
+			/// <param name="value">Value to encode</param>
+			/// <returns><c>false</c> if the buffer is not large enough, <c>true</c> if the operation was successful, or an exception if the encoding failed for other reasons</returns>
+			/// <remarks>
+			/// <para>This method behaves similarly to <see cref="ISpanFormattable.TryFormat"/>: the caller allocates a buffer with a safe initial capacity. If the buffer is too small, then the caller should retry with a larger buffer, until the method returns <c>true</c> or fails.</para>
+			/// <para>Please note that the method MUST NOT return <c>false</c> for a reason other than a buffer being too small, otherwise the caller may end up in an infinite retry loop, passing a larger and larger buffer.</para>
+			/// </remarks>
+#endif
 			public static bool TryEncode(Span<byte> destination, out int bytesWritten, in ReadOnlySpan<byte> value)
 			{
 				return value.TryCopyTo(destination, out bytesWritten);
@@ -473,6 +511,7 @@ namespace SnowBank.Data.Binary
 				}
 				else
 				{
+#if NET5_0_OR_GREATER
 					var remaining = destination[..length];
 					while (remaining.Length > 0)
 					{
@@ -480,6 +519,25 @@ namespace SnowBank.Data.Binary
 						if (n == 0) throw new InvalidOperationException("Failed to read the stream.");
 						remaining = remaining[n..];
 					}
+#else
+					// Stream.Read(Span<byte>) is not available on netstandard2.0: read through a pooled temporary array
+					var tmp = ArrayPool<byte>.Shared.Rent(length);
+					try
+					{
+						int offset = 0;
+						while (offset < length)
+						{
+							int n = value.Read(tmp, offset, length - offset);
+							if (n == 0) throw new InvalidOperationException("Failed to read the stream.");
+							offset += n;
+						}
+						tmp.AsSpan(0, length).CopyTo(destination);
+					}
+					finally
+					{
+						ArrayPool<byte>.Shared.Return(tmp);
+					}
+#endif
 				}
 
 				bytesWritten = length;
@@ -574,7 +632,18 @@ namespace SnowBank.Data.Binary
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static bool TryEncode(Span<byte> destination, out int bytesWritten, in string? value)
 			{
+#if NET8_0_OR_GREATER
 				return Encoding.UTF8.TryGetBytes(value, destination, out bytesWritten);
+#else
+				// Encoding.TryGetBytes is not available on netstandard2.0: measure first, then encode via the span polyfill
+				if (Encoding.UTF8.GetByteCount(value ?? "") > destination.Length)
+				{
+					bytesWritten = 0;
+					return false;
+				}
+				bytesWritten = Encoding.UTF8.GetBytes(value.AsSpan(), destination);
+				return true;
+#endif
 			}
 
 			/// <inheritdoc />
@@ -609,7 +678,18 @@ namespace SnowBank.Data.Binary
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static bool TryEncode(Span<byte> destination, out int bytesWritten, in ReadOnlySpan<char> value)
 			{
+#if NET8_0_OR_GREATER
 				return Encoding.UTF8.TryGetBytes(value, destination, out bytesWritten);
+#else
+				// Encoding.TryGetBytes is not available on netstandard2.0: measure first, then encode via the span polyfill
+				if (Encoding.UTF8.GetByteCount(value) > destination.Length)
+				{
+					bytesWritten = 0;
+					return false;
+				}
+				bytesWritten = Encoding.UTF8.GetBytes(value, destination);
+				return true;
+#endif
 			}
 
 			#endregion
@@ -636,7 +716,18 @@ namespace SnowBank.Data.Binary
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static bool TryEncode(Span<byte> destination, out int bytesWritten, in ReadOnlyMemory<char> value)
 			{
+#if NET8_0_OR_GREATER
 				return Encoding.UTF8.TryGetBytes(value.Span, destination, out bytesWritten);
+#else
+				// Encoding.TryGetBytes is not available on netstandard2.0: measure first, then encode via the span polyfill
+				if (Encoding.UTF8.GetByteCount(value.Span) > destination.Length)
+				{
+					bytesWritten = 0;
+					return false;
+				}
+				bytesWritten = Encoding.UTF8.GetBytes(value.Span, destination);
+				return true;
+#endif
 			}
 
 			/// <inheritdoc />
@@ -677,6 +768,7 @@ namespace SnowBank.Data.Binary
 					return true;
 				}
 
+#if NET5_0_OR_GREATER
 				int cursor = 0;
 				foreach (var chunk in value.GetChunks())
 				{
@@ -690,6 +782,17 @@ namespace SnowBank.Data.Binary
 
 				bytesWritten = cursor;
 				return true;
+#else
+				// StringBuilder.GetChunks and Encoding.TryGetBytes are not available on netstandard2.0: encode the materialized string
+				var literal = value.ToString();
+				if (Encoding.UTF8.GetByteCount(literal) > destination.Length)
+				{
+					bytesWritten = 0;
+					return false;
+				}
+				bytesWritten = Encoding.UTF8.GetBytes(literal.AsSpan(), destination);
+				return true;
+#endif
 			}
 
 			#endregion
@@ -835,6 +938,7 @@ namespace SnowBank.Data.Binary
 					return true;
 				}
 
+#if NET5_0_OR_GREATER
 				int cursor = 0;
 				foreach (var chunk in value.GetChunks())
 				{
@@ -848,6 +952,17 @@ namespace SnowBank.Data.Binary
 
 				bytesWritten = cursor;
 				return true;
+#else
+				// StringBuilder.GetChunks and Encoding.TryGetBytes are not available on netstandard2.0: encode the materialized string
+				var literal = value.ToString();
+				if (Encoding.Unicode.GetByteCount(literal) > destination.Length)
+				{
+					bytesWritten = 0;
+					return false;
+				}
+				bytesWritten = Encoding.Unicode.GetBytes(literal.AsSpan(), destination);
+				return true;
+#endif
 			}
 
 			#endregion
@@ -861,10 +976,14 @@ namespace SnowBank.Data.Binary
 			ISpanEncoder<long>, ISpanDecoder<long>,
 			ISpanEncoder<ulong>, ISpanDecoder<ulong>,
 			ISpanEncoder<float>, ISpanDecoder<float>,
-			ISpanEncoder<double>, ISpanDecoder<double>,
-			ISpanEncoder<Half>, ISpanDecoder<Half>,
-			ISpanEncoder<Int128>, ISpanDecoder<Int128>,
-			ISpanEncoder<UInt128>, ISpanDecoder<UInt128>
+			ISpanEncoder<double>, ISpanDecoder<double>
+#if NET5_0_OR_GREATER
+			, ISpanEncoder<Half>, ISpanDecoder<Half>
+#endif
+#if NET7_0_OR_GREATER
+			, ISpanEncoder<Int128>, ISpanDecoder<Int128>
+			, ISpanEncoder<UInt128>, ISpanDecoder<UInt128>
+#endif
 		{
 
 			#region Int32...
@@ -1027,6 +1146,8 @@ namespace SnowBank.Data.Binary
 
 			#endregion
 
+#if NET7_0_OR_GREATER
+
 			#region Int128...
 
 			/// <inheritdoc />
@@ -1107,6 +1228,8 @@ namespace SnowBank.Data.Binary
 
 			#endregion
 
+#endif
+
 			#region Single...
 
 			/// <inheritdoc />
@@ -1135,15 +1258,34 @@ namespace SnowBank.Data.Binary
 					return false;
 				}
 
+#if NET5_0_OR_GREATER
 				BinaryPrimitives.WriteSingleLittleEndian(destination, value);
+#else
+				// BinaryPrimitives.WriteSingleLittleEndian is not available on netstandard2.0
+				SnowBank.Compat.BinaryPrimitivesCompat.WriteSingleLittleEndian(destination, value);
+#endif
 				bytesWritten = Unsafe.SizeOf<float>();
 				return true;
 			}
 
 			/// <inheritdoc />
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET5_0_OR_GREATER
 			public static bool TryDecode(ReadOnlySpan<byte> source, out float value)
 				=> BinaryPrimitives.TryReadSingleLittleEndian(source, out value);
+#else
+			// BinaryPrimitives.TryReadSingleLittleEndian is not available on netstandard2.0: check the length, then use the compat shim
+			public static bool TryDecode(ReadOnlySpan<byte> source, out float value)
+			{
+				if (source.Length < Unsafe.SizeOf<float>())
+				{
+					value = 0;
+					return false;
+				}
+				value = SnowBank.Compat.BinaryPrimitivesCompat.ReadSingleLittleEndian(source);
+				return true;
+			}
+#endif
 
 			#endregion
 
@@ -1175,17 +1317,38 @@ namespace SnowBank.Data.Binary
 					return false;
 				}
 
+#if NET5_0_OR_GREATER
 				BinaryPrimitives.WriteDoubleLittleEndian(destination, value);
+#else
+				// BinaryPrimitives.WriteDoubleLittleEndian is not available on netstandard2.0
+				SnowBank.Compat.BinaryPrimitivesCompat.WriteDoubleLittleEndian(destination, value);
+#endif
 				bytesWritten = Unsafe.SizeOf<double>();
 				return true;
 			}
 
 			/// <inheritdoc />
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET5_0_OR_GREATER
 			public static bool TryDecode(ReadOnlySpan<byte> source, out double value)
 				=> BinaryPrimitives.TryReadDoubleLittleEndian(source, out value);
+#else
+			// BinaryPrimitives.TryReadDoubleLittleEndian is not available on netstandard2.0: check the length, then use the compat shim
+			public static bool TryDecode(ReadOnlySpan<byte> source, out double value)
+			{
+				if (source.Length < Unsafe.SizeOf<double>())
+				{
+					value = 0;
+					return false;
+				}
+				value = SnowBank.Compat.BinaryPrimitivesCompat.ReadDoubleLittleEndian(source);
+				return true;
+			}
+#endif
 
 			#endregion
+
+#if NET5_0_OR_GREATER
 
 			#region Half...
 
@@ -1227,6 +1390,8 @@ namespace SnowBank.Data.Binary
 
 			#endregion
 
+#endif
+
 		}
 
 		/// <summary>Encodes primitive integers into big-endian, using a fixed size</summary>
@@ -1236,10 +1401,14 @@ namespace SnowBank.Data.Binary
 			ISpanEncoder<long>, ISpanDecoder<long>,
 			ISpanEncoder<ulong>, ISpanDecoder<ulong>,
 			ISpanEncoder<float>, ISpanDecoder<float>,
-			ISpanEncoder<double>, ISpanDecoder<double>,
-			ISpanEncoder<Half>, ISpanDecoder<Half>,
-			ISpanEncoder<Int128>, ISpanDecoder<Int128>,
-			ISpanEncoder<UInt128>, ISpanDecoder<UInt128>
+			ISpanEncoder<double>, ISpanDecoder<double>
+#if NET5_0_OR_GREATER
+			, ISpanEncoder<Half>, ISpanDecoder<Half>
+#endif
+#if NET7_0_OR_GREATER
+			, ISpanEncoder<Int128>, ISpanDecoder<Int128>
+			, ISpanEncoder<UInt128>, ISpanDecoder<UInt128>
+#endif
 		{
 
 			#region Int32...
@@ -1402,6 +1571,8 @@ namespace SnowBank.Data.Binary
 
 			#endregion
 
+#if NET7_0_OR_GREATER
+
 			#region Int128...
 
 			/// <inheritdoc />
@@ -1482,6 +1653,8 @@ namespace SnowBank.Data.Binary
 
 			#endregion
 
+#endif
+
 			#region Single...
 
 			/// <inheritdoc />
@@ -1510,15 +1683,34 @@ namespace SnowBank.Data.Binary
 					return false;
 				}
 
+#if NET5_0_OR_GREATER
 				BinaryPrimitives.WriteSingleBigEndian(destination, value);
+#else
+				// BinaryPrimitives.WriteSingleBigEndian is not available on netstandard2.0
+				SnowBank.Compat.BinaryPrimitivesCompat.WriteSingleBigEndian(destination, value);
+#endif
 				bytesWritten = Unsafe.SizeOf<float>();
 				return true;
 			}
 
 			/// <inheritdoc />
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET5_0_OR_GREATER
 			public static bool TryDecode(ReadOnlySpan<byte> source, out float value)
 				=> BinaryPrimitives.TryReadSingleBigEndian(source, out value);
+#else
+			// BinaryPrimitives.TryReadSingleBigEndian is not available on netstandard2.0: check the length, then use the compat shim
+			public static bool TryDecode(ReadOnlySpan<byte> source, out float value)
+			{
+				if (source.Length < Unsafe.SizeOf<float>())
+				{
+					value = 0;
+					return false;
+				}
+				value = SnowBank.Compat.BinaryPrimitivesCompat.ReadSingleBigEndian(source);
+				return true;
+			}
+#endif
 
 			#endregion
 
@@ -1550,17 +1742,38 @@ namespace SnowBank.Data.Binary
 					return false;
 				}
 
+#if NET5_0_OR_GREATER
 				BinaryPrimitives.WriteDoubleBigEndian(destination, value);
+#else
+				// BinaryPrimitives.WriteDoubleBigEndian is not available on netstandard2.0
+				SnowBank.Compat.BinaryPrimitivesCompat.WriteDoubleBigEndian(destination, value);
+#endif
 				bytesWritten = Unsafe.SizeOf<double>();
 				return true;
 			}
 
 			/// <inheritdoc />
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET5_0_OR_GREATER
 			public static bool TryDecode(ReadOnlySpan<byte> source, out double value)
 				=> BinaryPrimitives.TryReadDoubleBigEndian(source, out value);
+#else
+			// BinaryPrimitives.TryReadDoubleBigEndian is not available on netstandard2.0: check the length, then use the compat shim
+			public static bool TryDecode(ReadOnlySpan<byte> source, out double value)
+			{
+				if (source.Length < Unsafe.SizeOf<double>())
+				{
+					value = 0;
+					return false;
+				}
+				value = SnowBank.Compat.BinaryPrimitivesCompat.ReadDoubleBigEndian(source);
+				return true;
+			}
+#endif
 
 			#endregion
+
+#if NET5_0_OR_GREATER
 
 			#region Half...
 
@@ -1600,6 +1813,8 @@ namespace SnowBank.Data.Binary
 				=> BinaryPrimitives.TryReadHalfBigEndian(source, out value);
 
 			#endregion
+
+#endif
 
 		}
 

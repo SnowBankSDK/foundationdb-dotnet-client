@@ -99,7 +99,7 @@ namespace SnowBank.Linq.Async.Iterators
 		}
 
 		/// <summary>Apply a transformation on the results of the intersection</summary>
-		public override AsyncLinqIterator<TNew> Select<TNew>(Func<TResult, TNew> selector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TResult, TNew> selector)
 		{
 			return new ExceptAsyncIterator<TSource, TKey, TNew>(
 				m_sources,
@@ -114,7 +114,7 @@ namespace SnowBank.Linq.Async.Iterators
 		/// <summary>Limit the number of elements returned by the intersection</summary>
 		/// <param name="limit">Maximum number of results to return</param>
 		/// <returns>New Intersect that will only return the specified number of results</returns>
-		public override AsyncLinqIterator<TResult> Take(int limit)
+		public override IAsyncLinqQuery<TResult> Take(int limit)
 		{
 			if (limit < 0) throw new ArgumentOutOfRangeException(nameof(limit), "Value cannot be less than zero");
 

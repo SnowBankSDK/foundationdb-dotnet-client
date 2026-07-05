@@ -40,8 +40,11 @@ namespace SnowBank.Data.Json.Tests
 {
 	using System.Collections.Immutable;
 	using System.IO.Compression;
+#if !NETFRAMEWORK
+	// System.Text.Json interop is disabled on the netstandard2.0 build of SnowBank.Core
 	using System.Text.Json;
 	using System.Text.Json.Serialization;
+#endif
 	using NodaTime;
 	using SnowBank.Buffers;
 	using SnowBank.Data.Tuples;
@@ -49,6 +52,11 @@ namespace SnowBank.Data.Json.Tests
 
 	public partial class CrystalJsonTest
 	{
+		// the netstandard2.0 build formats floating-point values with "R" (17 significant digits on netfx),
+		// while the modern targets emit the shortest round-trippable form: compute the expected text at runtime
+		private static readonly string PiDoubleText = Math.PI.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+		private static readonly string PiSingleText = ((float) Math.PI).ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
 
 		private static Slice SerializeToSlice(JsonValue value)
 		{
@@ -142,13 +150,13 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(Execute(w => w.WriteValue(long.MinValue)), Is.EqualTo("-9223372036854775808"));
 
 			Assert.That(Execute(w => w.WriteValue(1f)), Is.EqualTo("1"));
-			Assert.That(Execute(w => w.WriteValue((float) Math.PI)), Is.EqualTo("3.1415927"));
+			Assert.That(Execute(w => w.WriteValue((float) Math.PI)), Is.EqualTo(PiSingleText));
 
 			Assert.That(Execute(w => w.WriteValue(1d)), Is.EqualTo("1"));
-			Assert.That(Execute(w => w.WriteValue(Math.PI)), Is.EqualTo("3.141592653589793"));
+			Assert.That(Execute(w => w.WriteValue(Math.PI)), Is.EqualTo(PiDoubleText));
 			Assert.That(Execute(w => w.WriteValue(double.MinValue)), Is.EqualTo("-1.7976931348623157E+308"));
 			Assert.That(Execute(w => w.WriteValue(double.MaxValue)), Is.EqualTo("1.7976931348623157E+308"));
-			Assert.That(Execute(w => w.WriteValue(double.Epsilon)), Is.EqualTo("5E-324"));
+			Assert.That(Execute(w => w.WriteValue(double.Epsilon)), Is.EqualTo(double.Epsilon.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
 
 			Assert.That(Execute(w => w.WriteValue(default(int?))), Is.EqualTo("null"));
 			Assert.That(Execute(w => w.WriteValue((int?) 42)), Is.EqualTo("42"));
@@ -246,8 +254,8 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(Execute(w => w.WriteField("foo", uint.MaxValue)), Is.EqualTo(@"{ ""foo"": 4294967295 }"));
 			Assert.That(Execute(w => w.WriteField("foo", long.MaxValue)), Is.EqualTo(@"{ ""foo"": 9223372036854775807 }"));
 			Assert.That(Execute(w => w.WriteField("foo", long.MinValue)), Is.EqualTo(@"{ ""foo"": -9223372036854775808 }"));
-			Assert.That(Execute(w => w.WriteField("foo", Math.PI)), Is.EqualTo(@"{ ""foo"": 3.141592653589793 }"));
-			Assert.That(Execute(w => w.WriteField("foo", (float) Math.PI)), Is.EqualTo(@"{ ""foo"": 3.1415927 }"));
+			Assert.That(Execute(w => w.WriteField("foo", Math.PI)), Is.EqualTo(@"{ ""foo"": " + PiDoubleText + @" }"));
+			Assert.That(Execute(w => w.WriteField("foo", (float) Math.PI)), Is.EqualTo(@"{ ""foo"": " + PiSingleText + @" }"));
 
 			Assert.That(Execute(w => w.WriteField("foo", default(int?))), Is.EqualTo("{ }"));
 			Assert.That(Execute(w => w.WriteField("foo", (int?) 42)), Is.EqualTo(@"{ ""foo"": 42 }"));
@@ -263,7 +271,9 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(Execute(w => w.WriteField("foo", (double?) 42)), Is.EqualTo(@"{ ""foo"": 42 }"));
 			Assert.That(Execute(w => w.WriteField("foo", default(decimal?))), Is.EqualTo("{ }"));
 			Assert.That(Execute(w => w.WriteField("foo", (decimal?) 42)), Is.EqualTo(@"{ ""foo"": 42 }"));
+#if NET5_0_OR_GREATER
 			Assert.That(Execute(w => w.WriteField("foo", default(Half?))), Is.EqualTo("{ }"));
+#endif
 
 #if NET8_0_OR_GREATER
 			Assert.That(Execute(w => w.WriteField("foo", (Half) Math.PI)), Is.EqualTo(@"{ ""foo"": 3.14 }"));
@@ -3095,7 +3105,12 @@ namespace SnowBank.Data.Json.Tests
 			Verify_TryFormat_Json("\uFFFE");
 			Verify_TryFormat_Json("\uFFFF");
 
+#if NET6_0_OR_GREATER
 			Verify_TryFormat_Json(Slice.Random(Random.Shared, 1024).ToBase64());
+#else
+			// Random.Shared is not available: use a transient instance
+			Verify_TryFormat_Json(Slice.Random(new Random(), 1024).ToBase64());
+#endif
 		}
 
 		[Test]
@@ -3123,11 +3138,11 @@ namespace SnowBank.Data.Json.Tests
 			Verify_TryFormat_Json(12.3);
 			Verify_TryFormat_Json(0.123);
 
-			Verify_TryFormat(Math.PI, "", "3.141592653589793");
+			Verify_TryFormat(Math.PI, "", PiDoubleText);
 			Verify_TryFormat(double.NaN, "", "NaN");
 			Verify_TryFormat(double.PositiveInfinity, "", "Infinity");
 			Verify_TryFormat(double.NegativeInfinity, "", "-Infinity");
-			Verify_TryFormat(double.Epsilon, "", "5E-324");
+			Verify_TryFormat(double.Epsilon, "", double.Epsilon.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
 			Verify_TryFormat_Json(Math.PI);
 			Verify_TryFormat_Json(double.NaN);
 			Verify_TryFormat_Json(double.PositiveInfinity);

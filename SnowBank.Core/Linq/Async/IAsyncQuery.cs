@@ -136,16 +136,28 @@ namespace SnowBank.Linq
 		#region FirstOrDefaultAsync...
 
 		/// <summary>Returns the first result of the query, or the default for this type if the query yields no results.</summary>
-		Task<T?> FirstOrDefaultAsync() => FirstOrDefaultAsync(default(T)!)!;
+		Task<T?> FirstOrDefaultAsync()
+#if NET5_0_OR_GREATER
+			=> FirstOrDefaultAsync(default(T)!)!
+#endif
+		;
 
 		/// <summary>Returns the first result of the query, or the default for this type if the query yields no results.</summary>
 		Task<T> FirstOrDefaultAsync(T defaultValue);
 
-		Task<T?> FirstOrDefaultAsync(Func<T, bool> predicate) => FirstOrDefaultAsync(predicate, default(T)!)!;
+		Task<T?> FirstOrDefaultAsync(Func<T, bool> predicate)
+#if NET5_0_OR_GREATER
+			=> FirstOrDefaultAsync(predicate, default(T)!)!
+#endif
+		;
 
 		Task<T> FirstOrDefaultAsync(Func<T, bool> predicate, T defaultValue);
 
-		Task<T?> FirstOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate) => FirstOrDefaultAsync(predicate, default(T)!)!;
+		Task<T?> FirstOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate)
+#if NET5_0_OR_GREATER
+			=> FirstOrDefaultAsync(predicate, default(T)!)!
+#endif
+		;
 
 		Task<T> FirstOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate, T defaultValue);
 		
@@ -166,19 +178,31 @@ namespace SnowBank.Linq
 		#region SingleOrDefaultAsync...
 
 		/// <summary>Returns the last result of the query, or the default for this type if the query yields no results.</summary>
-		Task<T?> SingleOrDefaultAsync() => SingleOrDefaultAsync(default(T)!)!;
+		Task<T?> SingleOrDefaultAsync()
+#if NET5_0_OR_GREATER
+			=> SingleOrDefaultAsync(default(T)!)!
+#endif
+		;
 
 		Task<T> SingleOrDefaultAsync(T defaultValue);
 
-		Task<T?> SingleOrDefaultAsync(Func<T, bool> predicate) => SingleOrDefaultAsync(predicate, default(T)!)!;
+		Task<T?> SingleOrDefaultAsync(Func<T, bool> predicate)
+#if NET5_0_OR_GREATER
+			=> SingleOrDefaultAsync(predicate, default(T)!)!
+#endif
+		;
 
 		Task<T> SingleOrDefaultAsync(Func<T, bool> predicate, T defaultValue);
 
-		Task<T?> SingleOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate) => SingleOrDefaultAsync(predicate, default(T)!)!;
+		Task<T?> SingleOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate)
+#if NET5_0_OR_GREATER
+			=> SingleOrDefaultAsync(predicate, default(T)!)!
+#endif
+		;
 
 		Task<T> SingleOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate, T defaultValue);
 
-		#endregion
+#endregion
 
 		#region SingleAsync...
 
@@ -195,15 +219,27 @@ namespace SnowBank.Linq
 		#region LastOrDefaultAsync...
 
 		/// <summary>Returns the last result of the query, or the default for this type if the query yields no results.</summary>
-		Task<T?> LastOrDefaultAsync() => LastOrDefaultAsync(default(T)!)!;
+		Task<T?> LastOrDefaultAsync()
+#if NET5_0_OR_GREATER
+			=> LastOrDefaultAsync(default(T)!)!
+#endif
+		;
 
 		Task<T> LastOrDefaultAsync(T defaultValue);
 
-		Task<T?> LastOrDefaultAsync(Func<T, bool> predicate) => LastOrDefaultAsync(predicate, default(T)!)!;
+		Task<T?> LastOrDefaultAsync(Func<T, bool> predicate)
+#if NET5_0_OR_GREATER
+			=> LastOrDefaultAsync(predicate, default(T)!)!
+#endif
+		;
 
 		Task<T> LastOrDefaultAsync(Func<T, bool> predicate, T defaultValue);
 
-		Task<T?> LastOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate) => LastOrDefaultAsync(predicate, default(T)!)!;
+		Task<T?> LastOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate)
+#if NET5_0_OR_GREATER
+			=> LastOrDefaultAsync(predicate, default(T)!)!
+#endif
+		;
 
 		Task<T> LastOrDefaultAsync(Func<T, CancellationToken, Task<bool>> predicate, T defaultValue);
 

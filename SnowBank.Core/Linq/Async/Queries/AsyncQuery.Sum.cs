@@ -33,6 +33,8 @@ namespace SnowBank.Linq
 	public static partial class AsyncQuery
 	{
 
+#if NET7_0_OR_GREATER
+		// generic math (INumberBase, .NET 7+); the per-primitive overloads below remain available on all targets
 		/// <summary>Returns the sum of all elements in the specified async sequence that satisfy a condition.</summary>
 		public static Task<T> SumAsync<T>(this IAsyncQuery<T> source)
 			where T : INumberBase<T>
@@ -72,6 +74,7 @@ namespace SnowBank.Linq
 
 			return AsyncIterators.SumNullableAsync(source);
 		}
+#endif
 
 		/// <summary>Returns the sum of all elements in the specified async sequence.</summary>
 		public static Task<int> SumAsync(this IAsyncQuery<int> source)
@@ -208,6 +211,8 @@ namespace SnowBank.Linq
 	public static partial class AsyncIterators
 	{
 
+#if NET7_0_OR_GREATER
+		// dispatches to the generic-math SumAsync<T>/SumNullableAsync<T> (.NET 7+)
 		private static class SumTrampolines<T>
 		{
 
@@ -227,6 +232,7 @@ namespace SnowBank.Linq
 			}
 
 		}
+#endif
 
 		/// <summary>Version of <see cref="SumAsync{T}"/> that does not have a generic constraint on <typeparamref name="T"/>, and that will perform a runtime dispatch to a compatible method</summary>
 		/// <typeparam name="T">Type of results, that should implement see <see cref="INumberBase{T}"/></typeparam>
@@ -253,6 +259,8 @@ namespace SnowBank.Linq
 				if (typeof(T) == typeof(decimal?)) return (Task<T>) (object) SumDecimalAsync((IAsyncQuery<decimal?>) source);
 			}
 
+#if NET7_0_OR_GREATER
+			// generic math dispatch; on older targets only the concrete numeric types tested above are supported
 			var nullable = Nullable.GetUnderlyingType(typeof(T));
 			if (nullable != null)
 			{
@@ -270,7 +278,12 @@ namespace SnowBank.Linq
 			}
 
 			throw new NotSupportedException();
+#else
+			throw new NotSupportedException();
+#endif
 		}
+#if NET7_0_OR_GREATER
+		// generic math (INumberBase, .NET 7+); the per-primitive overloads below remain available on all targets
 
 		/// <summary>Sums the results of a query</summary>
 		/// <typeparam name="T">Type of the elements</typeparam>
@@ -314,6 +327,7 @@ namespace SnowBank.Linq
 
 			return sum;
 		}
+#endif
 
 		/// <summary>Sums the results of a query</summary>
 		/// <param name="source">Query to sum</param>

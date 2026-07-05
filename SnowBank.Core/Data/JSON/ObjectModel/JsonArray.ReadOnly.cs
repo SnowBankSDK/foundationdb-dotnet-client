@@ -446,7 +446,12 @@ namespace SnowBank.Data.Json
 			var items = new JsonValue[newSize];
 
 			// copy the original array
+#if NET5_0_OR_GREATER
 			var chunk = items.AsSpan(..m_size);
+#else
+			// array.AsSpan(Range) is not available on netstandard2.0
+			var chunk = items.AsSpan(0, m_size);
+#endif
 			this.AsSpan().CopyTo(chunk);
 			if (!m_readOnly)
 			{
@@ -454,7 +459,12 @@ namespace SnowBank.Data.Json
 			}
 
 			// copy the tail
+#if NET5_0_OR_GREATER
 			chunk = items.AsSpan(m_size..);
+#else
+			// array.AsSpan(Range) is not available on netstandard2.0
+			chunk = items.AsSpan(m_size);
+#endif
 			tail.AsSpan().CopyTo(chunk);
 			if (!tail.m_readOnly)
 			{
@@ -489,7 +499,12 @@ namespace SnowBank.Data.Json
 			var items = new JsonValue[newSize];
 
 			// copy the original array
+#if NET5_0_OR_GREATER
 			var chunk = items.AsSpan(..m_size);
+#else
+			// array.AsSpan(Range) is not available on netstandard2.0
+			var chunk = items.AsSpan(0, m_size);
+#endif
 			this.AsSpan().CopyTo(chunk);
 			if (!m_readOnly)
 			{
@@ -497,7 +512,12 @@ namespace SnowBank.Data.Json
 			}
 
 			// copy the tail
+#if NET5_0_OR_GREATER
 			chunk = items.AsSpan(m_size..);
+#else
+			// array.AsSpan(Range) is not available on netstandard2.0
+			chunk = items.AsSpan(m_size);
+#endif
 			tail.CopyTo(chunk);
 			MakeReadOnly(chunk);
 

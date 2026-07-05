@@ -32,7 +32,10 @@ namespace SnowBank.Data.Json
 	/// <summary>JSON Boolean (<see langword="true"/> or <see langword="false"/>)</summary>
 	[DebuggerDisplay("JSON Boolean({m_value})")]
 	[PublicAPI]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(CrystalJsonCustomJsonConverter))]
+#endif
 	[DebuggerNonUserCode]
 	public sealed class JsonBoolean : JsonValue, IEquatable<bool>, IEquatable<JsonBoolean>, IComparable<JsonBoolean>
 	{
@@ -282,6 +285,8 @@ namespace SnowBank.Data.Json
 		public override double ToDouble(double _ = 0d) => m_value ? 1d : 0d;
 
 
+#if NET5_0_OR_GREATER
+// System.Half does not exist on netstandard2.0
 #if NET8_0_OR_GREATER
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Never)]
@@ -290,6 +295,7 @@ namespace SnowBank.Data.Json
 		private static readonly Half HalfZero = (Half) 0;
 		private static readonly Half HalfOne = (Half) 1;
 		public override Half ToHalf(Half _ = default) => m_value ? HalfOne : HalfZero;
+#endif
 #endif
 
 		/// <inheritdoc />

@@ -105,14 +105,17 @@ namespace SnowBank.Data.Tuples.Binary
 			var sw = new SliceWriter();
 			var writer = new TupleWriter(ref sw);
 			PackTo(writer);
-			return sw.ToSlice();
+			return writer.Output.ToSlice();
 		}
 
 		/// <inheritdoc />
 		public int Count => m_items.Count;
 
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		int System.Runtime.CompilerServices.ITuple.Length => this.Count;
+#endif
 
 		/// <inheritdoc cref="IVarTuple.this[int]" />
 		public object? this[int index] => m_items[index];

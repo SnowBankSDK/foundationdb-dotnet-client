@@ -2013,7 +2013,12 @@ namespace SnowBank.Testing
 			}
 			
 			// we have to copy the collection :(
+#if NET5_0_OR_GREATER
 			return Choose(CollectionsMarshal.AsSpan(items.ToList()));
+#else
+			// CollectionsMarshal.AsSpan is not available: copy to an array instead of a list (same single copy)
+			return Choose(items.ToArray().AsSpan());
+#endif
 		}
 
 		/// <summary>Pick a random key/value in a dictionary</summary>
@@ -2076,7 +2081,11 @@ namespace SnowBank.Testing
 
 			if (count <= 0)
 			{
+#if NET8_0_OR_GREATER
 				ArgumentOutOfRangeException.ThrowIfNegative(count);
+#else
+				if (count < 0) throw new ArgumentOutOfRangeException(nameof(count), count, "Value must be non-negative.");
+#endif
 				return string.Empty;
 			}
 
@@ -2641,7 +2650,12 @@ namespace SnowBank.Testing
 			}
 
 			/// <summary>Time elapsed from the start of the current and the first call to <see cref="NotifySuccess"/> or <see cref="NotifyError"/>, or the current instant if the tracker has still not been triggered.</summary>
+#if NET7_0_OR_GREATER
 			public TimeSpan Elapsed => Stopwatch.GetElapsedTime(this.StartedAt, this.CompletedAt ?? Stopwatch.GetTimestamp());
+#else
+			// Stopwatch.GetElapsedTime is not available: convert the timestamp delta manually
+			public TimeSpan Elapsed => new TimeSpan((long) (((this.CompletedAt ?? Stopwatch.GetTimestamp()) - this.StartedAt) * (10_000_000.0 / Stopwatch.Frequency)));
+#endif
 
 			/// <summary>Waits until the tracker is triggered, a timeout expires, of the test is cancelled</summary>
 			/// <param name="timeout">Maximum delay allowed for the tracker to be called</param>

@@ -27,7 +27,6 @@
 namespace SnowBank.Numerics
 {
 	using System.Linq;
-	using SnowBank.Runtime;
 
 	/// <summary>Helper for measuring the results of benchmarks</summary>
 	[PublicAPI]
@@ -136,7 +135,7 @@ namespace SnowBank.Numerics
 			// ReSharper disable InconsistentNaming
 
 			/// <summary>Number of garbage collections observed on the current thread during the execution of the session</summary>
-			public long GcAllocatedOnThread { get; set; }
+			public long? GcAllocatedOnThread { get; set; }
 
 			/// <summary>Number of gen0 collection per 1 million iterations</summary>
 			public double GC0 { get; set; }
@@ -285,7 +284,9 @@ namespace SnowBank.Numerics
 			int totalGc1 = 0;
 			int totalGc2 = 0;
 
+#if NET5_0_OR_GREATER
 			long totalAllocatedOnThread = 0;
+#endif
 
 			var totalElapsed = TimeSpan.Zero;
 			startTimestamp = Stopwatch.GetTimestamp();
@@ -301,7 +302,9 @@ namespace SnowBank.Numerics
 				var gcCount0 = GC.CollectionCount(0);
 				var gcCount1 = GC.CollectionCount(1);
 				var gcCount2 = GC.CollectionCount(2);
+#if NET5_0_OR_GREATER
 				long allocatedAtStart = GC.GetAllocatedBytesForCurrentThread();
+#endif
 
 				var overhead = GetElapsedTime(ts);
 				long iterationStart = Stopwatch.GetTimestamp();
@@ -327,14 +330,18 @@ namespace SnowBank.Numerics
 				}
 				var iterationElapsed = GetElapsedTime(iterationStart);
 
+#if NET5_0_OR_GREATER
 				long allocatedOnThread = GC.GetAllocatedBytesForCurrentThread() - allocatedAtStart;
+#endif
 
 				if (k >= 0)
 				{
 					totalGc0 += GC.CollectionCount(0) - gcCount0;
 					totalGc1 += GC.CollectionCount(1) - gcCount1;
 					totalGc2 += GC.CollectionCount(2) - gcCount2;
+#if NET5_0_OR_GREATER
 					totalAllocatedOnThread += allocatedOnThread;
+#endif
 				}
 
 				var result = cleanup(global, state);
@@ -358,7 +365,9 @@ namespace SnowBank.Numerics
 				RawTotal = GetElapsedTime(startTimestamp),
 				BestRunTotalTime = bestRunTotalTime,
 				Histogram = h,
+#if NET5_0_OR_GREATER
 				GcAllocatedOnThread = totalAllocatedOnThread,
+#endif
 				GC0 = totalGc0, //(totalGC0 * 1000000.0) / (runs * iterations),
 				GC1 = totalGc1, //(totalGC1 * 1000000.0) / (runs * iterations),
 				GC2 = totalGc2, //(totalGC2 * 1000000.0) / (runs * iterations),
@@ -382,7 +391,7 @@ namespace SnowBank.Numerics
 			report.TotalDuration = TimeSpan.FromTicks(filtered.Sum(x => x.Ticks));
 			report.TotalIterations = (long) iterations * filtered.Count;
 
-			// medianne
+			// median
 			var sorted = filtered.ToArray();
 			Array.Sort(sorted);
 			report.BestDuration = times.Min();

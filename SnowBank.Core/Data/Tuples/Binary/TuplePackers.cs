@@ -2450,11 +2450,21 @@ namespace SnowBank.Data.Tuples.Binary
 					}
 					case TupleTypes.Bytes:
 					{
+#if NET7_0_OR_GREATER
 						return TupleParser.TryParseAscii(slice, out var str) && long.TryParse(str, CultureInfo.InvariantCulture, out value);
+#else
+						// TryParse(string, IFormatProvider, out ...) not available
+						return TupleParser.TryParseAscii(slice, out var str) && long.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+#endif
 					}
 					case TupleTypes.Utf8:
 					{
+#if NET7_0_OR_GREATER
 						return TupleParser.TryParseUtf8(slice, out var str) && long.TryParse(str, CultureInfo.InvariantCulture, out value);
+#else
+						// TryParse(string, IFormatProvider, out ...) not available
+						return TupleParser.TryParseUtf8(slice, out var str) && long.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+#endif
 					}
 				}
 			}
@@ -2500,7 +2510,7 @@ namespace SnowBank.Data.Tuples.Binary
 						}
 						return result;
 #else
-						return long.Parse(TupleParser.ParseUnicode(slice), CultureInfo.InvariantCulture);
+						return long.Parse(TupleParser.ParseUtf8(slice), CultureInfo.InvariantCulture);
 #endif
 					}
 				}
@@ -2573,11 +2583,21 @@ namespace SnowBank.Data.Tuples.Binary
 					}
 					case TupleTypes.Bytes:
 					{
+#if NET7_0_OR_GREATER
 						return TupleParser.TryParseAscii(slice, out var str) && ulong.TryParse(str, CultureInfo.InvariantCulture, out value);
+#else
+						// TryParse(string, IFormatProvider, out ...) not available
+						return TupleParser.TryParseAscii(slice, out var str) && ulong.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+#endif
 					}
 					case TupleTypes.Utf8:
 					{
+#if NET7_0_OR_GREATER
 						return TupleParser.TryParseUtf8(slice, out var str) && ulong.TryParse(str, CultureInfo.InvariantCulture, out value);
+#else
+						// TryParse(string, IFormatProvider, out ...) not available
+						return TupleParser.TryParseUtf8(slice, out var str) && ulong.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+#endif
 					}
 				}
 			}
@@ -2637,7 +2657,12 @@ namespace SnowBank.Data.Tuples.Binary
 				{
 					if (TupleParser.TryParseUtf8(slice, out var str))
 					{
+#if NET7_0_OR_GREATER
 						return float.TryParse(str, CultureInfo.InvariantCulture, out value);
+#else
+						// TryParse(string, IFormatProvider, out ...) not available
+						return float.TryParse(str, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out value);
+#endif
 
 					}
 					break;
@@ -2704,7 +2729,7 @@ namespace SnowBank.Data.Tuples.Binary
 					}
 					return result;
 #else
-					return float.Parse(TupleParser.ParseUnicode(slice), CultureInfo.InvariantCulture);
+					return float.Parse(TupleParser.ParseUtf8(slice), CultureInfo.InvariantCulture);
 #endif
 				}
 				case TupleTypes.Single:
@@ -2758,7 +2783,12 @@ namespace SnowBank.Data.Tuples.Binary
 				{
 					if (TupleParser.TryParseUtf8(slice, out var str))
 					{
+#if NET7_0_OR_GREATER
 						return double.TryParse(str, CultureInfo.InvariantCulture, out value);
+#else
+						// TryParse(string, IFormatProvider, out ...) not available
+						return double.TryParse(str, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out value);
+#endif
 					}
 					break;
 				}
@@ -2818,7 +2848,7 @@ namespace SnowBank.Data.Tuples.Binary
 					}
 					return result;
 #else
-					return double.Parse(TupleParser.ParseUnicode(slice), CultureInfo.InvariantCulture);
+					return double.Parse(TupleParser.ParseUtf8(slice), CultureInfo.InvariantCulture);
 #endif
 				}
 				case TupleTypes.Single:
@@ -2967,7 +2997,12 @@ namespace SnowBank.Data.Tuples.Binary
 				{ // encoded as a base-10 number?
 					if (TupleParser.TryParseUtf8(slice, out var str))
 					{
+#if NET7_0_OR_GREATER
 						return BigInteger.TryParse(str, CultureInfo.InvariantCulture, out value);
+#else
+						// TryParse(string, IFormatProvider, out ...) not available
+						return BigInteger.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+#endif
 					}
 					break;
 				}
@@ -3031,7 +3066,7 @@ namespace SnowBank.Data.Tuples.Binary
 					}
 					return result;
 #else
-					return BigInteger.Parse(TupleParser.ParseUnicode(slice), CultureInfo.InvariantCulture);
+					return BigInteger.Parse(TupleParser.ParseUtf8(slice), CultureInfo.InvariantCulture);
 #endif
 				}
 				case TupleTypes.NegativeBigInteger:

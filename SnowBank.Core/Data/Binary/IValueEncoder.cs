@@ -52,12 +52,15 @@ namespace SnowBank.Data.Binary
 	{
 		//TODO: add custom "EncodeValueTo(ref SliceWriter)" and "DecodeValueFrom(ref SliceReader)" ?
 
+#if NET5_0_OR_GREATER
+		// default interface implementations need runtime support that netstandard2.0/netfx lacks
 		/// <summary>Writes a value to the specified buffer</summary>
 		void WriteValueTo(ref SliceWriter writer, TValue? value)
 		//REVIEW: TODO: rename to "EncodeValueTo" ??
 		{
 			writer.WriteBytes(EncodeValue(value));
 		}
+#endif
 
 	}
 

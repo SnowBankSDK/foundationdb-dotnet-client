@@ -20,6 +20,8 @@ namespace System.Text
 	public ref struct InvariantAppendInterpolatedStringHandler
 	{
 
+#if NET6_0_OR_GREATER
+
 		/// <summary>Handler that handles the actual implementation.</summary>
 		private StringBuilder.AppendInterpolatedStringHandler Inner;
 
@@ -81,6 +83,65 @@ namespace System.Text
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void AppendFormatted(object? value, int alignment = 0, string? format = null)
 			=> this.Inner.AppendFormatted(value, alignment, format);
+
+#else
+
+		// netstandard2.0 has no StringBuilder.AppendInterpolatedStringHandler (a nested BCL type that cannot be polyfilled):
+		// append directly to the StringBuilder, formatting every hole with the invariant culture. Same result as the modern
+		// handler (values written straight into the StringBuilder, no intermediate string per interpolated expression); the
+		// only cost is that IFormattable/alignment go through string.Format-style boxing/temporaries instead of spans.
+
+		/// <summary>The StringBuilder that holes are appended to.</summary>
+		private readonly StringBuilder Builder;
+
+		/// <inheritdoc cref="InvariantAppendInterpolatedStringHandler(int,int,StringBuilder)"/>
+		public InvariantAppendInterpolatedStringHandler(int literalLength, int formattedCount, StringBuilder sb)
+		{
+			this.Builder = sb;
+		}
+
+		public void AppendLiteral(string value) => this.Builder.Append(value);
+
+		public void AppendFormatted<T>(T value) => this.AppendWithAlignment(Format(value, null), 0);
+
+		public void AppendFormatted<T>(T value, string? format) => this.AppendWithAlignment(Format(value, format), 0);
+
+		public void AppendFormatted<T>(T value, int alignment) => this.AppendWithAlignment(Format(value, null), alignment);
+
+		public void AppendFormatted<T>(T value, int alignment, string? format) => this.AppendWithAlignment(Format(value, format), alignment);
+
+		public void AppendFormatted(scoped ReadOnlySpan<char> value) => this.Builder.Append(value.ToString());
+
+		public void AppendFormatted(scoped ReadOnlySpan<char> value, int alignment = 0, string? format = null) => this.AppendWithAlignment(value.ToString(), alignment);
+
+		public void AppendFormatted(string? value) => this.Builder.Append(value);
+
+		public void AppendFormatted(string? value, int alignment = 0, string? format = null) => this.AppendWithAlignment(value, alignment);
+
+		public void AppendFormatted(object? value, int alignment = 0, string? format = null) => this.AppendWithAlignment(Format(value, format), alignment);
+
+		private static string? Format<T>(T value, string? format)
+			=> value is IFormattable formattable ? formattable.ToString(format, CultureInfo.InvariantCulture) : value?.ToString();
+
+		private void AppendWithAlignment(string? text, int alignment)
+		{
+			text ??= string.Empty;
+			int padding = Math.Abs(alignment) - text.Length;
+			if (padding <= 0)
+			{
+				this.Builder.Append(text);
+			}
+			else if (alignment < 0)
+			{ // left-justified
+				this.Builder.Append(text).Append(' ', padding);
+			}
+			else
+			{ // right-justified
+				this.Builder.Append(' ', padding).Append(text);
+			}
+		}
+
+#endif
 
 	}
 

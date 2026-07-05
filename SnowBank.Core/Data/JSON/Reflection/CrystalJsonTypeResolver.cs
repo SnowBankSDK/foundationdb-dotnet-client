@@ -420,7 +420,10 @@ namespace SnowBank.Data.Json
 				if (elementType == typeof(DateTimeOffset)) return static (_, array) => array?.ToDateTimeOffsetArray();
 				if (elementType == typeof(NodaTime.Instant)) return static (_, array) => array?.ToInstantArray();
 				if (elementType == typeof(decimal)) return static (_, array) => array?.ToDecimalArray();
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (elementType == typeof(Half)) return static (_, array) => array?.ToHalfArray();
+#endif
 				return CreateDefaultJsonArrayBinder_Filler(nameof(FillArray), elementType);
 			}
 
@@ -530,7 +533,10 @@ namespace SnowBank.Data.Json
 						if (elementType == typeof(DateTimeOffset)) return static (_, array) => array?.ToDateTimeOffsetList();
 						if (elementType == typeof(NodaTime.Instant)) return static (_, array) => array?.ToInstantList();
 						if (elementType == typeof(decimal)) return static (_, array) => array?.ToDecimalList();
+#if NET5_0_OR_GREATER
+						// System.Half does not exist on netstandard2.0
 						if (elementType == typeof(Half)) return static (_, array) => array?.ToHalfList();
+#endif
 					}
 					return CreateDefaultJsonArrayBinder_Filler(filler, elementType);
 				}
@@ -547,10 +553,19 @@ namespace SnowBank.Data.Json
 				return CreateDefaultJsonArrayBinder_STuple(type);
 			}
 
+#if !NETSTANDARD2_0
+			// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 			if (typeof(System.Runtime.CompilerServices.ITuple).IsAssignableFrom(type))
 			{
 				return CreateDefaultJsonArrayBinder_ITuple(type);
 			}
+#else
+			// ITuple is not visible to the netstandard2.0 compiler, but the runtime usually carries it: probe dynamically
+			if (RuntimeITuple.IsTuple(type))
+			{
+				return CreateDefaultJsonArrayBinder_ITuple(type);
+			}
+#endif
 
 			var staticMethod = type.GetMethod("JsonUnpack", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
 			if (staticMethod != null)
@@ -590,13 +605,22 @@ namespace SnowBank.Data.Json
 				.GetMethod(nameof(BindJsonDeserializer), BindingFlags.Static | BindingFlags.NonPublic)!
 				.MakeGenericMethod(type);
 
+#if NET5_0_OR_GREATER
 			return m.CreateDelegate<CrystalJsonTypeBinder>();
+#else
+			return (CrystalJsonTypeBinder) m.CreateDelegate(typeof(CrystalJsonTypeBinder)); // the generic CreateDelegate<T>() overload is .NET 5+
+#endif
 		}
 
 		private static object? BindJsonDeserializer<TValue>(JsonValue? value, Type type, ICrystalJsonTypeResolver resolver) where TValue : IJsonDeserializable<TValue>
 		{
 			if (value is null or JsonNull) return null;
+#if NET7_0_OR_GREATER
 			return TValue.JsonDeserialize(value, resolver);
+#else
+			// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+			return JsonDeserializableDispatcher<TValue>.Invoke(value, resolver);
+#endif
 		}
 
 		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder_Boxed(Type type)
@@ -962,7 +986,14 @@ namespace SnowBank.Data.Json
 
 		private static JsonPropertyAttribute? FindPropertyAttribute(MemberInfo member)
 		{
+#if !NETSTANDARD2_0
 			System.Text.Json.Serialization.JsonPropertyNameAttribute? fallbackSystemTextJson = null;
+#else
+			// the netstandard2.0 build does not reference System.Text.Json: recognize its attribute by name+namespace and read
+			// its Name via reflection, the same way the Newtonsoft attribute is handled below (so [JsonPropertyName]
+			// on consumer DTOs keeps working, just slower)
+			Attribute? fallbackSystemTextJson = null;
+#endif
 			Attribute? fallbackNewtonsoftJson = null;
 			foreach (var attr in member.GetCustomAttributes(true))
 			{
@@ -973,11 +1004,18 @@ namespace SnowBank.Data.Json
 				}
 
 				// recognize [JsonPropertyName(...)] from System.Text.Json, if present
+#if !NETSTANDARD2_0
 				if (attr is System.Text.Json.Serialization.JsonPropertyNameAttribute jpn)
 				{
 					fallbackSystemTextJson = jpn;
 				}
-				
+#else
+				if (attr.GetType().Name == "JsonPropertyNameAttribute" && attr.GetType().Namespace == "System.Text.Json.Serialization")
+				{
+					fallbackSystemTextJson = (Attribute) attr;
+				}
+#endif
+
 				// likewise, recognize the attribute from JSON.Net
 				//note: since we don't reference the package, we have to test the name+namespace !
 				if (attr.GetType().Name == "JsonPropertyAttribute" && attr.GetType().Namespace == "Newtonsoft.Json")
@@ -988,7 +1026,12 @@ namespace SnowBank.Data.Json
 
 			if (fallbackSystemTextJson is not null)
 			{ // fake the original [JsonProperty("...")] by copying the name of the other attribute
+#if NET5_0_OR_GREATER
 				return new JsonPropertyAttribute(fallbackSystemTextJson.Name);
+#else
+				var stjName = (string?) fallbackSystemTextJson.GetType().GetProperty("Name")?.GetValue(fallbackSystemTextJson);
+				if (stjName != null) return new JsonPropertyAttribute(stjName);
+#endif
 			}
 
 			if (fallbackNewtonsoftJson is not null)
@@ -1185,7 +1228,9 @@ namespace SnowBank.Data.Json
 			return member.GetCustomAttribute<System.Runtime.CompilerServices.RequiredMemberAttribute>() != null;
 		}
 
+#if NET5_0_OR_GREATER
 		private static readonly NullabilityInfoContext s_nullabilityContext = new();
+#endif
 
 		/// <summary>Tests if a member of a type is decorated with the <see langword="required"/> keyword</summary>
 		public static bool IsNotNullMemberType(MemberInfo member, Type memberType)
@@ -1194,6 +1239,7 @@ namespace SnowBank.Data.Json
 			if (IsNullableType(memberType)) return false;
 			if (memberType.IsValueType) return true;
 
+#if NET5_0_OR_GREATER
 			switch (member)
 			{
 				case PropertyInfo property:
@@ -1215,6 +1261,12 @@ namespace SnowBank.Data.Json
 					return false;
 				}
 			}
+#else
+			// NullabilityInfoContext (.NET 6+) is not available: without the nullable-reference-type metadata reader,
+			// conservatively treat every reference-type member as nullable (fewer non-null constraints enforced when
+			// binding, never a spurious "required" failure)
+			return false;
+#endif
 		}
 
 		private static Action<object, object?>? TryCompileAdderForReadOnlyCollection(
@@ -1271,6 +1323,8 @@ namespace SnowBank.Data.Json
 
 		private static readonly CrystalJsonTypeBinder GenericJsonValueBinder = (v, t, r) => (v ?? JsonNull.Missing).Bind(t, r);
 
+#if !NETSTANDARD2_0
+		// System.Text.Json interop is disabled on the netstandard2.0 build: [JsonPolymorphic]/[JsonDerivedType] on consumer DTOs are not recognized there
 		private static bool TryFindJsonPolymorphicAttribute(Type type, [MaybeNullWhen(false)] out System.Text.Json.Serialization.JsonPolymorphicAttribute attr, [MaybeNullWhen(false)] out Type parent)
 		{
 			attr = type.GetCustomAttribute<System.Text.Json.Serialization.JsonPolymorphicAttribute>(inherit: false);
@@ -1304,6 +1358,64 @@ namespace SnowBank.Data.Json
 			parent = null;
 			return false;
 		}
+#else
+		// the netstandard2.0 build does not reference System.Text.Json: recognize [JsonPolymorphic]/[JsonDerivedType]
+		// by their full name and read their properties via reflection, the same way [JsonPropertyName] is handled by
+		// FindPropertyAttribute (slower, but polymorphic consumer DTOs keep working)
+		private static bool TryFindJsonPolymorphicAttributeByName(Type type, out string? discriminatorPropertyName, [MaybeNullWhen(false)] out Type parent)
+		{
+			foreach (var attr in type.GetCustomAttributes(inherit: false))
+			{
+				var at = attr.GetType();
+				if (at.FullName == "System.Text.Json.Serialization.JsonPolymorphicAttribute")
+				{
+					discriminatorPropertyName = (string?) at.GetProperty("TypeDiscriminatorPropertyName")?.GetValue(attr);
+					parent = type;
+					return true;
+				}
+			}
+
+			// is it on our base type?
+			if (type.BaseType is not null && type.BaseType != typeof(object))
+			{
+				if (TryFindJsonPolymorphicAttributeByName(type.BaseType, out discriminatorPropertyName, out parent))
+				{
+					return true;
+				}
+			}
+
+			// is it on one of our interfaces?
+			foreach (var iface in type.GetInterfaces())
+			{
+				if (iface.Namespace is "System" || iface.Namespace!.StartsWith("System.")) continue;
+				if (TryFindJsonPolymorphicAttributeByName(iface, out discriminatorPropertyName, out parent))
+				{
+					return true;
+				}
+			}
+
+			discriminatorPropertyName = null;
+			parent = null;
+			return false;
+		}
+
+		private static List<KeyValuePair<Type, object?>> GetJsonDerivedTypesByName(Type parent)
+		{
+			var res = new List<KeyValuePair<Type, object?>>();
+			foreach (var attr in parent.GetCustomAttributes(inherit: false))
+			{
+				var at = attr.GetType();
+				if (at.FullName == "System.Text.Json.Serialization.JsonDerivedTypeAttribute")
+				{
+					if (at.GetProperty("DerivedType")?.GetValue(attr) is Type derived)
+					{
+						res.Add(new(derived, at.GetProperty("TypeDiscriminator")?.GetValue(attr)));
+					}
+				}
+			}
+			return res;
+		}
+#endif
 
 		/// <summary>Extracts the type definition via reflection, and generate a list of compiled binders</summary>
 		/// <param name="type">Class, struct, interface. Primitive type are not supported</param>
@@ -1317,6 +1429,7 @@ namespace SnowBank.Data.Json
 			Type? baseType = null; // if we are not a "leaf"
 
 			// look for polymorphic types (either on the type itself or one of its parent)
+#if !NETSTANDARD2_0
 			if (TryFindJsonPolymorphicAttribute(type, out var polymorphic, out var parent))
 			{
 				typeDiscriminatorProperty = new(polymorphic.TypeDiscriminatorPropertyName ?? "$type");
@@ -1357,6 +1470,49 @@ namespace SnowBank.Data.Json
 					baseType = parent;
 				}
 			}
+#else
+			// same logic as above, but reading the System.Text.Json attributes by name via reflection
+			if (TryFindJsonPolymorphicAttributeByName(type, out var discriminatorName, out var parent))
+			{
+				typeDiscriminatorProperty = new(discriminatorName ?? "$type");
+
+				var derivedTypes = GetJsonDerivedTypesByName(parent);
+
+				if (type == parent)
+				{ // we are the top
+
+					// generate the type map
+					derivedTypeMap = new(derivedTypes.Count, JsonValueComparer.Default);
+					foreach (var t in derivedTypes)
+					{
+						if (t.Value == null) continue;
+						derivedTypeMap[JsonValue.FromValue(t.Value)] = t.Key;
+					}
+				}
+				else
+				{ // we are a derived type
+
+					// find our entry to extract the discriminator value
+					bool found = false;
+					foreach (var t in derivedTypes)
+					{
+						if (t.Key == type)
+						{
+							if (t.Value is not null)
+							{
+								Contract.Debug.Assert(t.Value is string or int);
+								typeDiscriminatorValue = JsonValue.FromValue(t.Value);
+							}
+							found = true;
+							break;
+						}
+					}
+
+					if (!found) throw new InvalidOperationException("Cannot resolve intermediate type {} in polymorphic chain under {} because there is not JsonDerivedType attribute for this specific type.");
+					baseType = parent;
+				}
+			}
+#endif
 
 			// enumerate the members
 			var members = GetMembersFromReflection(type);
@@ -1366,8 +1522,12 @@ namespace SnowBank.Data.Json
 
 			if (binder == null)
 			{ // we need to generate one ourselves for this type
-				 
+
+#if NET5_0_OR_GREATER
 				if (polymorphic != null && type.IsInterface || type.IsAbstract)
+#else
+				if (type.IsAbstract) // no polymorphic support on this target: only the abstract case remains
+#endif
 				{ // we are part of a polymorphic chain but cannot be constructed
 					//generator = null;
 				}
@@ -1736,7 +1896,11 @@ namespace SnowBank.Data.Json
 				.GetMethod(nameof(BindImmutableDictionary_StringKey), BindingFlags.Static | BindingFlags.NonPublic)!
 				.MakeGenericMethod(valueType);
 
+#if NET5_0_OR_GREATER
 			return m.CreateDelegate<CrystalJsonTypeBinder>();
+#else
+			return (CrystalJsonTypeBinder) m.CreateDelegate(typeof(CrystalJsonTypeBinder)); // the generic CreateDelegate<T>() overload is .NET 5+
+#endif
 		}
 
 		private static object? BindImmutableDictionary_StringKey<TValue>(JsonValue? value, Type type, ICrystalJsonTypeResolver resolver)
@@ -1761,7 +1925,11 @@ namespace SnowBank.Data.Json
 			        .GetMethod(nameof(BindImmutableDictionary_Int32Key), BindingFlags.Static | BindingFlags.NonPublic)!
 			        .MakeGenericMethod(valueType);
 
+#if NET5_0_OR_GREATER
 			return m.CreateDelegate<CrystalJsonTypeBinder>();
+#else
+			return (CrystalJsonTypeBinder) m.CreateDelegate(typeof(CrystalJsonTypeBinder)); // the generic CreateDelegate<T>() overload is .NET 5+
+#endif
 		}
 
 		private static object? BindImmutableDictionary_Int32Key<TValue>(JsonValue? value, Type type, ICrystalJsonTypeResolver resolver)
@@ -1954,12 +2122,27 @@ namespace SnowBank.Data.Json
 				var arrayIndexer = typeof(JsonValue).GetProperty("Item", typeof(JsonValue), [ typeof(int) ]);
 
 				// JsonValueExtensions.As<T>(JsonValue, TValue?, ICrystalJsonTypeResolver)
+#if NET5_0_OR_GREATER
 				var asMethod = typeof(JsonValueExtensions).GetMethod(
 					nameof(JsonValueExtensions.As),
 					BindingFlags.Static | BindingFlags.Public,
 					null,
 					[ typeof(JsonValue), Type.MakeGenericMethodParameter(0), typeof(ICrystalJsonTypeResolver) ],
 					null);
+#else
+				// Type.MakeGenericMethodParameter is .NET 5+: scan the overloads manually (one-time cost, result is cached by the caller)
+				MethodInfo? asMethod = null;
+				foreach (var candidate in typeof(JsonValueExtensions).GetMethods(BindingFlags.Static | BindingFlags.Public))
+				{
+					if (candidate.Name != nameof(JsonValueExtensions.As) || !candidate.IsGenericMethodDefinition) continue;
+					var prms = candidate.GetParameters();
+					if (prms.Length == 3 && prms[0].ParameterType == typeof(JsonValue) && prms[1].ParameterType.IsGenericParameter && prms[2].ParameterType == typeof(ICrystalJsonTypeResolver))
+					{
+						asMethod = candidate;
+						break;
+					}
+				}
+#endif
 				Contract.Debug.Assert(asMethod != null, $"Could not find the {nameof(JsonValueExtensions)}.{nameof(JsonValueExtensions.As)}As<...>(...) extension method!");
 
 				var items = new Expression[args.Length];

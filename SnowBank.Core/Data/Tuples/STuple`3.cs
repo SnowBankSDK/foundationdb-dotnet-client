@@ -91,11 +91,14 @@ namespace SnowBank.Data.Tuples
 			_  => TupleHelpers.FailIndexOutOfRange<object>(index, 3)
 		};
 
+#if !NETSTANDARD2_0
+		// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		int ITuple.Length => 3;
 
 		/// <inheritdoc />
 		object? ITuple.this[int index] => this[index];
+#endif
 
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Never)]

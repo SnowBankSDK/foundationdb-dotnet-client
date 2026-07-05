@@ -1067,13 +1067,13 @@ namespace SnowBank.Buffers.Tests
 			// large buffer
 			buf.AsSpan().Fill(0xAA);
 			Assert.That(((ISpanEncodable) sw).TryEncode(buf, out written), Is.True);
-			Assert.That(buf[..written], Is.EqualTo(sw.ToSpan().ToArray()));
+			Assert.That(buf.AsSpan(0, written).ToArray(), Is.EqualTo(sw.ToSpan().ToArray()));
 			Assert.That(buf.AsSpan(written).ContainsAnyExcept((byte) 0xAA), Is.False);
 
 			// exact buffer size
 			buf.AsSpan().Fill(0xAA);
 			Assert.That(((ISpanEncodable) sw).TryEncode(buf.AsSpan(0, sw.Position), out written), Is.True);
-			Assert.That(buf[..written], Is.EqualTo(sw.ToSpan().ToArray()));
+			Assert.That(buf.AsSpan(0, written).ToArray(), Is.EqualTo(sw.ToSpan().ToArray()));
 			Assert.That(buf.AsSpan(written).ContainsAnyExcept((byte) 0xAA), Is.False);
 
 			// buffer too small

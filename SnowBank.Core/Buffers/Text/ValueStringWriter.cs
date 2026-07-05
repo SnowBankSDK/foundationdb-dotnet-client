@@ -468,7 +468,12 @@ namespace SnowBank.Buffers.Text
 		[CollectionAccess(CollectionAccessType.Read)]
 		public readonly int CopyTo(StringBuilder destination)
 		{
+#if NET5_0_OR_GREATER
 			destination.Append(this.Span);
+#else
+			// StringBuilder.Append(ReadOnlySpan<char>) is not available on netstandard2.0: append the backing array directly
+			destination.Append(this.Buffer, 0, this.Count);
+#endif
 			var count = this.Count;
 			return count;
 		}
@@ -476,7 +481,16 @@ namespace SnowBank.Buffers.Text
 		/// <summary>Copies the content of the buffer into a destination writer</summary>
 		public readonly void CopyTo(IBufferWriter<byte> destination)
 		{
+#if NET5_0_OR_GREATER
 			JsonEncoding.Utf8NoBom.GetBytes(this.Span, destination);
+#else
+			// Encoding.GetBytes(ReadOnlySpan<char>, IBufferWriter<byte>) is not available on netstandard2.0: encode into the writer's span directly
+			var chars = this.Span;
+			int required = JsonEncoding.Utf8NoBom.GetByteCount(chars);
+			var buffer = destination.GetSpan(required);
+			int written = JsonEncoding.Utf8NoBom.GetBytes(chars, buffer);
+			destination.Advance(written);
+#endif
 		}
 
 		/// <summary>Copies the content of the buffer into a destination stream</summary>
@@ -504,7 +518,20 @@ namespace SnowBank.Buffers.Text
 			}
 			else
 			{
+#if NET5_0_OR_GREATER
 				await destination.WriteAsync(data.Memory, ct).ConfigureAwait(false);
+#else
+				// Stream.WriteAsync(ReadOnlyMemory<byte>, CancellationToken) is not available on netstandard2.0: bridge to the array-based overload
+				if (System.Runtime.InteropServices.MemoryMarshal.TryGetArray(data.Memory, out var segment) && segment.Array is { } array)
+				{
+					await destination.WriteAsync(array, segment.Offset, segment.Count, ct).ConfigureAwait(false);
+				}
+				else
+				{
+					var tmp = data.ToArray();
+					await destination.WriteAsync(tmp, 0, tmp.Length, ct).ConfigureAwait(false);
+				}
+#endif
 			}
 
 		}
@@ -956,6 +983,8 @@ namespace SnowBank.Buffers.Text
 			Advance(written);
 		}
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <summary>Writes the text representation of a 16-bit IEEE floating point number, using the Invariant culture</summary>
 		/// <param name="value">Value to write</param>
 		public void Write(Half value)
@@ -968,6 +997,7 @@ namespace SnowBank.Buffers.Text
 
 			Advance(written);
 		}
+#endif
 
 		#endregion
 

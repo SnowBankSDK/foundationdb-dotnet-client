@@ -85,7 +85,12 @@ namespace SnowBank.Networking.Tests
 		public async Task Test_Can_Traceroute_Self()
 		{
 			// on va tracertoute l'ip public du host local
+#if NET6_0_OR_GREATER
 			var target = IPAddressHelpers.GetPreferredAddress(await Dns.GetHostAddressesAsync(Environment.MachineName, AddressFamily.InterNetwork, this.Cancellation));
+#else
+			// the (host, family, ct) overload is .NET 6+: resolve everything and filter here
+			var target = IPAddressHelpers.GetPreferredAddress((await Dns.GetHostAddressesAsync(Environment.MachineName)).Where(x => x.AddressFamily == AddressFamily.InterNetwork).ToArray());
+#endif
 			Assert.That(target, Is.Not.Null);
 
 			Log($"# Traceroute: {target}");

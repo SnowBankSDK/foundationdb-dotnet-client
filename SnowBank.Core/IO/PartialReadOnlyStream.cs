@@ -206,10 +206,12 @@ namespace SnowBank.IO
 				: 0;
 		}
 
+#if NET5_0_OR_GREATER
 		public override int Read(Span<byte> buffer)
 		{
 			return ComputeBound(buffer.Length, out var read, out var inner) ? inner.Read(buffer[..read]) : 0;
 		}
+#endif
 
 		public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
 		{
@@ -224,6 +226,7 @@ namespace SnowBank.IO
 				: Task.FromResult(0);
 		}
 
+#if NET5_0_OR_GREATER
 		public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = new CancellationToken())
 		{
 			if (cancellationToken.IsCancellationRequested) return ValueTask.FromCanceled<int>(cancellationToken);
@@ -232,6 +235,7 @@ namespace SnowBank.IO
 				? inner.ReadAsync(buffer[..read], cancellationToken)
 				: default;
 		}
+#endif
 
 		protected override void Dispose(bool disposing)
 		{
@@ -244,6 +248,7 @@ namespace SnowBank.IO
 			}
 		}
 
+#if NET5_0_OR_GREATER
 		public override ValueTask DisposeAsync()
 		{
 			var inner = this.Inner;
@@ -251,6 +256,7 @@ namespace SnowBank.IO
 
 			return this.OwnsStream && inner != null ? inner.DisposeAsync() : default;
 		}
+#endif
 
 		#region Unsupported Methods...
 
@@ -260,11 +266,13 @@ namespace SnowBank.IO
 
 		public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
-		public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException();
-
 		public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => Task.FromException(new NotSupportedException());
 
+#if NET5_0_OR_GREATER
+		public override void Write(ReadOnlySpan<byte> buffer) => throw new NotSupportedException();
+
 		public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = new CancellationToken()) => ValueTask.FromException(new NotSupportedException());
+#endif
 
 		public override void Flush() => throw new NotSupportedException();
 
@@ -276,7 +284,7 @@ namespace SnowBank.IO
 			set => throw new NotSupportedException();
 		}
 
-		#endregion
+#endregion
 
 	}
 

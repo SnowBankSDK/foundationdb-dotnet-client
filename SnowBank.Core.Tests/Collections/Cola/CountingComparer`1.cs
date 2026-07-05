@@ -24,6 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+// This file is not compiled for the net472 validation target: the COLA collections are not part of the netstandard2.0 build of SnowBank.Core.
+#if !NETFRAMEWORK
+
 namespace SnowBank.Collections.CacheOblivious.Test
 {
 	/// <summary>Wrapper for an <see cref="IComparer{T}"/> that counts the number of calls to the <see cref="Compare"/> method</summary>
@@ -59,3 +62,5 @@ namespace SnowBank.Collections.CacheOblivious.Test
 	}
 
 }
+
+#endif

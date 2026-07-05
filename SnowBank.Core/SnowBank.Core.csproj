@@ -1,8 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);netstandard2.0</TargetFrameworks>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
@@ -33,7 +34,7 @@
 		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
 	</ItemGroup>
 
-	<ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 		<PackageReference Include="Microsoft.Extensions.Options" />
@@ -42,5 +43,51 @@
 		<PackageReference Include="System.IO.Pipelines" Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))" />
 		<PackageReference Include="System.IO.Hashing" />
 	</ItemGroup>
+
+	<PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<PolySharpUsePublicAccessibilityForGeneratedTypes>true</PolySharpUsePublicAccessibilityForGeneratedTypes>
+		<!-- Nullable-flow false positives (CS8602 deref / CS8603 return / CS8604 arg / CS8767 impl / CS8777 out-contract): the
+		     netstandard2.0 BCL lacks the nullable flow annotations the modern BCL carries (e.g. [NotNullWhen(false)]
+		     on string.IsNullOrEmpty), so guarded code still reads as possibly-null on this target only. The same
+		     source compiles with full annotations on net8+, which is where nullable correctness is enforced. -->
+		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8777</NoWarn>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+		<PackageReference Include="Microsoft.Extensions.Options" />
+		<PackageReference Include="System.Threading.Channels" />
+		<!-- Span<T> / Memory<T> / ReadOnlySpan<T> for netstandard2.0 -->
+		<PackageReference Include="System.Memory" />
+		<!-- Source-generates the compiler-required polyfill attributes/types
+		     (CallerArgumentExpression, StackTraceHidden, DoesNotReturn, nullable attrs, IsExternalInit, ...) -->
+		<PackageReference Include="PolySharp" PrivateAssets="all" />
+		<!-- System.HashCode for netstandard2.0 -->
+		<PackageReference Include="Microsoft.Bcl.HashCode" />
+		<!-- NodaTime types (Instant/ZonedDateTime/...) used by the CrystalJson converters -->
+		<PackageReference Include="NodaTime" />
+		<!-- FrozenDictionary + ImmutableArray: the package ships System.Collections.Frozen for netstandard2.0 -->
+		<PackageReference Include="System.Collections.Immutable" />
+		<!-- ValueTask / ValueTask<T> for netstandard2.0 -->
+		<PackageReference Include="System.Threading.Tasks.Extensions" VersionOverride="4.6.3" />
+		<!-- PipeReader/PipeWriter: restores the Slice pipe helpers -->
+		<PackageReference Include="System.IO.Pipelines" />
+		<!-- XxHash32/64/128: restores the XxHashExtensions helpers -->
+		<PackageReference Include="System.IO.Hashing" />
+		<!-- IAsyncDisposable / IAsyncEnumerable for netstandard2.0; must match the version required by the Microsoft.Extensions.* 9.x packages above (MSB3277 otherwise) -->
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="9.0.17" />
+		<!-- System.DateOnly / System.TimeOnly for netstandard2.0 (community package; type-forwards to the real BCL types on net6+) -->
+		<PackageReference Include="Portable.System.DateTimeOnly" VersionOverride="8.0.2" />
+		<!-- System.ComponentModel.DataAnnotations attributes ([Key], ...) for netstandard2.0 -->
+		<PackageReference Include="System.ComponentModel.Annotations" VersionOverride="5.0.0" />
+		<!-- UrlEncoder & friends for netstandard2.0 (in-box on modern targets) -->
+		<PackageReference Include="System.Text.Encodings.Web" VersionOverride="8.0.0" />
+
+	</ItemGroup>
+
+	<!-- The parts of the library that are NOT available on netstandard2.0 (ref fields, static abstract
+	     interface members, InlineArray, or APIs with no viable fallback) are disabled with a whole-file
+	     '#if !NETSTANDARD2_0' guard at the top of each excluded source file. Everything else compiles with
+	     the fallbacks in Polyfills/ and the targeted guards in the shared sources. -->
 
 </Project>

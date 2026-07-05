@@ -62,12 +62,14 @@ namespace SnowBank.Networking
 			// we need to compare the bytes, we will attempt to use the stack first
 			// => we assume that it will be an IPv6. If this is something bigger, we will fallback to heap allocations
 
+#if !NETSTANDARD2_0
 			Span<byte> left = stackalloc byte[16];
 			Span<byte> right = stackalloc byte[16];
 			if (x.TryWriteBytes(left, out int nLeft) && y.TryWriteBytes(right, out int nRight))
 			{
 				return left[..nLeft].SequenceCompareTo(right[..nRight]);
 			}
+#endif
 
 			// very slow fallback: we will need to allocate memory for the comparison :(
 			return x.GetAddressBytes().AsSpan().SequenceCompareTo(y.GetAddressBytes());

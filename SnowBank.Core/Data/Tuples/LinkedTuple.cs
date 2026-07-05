@@ -67,8 +67,11 @@ namespace SnowBank.Data.Tuples
 		/// <summary>Returns the number of elements in this tuple</summary>
 		public int Count => this.HeadCount + 1;
 
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		int System.Runtime.CompilerServices.ITuple.Length => this.Count;
+#endif
 
 		/// <inheritdoc cref="IVarTuple.this[int]"/>
 		public object? this[int index]

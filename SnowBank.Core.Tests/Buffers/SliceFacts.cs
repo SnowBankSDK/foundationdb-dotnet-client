@@ -2542,7 +2542,12 @@ namespace SnowBank.Buffers.Tests
 			var tmp = Path.GetTempFileName();
 			try
 			{
+#if NET5_0_OR_GREATER
 				await File.WriteAllBytesAsync(tmp, UNICODE_BYTES, this.Cancellation);
+#else
+				// File.WriteAllBytesAsync is not available: write synchronously
+				File.WriteAllBytes(tmp, UNICODE_BYTES);
+#endif
 				using (var fs = File.OpenRead(tmp))
 				{
 					slice = await Slice.FromStreamAsync(fs, this.Cancellation);
@@ -3338,13 +3343,13 @@ namespace SnowBank.Buffers.Tests
 				// large buffer
 				buf.AsSpan().Fill(0xAA);
 				Assert.That(((ISpanEncodable) slice).TryEncode(buf, out var written), Is.True);
-				Assert.That(buf[..written], Is.EqualTo(slice.ToArray()));
+				Assert.That(buf.AsSpan(0, written).ToArray(), Is.EqualTo(slice.ToArray()));
 				Assert.That(buf.AsSpan(written).ContainsAnyExcept((byte) 0xAA), Is.False);
 
 				// exact buffer size
 				buf.AsSpan().Fill(0xAA);
 				Assert.That(((ISpanEncodable) slice).TryEncode(buf.AsSpan(0, slice.Count), out written), Is.True);
-				Assert.That(buf[..written], Is.EqualTo(slice.ToArray()));
+				Assert.That(buf.AsSpan(0, written).ToArray(), Is.EqualTo(slice.ToArray()));
 				Assert.That(buf.AsSpan(written).ContainsAnyExcept((byte) 0xAA), Is.False);
 
 				// buffer too small

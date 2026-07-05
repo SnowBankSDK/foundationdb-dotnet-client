@@ -710,6 +710,7 @@ namespace SnowBank.Text
 
 		public static bool Equals(Slice left, ReadOnlySpan<char> right) => Equals(left.Span, right);
 
+#if NET5_0_OR_GREATER
 		private static bool RuneEquals(ReadOnlySpan<byte> leftUtf8, ReadOnlySpan<char> rightUtf16)
 		{
 			// scan each character using the Rune API
@@ -731,6 +732,16 @@ namespace SnowBank.Text
 
 			return (leftRemaining.Length | rightRemaining.Length) == 0;
 		}
+#else
+		private static bool RuneEquals(ReadOnlySpan<byte> leftUtf8, ReadOnlySpan<char> rightUtf16)
+		{
+			// netstandard2.0 has no System.Text.Rune: decode the UTF-8 bytes to a string and compare code-unit-wise.
+			// Allocates (unlike the Rune scan), and for MALFORMED UTF-8 the decoder substitutes U+FFFD rather than
+			// reporting a mismatch — acceptable here since callers compare well-formed text.
+			string decoded = System.Text.Encoding.UTF8.GetString(leftUtf8.ToArray());
+			return decoded.AsSpan().SequenceEqual(rightUtf16);
+		}
+#endif
 
 	}
 

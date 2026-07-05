@@ -185,7 +185,11 @@ namespace SnowBank.Linq
 			var channel = Channel.CreateUnbounded<TResult>(new() { SingleReader = true, SingleWriter = true });
 			try
 			{
+#if NET8_0_OR_GREATER
 				await using var ctr = ct.Register((c) => ((Channel<TResult>) c!).Writer.TryComplete(new OperationCanceledException(ct)), channel);
+#else
+				using var ctr = ct.Register((c) => ((Channel<TResult>) c!).Writer.TryComplete(new OperationCanceledException(ct)), channel); // CancellationTokenRegistration has no DisposeAsync on this target (sync Dispose does not wait for an in-flight callback)
+#endif
 
 				var t = Task.Run(async () =>
 				{
@@ -201,10 +205,21 @@ namespace SnowBank.Linq
 					}
 				}, ct);
 
+#if NET8_0_OR_GREATER
 				await foreach (var r in channel.Reader.ReadAllAsync().WithCancellation(ct).ConfigureAwait(false))
 				{
 					yield return r;
 				}
+#else
+				// ChannelReader.ReadAllAsync is not exposed on this target: same drain loop, written out by hand
+				while (await channel.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
+				{
+					while (channel.Reader.TryRead(out var r))
+					{
+						yield return r;
+					}
+				}
+#endif
 
 				await t.ConfigureAwait(false);
 			}

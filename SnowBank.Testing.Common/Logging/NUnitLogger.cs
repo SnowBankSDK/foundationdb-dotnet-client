@@ -159,7 +159,12 @@ namespace SnowBank.Testing
 			// event id
 			if (this.Options.IncludeEventId && eventId != 0)
 			{
+#if NET6_0_OR_GREATER
 				logBuilder.Append(CultureInfo.InvariantCulture, $" (ID {eventId:X})");
+#else
+				// the interpolated-handler Append overload is not available: format to a transient string (extra allocation)
+				logBuilder.Append(string.Format(CultureInfo.InvariantCulture, " (ID {0:X})", eventId));
+#endif
 			}
 
 			// scope information

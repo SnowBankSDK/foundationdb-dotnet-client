@@ -751,7 +751,12 @@ namespace SnowBank.Text
 						}
 						else
 						{
+#if NET5_0_OR_GREATER
 							if (!Utf8Encoder.TryWriteCodePoint(MemoryMarshal.CreateSpan(ref ptr, remaining), c, out int n))
+#else
+							// MemoryMarshal.CreateSpan is not available on netstandard2.0: re-slice the output span instead (ptr is at output.Length - remaining)
+							if (!Utf8Encoder.TryWriteCodePoint(output.Slice(output.Length - remaining), c, out int n))
+#endif
 							{
 								goto too_small;
 							}
@@ -885,7 +890,12 @@ namespace SnowBank.Text
 			}
 
 			// nothing to do, except add the double quotes
+#if NET5_0_OR_GREATER
 			return string.Concat("\"", text, "\"");
+#else
+			// span-based string.Concat is not available on netstandard2.0
+			return "\"" + text.ToString() + "\"";
+#endif
 		}
 
 		internal static string EncodeSlow(ReadOnlySpan<char> text)
@@ -967,14 +977,24 @@ namespace SnowBank.Text
 
 					// character encoded with a single backslash => \c
 				escape_backslash:
+#if NET5_0_OR_GREATER
 					if (i > last) sb.Append(text.Slice(last, i - last));
+#else
+					// StringBuilder.Append(ReadOnlySpan<char>) is not available on netstandard2.0: bridge via a transient string
+					if (i > last) sb.Append(text.Slice(last, i - last).ToString());
+#endif
 					last = i + 1;
 					sb.Append('\\').Append(c);
 					goto next;
 
 					// character encoded as Unicode using 16 bits
 				escape_unicode:
+#if NET5_0_OR_GREATER
 					if (i > last) sb.Append(text.Slice(last, i - last));
+#else
+					// StringBuilder.Append(ReadOnlySpan<char>) is not available on netstandard2.0: bridge via a transient string
+					if (i > last) sb.Append(text.Slice(last, i - last).ToString());
+#endif
 					last = i + 1;
 					sb.Append(@"\u").Append(((int) c).ToString("x4", NumberFormatInfo.InvariantInfo)); //TODO: PERF: optimize this!
 
@@ -987,11 +1007,21 @@ namespace SnowBank.Text
 
 			if (last == 0)
 			{ // the text did not require any escaping
+#if NET5_0_OR_GREATER
 				sb.Append(text);
+#else
+				// StringBuilder.Append(ReadOnlySpan<char>) is not available on netstandard2.0: bridge via a transient string
+				sb.Append(text.ToString());
+#endif
 			}
 			else if (last < text.Length)
 			{ // append the tail that did not need any escaping
+#if NET5_0_OR_GREATER
 				sb.Append(text.Slice(last, text.Length - last));
+#else
+				// StringBuilder.Append(ReadOnlySpan<char>) is not available on netstandard2.0: bridge via a transient string
+				sb.Append(text.Slice(last, text.Length - last).ToString());
+#endif
 			}
 			return includeQuotes ? sb.Append('"') : sb;
 		}

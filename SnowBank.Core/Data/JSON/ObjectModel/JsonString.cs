@@ -40,7 +40,10 @@ namespace SnowBank.Data.Json
 	/// <summary>JSON string literal</summary>
 	[DebuggerDisplay("JSON String({" + nameof(m_value) + "})")]
 	[PublicAPI]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(CrystalJsonCustomJsonConverter))]
+#endif
 	[DebuggerNonUserCode]
 	public sealed class JsonString : JsonValue,
 		IEquatable<JsonString>,
@@ -853,7 +856,10 @@ namespace SnowBank.Data.Json
 				if (typeof(T) == typeof(NodaTime.LocalDateTime)) return (T) (object) ToLocalDateTime();
 				if (typeof(T) == typeof(NodaTime.LocalDate)) return (T) (object) ToLocalDate();
 				if (typeof(T) == typeof(NodaTime.Offset)) return (T) (object) ToOffset();
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (typeof(T) == typeof(Half)) return (T) (object) ToHalf();
+#endif
 #if NET8_0_OR_GREATER
 				if (typeof(T) == typeof(Int128)) return (T) (object) ToInt128();
 				if (typeof(T) == typeof(UInt128)) return (T) (object) ToUInt128();
@@ -893,7 +899,10 @@ namespace SnowBank.Data.Json
 				if (typeof(T) == typeof(NodaTime.LocalDateTime?)) return (T?) (object?) ToLocalDateTime();
 				if (typeof(T) == typeof(NodaTime.LocalDate?)) return (T?) (object?) ToLocalDate();
 				if (typeof(T) == typeof(NodaTime.Offset?)) return (T?) (object?) ToOffset();
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (typeof(T) == typeof(Half?)) return (T?) (object?) ToHalfOrDefault((Half?) (object?) defaultValue);
+#endif
 #if NET8_0_OR_GREATER
 				if (typeof(T) == typeof(Int128?)) return (T?) (object?) ToInt128OrDefault((Int128?) (object?) defaultValue);
 				if (typeof(T) == typeof(UInt128?)) return (T?) (object?) ToUInt128OrDefault((UInt128?) (object?) defaultValue);
@@ -1725,6 +1734,9 @@ namespace SnowBank.Data.Json
 
 		#region Half
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
+
 		/// <inheritdoc />
 		public override Half ToHalf(Half defaultValue = default)
 		{
@@ -1747,6 +1759,8 @@ namespace SnowBank.Data.Json
 		{
 			return Half.TryParse(literal, NumberStyles.Float | NumberStyles.AllowThousands, NumberFormatInfo.InvariantInfo, out value);
 		}
+
+#endif
 
 		#endregion
 
@@ -1800,7 +1814,12 @@ namespace SnowBank.Data.Json
 				case 32: /* 00000000000000000000000000000000 */
 				case 38: /* {00000000-0000-0000-0000-000000000000} */
 				{
+#if NET5_0_OR_GREATER
 					return Guid.TryParse(literal, out result);
+#else
+					// span-based parse is not on netstandard2.0
+					return Guid.TryParse(literal.ToString(), out result);
+#endif
 				}
 				default:
 				{
@@ -2107,7 +2126,12 @@ namespace SnowBank.Data.Json
 				return true;
 			}
 
+#if NET5_0_OR_GREATER
 			return TimeSpan.TryParse(literal, CultureInfo.InvariantCulture, out result);
+#else
+			// span-based parse is not on netstandard2.0
+			return TimeSpan.TryParse(literal.ToString(), CultureInfo.InvariantCulture, out result);
+#endif
 		}
 
 		#endregion
@@ -2294,10 +2318,20 @@ namespace SnowBank.Data.Json
 		#region Enums
 
 		/// <inheritdoc />
+#if NET5_0_OR_GREATER
 		public override TEnum ToEnum<TEnum>(TEnum defaultValue = default) => string.IsNullOrEmpty(m_value) ? defaultValue : Enum.Parse<TEnum>(m_value, ignoreCase: true);
+#else
+		// generic Enum.Parse<TEnum> is not on netstandard2.0
+		public override TEnum ToEnum<TEnum>(TEnum defaultValue = default) => string.IsNullOrEmpty(m_value) ? defaultValue : (TEnum) Enum.Parse(typeof(TEnum), m_value, ignoreCase: true);
+#endif
 
 		/// <inheritdoc />
+#if NET5_0_OR_GREATER
 		public override TEnum? ToEnumOrDefault<TEnum>(TEnum? defaultValue = null) => string.IsNullOrEmpty(m_value) ? defaultValue : Enum.Parse<TEnum>(m_value, ignoreCase: true);
+#else
+		// generic Enum.Parse<TEnum> is not on netstandard2.0
+		public override TEnum? ToEnumOrDefault<TEnum>(TEnum? defaultValue = null) => string.IsNullOrEmpty(m_value) ? defaultValue : (TEnum) Enum.Parse(typeof(TEnum), m_value, ignoreCase: true);
+#endif
 
 		#endregion
 
@@ -2329,7 +2363,12 @@ namespace SnowBank.Data.Json
 
 		internal static bool TryConvertToIpAddress(ReadOnlySpan<char> literal, [MaybeNullWhen(false)] out IPAddress result)
 		{
+#if NET5_0_OR_GREATER
 			return IPAddress.TryParse(literal, out result);
+#else
+			// span-based parse is not on netstandard2.0
+			return IPAddress.TryParse(literal.ToString(), out result);
+#endif
 		}
 
 		#endregion
@@ -2345,7 +2384,12 @@ namespace SnowBank.Data.Json
 
 		internal static bool TryConvertToVersion(ReadOnlySpan<char> literal, [MaybeNullWhen(false)] out Version result)
 		{
+#if NET5_0_OR_GREATER
 			return Version.TryParse(literal, out result);
+#else
+			// span-based parse is not on netstandard2.0
+			return Version.TryParse(literal.ToString(), out result);
+#endif
 		}
 
 		#endregion

@@ -33,6 +33,10 @@ namespace SnowBank.Text
 	using System.Runtime.InteropServices;
 	using SnowBank.Buffers.Binary;
 	using SnowBank.Buffers.Text;
+#if NETSTANDARD2_0
+	using MemoryMarshal = SnowBank.Compat.MemoryMarshalCompat; // shim adds CreateReadOnlySpan/CreateSpan/AsRef, absent from netstandard2.0
+	using Convert = SnowBank.Compat.ConvertCompat; // shim adds the ReadOnlySpan<byte> ToBase64String overload, absent from netstandard2.0
+#endif
 
 	/// <summary>Helper type for using the <b>Base62</b> encoding</summary>
 	[PublicAPI]
@@ -332,19 +336,19 @@ namespace SnowBank.Text
 
 			//TODO: use String.Create(...) if available!
 
-#if USE_FAST_STRING_ALLOCATOR
+#if NET5_0_OR_GREATER && USE_FAST_STRING_ALLOCATOR
 			// pre-allocate a string with the correct size
 
-			var s = new string('\0', charCount);
+			var s = new string(' ', charCount);
 			var b = MemoryMarshal.CreateSpan(ref MemoryMarshal.GetReference(s.AsSpan()), charCount);
 			// encode directly into this string (!!)
 			EncodeBufferUnsafe(b, source, charMap, padChar);
 			return s;
 #else
-			// round to arrondi a 8 supérieur, pour garder un alignement correct sur la stack
-			var size = (source.Length + 7) & (~0x7);
-			char[] output = new char[size];
-
+			// CAUTION: the mutate-a-fresh-string trick above must NOT be used here: the compat CreateSpan shim is
+			// pointer-based, and its span dangles as soon as the GC moves the string (silent output corruption).
+			// Encode into a transient array instead (one extra copy + allocation).
+			char[] output = new char[charCount];
 			int n = EncodeBufferUnsafe(output, source, charMap, padChar);
 			return new string(output, 0, n);
 #endif
@@ -408,6 +412,8 @@ namespace SnowBank.Text
 			}
 		}
 
+#if !NETSTANDARD2_0
+		// ValueStringWriter is not part of the netstandard2.0 backport; the Span/string Base64 overloads remain available.
 		/// <summary>Encodes a byte buffer into Base64 and appends the output into a <see cref="ValueStringWriter"/></summary>
 		/// <param name="output">Destination where to write the encoded Base64 text</param>
 		/// <param name="source">Source buffer with the bytes to encode</param>
@@ -430,6 +436,7 @@ namespace SnowBank.Text
 			Contract.Debug.Assert(n == bufferSize);
 			output.Advance(n);
 		}
+#endif
 
 		#endregion
 

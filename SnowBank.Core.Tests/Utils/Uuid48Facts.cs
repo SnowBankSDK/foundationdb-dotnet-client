@@ -515,7 +515,12 @@ namespace SnowBank.Core.Tests
 			for (int i = 0; i < occurrences.Length; i++)
 			{
 				var p = distrib[i];
+#if NET8_0_OR_GREATER
 				Log($"  - digit '{i:X}' ({i:B04}) : {occurrences[i],6:N0} : {p,5:N01}% : {new string('#', (int) Math.Round(p))}");
+#else
+				// the binary format specifier ("B") is .NET 8+
+				Log($"  - digit '{i:X}' ({Convert.ToString(i, 2).PadLeft(4, '0')}) : {occurrences[i],6:N0} : {p,5:N01}% : {new string('#', (int) Math.Round(p))}");
+#endif
 			}
 
 			Log($"> Range from {distrib.Min():N03}% to {distrib.Max():N03}%");

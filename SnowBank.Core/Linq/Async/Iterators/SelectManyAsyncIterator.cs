@@ -428,7 +428,7 @@ namespace SnowBank.Linq.Async.Iterators
 		private IEnumerator<TResult>? Batch { get; set; }
 
 		/// <inheritdoc />
-		protected override SelectManyAsyncIterator<TSource, TResult> Clone() => new(this.Source, this.Selector);
+		protected override AsyncLinqIterator<TResult> Clone() => new SelectManyAsyncIterator<TSource, TResult>(this.Source, this.Selector);
 
 		/// <inheritdoc />
 		protected override ValueTask<bool> OnFirstAsync()

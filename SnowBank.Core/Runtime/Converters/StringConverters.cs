@@ -506,6 +506,8 @@ namespace SnowBank.Runtime.Converters
 		#endregion
 
 		#region Half...
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 
 		/// <summary>Converts a 16-bit IEEE floating point number into a decimal string literal, using the Invariant culture</summary>
 		/// <param name="value">Value to convert</param>
@@ -530,6 +532,7 @@ namespace SnowBank.Runtime.Converters
 
 			output.Write(buf[..written]);
 		}
+#endif
 
 		#endregion
 
@@ -719,8 +722,13 @@ namespace SnowBank.Runtime.Converters
 			{
 				return defaultValue;
 			}
-			
+
+#if NET5_0_OR_GREATER
 			return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int res) ? res : defaultValue;
+#else
+			// span-based parse is not on netstandard2.0
+			return int.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int res) ? res : defaultValue;
+#endif
 		}
 
 		/// <summary>Converts a string literal into its 32-bit signed integer equivalent, using invariant-culture format</summary>
@@ -778,7 +786,12 @@ namespace SnowBank.Runtime.Converters
 				return null;
 			}
 
+#if NET5_0_OR_GREATER
 			return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int res) ? res : null;
+#else
+			// span-based parse is not on netstandard2.0
+			return int.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int res) ? res : null;
+#endif
 		}
 
 		/// <summary>Converts a string literal into its 64-bit signed integer equivalent, using invariant-culture format</summary>
@@ -838,7 +851,12 @@ namespace SnowBank.Runtime.Converters
 				return defaultValue;
 			}
 
+#if NET5_0_OR_GREATER
 			return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long res) ? res : defaultValue;
+#else
+			// span-based parse is not on netstandard2.0
+			return long.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long res) ? res : defaultValue;
+#endif
 		}
 
 		/// <summary>Converts a string literal into its 64-bit signed integer equivalent, using invariant-culture format</summary>
@@ -896,7 +914,12 @@ namespace SnowBank.Runtime.Converters
 				return null;
 			}
 
+#if NET5_0_OR_GREATER
 			return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long res) ? res : null;
+#else
+			// span-based parse is not on netstandard2.0
+			return long.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long res) ? res : null;
+#endif
 		}
 
 		/// <summary>Converts a string literal into its 64-bit floating-point number equivalent, using invariant-culture format</summary>
@@ -959,10 +982,18 @@ namespace SnowBank.Runtime.Converters
 			}
 
 			// note: TryParse with InvariantCulture will handle "NaN" but not "∞", "+∞", "-∞"
+#if NET5_0_OR_GREATER
 			return double.TryParse(value, NumberStyles.Float, provider ?? CultureInfo.InvariantCulture, out double result)
 				? result
 				: value is "-∞" ? double.NegativeInfinity
 					: defaultValue;
+#else
+			// span-based parse is not on netstandard2.0
+			return double.TryParse(value.ToString(), NumberStyles.Float, provider ?? CultureInfo.InvariantCulture, out double result)
+				? result
+				: value is "-∞" ? double.NegativeInfinity
+					: defaultValue;
+#endif
 		}
 
 		/// <summary>Converts a string literal into its 64-bit floating-point number equivalent, using invariant-culture format</summary>
@@ -1020,9 +1051,16 @@ namespace SnowBank.Runtime.Converters
 			}
 
 			// note: TryParse with InvariantCulture will handle "NaN" but not "∞", "+∞", "-∞"
+#if NET5_0_OR_GREATER
 			return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double result) ? result
 				: value is "-∞" ? double.NegativeInfinity
 				: null;
+#else
+			// span-based parse is not on netstandard2.0
+			return double.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double result) ? result
+				: value is "-∞" ? double.NegativeInfinity
+				: null;
+#endif
 		}
 
 		/// <summary>Converts a string literal into its 32-bit floating-point number equivalent, using invariant-culture format</summary>
@@ -1084,9 +1122,16 @@ namespace SnowBank.Runtime.Converters
 			}
 
 			// note: TryParse with InvariantCulture will handle "NaN" but not "∞", "+∞", "-∞"
+#if NET5_0_OR_GREATER
 			return float.TryParse(value, NumberStyles.Float, provider ?? CultureInfo.InvariantCulture, out float result) ? result
 				: value is "-∞" ? float.NegativeInfinity
 				: defaultValue;
+#else
+			// span-based parse is not on netstandard2.0
+			return float.TryParse(value.ToString(), NumberStyles.Float, provider ?? CultureInfo.InvariantCulture, out float result) ? result
+				: value is "-∞" ? float.NegativeInfinity
+				: defaultValue;
+#endif
 		}
 
 		/// <summary>Converts a string literal into its 32-bit floating-point number equivalent, using invariant-culture format</summary>
@@ -1144,9 +1189,16 @@ namespace SnowBank.Runtime.Converters
 			}
 
 			// note: TryParse with InvariantCulture will handle "NaN" but not "∞", "+∞", "-∞"
+#if NET5_0_OR_GREATER
 			return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float result) ? result
 				: value is "-∞" ? float.NegativeInfinity
 				: null;
+#else
+			// span-based parse is not on netstandard2.0
+			return float.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out float result) ? result
+				: value is "-∞" ? float.NegativeInfinity
+				: null;
+#endif
 		}
 
 		/// <summary>Converts a string literal into its 128-bit floating-point number equivalent, using invariant-culture format</summary>
@@ -1571,7 +1623,12 @@ namespace SnowBank.Runtime.Converters
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static int ParseDateSegment(ReadOnlySpan<char> source)
 		{
+#if NET5_0_OR_GREATER
 			return int.TryParse(source, NumberStyles.Integer, CultureInfo.InvariantCulture, out int r) ? r : -1;
+#else
+			// span-based parse is not on netstandard2.0
+			return int.TryParse(source.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int r) ? r : -1;
+#endif
 		}
 
 		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
@@ -1728,12 +1785,22 @@ namespace SnowBank.Runtime.Converters
 				}
 				else if (char.IsLetter(date[0]))
 				{ // let's try a ParseExact for weird localized dates (ex: "Vendredi, 37 Trumaire 1789 à 3 heures moins le quart")
+#if NET5_0_OR_GREATER
 					result = DateTime.ParseExact(date, [ "D", "F", "f" ], culture ?? CultureInfo.InvariantCulture);
+#else
+					// span-based ParseExact is not on netstandard2.0
+					result = DateTime.ParseExact(date.ToString(), [ "D", "F", "f" ], culture ?? CultureInfo.InvariantCulture, DateTimeStyles.None);
+#endif
 					return true;
 				}
 
 				// Fallback to standard parsing...
+#if NET5_0_OR_GREATER
 				result = DateTime.Parse(date, culture ?? CultureInfo.InvariantCulture);
+#else
+				// span-based parse is not on netstandard2.0
+				result = DateTime.Parse(date.ToString(), culture ?? CultureInfo.InvariantCulture);
+#endif
 				return true;
 			}
 			catch (FormatException)
@@ -1920,6 +1987,8 @@ namespace SnowBank.Runtime.Converters
 			return false;
 		}
 
+#if NET6_0_OR_GREATER
+		// System.TimeOnly does not exist on netstandard2.0
 		/// <summary>Converts a string literal containing a "human friendly" representation into a <see cref="TimeOnly"/>, for example <c>"11"</c>,<c>"11h"</c>,<c>"11h00"</c>,<c>"11:00"</c> -> <c>{11:00:00.000}</c></summary>
 		/// <param name="time">String to parse</param>
 		/// <returns>Corresponding <see cref="TimeOnly"/> value.</returns>
@@ -1969,6 +2038,7 @@ namespace SnowBank.Runtime.Converters
 			}
 			return new TimeOnly(hour, minute, second, 0);
 		}
+#endif
 
 		#endregion
 

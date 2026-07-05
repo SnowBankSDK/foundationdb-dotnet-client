@@ -102,7 +102,10 @@ namespace SnowBank.Data.Json
 			if (type == typeof(TimeSpan)) return jsonValue.ToTimeSpan();
 			if (type == typeof(Guid)) return jsonValue.ToGuid();
 			if (type == typeof(decimal)) return jsonValue.ToDecimal();
+#if NET5_0_OR_GREATER
+			// Half does not exist on netstandard2.0
 			if (type == typeof(Half)) return jsonValue.ToHalf();
+#endif
 			if (type == typeof(DateOnly)) return jsonValue.ToDateOnly();
 			if (type == typeof(TimeOnly)) return jsonValue.ToTimeOnly();
 			if (type == typeof(JsonValue)) return jsonValue;

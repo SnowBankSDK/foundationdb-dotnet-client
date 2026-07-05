@@ -38,6 +38,8 @@ namespace System
 	[DebuggerDisplay("[{ToString(),nq}]")]
 	[ImmutableObject(true), PublicAPI, Serializable]
 	public readonly struct Uuid48 : IEquatable<Uuid48>, IComparable<Uuid48>, IEquatable<ulong>, IComparable<ulong>, IEquatable<long>, IComparable<long>, IEquatable<uint>, IComparable<uint>, IEquatable<int>, IComparable<int>, IEquatable<Slice>, ISpanFormattable, ISpanEncodable
+#if NET7_0_OR_GREATER
+		// generic math interfaces and ISpanParsable (.NET 7+); the operators themselves are plain operators and remain available on all targets
 		, IComparisonOperators<Uuid48, Uuid48, bool>
 		, IAdditiveIdentity<Uuid48, int>
 		, IAdditiveIdentity<Uuid48, uint>
@@ -54,7 +56,6 @@ namespace System
 		, ISubtractionOperators<Uuid48, uint, Uuid48>
 		, ISubtractionOperators<Uuid48, ulong, Uuid48>
 		, IBitwiseOperators<Uuid48, Uuid48, Uuid48>
-#if NET8_0_OR_GREATER
 		, ISpanParsable<Uuid48>
 #endif
 #if NET9_0_OR_GREATER
@@ -544,9 +545,15 @@ namespace System
 
 			static bool TryDecode16Unsafe(ReadOnlySpan<char> chars, bool separator, out Uuid48 result)
 			{
+#if NET5_0_OR_GREATER
 				if ((!separator || chars[4] == '-')
 				    && ushort.TryParse(chars[..4], NumberStyles.HexNumber, null, out ushort hi)
 				    && uint.TryParse(chars[(separator ? 5 : 4)..], NumberStyles.HexNumber, null, out uint lo))
+#else
+				if ((!separator || chars[4] == '-')
+				    && ushort.TryParse(chars[..4].ToString(), NumberStyles.HexNumber, null, out ushort hi) // ushort.TryParse(ReadOnlySpan<char>) is not on netstandard2.0
+				    && uint.TryParse(chars[(separator ? 5 : 4)..].ToString(), NumberStyles.HexNumber, null, out uint lo))
+#endif
 				{
 					result = new Uuid48(hi, lo);
 					return true;
@@ -616,9 +623,16 @@ namespace System
 
 			static bool TryDecode16Unsafe(ReadOnlySpan<byte> chars, bool separator, out Uuid48 result)
 			{
+#if NET5_0_OR_GREATER
 				if ((!separator || chars[4] == '-')
 				    && ushort.TryParse(chars[..4], NumberStyles.HexNumber, null, out ushort hi)
 				    && uint.TryParse(chars[(separator ? 5 : 4)..], NumberStyles.HexNumber, null, out uint lo))
+#else
+				// netstandard2.0 has no UTF-8 span parsing: decode the ASCII hex bytes to a string first (the input is known ASCII here).
+				if ((!separator || chars[4] == '-')
+				    && ushort.TryParse(System.Text.Encoding.ASCII.GetString(chars[..4].ToArray()), NumberStyles.HexNumber, null, out ushort hi)
+				    && uint.TryParse(System.Text.Encoding.ASCII.GetString(chars[(separator ? 5 : 4)..].ToArray()), NumberStyles.HexNumber, null, out uint lo))
+#endif
 				{
 					result = new Uuid48(hi, lo);
 					return true;
@@ -1335,6 +1349,8 @@ namespace System
 
 		#region Artithmetic...
 
+#if NET7_0_OR_GREATER
+		// explicit generic-math interface members (.NET 7+); the plain operators below remain available on all targets
 		/// <inheritdoc />
 		static int IAdditiveIdentity<Uuid48, int>.AdditiveIdentity => 0;
 
@@ -1346,6 +1362,7 @@ namespace System
 
 		/// <inheritdoc />
 		static ulong IAdditiveIdentity<Uuid48, ulong>.AdditiveIdentity => 0;
+#endif
 
 		/// <summary>Adds a value from this instance</summary>
 		public static Uuid48 operator +(Uuid48 left, int right) => FromLower48(unchecked((long) left.Value + right));

@@ -13,3 +13,8 @@ global using SnowBank.Threading;
 global using InstantHandleAttribute = JetBrains.Annotations.InstantHandleAttribute;
 global using PublicAPIAttribute = JetBrains.Annotations.PublicAPIAttribute;
 global using PureAttribute = System.Diagnostics.Contracts.PureAttribute;
+
+#if NETFRAMEWORK
+// the netstandard2.0 build of SnowBank.Core publicly ships the BCL extension polyfills (span overloads, TryFormat, ...)
+global using SnowBank.Compat;
+#endif

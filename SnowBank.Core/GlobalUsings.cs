@@ -21,3 +21,8 @@ global using PureAttribute = System.Diagnostics.Contracts.PureAttribute;
 global using StringFormatMethodAttribute = JetBrains.Annotations.StringFormatMethodAttribute;
 global using UsedImplicitlyAttribute = JetBrains.Annotations.UsedImplicitlyAttribute;
 global using MustDisposeResourceAttribute = JetBrains.Annotations.MustDisposeResourceAttribute;
+
+#if NETSTANDARD2_0
+// extension-method polyfills for span/collection BCL APIs missing from netstandard2.0 (see Polyfills/)
+global using SnowBank.Compat;
+#endif

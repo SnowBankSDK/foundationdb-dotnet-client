@@ -29,7 +29,9 @@ namespace SnowBank.Buffers
 	using System.Buffers;
 	using System.Collections.Immutable;
 	using System.ComponentModel;
+#if NET8_0_OR_GREATER
 	using System.Runtime.InteropServices;
+#endif
 
 #if NET8_0_OR_GREATER
 	/// <summary>Buffer that will accumulate data in a contiguous span, starting from a stack allocated buffer, and switching to pooled buffers if required</summary>
@@ -341,7 +343,12 @@ namespace SnowBank.Buffers
 		[Pure, CollectionAccess(CollectionAccessType.Read)]
 		public HashSet<T> ToHashSet(IEqualityComparer<T>? comparer = null)
 		{
+#if NET5_0_OR_GREATER
 			var res = new HashSet<T>(this.Count, comparer);
+#else
+			// the HashSet<T>(int, IEqualityComparer<T>) constructor is not available on netstandard2.0
+			var res = new HashSet<T>(comparer);
+#endif
 
 			foreach (var item in this.Span)
 			{
@@ -722,10 +729,21 @@ namespace SnowBank.Buffers
 			if (typeof(T) == typeof(byte))
 			{ // => base64
 
+#if NET5_0_OR_GREATER
 				// we need to trick the compiler into casting Span<T> into Span<byte>!
 				var bytes = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<T, byte>(ref MemoryMarshal.GetReference<T>(this.Buffer)), this.Count);
 
 				return Convert.ToBase64String(bytes);
+#else
+				// MemoryMarshal.CreateReadOnlySpan is not available on netstandard2.0: copy the bytes through a transient array
+				var tmp = new byte[this.Count];
+				for (int i = 0; i < tmp.Length; i++)
+				{
+					tmp[i] = Unsafe.As<T, byte>(ref this.Buffer[i]);
+				}
+
+				return Convert.ToBase64String(tmp);
+#endif
 			}
 
 			return $"{nameof(ValueBuffer<>)}<{typeof(T).Name}>[{this.Count}]";

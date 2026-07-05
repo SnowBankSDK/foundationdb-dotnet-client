@@ -73,11 +73,14 @@ namespace SnowBank.Data.Tuples
 		/// <inheritdoc />
 		object? IReadOnlyList<object?>.this[int index] => this[index];
 
+#if !NETSTANDARD2_0
+		// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		int ITuple.Length => 1;
 
 		/// <inheritdoc />
 		object? ITuple.this[int index] => this[index];
+#endif
 
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Never)]

@@ -201,6 +201,41 @@ namespace SnowBank.Buffers
 
 		protected abstract uint ComputeHashCode(in ReadOnlySpan<TRune> token);
 
+		/// <summary>Computes a fast hash over raw bytes ("pseudo xxHash32" tuned for the short literals typically stored in these dictionaries)</summary>
+		/// <remarks>Only stable within the current process execution (like <see cref="string.GetHashCode()"/>), and only used for the internal buckets.</remarks>
+		protected static uint ComputeHashCodeBytes(ReadOnlySpan<byte> value)
+		{
+			// Implémentation d'un "pseudo XXHASH32" optimisée pour des petites valeurs
+			// => la plupart des literals sont assez court (souvent inférieur a 16) donc on peut se contenter de lire par 4 bytes
+
+			if (value.Length <= 0) return 0x02CC5D05;
+
+			ref byte ptr = ref MemoryMarshal.GetReference(value);
+			ref byte end = ref Unsafe.AddByteOffset(ref ptr, new IntPtr(value.Length));
+			uint h = 0;
+
+			// combine 32 bits chunks
+			while (!Unsafe.IsAddressGreaterThan(ref Unsafe.AddByteOffset(ref ptr, new IntPtr(4)), ref end))
+			{
+				h ^= Unsafe.As<byte, uint>(ref ptr);
+				h *= 3266489917U;
+				ptr = ref Unsafe.AddByteOffset(ref ptr, new IntPtr(4));
+			}
+
+			// combine remaining bytes
+			while (Unsafe.IsAddressLessThan(ref ptr, ref end))
+			{
+				h ^= ptr;
+				h *= 374761393U;
+				ptr = ref Unsafe.AddByteOffset(ref ptr, new IntPtr(1));
+			}
+
+			// combine length
+			h ^= (uint) value.Length;
+
+			return h;
+		}
+
 		private static class PrimeHelpers
 		{
 
@@ -404,7 +439,16 @@ namespace SnowBank.Buffers
 
 		protected override uint ComputeHashCode(in ReadOnlySpan<char> token)
 		{
+#if NET5_0_OR_GREATER
 			return (uint) string.GetHashCode(token);
+#else
+			// string.GetHashCode(ReadOnlySpan<char>) is not available there, and the netfx string hash cannot be
+			// replicated over a span (it may be the process-randomized Marvin). Every bucket probe goes through this
+			// single method, so the hash only needs to be self-consistent within the process: reuse the byte-based
+			// routine over the raw UTF-16 bytes. (Unlike the modern branch this is NOT randomized per process, which
+			// is acceptable for dictionaries of known literals, not attacker-controlled input.)
+			return ComputeHashCodeBytes(MemoryMarshal.AsBytes(token));
+#endif
 		}
 
 	}
@@ -456,37 +500,7 @@ namespace SnowBank.Buffers
 		}
 
 		protected override uint ComputeHashCode(in ReadOnlySpan<byte> value)
-		{
-			// Implémentation d'un "pseudo XXHASH32" optimisée pour des petites valeurs
-			// => la plupart des literals sont assez court (souvent inférieur a 16) donc on peut se contenter de lire par 4 bytes
-
-			if (value.Length <= 0) return 0x02CC5D05;
-
-			ref byte ptr = ref MemoryMarshal.GetReference(value);
-			ref byte end = ref Unsafe.AddByteOffset(ref ptr, new IntPtr(value.Length));
-			uint h = 0;
-
-			// combine 32 bits chunks
-			while (!Unsafe.IsAddressGreaterThan(ref Unsafe.AddByteOffset(ref ptr, new IntPtr(4)), ref end))
-			{
-				h ^= Unsafe.As<byte, uint>(ref ptr);
-				h *= 3266489917U;
-				ptr = ref Unsafe.AddByteOffset(ref ptr, new IntPtr(4));
-			}
-
-			// combine remaining bytes
-			while (Unsafe.IsAddressLessThan(ref ptr, ref end))
-			{
-				h ^= ptr;
-				h *= 374761393U;
-				ptr = ref Unsafe.AddByteOffset(ref ptr, new IntPtr(1));
-			}
-
-			// combine length
-			h ^= (uint) value.Length;
-
-			return h;
-		}
+			=> ComputeHashCodeBytes(value);
 
 	}
 

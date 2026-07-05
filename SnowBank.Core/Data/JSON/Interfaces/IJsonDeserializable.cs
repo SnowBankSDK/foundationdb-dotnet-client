@@ -36,11 +36,14 @@ namespace SnowBank.Data.Json
 	public interface IJsonDeserializable<out TSelf>
 	{
 
+#if NET7_0_OR_GREATER
+		// static abstract interface members need runtime support that netstandard2.0/netfx lacks: there the interface is a marker only, and callers locate a static 'JsonDeserialize' method via reflection instead
 		/// <summary>Deserializes a parsed <see cref="JsonValue"/> into an instance of type <typeparamref name="TSelf"/>.</summary>
 		/// <param name="value">JSON value that will be bound to the new instance</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
 		/// <returns>A new instance of <typeparamref name="TSelf"/> that has been initialized from the contents of <paramref name="value"/>.</returns>
 		static abstract TSelf JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver);
+#endif
 
 	}
 

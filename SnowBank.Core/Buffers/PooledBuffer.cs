@@ -320,7 +320,11 @@ namespace SnowBank.Buffers
 
 			if (items.Length == 0) return [ ];
 
+#if !NETSTANDARD2_0
 			var res = new HashSet<T>(items.Length, comparer);
+#else
+			var res = new HashSet<T>(comparer);
+#endif
 			foreach (var item in items)
 			{
 				res.Add(item);

@@ -829,7 +829,13 @@ namespace SnowBank.Data.Tuples.Binary
 
 			// Special case for NaN: All variants are normalized to float.NaN !
 			float f = float.IsNaN(value) ? float.NaN : value;
+#if NET5_0_OR_GREATER
 			uint bits = BitConverter.SingleToUInt32Bits(f);
+#else
+			// BitConverter.SingleToUInt32Bits not available
+			uint bits;
+			unsafe { bits = *((uint*) &f); }
+#endif
 
 			if ((bits & 0x80000000U) != 0)
 			{ // negative
@@ -906,7 +912,12 @@ namespace SnowBank.Data.Tuples.Binary
 
 			// Special case for NaN: All variants are normalized to float.NaN !
 			var d = double.IsNaN(value) ? double.NaN : value;
+#if NET5_0_OR_GREATER
 			ulong bits = BitConverter.DoubleToUInt64Bits(d);
+#else
+			// BitConverter.DoubleToUInt64Bits not available
+			ulong bits = unchecked((ulong) BitConverter.DoubleToInt64Bits(d));
+#endif
 
 			if ((bits & 0x8000000000000000UL) != 0)
 			{ // negative
@@ -1111,6 +1122,7 @@ namespace SnowBank.Data.Tuples.Binary
 					return TryWriteUInt64(ref writer, (ulong) value);
 				}
 
+#if NET5_0_OR_GREATER
 				int count = value.GetByteCount();
 				if (!writer.TryGetSpan(checked(2 + count), out var buffer))
 				{
@@ -1118,6 +1130,20 @@ namespace SnowBank.Data.Tuples.Binary
 				}
 
 				value.TryWriteBytes(buffer[2..], out int written, isUnsigned: true, isBigEndian: true);
+#else
+				// BigInteger.GetByteCount/TryWriteBytes not available: go through ToByteArray() (extra allocation)
+				var bytes = value.ToByteArray(); // little-endian, two's complement
+				int written = bytes.Length;
+				if (written > 1 && bytes[written - 1] == 0) { --written; } // trim the sign byte to get the unsigned representation
+				if (!writer.TryGetSpan(checked(2 + written), out var buffer))
+				{
+					return false;
+				}
+				for (int i = 0; i < written; i++)
+				{ // reverse to big-endian
+					buffer[2 + i] = bytes[written - 1 - i];
+				}
+#endif
 
 				buffer[0] = TupleTypes.PositiveBigInteger;
 				buffer[1] = (byte) written;
@@ -1135,6 +1161,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 				var minusOne = value - 1;
 
+#if NET5_0_OR_GREATER
 				int count = minusOne.GetByteCount();
 				if (!writer.TryGetSpan(checked(2 + count), out var buffer))
 				{
@@ -1142,6 +1169,19 @@ namespace SnowBank.Data.Tuples.Binary
 				}
 
 				minusOne.TryWriteBytes(buffer[2..], out int written, isUnsigned: false, isBigEndian: true);
+#else
+				// BigInteger.GetByteCount/TryWriteBytes not available: go through ToByteArray() (extra allocation)
+				var bytes = minusOne.ToByteArray(); // little-endian, two's complement
+				int written = bytes.Length;
+				if (!writer.TryGetSpan(checked(2 + written), out var buffer))
+				{
+					return false;
+				}
+				for (int i = 0; i < written; i++)
+				{ // reverse to big-endian
+					buffer[2 + i] = bytes[written - 1 - i];
+				}
+#endif
 
 				buffer[0] = TupleTypes.NegativeBigInteger;
 				buffer[1] = (byte) (written ^ 0xFF);
@@ -1171,10 +1211,22 @@ namespace SnowBank.Data.Tuples.Binary
 					return;
 				}
 
+#if NET5_0_OR_GREATER
 				int count = value.GetByteCount();
 				var buffer = writer.Output.GetSpan(checked(2 + count));
 
 				value.TryWriteBytes(buffer[2..], out int written, isUnsigned: true, isBigEndian: true);
+#else
+				// BigInteger.GetByteCount/TryWriteBytes not available: go through ToByteArray() (extra allocation)
+				var bytes = value.ToByteArray(); // little-endian, two's complement
+				int written = bytes.Length;
+				if (written > 1 && bytes[written - 1] == 0) { --written; } // trim the sign byte to get the unsigned representation
+				var buffer = writer.Output.GetSpan(checked(2 + written));
+				for (int i = 0; i < written; i++)
+				{ // reverse to big-endian
+					buffer[2 + i] = bytes[written - 1 - i];
+				}
+#endif
 
 				buffer[0] = TupleTypes.PositiveBigInteger;
 				buffer[1] = (byte) written;
@@ -1193,10 +1245,21 @@ namespace SnowBank.Data.Tuples.Binary
 
 				--value;
 
+#if NET5_0_OR_GREATER
 				int count = value.GetByteCount();
 				var buffer = writer.Output.GetSpan(checked(2 + count));
 
 				value.TryWriteBytes(buffer[2..], out int written, isUnsigned: false, isBigEndian: true);
+#else
+				// BigInteger.GetByteCount/TryWriteBytes not available: go through ToByteArray() (extra allocation)
+				var bytes = value.ToByteArray(); // little-endian, two's complement
+				int written = bytes.Length;
+				var buffer = writer.Output.GetSpan(checked(2 + written));
+				for (int i = 0; i < written; i++)
+				{ // reverse to big-endian
+					buffer[2 + i] = bytes[written - 1 - i];
+				}
+#endif
 
 				buffer[0] = TupleTypes.NegativeBigInteger;
 				buffer[1] = (byte) (written ^ 0xFF);
@@ -1386,9 +1449,8 @@ namespace SnowBank.Data.Tuples.Binary
 			=> TryWriteString(ref writer, value.Span);
 
 		/// <summary>Writes a string encoded in UTF-8</summary>
-		public static bool TryWriteString(ref TupleSpanWriter writer, in ReadOnlySpan<char> value)
+		public static bool TryWriteString(ref TupleSpanWriter writer, scoped ReadOnlySpan<char> value)
 		{
-
 			if (value.Length == 0)
 			{ // "02 00"
 				return writer.TryWriteLiteral(TupleTypes.Utf8, 0);
@@ -1621,8 +1683,15 @@ namespace SnowBank.Data.Tuples.Binary
 				return writer.TryWriteLiteral([ TupleTypes.Utf8, 0x00, 0xFF, 0x00 ]);
 			}
 
+#if NET5_0_OR_GREATER
 			var c = value;
 			return TryWriteString(ref writer, MemoryMarshal.CreateSpan(ref c, 1));
+#else
+			// MemoryMarshal.CreateSpan not available
+			Span<char> tmp = stackalloc char[1];
+			tmp[0] = value;
+			return TryWriteString(ref writer, tmp);
+#endif
 		}
 
 		/// <summary>Writes a char encoded in UTF-8</summary>
@@ -1781,7 +1850,16 @@ namespace SnowBank.Data.Tuples.Binary
 
 			// we need to know if there are any NUL chars (\0) that need escaping...
 			// (we will also need to add 1 byte to the buffer size per NUL)
+#if NET8_0_OR_GREATER
 			int numZeros = value.Count((byte) 0);
+#else
+			// MemoryExtensions.Count(span, value) not available
+			int numZeros = 0;
+			foreach (var b in value)
+			{
+				if (b == 0) { numZeros++; }
+			}
+#endif
 			len = checked(len + numZeros);
 
 			if (!writer.TryGetSpan(len + 2, out var buffer))
@@ -2191,7 +2269,13 @@ namespace SnowBank.Data.Tuples.Binary
 		public static TupleWriter BeginTuple(this TupleWriter writer)
 		{
 			writer.Output.WriteByte(TupleTypes.EmbeddedTuple);
+#if NET7_0_OR_GREATER
 			return new(ref writer.Output, writer.Depth + 1);
+#else
+			// the ref-SliceWriter constructor copies the writer into a fresh box on this target, which would
+			// swallow every byte of the embedded tuple: share the caller's box instead
+			return writer.WithDepth(writer.Depth + 1);
+#endif
 		}
 
 		/// <summary>Mark the end of an embedded tuple</summary>
@@ -2647,6 +2731,23 @@ namespace SnowBank.Data.Tuples.Binary
 			return TuplePackers.Unpack(ref reader);
 		}
 
+#if !NET5_0_OR_GREATER
+		// BigInteger(ReadOnlySpan<byte>, isUnsigned, isBigEndian) ctor not available
+		/// <summary>Converts a big-endian buffer into a <see cref="BigInteger"/> (equivalent to <c>new BigInteger(bytes, isUnsigned, isBigEndian: true)</c>)</summary>
+		private static BigInteger FromBigEndian(ReadOnlySpan<byte> bytes, bool isUnsigned)
+		{
+			// BigInteger(byte[]) expects little-endian two's complement: reverse, and append a 0x00 sign byte when unsigned (extra allocation)
+			int len = bytes.Length;
+			var tmp = new byte[isUnsigned ? len + 1 : len];
+			for (int i = 0; i < len; i++)
+			{
+				tmp[i] = bytes[len - 1 - i];
+			}
+			// when unsigned, the extra tmp[len] == 0 ensures the value is interpreted as positive
+			return new BigInteger(tmp);
+		}
+#endif
+
 		/// <summary>Parse a tuple segment containing a negative big integer</summary>
 		public static bool TryParseNegativeBigInteger(ReadOnlySpan<byte> slice, out BigInteger value)
 		{
@@ -2666,7 +2767,12 @@ namespace SnowBank.Data.Tuples.Binary
 				return false;
 			}
 
+#if NET5_0_OR_GREATER
 			value = new BigInteger(slice[2..], isUnsigned: false, isBigEndian: true);
+#else
+			// BigInteger span ctor not available
+			value = FromBigEndian(slice[2..], isUnsigned: false);
+#endif
 			value++;
 
 			return true;
@@ -2689,7 +2795,12 @@ namespace SnowBank.Data.Tuples.Binary
 				throw new FormatException("Slice length does not match the embedded length for a Big Integer");
 			}
 
+#if NET5_0_OR_GREATER
 			var value = new BigInteger(slice[2..], isUnsigned: false, isBigEndian: true);
+#else
+			// BigInteger span ctor not available
+			var value = FromBigEndian(slice[2..], isUnsigned: false);
+#endif
 
 			return value + 1;
 		}
@@ -2712,7 +2823,12 @@ namespace SnowBank.Data.Tuples.Binary
 				return false;
 			}
 
+#if NET5_0_OR_GREATER
 			value = new BigInteger(slice[2..], isUnsigned: true, isBigEndian: true);
+#else
+			// BigInteger span ctor not available
+			value = FromBigEndian(slice[2..], isUnsigned: true);
+#endif
 			return true;
 		}
 
@@ -2732,7 +2848,12 @@ namespace SnowBank.Data.Tuples.Binary
 				throw new FormatException("Slice length does not match the embedded length for a Big Integer");
 			}
 
+#if NET5_0_OR_GREATER
 			return new BigInteger(slice[2..], isUnsigned: true, isBigEndian: true);
+#else
+			// BigInteger span ctor not available
+			return FromBigEndian(slice[2..], isUnsigned: true);
+#endif
 		}
 
 		/// <summary>Parse a tuple segment containing a single precision number (float32)</summary>

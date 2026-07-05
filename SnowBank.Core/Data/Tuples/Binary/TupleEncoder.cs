@@ -167,7 +167,7 @@ namespace SnowBank.Data.Tuples.Binary
 			var sw = new SliceWriter();
 			var tw = new TupleWriter(ref sw);
 			WriteTo(tw, in tuple);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a tuple into a slice</summary>
@@ -182,7 +182,7 @@ namespace SnowBank.Data.Tuples.Binary
 			var sw = new SliceWriter(pool);
 			var tw = new TupleWriter(ref sw);
 			WriteTo(tw, in tuple);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Packs an array of N-tuples, all sharing the same buffer</summary>
@@ -217,7 +217,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			WriteTo(tw, tuple);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a tuple</summary>
@@ -264,12 +264,12 @@ namespace SnowBank.Data.Tuples.Binary
 
 			for (int i = 0; i < tuples.Length; i++)
 			{
-				sw.WriteBytes(prefix);
+				tw.Output.WriteBytes(prefix);
 				WriteTo(tw, in tuples[i]);
-				next.Add(sw.Position);
+				next.Add(tw.Output.Position);
 			}
 
-			return Slice.SplitIntoSegments(sw.GetBufferUnsafe(), 0, next);
+			return Slice.SplitIntoSegments(tw.Output.GetBufferUnsafe(), 0, next);
 		}
 
 		/// <summary>Packs a sequence of N-tuples, all sharing the same buffer</summary>
@@ -295,12 +295,12 @@ namespace SnowBank.Data.Tuples.Binary
 
 			foreach (var tuple in tuples)
 			{
-				sw.WriteBytes(prefix);
+				tw.Output.WriteBytes(prefix);
 				WriteTo(tw, tuple);
-				next.Add(sw.Position);
+				next.Add(tw.Output.Position);
 			}
 
-			return Slice.SplitIntoSegments(sw.GetBufferUnsafe(), 0, next);
+			return Slice.SplitIntoSegments(tw.Output.GetBufferUnsafe(), 0, next);
 		}
 
 		public static Slice[] Pack<TElement, TTuple>(ReadOnlySpan<byte> prefix, TElement[] elements, Func<TElement, TTuple> transform)
@@ -320,17 +320,17 @@ namespace SnowBank.Data.Tuples.Binary
 				var tuple = transform(element);
 				if (tuple == null)
 				{
-					next.Add(sw.Position);
+					next.Add(tw.Output.Position);
 				}
 				else
 				{
-					sw.WriteBytes(prefix);
+					tw.Output.WriteBytes(prefix);
 					WriteTo(tw, tuple);
-					next.Add(sw.Position);
+					next.Add(tw.Output.Position);
 				}
 			}
 
-			return Slice.SplitIntoSegments(sw.GetBufferUnsafe(), 0, next);
+			return Slice.SplitIntoSegments(tw.Output.GetBufferUnsafe(), 0, next);
 		}
 
 		public static Slice[] Pack<TElement, TTuple>(ReadOnlySpan<byte> prefix, ReadOnlySpan<TElement> elements, Func<TElement, TTuple> transform)
@@ -349,17 +349,17 @@ namespace SnowBank.Data.Tuples.Binary
 				var tuple = transform(element);
 				if (tuple == null)
 				{
-					next.Add(sw.Position);
+					next.Add(tw.Output.Position);
 				}
 				else
 				{
-					sw.WriteBytes(prefix);
+					tw.Output.WriteBytes(prefix);
 					WriteTo(tw, tuple);
-					next.Add(sw.Position);
+					next.Add(tw.Output.Position);
 				}
 			}
 
-			return Slice.SplitIntoSegments(sw.GetBufferUnsafe(), 0, next);
+			return Slice.SplitIntoSegments(tw.Output.GetBufferUnsafe(), 0, next);
 		}
 
 		public static Slice[] Pack<TElement, TTuple>(ReadOnlySpan<byte> prefix, IEnumerable<TElement> elements, Func<TElement, TTuple> transform)
@@ -385,17 +385,17 @@ namespace SnowBank.Data.Tuples.Binary
 				var tuple = transform(element);
 				if (tuple == null)
 				{
-					next.Add(sw.Position);
+					next.Add(tw.Output.Position);
 				}
 				else
 				{
-					sw.WriteBytes(prefix);
+					tw.Output.WriteBytes(prefix);
 					WriteTo(tw, tuple);
-					next.Add(sw.Position);
+					next.Add(tw.Output.Position);
 				}
 			}
 
-			return Slice.SplitIntoSegments(sw.GetBufferUnsafe(), 0, next);
+			return Slice.SplitIntoSegments(tw.Output.GetBufferUnsafe(), 0, next);
 		}
 
 		// With prefix...
@@ -408,7 +408,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			TuplePackers.SerializeTo(tw, value);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack a 1-tuple directly into a destination buffer</summary>
@@ -463,7 +463,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			TuplePackers.SerializeTo(tw, items.Item1);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 2-tuple</summary>
@@ -475,7 +475,7 @@ namespace SnowBank.Data.Tuples.Binary
 			var tw = new TupleWriter(ref sw);
 			TuplePackers.SerializeTo(tw, value1);
 			TuplePackers.SerializeTo(tw, value2);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack a 2-tuple directly into a destination buffer</summary>
@@ -535,7 +535,7 @@ namespace SnowBank.Data.Tuples.Binary
 			var tw = new TupleWriter(ref sw);
 			TuplePackers.SerializeTo(tw, items.Item1);
 			TuplePackers.SerializeTo(tw, items.Item2);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 3-tuple</summary>
@@ -547,7 +547,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, value1);
 			TuplePackers.SerializeTo(tw, value2);
 			TuplePackers.SerializeTo(tw, value3);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack a 3-tuple directly into a destination buffer</summary>
@@ -609,7 +609,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item1);
 			TuplePackers.SerializeTo(tw, items.Item2);
 			TuplePackers.SerializeTo(tw, items.Item3);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 4-tuple</summary>
@@ -622,7 +622,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, value2);
 			TuplePackers.SerializeTo(tw, value3);
 			TuplePackers.SerializeTo(tw, value4);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack a 4-tuple directly into a destination buffer</summary>
@@ -687,7 +687,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item2);
 			TuplePackers.SerializeTo(tw, items.Item3);
 			TuplePackers.SerializeTo(tw, items.Item4);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 5-tuple</summary>
@@ -701,7 +701,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, value3);
 			TuplePackers.SerializeTo(tw, value4);
 			TuplePackers.SerializeTo(tw, value5);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack a 5-tuple directly into a destination buffer</summary>
@@ -769,7 +769,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item3);
 			TuplePackers.SerializeTo(tw, items.Item4);
 			TuplePackers.SerializeTo(tw, items.Item5);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 6-tuple</summary>
@@ -784,7 +784,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, value4);
 			TuplePackers.SerializeTo(tw, value5);
 			TuplePackers.SerializeTo(tw, value6);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack a 6-tuple directly into a destination buffer</summary>
@@ -855,7 +855,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item4);
 			TuplePackers.SerializeTo(tw, items.Item5);
 			TuplePackers.SerializeTo(tw, items.Item6);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 7-tuple</summary>
@@ -871,7 +871,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, value5);
 			TuplePackers.SerializeTo(tw, value6);
 			TuplePackers.SerializeTo(tw, value7);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack a 7-tuple directly into a destination buffer</summary>
@@ -945,7 +945,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item5);
 			TuplePackers.SerializeTo(tw, items.Item6);
 			TuplePackers.SerializeTo(tw, items.Item7);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of an 8-tuple</summary>
@@ -962,7 +962,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, value6);
 			TuplePackers.SerializeTo(tw, value7);
 			TuplePackers.SerializeTo(tw, value8);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack an 8-tuple directly into a destination buffer</summary>
@@ -1039,7 +1039,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item6);
 			TuplePackers.SerializeTo(tw, items.Item7);
 			TuplePackers.SerializeTo(tw, items.Item8);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of an 9-tuple</summary>
@@ -1057,7 +1057,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, value7);
 			TuplePackers.SerializeTo(tw, value8);
 			TuplePackers.SerializeTo(tw, value9);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Pack an 8-tuple directly into a destination buffer</summary>
@@ -1089,7 +1089,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item7);
 			TuplePackers.SerializeTo(tw, items.Item8);
 			TuplePackers.SerializeTo(tw, items.Item9);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of an 9-tuple</summary>
@@ -1126,7 +1126,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			TuplePackers.SerializeTo(tw, items.Item1);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 1-tuple</summary>
@@ -1137,7 +1137,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			TuplePackers.SerializeTo(tw, items.Item1);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 2-tuple</summary>
@@ -1149,7 +1149,7 @@ namespace SnowBank.Data.Tuples.Binary
 			var tw = new TupleWriter(ref sw);
 			TuplePackers.SerializeTo(tw, items.Item1);
 			TuplePackers.SerializeTo(tw, items.Item2);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 2-tuple</summary>
@@ -1161,7 +1161,7 @@ namespace SnowBank.Data.Tuples.Binary
 			var tw = new TupleWriter(ref sw);
 			TuplePackers.SerializeTo(tw, items.Item1);
 			TuplePackers.SerializeTo(tw, items.Item2);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 3-tuple</summary>
@@ -1174,7 +1174,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item1);
 			TuplePackers.SerializeTo(tw, items.Item2);
 			TuplePackers.SerializeTo(tw, items.Item3);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 3-tuple</summary>
@@ -1187,7 +1187,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item1);
 			TuplePackers.SerializeTo(tw, items.Item2);
 			TuplePackers.SerializeTo(tw, items.Item3);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 4-tuple</summary>
@@ -1201,7 +1201,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item2);
 			TuplePackers.SerializeTo(tw, items.Item3);
 			TuplePackers.SerializeTo(tw, items.Item4);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 4-tuple</summary>
@@ -1215,7 +1215,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item2);
 			TuplePackers.SerializeTo(tw, items.Item3);
 			TuplePackers.SerializeTo(tw, items.Item4);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 5-tuple</summary>
@@ -1230,7 +1230,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item3);
 			TuplePackers.SerializeTo(tw, items.Item4);
 			TuplePackers.SerializeTo(tw, items.Item5);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 5-tuple</summary>
@@ -1245,7 +1245,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item3);
 			TuplePackers.SerializeTo(tw, items.Item4);
 			TuplePackers.SerializeTo(tw, items.Item5);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 6-tuple</summary>
@@ -1261,7 +1261,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item4);
 			TuplePackers.SerializeTo(tw, items.Item5);
 			TuplePackers.SerializeTo(tw, items.Item6);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 6-tuple</summary>
@@ -1277,7 +1277,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item4);
 			TuplePackers.SerializeTo(tw, items.Item5);
 			TuplePackers.SerializeTo(tw, items.Item6);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 7-tuple</summary>
@@ -1294,7 +1294,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item5);
 			TuplePackers.SerializeTo(tw, items.Item6);
 			TuplePackers.SerializeTo(tw, items.Item7);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of a 7-tuple</summary>
@@ -1311,7 +1311,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item5);
 			TuplePackers.SerializeTo(tw, items.Item6);
 			TuplePackers.SerializeTo(tw, items.Item7);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of an 8-tuple</summary>
@@ -1329,7 +1329,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item6);
 			TuplePackers.SerializeTo(tw, items.Item7);
 			TuplePackers.SerializeTo(tw, items.Item8);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Efficiently concatenates a prefix with the packed representation of an 8-tuple</summary>
@@ -1347,7 +1347,7 @@ namespace SnowBank.Data.Tuples.Binary
 			TuplePackers.SerializeTo(tw, items.Item6);
 			TuplePackers.SerializeTo(tw, items.Item7);
 			TuplePackers.SerializeTo(tw, items.Item8);
-			return sw.ToSliceOwner();
+			return tw.Output.ToSliceOwner();
 		}
 
 		/// <summary>Packs a 1-tuple directly into a slice</summary>
@@ -1357,7 +1357,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			((ITuplePackable) tuple).PackTo(tw);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a 2-tuple directly into a slice</summary>
@@ -1367,7 +1367,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			((ITuplePackable) tuple).PackTo(tw);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a 3-tuple directly into a slice</summary>
@@ -1377,7 +1377,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			((ITuplePackable) tuple).PackTo(tw);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a 4-tuple directly into a slice</summary>
@@ -1387,7 +1387,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			((ITuplePackable) tuple).PackTo(tw);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a 5-tuple directly into a slice</summary>
@@ -1397,7 +1397,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			((ITuplePackable) tuple).PackTo(tw);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a 6-tuple directly into a slice</summary>
@@ -1407,7 +1407,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			((ITuplePackable) tuple).PackTo(tw);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a 7-tuple directly into a slice</summary>
@@ -1417,7 +1417,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			((ITuplePackable) tuple).PackTo(tw);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a 8-tuple directly into a slice</summary>
@@ -1427,7 +1427,7 @@ namespace SnowBank.Data.Tuples.Binary
 			sw.WriteBytes(prefix);
 			var tw = new TupleWriter(ref sw);
 			((ITuplePackable) tuple).PackTo(tw);
-			return sw.ToSlice();
+			return tw.Output.ToSlice();
 		}
 
 		/// <summary>Packs a 2-tuple directly into a slice</summary>
@@ -2522,7 +2522,16 @@ namespace SnowBank.Data.Tuples.Binary
 
 			int utf8Len = Encoding.UTF8.GetByteCount(s);
 			// note: we use the fact that only `\0` produces 0x00 when encoded in UTF-8, so we can safely count the chars without encoding first
+#if NET8_0_OR_GREATER
 			int zeroes = s.AsSpan().Count('\0');
+#else
+			// MemoryExtensions.Count(span, value) not available
+			int zeroes = 0;
+			foreach (var c in s)
+			{
+				if (c == '\0') { zeroes++; }
+			}
+#endif
 			return checked(2 + utf8Len + zeroes);
 		}
 
@@ -2532,7 +2541,16 @@ namespace SnowBank.Data.Tuples.Binary
 			// we have 2 bytes for prefix/suffix `01....00`
 			// then for each 0x00 byte in the slice, we have to replace them into `00 FF`
 
+#if NET8_0_OR_GREATER
 			int zeroes = s.Span.Count((byte) 0);
+#else
+			// MemoryExtensions.Count(span, value) not available
+			int zeroes = 0;
+			foreach (var b in s.Span)
+			{
+				if (b == 0) { zeroes++; }
+			}
+#endif
 			return checked(2 + s.Count + zeroes);
 		}
 

@@ -55,6 +55,10 @@ namespace System
 		, ISpanParsable<VersionStamp>
 		, IUtf8SpanFormattable
 		, IUtf8SpanParsable<VersionStamp>
+#else
+		// REQUIRED so that interpolated strings honor the format specifier (the polyfilled handler would otherwise
+		// silently fall back to the parameterless ToString)
+		, IFormattable
 #endif
 	{
 		//note: they are called "Versionstamp" in the doc, but "VersionStamp" seems more .NETy (like 'TimeSpan').
@@ -334,7 +338,12 @@ namespace System
 
 			static string ToJavaStringIncomplete(uint user)
 			{
+#if NET6_0_OR_GREATER
 				return string.Create(CultureInfo.InvariantCulture, $"Versionstamp(<incomplete> {user})");
+#else
+				// string.Create(provider, interpolated) is not available on netstandard2.0
+				return string.Format(CultureInfo.InvariantCulture, "Versionstamp(<incomplete> {0})", user);
+#endif
 			}
 
 			static string ToJavaStringComplete(ulong version, ushort order, ushort user)
@@ -369,7 +378,12 @@ namespace System
 				}
 				// append the user version (even if it is missing)
 				sb.Append(' ');
+#if NET6_0_OR_GREATER
 				sb.Append(CultureInfo.InvariantCulture, $"{user}");
+#else
+				// StringBuilder.Append(IFormatProvider, interpolated) is not available on netstandard2.0
+				sb.Append(user.ToString(CultureInfo.InvariantCulture));
+#endif
 				sb.Append(')');
 				return sb.ToString();
 			}
@@ -529,6 +543,8 @@ namespace System
 			return false;
 		}
 
+#if NET8_0_OR_GREATER
+		// UTF-8 formatting (IUtf8SpanFormattable) relies on the primitives' byte-span TryFormat overloads, which only exist on .NET 8+
 		/// <summary>Tries to format the value of the current instance UTF-8 into the provided span of bytes.</summary>
 		/// <param name="utf8Destination">The span in which to write this instance's value formatted as a span of bytes.</param>
 		/// <param name="bytesWritten">When this method returns, contains the number of bytes that were written in <paramref name="utf8Destination" />.</param>
@@ -540,9 +556,7 @@ namespace System
 		public bool TryFormat(
 			Span<byte> utf8Destination,
 			out int bytesWritten,
-#if NET8_0_OR_GREATER
 			[StringSyntax(StringSyntaxAttribute.GuidFormat)]
-#endif
 			ReadOnlySpan<char> format = default,
 			IFormatProvider? provider = null
 		)
@@ -657,6 +671,7 @@ namespace System
 			bytesWritten = 0;
 			return false;
 		}
+#endif
 
 		/// <summary>Returns a newly allocated <see cref="Slice"/> that represents this VersionStamp</summary>
 		/// <remarks>The slice with have a length of either 10 or 12 bytes.</remarks>
@@ -881,7 +896,11 @@ namespace System
 				
 				if (s.Length < 3 || s[1] != '#') goto invalid;
 				
+#if NET5_0_OR_GREATER
 				if (!ushort.TryParse(s[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var x))
+#else
+				if (!ushort.TryParse(s[2..].ToString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var x)) // span-based TryParse is not on netstandard2.0
+#endif
 				{
 					goto invalid;
 				}
@@ -894,7 +913,11 @@ namespace System
 			int p = s.IndexOf('-');
 			if (p <= 0 || p > 16) goto invalid;
 
+#if NET5_0_OR_GREATER
 			if (!ulong.TryParse(s[..p], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var version))
+#else
+			if (!ulong.TryParse(s[..p].ToString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var version))
+#endif
 			{
 				goto invalid;
 			}
@@ -904,12 +927,16 @@ namespace System
 			p = s.IndexOf('#');
 			if (p == 0 || p > 4) goto invalid;
 			ushort user, flags;
-			
+
 			if (p > 0)
 			{
 				var tail = s[(p + 1)..];
 				if (tail.Length == 0 || tail.Length > 4) goto invalid;
+#if NET5_0_OR_GREATER
 				if (!ushort.TryParse(tail, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out user))
+#else
+				if (!ushort.TryParse(tail.ToString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out user))
+#endif
 				{
 					goto invalid;
 				}
@@ -922,19 +949,25 @@ namespace System
 				flags = NO_USER_VERSION;
 			}
 
+#if NET5_0_OR_GREATER
 			if (!ushort.TryParse(s, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var order))
+#else
+			if (!ushort.TryParse(s.ToString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var order))
+#endif
 			{
 				goto invalid;
 			}
 
 			result = new(version, order, user, flags);
 			return true;
-			
+
 		invalid:
 			result = default;
 			return false;
 		}
 
+#if NET8_0_OR_GREATER
+		// UTF-8 parsing (IUtf8SpanParsable) relies on the primitives' byte-span TryParse overloads, which only exist on .NET 8+
 		/// <summary>Parses a span of UTF-8 characters into a <see cref="VersionStamp"/>.</summary>
 		/// <param name="s">The span of characters to parse.</param>
 		/// <param name="provider">This parameter is ignored.</param>
@@ -1023,11 +1056,12 @@ namespace System
 
 			result = new(version, order, user, flags);
 			return true;
-			
+
 		invalid:
 			result = default;
 			return false;
 		}
+#endif
 
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static implicit operator VersionStamp(Uuid80 value) => FromUuid80(value);

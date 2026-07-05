@@ -191,7 +191,7 @@ namespace SnowBank.Linq
 		private int? LimitRemaining { get; set; }
 
 		/// <inheritdoc />
-		protected override PaginatedAsyncIterator<TResult> Clone() => new(this.Source, this.Offset, this.Limit);
+		protected override AsyncLinqIterator<TResult> Clone() => new PaginatedAsyncIterator<TResult>(this.Source, this.Offset, this.Limit);
 
 		/// <inheritdoc />
 		protected override ValueTask<bool> OnFirstAsync()

@@ -24,6 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+#if NET7_0_OR_GREATER // needs supports for UInt128
+
 namespace System.IO.Hashing
 {
 	using System.Buffers;
@@ -155,3 +157,5 @@ namespace System.IO.Hashing
 	}
 
 }
+
+#endif

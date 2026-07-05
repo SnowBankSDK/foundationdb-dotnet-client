@@ -467,7 +467,9 @@ namespace SnowBank.Data.Json.Binary.Tests
 			Log($"JsonPack: {bytes.ZstdCompress(22).Count:N0} bytes, compressed with Zstd (22)");
 			Log($"JsonPack: {bytes.DeflateCompress(CompressionLevel.Fastest).Count:N0} bytes, compressed with Deflate (1)");
 			Log($"JsonPack: {bytes.DeflateCompress(CompressionLevel.Optimal).Count:N0} bytes, compressed with Deflate (5)");
+#if NET6_0_OR_GREATER
 			Log($"JsonPack: {bytes.DeflateCompress(CompressionLevel.SmallestSize).Count:N0} bytes, compressed with Deflate (9)");
+#endif
 		}
 
 		[Test, Category("Benchmark")]
@@ -484,7 +486,9 @@ namespace SnowBank.Data.Json.Binary.Tests
 			Log($"JSON    : {json.ZstdCompress(20).Count:N0} bytes, compressed with Zstd (20)");
 			Log($"JSON    : {json.DeflateCompress(CompressionLevel.Fastest).Count:N0} bytes, compressed with Deflate (1)");
 			Log($"JSON    : {json.DeflateCompress(CompressionLevel.Optimal).Count:N0} bytes, compressed with Deflate (5)");
+#if NET6_0_OR_GREATER
 			Log($"JSON    : {json.DeflateCompress(CompressionLevel.SmallestSize).Count:N0} bytes, compressed with Deflate (9)");
+#endif
 		}
 
 		public sealed record FooDb

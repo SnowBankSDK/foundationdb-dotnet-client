@@ -354,12 +354,20 @@ namespace SnowBank.Buffers
 		/// <summary>Read the next 4 bytes as an IEEE 32-bit floating point number</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public float ReadSingle()
+#if !NETSTANDARD2_0
 			=> BinaryPrimitives.ReadSingleLittleEndian(ReadFourBytes());
+#else
+			=> BinaryPrimitivesCompat.ReadSingleLittleEndian(ReadFourBytes());
+#endif
 
 		/// <summary>Read the next 8 bytes as an IEEE 64-bit floating point number</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public double ReadDouble()
+#if !NETSTANDARD2_0
 			=> BinaryPrimitives.ReadDoubleLittleEndian(ReadEightBytes());
+#else
+			=> BinaryPrimitivesCompat.ReadDoubleLittleEndian(ReadEightBytes());
+#endif
 
 		/// <summary>Read an encoded nul-terminated byte array from the buffer</summary>
 		public ReadOnlySpan<byte> ReadByteString()

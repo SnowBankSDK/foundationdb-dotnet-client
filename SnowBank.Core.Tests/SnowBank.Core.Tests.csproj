@@ -3,6 +3,8 @@
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<!-- the net472 validation target consumes the netstandard2.0 build of SnowBank.Core, so it follows the same switch -->
+		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -41,6 +43,21 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="ZstdSharp.Port" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+		<!-- net472 is the ".NET Framework validation" target: it consumes the netstandard2.0 build of SnowBank.Core
+		     and runs (a subset of) the test suite on the real .NET Framework CLR. -->
+		<!-- HttpUtility (used as a reference implementation by the URL encoding tests) -->
+		<Reference Include="System.Web" />
+		<Reference Include="System.Net.Http" />
+		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
+		<PackageReference Include="PolySharp" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="9.0.17" />
+		<!-- direct reference so that the binding redirect to 2.2.3 is auto-generated (the NUnit adapter requests 2.1.0) -->
+		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
+		<!-- the System.Text.Json attributes ([JsonPropertyName], [JsonPolymorphic], ...) used by the test models are recognized by name on the netstandard2.0 build of SnowBank.Core -->
+		<PackageReference Include="System.Text.Json" />
 	</ItemGroup>
 
 	<ItemGroup>

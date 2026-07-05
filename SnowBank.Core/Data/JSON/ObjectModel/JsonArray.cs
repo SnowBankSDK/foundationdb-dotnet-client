@@ -38,6 +38,9 @@ namespace SnowBank.Data.Json
 	using System.Diagnostics.CodeAnalysis;
 	using System.Reflection;
 	using System.Runtime.InteropServices;
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
+#endif
 	using System.Text;
 	using NodaTime;
 	using SnowBank.Buffers;
@@ -50,7 +53,10 @@ namespace SnowBank.Data.Json
 	[DebuggerDisplay("JSON Array[{m_size}]{GetMutabilityDebugLiteral(),nq} {GetCompactRepresentation(0),nq}")]
 	[DebuggerTypeProxy(typeof(DebugView))]
 	[PublicAPI]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(CrystalJsonCustomJsonConverter))]
+#endif
 	[DebuggerNonUserCode]
 #if NET9_0_OR_GREATER
 	[CollectionBuilder(typeof(JsonArray), nameof(JsonArray.Create))]
@@ -165,7 +171,11 @@ namespace SnowBank.Data.Json
 		/// <para>This is similar to the <c>{ get; init; }</c> pattern for CLR records, and allows initializing a JSON object and then marking it as read-only once it is ready to be returned and/or shared, without performing extra memory allocations.</para>
 		/// <para>Please note that, once "frozen", the operation cannot be reverted, and if additional mutations are required, a new copy of the object must be created.</para>
 		/// </remarks>
+#if NET5_0_OR_GREATER
 		public override JsonArray Freeze()
+#else
+		public new JsonArray Freeze()
+#endif
 		{
 			if (!m_readOnly)
 			{
@@ -179,6 +189,14 @@ namespace SnowBank.Data.Json
 
 			return this;
 		}
+
+#if !NET5_0_OR_GREATER
+		// forward the JsonValue virtual cores to the strongly typed shadows above (covariant-return emulation)
+		protected override JsonValue FreezeCore() => Freeze();
+		protected override JsonValue ToReadOnlyCore() => ToReadOnly();
+		protected override JsonValue ToMutableCore() => ToMutable();
+		protected override JsonValue CopyCore() => Copy();
+#endif
 
 		/// <summary>[DANGEROUS] Marks this array as read-only, without performing any extra checks!</summary>
 		internal JsonArray FreezeUnsafe()
@@ -194,7 +212,11 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns a new immutable read-only version of this <see cref="JsonArray">JSON Array</see> (and all of its children)</summary>
 		/// <returns>The same object, if it is already read-only; otherwise, a deep copy marked as read-only.</returns>
 		/// <remarks>A JSON object that is immutable is truly safe against any modification, including any of its direct or indirect children.</remarks>
+#if NET5_0_OR_GREATER
 		public override JsonArray ToReadOnly()
+#else
+		public new JsonArray ToReadOnly()
+#endif
 		{
 			if (m_readOnly)
 			{ // already immutable
@@ -215,7 +237,11 @@ namespace SnowBank.Data.Json
 		/// <remarks>
 		/// <para>This will recursively copy all JSON objects or arrays present in the array, even if they are already mutable.</para>
 		/// </remarks>
+#if NET5_0_OR_GREATER
 		public override JsonArray Copy()
+#else
+		public new JsonArray Copy()
+#endif
 		{
 			var items = this.AsSpan();
 			if (items.Length == 0) return [ ];
@@ -235,7 +261,11 @@ namespace SnowBank.Data.Json
 		/// <returns>Copy of the array, and optionally of its children (if <paramref name="deep"/> is <see langword="true" /></returns>
 		/// <remarks>Performing a deep copy will protect against any change, but will induce a lot of memory allocations. For example, any child array will be cloned even if they will not be modified later on.</remarks>
 		[Pure]
+#if NET5_0_OR_GREATER
 		protected internal override JsonArray Copy(bool deep, bool readOnly) => Copy(this, deep, readOnly);
+#else
+		protected internal override JsonValue Copy(bool deep, bool readOnly) => Copy(this, deep, readOnly);  // covariant return types need runtime support that netstandard2.0/netfx lacks; the derived type is returned as the base type there
+#endif
 
 		/// <summary>Creates a copy of a <see cref="JsonArray">JSON Array</see></summary>
 		/// <param name="array"><see cref="JsonArray">JSON Array</see> to clone</param>
@@ -1369,8 +1399,18 @@ namespace SnowBank.Data.Json
 
 			if (typeof(TValue).IsAssignableTo(typeof(JsonValue)))
 			{
+#if NET5_0_OR_GREATER
 				var json = MemoryMarshal.CreateReadOnlySpan<JsonValue?>(ref Unsafe.As<TValue, JsonValue?>(ref MemoryMarshal.GetReference(items)), items.Length);
 				return AddRange(json);
+#else
+				// MemoryMarshal.CreateReadOnlySpan is not usable there (the compat shim's pointer-based span could dangle over a movable array): copy element by element
+				for (int i = 0; i < items.Length; i++)
+				{
+					tail[i] = ((JsonValue?) (object?) items[i]) ?? JsonNull.Null;
+				}
+				m_size = newSize;
+				return this;
+#endif
 			}
 
 			if (typeof(TValue).IsAssignableTo(typeof(IJsonPackable)))
@@ -1894,10 +1934,20 @@ namespace SnowBank.Data.Json
 
 			if (typeof(TValue) == typeof(JsonValue))
 			{
+#if NET5_0_OR_GREATER
 				// force cast to a ReadOnlySpan<JsonValue>
 				var json = MemoryMarshal.CreateReadOnlySpan<JsonValue?>(ref Unsafe.As<TValue, JsonValue?>(ref MemoryMarshal.GetReference(items)), items.Length);
 				// then add these values directly
 				return AddRangeReadOnly(json);
+#else
+				// MemoryMarshal.CreateReadOnlySpan is not usable there (the compat shim's pointer-based span could dangle over a movable array): copy element by element
+				for (int i = 0; i < items.Length; i++)
+				{
+					tail[i] = (((JsonValue?) (object?) items[i]) ?? JsonNull.Null).ToReadOnly();
+				}
+				m_size = newSize;
+				return this;
+#endif
 			}
 
 			var dom = CrystalJsonDomWriter.Create(settings, resolver);
@@ -2596,9 +2646,16 @@ namespace SnowBank.Data.Json
 		public override bool Contains(JsonValue? item)
 		{
 			// if item is null, we want _any_ types of null (Null, Missing, Error)
+#if NET5_0_OR_GREATER
 			return item is not null
 				? this.AsSpan().Contains(item)
 				: ContainsNullLike(this.AsSpan());
+#else
+			// MemoryExtensions.Contains is not available on netstandard2.0, but IndexOf is
+			return item is not null
+				? this.AsSpan().IndexOf(item) >= 0
+				: ContainsNullLike(this.AsSpan());
+#endif
 
 			static bool ContainsNullLike(ReadOnlySpan<JsonValue> items)
 			{
@@ -3317,7 +3374,12 @@ namespace SnowBank.Data.Json
 			var result = new TValue[items.Length];
 			for (int i = 0; i < result.Length; i++)
 			{
+#if NET7_0_OR_GREATER
 				result[i] = TValue.JsonDeserialize(items[i], resolver);
+#else
+				// static abstract interface members cannot be invoked on netstandard2.0
+				result[i] = JsonDeserializableDispatcher<TValue>.Invoke(items[i], resolver);
+#endif
 			}
 			return result;
 		}
@@ -3466,6 +3528,8 @@ namespace SnowBank.Data.Json
 			return buf;
 		}
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <summary>Returns the equivalent <see cref="Half"/> array</summary>
 		[Pure, CollectionAccess(CollectionAccessType.Read)]
 		public Half[] ToHalfArray(Half defaultValue = default)
@@ -3480,6 +3544,7 @@ namespace SnowBank.Data.Json
 			}
 			return buf;
 		}
+#endif
 
 		/// <summary>Returns the equivalent <see cref="decimal"/> array</summary>
 		[Pure, CollectionAccess(CollectionAccessType.Read)]
@@ -3729,9 +3794,10 @@ namespace SnowBank.Data.Json
 				tmp[i] = TValue.JsonDeserialize(items[i], resolver);
 			}
 #else
+			// note: this branch only compiles for netstandard2.0, where static abstract interface members cannot be invoked
 			foreach(var item in items)
 			{
-				result.Add(TValue.JsonDeserialize(items[i], resolver));
+				result.Add(JsonDeserializableDispatcher<TValue>.Invoke(item, resolver));
 			}
 #endif
 			return result;
@@ -3744,7 +3810,12 @@ namespace SnowBank.Data.Json
 		public HashSet<JsonValue> ToHashSet(IEqualityComparer<JsonValue>? comparer = null)
 		{
 			var items = this.AsSpan();
+#if NET5_0_OR_GREATER
 			var res = new HashSet<JsonValue>(items.Length, comparer ?? JsonValueComparer.Strict);
+#else
+			// HashSet<T> has no (capacity, comparer) constructor on netstandard2.0
+			var res = new HashSet<JsonValue>(comparer ?? JsonValueComparer.Strict);
+#endif
 			foreach(var item in items)
 			{
 				res.Add(item);
@@ -3760,7 +3831,12 @@ namespace SnowBank.Data.Json
 		public HashSet<TValue?> ToHashSet<TValue>(TValue? defaultValue = default, IEqualityComparer<TValue?>? comparer = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			var items = this.AsSpan();
+#if NET5_0_OR_GREATER
 			var res = new HashSet<TValue?>(items.Length, comparer);
+#else
+			// HashSet<T> has no (capacity, comparer) constructor on netstandard2.0
+			var res = new HashSet<TValue?>(comparer);
+#endif
 			foreach(var item in items)
 			{
 				res.Add(item.As(defaultValue, resolver));
@@ -3777,7 +3853,12 @@ namespace SnowBank.Data.Json
 		{
 			Contract.NotNull(decoder);
 			var items = this.AsSpan();
+#if NET5_0_OR_GREATER
 			var result = new HashSet<TValue>(items.Length, comparer);
+#else
+			// HashSet<T> has no (capacity, comparer) constructor on netstandard2.0
+			var result = new HashSet<TValue>(comparer);
+#endif
 			foreach(var item in items)
 			{
 				result.Add(decoder(item));
@@ -3791,7 +3872,11 @@ namespace SnowBank.Data.Json
 		/// <para>Will return the same instance if it is already mutable, or a new deep copy with all children marked as mutable.</para>
 		/// <para>This attempts to only copy what is necessary, and will not copy objects or arrays that are already mutable, or all other "value types" (string, boolean, number, ...) that are always immutable.</para>
 		/// </remarks>
+#if NET5_0_OR_GREATER
 		public override JsonArray ToMutable()
+#else
+		public new JsonArray ToMutable()
+#endif
 		{
 			if (m_readOnly)
 			{ // create a mutable copy
@@ -4014,6 +4099,8 @@ namespace SnowBank.Data.Json
 			return result;
 		}
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <summary>Deserializes this <see cref="JsonArray">JSON Array</see> into a list of <see cref="double"/></summary>
 		[Pure, CollectionAccess(CollectionAccessType.Read)]
 		public List<Half> ToHalfList(Half defaultValue = default)
@@ -4025,6 +4112,7 @@ namespace SnowBank.Data.Json
 			}
 			return result;
 		}
+#endif
 
 		/// <summary>Deserializes this <see cref="JsonArray">JSON Array</see> into a list of <see cref="decimal"/></summary>
 		[Pure, CollectionAccess(CollectionAccessType.Read)]

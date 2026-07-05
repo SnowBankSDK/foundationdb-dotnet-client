@@ -404,7 +404,12 @@ namespace SnowBank.Collections.Caching
 			else
 			{
 				var res = items.ToList();
+#if NET5_0_OR_GREATER
 				TryAddRangeInternal(CollectionsMarshal.AsSpan(res), true);
+#else
+				// CollectionsMarshal.AsSpan is not available: copy the list to an array (one extra allocation of the same size)
+				TryAddRangeInternal(res.ToArray(), true);
+#endif
 			}
 		}
 
@@ -426,7 +431,12 @@ namespace SnowBank.Collections.Caching
 			else
 			{
 				var res = items.ToList();
+#if NET5_0_OR_GREATER
 				TryAddRangeInternal(CollectionsMarshal.AsSpan(res), false);
+#else
+				// CollectionsMarshal.AsSpan is not available: copy the list to an array (one extra allocation of the same size)
+				TryAddRangeInternal(res.ToArray(), false);
+#endif
 			}
 		}
 

@@ -31,6 +31,10 @@ namespace SnowBank.Buffers
 	using System.Runtime.InteropServices;
 	using System.Text;
 	using SnowBank.Buffers.Binary;
+#if NETSTANDARD2_0
+	using MemoryMarshal = SnowBank.Compat.MemoryMarshalCompat; // shim adds CreateReadOnlySpan/CreateSpan/AsRef, absent from netstandard2.0
+	using BinaryPrimitives = SnowBank.Compat.BinaryPrimitivesCompat; // shim adds the Single/Double overloads, absent from netstandard2.0
+#endif
 
 	/// <summary>Helper class that holds the internal state used to parse tuples from slices</summary>
 	/// <remarks>This struct MUST be passed by reference!</remarks>
@@ -1227,11 +1231,11 @@ namespace SnowBank.Buffers
 			return true;
 		}
 
-		/// <summary>Reads the next 8 bytes as an IEEE 64-bit floating point number, encoded in little-endian</summary>
+		/// <summary>Reads the next 8 bytes as an IEEE 64-bit floating point number, encoded in big-endian</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public double ReadDoubleBE() => BinaryPrimitives.ReadDoubleBigEndian(ReadEightBytesSpan());
 
-		/// <summary>Reads the next 8 bytes as an IEEE 64-bit floating point number, encoded in little-endian, unless we already reached the end.</summary>
+		/// <summary>Reads the next 8 bytes as an IEEE 64-bit floating point number, encoded in big-endian, unless we already reached the end.</summary>
 		public bool TryReadDoubleBE(out double value)
 		{
 			if (!TryReadEightBytesSpan(out var span))

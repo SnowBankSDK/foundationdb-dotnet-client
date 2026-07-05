@@ -106,7 +106,11 @@ namespace SnowBank.Linq
 				{
 					// this is likely a Nullable<T> where we need to return 0 instead of null!
 					// note: RuntimeHelpers.GetUninitializedObject(typeof(int?)) returns 0 instead of null, which helps us here (for a change!)
+#if NET8_0_OR_GREATER
 					return Task.FromResult((TSource) RuntimeHelpers.GetUninitializedObject(typeof(TSource)));
+#else
+					return Task.FromResult((TSource) System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(TSource))); // RuntimeHelpers.GetUninitializedObject is not on netstandard2.0
+#endif
 				}
 
 				// we cannot simply return null here, because if TSource implements INumberBase<T> we should return T.Zero instead (which could be something else!)
@@ -194,6 +198,36 @@ namespace SnowBank.Linq
 
 			/// <inheritdoc />
 			public Task<TSource> FirstOrDefaultAsync(Func<TSource, CancellationToken, Task<bool>> predicate, TSource defaultValue) => Task.FromResult(defaultValue);
+
+#if !NET5_0_OR_GREATER
+			// these overloads are default interface implementations on modern targets, which netstandard2.0 cannot represent
+			/// <inheritdoc />
+			public Task<TSource?> FirstOrDefaultAsync() => Task.FromResult(default(TSource));
+
+			/// <inheritdoc />
+			public Task<TSource?> FirstOrDefaultAsync(Func<TSource, bool> predicate) => Task.FromResult(default(TSource));
+
+			/// <inheritdoc />
+			public Task<TSource?> FirstOrDefaultAsync(Func<TSource, CancellationToken, Task<bool>> predicate) => Task.FromResult(default(TSource));
+
+			/// <inheritdoc />
+			public Task<TSource?> LastOrDefaultAsync() => Task.FromResult(default(TSource));
+
+			/// <inheritdoc />
+			public Task<TSource?> LastOrDefaultAsync(Func<TSource, bool> predicate) => Task.FromResult(default(TSource));
+
+			/// <inheritdoc />
+			public Task<TSource?> LastOrDefaultAsync(Func<TSource, CancellationToken, Task<bool>> predicate) => Task.FromResult(default(TSource));
+
+			/// <inheritdoc />
+			public Task<TSource?> SingleOrDefaultAsync() => Task.FromResult(default(TSource));
+
+			/// <inheritdoc />
+			public Task<TSource?> SingleOrDefaultAsync(Func<TSource, bool> predicate) => Task.FromResult(default(TSource));
+
+			/// <inheritdoc />
+			public Task<TSource?> SingleOrDefaultAsync(Func<TSource, CancellationToken, Task<bool>> predicate) => Task.FromResult(default(TSource));
+#endif
 
 			/// <inheritdoc />
 			public Task<TSource> FirstAsync() => Task.FromException<TSource>(ErrorNoElements());

@@ -41,7 +41,12 @@ namespace SnowBank.Data.Json.Tests
 
 			// empty
 			var path = GetTemporaryPath("null.json");
+#if NET5_0_OR_GREATER
 			await using (var fs = File.Create(path))
+#else
+			// FileStream does not implement IAsyncDisposable on .NET Framework
+			using (var fs = File.Create(path))
+#endif
 			{
 				await using (new CrystalJsonStreamWriter(fs, CrystalJsonSettings.Json, null, ownStream: false))
 				{
@@ -54,7 +59,12 @@ namespace SnowBank.Data.Json.Tests
 
 			// empty batch
 			path = GetTemporaryPath("empty.json");
+#if NET5_0_OR_GREATER
 			await using (var fs = File.Create(path))
+#else
+			// FileStream does not implement IAsyncDisposable on .NET Framework
+			using (var fs = File.Create(path))
+#endif
 			{
 				await using (var stream = new CrystalJsonStreamWriter(fs, CrystalJsonSettings.Json, null, ownStream: true))
 				{
@@ -158,8 +168,14 @@ namespace SnowBank.Data.Json.Tests
 
 			// compress
 			path = GetTemporaryPath("objects.json.gz");
+#if NET5_0_OR_GREATER
 			await using (var fs = File.Create(path + ".gz"))
 			await using (var gz = new GZipStream(fs, CompressionMode.Compress, false))
+#else
+			// FileStream/GZipStream do not implement IAsyncDisposable on .NET Framework
+			using (var fs = File.Create(path + ".gz"))
+			using (var gz = new GZipStream(fs, CompressionMode.Compress, false))
+#endif
 			await using (var stream = new CrystalJsonStreamWriter(gz, CrystalJsonSettings.Json))
 			{
 				await stream.WriteArrayFragmentAsync(async (array) =>

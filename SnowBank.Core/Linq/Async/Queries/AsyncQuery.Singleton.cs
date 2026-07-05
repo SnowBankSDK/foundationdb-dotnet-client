@@ -113,7 +113,7 @@ namespace SnowBank.Linq
 			public override CancellationToken Cancellation { get; }
 
 			/// <inheritdoc />
-			protected override SingletonIterator<TElement> Clone() => new(this.Factory!, this.Cancellation);
+			protected override AsyncLinqIterator<TElement> Clone() => new SingletonIterator<TElement>(this.Factory!, this.Cancellation);
 
 			/// <inheritdoc />
 			protected override ValueTask<bool> OnFirstAsync()

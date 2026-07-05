@@ -751,7 +751,7 @@ namespace SnowBank.Data.Tuples.Tests
 				Assert.That(TuPack.EncodeKey(3.14f).ToHexString(' '), Is.EqualTo("20 C0 48 F5 C3"));
 				Assert.That(TuPack.EncodeKey(-3.14f).ToHexString(' '), Is.EqualTo("20 3F B7 0A 3C"));
 				Assert.That(TuPack.EncodeKey((float) Math.PI).ToHexString(' '), Is.EqualTo("20 C0 49 0F DB"));
-				Assert.That(TuPack.EncodeKey((float) Math.Tau).ToHexString(' '), Is.EqualTo("20 C0 C9 0F DB"));
+				Assert.That(TuPack.EncodeKey((float) (2 * Math.PI) /* == Math.Tau, absent from netfx */).ToHexString(' '), Is.EqualTo("20 C0 C9 0F DB"));
 
 				Assert.That(TuPack.EncodeKey(float.MinValue).ToHexString(' '), Is.EqualTo("20 00 80 00 00"));
 				Assert.That(TuPack.EncodeKey(float.MaxValue).ToHexString(' '), Is.EqualTo("20 FF 7F FF FF"));
@@ -789,11 +789,11 @@ namespace SnowBank.Data.Tuples.Tests
 				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 C2 28 00 00")), Is.EqualTo(42f));
 				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 3D D7 FF FF")), Is.EqualTo(-42f));
 
-				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 BF B5 04 F3")), Is.EqualTo(MathF.Sqrt(2)));
+				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 BF B5 04 F3")), Is.EqualTo((float) Math.Sqrt(2) /* == MathF.Sqrt(2), absent from netfx */));
 				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 C0 48 F5 C3")), Is.EqualTo(3.14f));
 				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 3F B7 0A 3C")), Is.EqualTo(-3.14f));
 				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 C0 49 0F DB")), Is.EqualTo((float) Math.PI));
-				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 C0 C9 0F DB")), Is.EqualTo((float) Math.Tau));
+				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 C0 C9 0F DB")), Is.EqualTo((float) (2 * Math.PI) /* == Math.Tau, absent from netfx */));
 
 				// well known values
 				Assert.That(TuPack.DecodeKey<float>(Slice.FromHexa("20 00 80 00 00")), Is.EqualTo(float.MinValue), "float.MinValue");
@@ -830,7 +830,7 @@ namespace SnowBank.Data.Tuples.Tests
 				Assert.That(TuPack.EncodeKey(3.14).ToHexString(' '), Is.EqualTo("21 C0 09 1E B8 51 EB 85 1F"));
 				Assert.That(TuPack.EncodeKey(-3.14).ToHexString(' '), Is.EqualTo("21 3F F6 E1 47 AE 14 7A E0"));
 				Assert.That(TuPack.EncodeKey(Math.PI).ToHexString(' '), Is.EqualTo("21 C0 09 21 FB 54 44 2D 18"));
-				Assert.That(TuPack.EncodeKey(Math.Tau).ToHexString(' '), Is.EqualTo("21 C0 19 21 FB 54 44 2D 18"));
+				Assert.That(TuPack.EncodeKey((2 * Math.PI) /* == Math.Tau, absent from netfx */).ToHexString(' '), Is.EqualTo("21 C0 19 21 FB 54 44 2D 18"));
 				Assert.That(TuPack.EncodeKey(Math.E).ToHexString(' '), Is.EqualTo("21 C0 05 BF 0A 8B 14 57 69"));
 				Assert.That(TuPack.EncodeKey(Math.Sqrt(2)).ToHexString(' '), Is.EqualTo("21 BF F6 A0 9E 66 7F 3B CD"));
 
@@ -882,7 +882,7 @@ namespace SnowBank.Data.Tuples.Tests
 				Assert.That(TuPack.DecodeKey<double>(Slice.FromHexa("21 C0 09 1E B8 51 EB 85 1F")), Is.EqualTo(3.14));
 				Assert.That(TuPack.DecodeKey<double>(Slice.FromHexa("21 3F F6 E1 47 AE 14 7A E0")), Is.EqualTo(-3.14));
 				Assert.That(TuPack.DecodeKey<double>(Slice.FromHexa("21 C0 09 21 FB 54 44 2D 18")), Is.EqualTo(Math.PI));
-				Assert.That(TuPack.DecodeKey<double>(Slice.FromHexa("21 C0 19 21 FB 54 44 2D 18")), Is.EqualTo(Math.Tau));
+				Assert.That(TuPack.DecodeKey<double>(Slice.FromHexa("21 C0 19 21 FB 54 44 2D 18")), Is.EqualTo((2 * Math.PI) /* == Math.Tau, absent from netfx */));
 				Assert.That(TuPack.DecodeKey<double>(Slice.FromHexa("21 C0 05 BF 0A 8B 14 57 69")), Is.EqualTo(Math.E));
 
 				Assert.That(TuPack.DecodeKey<double>(Slice.FromHexa("21 00 10 00 00 00 00 00 00")), Is.EqualTo(double.MinValue));

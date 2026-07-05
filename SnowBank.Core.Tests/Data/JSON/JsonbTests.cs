@@ -468,7 +468,9 @@ namespace SnowBank.Data.Json.Binary.Tests
 			Log($"JSONB: {jsonb.ZstdCompress(9).Count:N0} bytes, compressed with Zstd-9");
 			Log($"JSONB: {jsonb.ZstdCompress(20).Count:N0} bytes, compressed with Zstd-20");
 			Log($"JSONB: {jsonb.DeflateCompress(CompressionLevel.Optimal).Count:N0} bytes, compressed with Deflate (5)");
+#if NET6_0_OR_GREATER
 			Log($"JSONB: {jsonb.DeflateCompress(CompressionLevel.SmallestSize).Count:N0} bytes, compressed with Deflate (9)");
+#endif
 		}
 
 		[Test]

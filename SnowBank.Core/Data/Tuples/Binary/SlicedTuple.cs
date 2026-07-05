@@ -220,8 +220,11 @@ namespace SnowBank.Data.Tuples.Binary
 		[EditorBrowsable(EditorBrowsableState.Always)]
 		public int Count => m_slices.Length;
 		
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		int System.Runtime.CompilerServices.ITuple.Length => this.Count;
+#endif
 
 		[EditorBrowsable(EditorBrowsableState.Advanced)]
 		public object? this[int index] => TuplePackers.DeserializeBoxed(GetSpan(index));
@@ -563,6 +566,8 @@ namespace SnowBank.Data.Tuples.Binary
 			return thisLen.CompareTo(otherLen);
 		}
 
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
 		private int CompareTo(ITuple? other, IComparer comparer)
 		{
 			if (other is null) return +1;
@@ -585,6 +590,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 			return thisLen.CompareTo(otherLen);
 		}
+#endif
 
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public int CompareTo(object? other) => CompareTo(other, SimilarValueComparer.Default);
@@ -593,7 +599,10 @@ namespace SnowBank.Data.Tuples.Binary
 		{
 			null => +1,
 			IVarTuple t => CompareTo(t, comparer),
+#if !NETSTANDARD2_0
+			// ITuple is not visible to netstandard2.0
 			ITuple t => CompareTo(t, comparer),
+#endif
 			_ => throw new ArgumentException($"Cannot compare a SpanTuple with an instance of {other.GetType().GetFriendlyName()}")
 		};
 

@@ -77,7 +77,7 @@ namespace SnowBank.Linq.Async.Iterators
 		}
 
 		/// <summary>Apply a transformation on the results of the merge sort</summary>
-		public override AsyncLinqIterator<TNew> Select<TNew>(Func<TResult, TNew> selector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TResult, TNew> selector)
 		{
 			return new MergeSortAsyncIterator<TSource, TKey, TNew>(
 				m_sources,
@@ -92,7 +92,7 @@ namespace SnowBank.Linq.Async.Iterators
 		/// <summary>Limit the number of elements returned by the MergeSort</summary>
 		/// <param name="limit">Maximum number of results to return</param>
 		/// <returns>New MergeSort that will only return the specified number of results</returns>
-		public override AsyncLinqIterator<TResult> Take(int limit)
+		public override IAsyncLinqQuery<TResult> Take(int limit)
 		{
 			if (limit < 0) throw new ArgumentOutOfRangeException(nameof(limit), "Value cannot be less than zero");
 

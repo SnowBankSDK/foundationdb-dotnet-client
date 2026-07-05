@@ -76,6 +76,8 @@ namespace SnowBank.Data.Json
 		// this is just a marker interface
 	}
 
+#if !NETSTANDARD2_0
+	// the source-gen proxy interfaces (IJsonReadOnlyProxy/IJsonWritableProxy) are not part of the netstandard2.0 backport (they need static abstract interface members)
 	/// <summary>Bundle interface that is implemented by source-generated encoders for read-only proxies.</summary>
 	/// <typeparam name="TValue">Beacon type for the exposed proxy</typeparam>
 	/// <typeparam name="TReadOnlyProxy">Type of the generated read-only proxy that mimics the properties on type <typeparamref name="TValue"/></typeparam>
@@ -153,5 +155,6 @@ namespace SnowBank.Data.Json
 	{
 		// this is just a marker interface
 	}
+#endif
 
 }

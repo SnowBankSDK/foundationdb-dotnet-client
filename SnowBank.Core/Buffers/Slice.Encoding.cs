@@ -34,6 +34,9 @@ namespace System
 	using System.Text;
 	using SnowBank.Buffers;
 	using SnowBank.Buffers.Binary;
+#if NETSTANDARD2_0
+	using BinaryPrimitives = SnowBank.Compat.BinaryPrimitivesCompat; // shim adds the Single/Double overloads, absent from netstandard2.0
+#endif
 
 	public partial struct Slice
 	{
@@ -657,6 +660,8 @@ namespace System
 			return new Slice(tmp, 0, 8);
 		}
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0 and has no official bridge package
 		/// <summary>Encodes a 64-bit decimal into an 8-byte slice</summary>
 		[Pure]
 		public static Slice FromHalf(Half value)
@@ -674,6 +679,7 @@ namespace System
 			BinaryPrimitives.WriteHalfLittleEndian(tmp, value);
 			return new Slice(tmp, 0, 2);
 		}
+#endif
 
 		/// <summary>Encodes a 128-bit decimal into an 16-byte slice</summary>
 		public static Slice FromDecimal(decimal value)
@@ -1304,7 +1310,11 @@ namespace System
 				return hexString == null ? default : Empty;
 			}
 
+#if NET5_0_OR_GREATER
 			return new Slice(Convert.FromHexString(hexString));
+#else
+			return new Slice(SnowBank.Compat.ConvertCompat.FromHexString(hexString));
+#endif
 		}
 
 		/// <summary>Convert a hexadecimal encoded string ("1234AA7F") into a slice</summary>
@@ -1318,7 +1328,11 @@ namespace System
 				return Empty;
 			}
 
+#if NET5_0_OR_GREATER
 			return new Slice(Convert.FromHexString(hexString));
+#else
+			return new Slice(SnowBank.Compat.ConvertCompat.FromHexString(hexString));
+#endif
 		}
 
 
@@ -1378,7 +1392,11 @@ namespace System
 
 			if (separator == '\0' || (hexString.Length & 2) == 0 && !hexString.Contains(separator))
 			{ // looks like a compact string, use the optimized runtime version
+#if NET5_0_OR_GREATER
 				return new(Convert.FromHexString(hexString));
+#else
+				return new(SnowBank.Compat.ConvertCompat.FromHexString(hexString));
+#endif
 			}
 
 			// slower version
@@ -1547,7 +1565,11 @@ namespace System
 		/// <returns>ex: <c>"0123456789ABCDEF"</c></returns>
 		/// <remarks>The result is identical to the <c>"N"</c> format when calling <see cref="ToString(string?,System.IFormatProvider?)"/> or <see cref="TryFormat"/></remarks>
 		public string ToHexString()
+#if NET8_0_OR_GREATER
 			=> Convert.ToHexString(this.Span);
+#else
+			=> this.Span.ToHexaString('\0', lowerCase: false); // Convert.ToHexString is net5+; fall back to the SnowBank hex formatter
+#endif
 
 		/// <summary>Converts a slice into a string with each byte encoded into lowercase hexadecimal (<c>0-9a-f</c>)</summary>
 		/// <returns>ex: <c>"0123456789abcdef"</c></returns>0
@@ -1566,7 +1588,11 @@ namespace System
 		[Pure]
 		public string ToHexString(char sep)
 		{
+#if NET8_0_OR_GREATER
 			return sep != '\0' ? this.Span.ToHexaString(sep, lowerCase: false) : Convert.ToHexString(this.Span);
+#else
+			return this.Span.ToHexaString(sep, lowerCase: false); // ToHexaString handles sep == '\0' (no separator) too
+#endif
 		}
 
 		/// <summary>Converts a slice into a string with each byte encoded into lowercase hexadecimal (<c>0-9a-f</c>), separated by a character</summary>

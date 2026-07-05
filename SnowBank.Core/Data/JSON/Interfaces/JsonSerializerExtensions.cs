@@ -30,6 +30,9 @@ namespace SnowBank.Data.Json
 	using System.Collections.Immutable;
 	using System.ComponentModel;
 	using System.Runtime.InteropServices;
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
+#endif
 	using SnowBank.Runtime.Converters;
 	using SnowBank.Buffers;
 
@@ -1894,7 +1897,12 @@ namespace SnowBank.Data.Json
 			where T : IJsonDeserializable<T>
 		{
 			var value = CrystalJson.Parse(jsonBytes, settings).Required();
+#if NET7_0_OR_GREATER
 			return T.JsonDeserialize(value, resolver);
+#else
+			// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+			return JsonDeserializableDispatcher<T>.Invoke(value, resolver);
+#endif
 		}
 
 		/// <summary>Deserializes a JSON value into an instance of <typeparamref name="T"/>, that is known to implement <see cref="IJsonDeserializable{T}"/></summary>
@@ -1914,7 +1922,12 @@ namespace SnowBank.Data.Json
 			{
 				return defaultValue;
 			}
+#if NET7_0_OR_GREATER
 			return T.JsonDeserialize(value, resolver);
+#else
+			// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+			return JsonDeserializableDispatcher<T>.Invoke(value, resolver);
+#endif
 		}
 
 		/// <summary>Deserializes a JSON value into an instance of <typeparamref name="T"/>, that is known to implement <see cref="IJsonDeserializable{T}"/></summary>
@@ -1926,7 +1939,12 @@ namespace SnowBank.Data.Json
 		public static T UnpackJsonDeserializable<T>(JsonValue value, ICrystalJsonTypeResolver? resolver)
 			where T : IJsonDeserializable<T>
 		{
+#if NET7_0_OR_GREATER
 			return T.JsonDeserialize(value.Required(), resolver);
+#else
+			// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+			return JsonDeserializableDispatcher<T>.Invoke(value.Required(), resolver);
+#endif
 		}
 
 		/// <summary>Deserializes a JSON value into an instance of <typeparamref name="T"/>, that is known to implement <see cref="IJsonDeserializable{T}"/></summary>
@@ -1944,7 +1962,12 @@ namespace SnowBank.Data.Json
 			{
 				return defaultValue;
 			}
+#if NET7_0_OR_GREATER
 			return T.JsonDeserialize(value, resolver);
+#else
+			// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+			return JsonDeserializableDispatcher<T>.Invoke(value, resolver);
+#endif
 		}
 
 		/// <summary>Deserializes a JSON value into an instance of <typeparamref name="T"/></summary>
@@ -1973,7 +1996,12 @@ namespace SnowBank.Data.Json
 			{
 				return null;
 			}
+#if NET7_0_OR_GREATER
 			return T.JsonDeserialize(value, resolver);
+#else
+			// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+			return JsonDeserializableDispatcher<T>.Invoke(value, resolver);
+#endif
 		}
 
 		/// <summary>Deserializes a JSON value into a <see cref="Nullable{T}"/> value.</summary>
@@ -1990,7 +2018,12 @@ namespace SnowBank.Data.Json
 			{
 				return defaultValue;
 			}
+#if NET7_0_OR_GREATER
 			return T.JsonDeserialize(value, resolver);
+#else
+			// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+			return JsonDeserializableDispatcher<T>.Invoke(value, resolver);
+#endif
 		}
 
 		/// <summary>Deserializes a required JSON value into an instance of <typeparamref name="T"/>, that is known to implement <see cref="IJsonDeserializable{T}"/></summary>
@@ -2008,7 +2041,12 @@ namespace SnowBank.Data.Json
 			{
 				throw (fieldName != null ? CrystalJson.Errors.Parsing_FieldIsNullOrMissing(parent, fieldName, null) : CrystalJson.Errors.Parsing_ValueIsNullOrMissing());
 			}
+#if NET7_0_OR_GREATER
 			return T.JsonDeserialize(value, resolver);
+#else
+			// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+			return JsonDeserializableDispatcher<T>.Invoke(value, resolver);
+#endif
 		}
 
 		/// <summary>Deserializes a required JSON value into an instance of <typeparamref name="T"/></summary>
@@ -2215,7 +2253,12 @@ namespace SnowBank.Data.Json
 			public static TJsonDeserializable JsonDeserialize(ReadOnlySpan<byte> jsonBytes, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			{
 				var value = CrystalJson.Parse(jsonBytes, settings).Required();
+#if NET7_0_OR_GREATER
 				return TJsonDeserializable.JsonDeserialize(value, resolver);
+#else
+				// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+				return JsonDeserializableDispatcher<TJsonDeserializable>.Invoke(value, resolver);
+#endif
 			}
 
 			[Pure]
@@ -2228,7 +2271,12 @@ namespace SnowBank.Data.Json
 			public static TJsonDeserializable? JsonDeserialize(ReadOnlySpan<byte> jsonBytes, TJsonDeserializable? defaultValue, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			{
 				var value = CrystalJson.Parse(jsonBytes, settings);
+#if NET7_0_OR_GREATER
 				return value is not JsonNull ? TJsonDeserializable.JsonDeserialize(value, resolver) : defaultValue;
+#else
+				// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+				return value is not JsonNull ? JsonDeserializableDispatcher<TJsonDeserializable>.Invoke(value, resolver) : defaultValue;
+#endif
 			}
 
 			[Pure]
@@ -2305,9 +2353,16 @@ namespace SnowBank.Data.Json
 			[Pure]
 			public static TJsonDeserializable? JsonUnpackOrDefault(JsonValue? value, ICrystalJsonTypeResolver? resolver = null)
 			{
+#if NET7_0_OR_GREATER
 				return value is not (null or JsonNull)
 					? TJsonDeserializable.JsonDeserialize(value, resolver ?? CrystalJson.DefaultResolver)
 					: default;
+#else
+				// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+				return value is not (null or JsonNull)
+					? JsonDeserializableDispatcher<TJsonDeserializable>.Invoke(value, resolver ?? CrystalJson.DefaultResolver)
+					: default;
+#endif
 			}
 
 			/// <summary>Unpacks a required instance of type <typeparamref name="TJsonDeserializable"/> from a <see cref="JsonValue"/></summary>
@@ -2318,9 +2373,16 @@ namespace SnowBank.Data.Json
 			[Pure]
 			public static TJsonDeserializable JsonUnpack(JsonValue value, ICrystalJsonTypeResolver? resolver = null)
 			{
+#if NET7_0_OR_GREATER
 				return value is not (null or JsonNull)
 					? TJsonDeserializable.JsonDeserialize(value, resolver ?? CrystalJson.DefaultResolver)
 					: throw CrystalJson.Errors.Parsing_ValueIsNullOrMissing();
+#else
+				// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+				return value is not (null or JsonNull)
+					? JsonDeserializableDispatcher<TJsonDeserializable>.Invoke(value, resolver ?? CrystalJson.DefaultResolver)
+					: throw CrystalJson.Errors.Parsing_ValueIsNullOrMissing();
+#endif
 			}
 
 			/// <summary>Deserializes a required array of non-null elements of type <typeparamref name="TJsonDeserializable"/></summary>
@@ -2348,7 +2410,12 @@ namespace SnowBank.Data.Json
 					{
 						throw JsonBindingException.CannotBindArrayWithNullItemToCollectionOfType(values, i, typeof(TJsonDeserializable[]));
 					}
+#if NET7_0_OR_GREATER
 					tmp[i] = TJsonDeserializable.JsonDeserialize(value, resolver);
+#else
+					// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+					tmp[i] = JsonDeserializableDispatcher<TJsonDeserializable>.Invoke(value, resolver);
+#endif
 				}
 				return tmp;
 			}
@@ -2388,7 +2455,12 @@ namespace SnowBank.Data.Json
 				for (int i = 0; i < items.Length; i++)
 				{
 					var value = items[i];
+#if NET7_0_OR_GREATER
 					tmp[i] = value is not JsonNull ? TJsonDeserializable.JsonDeserialize(value, resolver) : default;
+#else
+					// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+					tmp[i] = value is not JsonNull ? JsonDeserializableDispatcher<TJsonDeserializable>.Invoke(value, resolver) : default;
+#endif
 				}
 				return tmp;
 			}
@@ -2421,7 +2493,12 @@ namespace SnowBank.Data.Json
 				for (int i = 0; i < items.Length; i++)
 				{
 					var value = items[i];
+#if NET7_0_OR_GREATER
 					tmp[i] = value is not JsonNull ? TJsonDeserializable.JsonDeserialize(value, resolver) : default;
+#else
+					// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+					tmp[i] = value is not JsonNull ? JsonDeserializableDispatcher<TJsonDeserializable>.Invoke(value, resolver) : default;
+#endif
 				}
 				return res;
 			}
@@ -2445,7 +2522,12 @@ namespace SnowBank.Data.Json
 					{
 						throw JsonBindingException.CannotBindArrayWithNullItemToCollectionOfType(values, i, typeof(List<TJsonDeserializable>));
 					}
+#if NET7_0_OR_GREATER
 					tmp[i] = TJsonDeserializable.JsonDeserialize(value, resolver);
+#else
+					// static interface dispatch needs runtime support this target lacks: go through the reflection-based dispatcher
+					tmp[i] = JsonDeserializableDispatcher<TJsonDeserializable>.Invoke(value, resolver);
+#endif
 				}
 				return res;
 			}

@@ -38,6 +38,9 @@ namespace SnowBank.Data.Json
 	using System.Linq.Expressions;
 	using System.Reflection;
 	using System.Runtime.InteropServices;
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
+#endif
 	using System.Xml;
 	using SnowBank.Data.Tuples;
 	using SnowBank.Collections.Caching;
@@ -622,10 +625,19 @@ namespace SnowBank.Data.Json
 				return CreateVisitorForSTupleType(type);
 			}
 
+#if !NETSTANDARD2_0
+			// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 			if (type.IsAssignableTo<ITuple>())
 			{ // ValueTuple, Tuple, ...
 				return CreateVisitorForITupleType(type);
 			}
+#else
+			// ITuple is not visible to the netstandard2.0 compiler, but the runtime usually carries it: probe dynamically
+			if (RuntimeITuple.IsTuple(type))
+			{ // ValueTuple, Tuple, ...
+				return CreateVisitorForITupleType(type);
+			}
+#endif
 
 			if (type.IsEnum)
 			{ // Enum
@@ -664,7 +676,16 @@ namespace SnowBank.Data.Json
 
 			if (type == typeof (System.Drawing.Color))
 			{ // Color => we will output the "Name" property of the color
+#if NET5_0_OR_GREATER
 				return static (v, _, _, writer) => writer.WriteValue(System.Drawing.ColorTranslator.ToHtml((System.Drawing.Color) v!));
+#else
+				// ColorTranslator is not available on netstandard2.0: emulate ToHtml (named color => name, otherwise #RRGGBB)
+				return static (v, _, _, writer) =>
+				{
+					var color = (System.Drawing.Color) v!;
+					writer.WriteValue(color.IsEmpty ? "" : color.IsNamedColor ? color.Name : string.Format(CultureInfo.InvariantCulture, "#{0:X2}{1:X2}{2:X2}", color.R, color.G, color.B));
+				};
+#endif
 			}
 
 			#region NodaTime...
@@ -1009,7 +1030,9 @@ namespace SnowBank.Data.Json
 				if (typeof(T) == typeof(TimeOnly)) { writer.WriteValue((TimeOnly) (object) value!); return; }
 				if (typeof(T) == typeof(NodaTime.Duration)) { writer.WriteValue((NodaTime.Duration) (object) value!); return; }
 				if (typeof(T) == typeof(NodaTime.Instant)) { writer.WriteValue((NodaTime.Instant) (object) value!); return; }
+#if NET5_0_OR_GREATER
 				if (typeof(T) == typeof(Half)) { writer.WriteValue((Half) (object) value!); return; }
+#endif
 #if NET8_0_OR_GREATER
 				if (typeof(T) == typeof(Int128)) { writer.WriteValue((Int128) (object) value!); return; }
 				if (typeof(T) == typeof(UInt128)) { writer.WriteValue((UInt128) (object) value!); return; }
@@ -1037,7 +1060,9 @@ namespace SnowBank.Data.Json
 				if (typeof(T) == typeof(TimeOnly?)) { writer.WriteValue((TimeOnly?) (object?) value); return; }
 				if (typeof(T) == typeof(NodaTime.Duration?)) { writer.WriteValue((NodaTime.Duration?) (object?) value); return; }
 				if (typeof(T) == typeof(NodaTime.Instant?)) { writer.WriteValue((NodaTime.Instant?) (object?) value); return; }
+#if NET5_0_OR_GREATER
 				if (typeof(T) == typeof(Half?)) { writer.WriteValue((Half?) (object?) value); return; }
+#endif
 #if NET8_0_OR_GREATER
 				if (typeof(T) == typeof(Int128?)) { writer.WriteValue((Int128?) (object?) value!); return; }
 				if (typeof(T) == typeof(UInt128?)) { writer.WriteValue((UInt128?) (object?) value!); return; }
@@ -1297,7 +1322,12 @@ namespace SnowBank.Data.Json
 			Contract.Debug.Assert(method != null);
 			method = method.MakeGenericMethod(type);
 
+#if NET5_0_OR_GREATER
 			return method.CreateDelegate<CrystalJsonTypeVisitor>();
+#else
+			// the generic CreateDelegate<T>() is not available on netstandard2.0
+			return (CrystalJsonTypeVisitor) method.CreateDelegate(typeof(CrystalJsonTypeVisitor));
+#endif
 		}
 
 		private static void VisitArrayInternal<T>(object? value, Type declaredType, Type? runtimeType, CrystalJsonWriter writer)
@@ -2184,6 +2214,8 @@ namespace SnowBank.Data.Json
 
 		#region ValueTuples...
 
+#if !NETSTANDARD2_0
+		// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 		[Pure]
 		public static CrystalJsonTypeVisitor CreateVisitorForITupleType(Type type)
 		{
@@ -2247,6 +2279,71 @@ namespace SnowBank.Data.Json
 			}
 			writer.EndArray(state);
 		}
+#else
+		[Pure]
+		public static CrystalJsonTypeVisitor CreateVisitorForITupleType(Type type)
+		{
+			Contract.Debug.Requires(type != null);
+			Contract.Debug.Requires(RuntimeITuple.IsTuple(type));
+
+			// for ValueTuple<...> we have a specialized version that is faster
+			if (type.IsValueType && type.IsGenericType && type.Name.StartsWith(nameof(ValueTuple) + "`", StringComparison.Ordinal))
+			{
+				var args = type.GetGenericArguments();
+				if (args.Length <= 8)
+				{
+					// lookup the corresponding VisitValueTuple#N# method
+					MethodInfo m;
+					switch (args.Length)
+					{
+						case 1: m = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitValueTuple1))!; break;
+						case 2: m = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitValueTuple2))!; break;
+						case 3: m = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitValueTuple3))!; break;
+						case 4: m = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitValueTuple4))!; break;
+						case 5: m = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitValueTuple5))!; break;
+						case 6: m = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitValueTuple6))!; break;
+						case 7: m = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitValueTuple7))!; break;
+						case 8: m = typeof(CrystalJsonVisitor).GetMethod(nameof(VisitValueTuple8))!; break;
+						default: throw new InvalidOperationException();
+					}
+					Contract.Debug.Assert(m != null, "Missing method to serialize generic tuple");
+					// convert into a delegate
+					return (CrystalJsonTypeVisitor) m.MakeGenericMethod(args).CreateDelegate(typeof(CrystalJsonTypeVisitor));
+				}
+			}
+			// otherwise, use a slow version that inspects each item through reflection
+			return VisitITupleGeneric;
+		}
+
+		public static void VisitITupleGeneric(object? value, Type declaredType, Type? runtimeType, CrystalJsonWriter writer)
+		{
+			if (value == null)
+			{
+				writer.WriteNull();
+				return;
+			}
+
+			// item access goes through reflection (see RuntimeITuple)
+			int n = RuntimeITuple.GetLength(value);
+			if (n == 0)
+			{
+				writer.WriteEmptyArray();
+				return;
+			}
+
+			var state = writer.BeginArray();
+			// Head
+			writer.WriteHeadSeparator();
+			VisitValue(RuntimeITuple.GetItem(value, 0), writer);
+			// Tail
+			for (int i = 1; i < n; i++)
+			{
+				writer.WriteFieldSeparator();
+				VisitValue(RuntimeITuple.GetItem(value, i), writer);
+			}
+			writer.EndArray(state);
+		}
+#endif
 
 		/// <summary>Visit a boxed ValueTuple of length 1</summary>
 		public static void VisitValueTuple1<T1>(object? tuple, Type declaredType, Type? runtimeType, CrystalJsonWriter writer)
@@ -2672,6 +2769,8 @@ namespace SnowBank.Data.Json
 			return arr;
 		}
 
+#if !NETSTANDARD2_0
+		// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 		[Pure]
 		public static JsonValue ConvertTupleToJson(System.Runtime.CompilerServices.ITuple? tuple)
 		{
@@ -2685,6 +2784,22 @@ namespace SnowBank.Data.Json
 			}
 			return arr;
 		}
+#else
+		/// <summary>Converts a boxed <c>ITuple</c> into the equivalent JSON Array (item access via reflection, see <see cref="RuntimeITuple"/>)</summary>
+		[Pure]
+		internal static JsonValue ConvertBoxedTupleToJson(object? tuple)
+		{
+			if (tuple == null) return JsonNull.Null;
+			int n = RuntimeITuple.GetLength(tuple);
+			if (n == 0) return JsonArray.Create(); //BUGBUG: TODO: readonly?
+			var arr = new JsonArray(n);
+			for (int i = 0; i < n; i++)
+			{
+				arr.Add(JsonValue.FromValue(RuntimeITuple.GetItem(tuple, i)));
+			}
+			return arr;
+		}
+#endif
 
 		#endregion
 

@@ -1994,9 +1994,14 @@ namespace SnowBank.Data.Json
 			public static JsonSerializationException Serialization_CouldNotGetDefaultValueForMember(Type type, MemberInfo info, Exception? error)
 			{
 				var memberType = info is PropertyInfo pi ? pi.PropertyType : info is FieldInfo fi ? fi.FieldType : typeof(object);
+#if NET6_0_OR_GREATER
 				return memberType.IsByRefLike
 					? new JsonSerializationException($"Cannot serialize {(info is PropertyInfo ? "property" : "field")} {type.GetFriendlyName()}.{info.Name} with type {memberType.GetFriendlyName()}: ref-like types are NOT supported.", error)
 					: new JsonSerializationException($"Cannot generate default value for {(info is PropertyInfo ? "property" : "field")} {type.GetFriendlyName()}.{info.Name} with type {memberType.GetFriendlyName()}.", error);
+#else
+				// Type.IsByRefLike does not exist on netstandard2.0 (by-ref-like members cannot occur on this target)
+				return new JsonSerializationException($"Cannot generate default value for {(info is PropertyInfo ? "property" : "field")} {type.GetFriendlyName()}.{info.Name} with type {memberType.GetFriendlyName()}.", error);
+#endif
 			}
 
 
@@ -2102,8 +2107,6 @@ namespace SnowBank.Data.Json
 		}
 
 		#endregion
-
-
 
 	}
 

@@ -251,7 +251,13 @@ namespace System
 
 			if (sep == '\0')
 			{
-				if (!lower) return Convert.ToHexString(buffer);
+#if NET8_0_OR_GREATER
+				if (!lower)
+				{
+					return Convert.ToHexString(buffer);
+					// Convert.ToHexString is net5+, on netstandard2.0 fall through to the StringBuilder loop below
+				}
+#endif
 #if NET9_0_OR_GREATER
 				return Convert.ToHexStringLower(buffer);
 #endif

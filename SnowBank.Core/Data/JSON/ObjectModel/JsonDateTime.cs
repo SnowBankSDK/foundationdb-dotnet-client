@@ -34,9 +34,12 @@ namespace SnowBank.Data.Json
 	/// <summary>JSON DateTime</summary>
 	[DebuggerDisplay("JSON DateTime({m_value}, {m_value}+{m_offset})")]
 	[PublicAPI]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(CrystalJsonCustomJsonConverter))]
+#endif
 	[DebuggerNonUserCode]
-	public class JsonDateTime : JsonValue, IEquatable<JsonDateTime>, IEquatable<DateTime>, IEquatable<DateTimeOffset>, IEquatable<NodaTime.LocalDateTime>, IEquatable<NodaTime.LocalDate>
+	public sealed class JsonDateTime : JsonValue, IEquatable<JsonDateTime>, IEquatable<DateTime>, IEquatable<DateTimeOffset>, IEquatable<NodaTime.LocalDateTime>, IEquatable<NodaTime.LocalDate>
 	{
 		private const long UNIX_EPOCH_TICKS = 621355968000000000L;
 		private const short NO_TIMEZONE = short.MinValue;

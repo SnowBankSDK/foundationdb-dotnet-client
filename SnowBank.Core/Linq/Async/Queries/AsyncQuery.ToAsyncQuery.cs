@@ -49,7 +49,7 @@ namespace SnowBank.Linq
 			public override CancellationToken Cancellation { get; }
 
 			/// <inheritdoc />
-			protected override EnumerableIterator<TSource> Clone() => new(this.Source, this.Cancellation);
+			protected override AsyncLinqIterator<TSource> Clone() => new EnumerableIterator<TSource>(this.Source, this.Cancellation);
 
 			private IEnumerator<TSource>? m_inner;
 
@@ -243,7 +243,7 @@ namespace SnowBank.Linq
 			public override CancellationToken Cancellation { get; }
 
 			/// <inheritdoc />
-			protected override AsyncEnumerableIterator<T> Clone() => new(this.Source, this.Cancellation);
+			protected override AsyncLinqIterator<T> Clone() => new AsyncEnumerableIterator<T>(this.Source, this.Cancellation);
 
 			/// <inheritdoc />
 			protected override ValueTask<bool> OnFirstAsync()

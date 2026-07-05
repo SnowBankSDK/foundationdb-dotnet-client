@@ -35,7 +35,10 @@ namespace SnowBank.Data.Json
 	/// <remarks>The value can be null or missing (<see cref="JsonNull"/>), a literal (<see cref="JsonString"/>, <see cref="JsonBoolean"/>, <see cref="JsonNumber"/>), an object (<see cref="JsonObject"/>) or an array (<see cref="JsonArray"/>)</remarks>
 	[Serializable]
 	[PublicAPI]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(CrystalJsonCustomJsonConverter))]
+#endif
 	[JetBrains.Annotations.CannotApplyEqualityOperator]
 	[DebuggerNonUserCode]
 	public abstract partial class JsonValue : IEquatable<JsonValue>, IComparable<JsonValue>, IJsonSerializable, IFormattable, ISliceSerializable, IConvertible
@@ -44,6 +47,12 @@ namespace SnowBank.Data.Json
 		, ISpanParsable<JsonValue>
 		, ISpanFormattable
 		, IUtf8SpanFormattable
+#else
+		// ISpanFormattable is supplied by a package on netstandard2.0. Implementing it is REQUIRED for correctness:
+		// the polyfilled interpolation handlers dispatch through it, and falling back to IFormattable.ToString would
+		// recurse forever for the derived types whose ToString(format) is itself an invariant interpolated string
+		// (e.g. JsonDateTime).
+		, ISpanFormattable
 #endif
 	{
 		/// <summary>Type of JSON value (<see cref="JsonType.Boolean">Boolean</see>, <see cref="JsonType.String">String</see>, <see cref="JsonType.Number">Number</see>, <see cref="JsonType.Object">Object</see>, <see cref="JsonType.Array">Array</see>, ...)</summary>
@@ -115,7 +124,17 @@ namespace SnowBank.Data.Json
 		/// <para>If you need to modify a JSON Object or Array that is read-only, you should first create a copy, by calling either <see cref="Copy()"/> or <see cref="ToMutable"/>, perform any changes required, and then either <see cref="Freeze"/> the copy, or call <see cref="ToReadOnly"/> again.</para>
 		/// </remarks>
 		[EditorBrowsable(EditorBrowsableState.Advanced)]
+#if NET5_0_OR_GREATER
 		public virtual JsonValue Freeze() => this;
+#else
+		// covariant return types need runtime support that netstandard2.0/netfx lacks: emulate them with a
+		// non-virtual facade over a virtual core; JsonArray/JsonObject shadow the facade ('new') with the
+		// derived return type, so call sites keep the strongly typed result on every target
+		public JsonValue Freeze() => FreezeCore();
+
+		/// <summary>Implementation of <see cref="Freeze"/> (overridden by subclasses)</summary>
+		protected virtual JsonValue FreezeCore() => this;
+#endif
 
 		/// <summary>Returns a read-only copy of this value, unless it is already read-only.</summary>
 		/// <returns>The same instance if it is already read-only, or a new read-only deep copy, if it was mutable.</returns>
@@ -125,7 +144,17 @@ namespace SnowBank.Data.Json
 		/// <para>If you need to modify a JSON Object or Array that is read-only, you should first create a copy, by calling either <see cref="Copy()"/> or <see cref="ToMutable"/>, perform any changes required, and then either <see cref="Freeze"/> the copy, or call <see cref="ToReadOnly"/> again.</para>
 		/// </remarks>
 		[Pure]
+#if NET5_0_OR_GREATER
 		public virtual JsonValue ToReadOnly() => this;
+#else
+		// covariant return types need runtime support that netstandard2.0/netfx lacks: emulate them with a
+		// non-virtual facade over a virtual core; JsonArray/JsonObject shadow the facade ('new') with the
+		// derived return type, so call sites keep the strongly typed result on every target
+		public JsonValue ToReadOnly() => ToReadOnlyCore();
+
+		/// <summary>Implementation of <see cref="ToReadOnly"/> (overridden by subclasses)</summary>
+		protected virtual JsonValue ToReadOnlyCore() => this;
+#endif
 
 		/// <summary>Convert this JSON value so that it, or any of its children that were previously read-only, can be mutated.</summary>
 		/// <returns>The same instance if it is already fully mutable, OR a copy where any read-only Object or Array has been converted to allow mutations.</returns>
@@ -134,7 +163,17 @@ namespace SnowBank.Data.Json
 		/// <para>This attempts to only copy what is necessary, and will not copy objects or arrays that are already mutable, or all other "value types" (string, boolean, number, ...) that are always immutable.</para>
 		/// </remarks>
 		[Pure]
+#if NET5_0_OR_GREATER
 		public virtual JsonValue ToMutable() => this;
+#else
+		// covariant return types need runtime support that netstandard2.0/netfx lacks: emulate them with a
+		// non-virtual facade over a virtual core; JsonArray/JsonObject shadow the facade ('new') with the
+		// derived return type, so call sites keep the strongly typed result on every target
+		public JsonValue ToMutable() => ToMutableCore();
+
+		/// <summary>Implementation of <see cref="ToMutable"/> (overridden by subclasses)</summary>
+		protected virtual JsonValue ToMutableCore() => this;
+#endif
 
 		/// <summary>Returns <see langword="true"/> if this value is considered as "small" and can be safely written to a debug log (without flooding).</summary>
 		/// <remarks>
@@ -239,7 +278,17 @@ namespace SnowBank.Data.Json
 		/// <para>If the value is an immutable type (like <see cref="JsonString"/>, <see cref="JsonNumber"/>, <see cref="JsonBoolean"/>, ...) then the same instance will be returned.</para>
 		/// <para>If the value is an array then a new array containing a </para>
 		/// </remarks>
+#if NET5_0_OR_GREATER
 		public virtual JsonValue Copy() => Copy(deep: true, readOnly: false);
+#else
+		// covariant return types need runtime support that netstandard2.0/netfx lacks: emulate them with a
+		// non-virtual facade over a virtual core; JsonArray/JsonObject shadow the facade ('new') with the
+		// derived return type, so call sites keep the strongly typed result on every target
+		public JsonValue Copy() => CopyCore();
+
+		/// <summary>Implementation of <see cref="Copy()"/> (overridden by subclasses)</summary>
+		protected virtual JsonValue CopyCore() => Copy(deep: true, readOnly: false);
+#endif
 
 		/// <summary>Creates a copy of this object</summary>
 		/// <param name="deep">If <see langword="true" />, recursively copy the children as well. If <see langword="false" />, perform a shallow copy that reuse the same children.</param>
@@ -2136,12 +2185,15 @@ namespace SnowBank.Data.Json
 		[Pure][return: NotNullIfNotNull(nameof(defaultValue))]
 		public virtual double? ToDoubleOrDefault(double? defaultValue = null) => ToDouble();
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <summary>Returns the equivalent <see cref="System.Half"/>, if there exists a valid conversion</summary>
 		public virtual Half ToHalf(Half defaultValue = default) => throw Errors.JsonConversionNotSupported(this, typeof(Half));
 
 		/// <summary>Returns the equivalent <see cref="System.Half"/>, if there exists a valid conversion</summary>
 		[Pure][return: NotNullIfNotNull(nameof(defaultValue))]
 		public virtual Half? ToHalfOrDefault(Half? defaultValue = null) => ToHalf();
+#endif
 
 		/// <summary>Returns the equivalent <see cref="Decimal"/>, if there exists a valid conversion</summary>
 		public virtual decimal ToDecimal(decimal defaultValue = 0m) => throw Errors.JsonConversionNotSupported(this, typeof(decimal));
@@ -2392,6 +2444,8 @@ namespace SnowBank.Data.Json
 
 	}
 
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	#region System.Text.Json Adapter...
 
 	/// <summary>Converter that adds support for <see cref="JsonValue"/> (and derived types) to <c>System.Text.Json</c>'s <see cref="System.Text.Json.Serialization.JsonConverter"/></summary>
@@ -2580,5 +2634,6 @@ namespace SnowBank.Data.Json
 	}
 
 	#endregion
+#endif
 
 }

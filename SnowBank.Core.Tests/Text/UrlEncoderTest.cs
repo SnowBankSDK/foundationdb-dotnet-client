@@ -37,6 +37,9 @@ namespace SnowBank.Text.Tests
 	[SetInvariantCulture]
 	public class UrlEncoderTest : SimpleTest
 	{
+		// the netstandard2.0 build formats floating-point values with "R" (17 significant digits on netfx)
+		private static readonly string PiDoubleText = Math.PI.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
 
 		[Test]
 		public void Test_EncodeData()
@@ -121,7 +124,7 @@ namespace SnowBank.Text.Tests
 
 			Assert.That(UrlEncoding.EncodeDataObject(123.456d), Is.EqualTo("123.456"));
 			Assert.That(UrlEncoding.EncodeDataObject(double.NaN), Is.EqualTo("NaN"));
-			Assert.That(UrlEncoding.EncodeDataObject(Math.PI), Is.EqualTo("3.141592653589793"));
+			Assert.That(UrlEncoding.EncodeDataObject(Math.PI), Is.EqualTo(PiDoubleText));
 
 			Assert.That(UrlEncoding.EncodeDataObject(byte.MaxValue), Is.EqualTo("255"));
 			Assert.That(UrlEncoding.EncodeDataObject(sbyte.MaxValue), Is.EqualTo("127"));
@@ -160,7 +163,7 @@ namespace SnowBank.Text.Tests
 			Assert.That(UrlEncoding.EncodeDataObject(default(int?)), Is.EqualTo(string.Empty));
 			Assert.That(UrlEncoding.EncodeDataObject((long?)123456), Is.EqualTo("123456"));
 			Assert.That(UrlEncoding.EncodeDataObject(default(long?)), Is.EqualTo(string.Empty));
-			Assert.That(UrlEncoding.EncodeDataObject((double?)Math.PI), Is.EqualTo("3.141592653589793"));
+			Assert.That(UrlEncoding.EncodeDataObject((double?)Math.PI), Is.EqualTo(PiDoubleText));
 			Assert.That(UrlEncoding.EncodeDataObject(default(double?)), Is.EqualTo(string.Empty));
 			Assert.That(UrlEncoding.EncodeDataObject((DateTimeKind?) DateTimeKind.Utc), Is.EqualTo("Utc"));
 			Assert.That(UrlEncoding.EncodeDataObject(default(DateTimeKind?)), Is.EqualTo(string.Empty));

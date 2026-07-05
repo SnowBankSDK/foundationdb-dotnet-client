@@ -112,7 +112,8 @@ namespace SnowBank.Data.Json
 #if NET8_0_OR_GREATER
 			return !CrystalJsonParser.WhiteCharsMap.Contains(c) ? c : ConsumeWhiteSpaces();
 #else
-			return c >= CrystalJsonParser.WHITE_CHAR_MAP ? c : ConsumeWhiteSpaces(c);
+			// note: uses the netstandard2.0 SearchValues shim (Contains-only)
+			return !CrystalJsonParser.WhiteCharsMap.Contains(c) ? c : ConsumeWhiteSpaces(c);
 #endif
 		}
 
@@ -138,15 +139,16 @@ namespace SnowBank.Data.Json
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		private char ConsumeWhiteSpaces(char token)
 		{
+			// note: uses the netstandard2.0 SearchValues shim (Contains-only)
 			var wc = CrystalJsonParser.WhiteCharsMap;
 
+			// caller already checked that token is a whitespace, but there could be more...
 			char c = token;
-			// caller only guessed, we have to check if c is a whitespace
-			while (wc[c])
+			while (wc.Contains(c))
 			{
 				c = ReadOne();
-				if (c >= CrystalJsonParser.WHITE_CHAR_MAP) break;
 			}
+
 			return c;
 		}
 		

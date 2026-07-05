@@ -384,7 +384,11 @@ namespace SnowBank.Runtime.Converters
 				{
 					Left = t1,
 					Right = t2,
+#if NET8_0_OR_GREATER
 					EqualityComparer = EqualityComparer<object>.Create(eqStrict ?? eqRelaxed),
+#else
+					EqualityComparer = new DelegateEqualityComparer(eqStrict ?? eqRelaxed), // EqualityComparer<T>.Create is .NET 8+
+#endif
 					RelaxedEqualityHandler = eqRelaxed,
 					StrictEqualityHandler = eqStrict ?? eqRelaxed,
 					RelaxedComparisonHandler = cmpRelaxed,
@@ -394,6 +398,20 @@ namespace SnowBank.Runtime.Converters
 			}
 			return slot;
 		}
+
+#if !NET8_0_OR_GREATER
+		/// <summary>Stand-in for <c>EqualityComparer&lt;object&gt;.Create(...)</c> (.NET 8+): same semantics, including throwing from <see cref="GetHashCode(object)"/> since no hash function is provided.</summary>
+		private sealed class DelegateEqualityComparer : EqualityComparer<object>
+		{
+			private readonly Func<object?, object?, bool> Handler;
+
+			public DelegateEqualityComparer(Func<object?, object?, bool> handler) => this.Handler = handler;
+
+			public override bool Equals(object? x, object? y) => this.Handler(x, y);
+
+			public override int GetHashCode(object obj) => throw new NotSupportedException(); // matches EqualityComparer<T>.Create(equals, getHashCode: null)
+		}
+#endif
 
 		[Pure]
 		public static IEqualityComparer<object> GetTypeEqualityComparer(Type t1, Type t2)

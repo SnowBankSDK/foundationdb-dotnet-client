@@ -87,7 +87,7 @@ namespace SnowBank.Linq.Async.Iterators
 			return await Canceled().ConfigureAwait(false);
 		}
 
-		public override AsyncLinqIterator<TSource> Where(Func<TSource, bool> predicate)
+		public override IAsyncLinqQuery<TSource> Where(Func<TSource, bool> predicate)
 		{
 			return AsyncQuery.Filter(
 				m_source,
@@ -95,7 +95,7 @@ namespace SnowBank.Linq.Async.Iterators
 			);
 		}
 
-		public override AsyncLinqIterator<TSource> Where(Func<TSource, CancellationToken, Task<bool>> asyncPredicate)
+		public override IAsyncLinqQuery<TSource> Where(Func<TSource, CancellationToken, Task<bool>> asyncPredicate)
 		{
 			return AsyncQuery.Filter(
 				m_source,
@@ -103,7 +103,7 @@ namespace SnowBank.Linq.Async.Iterators
 			);
 		}
 
-		public override AsyncLinqIterator<TNew> Select<TNew>(Func<TSource, TNew> selector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TSource, TNew> selector)
 		{
 			return new WhereSelectExpressionAsyncIterator<TSource, TNew>(
 				m_source,
@@ -114,7 +114,7 @@ namespace SnowBank.Linq.Async.Iterators
 			);
 		}
 
-		public override AsyncLinqIterator<TNew> Select<TNew>(Func<TSource, CancellationToken, Task<TNew>> asyncSelector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TSource, CancellationToken, Task<TNew>> asyncSelector)
 		{
 			return new WhereSelectExpressionAsyncIterator<TSource, TNew>(
 				m_source,
@@ -125,7 +125,7 @@ namespace SnowBank.Linq.Async.Iterators
 			);
 		}
 
-		public override AsyncLinqIterator<TSource> Take(int limit)
+		public override IAsyncLinqQuery<TSource> Take(int limit)
 		{
 			if (limit < 0) throw new ArgumentOutOfRangeException(nameof(limit), "Limit cannot be less than zero");
 
@@ -411,7 +411,7 @@ namespace SnowBank.Linq.Async.Iterators
 			static Func<TSource, bool> Combine(Func<TSource, bool> first, Func<TSource, bool> second) => (item) => first(item) && second(item);
 		}
 
-		public override AsyncLinqIterator<TNew> Select<TNew>(Func<TSource, TNew> selector)
+		public override IAsyncLinqQuery<TNew> Select<TNew>(Func<TSource, TNew> selector)
 		{
 			Contract.NotNull(selector);
 

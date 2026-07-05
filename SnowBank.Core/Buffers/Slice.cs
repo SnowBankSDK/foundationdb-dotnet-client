@@ -32,13 +32,18 @@ namespace System
 	using System.ComponentModel;
 	using System.IO;
 	using System.IO.Pipelines;
+#if NET8_0_OR_GREATER
 	using System.Numerics;
+#endif
 	using System.Runtime.InteropServices;
 	using System.Security.Cryptography;
 	using System.Text;
 	using SnowBank.Buffers;
 	using SnowBank.Buffers.Binary;
 	using SnowBank.Data.Binary;
+#if NETSTANDARD2_0
+	using MemoryMarshal = SnowBank.Compat.MemoryMarshalCompat; // shim adds CreateReadOnlySpan/CreateSpan/AsRef, absent from netstandard2.0
+#endif
 
 	/// <summary>Delimits a read-only section of a byte array</summary>
 	/// <remarks>
@@ -3270,10 +3275,19 @@ namespace System
 					? (m_slice.IsNull ? null : string.Empty)
 					: Utf8NoBomEncodingNoThrow.GetString(m_slice.Span);
 
+#if !NET5_0_OR_GREATER
+			// Encoding.Latin1 (net5+) -> ISO-8859-1 code page
+			private static readonly System.Text.Encoding Latin1Encoding = System.Text.Encoding.GetEncoding(28591);
+#endif
+
 			public string? TextLatin1
 				=> m_slice.Count == 0
 					? (m_slice.IsNull ? null : string.Empty)
+#if NET5_0_OR_GREATER
 					: Encoding.Latin1.GetString(m_slice.Span);
+#else
+					: Latin1Encoding.GetString(m_slice.Span.ToArray());
+#endif
 
 			public string? Hex =>
 				m_slice.Count == 0

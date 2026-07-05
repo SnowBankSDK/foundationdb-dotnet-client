@@ -105,14 +105,20 @@ namespace SnowBank.Data.Tuples
 
 		public int Count => m_items.Length;
 
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		int System.Runtime.CompilerServices.ITuple.Length => this.Count;
+#endif
 
 		/// <inheritdoc />
 		object? IReadOnlyList<object?>.this[int index] => this[index];
 
+#if !NETSTANDARD2_0
+		// ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		object? System.Runtime.CompilerServices.ITuple.this[int index] => this[index];
+#endif
 
 		/// <inheritdoc />
 		object? IVarTuple.this[int index] => this[index];

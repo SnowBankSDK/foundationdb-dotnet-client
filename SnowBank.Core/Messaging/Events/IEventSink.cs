@@ -26,6 +26,7 @@
 
 namespace SnowBank.Messaging.Events
 {
+
 	public interface IEventSink
 	{
 

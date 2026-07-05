@@ -47,6 +47,10 @@
 		<!-- Framework versions for Aspire (only .NET8+) -->
 		<CloudSdkRuntimeVersions Condition="'$(CloudSdkRuntimeVersions)' == ''">$(CoreSdkVersions)</CloudSdkRuntimeVersions>
 		<CloudSdkRuntimeVersions Condition="'$(CloudSdkRuntimeVersions)' == ''">net11.0;net10.0;net8.0</CloudSdkRuntimeVersions>
+
+		<!-- Should we also build the core Compat library using netstandard2.0? -->
+		<CoreSdkNetStandardEnabled Condition="'$(CoreSdkNetStandardEnabled)' == ''">true</CoreSdkNetStandardEnabled>
+
 	</PropertyGroup>
 
 </Project>

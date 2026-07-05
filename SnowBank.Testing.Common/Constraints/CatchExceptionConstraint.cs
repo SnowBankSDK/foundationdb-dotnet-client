@@ -59,9 +59,11 @@ namespace SnowBank.Testing
 					case ArgumentException argEx:
 						if (argEx.ParamName != null) sb.Append(':').Append(argEx.ParamName);
 						break;
+#if NET5_0_OR_GREATER
 					case HttpRequestException httpEx:
 						if (httpEx.StatusCode != null) sb.Append(':').Append(httpEx.StatusCode);
 						break;
+#endif
 					case WebException webEx:
 						sb.Append(':').Append(webEx.Status);
 						break;

@@ -182,11 +182,15 @@ namespace SnowBank.IO
 			this.Buffer.Append(StringConverters.ToString(value));
 		}
 
+#if NET5_0_OR_GREATER
+
 		[TargetedPatchingOptOut("Performance critical to inline this type of method across NGen image boundaries")]
 		public override void Write(ReadOnlySpan<char> buffer)
 		{
 			this.Buffer.Append(buffer);
 		}
+
+#endif
 
 		[TargetedPatchingOptOut("Performance critical to inline this type of method across NGen image boundaries")]
 		public override void WriteLine()
@@ -212,11 +216,15 @@ namespace SnowBank.IO
 			this.Buffer.Append(buffer, index, count).AppendLine();
 		}
 
+#if NET5_0_OR_GREATER
+
 		[TargetedPatchingOptOut("Performance critical to inline this type of method across NGen image boundaries")]
 		public override void WriteLine(ReadOnlySpan<char> buffer)
 		{
 			this.Buffer.Append(buffer).AppendLine();
 		}
+
+#endif
 
 		#endregion
 
@@ -245,6 +253,8 @@ namespace SnowBank.IO
 			return Task.CompletedTask;
 		}
 
+#if NET5_0_OR_GREATER
+
 		/// <inheritdoc />
 		public override Task WriteAsync(StringBuilder? value, CancellationToken cancellationToken = default)
 		{
@@ -260,6 +270,8 @@ namespace SnowBank.IO
 			this.Buffer.Append(buffer.Span);
 			return Task.CompletedTask;
 		}
+
+#endif
 
 		#endregion
 

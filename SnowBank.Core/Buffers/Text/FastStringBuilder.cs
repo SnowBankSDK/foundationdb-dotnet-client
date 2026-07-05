@@ -365,7 +365,12 @@ namespace SnowBank.Buffers.Text
 
 			// the buffer is not large enough, we need to resize it
 			uint newCapacity = Math.Max((uint) this.Chars.Length + 1, Math.Min((uint) this.Chars.Length * 2, ARRAY_MAX_LENGTH));
+#if NET5_0_OR_GREATER
 			int arraySize = (int) Math.Clamp(newCapacity, 256, int.MaxValue);
+#else
+			// Math.Clamp is not on netstandard2.0
+			int arraySize = (int) Math.Min(Math.Max(newCapacity, 256), int.MaxValue);
+#endif
 			if (arraySize <= this.Chars.Length)
 			{
 				throw new InvalidOperationException("Could not format value because it would exceed the maximum allowed buffer size.");
@@ -625,6 +630,7 @@ namespace SnowBank.Buffers.Text
 			AppendSpanFormattable(value, 32);
 		}
 
+#if NET6_0_OR_GREATER
 		internal void AppendSpanFormattable<T>(T value, int sizeHint) where T : ISpanFormattable
 		{
 			if (this.Position > Chars.Length - sizeHint)
@@ -641,6 +647,14 @@ namespace SnowBank.Buffers.Text
 				Append(value.ToString(null, CultureInfo.InvariantCulture));
 			}
 		}
+#else
+		// the BCL primitives do not implement the polyfilled ISpanFormattable on this target:
+		// => relax to IFormattable and format through a transient string (one allocation per append)
+		internal void AppendSpanFormattable<T>(T value, int sizeHint) where T : IFormattable
+		{
+			Append(value.ToString(null, CultureInfo.InvariantCulture));
+		}
+#endif
 
 		/// <summary>Appends a formattable value to the end of the buffer</summary>
 		/// <typeparam name="T">Type of the value, which must implement <see cref="ISpanFormattable"/></typeparam>
@@ -756,6 +770,7 @@ namespace SnowBank.Buffers.Text
 			AppendSpanFormattable(value, 10, format, provider); // "3.1415927" + NUL
 		}
 
+#if NET6_0_OR_GREATER
 		internal void AppendSpanFormattable<T>(T value, int sizeHint, string? format, IFormatProvider? provider = null) where T : ISpanFormattable
 		{
 			if (this.Position > Chars.Length - sizeHint)
@@ -773,6 +788,13 @@ namespace SnowBank.Buffers.Text
 				Append(value.ToString(null, provider));
 			}
 		}
+#else
+		// the BCL primitives do not implement the polyfilled ISpanFormattable on this target: relax to IFormattable and format through a transient string (one allocation per append)
+		internal void AppendSpanFormattable<T>(T value, int sizeHint, string? format, IFormatProvider? provider = null) where T : IFormattable
+		{
+			Append(value.ToString(format, provider ?? CultureInfo.InvariantCulture));
+		}
+#endif
 
 		/// <summary>Appends a formattable value to the end of the buffer</summary>
 		/// <typeparam name="T">Type of the value, which must implement <see cref="ISpanFormattable"/></typeparam>

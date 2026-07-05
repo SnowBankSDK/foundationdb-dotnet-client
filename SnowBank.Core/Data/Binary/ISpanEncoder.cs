@@ -37,6 +37,10 @@ namespace SnowBank.Data.Binary
 #endif
 	{
 
+#if NET7_0_OR_GREATER
+		// static abstract interface members need runtime support that netstandard2.0/netfx lacks:
+		// there the interface is a marker only, and the encoder structs expose the same methods as plain statics
+
 		/// <summary>Returns a span of the encoded representation of the value, if it can be done without any memory allocations</summary>
 		/// <param name="value">Value to encode</param>
 		/// <param name="span">Receives a span with the encoded value</param>
@@ -67,6 +71,8 @@ namespace SnowBank.Data.Binary
 		/// <para>Please note that the method MUST NOT return <c>false</c> for a reason other than a buffer being too small, otherwise the caller may end up in an infinite retry loop, passing a larger and larger buffer.</para>
 		/// </remarks>
 		static abstract bool TryEncode(Span<byte> destination, out int bytesWritten, scoped in TValue? value);
+
+#endif
 
 	}
 

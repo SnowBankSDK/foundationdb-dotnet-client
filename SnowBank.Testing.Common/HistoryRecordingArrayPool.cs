@@ -81,7 +81,7 @@ namespace SnowBank.Testing
 		/// <inheritdoc />
 		public void Return(T[] array, bool clearArray)
 		{
-			if (clearArray) Array.Clear(array);
+			if (clearArray) Array.Clear(array, 0, array.Length);
 		}
 
 	}
@@ -113,7 +113,7 @@ namespace SnowBank.Testing
 		/// <inheritdoc />
 		public void Return(T[] array, bool clearArray)
 		{
-			if (clearArray) Array.Clear(array);
+			if (clearArray) Array.Clear(array, 0, array.Length);
 		}
 	}
 
@@ -423,9 +423,9 @@ namespace SnowBank.Testing
 				// create a snapshot of the array as it was when returned
 				var snapshot = array.ToArray();
 
+#if NET5_0_OR_GREATER
 				// this is the magic spell to be able to do IndexOfAny(defaut(T)) on a Span<T> without the IEquatable<T> constraint!
 				var asBytes = System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<T, byte>(ref Unsafe.AsRef(in array[0])), Unsafe.SizeOf<T>() * array.Length);
-
 #if NET8_0_OR_GREATER
 				bool allZeroes = asBytes.IndexOfAnyExcept((byte) 0) < 0;
 #else
@@ -433,6 +433,16 @@ namespace SnowBank.Testing
 				foreach (var b in asBytes)
 				{
 					if (b != 0) { allZeroes = false; break; }
+				}
+#endif
+#else
+				// MemoryMarshal.CreateReadOnlySpan is not available: compare each element to default(T) instead of
+				// reinterpreting the array as raw bytes (equivalent for this all-zeroes diagnostic, just slower)
+				bool allZeroes = true;
+				var zeroCmp = EqualityComparer<T>.Default;
+				foreach (var item in array)
+				{
+					if (!zeroCmp.Equals(item, default!)) { allZeroes = false; break; }
 				}
 #endif
 

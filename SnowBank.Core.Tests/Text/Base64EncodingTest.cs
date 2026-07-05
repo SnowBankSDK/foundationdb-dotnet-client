@@ -37,7 +37,7 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_Basics_Base64()
 		{
-			Assume.That(Convert.ToBase64String("a"u8), Is.EqualTo("YQ=="), "Base64 encoding padds by default");
+			Assume.That(Convert.ToBase64String("a"u8.ToArray()), Is.EqualTo("YQ=="), "Base64 encoding padds by default");
 
 			Assert.Multiple(() =>
 			{
@@ -83,7 +83,7 @@ namespace SnowBank.Text.Tests
 				{
 					var chunk = data.AsSlice(j, i - j);
 
-					expected = Convert.ToBase64String(chunk.Span);
+					expected = Convert.ToBase64String(chunk.Span.ToArray());
 					string actual = Base64Encoding.ToBase64String(chunk);
 					if (expected != actual)
 					{
@@ -158,7 +158,7 @@ namespace SnowBank.Text.Tests
 #if NET9_0_OR_GREATER
 					expected = Base64Url.EncodeToString(chunk.Span);
 #else
-					expected = Convert.ToBase64String(chunk.Span).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+					expected = Convert.ToBase64String(chunk.Span.ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 #endif
 					string actual = Base64Encoding.ToBase64UrlString(chunk);
 					if (expected != actual)

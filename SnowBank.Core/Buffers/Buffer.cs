@@ -28,7 +28,12 @@ namespace SnowBank.Buffers
 {
 	using System.Buffers;
 	using System.Collections.Immutable;
+#if NET5_0_OR_GREATER
 	using System.Runtime.InteropServices;
+#else
+	// shim: CollectionsMarshal does not exist on netstandard2.0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat;
+#endif
 
 	/// <summary>Small buffer that keeps a list of chunks that are larger and larger</summary>
 	/// <typeparam name="T">Type of elements stored in the buffer</typeparam>
@@ -88,7 +93,13 @@ namespace SnowBank.Buffers
 			{
 				if (this.Current.Length > 0)
 				{
+#if NET5_0_OR_GREATER
 					if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+#else
+					// RuntimeHelpers.IsReferenceOrContainsReferences is not on netstandard2.0:
+					// => always clear, which is correct for every T and only costs the wipe for pure value types
+					if (true)
+#endif
 					{
 						this.Current.AsSpan(0, this.Index).Clear();
 					}
@@ -239,7 +250,12 @@ namespace SnowBank.Buffers
 				{
 					if (index >= capacity)
 					{
+#if NET5_0_OR_GREATER
 						chunks = [ ..(chunks ?? [ ]), current ];
+#else
+						// the implicit T[] conversion is not applied inside collection expressions on this target
+						chunks = [ ..(chunks ?? [ ]), new ArraySegment<T>(current) ];
+#endif
 						var chunkSize = Math.Min(capacity * 2, Buffer<T>.MaxChunkSize);
 						current = self.Pool?.Rent(chunkSize) ?? new T[chunkSize];
 						index = 0;
@@ -268,7 +284,12 @@ namespace SnowBank.Buffers
 			var tmp = this.Pool?.Rent(newCapacity) ?? new T[newCapacity];
 
 			// append current chunk to existing chunk list
+#if !NETSTANDARD2_0
 			this.Chunks = [ ..(Chunks ?? [ ]), current ];
+#else
+			// the implicit T[] conversion is not applied inside collection expressions on this target
+			this.Chunks = [ ..(Chunks ?? [ ]), new ArraySegment<T>(current) ];
+#endif
 			this.Current = tmp;
 			this.Index = 0;
 			Contract.Debug.Ensures(this.Current.Length > this.Index);

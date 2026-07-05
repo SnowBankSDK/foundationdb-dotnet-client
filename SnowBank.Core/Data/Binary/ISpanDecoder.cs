@@ -35,6 +35,10 @@ namespace SnowBank.Data.Binary
 	public interface ISpanDecoder<TValue>
 	{
 
+#if NET7_0_OR_GREATER
+		// static abstract interface members need runtime support that netstandard2.0/netfx lacks:
+		// there the interface is a marker only, and the decoder structs expose the same method as a plain static
+
 		/// <summary>Decodes the value from the input buffer, if it contains enough data</summary>
 		/// <param name="source">Source buffer with bytes to decode</param>
 		/// <param name="value">Receives the decoded value, if the operation was successful</param>
@@ -45,6 +49,8 @@ namespace SnowBank.Data.Binary
 		/// <para>If the data is incomplete, but the available data is already malformed, the method <b>SHOULD</b> throw an exception, in order to avoid waiting for more data before throwing.</para>
 		/// </remarks>
 		static abstract bool TryDecode(ReadOnlySpan<byte> source, out TValue? value);
+
+#endif
 
 	}
 

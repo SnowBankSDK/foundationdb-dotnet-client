@@ -84,6 +84,7 @@ namespace FoundationDB.Client.Tests
 				.WithCreateParameterModifier(config =>
 				{
 					// this is probably not needed, but just to be safe, force the config to something that is known to work
+					config.HostConfig ??= new();
 					config.HostConfig.CgroupnsMode = "host";
 					config.ExposedPorts = new Dictionary<string, EmptyStruct>()
 					{

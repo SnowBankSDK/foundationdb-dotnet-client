@@ -37,6 +37,23 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 	public class ThrowHelperTests : SimpleTest
 	{
 
+		/// <summary>Formats the expected message of an exception carrying a parameter name (the .NET Framework renders it on a separate "Parameter name:" line).</summary>
+		private static string WithParamName(string message, string paramName)
+#if NET5_0_OR_GREATER
+			=> $"{message} (Parameter '{paramName}')";
+#else
+			=> message + Environment.NewLine + "Parameter name: " + paramName;
+#endif
+
+		/// <summary>Formats the expected message of an <see cref="ArgumentOutOfRangeException"/> (the .NET Framework orders the parts differently).</summary>
+		private static string WithParamNameAndValue(string message, string paramName, string actualValue)
+#if NET5_0_OR_GREATER
+			=> $"{message} (Parameter '{paramName}')" + "\r\n" + $"Actual value was {actualValue}.";
+#else
+			=> message + Environment.NewLine + "Parameter name: " + paramName + Environment.NewLine + "Actual value was " + actualValue + ".";
+#endif
+
+
 		private static class TrustButVerify
 		{
 			public static string CallMe(string s)
@@ -111,11 +128,11 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			var x = Assert.Throws<ArgumentNullException>(() => ThrowHelper.ThrowArgumentNullException("foo"));
 			Assert.That(x.ParamName, Is.EqualTo("foo"));
-			Assert.That(x.Message, Is.EqualTo("Value cannot be null. (Parameter 'foo')")); // <-- peut dépendre de la langue et de la version de .NET !
+			Assert.That(x.Message, Is.EqualTo(WithParamName("Value cannot be null.", "foo"))); // <-- peut dépendre de la langue et de la version de .NET !
 
 			x = Assert.Throws<ArgumentNullException>(() => ThrowHelper.ThrowArgumentNullException("foo", "Hello world !!!"));
 			Assert.That(x.ParamName, Is.EqualTo("foo"));
-			Assert.That(x.Message, Is.EqualTo("Hello world !!! (Parameter 'foo')")); // <-- peut dépendre de la langue et de la version de .NET !
+			Assert.That(x.Message, Is.EqualTo(WithParamName("Hello world !!!", "foo"))); // <-- peut dépendre de la langue et de la version de .NET !
 		}
 
 		[Test]
@@ -125,11 +142,17 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			var x = Assert.Throws<ArgumentException>(() => ThrowHelper.ThrowArgumentException("foo"));
 			Assert.That(x.ParamName, Is.EqualTo("foo"));
-			Assert.That(x.Message, Is.EqualTo("Value does not fall within the expected range. (Parameter 'foo')")); // <-- peut dépendre de la langue et de la version de .NET !
+#if NET5_0_OR_GREATER
+			Assert.That(x.Message, Is.EqualTo(WithParamName("Value does not fall within the expected range.", "foo")));
+#else
+			// the netfx ArgumentException renders a null message with the generic exception text
+			Assert.That(x.Message, Is.EqualTo(WithParamName("Exception of type 'System.ArgumentException' was thrown.", "foo")));
+#endif
+			// <-- peut dépendre de la langue et de la version de .NET !
 
 			x = Assert.Throws<ArgumentException>(() => ThrowHelper.ThrowArgumentException("foo", "Hello world !!!"));
 			Assert.That(x.ParamName, Is.EqualTo("foo"));
-			Assert.That(x.Message, Is.EqualTo("Hello world !!! (Parameter 'foo')")); // <-- peut dépendre de la langue et de la version de .NET !
+			Assert.That(x.Message, Is.EqualTo(WithParamName("Hello world !!!", "foo"))); // <-- peut dépendre de la langue et de la version de .NET !
 		}
 
 		[Test]

@@ -73,11 +73,23 @@ namespace SnowBank.Data.Tuples.Binary
 
 		public string ToString(string? format, IFormatProvider? formatProvider = null)
 		{
+#if NET6_0_OR_GREATER
 			return string.Create(formatProvider, $"{this}");
+#else
+			// string.Create(provider, $"...") not available: format via TryFormat with a growing buffer
+			var buffer = new char[128];
+			int charsWritten;
+			while (!TryFormat(buffer, out charsWritten, default, formatProvider))
+			{
+				buffer = new char[buffer.Length * 2];
+			}
+			return new string(buffer, 0, charsWritten);
+#endif
 		}
 
 		public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)
 		{
+#if NET6_0_OR_GREATER
 			switch (this.Type)
 			{
 				case TypeDirectory: return this.Value.IsNull ? "|Directory|".TryCopyTo(destination, out charsWritten) : destination.TryWrite($"|Directory:{this.Value:K}|", out charsWritten);
@@ -87,6 +99,16 @@ namespace SnowBank.Data.Tuples.Binary
 			return this.Value.IsNull
 				? destination.TryWrite($"|User-{this.Type:X02}|", out charsWritten)
 				: destination.TryWrite($"|User-{this.Type:X02}:{this.Value:N}|", out charsWritten);
+#else
+			// MemoryExtensions.TryWrite($"...") not available: format to a string first (extra allocation)
+			string literal = this.Type switch
+			{
+				TypeDirectory => this.Value.IsNull ? "|Directory|" : string.Format(provider, "|Directory:{0:K}|", this.Value),
+				TypeSystem => this.Value.IsNull ? "|System|" : string.Format(provider, "|System:{0:K}|", this.Value),
+				_ => this.Value.IsNull ? string.Format(provider, "|User-{0:X02}|", this.Type) : string.Format(provider, "|User-{0:X02}:{1:N}|", this.Type, this.Value),
+			};
+			return literal.TryCopyTo(destination, out charsWritten);
+#endif
 		}
 
 		/// <summary>Returns a type that matches a System key (ex: <c>'\xFF/metadataVersion'</c>)</summary>

@@ -420,7 +420,12 @@ namespace SnowBank.Data.Json.JPath
 
 				if (hasDot || hasExp)
 				{
+#if NET5_0_OR_GREATER
 					this.Number = double.Parse(this.Path.Slice(start, this.Cursor - start));
+#else
+					// span-based parse is not on netstandard2.0
+					this.Number = double.Parse(this.Path.Slice(start, this.Cursor - start).ToString());
+#endif
 				}
 				else
 				{

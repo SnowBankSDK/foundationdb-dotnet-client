@@ -4620,7 +4620,7 @@ namespace SnowBank.Data.Json.Tests
 			// type conversions (number to string, ...)
 			Assert.That(obj.Get<string>("Foo"), Is.EqualTo("123"));
 			Assert.That(obj.Get<string>("Bar"), Is.EqualTo("true"));
-			Assert.That(obj.Get<string>("Baz"), Is.EqualTo("3.141592653589793"));
+			Assert.That(obj.Get<string>("Baz"), Is.EqualTo(PiDoubleText));
 
 		}
 
@@ -5775,7 +5775,12 @@ namespace SnowBank.Data.Json.Tests
 
 			published = JsonObject.ReadOnly.Empty;
 
+#if NET5_0_OR_GREATER
 			var go = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+#else
+			// the non-generic TaskCompletionSource is not available: use a dummy result type
+			var go = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+#endif
 			const int N = 10;
 			const int M = 100;
 
@@ -5792,7 +5797,11 @@ namespace SnowBank.Data.Json.Tests
 				}
 			}).ToList();
 
+#if NET5_0_OR_GREATER
 			go.TrySetResult();
+#else
+			go.TrySetResult(null);
+#endif
 
 			await WhenAll(workers, TimeSpan.FromSeconds(30));
 			// Ensure that all the keys and values are accounted for.

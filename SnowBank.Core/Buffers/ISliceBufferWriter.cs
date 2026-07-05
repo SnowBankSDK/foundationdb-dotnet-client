@@ -90,7 +90,11 @@ namespace SnowBank.Buffers
 			}
 			var tmp = writer.Allocate(data.Length + 1);
 			data.CopyTo(tmp.AsSpan());
+#if !NETSTANDARD2_0
 			tmp[data.Length] = suffix;
+#else
+			tmp.Array[tmp.Offset + data.Length] = suffix;
+#endif
 			return tmp.AsSlice();
 		}
 
@@ -141,7 +145,11 @@ namespace SnowBank.Buffers
 			}
 			var tmp = writer.Allocate(data.Length + 1);
 			data.Span.CopyTo(tmp.AsSpan());
+#if !NETSTANDARD2_0
 			tmp[data.Length] = suffix;
+#else
+			tmp.Array[tmp.Offset + data.Length] = suffix;
+#endif
 			return tmp.AsSlice();
 		}
 
@@ -192,7 +200,11 @@ namespace SnowBank.Buffers
 			}
 			var tmp = writer.Allocate(data.Count + 1);
 			data.CopyTo(tmp.AsSpan());
+#if !NETSTANDARD2_0
 			tmp[data.Count] = suffix;
+#else
+			tmp.Array[tmp.Offset + data.Count] = suffix;
+#endif
 			return tmp.AsSlice();
 		}
 

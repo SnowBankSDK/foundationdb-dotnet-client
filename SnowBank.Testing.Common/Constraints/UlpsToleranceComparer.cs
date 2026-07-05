@@ -63,8 +63,14 @@ namespace SnowBank.Testing
 
 		public static bool AreAlmostEqualUlps(double left, double right, long maxUlps)
 		{
+#if NET6_0_OR_GREATER
 			ulong leftBits = BitConverter.DoubleToUInt64Bits(left);
 			ulong rightBits = BitConverter.DoubleToUInt64Bits(right);
+#else
+			// BitConverter.DoubleToUInt64Bits is not available: same bits via the signed variant
+			ulong leftBits = unchecked((ulong) BitConverter.DoubleToInt64Bits(left));
+			ulong rightBits = unchecked((ulong) BitConverter.DoubleToInt64Bits(right));
+#endif
 
 			ulong leftSignMask = (leftBits >> 63);
 			ulong rightSignMask = (rightBits >> 63);
@@ -98,8 +104,14 @@ namespace SnowBank.Testing
 
 		public static bool AreAlmostEqualUlps(float left, float right, int maxUlps)
 		{
+#if NET6_0_OR_GREATER
 			uint leftBits = BitConverter.SingleToUInt32Bits(left);
 			uint rightBits = BitConverter.SingleToUInt32Bits(right);
+#else
+			// BitConverter.SingleToUInt32Bits is not available: reinterpret the bits via Unsafe
+			uint leftBits = System.Runtime.CompilerServices.Unsafe.As<float, uint>(ref left);
+			uint rightBits = System.Runtime.CompilerServices.Unsafe.As<float, uint>(ref right);
+#endif
 
 			uint leftSignMask = (leftBits >> 31);
 			uint rightSignMask = (rightBits >> 31);

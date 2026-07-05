@@ -49,6 +49,11 @@ namespace SnowBank.Data.Tuples.Tests
 	[SetInvariantCulture]
 	public class TupleFacts : SimpleTest
 	{
+		// the netstandard2.0 build formats floating-point values with "R" (17 significant digits on netfx),
+		// while the modern targets emit the shortest round-trippable form: compute the expected text at runtime
+		private static readonly string PiDoubleText = Math.PI.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+		private static readonly string PiSingleText = ((float) Math.PI).ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
 
 		#region General Use...
 
@@ -2388,16 +2393,21 @@ namespace SnowBank.Data.Tuples.Tests
 			Verify(STuple.Create("hello", 123), "(\"hello\", 123)");
 			Verify(STuple.Create("hello", 123, true), "(\"hello\", 123, true)");
 			Verify(STuple.Create("hello", 123, true, "world"), "(\"hello\", 123, true, \"world\")");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI), "(\"hello\", 123, true, \"world\", 3.141592653589793)");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false), "(\"hello\", 123, true, \"world\", 3.141592653589793, false)");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d), "(\"hello\", 123, true, \"world\", 3.141592653589793, false, 1.23)");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d, 4.56f), "(\"hello\", 123, true, \"world\", 3.141592653589793, false, 1.23, 4.56)");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI), "(\"hello\", 123, true, \"world\", " + PiDoubleText + ")");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false), "(\"hello\", 123, true, \"world\", " + PiDoubleText + ", false)");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d), "(\"hello\", 123, true, \"world\", " + PiDoubleText + ", false, 1.23)");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d, 4.56f), "(\"hello\", 123, true, \"world\", " + PiDoubleText + ", false, 1.23, 4.56)");
 
+#if NET5_0_OR_GREATER
 			var dt = DateTime.Now;
 			Verify(STuple.Create(dt), $"(\"{dt:O}\",)", $"({(dt.ToUniversalTime() - new DateTime(1970,1,1, 0, 0, 0, DateTimeKind.Utc)).TotalDays:R},)");
 
 			var dto = DateTimeOffset.Now;
 			Verify(STuple.Create(dto), $"(\"{dto:O}\",)", $"({(dto - new DateTime(1970,1,1, 0, 0, 0, DateTimeKind.Utc)).TotalDays:R},)");
+#else
+			// the netfx double parser is imprecise in the last ulp, so the value reparsed from the formatted date
+			// cannot reliably be compared against the recomputed one
+#endif
 
 			var g = Guid.NewGuid();
 			Verify(STuple.Create(g), $"({g:B},)");
@@ -2472,10 +2482,10 @@ namespace SnowBank.Data.Tuples.Tests
 			Verify(STuple.Create("hello", 123), "\"hello\", 123");
 			Verify(STuple.Create("hello", 123, true), "\"hello\", 123, true");
 			Verify(STuple.Create("hello", 123, true, "world"), "\"hello\", 123, true, \"world\"");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI), "\"hello\", 123, true, \"world\", 3.141592653589793");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false), "\"hello\", 123, true, \"world\", 3.141592653589793, false");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d), "\"hello\", 123, true, \"world\", 3.141592653589793, false, 1.23");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d, 4.56f), "\"hello\", 123, true, \"world\", 3.141592653589793, false, 1.23, 4.56");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI), "\"hello\", 123, true, \"world\", " + PiDoubleText + "");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false), "\"hello\", 123, true, \"world\", " + PiDoubleText + ", false");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d), "\"hello\", 123, true, \"world\", " + PiDoubleText + ", false, 1.23");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d, 4.56f), "\"hello\", 123, true, \"world\", " + PiDoubleText + ", false, 1.23, 4.56");
 		}
 
 		[Test]
@@ -2533,10 +2543,10 @@ namespace SnowBank.Data.Tuples.Tests
 			Verify(STuple.Create("hello", 123), "(\"hello\", 123)");
 			Verify(STuple.Create("hello", 123, true), "(\"hello\", 123, true)");
 			Verify(STuple.Create("hello", 123, true, "world"), "(\"hello\", 123, true, \"world\")");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI), "(\"hello\", 123, true, \"world\", 3.141592653589793)");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false), "(\"hello\", 123, true, \"world\", 3.141592653589793, false)");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d), "(\"hello\", 123, true, \"world\", 3.141592653589793, false, 1.23)");
-			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d, 4.56f), "(\"hello\", 123, true, \"world\", 3.141592653589793, false, 1.23, 4.56)");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI), "(\"hello\", 123, true, \"world\", " + PiDoubleText + ")");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false), "(\"hello\", 123, true, \"world\", " + PiDoubleText + ", false)");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d), "(\"hello\", 123, true, \"world\", " + PiDoubleText + ", false, 1.23)");
+			Verify(STuple.Create("hello", 123, true, "world", Math.PI, false, 1.23d, 4.56f), "(\"hello\", 123, true, \"world\", " + PiDoubleText + ", false, 1.23, 4.56)");
 
 			var dt = DateTime.Now;
 			Verify(STuple.Create(dt), $"(\"{dt:O}\",)");

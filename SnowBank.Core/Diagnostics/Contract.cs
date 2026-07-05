@@ -79,6 +79,7 @@ namespace SnowBank.Diagnostics.Contracts
 		private static (ConstructorInfo? One, ConstructorInfo? Two) GetAssertionExceptionCtor()
 		{
 			// check if we are inside a unit test runner (to mute all breakpoints and other intrusive actions that would block or crash an unattended CI)
+			//TODO: only NUnit is detected. xUnit, MSTest, TUnit, ... each throw their own assertion exception type; supporting them requires detecting each runner and mapping to its native assertion exception.
 
 			var nUnitAssert = Type.GetType("NUnit.Framework.AssertionException,nunit.framework");
 			if (nUnitAssert != null)
@@ -427,6 +428,8 @@ namespace SnowBank.Diagnostics.Contracts
 		public static void ThrowBufferNullOrEmpty(object? array, string? paramName, string? message = null)
 			=> throw FailBufferNullOrEmpty(array, paramName, message);
 
+#if NET5_0_OR_GREATER
+		//TODO: excluded on netstandard2.0 because the Slice type is not available on that target. Re-include this overload once Slice compiles for netstandard2.0.
 		/// <summary>The specified buffer must not be null or empty (assert: buffer.Array != null &amp;&amp; buffer.Count != 0)</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[StackTraceHidden]
@@ -438,6 +441,7 @@ namespace SnowBank.Diagnostics.Contracts
 				ThrowBufferNullOrEmpty(buffer.Array, paramName, message);
 			}
 		}
+#endif
 
 		/// <summary>The specified buffer must not be null or empty (assert: buffer.Array != null &amp;&amp; buffer.Count != 0)</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -569,7 +573,13 @@ namespace SnowBank.Diagnostics.Contracts
 		[StackTraceHidden]
 		public static void Positive(float value, string? message = null, [InvokerParameterName, CallerArgumentExpression(nameof(value))] string? paramName = null)
 		{
+#if NET5_0_OR_GREATER
 			if (MathF.Sign(value) != 1) ThrowArgumentNotPositive(paramName, message);
+#else
+			// exactly equivalent: Math.Sign binds to its float overload (no widening to double, so no precision change,
+			// no allocation, and the same ArithmeticException on NaN). MathF.Sign is used elsewhere only as the idiomatic modern API.
+			if (Math.Sign(value) != 1) ThrowArgumentNotPositive(paramName, message);
+#endif
 		}
 
 		#endregion
@@ -738,6 +748,7 @@ namespace SnowBank.Diagnostics.Contracts
 		}
 #endif
 
+#if NET8_0_OR_GREATER
 		/// <summary>The specified value must not be less than or equal to the specified lower bound (assert: value > threshold)</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[StackTraceHidden]
@@ -746,6 +757,7 @@ namespace SnowBank.Diagnostics.Contracts
 		{
 			if (value <= threshold) ThrowArgumentNotGreaterThan(value, valueExpression!, thresholdExpression!, threshold == TimeSpan.Zero, message);
 		}
+#endif
 
 		#endregion
 
@@ -1046,13 +1058,11 @@ namespace SnowBank.Diagnostics.Contracts
 			// If this returns null, then the issue has already been handled (popup on the screen, ...)
 			// But we still need to stop the execution!
 #if DEBUG
-			if (str != null)
+			// only pop the modal assert dialog when a debugger is actually attached to observe it: an unattended process
+			// (CI, test host, or a plain console repro) cannot act on it and would just block on the dialog.
+			if (str != null && !IsUnitTesting && System.Diagnostics.Debugger.IsAttached)
 			{
-				// note: do not spam the logs if in the context of a unit test runner!
-				if (!IsUnitTesting)
-				{
-					System.Diagnostics.Debug.Fail(str);
-				}
+				System.Diagnostics.Debug.Fail(str);
 			}
 #endif
 			string description = userMessage ?? str ?? msg;

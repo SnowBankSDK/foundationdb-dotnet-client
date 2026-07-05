@@ -12,8 +12,10 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
     <PackageVersion Include="Microsoft.CSharp" Version="4.7.0" />
+    <PackageVersion Include="Microsoft.Bcl.HashCode" Version="6.0.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageVersion Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" />
     <PackageVersion Include="Microsoft.Testing.Extensions.Telemetry" Version="2.2.3" />
     <PackageVersion Include="Microsoft.Testing.Extensions.VSTestBridge" Version="2.2.3" />
     <PackageVersion Include="Microsoft.Testing.Platform" Version="2.2.3" />
@@ -37,8 +39,9 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Process" Version="1.16.0-beta.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
+    <PackageVersion Include="PolySharp" Version="1.16.0" />
     <PackageVersion Include="protobuf-net" Version="3.2.56" />
-    <PackageVersion Include="Spectre.Console" Version="0.57.1" />
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <PackageVersion Include="StructuredFieldValues" Version="0.7.7" />
     <PackageVersion Include="System.CommandLine" Version="2.0.9" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />

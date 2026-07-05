@@ -24,6 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+#if NET7_0_OR_GREATER // needs runtime support for static abstract members in interfaces
+
 namespace SnowBank.Data.Json
 {
 	using System.Collections;
@@ -800,3 +802,5 @@ namespace SnowBank.Data.Json
 	}
 
 }
+
+#endif

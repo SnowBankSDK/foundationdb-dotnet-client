@@ -34,6 +34,9 @@ namespace SnowBank.Threading.Tests
 	public class ProbabilisticTriggerFacts : SimpleTest
 	{
 
+		// Random.Shared is .NET 6+
+		private static readonly Random s_rnd = new();
+
 		[Test]
 		public void Test_Probabilistic_Trigger()
 		{
@@ -48,7 +51,7 @@ namespace SnowBank.Threading.Tests
 			const int MEDIAN = 50;
 			const int MAX = 100;
 
-			var schrodingerApparatus = new ProbabilisticTrigger(Random.Shared, K, MIN, MEDIAN, MAX);
+			var schrodingerApparatus = new ProbabilisticTrigger(s_rnd, K, MIN, MEDIAN, MAX);
 
 			var h = new RobustHistogram(RobustHistogram.TimeScale.Bytes);
 

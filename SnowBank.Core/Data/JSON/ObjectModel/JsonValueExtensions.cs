@@ -331,7 +331,10 @@ namespace SnowBank.Data.Json
 				if (typeof(TValue) == typeof(ulong)) return (TValue) (object) value.ToUInt64();
 				if (typeof(TValue) == typeof(float)) return (TValue) (object) value.ToSingle();
 				if (typeof(TValue) == typeof(double)) return (TValue) (object) value.ToDouble();
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (typeof(TValue) == typeof(Half)) return (TValue) (object) value.ToHalf();
+#endif
 				if (typeof(TValue) == typeof(decimal)) return (TValue) (object) value.ToDecimal();
 				if (typeof(TValue) == typeof(Guid)) return (TValue) (object) value.ToGuid();
 				if (typeof(TValue) == typeof(Uuid128)) return (TValue) (object) value.ToUuid128();
@@ -367,7 +370,10 @@ namespace SnowBank.Data.Json
 				if (typeof(TValue) == typeof(ulong?)) return (TValue) (object) value.ToUInt64();
 				if (typeof(TValue) == typeof(float?)) return (TValue) (object) value.ToSingle();
 				if (typeof(TValue) == typeof(double?)) return (TValue) (object) value.ToDouble();
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (typeof(TValue) == typeof(Half?)) return (TValue) (object) value.ToHalf();
+#endif
 				if (typeof(TValue) == typeof(decimal?)) return (TValue) (object) value.ToDecimal();
 				if (typeof(TValue) == typeof(Guid?)) return (TValue) (object) value.ToGuid();
 				if (typeof(TValue) == typeof(Uuid128?)) return (TValue) (object) value.ToUuid128();
@@ -416,7 +422,10 @@ namespace SnowBank.Data.Json
 				if (typeof(TValue) == typeof(ulong)) return (TValue) (object) value.ToUInt64((ulong) (object) defaultValue!);
 				if (typeof(TValue) == typeof(float)) return (TValue) (object) value.ToSingle((float) (object) defaultValue!);
 				if (typeof(TValue) == typeof(double)) return (TValue) (object) value.ToDouble((double) (object) defaultValue!);
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (typeof(TValue) == typeof(Half)) return (TValue) (object) value.ToHalf((Half) (object) defaultValue!);
+#endif
 				if (typeof(TValue) == typeof(decimal)) return (TValue) (object) value.ToDecimal((decimal) (object) defaultValue!);
 				if (typeof(TValue) == typeof(Guid)) return (TValue) (object) value.ToGuid((Guid) (object) defaultValue!);
 				if (typeof(TValue) == typeof(Uuid128)) return (TValue) (object) value.ToUuid128((Uuid128) (object) defaultValue!);
@@ -453,7 +462,10 @@ namespace SnowBank.Data.Json
 				if (typeof(TValue) == typeof(ulong?)) return (TValue?) (object?) value.ToUInt64OrDefault((ulong?) (object?) defaultValue);
 				if (typeof(TValue) == typeof(float?)) return (TValue?) (object?) value.ToSingleOrDefault((float?) (object?) defaultValue);
 				if (typeof(TValue) == typeof(double?)) return (TValue?) (object?) value.ToDoubleOrDefault((double?) (object?) defaultValue);
+#if NET5_0_OR_GREATER
+				// System.Half does not exist on netstandard2.0
 				if (typeof(TValue) == typeof(Half?)) return (TValue?) (object?) value.ToHalfOrDefault((Half?) (object?) defaultValue);
+#endif
 				if (typeof(TValue) == typeof(decimal?)) return (TValue?) (object?) value.ToDecimalOrDefault((decimal?) (object?) defaultValue);
 				if (typeof(TValue) == typeof(Guid?)) return (TValue?) (object?) value.ToGuidOrDefault((Guid?) (object?) defaultValue);
 				if (typeof(TValue) == typeof(Uuid128?)) return (TValue?) (object?) value.ToUuid128OrDefault((Uuid128?) (object?) defaultValue);
@@ -526,12 +538,15 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public static float As(this JsonValue? value, float missingValue) => value?.ToSingleOrDefault() ?? missingValue;
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <summary>Returns the converted value, or a fallback value if it is missing</summary>
 		/// <param name="value">JSON value to convert</param>
 		/// <param name="missingValue">Fallback value</param>
 		/// <returns>The converted value, or <paramref name="missingValue"/> if it is <see langword="null"/> or missing</returns>
 		[Pure]
 		public static Half As(this JsonValue? value, Half missingValue) => value?.ToHalfOrDefault() ?? missingValue;
+#endif
 
 		/// <summary>Returns the converted value, or a fallback value if it is missing</summary>
 		/// <param name="value">JSON value to convert</param>
@@ -1081,8 +1096,14 @@ namespace SnowBank.Data.Json
 		{
 			if (size == 0) return readOnly ? JsonArray.ReadOnly.Empty : new();
 
+#if NET5_0_OR_GREATER
 			ArgumentNullException.ThrowIfNull(items);
 			ArgumentOutOfRangeException.ThrowIfGreaterThan((uint) size, (uint) items.Length);
+#else
+			// ArgumentNullException.ThrowIfNull / ArgumentOutOfRangeException.ThrowIfGreaterThan are not on netstandard2.0
+			if (items is null) throw new ArgumentNullException(nameof(items));
+			if ((uint) size > (uint) items.Length) throw new ArgumentOutOfRangeException(nameof(size), size, "size must be less than or equal to the length of items.");
+#endif
 			items.AsSpan(0, size);
 			return new(items, size, readOnly);
 		}

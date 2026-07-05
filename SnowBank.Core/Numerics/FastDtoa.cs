@@ -24,6 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+// This file is not part of the netstandard2.0 build: shortest-roundtrip formatter: string.Create(SpanAction) + bit-twiddling throughout.
+#if !NETSTANDARD2_0
+
 namespace SnowBank.Numerics
 {
 	using System.Runtime.InteropServices;
@@ -612,3 +615,5 @@ namespace SnowBank.Numerics
 	}
 
 }
+
+#endif

@@ -212,6 +212,8 @@ namespace SnowBank.IO
 			stream.Write(buffer, offset, count);
 		}
 
+#if NET5_0_OR_GREATER
+
 		public override void Write(ReadOnlySpan<byte> buffer)
 		{
 			if (!ComputeBound(buffer.Length, out var stream))
@@ -220,6 +222,8 @@ namespace SnowBank.IO
 			}
 			stream.Write(buffer);
 		}
+
+#endif
 
 		public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
 		{
@@ -231,6 +235,8 @@ namespace SnowBank.IO
 			return stream.WriteAsync(buffer, offset, count, cancellationToken);
 		}
 
+#if NET5_0_OR_GREATER
+
 		public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
 		{
 			if (cancellationToken.IsCancellationRequested) return ValueTask.FromCanceled(cancellationToken);
@@ -240,6 +246,8 @@ namespace SnowBank.IO
 			}
 			return stream.WriteAsync(buffer, cancellationToken);
 		}
+
+#endif
 
 		public override void Flush()
 		{
@@ -264,6 +272,8 @@ namespace SnowBank.IO
 			}
 		}
 
+#if NET5_0_OR_GREATER
+
 		public override ValueTask DisposeAsync()
 		{
 			var inner = this.Inner;
@@ -271,6 +281,8 @@ namespace SnowBank.IO
 
 			return this.OwnsStream && inner != null ? inner.DisposeAsync() : default;
 		}
+
+#endif
 
 		#region Unsupported Methods...
 
@@ -284,11 +296,15 @@ namespace SnowBank.IO
 
 		public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
-		public override int Read(Span<byte> buffer) => throw new NotSupportedException();
-
 		public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+#if NET5_0_OR_GREATER
+
+		public override int Read(Span<byte> buffer) => throw new NotSupportedException();
+
 		public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+#endif
 
 		#endregion
 

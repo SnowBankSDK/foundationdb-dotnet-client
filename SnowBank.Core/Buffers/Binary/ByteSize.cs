@@ -242,7 +242,11 @@ namespace SnowBank.Buffers.Binary
 			{
 				double x = this.Value * GetUnitRatio(this.Unit);
 				var literal = GetUnitLiteral(this.Unit);
+#if NET6_0_OR_GREATER
 				return string.Create(provider ?? CultureInfo.InvariantCulture, $"{x:R} {literal}");
+#else
+				return string.Format(provider ?? CultureInfo.InvariantCulture, "{0:R} {1}", x, literal); // string.Create(IFormatProvider, ref DefaultInterpolatedStringHandler) is not on netstandard2.0
+#endif
 			}
 		}
 
@@ -856,7 +860,12 @@ namespace SnowBank.Buffers.Binary
 			}
 
 			literal = (offset > 0 ? literal[..^offset] : literal).Trim();
+#if NET5_0_OR_GREATER
 			if (!long.TryParse(literal, NumberStyles.Integer, CultureInfo.InvariantCulture.NumberFormat, out var num))
+#else
+			// we need to allocate here
+			if (!long.TryParse(literal.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture.NumberFormat, out var num))
+#endif
 			{
 				goto invalid;
 			}

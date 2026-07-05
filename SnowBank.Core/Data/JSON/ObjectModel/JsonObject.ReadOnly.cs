@@ -576,6 +576,7 @@ namespace SnowBank.Data.Json
 
 		private static void MakeReadOnly(Dictionary<string, JsonValue> items)
 		{
+#if NET5_0_OR_GREATER
 			foreach (var kv in items)
 			{
 				if (!kv.Value.IsReadOnly)
@@ -583,6 +584,25 @@ namespace SnowBank.Data.Json
 					items[kv.Key] = kv.Value.ToReadOnly();
 				}
 			}
+#else
+			// overwriting an existing key while enumerating is only tolerated by the modern Dictionary
+			// (the netfx version-checks ANY write): collect the keys to convert first (extra allocation)
+			List<string>? toConvert = null;
+			foreach (var kv in items)
+			{
+				if (!kv.Value.IsReadOnly)
+				{
+					(toConvert ??= [ ]).Add(kv.Key);
+				}
+			}
+			if (toConvert != null)
+			{
+				foreach (var key in toConvert)
+				{
+					items[key] = items[key].ToReadOnly();
+				}
+			}
+#endif
 		}
 
 		/// <summary>Returns a new read-only copy of this object with an additional item</summary>
@@ -599,6 +619,10 @@ namespace SnowBank.Data.Json
 		{
 			// copy and add the new value
 			var items = new Dictionary<string, JsonValue>(m_items);
+#if !NET5_0_OR_GREATER
+			// the netfx duplicate-key exception does not include the key name in its message: mirror the modern BCL message
+			if (items.ContainsKey(key)) throw new ArgumentException($"An item with the same key has already been added. Key: {key}", nameof(key));
+#endif
 			items.Add(key, value?.ToReadOnly() ?? JsonNull.Null);
 
 			if (!m_readOnly)

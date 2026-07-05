@@ -34,6 +34,9 @@ namespace SnowBank.Data.Json
 	using System.IO;
 	using System.Net;
 	using System.Runtime.InteropServices;
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
+#endif
 	using System.Text;
 	using System.Threading;
 	using NodaTime;
@@ -410,7 +413,12 @@ namespace SnowBank.Data.Json
 				{
 					if (m_buffer.Count > 0)
 					{
+#if !NETSTANDARD2_0
 						if (writer is StringWriter or FastStringWriter)
+#else
+						// FastStringWriter is not part of the netstandard2.0 backport
+						if (writer is StringWriter)
+#endif
 						{
 							ct.ThrowIfCancellationRequested();
 							writer.Write(m_buffer.Span);
@@ -420,7 +428,20 @@ namespace SnowBank.Data.Json
 							//note: if the TextWriter implementation does not overload WriteAsync(ReadOnlyMemory<char>),
 							// the base implementation simply Task.Factory.StartNew((...) => output.Write(ReadOnlySpan<char>))
 							// also, the CancellationToken is only check _BEFORE_ writing, but the write operation itself is not cancellable :(
+#if NET5_0_OR_GREATER
 							await writer.WriteAsync(m_buffer.Memory, ct).ConfigureAwait(false);
+#else
+							// TextWriter.WriteAsync(ReadOnlyMemory<char>, CancellationToken) is not available on netstandard2.0
+							ct.ThrowIfCancellationRequested();
+							if (MemoryMarshal.TryGetArray(m_buffer.Memory, out ArraySegment<char> seg))
+							{
+								await writer.WriteAsync(seg.Array!, seg.Offset, seg.Count).ConfigureAwait(false);
+							}
+							else
+							{
+								await writer.WriteAsync(m_buffer.Memory.ToArray()).ConfigureAwait(false);
+							}
+#endif
 
 							if (flushOutput)
 							{
@@ -495,11 +516,19 @@ namespace SnowBank.Data.Json
 				return name;
 			}
 
+#if NET5_0_OR_GREATER
 			return string.Create(name.Length, name, static (chars, name) =>
 			{
 				name.CopyTo(chars);
 				chars[0] = char.ToLowerInvariant(name[0]);
 			});
+#else
+			// string.Create is not available on netstandard2.0
+			var chars = new char[name.Length];
+			name.CopyTo(0, chars, 0, name.Length);
+			chars[0] = char.ToLowerInvariant(name[0]);
+			return new string(chars);
+#endif
 		}
 
 		/// <summary>Write a comment</summary>
@@ -1667,7 +1696,13 @@ namespace SnowBank.Data.Json
 			}
 			else
 			{
+#if NET5_0_OR_GREATER
 				WriteValue(MemoryMarshal.CreateReadOnlySpan(ref value, 1));
+#else
+				// MemoryMarshal.CreateReadOnlySpan is not available on netstandard2.0
+				ReadOnlySpan<char> span = stackalloc char[1] { value };
+				WriteValue(span);
+#endif
 			}
 		}
 
@@ -1995,7 +2030,12 @@ namespace SnowBank.Data.Json
 		public void WriteValue(float value)
 		{
 			// special case for NaN and +/-Infinity that require specific tokens, depending on the configuration
+#if NET5_0_OR_GREATER
 			if (!float.IsFinite(value))
+#else
+			// float.IsFinite is not available on netstandard2.0
+			if (float.IsNaN(value) || float.IsInfinity(value))
+#endif
 			{
 				m_buffer.Write(
 					  float.IsNaN(value) ? CrystalJsonFormatter.GetNaNToken(m_floatFormat)
@@ -2030,7 +2070,12 @@ namespace SnowBank.Data.Json
 		public void WriteValue(double value)
 		{
 			// special case for NaN and +/-Infinity that require specific tokens, depending on the configuration
+#if NET5_0_OR_GREATER
 			if (!double.IsFinite(value))
+#else
+			// double.IsFinite is not available on netstandard2.0
+			if (double.IsNaN(value) || double.IsInfinity(value))
+#endif
 			{
 				m_buffer.Write(
 					  double.IsNaN(value) ? CrystalJsonFormatter.GetNaNToken(m_floatFormat)
@@ -2171,6 +2216,8 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
 		/// <summary>Writes a <see cref="Half"/>, as a number literal</summary>
 		/// <param name="value">Value to write</param>
 		/// <example><code>
@@ -2211,6 +2258,7 @@ namespace SnowBank.Data.Json
 				WriteNull();
 			}
 		}
+#endif
 
 #if NET8_0_OR_GREATER
 
@@ -3065,7 +3113,12 @@ namespace SnowBank.Data.Json
 			else
 			{ // note: Base64 without any <'> or <">, so no need to escape it!
 				m_buffer.Write('"');
+#if !NETSTANDARD2_0
 				Base64Encoding.EncodeTo(ref m_buffer, bytes);
+#else
+				// the ref ValueStringWriter overload of EncodeTo is not part of the netstandard2.0 backport
+				m_buffer.Write(Base64Encoding.ToBase64String(bytes));
+#endif
 				m_buffer.Write('"');
 			}
 		}
@@ -3079,7 +3132,12 @@ namespace SnowBank.Data.Json
 			else
 			{ // note: Base64 without any <'> or <">, so no need to escape it!
 				m_buffer.Write('"');
+#if !NETSTANDARD2_0
 				Base64Encoding.EncodeTo(ref m_buffer, bytes.Span);
+#else
+				// the ref ValueStringWriter overload of EncodeTo is not part of the netstandard2.0 backport
+				m_buffer.Write(Base64Encoding.ToBase64String(bytes.Span));
+#endif
 				m_buffer.Write('"');
 			}
 		}

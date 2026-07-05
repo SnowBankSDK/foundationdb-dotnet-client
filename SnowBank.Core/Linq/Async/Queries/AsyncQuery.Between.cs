@@ -41,9 +41,15 @@ namespace SnowBank.Linq
 		/// <remarks>The sequence is empty if <paramref name="beginInclusive"/> is greater than or equal to <paramref name="endExclusive"/></remarks>
 		public static IAsyncLinqQuery<int> Between(int beginInclusive, int endExclusive, CancellationToken ct = default)
 		{
+#if NET8_0_OR_GREATER
 			return endExclusive <= beginInclusive
 				? Empty<int>()
 				: new RangeIterator<int>(beginInclusive, 1, endExclusive - beginInclusive, ct);
+#else
+			return endExclusive <= beginInclusive
+				? Empty<int>()
+				: new BetweenIterator<int>(beginInclusive, endExclusive, (x) => x + 1, Comparer<int>.Default, ct); // RangeIterator is generic-math based and not available on this target
+#endif
 		}
 
 		/// <summary>Generates a sequence of integral numbers between two bounds.</summary>
@@ -57,11 +63,18 @@ namespace SnowBank.Linq
 			if (endExclusive <= beginInclusive) return Empty<long>();
 
 			long count = endExclusive - beginInclusive;
+#if NET8_0_OR_GREATER
 			return count <= int.MaxValue
 				? new RangeIterator<long>(beginInclusive, 1L, (int) count, ct)
 				: new BetweenIterator<long>(beginInclusive, endExclusive, (x) => x + 1, Comparer<long>.Default, ct);
+#else
+			// RangeIterator<TNumber> is generic-math based and not available on this target: always use the successor-based iterator
+			return new BetweenIterator<long>(beginInclusive, endExclusive, (x) => x + 1, Comparer<long>.Default, ct);
+#endif
 		}
 
+#if NET7_0_OR_GREATER
+		// generic math (IIncrementOperators, .NET 7+); the concrete overloads and the successor-callback variants remain available on all targets
 		/// <summary>Generates a sequence of integral numbers between two bounds.</summary>
 		/// <param name="beginInclusive">The value of the first integer in the sequence.</param>
 		/// <param name="endExclusive">The value at which the sequence stops iterating.</param>
@@ -70,6 +83,7 @@ namespace SnowBank.Linq
 		/// <remarks>The sequence is empty if <paramref name="beginInclusive"/> is greater than or equal to <paramref name="endExclusive"/></remarks>
 		public static IAsyncLinqQuery<TNumber> Between<TNumber>(TNumber beginInclusive, TNumber endExclusive, CancellationToken ct = default) where TNumber : IIncrementOperators<TNumber>
 			=> new BetweenIterator<TNumber>(beginInclusive, endExclusive, (x) => ++x, Comparer<TNumber>.Default, ct);
+#endif
 
 		/// <summary>Generates a sequence of integral numbers between two bounds.</summary>
 		/// <param name="beginInclusive">The value of the first integer in the sequence.</param>
@@ -136,7 +150,7 @@ namespace SnowBank.Linq
 			public override CancellationToken Cancellation { get; }
 
 			/// <inheritdoc />
-			protected override BetweenIterator<TValue> Clone() => new(this.BeginInclusive, this.EndExclusive, this.Successor, this.Comparer, this.Cancellation);
+			protected override AsyncLinqIterator<TValue> Clone() => new BetweenIterator<TValue>(this.BeginInclusive, this.EndExclusive, this.Successor, this.Comparer, this.Cancellation);
 
 			/// <inheritdoc />
 			protected override ValueTask<bool> OnFirstAsync()

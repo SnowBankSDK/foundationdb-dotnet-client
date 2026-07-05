@@ -37,6 +37,9 @@ namespace SnowBank.Data.Json
 	using System.ComponentModel;
 	using System.Dynamic;
 	using System.Runtime.InteropServices;
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
+#endif
 	using System.Text;
 	using SnowBank.Runtime.Converters;
 	using SnowBank.Buffers;
@@ -47,7 +50,10 @@ namespace SnowBank.Data.Json
 	[DebuggerDisplay("JSON Object[{Count}]{GetMutabilityDebugLiteral(),nq} {GetCompactRepresentation(0),nq}")]
 	[DebuggerTypeProxy(typeof(DebugView))]
 	[PublicAPI]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(CrystalJsonCustomJsonConverter))]
+#endif
 	[DebuggerNonUserCode]
 #if NET9_0_OR_GREATER
 	[CollectionBuilder(typeof(JsonObject), nameof(Create))]
@@ -216,7 +222,11 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Freezes this object, once it has been initialized, by switching it to read-only mode.</summary>
 		/// <remarks>Once "frozen", the operation cannot be reverted, and if additional mutation is required, a new copy of the object must be used.</remarks>
+#if NET5_0_OR_GREATER
 		public override JsonObject Freeze()
+#else
+		public new JsonObject Freeze()
+#endif
 		{
 			if (!m_readOnly)
 			{ // at least one mutable children must be frozen as well!
@@ -231,6 +241,14 @@ namespace SnowBank.Data.Json
 			return this;
 		}
 
+#if !NET5_0_OR_GREATER
+		// forward the JsonValue virtual cores to the strongly typed shadows above (covariant-return emulation)
+		protected override JsonValue FreezeCore() => Freeze();
+		protected override JsonValue ToReadOnlyCore() => ToReadOnly();
+		protected override JsonValue ToMutableCore() => ToMutable();
+		protected override JsonValue CopyCore() => Copy();
+#endif
+
 		internal JsonObject FreezeUnsafe()
 		{
 			if (m_items.Count == 0) return JsonObject.ReadOnly.Empty;
@@ -243,7 +261,11 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns a new immutable read-only version of this JSON object (and all of its children)</summary>
 		/// <returns>The same object, if it is already immutable; otherwise, a deep copy marked as read-only.</returns>
 		/// <remarks>A JSON object that is immutable is truly safe against any modification, including any of its direct or indirect children.</remarks>
+#if NET5_0_OR_GREATER
 		public override JsonObject ToReadOnly()
+#else
+		public new JsonObject ToReadOnly()
+#endif
 		{
 			if (m_readOnly)
 			{
@@ -270,7 +292,11 @@ namespace SnowBank.Data.Json
 		/// <para>Will return the same instance if it is already mutable, or a new deep copy with all children marked as mutable.</para>
 		/// <para>This attempts to only copy what is necessary, and will not copy objects or arrays that are already mutable, or all other "value types" (string, boolean, number, ...) that are always immutable.</para>
 		/// </remarks>
+#if NET5_0_OR_GREATER
 		public override JsonObject ToMutable()
+#else
+		public new JsonObject ToMutable()
+#endif
 		{
 			if (m_readOnly)
 			{ // create a mutable copy
@@ -302,7 +328,11 @@ namespace SnowBank.Data.Json
 		/// <para>This will recursively copy all JSON objects or arrays present in the array, even if they are already mutable.</para>
 		/// <para>The new instance can be freely modified without any effect on its parent. Likewise, if the parent is modified, it will not have any effect on the copy.</para>
 		/// </remarks>
+#if NET5_0_OR_GREATER
 		public override JsonObject Copy()
+#else
+		public new JsonObject Copy()
+#endif
 		{
 			var items = m_items;
 			if (items.Count == 0) return new JsonObject();
@@ -322,7 +352,11 @@ namespace SnowBank.Data.Json
 		/// <param name="readOnly">If <see langword="true" />, the copy will become read-only. If <see langword="false" />, the copy will be writable.</param>
 		/// <returns>Copy of the object, and optionally of its children (if <paramref name="deep"/> is <see langword="true" /></returns>
 		/// <remarks>Performing a deep copy will protect against any change, but will induce a lot of memory allocations. For example, any child array will be cloned even if they will not be modified later on.</remarks>
+#if NET5_0_OR_GREATER
 		protected internal override JsonObject Copy(bool deep, bool readOnly) => Copy(this, deep, readOnly);
+#else
+		protected internal override JsonValue Copy(bool deep, bool readOnly) => Copy(this, deep, readOnly); // covariant return types need runtime support that netstandard2.0/netfx lacks; the derived type is returned as the base type there
+#endif
 
 		/// <summary>Creates a copy of a JSON object</summary>
 		/// <param name="obj">Object to copy</param>
@@ -2792,7 +2826,16 @@ namespace SnowBank.Data.Json
 		public bool Remove(string key, [MaybeNullWhen(false)] out JsonValue value)
 		{
 			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
+#if NET5_0_OR_GREATER
 			return m_items.Remove(key, out value);
+#else
+			// Dictionary<K,V>.Remove(key, out value) is not available on netstandard2.0
+			if (!m_items.TryGetValue(key, out value))
+			{
+				return false;
+			}
+			return m_items.Remove(key);
+#endif
 		}
 
 		/// <summary>Removes the value with the specified key from this object, and copies the element to the <paramref name="value" /> parameter.</summary>
@@ -2809,9 +2852,18 @@ namespace SnowBank.Data.Json
 			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
 #if NET9_0_OR_GREATER
 			return m_items.GetAlternateLookup<ReadOnlySpan<char>>().Remove(key, out _, out value);
-#else
+#elif NET5_0_OR_GREATER
 			// we have to allocate the string here :(
 			return m_items.Remove(key.ToString(), out value);
+#else
+			// Dictionary<K,V>.Remove(key, out value) is not available on netstandard2.0
+			// we have to allocate the string here :(
+			var str = key.ToString();
+			if (!m_items.TryGetValue(str, out value))
+			{
+				return false;
+			}
+			return m_items.Remove(str);
 #endif
 		}
 
@@ -2829,9 +2881,18 @@ namespace SnowBank.Data.Json
 			if (m_readOnly) throw FailCannotMutateReadOnlyValue(this);
 #if NET9_0_OR_GREATER
 			return m_items.GetAlternateLookup<ReadOnlySpan<char>>().Remove(key.Span, out _, out value);
-#else
+#elif NET5_0_OR_GREATER
 			// we may have to allocate the string here :(
 			return m_items.Remove(key.GetStringOrCopy(), out value);
+#else
+			// Dictionary<K,V>.Remove(key, out value) is not available on netstandard2.0
+			// we may have to allocate the string here :(
+			var str = key.GetStringOrCopy();
+			if (!m_items.TryGetValue(str, out value))
+			{
+				return false;
+			}
+			return m_items.Remove(str);
 #endif
 		}
 
@@ -2907,7 +2968,12 @@ namespace SnowBank.Data.Json
 		/// <exception cref="T:System.ArgumentOutOfRangeException">
 		/// <paramref name="capacity" /> is less than <see cref="Count" />.</exception>
 		[EditorBrowsable(EditorBrowsableState.Advanced)]
+#if NET5_0_OR_GREATER
 		public void TrimExcess(int capacity) => m_items.TrimExcess(capacity);
+#else
+		// Dictionary<K,V>.TrimExcess is not available on netstandard2.0: trimming is a best-effort no-op there
+		public void TrimExcess(int capacity) { }
+#endif
 
 		#region Public Properties...
 
@@ -4162,7 +4228,12 @@ namespace SnowBank.Data.Json
 				indexes[i] = i;
 			}
 
+#if NET5_0_OR_GREATER
 			keys.Sort(indexes, comparer);
+#else
+			// the span-based key/value Sort is not available on netstandard2.0: sort the backing arrays directly
+			Array.Sort(keysArray, indexesArray, 0, count, comparer);
+#endif
 
 			if (!changed)
 			{

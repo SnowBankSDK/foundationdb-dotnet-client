@@ -38,7 +38,10 @@ namespace SnowBank.Data.Json
 	/// <summary>Represents a path inside a JSON document to a nested child (ex: <c>"id"</c>, <c>"user.id"</c> <c>"tags[2].id"</c></summary>
 	[PublicAPI]
 	[DebuggerDisplay("{ToString(),nq}")]
+#if !NETSTANDARD2_0
+	// System.Text.Json interop is disabled on the netstandard2.0 build
 	[System.Text.Json.Serialization.JsonConverter(typeof(JsonPath.CustomConverter))]
+#endif
 	[DebuggerNonUserCode]
 	public readonly struct JsonPath : IEnumerable<JsonPathSegment>, IJsonSerializable, IJsonPackable, IJsonDeserializable<JsonPath>, IEquatable<JsonPath>, IEquatable<string>, ISpanFormattable
 #if NET9_0_OR_GREATER
@@ -231,6 +234,7 @@ namespace SnowBank.Data.Json
 					else if (chunk.Span.Contains('\\'))
 					{ // the key is escaped, must be decoded
 						int l = GetDecodedKeyNameSize(chunk.Span);
+#if NET5_0_OR_GREATER
 						s = string.Create(l, chunk, (buf, c) =>
 						{
 							if (!TryDecodeKeyName(c.Span, buf, out int written) || written != buf.Length)
@@ -238,6 +242,15 @@ namespace SnowBank.Data.Json
 								throw new FormatException("Internal decoding error");
 							}
 						});
+#else
+						// string.Create is not on netstandard2.0
+						var tmp = new char[l];
+						if (!TryDecodeKeyName(chunk.Span, tmp, out int written) || written != tmp.Length)
+						{ // should NOT happen! => decoded count does not match expected length ???
+							throw new FormatException("Internal decoding error");
+						}
+						s = new string(tmp);
+#endif
 						res.Add(new(s));
 					}
 					else
@@ -299,6 +312,7 @@ namespace SnowBank.Data.Json
 					else if (chunk.Span.Contains('\\'))
 					{ // the key is escaped, must be decoded
 						int l = GetDecodedKeyNameSize(chunk.Span);
+#if NET5_0_OR_GREATER
 						s = string.Create(l, chunk, (buf, c) =>
 						{
 							if (!TryDecodeKeyName(c.Span, buf, out int written) || written != buf.Length)
@@ -306,6 +320,15 @@ namespace SnowBank.Data.Json
 								throw new FormatException("Internal decoding error");
 							}
 						});
+#else
+						// string.Create is not on netstandard2.0
+						var tmp = new char[l];
+						if (!TryDecodeKeyName(chunk.Span, tmp, out int written) || written != tmp.Length)
+						{ // should NOT happen! => decoded count does not match expected length ???
+							throw new FormatException("Internal decoding error");
+						}
+						s = new string(tmp);
+#endif
 						buffer[p++] = new(s);
 					}
 					else
@@ -353,7 +376,12 @@ namespace SnowBank.Data.Json
 		}
 
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET5_0_OR_GREATER
 		public override int GetHashCode() => string.GetHashCode(this.Value.Span);
+#else
+		// span-based string.GetHashCode is not on netstandard2.0
+		public override int GetHashCode() => this.Value.ToString().GetHashCode();
+#endif
 
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public override bool Equals(object? obj) => obj switch
@@ -750,7 +778,12 @@ namespace SnowBank.Data.Json
 
 			if (name.Length == 0)
 			{
+#if NET5_0_OR_GREATER
 				return prefix.Length != 0 ? string.Concat(prefix, ".") : "";
+#else
+				// span-based string.Concat is not on netstandard2.0
+				return prefix.Length != 0 ? string.Concat(prefix.ToString(), ".") : "";
+#endif
 			}
 
 			// can take up to twice the size (if all characters must be escaped)
@@ -849,7 +882,12 @@ namespace SnowBank.Data.Json
 					return new(key.AsMemory());
 				}
 
+#if NET5_0_OR_GREATER
 				return new(string.Concat(this.Value.Span, ".", key));
+#else
+				// span-based string.Concat is not on netstandard2.0
+				return new(string.Concat(this.Value.Span.ToString(), ".", key));
+#endif
 			}
 		}
 
@@ -955,12 +993,22 @@ namespace SnowBank.Data.Json
 
 		private static string ConcatWithIndexer(ReadOnlyMemory<char> head, ReadOnlyMemory<char> tail)
 		{
+#if NET5_0_OR_GREATER
 			return string.Concat(head.Span, tail.Span);
+#else
+			// span-based string.Concat is not on netstandard2.0
+			return string.Concat(head.Span.ToString(), tail.Span.ToString());
+#endif
 		}
 
 		private static string ConcatWithField(ReadOnlyMemory<char> head, ReadOnlyMemory<char> tail)
 		{
+#if NET5_0_OR_GREATER
 			return string.Concat(head.Span, ".", tail.Span);
+#else
+			// span-based string.Concat is not on netstandard2.0
+			return string.Concat(head.Span.ToString(), ".", tail.Span.ToString());
+#endif
 		}
 
 		public static JsonPath Combine(JsonPath parent, JsonPath child)
@@ -1553,8 +1601,14 @@ namespace SnowBank.Data.Json
 			{
 				throw ThrowHelper.FormatException("Invalid JSON Path: invalid [..] clause.");
 			}
-#else
+#elif NET5_0_OR_GREATER
 			if (!int.TryParse(literal, out var result))
+			{
+				throw ThrowHelper.FormatException("Invalid JSON Path: invalid [..] clause.");
+			}
+#else
+			// span-based parse is not on netstandard2.0
+			if (!int.TryParse(literal.ToString(), out var result))
 			{
 				throw ThrowHelper.FormatException("Invalid JSON Path: invalid [..] clause.");
 			}
@@ -1596,7 +1650,13 @@ namespace SnowBank.Data.Json
 
 		JsonValue IJsonPackable.JsonPack(CrystalJsonSettings settings, ICrystalJsonTypeResolver resolver) => ToJsonValue();
 
+#if NET5_0_OR_GREATER
 		static JsonPath IJsonDeserializable<JsonPath>.JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver)
+#else
+		// static interface members need runtime support this target lacks: expose a plain static with the same
+		// signature instead, which the reflection-based deserialization path discovers by name
+		public static JsonPath JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver)
+#endif
 		{
 			if (value.IsNullOrMissing()) return default;
 			if (value is not JsonString str) throw new JsonBindingException("JsonPath must be represented as a string");
@@ -1821,7 +1881,12 @@ namespace SnowBank.Data.Json
 		{
 			if (!RequiresEscaping(key))
 			{
+#if NET5_0_OR_GREATER
 				sb.Append(key);
+#else
+				// StringBuilder.Append(ReadOnlySpan<char>) is not on netstandard2.0
+				sb.Append(key.ToString());
+#endif
 			}
 			else
 			{
@@ -1855,7 +1920,12 @@ namespace SnowBank.Data.Json
 			}
 			else
 			{
+#if NET6_0_OR_GREATER
 				sb.Append(CultureInfo.InvariantCulture, $"[{index}]");
+#else
+				// StringBuilder.Append(IFormatProvider, interpolated handler) is not on netstandard2.0
+				sb.AppendFormat(CultureInfo.InvariantCulture, "[{0}]", index);
+#endif
 			}
 		}
 
@@ -1886,6 +1956,8 @@ namespace SnowBank.Data.Json
 
 		}
 
+#if !NETSTANDARD2_0
+		// System.Text.Json interop is disabled on the netstandard2.0 build
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public sealed class CustomConverter : System.Text.Json.Serialization.JsonConverter<JsonPath>
 		{
@@ -1903,6 +1975,7 @@ namespace SnowBank.Data.Json
 			}
 
 		}
+#endif
 
 	}
 
@@ -2014,8 +2087,14 @@ namespace SnowBank.Data.Json
 		};
 
 		/// <inheritdoc />
+#if NET5_0_OR_GREATER
 		public override int GetHashCode()
 			=> HashCode.Combine(string.GetHashCode(this.Name.Span), this.Index.GetHashCode());
+#else
+		// span-based string.GetHashCode is not on netstandard2.0
+		public override int GetHashCode()
+			=> HashCode.Combine(this.Name.ToString().GetHashCode(), this.Index.GetHashCode());
+#endif
 
 		/// <inheritdoc />
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -2059,24 +2138,50 @@ namespace SnowBank.Data.Json
 
 		JsonValue IJsonPackable.JsonPack(CrystalJsonSettings settings, ICrystalJsonTypeResolver resolver) => JsonString.Return(ToString());
 
+#if NET5_0_OR_GREATER
 		static JsonPathSegment IJsonDeserializable<JsonPathSegment>.JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver)
+#else
+		// static interface members need runtime support this target lacks: expose a plain static with the same
+		// signature instead, which the reflection-based deserialization path discovers by name
+		public static JsonPathSegment JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver)
+#endif
 		{
 			if (value.IsNullOrMissing()) return default;
 			if (value is not JsonString str) throw new JsonBindingException("JsonPath must be represented as a string");
 			if (str.Value.Length == 0) return default;
+#if NET5_0_OR_GREATER
 			if (str.Value.StartsWith('['))
+#else
+			// string.StartsWith(char) is not on netstandard2.0
+			if (str.Value[0] == '[')
+#endif
 			{
+#if NET5_0_OR_GREATER
 				if (!str.Value.EndsWith(']')) goto malformed;
+#else
+				// string.EndsWith(char) is not on netstandard2.0
+				if (str.Value[str.Value.Length - 1] != ']') goto malformed;
+#endif
 				if (str.Value[1] == '^')
 				{
+#if NET7_0_OR_GREATER
 					if (!int.TryParse(str.Value.AsSpan()[2..^1], CultureInfo.InvariantCulture, out var idxValue))
+#else
+					// span-based parse with a provider is not on netstandard2.0
+					if (!int.TryParse(str.Value.AsSpan()[2..^1].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var idxValue))
+#endif
 					{
 						return new(new Index(idxValue, fromEnd: true));
 					}
 				}
 				else
 				{
+#if NET7_0_OR_GREATER
 					if (!int.TryParse(str.Value.AsSpan()[1..^1], CultureInfo.InvariantCulture, out var idxValue) || idxValue < 0)
+#else
+					// span-based parse with a provider is not on netstandard2.0
+					if (!int.TryParse(str.Value.AsSpan()[1..^1].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var idxValue) || idxValue < 0)
+#endif
 					{
 						goto malformed;
 					}
@@ -2109,7 +2214,12 @@ namespace SnowBank.Data.Json
 			if (TryGetIndex(out var index))
 			{
 				provider ??= CultureInfo.InvariantCulture;
+#if NET6_0_OR_GREATER
 				return string.Create(provider, $"[{index}]");
+#else
+				// string.Create(provider, interpolated handler) is not on netstandard2.0
+				return string.Format(provider, "[{0}]", index);
+#endif
 			}
 
 			return "";
@@ -2130,7 +2240,12 @@ namespace SnowBank.Data.Json
 			
 			if (TryGetIndex(out var index))
 			{
+#if NET6_0_OR_GREATER
 				return destination.TryWrite(provider, $"[{index}]", out charsWritten);
+#else
+				// Span<char>.TryWrite(interpolated handler) is not on netstandard2.0
+				return string.Format(provider, "[{0}]", index).AsSpan().TryCopyTo(destination, out charsWritten);
+#endif
 			}
 
 			charsWritten = 0;

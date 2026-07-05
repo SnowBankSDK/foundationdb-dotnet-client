@@ -325,6 +325,9 @@ namespace SnowBank.Data.Tuples
 		{
 			var tw = new TupleWriter(ref writer);
 			TupleEncoder.WriteTo(tw, tuple);
+#if !NET7_0_OR_GREATER
+			writer = tw.Output; // the TupleWriter wraps a boxed COPY on this target: propagate the writes back to the caller's writer
+#endif
 		}
 
 		/// <summary>Efficiently write the packed representation of a tuple</summary>

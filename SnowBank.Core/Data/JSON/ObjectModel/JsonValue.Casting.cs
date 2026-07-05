@@ -394,6 +394,9 @@ namespace SnowBank.Data.Json
 
 		#region Half
 
+#if NET5_0_OR_GREATER
+		// System.Half does not exist on netstandard2.0
+
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static implicit operator JsonValue(Half value) => JsonNumber.Return(value);
 
@@ -405,6 +408,8 @@ namespace SnowBank.Data.Json
 
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static explicit operator Half?(JsonValue? value) => (value ?? JsonNull.Null).ToHalfOrDefault();
+
+#endif
 
 		#endregion
 

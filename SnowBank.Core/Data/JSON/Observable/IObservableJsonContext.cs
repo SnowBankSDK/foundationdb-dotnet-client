@@ -10,6 +10,9 @@ namespace SnowBank.Data.Json
 {
 	using System.Buffers;
 	using System.Runtime.InteropServices;
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
+#endif
 
 	/// <summary>Represents the type of read access to a node in an observable JSON document</summary>
 	[PublicAPI]
@@ -240,6 +243,7 @@ namespace SnowBank.Data.Json
 		/// <param name="value">Captured value of the child</param>
 		public void Add(JsonPathSegment segment, ObservableJsonAccess access, JsonValue? value)
 		{
+#if NET6_0_OR_GREATER
 			ref Node current = ref this.Root;
 
 			if (current.Access == ObservableJsonAccess.Value)
@@ -258,6 +262,29 @@ namespace SnowBank.Data.Json
 			}
 
 			UpdateLeafAccess(ref current, access, value);
+#else
+			// no CollectionsMarshal.GetValueRefOrAddDefault on netstandard2.0: read-modify-write the Node struct instead
+			if (this.Root.Access == ObservableJsonAccess.Value)
+			{ // we are already observing the whole object!
+				return;
+			}
+
+			if (!segment.IsEmpty())
+			{
+				var children = this.Root.Children;
+				if (children == null)
+				{
+					this.Root.Children = children = new(JsonPathSegment.Comparer.Default);
+				}
+				children.TryGetValue(segment, out var node);
+				UpdateLeafAccess(ref node, access, value);
+				children[segment] = node;
+			}
+			else
+			{
+				UpdateLeafAccess(ref this.Root, access, value);
+			}
+#endif
 		}
 
 		/// <summary>Records the access to a node of the document</summary>
@@ -266,6 +293,7 @@ namespace SnowBank.Data.Json
 		/// <param name="value">Captured value of the node</param>
 		public void Add(ReadOnlySpan<JsonPathSegment> path, ObservableJsonAccess access, JsonValue? value)
 		{
+#if NET6_0_OR_GREATER
 			ref Node current = ref this.Root;
 
 			foreach (var segment in path)
@@ -285,6 +313,45 @@ namespace SnowBank.Data.Json
 			}
 
 			UpdateLeafAccess(ref current, access, value);
+#else
+			// no CollectionsMarshal.GetValueRefOrAddDefault on netstandard2.0: read-modify-write each Node struct instead
+			if (path.Length == 0)
+			{
+				UpdateLeafAccess(ref this.Root, access, value);
+				return;
+			}
+
+			if (this.Root.Access == ObservableJsonAccess.Value)
+			{ // we are already observing the whole object!
+				return;
+			}
+
+			var children = this.Root.Children;
+			if (children == null)
+			{
+				this.Root.Children = children = new(JsonPathSegment.Comparer.Default);
+			}
+
+			for (int i = 0; i < path.Length - 1; i++)
+			{
+				children.TryGetValue(path[i], out var node);
+				if (node.Access == ObservableJsonAccess.Value)
+				{ // we are already observing the whole object!
+					return;
+				}
+				if (node.Children == null)
+				{
+					node.Children = new(JsonPathSegment.Comparer.Default);
+					children[path[i]] = node;
+				}
+				children = node.Children;
+			}
+
+			var last = path[path.Length - 1];
+			children.TryGetValue(last, out var leaf);
+			UpdateLeafAccess(ref leaf, access, value);
+			children[last] = leaf;
+#endif
 		}
 
 		/// <summary>Clears all records from this trace</summary>

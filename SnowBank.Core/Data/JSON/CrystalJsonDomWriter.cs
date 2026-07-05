@@ -306,10 +306,19 @@ namespace SnowBank.Data.Json
 			}
 			else
 			{
+#if !NETSTANDARD2_0
+				// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 				if (value is System.Runtime.CompilerServices.ITuple tuple)
 				{
 					return CrystalJsonVisitor.ConvertTupleToJson(tuple);
 				}
+#else
+				// ITuple is not visible to the netstandard2.0 compiler, but the runtime usually carries it: probe dynamically
+				if (RuntimeITuple.IsInstance(value))
+				{
+					return CrystalJsonVisitor.ConvertBoxedTupleToJson(value);
+				}
+#endif
 				//TODO: detect ValueTask and ValueTask<T> ?
 			}
 

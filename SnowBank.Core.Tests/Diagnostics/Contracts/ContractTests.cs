@@ -37,6 +37,23 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 	[Parallelizable(ParallelScope.None)]
 	public class ContractTests : SimpleTest
 	{
+
+		/// <summary>Formats the expected message of an exception carrying a parameter name (the .NET Framework renders it on a separate "Parameter name:" line).</summary>
+		private static string WithParamName(string message, string paramName)
+#if NET5_0_OR_GREATER
+			=> $"{message} (Parameter '{paramName}')";
+#else
+			=> message + Environment.NewLine + "Parameter name: " + paramName;
+#endif
+
+		/// <summary>Formats the expected message of an <see cref="ArgumentOutOfRangeException"/> (the .NET Framework orders the parts differently).</summary>
+		private static string WithParamNameAndValue(string message, string paramName, string actualValue)
+#if NET5_0_OR_GREATER
+			=> $"{message} (Parameter '{paramName}')" + "\r\n" + $"Actual value was {actualValue}.";
+#else
+			=> message + Environment.NewLine + "Parameter name: " + paramName + Environment.NewLine + "Actual value was " + actualValue + ".";
+#endif
+
 		private bool m_status;
 
 		[SetUp]
@@ -63,15 +80,15 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 			Assert.DoesNotThrow(() => { Contract.NotNull("", paramName: "value"); });
 
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNull(default(string), paramName: "foo"); });
-			Assert.That(anex.Message, Is.EqualTo("Precondition failed: foo != null  Value cannot be null. (Parameter 'foo')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNull(default(string), message: "You shall not pass!", paramName: "foo"); });
-			Assert.That(anex.Message, Is.EqualTo("You shall not pass! (Parameter 'foo')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("You shall not pass!", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNull(default(string), message: "You shall not pass!", paramName: "offset"); });
-			Assert.That(anex.Message, Is.EqualTo("You shall not pass! (Parameter 'offset')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("You shall not pass!", "offset")));
 			Assert.That(anex.ParamName, Is.EqualTo("offset"));
 
 			#endregion
@@ -82,19 +99,19 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 			Assert.DoesNotThrow(() => { Contract.NotNull(new byte[1], paramName: "foo"); });
 
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNull(default(Stream), paramName: "stream"); });
-			Assert.That(anex.Message, Is.EqualTo("Precondition failed: stream != null  Value cannot be null. (Parameter 'stream')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: stream != null  Value cannot be null.", "stream")));
 			Assert.That(anex.ParamName, Is.EqualTo("stream"));
 
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNull(default(Dictionary<int, string>), paramName: "foo"); });
-			Assert.That(anex.Message, Is.EqualTo("Precondition failed: foo != null  Value cannot be null. (Parameter 'foo')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNull(default(byte[]), message: "You shall not pass!", paramName: "foo"); });
-			Assert.That(anex.Message, Is.EqualTo("You shall not pass! (Parameter 'foo')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("You shall not pass!", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNull(default(byte[]), message: "You shall not pass!", paramName: "source"); });
-			Assert.That(anex.Message, Is.EqualTo("You shall not pass! (Parameter 'source')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("You shall not pass!", "source")));
 			Assert.That(anex.ParamName, Is.EqualTo("source"));
 
 			#endregion
@@ -111,12 +128,12 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			// si c'est null => ArgumentNullException
 			var anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNullOrEmpty(default(string), paramName: "foo"); });
-			Assert.That(anex.Message, Is.EqualTo("Precondition failed: foo != null  Value cannot be null. (Parameter 'foo')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
 			// si c'est empty => ArgumentException
 			var aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrEmpty(String.Empty, paramName: "foo"); });
-			Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo.Length > 0  String cannot be empty. (Parameter 'foo')"));
+			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.Length > 0  String cannot be empty.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
 
 			// ARRAYS
@@ -125,12 +142,12 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			// si c'est null => ArgumentNullException
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNullOrEmpty(default(int[]), paramName: "foo"); });
-			Assert.That(anex.Message, Is.EqualTo("Precondition failed: foo != null  Value cannot be null. (Parameter 'foo')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
 			// si c'est empty => ArgumentException
 			aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrEmpty(new int[0], paramName: "foo"); });
-			Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo.Count > 0  Collection cannot be empty. (Parameter 'foo')"));
+			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.Count > 0  Collection cannot be empty.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
 
 			// Collections
@@ -139,12 +156,12 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			// si c'est null => ArgumentNullException
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNullOrEmpty(default(List<int>), paramName: "foo"); });
-			Assert.That(anex.Message, Is.EqualTo("Precondition failed: foo != null  Value cannot be null. (Parameter 'foo')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
 			// si c'est empty => ArgumentException
 			aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrEmpty(new List<int>(), paramName: "foo"); });
-			Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo.Count > 0  Collection cannot be empty. (Parameter 'foo')"));
+			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.Count > 0  Collection cannot be empty.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
 
 		}
@@ -159,22 +176,22 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			// si c'est null => ArgumentNullException
 			var anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNullOrWhiteSpace(default(string), paramName: "foo"); });
-			Assert.That(anex.Message, Is.EqualTo("Precondition failed: foo != null  Value cannot be null. (Parameter 'foo')"));
+			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
 			// si c'est empty => ArgumentException
 			var aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrWhiteSpace(String.Empty, paramName: "foo"); });
-			Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo.Length > 0  String cannot be empty. (Parameter 'foo')"));
+			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.Length > 0  String cannot be empty.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
 
 			// si c'est des espace => ArgumentException
 			aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrWhiteSpace("  ", paramName: "foo"); });
-			Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo.All(c => !char.IsWhiteSpace(c))  String cannot contain only whitespaces. (Parameter 'foo')"));
+			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.All(c => !char.IsWhiteSpace(c))  String cannot contain only whitespaces.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
 
 			// si c'est n'importe quel type de "whitespace" => ArgumentException
 			aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrWhiteSpace("\t \r\n  \n", paramName: "foo"); });
-			Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo.All(c => !char.IsWhiteSpace(c))  String cannot contain only whitespaces. (Parameter 'foo')"));
+			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.All(c => !char.IsWhiteSpace(c))  String cannot contain only whitespaces.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
 		}
 
@@ -189,11 +206,11 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 			Assert.DoesNotThrow(() => { Contract.Positive(123L, paramName: "x"); });
 
 			var aex = Assert.Throws<ArgumentException>(() => { Contract.Positive(-1, message: "le message", paramName: "x"); });
-			Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'x')"));
+			Assert.That(aex.Message, Is.EqualTo(WithParamName("le message", "x")));
 			Assert.That(aex.ParamName, Is.EqualTo("x"));
 
 			aex = Assert.Throws<ArgumentException>(() => { Contract.Positive(-1L, message: "le message", paramName: "x"); });
-			Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'x')"));
+			Assert.That(aex.Message, Is.EqualTo(WithParamName("le message", "x")));
 			Assert.That(aex.ParamName, Is.EqualTo("x"));
 		}
 
@@ -214,22 +231,22 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { int foo = 0; Contract.GreaterThan(foo, 1); });
-					Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo > 1  The specified value is too small. (Parameter 'foo')\r\nActual value was 0."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("Precondition failed: foo > 1  The specified value is too small.", "foo", "0")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { long foo = 0; Contract.GreaterThan(foo, 0L); });
-					Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo > 0L  Non-Zero Positive number required. (Parameter 'foo')\r\nActual value was 0."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("Precondition failed: foo > 0L  Non-Zero Positive number required.", "foo", "0")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { int foo = 0; Contract.GreaterThan(foo, 1, "le message"); });
-					Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'foo')\r\nActual value was 0."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("le message", "foo", "0")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { long foo = 0; Contract.GreaterThan(foo, 0L, "le message"); });
-					Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'foo')\r\nActual value was 0."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("le message", "foo", "0")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 				}
 			});
@@ -252,25 +269,25 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { int foo = 0; Contract.GreaterOrEqual(foo, 1); });
-					Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo >= 1  The specified value is too small. (Parameter 'foo')\r\nActual value was 0."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("Precondition failed: foo >= 1  The specified value is too small.", "foo", "0")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 					Assert.That(aex.ActualValue, Is.EqualTo(0));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { long foo = -1L; Contract.GreaterOrEqual(foo, 0L); });
-					Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo >= 0L  Positive number required. (Parameter 'foo')\r\nActual value was -1."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("Precondition failed: foo >= 0L  Positive number required.", "foo", "-1")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 					Assert.That(aex.ActualValue, Is.EqualTo(-1L));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { int foo = 0; Contract.GreaterOrEqual(foo, 1, message: "le message"); });
-					Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'foo')\r\nActual value was 0."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("le message", "foo", "0")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 					Assert.That(aex.ActualValue, Is.EqualTo(0));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { long foo = -1L; Contract.GreaterOrEqual(foo, 0L, message: "le message"); });
-					Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'foo')\r\nActual value was -1."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("le message", "foo", "-1")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 					Assert.That(aex.ActualValue, Is.EqualTo(-1L));
 				}
@@ -294,25 +311,25 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => Contract.LessThan(1, 0, valueExpression: "foo"));
-					Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo < 0  The specified value is too big. (Parameter 'foo')\r\nActual value was 1."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("Precondition failed: foo < 0  The specified value is too big.", "foo", "1")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 					Assert.That(aex.ActualValue, Is.EqualTo(1));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => Contract.LessThan(1L, 0L, valueExpression: "foo"));
-					Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo < 0L  The specified value is too big. (Parameter 'foo')\r\nActual value was 1."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("Precondition failed: foo < 0L  The specified value is too big.", "foo", "1")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 					Assert.That(aex.ActualValue, Is.EqualTo(1));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => Contract.LessThan(2, 1, message: "le message", valueExpression: "foo"));
-					Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'foo')\r\nActual value was 2."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("le message", "foo", "2")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 					Assert.That(aex.ActualValue, Is.EqualTo(2));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => Contract.LessThan(2L, 0L, message: "le message", valueExpression: "foo"));
-					Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'foo')\r\nActual value was 2."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("le message", "foo", "2")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 					Assert.That(aex.ActualValue, Is.EqualTo(2));
 				}
@@ -337,22 +354,22 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { Contract.LessOrEqual(2, 1, valueExpression: "foo"); });
-					Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo <= 1  The specified value is too big. (Parameter 'foo')\r\nActual value was 2."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("Precondition failed: foo <= 1  The specified value is too big.", "foo", "2")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { Contract.LessOrEqual(1L, 0L, valueExpression: "foo"); });
-					Assert.That(aex.Message, Is.EqualTo("Precondition failed: foo <= 0L  The specified value is too big. (Parameter 'foo')\r\nActual value was 1."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("Precondition failed: foo <= 0L  The specified value is too big.", "foo", "1")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { Contract.LessOrEqual(2, 1, message: "le message", valueExpression: "foo"); });
-					Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'foo')\r\nActual value was 2."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("le message", "foo", "2")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 				}
 				{
 					var aex = Assert.Throws<ArgumentOutOfRangeException>(() => { Contract.LessOrEqual(1L, 0L, message: "le message", valueExpression: "foo"); });
-					Assert.That(aex.Message, Is.EqualTo("le message (Parameter 'foo')\r\nActual value was 1."));
+					Assert.That(aex.Message, Is.EqualTo(WithParamNameAndValue("le message", "foo", "1")));
 					Assert.That(aex.ParamName, Is.EqualTo("foo"));
 				}
 			});
@@ -371,14 +388,14 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 			Assert.That(
 				() => Contract.Between(11, 0, 10, valueExpression: "foo"),
 				Throws.InstanceOf<ArgumentException>()
-					.With.Message.EqualTo("Precondition failed: 0 <= foo <= 10  The specified value was outside the specified range. (Parameter 'foo')")
+					.With.Message.EqualTo(WithParamName("Precondition failed: 0 <= foo <= 10  The specified value was outside the specified range.", "foo"))
 					.And.Property("ParamName").EqualTo("foo")
 			);
 
 			Assert.That(
 				() => Contract.Between(-1, 0, 10, valueExpression: "foo"),
 				Throws.InstanceOf<ArgumentException>()
-					.With.Message.EqualTo("Precondition failed: 0 <= foo <= 10  The specified value was outside the specified range. (Parameter 'foo')")
+					.With.Message.EqualTo(WithParamName("Precondition failed: 0 <= foo <= 10  The specified value was outside the specified range.", "foo"))
 					.And.Property("ParamName").EqualTo("foo")
 			);
 		}

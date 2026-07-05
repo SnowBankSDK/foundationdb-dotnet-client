@@ -61,11 +61,14 @@ namespace SnowBank.Data.Tuples
 		/// <inheritdoc />
 		object IReadOnlyList<object?>.this[int index] => throw TupleHelpers.FailTupleIsEmpty();
 
+#if !NETSTANDARD2_0
+		// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 		/// <inheritdoc />
 		int System.Runtime.CompilerServices.ITuple.Length => 0;
 
 		/// <inheritdoc />
 		object System.Runtime.CompilerServices.ITuple.this[int index] => throw TupleHelpers.FailTupleIsEmpty();
+#endif
 
 		//REVIEW: should we throw if from/to are not null, 0 or -1 ?
 		IVarTuple IVarTuple.this[int? from, int? to] => this;
@@ -1141,7 +1144,12 @@ namespace SnowBank.Data.Tuples
 				}
 
 				//BUGBUG: TODO: escape the string? If it contains \0 or control chars, it can cause problems in the console or debugger output
+#if NET6_0_OR_GREATER
 				return destination.TryWrite(CultureInfo.InvariantCulture, $"\"{item}\"", out charsWritten);
+#else
+				// no MemoryExtensions.TryWrite
+				return ("\"" + item + "\"").TryCopyTo(destination, out charsWritten);
+#endif
 			}
 
 
@@ -1257,11 +1265,21 @@ namespace SnowBank.Data.Tuples
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static void StringifyTo(ref FastStringBuilder sb, BigInteger item) => sb.Append(item, "D");
+#else
+			// BigInteger is not ISpanFormattable
+			public static void StringifyTo(ref FastStringBuilder sb, BigInteger item) => sb.Append(item.ToString("D", CultureInfo.InvariantCulture));
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET5_0_OR_GREATER
 			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, BigInteger item) => item.TryFormat(destination, out charsWritten, "D", CultureInfo.InvariantCulture);
+#else
+			// no BigInteger.TryFormat
+			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, BigInteger item) => item.ToString("D", CultureInfo.InvariantCulture).TryCopyTo(destination, out charsWritten);
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1278,7 +1296,12 @@ namespace SnowBank.Data.Tuples
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, char item) => destination.TryWrite($"'{item}'", out charsWritten);
+#else
+			// no MemoryExtensions.TryWrite
+			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, char item) => ("'" + item + "'").TryCopyTo(destination, out charsWritten);
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1310,7 +1333,12 @@ namespace SnowBank.Data.Tuples
 				}
 
 				//TODO: BUGBUG: PERF: implement a TryDump() ??
+#if NET6_0_OR_GREATER
 				return destination.TryWrite($"`{Slice.Dump(item, item.Length)}`", out charsWritten);
+#else
+				// no MemoryExtensions.TryWrite
+				return ("`" + Slice.Dump(item, item.Length) + "`").TryCopyTo(destination, out charsWritten);
+#endif
 			}
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
@@ -1345,7 +1373,12 @@ namespace SnowBank.Data.Tuples
 				{
 					return (item.IsNull ? "null" : "``").TryCopyTo(destination, out charsWritten);
 				}
+#if NET6_0_OR_GREATER
 				return destination.TryWrite($"`{item}`", out charsWritten);
+#else
+				// no MemoryExtensions.TryWrite
+				return ("`" + item.ToString() + "`").TryCopyTo(destination, out charsWritten);
+#endif
 			}
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
@@ -1376,9 +1409,16 @@ namespace SnowBank.Data.Tuples
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, byte[]? item)
 			{
+#if NET6_0_OR_GREATER
 				return item is null ? "null".TryCopyTo(destination, out charsWritten)
 					: item.Length == 0 ? "``".TryCopyTo(destination, out charsWritten)
 					: destination.TryWrite($"`{new Slice(item)}`", out charsWritten);
+#else
+				// no MemoryExtensions.TryWrite
+				return item is null ? "null".TryCopyTo(destination, out charsWritten)
+					: item.Length == 0 ? "``".TryCopyTo(destination, out charsWritten)
+					: ("`" + new Slice(item).ToString() + "`").TryCopyTo(destination, out charsWritten);
+#endif
 			}
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
@@ -1397,7 +1437,12 @@ namespace SnowBank.Data.Tuples
 				{
 					return (item.Array is null ? "null" : "``").TryCopyTo(destination, out charsWritten);
 				}
+#if NET6_0_OR_GREATER
 				return destination.TryWrite($"`{item.AsSlice()}`", out charsWritten);
+#else
+				// no MemoryExtensions.TryWrite
+				return ("`" + item.AsSlice().ToString() + "`").TryCopyTo(destination, out charsWritten);
+#endif
 			}
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
@@ -1406,7 +1451,12 @@ namespace SnowBank.Data.Tuples
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static void StringifyTo(ref FastStringBuilder sb, Guid item) => sb.Append(item, "B"); /* {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx} */
+#else
+			// Guid is not ISpanFormattable
+			public static void StringifyTo(ref FastStringBuilder sb, Guid item) => sb.Append(item.ToString("B", CultureInfo.InvariantCulture)); /* {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx} */
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1418,7 +1468,12 @@ namespace SnowBank.Data.Tuples
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static void StringifyTo(ref FastStringBuilder sb, Uuid128 item) => sb.Append(item, "B"); /* {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx} */
+#else
+			// Uuid128 is not ISpanFormattable on ns2.0
+			public static void StringifyTo(ref FastStringBuilder sb, Uuid128 item) => sb.Append(item.ToString("B", CultureInfo.InvariantCulture)); /* {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx} */
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1430,7 +1485,12 @@ namespace SnowBank.Data.Tuples
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static void StringifyTo(ref FastStringBuilder sb, Uuid96 item) => sb.Append(item, "B"); /* {XXXXXXXX-XXXXXXXX-XXXXXXXX} */
+#else
+			// Uuid96 is not ISpanFormattable on ns2.0
+			public static void StringifyTo(ref FastStringBuilder sb, Uuid96 item) => sb.Append(item.ToString("B", CultureInfo.InvariantCulture)); /* {XXXXXXXX-XXXXXXXX-XXXXXXXX} */
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1442,7 +1502,12 @@ namespace SnowBank.Data.Tuples
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static void StringifyTo(ref FastStringBuilder sb, Uuid80 item) => sb.Append(item, "B"); /* {XXXX-XXXXXXXX-XXXXXXXX} */
+#else
+			// Uuid80 is not ISpanFormattable on ns2.0
+			public static void StringifyTo(ref FastStringBuilder sb, Uuid80 item) => sb.Append(item.ToString("B", CultureInfo.InvariantCulture)); /* {XXXX-XXXXXXXX-XXXXXXXX} */
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1478,7 +1543,12 @@ namespace SnowBank.Data.Tuples
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static void StringifyTo(ref FastStringBuilder sb, VersionStamp item) => sb.Append(item); /* @xxxxx-xx#xx */
+#else
+			// VersionStamp is not ISpanFormattable on ns2.0
+			public static void StringifyTo(ref FastStringBuilder sb, VersionStamp item) => sb.Append(item.ToString()); /* @xxxxx-xx#xx */
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1493,13 +1563,23 @@ namespace SnowBank.Data.Tuples
 			public static void StringifyTo(ref FastStringBuilder sb, DateTime item)
 			{
 				sb.Append('"');
+#if NET6_0_OR_GREATER
 				sb.Append(item, "O"); /* "yyyy-mm-ddThh:mm:ss.ffffff" */
+#else
+				// DateTime is not ISpanFormattable
+				sb.Append(item.ToString("O", CultureInfo.InvariantCulture)); /* "yyyy-mm-ddThh:mm:ss.ffffff" */
+#endif
 				sb.Append('"');
 			}
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, DateTime item) => destination.TryWrite(CultureInfo.InvariantCulture, $"\"{item:O}\"", out charsWritten);
+#else
+			// no MemoryExtensions.TryWrite
+			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, DateTime item) => ("\"" + item.ToString("O", CultureInfo.InvariantCulture) + "\"").TryCopyTo(destination, out charsWritten);
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1510,13 +1590,23 @@ namespace SnowBank.Data.Tuples
 			public static void StringifyTo(ref FastStringBuilder sb, DateTimeOffset item)
 			{
 				sb.Append('"');
+#if NET6_0_OR_GREATER
 				sb.Append(item, "O"); /* "yyyy-mm-ddThh:mm:ss.ffffff+hh:mm" */
+#else
+				// DateTimeOffset is not ISpanFormattable
+				sb.Append(item.ToString("O", CultureInfo.InvariantCulture)); /* "yyyy-mm-ddThh:mm:ss.ffffff+hh:mm" */
+#endif
 				sb.Append('"');
 			}
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, DateTimeOffset item) => destination.TryWrite(CultureInfo.InvariantCulture, $"\"{item:O}\"", out charsWritten);
+#else
+			// no MemoryExtensions.TryWrite
+			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, DateTimeOffset item) => ("\"" + item.ToString("O", CultureInfo.InvariantCulture) + "\"").TryCopyTo(destination, out charsWritten);
+#endif
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1528,16 +1618,28 @@ namespace SnowBank.Data.Tuples
 
 			/// <summary>Encodes a value into a tuple text literal</summary>
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+#if NET6_0_OR_GREATER
 			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, NodaTime.Instant item) => destination.TryWrite(CultureInfo.InvariantCulture, $"\"{item.ToDateTimeUtc():O}\"", out charsWritten);
+#else
+			// no MemoryExtensions.TryWrite
+			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, NodaTime.Instant item) => ("\"" + item.ToDateTimeUtc().ToString("O", CultureInfo.InvariantCulture) + "\"").TryCopyTo(destination, out charsWritten);
+#endif
 
 			public static string Stringify(System.Net.IPAddress? value) => value is null ? "null" : $"'{value}'";
 
 			public static void StringifyTo(ref FastStringBuilder sb, System.Net.IPAddress? value) => sb.Append(value is null ? "null" : $"'{value}'");
 
 			public static bool TryStringifyTo(Span<char> destination, out int charsWritten, System.Net.IPAddress? item)
+#if NET6_0_OR_GREATER
 				=> item is null
 					? "null".TryCopyTo(destination, out charsWritten)
 					: destination.TryWrite(CultureInfo.InvariantCulture, $"'{item}'", out charsWritten);
+#else
+				// no MemoryExtensions.TryWrite
+				=> item is null
+					? "null".TryCopyTo(destination, out charsWritten)
+					: ("'" + item + "'").TryCopyTo(destination, out charsWritten);
+#endif
 
 			/// <summary>Converts a list of object into a displaying string, for logging/debugging purpose</summary>
 			/// <param name="sb">Output buffer</param>
@@ -2106,7 +2208,12 @@ namespace SnowBank.Data.Tuples
 						return x;
 					}
 
+#if NET5_0_OR_GREATER
 					return double.Parse(s.AsSpan(start, p - start), CultureInfo.InvariantCulture);
+#else
+					// no span-based double.Parse
+					return double.Parse(s.Substring(start, p - start), CultureInfo.InvariantCulture);
+#endif
 				}
 
 				[Pure, MethodImpl(MethodImplOptions.NoInlining)]
@@ -2156,7 +2263,12 @@ namespace SnowBank.Data.Tuples
 				parse_escaped_string:
 					bool escape = true;
 					var sb = StringBuilderCache.Acquire(128);
+#if NET5_0_OR_GREATER
 					if (p > start + 1) sb.Append(s.AsSpan(start, p - start - 1)); // copy what we have parsed so far
+#else
+					// no StringBuilder.Append(ReadOnlySpan<char>)
+					if (p > start + 1) sb.Append(s, start, p - start - 1); // copy what we have parsed so far
+#endif
 					while (p < end)
 					{
 						c = s[p];
@@ -2226,7 +2338,12 @@ namespace SnowBank.Data.Tuples
 						{
 							var lit = s.Slice(start, p - start);
 							// Shortcut: "{} or {0} means "00000000-0000-0000-0000-000000000000"
+#if NET5_0_OR_GREATER
 							Guid g = lit is "" or "0" ? Guid.Empty : Guid.Parse(lit);
+#else
+							// no span-based Guid.Parse
+							Guid g = lit is "" or "0" ? Guid.Empty : Guid.Parse(lit.ToString());
+#endif
 							this.Cursor = p + 1;
 							return g;
 						}

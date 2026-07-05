@@ -33,7 +33,12 @@ namespace SnowBank.Data.Tuples
 	[ImmutableObject(true)]
 	[JetBrains.Annotations.CannotApplyEqualityOperator]
 	[PublicAPI]
+#if !NETSTANDARD2_0
 	public interface IVarTuple : IEquatable<IVarTuple>, IComparable<IVarTuple>, IReadOnlyList<object?>, IStructuralEquatable, IStructuralComparable, ITuple, IFormattable
+#else
+	// ITuple is not visible to netstandard2.0
+	public interface IVarTuple : IEquatable<IVarTuple>, IComparable<IVarTuple>, IReadOnlyList<object?>, IStructuralEquatable, IStructuralComparable, IFormattable
+#endif
 	{
 		// Tuples should, by default, behave as closely to Python's tuples as possible. See http://docs.python.org/2/tutorial/datastructures.html#tuples-and-sequences
 
