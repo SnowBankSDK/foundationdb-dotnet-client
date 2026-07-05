@@ -4557,7 +4557,7 @@ namespace SnowBank.Data.Json
 
 			// PERF: TODO: maybe attempt to do it without allocating?
 			// => for the moment, we will serialize the object into memory, and copy the result
-			using var data = CrystalJson.ToSlice(this, null, ArrayPool<byte>.Shared);
+			using var data = CrystalJson.ToSlice(this, null, ArrayPool<byte>.Shared, settings);
 			return data.TryCopyTo(destination, out bytesWritten);
 		}
 
