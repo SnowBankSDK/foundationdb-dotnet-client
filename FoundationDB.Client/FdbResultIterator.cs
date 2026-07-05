@@ -153,14 +153,24 @@ namespace FoundationDB.Client
 
 		#region LINQ
 
+#if NET5_0_OR_GREATER
 		public override AsyncLinqIterator<TOther> Select<TOther>(Func<TResult, TOther> selector)
+#else
+		// covariant return types in overrides need runtime support that netstandard2.0/NetFX lacks: this override returns the base method's type instead
+		public override IAsyncLinqQuery<TOther> Select<TOther>(Func<TResult, TOther> selector)
+#endif
 		{
 			var query = (FdbRangeQuery<TState, TOther>) m_query.Select(selector);
 
 			return new FdbResultIterator<TState, TOther>(query, m_queryState);
 		}
 
+#if NET5_0_OR_GREATER
 		public override AsyncLinqIterator<TResult> Take(int limit)
+#else
+		// covariant return types in overrides need runtime support that netstandard2.0/NetFX lacks: this override returns the base method's type instead
+		public override IAsyncLinqQuery<TResult> Take(int limit)
+#endif
 		{
 			var query = (FdbRangeQuery<TState, TResult>) m_query.Take(limit);
 			return new FdbResultIterator<TState, TResult>(query, m_queryState);

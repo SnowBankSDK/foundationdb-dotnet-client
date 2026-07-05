@@ -163,7 +163,12 @@ namespace FoundationDB.Client.Tests
 			sw.Stop();
 			Log("> done in " + sw.Elapsed);
 
+#if NETCOREAPP3_0_OR_GREATER
 			await using (new Timer((_) => { Log($"WorkingSet: {Environment.WorkingSet:N0}, Managed: {GC.GetTotalMemory(false):N0}"); }, null, 1000, 1000))
+#else
+			// System.Threading.Timer does not implement IAsyncDisposable on this target: dispose synchronously instead
+			using (new Timer((_) => { Log($"WorkingSet: {Environment.WorkingSet:N0}, Managed: {GC.GetTotalMemory(false):N0}"); }, null, 1000, 1000))
+#endif
 			{
 				try
 				{

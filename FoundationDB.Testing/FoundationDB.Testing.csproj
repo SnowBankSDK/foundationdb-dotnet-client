@@ -3,6 +3,8 @@
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<!-- the net472 validation target consumes the netstandard2.0 builds of the FoundationDB.* libraries, so it follows the same switch -->
+		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
@@ -24,6 +26,20 @@
 		<PackageReference Include="Testcontainers" />
 	</ItemGroup>
 	
+	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
+		<!-- nullable-flow false positives: the .NET Framework BCL lacks the nullable annotations the modern BCL
+		     carries (same family as SnowBank.Core's netstandard2.0 target) -->
+		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8769;CS8777</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+		<Reference Include="System.Net.Http" />
+		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
+		<PackageReference Include="PolySharp" PrivateAssets="all" />
+		<!-- must match the version required by the Microsoft.Extensions.* 9.x packages resolved for this target -->
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="9.0.17" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />

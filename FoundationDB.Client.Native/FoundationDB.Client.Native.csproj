@@ -3,6 +3,7 @@
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);netstandard2.0</TargetFrameworks>
 		<AssemblyName>FoundationDB.Client.Native</AssemblyName>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>

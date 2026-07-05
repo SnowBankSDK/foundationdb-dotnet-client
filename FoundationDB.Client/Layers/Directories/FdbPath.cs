@@ -1001,7 +1001,12 @@ namespace FoundationDB.Client
 		}
 
 		/// <inheritdoc />
+#if NET7_0_OR_GREATER
 		static FdbPath IJsonDeserializable<FdbPath>.JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver)
+#else
+		// static abstract interface members need runtime support that netstandard2.0/NetFX lacks: on this target, the JsonDeserializableDispatcher locates this public static method via reflection instead
+		public static FdbPath JsonDeserialize(JsonValue value, ICrystalJsonTypeResolver? resolver)
+#endif
 		{
 			if (value is JsonNull) return FdbPath.Empty;
 			if (value is not JsonString str) throw JsonBindingException.CannotBindJsonValueToThisType(value, typeof(FdbPath));

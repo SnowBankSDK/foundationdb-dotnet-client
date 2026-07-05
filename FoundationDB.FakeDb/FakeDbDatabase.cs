@@ -203,7 +203,8 @@ namespace FoundationDB.Testing
 				if (n == 0) return new Key(Slice.FromByte(0));
 				var tmp = this.Keys.Allocate(n + 1);
 				data.CopyTo(tmp);
-				tmp[n] = 0;
+				// note: writing through AsSpan() because the ArraySegment indexer does not exist on netstandard2.0
+				tmp.AsSpan()[n] = 0;
 				return new Key(tmp, this);
 			}
 
@@ -2077,6 +2078,7 @@ namespace FoundationDB.Testing
 								// it is still active
 							}
 
+#if NET6_0_OR_GREATER
 							ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.ActiveWatches, w.Key, out var exists);
 							if (!exists)
 							{
@@ -2086,6 +2088,17 @@ namespace FoundationDB.Testing
 							{
 								slot!.Add(w);
 							}
+#else
+							// CollectionsMarshal.GetValueRefOrAddDefault is not available: use a regular lookup + insert (which pays for two hash lookups instead of one)
+							if (!this.ActiveWatches.TryGetValue(w.Key, out var slot))
+							{
+								this.ActiveWatches[w.Key] = [ w ];
+							}
+							else
+							{
+								slot.Add(w);
+							}
+#endif
 							Kenobi($"WWW watching key {w.Key} at rv {w.ReadVersion} and cv {w.CommitVersion}");
 						}
 					}
@@ -2974,7 +2987,12 @@ namespace FoundationDB.Testing
 
 			public void Atomic(ReadOnlySpan<byte> key, ReadOnlySpan<byte> param, FdbMutationType mutation)
 			{
+#if NET5_0_OR_GREATER
 				if (mutation <= FdbMutationType.Invalid || !Enum.IsDefined<FdbMutationType>(mutation))
+#else
+				// the generic Enum.IsDefined<T>(T) overload is not available, using the legacy (Type, object) overload instead (which boxes)
+				if (mutation <= FdbMutationType.Invalid || !Enum.IsDefined(typeof(FdbMutationType), mutation))
+#endif
 				{
 					throw new FdbException(FdbError.InvalidMutationType, $"Invalid mutation type '{mutation}'");
 				}

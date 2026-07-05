@@ -3,6 +3,8 @@
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<!-- the net472 validation target consumes the netstandard2.0 builds of the FoundationDB.* libraries, so it follows the same switch -->
+		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
@@ -48,14 +50,38 @@
 		<PackageReference Include="Testcontainers" />
 	</ItemGroup>
 	
+	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
+		<!-- nullable-flow false positives: the .NET Framework BCL lacks the nullable annotations the modern BCL
+		     carries (same family as SnowBank.Core's netstandard2.0 target) -->
+		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8769;CS8777</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+		<!-- net472 is the ".NET Framework validation" target: it consumes the netstandard2.0 builds of the
+		     FoundationDB.* libraries and runs (a subset of) the test suite on the real .NET Framework CLR. -->
+		<!-- these test the Layers.Experimental / Linq.Providers projects, which have no netstandard2.0 build -->
+		<Compile Remove="Experimental/**/*.cs" />
+		<Compile Remove="Providers/**/*.cs" />
+		<Reference Include="System.Net.Http" />
+		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
+		<PackageReference Include="PolySharp" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="9.0.17" />
+		<!-- direct reference so that the binding redirect to 2.2.3 is auto-generated (the NUnit adapter requests 2.1.0) -->
+		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
 		<ProjectReference Include="..\FoundationDB.Layers.Common\FoundationDB.Layers.Common.csproj" />
+		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(TargetFramework)' != 'net472'">
+		<!-- these projects have no netstandard2.0/net472 build: their test files are guarded with #if !NETFRAMEWORK -->
 		<ProjectReference Include="..\FoundationDB.Layers.Experimental\FoundationDB.Layers.Experimental.csproj" />
 		<ProjectReference Include="..\FoundationDB.Linq.Providers\FoundationDB.Linq.Providers.csproj" />
-		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />
 	</ItemGroup>
 
 	<Import Project="..\FoundationDB.Client.Native\build\FoundationDB.Client.Native.targets" />

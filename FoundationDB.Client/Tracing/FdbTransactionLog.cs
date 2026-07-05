@@ -911,7 +911,12 @@ namespace FoundationDB.Filters.Logging
 			{
 				tmp[i] = GetFancyChar(i, tmp.Length, begin, end, i < skip);
 			}
+#if NETCOREAPP2_1_OR_GREATER
 			return new string(tmp);
+#else
+			// the string(ReadOnlySpan<char>) constructor is not available, but Span<char>.ToString() produces the same result
+			return tmp.ToString();
+#endif
 		}
 
 		#endregion
@@ -1079,7 +1084,12 @@ namespace FoundationDB.Filters.Logging
 
 				try
 				{
+#if NETCOREAPP2_0_OR_GREATER
 					await File.AppendAllLinesAsync(path, batch, ct).ConfigureAwait(false);
+#else
+					// File.AppendAllLinesAsync is not available: offload the synchronous write to the thread pool instead
+					await Task.Run(() => File.AppendAllLines(path, batch), ct).ConfigureAwait(false);
+#endif
 					this.LastError = null;
 				}
 				catch (Exception e)

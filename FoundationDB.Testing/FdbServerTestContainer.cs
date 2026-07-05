@@ -61,6 +61,7 @@ namespace FoundationDB.Client.Tests
 		/// <param name="ct">Cancellation token for the current test</param>
 		/// <returns>Task that is either immediately completed, completes when the container becomes ready, or fails if the container failed to start.</returns>
 		/// <remarks>Only one thread per process must call this method.</remarks>
+#if !NETFRAMEWORK
 		public async Task StartContainer(TimeSpan startTimeout, CancellationToken ct)
 		{
 			// Start the container.
@@ -145,6 +146,81 @@ namespace FoundationDB.Client.Tests
 
 			SimpleTest.Log($"FdbServer test container '{name}' ready");
 		}
+#else
+		// Docker.DotNet cannot run on the .NET Framework CLR (its request serialization reads generic attributes,
+		// which netfx reflection does not support): drive the docker CLI directly instead, mimicking the
+		// Testcontainers behavior of the modern targets (fixed name and port, reuse an existing container,
+		// wait for the "FDBD joined cluster." log line)
+		public async Task StartContainer(TimeSpan startTimeout, CancellationToken ct)
+		{
+			SimpleTest.Log($"Starting FdbServer test container for {this.ConnectionString}...");
+
+			var name = this.Name; // "fdb-test-7.4-net4.7"
+			var portLiteral = this.Port.ToString(CultureInfo.InvariantCulture); // ex: "4661"
+
+			using (var cts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+			{
+				cts.CancelAfter(startTimeout);
+				var token = cts.Token;
+
+				// reuse the container if it already exists (same behavior as WithReuse(reuse: true))
+				var (code, state) = await RunDockerAsync($"inspect --format {{{{.State.Running}}}} {name}", token).ConfigureAwait(false);
+				if (code != 0)
+				{ // the container does not exist yet: create and start it
+					string output;
+					(code, output) = await RunDockerAsync($"run --detach --name {name} --publish 127.0.0.1:{portLiteral}:{portLiteral} --volume {this.VolumeName}:/var/fdb/data --env FDB_NETWORKING_MODE=host --env FDB_PORT={portLiteral} --env FDB_COORDINATOR_PORT={portLiteral} --cgroupns host {this.Image}", token).ConfigureAwait(false);
+					if (code != 0)
+					{
+						SimpleTest.LogError($"FdbServer test container '{name}' failed to start due to a Docker error: {output}");
+						throw new InvalidOperationException($"Failed to start docker container '{name}': {output}");
+					}
+				}
+				else if (!state.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
+				{ // the container exists but is stopped: restart it
+					string output;
+					(code, output) = await RunDockerAsync($"start {name}", token).ConfigureAwait(false);
+					if (code != 0)
+					{
+						SimpleTest.LogError($"FdbServer test container '{name}' failed to restart due to a Docker error: {output}");
+						throw new InvalidOperationException($"Failed to restart docker container '{name}': {output}");
+					}
+				}
+
+				// wait until the server has joined the cluster (same wait strategy as the modern targets)
+				while (true)
+				{
+					(code, var logs) = await RunDockerAsync($"logs {name}", token).ConfigureAwait(false);
+					if (code == 0 && logs.Contains("FDBD joined cluster."))
+					{
+						break;
+					}
+					await Task.Delay(250, token).ConfigureAwait(false);
+				}
+			}
+
+			SimpleTest.Log($"FdbServer test container '{name}' ready");
+		}
+
+		/// <summary>Runs the docker CLI with the specified arguments, and returns the exit code and console output</summary>
+		private static async Task<(int ExitCode, string Output)> RunDockerAsync(string arguments, CancellationToken ct)
+		{
+			ct.ThrowIfCancellationRequested();
+			var psi = new System.Diagnostics.ProcessStartInfo("docker", arguments)
+			{
+				UseShellExecute = false,
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				CreateNoWindow = true,
+			};
+			using var process = System.Diagnostics.Process.Start(psi) ?? throw new InvalidOperationException("Failed to launch the docker CLI.");
+			var stdOut = process.StandardOutput.ReadToEndAsync();
+			var stdErr = process.StandardError.ReadToEndAsync();
+			await Task.Run(process.WaitForExit, ct).ConfigureAwait(false);
+			string output = await stdOut.ConfigureAwait(false);
+			string error = await stdErr.ConfigureAwait(false);
+			return (process.ExitCode, output.Length != 0 ? output : error);
+		}
+#endif
 
 		public ValueTask DisposeAsync()
 		{

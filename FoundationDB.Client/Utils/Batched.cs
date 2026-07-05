@@ -26,6 +26,10 @@
 
 namespace FoundationDB
 {
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
+#endif
+
 	internal static class Batched<TValue, TState>
 	{
 

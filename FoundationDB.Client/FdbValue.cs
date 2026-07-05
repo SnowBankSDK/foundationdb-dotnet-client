@@ -39,6 +39,9 @@ namespace FoundationDB.Client
 
 		#region Generic...
 
+#if NET7_0_OR_GREATER
+		// FdbValue<TValue, TEncoder> dispatches through the static abstract members of ISpanEncoder<TValue>, which needs runtime support that netstandard2.0/NetFX lacks
+
 		/// <summary>Returns a value that encodes an instance of <typeparamref name="TValue"/> with the given encoder</summary>
 		/// <typeparam name="TValue">Type of the encoded value</typeparam>
 		/// <typeparam name="TEncoder">Type of the encoder, that implements <see cref="ISpanEncoder{TValue}"/></typeparam>
@@ -49,6 +52,8 @@ namespace FoundationDB.Client
 		{
 			return new(value);
 		}
+
+#endif
 
 		#endregion
 
@@ -82,10 +87,15 @@ namespace FoundationDB.Client
 		public static FdbRawValue ToBytes(ReadOnlySpan<byte> value) => new(Slice.FromBytes(value), FdbValueTypeHint.Binary);
 #endif
 
+#if NET7_0_OR_GREATER
+		// FdbValue<TValue, TEncoder> is not available (static abstract interface members)
+
 		/// <summary>Returns a value that wraps the content of a <see cref="MemoryStream"/></summary>
 		/// <remarks>The stream will be written from the start, and NOT the current position.</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static FdbValue<MemoryStream, SpanEncoders.RawEncoder> ToBytes(MemoryStream value) => new(value, FdbValueTypeHint.Binary);
+
+#endif
 
 		#endregion
 
@@ -176,8 +186,13 @@ namespace FoundationDB.Client
 		/// <summary>Returns a value that wraps a string, encoded as UTF-8 bytes</summary>
 		public static FdbUtf8Value ToTextUtf8(string? value) => new(value.AsMemory());
 
+#if NET7_0_OR_GREATER
+		// FdbValue<TValue, TEncoder> is not available (static abstract interface members)
+
 		/// <summary>Returns a value that wraps a StringBuilder, encoded as UTF-8 bytes</summary>
 		public static FdbValue<StringBuilder, SpanEncoders.Utf8Encoder> ToTextUtf8(StringBuilder? value) => new(value, FdbValueTypeHint.Utf8);
+
+#endif
 
 		/// <summary>Returns a value that wraps a char array, encoded as UTF-8 bytes</summary>
 		public static FdbUtf8Value ToTextUtf8(char[] value) => new(value.AsMemory());
@@ -208,8 +223,13 @@ namespace FoundationDB.Client
 		/// <summary>Returns a value that wraps a string, encoded as UTF-16 bytes</summary>
 		public static FdbUtf16Value ToTextUtf16(string? value) => new(value.AsMemory());
 
+#if NET7_0_OR_GREATER
+		// FdbValue<TValue, TEncoder> is not available (static abstract interface members)
+
 		/// <summary>Returns a value that wraps a StringBuilder, encoded as UTF-16 bytes</summary>
 		public static FdbValue<StringBuilder, SpanEncoders.Utf16Encoder> ToTextUtf16(StringBuilder? value) => new(value);
+
+#endif
 
 		/// <summary>Returns a value that wraps a char array, encoded as UTF-16 bytes</summary>
 		public static FdbUtf16Value ToTextUtf16(char[] value) => new(value.AsMemory());
@@ -355,8 +375,13 @@ namespace FoundationDB.Client
 
 		#region Uuids...
 
+#if NET7_0_OR_GREATER
+		// FdbValue<TValue, TEncoder> is not available (static abstract interface members)
+
 		/// <summary>Returns a value that wraps a 128-bit UUID, encoded as 16 bytes</summary>
 		public static FdbValue<Guid, SpanEncoders.FixedSizeUuidEncoder> ToUuid128(Guid value) => new(value);
+
+#endif
 
 		#endregion
 

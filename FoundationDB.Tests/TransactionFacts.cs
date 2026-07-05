@@ -434,7 +434,12 @@ namespace FoundationDB.Client.Tests
 				{
 					var bytes = await tr.GetAsync(subspace.Key("tuple"));
 					Log($"> `tuple`: {bytes:X}");
+#if !NETFRAMEWORK
 					Assert.That(TuPack.Unpack(bytes), Is.EqualTo(("hello", 123, true, "world")));
+#else
+					// comparing an IVarTuple with a ValueTuple requires ITuple, which is not visible to the netstandard2.0 build: compare with an STuple instead
+					Assert.That(TuPack.Unpack(bytes), Is.EqualTo(STuple.Create("hello", 123, true, "world")));
+#endif
 				}
 				{
 					var bytes = await tr.GetAsync(subspace.Key("blob"));

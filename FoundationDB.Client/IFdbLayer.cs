@@ -106,8 +106,12 @@ namespace FoundationDB.Client
 		/// <remarks>Any subspace with this LayerId will use this mapper as a source of key templates</remarks>
 		string LayerId { get; }
 
+#if NET8_0_OR_GREATER
 		/// <summary>Enumerates all the templates for keys that can be found subspaces using the <see cref="LayerId"/> for this mapper.</summary>
 		IEnumerable<FqlTemplateExpression> GetRules();
+#else
+		// the FQL query engine is not part of this build (see Query/FqlTemplateExpression.cs)
+#endif
 
 	}
 

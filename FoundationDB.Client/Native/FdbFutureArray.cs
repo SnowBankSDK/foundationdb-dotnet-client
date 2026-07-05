@@ -225,7 +225,12 @@ namespace FoundationDB.Client.Native
 				{
 					UnregisterCallback(future);
 
+#if NETCOREAPP3_0_OR_GREATER
 					ThreadPool.UnsafeQueueUserWorkItem(static (f) => f.HandleCompletion(), future, true);
+#else
+					// the generic overload with 'preferLocal' is not available, using the legacy WaitCallback overload instead (which cannot favor the local thread's queue)
+					ThreadPool.UnsafeQueueUserWorkItem(static (f) => ((FdbFutureArray<TState, TResult>) f!).HandleCompletion(), future);
+#endif
 				}
 				// else, the ctor will handle that
 			}

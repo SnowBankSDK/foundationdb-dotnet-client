@@ -24,6 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+#if NET7_0_OR_GREATER
+// this type dispatches through the static abstract members of ISpanEncoder<TValue>, which needs runtime support that netstandard2.0/NetFX lacks
+
 namespace FoundationDB.Client
 {
 
@@ -127,3 +130,5 @@ namespace FoundationDB.Client
 	}
 
 }
+
+#endif

@@ -96,6 +96,7 @@ namespace FoundationDB.Client
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public bool TryEncode(scoped Span<byte> destination, out int bytesWritten)
 		{
+#if NET8_0_OR_GREATER
 			if (this.JsonSettings is null || this.JsonSettings.Equals(CrystalJsonSettings.JsonCompact))
 			{
 				return this.Data.TryFormat(destination, out bytesWritten, "C", null);
@@ -113,6 +114,39 @@ namespace FoundationDB.Client
 				return this.Data.TryFormat(destination, out bytesWritten, "J", null);
 			}
 			return TryEncodeSlow(destination, out bytesWritten, this.Data, this.JsonSettings);
+#else
+			// JsonValue does not expose the UTF-8 TryFormat fast paths on this target: format to a string first, then encode it to UTF-8 (which allocates)
+			string literal;
+			if (this.JsonSettings is null || this.JsonSettings.Equals(CrystalJsonSettings.JsonCompact))
+			{
+				literal = this.Data.ToString("C");
+			}
+			else if (this.JsonSettings.Equals(CrystalJsonSettings.Json))
+			{
+				literal = this.Data.ToString("D");
+			}
+			else if (this.JsonSettings.Equals(CrystalJsonSettings.JsonIndented))
+			{
+				literal = this.Data.ToString("P");
+			}
+			else if (this.JsonSettings.Equals(CrystalJsonSettings.JavaScript))
+			{
+				literal = this.Data.ToString("J");
+			}
+			else
+			{
+				return TryEncodeSlow(destination, out bytesWritten, this.Data, this.JsonSettings);
+			}
+
+			int len = Encoding.UTF8.GetByteCount(literal);
+			if (destination.Length < len)
+			{
+				bytesWritten = 0;
+				return false;
+			}
+			bytesWritten = Encoding.UTF8.GetBytes(literal.AsSpan(), destination);
+			return true;
+#endif
 
 			static bool TryEncodeSlow(Span<byte> destination, out int bytesWritten, JsonValue data, CrystalJsonSettings settings)
 			{

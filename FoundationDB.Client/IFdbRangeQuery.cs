@@ -40,7 +40,12 @@ namespace FoundationDB.Client
 		KeySelector End { get; }
 
 		/// <summary>Key selector pair describing the beginning and end of the range that will be queried</summary>
+#if NETCOREAPP3_0_OR_GREATER
 		KeySelectorPair Range => new(this.Begin, this.End);
+#else
+		// default interface members need runtime support that netstandard2.0/netfx lacks: implementations must provide this member themselves
+		KeySelectorPair Range { get; }
+#endif
 
 		/// <summary>Should we perform the range using snapshot mode ?</summary>
 		bool IsSnapshot { get; }

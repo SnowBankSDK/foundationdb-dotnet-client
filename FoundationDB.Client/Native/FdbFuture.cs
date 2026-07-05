@@ -169,7 +169,21 @@ namespace FoundationDB.Client.Native
 
 		protected bool TrySetFlag(int flag)
 		{
+#if NET5_0_OR_GREATER
 			return (Interlocked.Or(ref m_flags, flag) & flag) == 0;
+#else
+			// Interlocked.Or is not available: emulate it with a CompareExchange loop
+			var spinner = new SpinWait();
+			while (true)
+			{
+				int current = Volatile.Read(ref m_flags);
+				if (Interlocked.CompareExchange(ref m_flags, current | flag, current) == current)
+				{
+					return (current & flag) == 0;
+				}
+				spinner.SpinOnce();
+			}
+#endif
 		}
 
 		protected bool TryCleanup()
@@ -279,7 +293,8 @@ namespace FoundationDB.Client.Native
 				var key = Interlocked.Exchange(ref future.m_key, IntPtr.Zero);
 				if (key != IntPtr.Zero)
 				{
-					if (s_futures.TryRemove(new (key.ToInt64(), future)))
+					// note: KeyValuePair.Create (instead of a target-typed `new`) so that, on netstandard2.0, the argument type can be inferred for the generic TryRemove(KeyValuePair<,>) compat extension
+					if (s_futures.TryRemove(KeyValuePair.Create(key.ToInt64(), future)))
 					{
 						Interlocked.Decrement(ref DebugCounters.CallbackHandles);
 					}

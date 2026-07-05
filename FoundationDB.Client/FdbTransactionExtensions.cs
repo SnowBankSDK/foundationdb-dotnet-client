@@ -29,6 +29,10 @@ namespace FoundationDB.Client
 	using System.Buffers.Binary;
 	using System.ComponentModel;
 	using System.Numerics;
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
+	using MemoryMarshal = SnowBank.Compat.MemoryMarshalCompat; // shim adds CreateReadOnlySpan/CreateSpan/AsRef, absent from netstandard2.0
+#endif
 
 	/// <summary>Provides a set of extensions methods shared by all FoundationDB transaction implementations.</summary>
 	[PublicAPI]
@@ -697,6 +701,7 @@ namespace FoundationDB.Client
 			Contract.NotNull(trans);
 			Contract.NotNull(encoder);
 
+#if NET5_0_OR_GREATER
 			var writer = new SliceWriter(ArrayPool<byte>.Shared);
 
 			encoder.WriteValueTo(ref writer, value);
@@ -704,6 +709,10 @@ namespace FoundationDB.Client
 			trans.Set(key, writer.ToSpan());
 
 			writer.Dispose();
+#else
+			// IValueEncoder<T>.WriteValueTo is a default interface member, which needs runtime support that netstandard2.0/NetFX lacks: encode to a Slice instead (which allocates)
+			trans.Set(key, encoder.EncodeValue(value).Span);
+#endif
 		}
 
 		/// <summary>Sets the value of a key in the database as a UTF-8 encoded string</summary>

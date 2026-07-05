@@ -50,7 +50,12 @@ namespace FoundationDB.Client.Tests
 		private static FdbServerTestContainer? ServerContainer;
 
 		/// <summary>Signal used to synchronize all the threads</summary>
+#if NET5_0_OR_GREATER
 		private static readonly TaskCompletionSource ServerReadySignal = new();
+#else
+		// the non-generic TaskCompletionSource is not available, using a dummy result type instead
+		private static readonly TaskCompletionSource<object?> ServerReadySignal = new();
+#endif
 
 		/// <summary>Lock used to ensure only one thread starts the container</summary>
 #if NET9_0_OR_GREATER
@@ -168,7 +173,12 @@ namespace FoundationDB.Client.Tests
 					await container.StartContainer(TimeSpan.FromSeconds(20), this.Cancellation).ConfigureAwait(false);
 
 					Log("FDB Test Server is ready!");
+#if NET5_0_OR_GREATER
 					FdbTest.ServerReadySignal.TrySetResult();
+#else
+					// the signal is a TaskCompletionSource<object?> on this target (no non-generic TaskCompletionSource)
+					FdbTest.ServerReadySignal.TrySetResult(null);
+#endif
 				}
 				catch (Exception e)
 				{

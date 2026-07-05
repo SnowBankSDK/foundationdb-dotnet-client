@@ -3,6 +3,7 @@
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);netstandard2.0</TargetFrameworks>
 		<AssemblyName>FoundationDB.Client</AssemblyName>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
@@ -42,6 +43,49 @@
 
 	<ItemGroup>
 		<Compile Include="..\SnowBank.Core\NetFxShim.cs" Link="Utils\NetFxShim.cs" />
+	</ItemGroup>
+
+	<PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<!-- Polyfilled types leak into public signatures (ISpanFormattable on IFdbKey/IFdbValue/IKeySubspace/...);
+		     they must be public so they unify with the copies exposed by SnowBank.Core -->
+		<PolySharpUsePublicAccessibilityForGeneratedTypes>true</PolySharpUsePublicAccessibilityForGeneratedTypes>
+		<!-- Nullable-flow false positives (CS8602 deref / CS8603 return / CS8604 arg / CS8767 impl / CS8777 out-contract): the
+		     netstandard2.0 BCL lacks the nullable flow annotations the modern BCL carries (e.g. [NotNullWhen(false)]
+		     on string.IsNullOrEmpty), so guarded code still reads as possibly-null on this target only. The same
+		     source compiles with full annotations on net8+, which is where nullable correctness is enforced. -->
+		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8777</NoWarn>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+		<PackageReference Include="Microsoft.Extensions.Options" />
+		<!-- Span<T> / Memory<T> / ReadOnlySpan<T> for netstandard2.0 -->
+		<PackageReference Include="System.Memory" />
+		<!-- Source-generates the compiler-required polyfill attributes/types
+		     (CallerArgumentExpression, StackTraceHidden, DoesNotReturn, nullable attrs, IsExternalInit, ...) -->
+		<PackageReference Include="PolySharp" PrivateAssets="all" />
+		<!-- System.HashCode for netstandard2.0 -->
+		<PackageReference Include="Microsoft.Bcl.HashCode" />
+		<!-- FdbRangeQuery.ToImmutableArrayAsync -->
+		<PackageReference Include="System.Collections.Immutable" />
+		<!-- ValueTask / ValueTask<T> for netstandard2.0 -->
+		<PackageReference Include="System.Threading.Tasks.Extensions" VersionOverride="4.6.3" />
+		<!-- Channel<T> used by the transaction log exporter -->
+		<PackageReference Include="System.Threading.Channels" />
+		<!-- IAsyncDisposable / IAsyncEnumerable for netstandard2.0; must match the version required by the Microsoft.Extensions.* 9.x packages above (MSB3277 otherwise) -->
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="9.0.17" />
+		<!-- ActivitySource + Meter/Counter/Histogram used by FdbClientInstrumentation (in-box on modern targets) -->
+		<PackageReference Include="System.Diagnostics.DiagnosticSource" VersionOverride="9.0.17" />
+	</ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<!-- SnowBank.Core's compat shims for BCL statics that cannot be polyfilled as extension methods
+		     (CollectionsMarshal, MemoryMarshal.CreateSpan, Convert.To/FromHexString, BinaryPrimitives Single/Double);
+		     they are internal to SnowBank.Core, so they are compiled into this assembly as well (same pattern as NetFxShim.cs) -->
+		<Compile Include="..\SnowBank.Core\Polyfills\RuntimeAttributes.cs" Link="Utils\Polyfills\RuntimeAttributes.cs" />
+		<Compile Include="..\SnowBank.Core\Polyfills\BinaryPrimitivesCompat.cs" Link="Utils\Polyfills\BinaryPrimitivesCompat.cs" />
+		<Compile Include="..\SnowBank.Core\Polyfills\CollectionsMarshalCompat.cs" Link="Utils\Polyfills\CollectionsMarshalCompat.cs" />
+		<Compile Include="..\SnowBank.Core\Polyfills\ConvertCompat.cs" Link="Utils\Polyfills\ConvertCompat.cs" />
+		<Compile Include="..\SnowBank.Core\Polyfills\MemoryMarshalCompat.cs" Link="Utils\Polyfills\MemoryMarshalCompat.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

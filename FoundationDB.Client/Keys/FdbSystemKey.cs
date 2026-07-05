@@ -324,7 +324,12 @@ namespace FoundationDB.Client
 				suffix = suffix[1..];
 			}
 
+#if NETCOREAPP3_0_OR_GREATER
 			return new(string.Concat(this.SuffixString, suffix), special);
+#else
+			// string.Concat(string, ReadOnlySpan<char>) is not available: materialize the span into a string first (which allocates)
+			return new(string.Concat(this.SuffixString, suffix.ToString()), special);
+#endif
 		}
 
 		#endregion

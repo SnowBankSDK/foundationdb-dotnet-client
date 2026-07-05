@@ -37,6 +37,13 @@ namespace FoundationDB.Client.Tests
 	public class FdbKeyFacts : FdbSimpleTest
 	{
 
+#if NETFRAMEWORK
+		// netfx cannot produce shortest-roundtrip double formatting (the FastDtoa formatter is not part of the netstandard2.0 build of SnowBank.Core): doubles may render with 17 digits
+		private const string PiText = "3.1415926535897931";
+#else
+		private const string PiText = "3.141592653589793";
+#endif
+
 		[Test]
 		public void Test_FdbRawKey_Basics()
 		{
@@ -571,23 +578,23 @@ namespace FoundationDB.Client.Tests
 
 				#region Formatting...
 
-				Assert.That(k5.ToString(), Is.EqualTo("…(\"hello\", 123, \"world\", true, 3.141592653589793)"));
+				Assert.That(k5.ToString(), Is.EqualTo($"…(\"hello\", 123, \"world\", true, {PiText})"));
 				Assert.That(k5.ToString("X"), Is.EqualTo("15 2A 02 68 65 6C 6C 6F 00 15 7B 02 77 6F 72 6C 64 00 27 21 C0 09 21 FB 54 44 2D 18"));
 				Assert.That(k5.ToString("x"), Is.EqualTo("15 2a 02 68 65 6c 6c 6f 00 15 7b 02 77 6f 72 6c 64 00 27 21 c0 09 21 fb 54 44 2d 18"));
-				Assert.That(k5.ToString("K"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793)"));
-				Assert.That(k5.ToString("B"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793)"));
-				Assert.That(k5.ToString("E"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793)"));
-				Assert.That(k5.ToString("P"), Is.EqualTo("/Foo/Bar(\"hello\", 123, \"world\", true, 3.141592653589793)"));
-				Assert.That(k5.ToString("G"), Is.EqualTo("FdbTupleKey<string, int, string, bool, double>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, 3.141592653589793))"));
+				Assert.That(k5.ToString("K"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText})"));
+				Assert.That(k5.ToString("B"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText})"));
+				Assert.That(k5.ToString("E"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText})"));
+				Assert.That(k5.ToString("P"), Is.EqualTo($"/Foo/Bar(\"hello\", 123, \"world\", true, {PiText})"));
+				Assert.That(k5.ToString("G"), Is.EqualTo($"FdbTupleKey<string, int, string, bool, double>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, {PiText}))"));
 
-				Assert.That($"***{k5}$$$", Is.EqualTo("***…(\"hello\", 123, \"world\", true, 3.141592653589793)$$$"));
+				Assert.That($"***{k5}$$$", Is.EqualTo($"***…(\"hello\", 123, \"world\", true, {PiText})$$$"));
 				Assert.That($"***{k5:X}$$$", Is.EqualTo("***15 2A 02 68 65 6C 6C 6F 00 15 7B 02 77 6F 72 6C 64 00 27 21 C0 09 21 FB 54 44 2D 18$$$"));
 				Assert.That($"***{k5:x}$$$", Is.EqualTo("***15 2a 02 68 65 6c 6c 6f 00 15 7b 02 77 6f 72 6c 64 00 27 21 c0 09 21 fb 54 44 2d 18$$$"));
-				Assert.That($"***{k5:K}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793)$$$"));
-				Assert.That($"***{k5:B}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793)$$$"));
-				Assert.That($"***{k5:E}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793)$$$"));
-				Assert.That($"***{k5:P}$$$", Is.EqualTo("***/Foo/Bar(\"hello\", 123, \"world\", true, 3.141592653589793)$$$"));
-				Assert.That($"***{k5:G}$$$", Is.EqualTo("***FdbTupleKey<string, int, string, bool, double>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, 3.141592653589793))$$$"));
+				Assert.That($"***{k5:K}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText})$$$"));
+				Assert.That($"***{k5:B}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText})$$$"));
+				Assert.That($"***{k5:E}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText})$$$"));
+				Assert.That($"***{k5:P}$$$", Is.EqualTo($"***/Foo/Bar(\"hello\", 123, \"world\", true, {PiText})$$$"));
+				Assert.That($"***{k5:G}$$$", Is.EqualTo($"***FdbTupleKey<string, int, string, bool, double>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, {PiText}))$$$"));
 
 				#endregion
 
@@ -652,23 +659,23 @@ namespace FoundationDB.Client.Tests
 
 				#region Formatting...
 
-				Assert.That(k6.ToString(), Is.EqualTo("…(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})"));
+				Assert.That(k6.ToString(), Is.EqualTo($"…(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})"));
 				Assert.That(k6.ToString("X"), Is.EqualTo("15 2A 02 68 65 6C 6C 6F 00 15 7B 02 77 6F 72 6C 64 00 27 21 C0 09 21 FB 54 44 2D 18 30 DF 34 1C 73 C2 F1 41 59 94 82 F2 26 3B EF 9C F8"));
 				Assert.That(k6.ToString("x"), Is.EqualTo("15 2a 02 68 65 6c 6c 6f 00 15 7b 02 77 6f 72 6c 64 00 27 21 c0 09 21 fb 54 44 2d 18 30 df 34 1c 73 c2 f1 41 59 94 82 f2 26 3b ef 9c f8"));
-				Assert.That(k6.ToString("K"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})"));
-				Assert.That(k6.ToString("B"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})"));
-				Assert.That(k6.ToString("E"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})"));
-				Assert.That(k6.ToString("P"), Is.EqualTo("/Foo/Bar(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})"));
-				Assert.That(k6.ToString("G"), Is.EqualTo("FdbTupleKey<string, int, string, bool, double, Guid>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}))"));
+				Assert.That(k6.ToString("K"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})"));
+				Assert.That(k6.ToString("B"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})"));
+				Assert.That(k6.ToString("E"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})"));
+				Assert.That(k6.ToString("P"), Is.EqualTo($"/Foo/Bar(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})"));
+				Assert.That(k6.ToString("G"), Is.EqualTo($"FdbTupleKey<string, int, string, bool, double, Guid>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}))"));
 
-				Assert.That($"***{k6}$$$", Is.EqualTo("***…(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})$$$"));
+				Assert.That($"***{k6}$$$", Is.EqualTo($"***…(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})$$$"));
 				Assert.That($"***{k6:X}$$$", Is.EqualTo("***15 2A 02 68 65 6C 6C 6F 00 15 7B 02 77 6F 72 6C 64 00 27 21 C0 09 21 FB 54 44 2D 18 30 DF 34 1C 73 C2 F1 41 59 94 82 F2 26 3B EF 9C F8$$$"));
 				Assert.That($"***{k6:x}$$$", Is.EqualTo("***15 2a 02 68 65 6c 6c 6f 00 15 7b 02 77 6f 72 6c 64 00 27 21 c0 09 21 fb 54 44 2d 18 30 df 34 1c 73 c2 f1 41 59 94 82 f2 26 3b ef 9c f8$$$"));
-				Assert.That($"***{k6:K}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})$$$"));
-				Assert.That($"***{k6:B}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})$$$"));
-				Assert.That($"***{k6:E}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})$$$"));
-				Assert.That($"***{k6:P}$$$", Is.EqualTo("***/Foo/Bar(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8})$$$"));
-				Assert.That($"***{k6:G}$$$", Is.EqualTo("***FdbTupleKey<string, int, string, bool, double, Guid>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}))$$$"));
+				Assert.That($"***{k6:K}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})$$$"));
+				Assert.That($"***{k6:B}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})$$$"));
+				Assert.That($"***{k6:E}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})$$$"));
+				Assert.That($"***{k6:P}$$$", Is.EqualTo($"***/Foo/Bar(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}})$$$"));
+				Assert.That($"***{k6:G}$$$", Is.EqualTo($"***FdbTupleKey<string, int, string, bool, double, Guid>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}))$$$"));
 
 				#endregion
 
@@ -734,23 +741,23 @@ namespace FoundationDB.Client.Tests
 
 				#region Formatting...
 
-				Assert.That(k7.ToString(), Is.EqualTo("…(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\")"));
+				Assert.That(k7.ToString(), Is.EqualTo($"…(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\")"));
 				Assert.That(k7.ToString("X"), Is.EqualTo("15 2A 02 68 65 6C 6C 6F 00 15 7B 02 77 6F 72 6C 64 00 27 21 C0 09 21 FB 54 44 2D 18 30 DF 34 1C 73 C2 F1 41 59 94 82 F2 26 3B EF 9C F8 21 C0 D3 D2 5C 06 DD D5 0F"));
 				Assert.That(k7.ToString("x"), Is.EqualTo("15 2a 02 68 65 6c 6c 6f 00 15 7b 02 77 6f 72 6c 64 00 27 21 c0 09 21 fb 54 44 2d 18 30 df 34 1c 73 c2 f1 41 59 94 82 f2 26 3b ef 9c f8 21 c0 d3 d2 5c 06 dd d5 0f"));
-				Assert.That(k7.ToString("K"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987)"));
-				Assert.That(k7.ToString("B"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987)"));
-				Assert.That(k7.ToString("E"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987)"));
-				Assert.That(k7.ToString("P"), Is.EqualTo("/Foo/Bar(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\")"));
-				Assert.That(k7.ToString("G"), Is.EqualTo("FdbTupleKey<string, int, string, bool, double, Guid, DateTime>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\"))"));
+				Assert.That(k7.ToString("K"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987)"));
+				Assert.That(k7.ToString("B"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987)"));
+				Assert.That(k7.ToString("E"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987)"));
+				Assert.That(k7.ToString("P"), Is.EqualTo($"/Foo/Bar(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\")"));
+				Assert.That(k7.ToString("G"), Is.EqualTo($"FdbTupleKey<string, int, string, bool, double, Guid, DateTime>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\"))"));
 
-				Assert.That($"***{k7}$$$", Is.EqualTo("***…(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\")$$$"));
+				Assert.That($"***{k7}$$$", Is.EqualTo($"***…(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\")$$$"));
 				Assert.That($"***{k7:X}$$$", Is.EqualTo("***15 2A 02 68 65 6C 6C 6F 00 15 7B 02 77 6F 72 6C 64 00 27 21 C0 09 21 FB 54 44 2D 18 30 DF 34 1C 73 C2 F1 41 59 94 82 F2 26 3B EF 9C F8 21 C0 D3 D2 5C 06 DD D5 0F$$$"));
 				Assert.That($"***{k7:x}$$$", Is.EqualTo("***15 2a 02 68 65 6c 6c 6f 00 15 7b 02 77 6f 72 6c 64 00 27 21 c0 09 21 fb 54 44 2d 18 30 df 34 1c 73 c2 f1 41 59 94 82 f2 26 3b ef 9c f8 21 c0 d3 d2 5c 06 dd d5 0f$$$"));
-				Assert.That($"***{k7:K}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987)$$$"));
-				Assert.That($"***{k7:B}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987)$$$"));
-				Assert.That($"***{k7:E}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987)$$$"));
-				Assert.That($"***{k7:P}$$$", Is.EqualTo("***/Foo/Bar(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\")$$$"));
-				Assert.That($"***{k7:G}$$$", Is.EqualTo("***FdbTupleKey<string, int, string, bool, double, Guid, DateTime>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\"))$$$"));
+				Assert.That($"***{k7:K}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987)$$$"));
+				Assert.That($"***{k7:B}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987)$$$"));
+				Assert.That($"***{k7:E}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987)$$$"));
+				Assert.That($"***{k7:P}$$$", Is.EqualTo($"***/Foo/Bar(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\")$$$"));
+				Assert.That($"***{k7:G}$$$", Is.EqualTo($"***FdbTupleKey<string, int, string, bool, double, Guid, DateTime>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\"))$$$"));
 
 				#endregion
 
@@ -817,23 +824,23 @@ namespace FoundationDB.Client.Tests
 
 				#region Formatting...
 
-				Assert.That(k8.ToString(), Is.EqualTo("…(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e)"));
+				Assert.That(k8.ToString(), Is.EqualTo($"…(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e)"));
 				Assert.That(k8.ToString("X"), Is.EqualTo("15 2A 02 68 65 6C 6C 6F 00 15 7B 02 77 6F 72 6C 64 00 27 21 C0 09 21 FB 54 44 2D 18 30 DF 34 1C 73 C2 F1 41 59 94 82 F2 26 3B EF 9C F8 21 C0 D3 D2 5C 06 DD D5 0F 32 6F 08 A8 BA A3 5C 47 EA 14 8E"));
 				Assert.That(k8.ToString("x"), Is.EqualTo("15 2a 02 68 65 6c 6c 6f 00 15 7b 02 77 6f 72 6c 64 00 27 21 c0 09 21 fb 54 44 2d 18 30 df 34 1c 73 c2 f1 41 59 94 82 f2 26 3b ef 9c f8 21 c0 d3 d2 5c 06 dd d5 0f 32 6f 08 a8 ba a3 5c 47 ea 14 8e"));
-				Assert.That(k8.ToString("K"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987, @6f08a8baa35c47ea-148e)"));
-				Assert.That(k8.ToString("B"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987, @6f08a8baa35c47ea-148e)"));
-				Assert.That(k8.ToString("E"), Is.EqualTo("(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987, @6f08a8baa35c47ea-148e)"));
-				Assert.That(k8.ToString("P"), Is.EqualTo("/Foo/Bar(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e)"));
-				Assert.That(k8.ToString("G"), Is.EqualTo("FdbTupleKey<string, int, string, bool, double, Guid, DateTime, VersionStamp>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e))"));
+				Assert.That(k8.ToString("K"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987, @6f08a8baa35c47ea-148e)"));
+				Assert.That(k8.ToString("B"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987, @6f08a8baa35c47ea-148e)"));
+				Assert.That(k8.ToString("E"), Is.EqualTo($"(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987, @6f08a8baa35c47ea-148e)"));
+				Assert.That(k8.ToString("P"), Is.EqualTo($"/Foo/Bar(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e)"));
+				Assert.That(k8.ToString("G"), Is.EqualTo($"FdbTupleKey<string, int, string, bool, double, Guid, DateTime, VersionStamp>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e))"));
 
-				Assert.That($"***{k8}$$$", Is.EqualTo("***…(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e)$$$"));
+				Assert.That($"***{k8}$$$", Is.EqualTo($"***…(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e)$$$"));
 				Assert.That($"***{k8:X}$$$", Is.EqualTo("***15 2A 02 68 65 6C 6C 6F 00 15 7B 02 77 6F 72 6C 64 00 27 21 C0 09 21 FB 54 44 2D 18 30 DF 34 1C 73 C2 F1 41 59 94 82 F2 26 3B EF 9C F8 21 C0 D3 D2 5C 06 DD D5 0F 32 6F 08 A8 BA A3 5C 47 EA 14 8E$$$"));
 				Assert.That($"***{k8:x}$$$", Is.EqualTo("***15 2a 02 68 65 6c 6c 6f 00 15 7b 02 77 6f 72 6c 64 00 27 21 c0 09 21 fb 54 44 2d 18 30 df 34 1c 73 c2 f1 41 59 94 82 f2 26 3b ef 9c f8 21 c0 d3 d2 5c 06 dd d5 0f 32 6f 08 a8 ba a3 5c 47 ea 14 8e$$$"));
-				Assert.That($"***{k8:K}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987, @6f08a8baa35c47ea-148e)$$$"));
-				Assert.That($"***{k8:B}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987, @6f08a8baa35c47ea-148e)$$$"));
-				Assert.That($"***{k8:E}$$$", Is.EqualTo("***(42, \"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, 20297.43791909987, @6f08a8baa35c47ea-148e)$$$"));
-				Assert.That($"***{k8:P}$$$", Is.EqualTo("***/Foo/Bar(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e)$$$"));
-				Assert.That($"***{k8:G}$$$", Is.EqualTo("***FdbTupleKey<string, int, string, bool, double, Guid, DateTime, VersionStamp>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, 3.141592653589793, {df341c73-c2f1-4159-9482-f2263bef9cf8}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e))$$$"));
+				Assert.That($"***{k8:K}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987, @6f08a8baa35c47ea-148e)$$$"));
+				Assert.That($"***{k8:B}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987, @6f08a8baa35c47ea-148e)$$$"));
+				Assert.That($"***{k8:E}$$$", Is.EqualTo($"***(42, \"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, 20297.43791909987, @6f08a8baa35c47ea-148e)$$$"));
+				Assert.That($"***{k8:P}$$$", Is.EqualTo($"***/Foo/Bar(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e)$$$"));
+				Assert.That($"***{k8:G}$$$", Is.EqualTo($"***FdbTupleKey<string, int, string, bool, double, Guid, DateTime, VersionStamp>(Subspace=/Foo/Bar, Items=(\"hello\", 123, \"world\", true, {PiText}, {{df341c73-c2f1-4159-9482-f2263bef9cf8}}, \"2025-07-28T12:30:36.2102287\", @6f08a8baa35c47ea-148e))$$$"));
 
 				#endregion
 

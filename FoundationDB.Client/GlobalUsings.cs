@@ -30,3 +30,8 @@ global using PositiveAttribute = JetBrains.Annotations.PositiveAttribute;
 global using PublicAPIAttribute = JetBrains.Annotations.PublicAPIAttribute;
 global using PureAttribute = System.Diagnostics.Contracts.PureAttribute;
 global using StringFormatMethodAttribute = JetBrains.Annotations.StringFormatMethodAttribute;
+
+#if NETSTANDARD2_0
+// extension-method polyfills for span/collection BCL APIs missing from netstandard2.0 (see SnowBank.Core/Polyfills/)
+global using SnowBank.Compat;
+#endif

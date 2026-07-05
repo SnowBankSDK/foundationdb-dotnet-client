@@ -66,6 +66,8 @@ namespace FoundationDB.Client.Tests
 				Assert.That(value.TryGetSpan(out var span), Is.True.WithOutput(span.ToArray()).EqualTo(rawValue));
 				Assert.That(value.TryGetSizeHint(out int size), Is.True.WithOutput(size).EqualTo(rawValue.Length));
 			}
+#if !NETFRAMEWORK
+			// FdbValue.ToBytes(MemoryStream) requires FdbValue<TValue, TEncoder>, which is not available on this target (static abstract interface members)
 			{ // MemoryStream
 				var ms = new MemoryStream();
 				ms.Write("Hello, World!"u8);
@@ -80,6 +82,7 @@ namespace FoundationDB.Client.Tests
 				Assert.That(value.TryGetSpan(out var span), Is.True.WithOutput(span.ToArray()).EqualTo(ms.ToArray()));
 				Assert.That(value.TryGetSizeHint(out int size), Is.True.WithOutput(size).EqualTo(ms.Length));
 			}
+#endif
 		}
 
 		[Test]
@@ -120,6 +123,8 @@ namespace FoundationDB.Client.Tests
 					Assert.That(value.TryGetSpan(out var span), Is.EqualTo(expectedUtf8.Length == 0).WithOutput(span.Length).Zero);
 					Assert.That(value.TryGetSizeHint(out int size), Is.True.WithOutput(size).GreaterThanOrEqualTo(expected.Count));
 				}
+#if !NETFRAMEWORK
+				// FdbValue.ToTextUtf8(StringBuilder) requires FdbValue<TValue, TEncoder>, which is not available on this target (static abstract interface members)
 				{ // StringBuilder
 					var sb = new StringBuilder().Append(literal);
 					var value = FdbValue.ToTextUtf8(sb);
@@ -130,6 +135,7 @@ namespace FoundationDB.Client.Tests
 					Assert.That(value.TryGetSpan(out var span), Is.EqualTo(expectedUtf8.Length == 0).WithOutput(span.Length).Zero);
 					Assert.That(value.TryGetSizeHint(out int size), Is.True.WithOutput(size).GreaterThanOrEqualTo(expected.Count)); // GetMaxByteCount() always add 3 bytes to the length (for the BOM??)
 				}
+#endif
 				{ // ReadOnlySpan<char>
 					var value = FdbValue.ToTextUtf8(literal.AsSpan());
 					Assert.That(value.Text.ToString(), Is.EqualTo(literal));
@@ -529,7 +535,7 @@ namespace FoundationDB.Client.Tests
 				Verify(FdbValue.ToJson(123), Slice.FromString("123"));
 				Verify(FdbValue.ToJson("Hello, World!"), Slice.FromString("\"Hello, World!\""));
 				Verify(FdbValue.ToJson(JsonArray.Create([ 123, 456, 789 ])), Slice.FromString("[123,456,789]"));
-				Verify(FdbValue.ToJson(JsonObject.Create([ ("hello", "world"), ("foo", 123), ])), Slice.FromString("{ \"hello\": \"world\", \"foo\": 123 }"));
+				Verify(FdbValue.ToJson(JsonObject.Create([ ("hello", "world"), ("foo", 123), ])), Slice.FromString("{\"hello\":\"world\",\"foo\":123}"));
 			});
 
 			Assert.Multiple(() =>

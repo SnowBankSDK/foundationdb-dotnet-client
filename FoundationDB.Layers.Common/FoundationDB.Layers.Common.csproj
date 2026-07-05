@@ -3,6 +3,7 @@
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);netstandard2.0</TargetFrameworks>
 		<RootNamespace>FoundationDB.Layers.Common</RootNamespace>
 		<AssemblyName>FoundationDB.Layers.Common</AssemblyName>
 		<LangVersion>preview</LangVersion>
@@ -41,6 +42,22 @@
 		<WarningsAsErrors>105,108,109,114,472,660,661,628,1066,NU1605</WarningsAsErrors>
 		<DocumentationFile>bin\Release\$(TargetFramework)\FoundationDB.Layers.Common.xml</DocumentationFile>
 	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<PolySharpUsePublicAccessibilityForGeneratedTypes>true</PolySharpUsePublicAccessibilityForGeneratedTypes>
+		<!-- Nullable-flow false positives: see SnowBank.Core.csproj for the rationale -->
+		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8777</NoWarn>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<!-- Span<T> / Memory<T> / ReadOnlySpan<T> for netstandard2.0 -->
+		<PackageReference Include="System.Memory" />
+		<!-- Source-generates the compiler-required polyfill attributes/types -->
+		<PackageReference Include="PolySharp" PrivateAssets="all" />
+		<!-- ValueTask / ValueTask<T> for netstandard2.0 -->
+		<PackageReference Include="System.Threading.Tasks.Extensions" VersionOverride="4.6.3" />
+		<!-- IAsyncDisposable / IAsyncEnumerable for netstandard2.0 -->
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="9.0.17" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />

@@ -33,6 +33,7 @@ namespace FoundationDB.Client.Tests
 {
 	using System.Collections.Generic;
 	using System.Linq;
+	using System.Runtime.InteropServices;
 	using SnowBank.Linq.Async.Iterators;
 
 	[TestFixture]
@@ -287,7 +288,12 @@ namespace FoundationDB.Client.Tests
 					Assert.That(chunk.Reversed, Is.False);
 					Assert.That(chunk.Iteration, Is.EqualTo(1));
 
+#if NET5_0_OR_GREATER
 					Verify(chunk, data[..chunk.Count]);
+#else
+					// range indexing on arrays requires RuntimeHelpers.GetSubArray, which netstandard2.0/netfx lacks
+					Verify(chunk, data.AsSpan(0, chunk.Count));
+#endif
 					Assert.That(chunk.First, Is.EqualTo(folder.Key(0)));
 					Assert.That(chunk.Last, Is.EqualTo(folder.Key(chunk.Count - 1)));
 
@@ -306,7 +312,12 @@ namespace FoundationDB.Client.Tests
 					Log($"> Read {chunk2.Count:N0} results in {ts.Elapsed.TotalMilliseconds:N1} ms");
 					//DumpCompact(chunk2.Items.ToArray());
 
+#if NET5_0_OR_GREATER
 					Verify(chunk2, data[chunk.Count..][..chunk2.Count]);
+#else
+					// range indexing on arrays requires RuntimeHelpers.GetSubArray, which netstandard2.0/netfx lacks
+					Verify(chunk2, data.AsSpan(chunk.Count, chunk2.Count));
+#endif
 					Assert.That(chunk2.First, Is.EqualTo(folder.Key(chunk.Count)));
 					Assert.That(chunk2.Last, Is.EqualTo(folder.Key(chunk.Count + chunk2.Count - 1)));
 

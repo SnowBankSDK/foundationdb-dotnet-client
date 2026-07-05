@@ -37,12 +37,30 @@ namespace FoundationDB.Client.Native
 		public sealed class SafeLibraryHandle : SafeHandle
 		{
 			public SafeLibraryHandle(string path)
-				: base(nint.Zero, ownsHandle: true)
+				: base(IntPtr.Zero, ownsHandle: true)
 			{
+#if NETCOREAPP3_0_OR_GREATER
 				SetHandle(NativeLibrary.Load(path));
+#else
+				// NativeLibrary is not available, falling back to LoadLibraryW via P/Invoke (which only exists on Windows,
+				// but the .NET Framework runtime does not run anywhere else anyway); on failure it returns zero and the
+				// caller reports the Win32 error, instead of the richer exceptions thrown by NativeLibrary.Load
+				if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				{
+					throw new PlatformNotSupportedException("Loading the native fdb_c library on this platform requires the .NET Core 3.0+ runtime.");
+				}
+				SetHandle(LoadLibraryW(path));
+#endif
 			}
 
-			public override bool IsInvalid => this.handle == nint.Zero;
+#if !NETCOREAPP3_0_OR_GREATER
+
+			[DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
+			private static extern nint LoadLibraryW(string lpFileName);
+
+#endif
+
+			public override bool IsInvalid => this.handle == IntPtr.Zero;
 
 			protected override bool ReleaseHandle()
 			{

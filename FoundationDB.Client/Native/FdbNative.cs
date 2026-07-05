@@ -1993,30 +1993,30 @@ namespace FoundationDB.Client.Native
 			DieOnError(err);
 
 			Contract.Debug.Assert(count >= 0, "Return count was negative");
-			var kvp = new ReadOnlySpan<FdbKeyValue>(ptr, count);
+			// note: the entries are read via direct pointer indexing (the portable Span<T> of netstandard2.0 rejects types with pointer fields, like FdbKeyValue)
 
-			if (kvp.Length == 0)
+			if (count == 0)
 			{
 				return 0;
 			}
 
 			// convert the data using the raw native buffer
 			long sum = 0;
-			for (int i = 0; i < kvp.Length; i++)
+			for (int i = 0; i < count; i++)
 			{
-				var k = kvp[i].GetKey();
-				var v = kvp[i].GetValue();
+				var k = ptr[i].GetKey();
+				var v = ptr[i].GetValue();
 				sum += k.Length;
 				sum += v.Length;
 				visitor(state, k, v);
 			}
 
 			// we also need to grab the first and last key (for pagination)
-			first = Slice.FromBytes(kvp[0].GetKey());
-			last = kvp.Length > 1 ? Slice.FromBytes(kvp[^1].GetKey()) : first;
+			first = Slice.FromBytes(ptr[0].GetKey());
+			last = count > 1 ? Slice.FromBytes(ptr[count - 1].GetKey()) : first;
 			totalBytes = checked((int) sum);
 
-			return kvp.Length;
+			return count;
 		}
 
 		/// <summary><c>fdb_future_get_keyvalue_array</c></summary>
@@ -2033,28 +2033,28 @@ namespace FoundationDB.Client.Native
 			DieOnError(err);
 
 			Contract.Debug.Assert(count >= 0, "Return count was negative");
-			var kvp = new ReadOnlySpan<FdbKeyValue>(ptr, count);
+			// note: the entries are read via direct pointer indexing (the portable Span<T> of netstandard2.0 rejects types with pointer fields, like FdbKeyValue)
 
-			if (kvp.Length == 0)
+			if (count == 0)
 			{
 				return [ ];
 			}
 
 			// convert the data using the raw native buffer
-			var result = new TResult[kvp.Length];
+			var result = new TResult[count];
 			long sum = 0;
-			for (int i = 0; i < kvp.Length; i++)
+			for (int i = 0; i < count; i++)
 			{
-				var k = kvp[i].GetKey();
-				var v = kvp[i].GetValue();
+				var k = ptr[i].GetKey();
+				var v = ptr[i].GetValue();
 				sum += k.Length;
 				sum += v.Length;
 				result[i] = decoder(state, k, v);
 			}
 
 			// we also need to grab the first and last key (for pagination)
-			first = Slice.FromBytes(kvp[0].GetKey());
-			last = kvp.Length > 1 ? Slice.FromBytes(kvp[^1].GetKey()) : first;
+			first = Slice.FromBytes(ptr[0].GetKey());
+			last = count > 1 ? Slice.FromBytes(ptr[count - 1].GetKey()) : first;
 			totalBytes = checked((int) sum);
 
 			return result;

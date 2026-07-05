@@ -34,7 +34,11 @@ namespace FoundationDB.Client
 	/// <summary>Represents the protocol version of a node, interface or service in a FoundationDB cluster.</summary>
 	[DebuggerDisplay("Version={Version}")]
 	[PublicAPI]
-	public readonly struct FdbProtocolVersion : IEquatable<FdbProtocolVersion>, IEquatable<string>, IEquatable<ulong>, ISpanFormattable, ISpanParsable<FdbProtocolVersion>
+	public readonly struct FdbProtocolVersion : IEquatable<FdbProtocolVersion>, IEquatable<string>, IEquatable<ulong>, ISpanFormattable
+#if NET7_0_OR_GREATER
+		// ISpanParsable<TSelf> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the Parse/TryParse statics are still available)
+		, ISpanParsable<FdbProtocolVersion>
+#endif
 	{
 
 		private const ulong VERSION_FLAG_MASK = 0x0FFFFFFFFFFFFFFFUL;

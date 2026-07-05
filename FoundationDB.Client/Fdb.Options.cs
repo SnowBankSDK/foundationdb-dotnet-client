@@ -107,6 +107,7 @@ namespace FoundationDB.Client
 			/// <returns><c>"fdb_c.dll"</c> on Windows, <c>"fdb_c.so"</c> on Linux, etc...</returns>
 			public static string GetExpectedNativeLibraryName()
 			{
+#if NET5_0_OR_GREATER
 				if (OperatingSystem.IsWindows())
 				{
 					return "fdb_c.dll";
@@ -115,6 +116,17 @@ namespace FoundationDB.Client
 				{
 					return "libfdb_c.dylib";
 				}
+#else
+				// the OperatingSystem helpers are not available, using RuntimeInformation.IsOSPlatform instead (which the analyzers don't understand, but is equivalent)
+				if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+				{
+					return "fdb_c.dll";
+				}
+				if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+				{
+					return "libfdb_c.dylib";
+				}
+#endif
 				return "libfdb_c.so";
 			}
 

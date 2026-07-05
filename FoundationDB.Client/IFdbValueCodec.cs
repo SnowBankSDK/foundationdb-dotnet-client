@@ -107,6 +107,9 @@ namespace FoundationDB.Client
 
 	}
 
+#if NET7_0_OR_GREATER
+	// calling static abstract interface members (ISpanEncoder<T>/ISpanDecoder<T>) through a type parameter needs runtime support that netstandard2.0/NetFX lacks
+
 	public sealed class FdbValueSpanEncoderCodec<TValue, TCodec> : IFdbValueCodec<TValue, FdbValue<TValue, TCodec>>
 		where TCodec : struct, ISpanEncoder<TValue>, ISpanDecoder<TValue>
 	{
@@ -125,6 +128,8 @@ namespace FoundationDB.Client
 				: throw new FormatException($"Failed to decode value of type '{typeof(TValue).GetFriendlyName()}'");
 	}
 
+#endif
+
 	public static class FdbValueCodec
 	{
 
@@ -142,6 +147,10 @@ namespace FoundationDB.Client
 		public static FdbUtf8ValueCodec Utf8 => FdbUtf8ValueCodec.Instance;
 
 		public static FdbUtf16ValueCodec Utf16 => FdbUtf16ValueCodec.Instance;
+
+#if NET7_0_OR_GREATER
+		// these codecs are all based on FdbValueSpanEncoderCodec<,> (static abstract interface members),
+		// and Int128/UInt128 do not exist on netstandard2.0 anyway
 
 		public static class FixedSize
 		{
@@ -191,6 +200,8 @@ namespace FoundationDB.Client
 			#endregion
 
 		}
+
+#endif
 
 		//TODO: Compact!
 

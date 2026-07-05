@@ -413,7 +413,12 @@ namespace FoundationDB.Filters.Logging
 				{
 					if (res.Length > MAX_LENGTH)
 					{
+#if NETCOREAPP3_0_OR_GREATER
 						res = string.Concat(res.AsSpan(0, MAX_LENGTH / 2), "...", res.AsSpan(res.Length - (MAX_LENGTH / 2), MAX_LENGTH / 2));
+#else
+						// string.Concat(ReadOnlySpan<char>, ...) is not available: use Substring instead (which allocates the two halves)
+						res = string.Concat(res.Substring(0, MAX_LENGTH / 2), "...", res.Substring(res.Length - (MAX_LENGTH / 2), MAX_LENGTH / 2));
+#endif
 					}
 				}
 
@@ -542,7 +547,12 @@ namespace FoundationDB.Filters.Logging
 				var s = base.Resolve(key.Substring(prefix.Count));
 				if (s != null! && s.Length >= 3 && s[0] == '(' && s[^1] == ')')
 				{ // that was a tuple
+#if NETCOREAPP3_0_OR_GREATER
 					return string.Concat("([", path, "], ", s.AsSpan(1));
+#else
+					// string.Concat(ReadOnlySpan<char>, ...) is not available: use Substring instead (which allocates)
+					return string.Concat("([", path, "], ", s.Substring(1));
+#endif
 				}
 				return string.Concat("[", path, "]:", s);
 			}

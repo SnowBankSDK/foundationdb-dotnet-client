@@ -538,6 +538,38 @@ namespace FoundationDB.Client
 
 		#region FirstOrDefaultAsync...
 
+#if !NET5_0_OR_GREATER
+		// on this target, IAsyncLinqQuery<T> cannot supply these overloads as default interface members (they need runtime support that netstandard2.0/NetFX lacks), so they are implemented here instead
+
+		/// <inheritdoc />
+		public Task<TResult?> FirstOrDefaultAsync() => FirstOrDefaultAsync(default(TResult)!)!;
+
+		/// <inheritdoc />
+		public Task<TResult?> FirstOrDefaultAsync(Func<TResult, bool> predicate) => FirstOrDefaultAsync(predicate, default(TResult)!)!;
+
+		/// <inheritdoc />
+		public Task<TResult?> FirstOrDefaultAsync(Func<TResult, CancellationToken, Task<bool>> predicate) => FirstOrDefaultAsync(predicate, default(TResult)!)!;
+
+		/// <inheritdoc />
+		public Task<TResult?> LastOrDefaultAsync() => LastOrDefaultAsync(default(TResult)!)!;
+
+		/// <inheritdoc />
+		public Task<TResult?> LastOrDefaultAsync(Func<TResult, bool> predicate) => LastOrDefaultAsync(predicate, default(TResult)!)!;
+
+		/// <inheritdoc />
+		public Task<TResult?> LastOrDefaultAsync(Func<TResult, CancellationToken, Task<bool>> predicate) => LastOrDefaultAsync(predicate, default(TResult)!)!;
+
+		/// <inheritdoc />
+		public Task<TResult?> SingleOrDefaultAsync() => SingleOrDefaultAsync(default(TResult)!)!;
+
+		/// <inheritdoc />
+		public Task<TResult?> SingleOrDefaultAsync(Func<TResult, bool> predicate) => SingleOrDefaultAsync(predicate, default(TResult)!)!;
+
+		/// <inheritdoc />
+		public Task<TResult?> SingleOrDefaultAsync(Func<TResult, CancellationToken, Task<bool>> predicate) => SingleOrDefaultAsync(predicate, default(TResult)!)!;
+
+#endif
+
 		/// <inheritdoc />
 		public Task<TResult> FirstOrDefaultAsync(TResult defaultValue)
 		{

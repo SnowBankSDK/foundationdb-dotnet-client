@@ -34,9 +34,12 @@ namespace FoundationDB.Client
 	[DebuggerDisplay("{ToString(),nq}")]
 	public readonly struct FdbTupleKey : IFdbKey
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey, Slice, bool>
+#endif
 		, IComparable
 	{
 
@@ -341,10 +344,13 @@ namespace FoundationDB.Client
 	public readonly struct FdbTupleKey<T1> : IFdbKey
 		, IEquatable<FdbTupleKey<T1>>, IComparable<FdbTupleKey<T1>>
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey<T1>, FdbTupleKey<T1>, bool>
 		, IComparisonOperators<FdbTupleKey<T1>, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1>, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1>, Slice, bool>
+#endif
 		, IComparable
 	{
 
@@ -753,10 +759,13 @@ namespace FoundationDB.Client
 	public readonly struct FdbTupleKey<T1, T2> : IFdbKey
 		, IEquatable<FdbTupleKey<T1, T2>>, IComparable<FdbTupleKey<T1, T2>>
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey<T1, T2>, FdbTupleKey<T1, T2>, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2>, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2>, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2>, Slice, bool>
+#endif
 		, IComparable
 	{
 
@@ -1155,10 +1164,13 @@ namespace FoundationDB.Client
 	public readonly struct FdbTupleKey<T1, T2, T3> : IFdbKey
 		, IEquatable<FdbTupleKey<T1, T2, T3>>, IComparable<FdbTupleKey<T1, T2, T3>>
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3>, FdbTupleKey<T1, T2, T3>, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3>, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3>, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3>, Slice, bool>
+#endif
 		, IComparable
 	{
 
@@ -1549,10 +1561,13 @@ namespace FoundationDB.Client
 	public readonly struct FdbTupleKey<T1, T2, T3, T4> : IFdbKey
 		, IEquatable<FdbTupleKey<T1, T2, T3, T4>>, IComparable<FdbTupleKey<T1, T2, T3, T4>>
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4>, FdbTupleKey<T1, T2, T3, T4>, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4>, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4>, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4>, Slice, bool>
+#endif
 		, IComparable
 	{
 
@@ -1934,10 +1949,13 @@ namespace FoundationDB.Client
 	public readonly struct FdbTupleKey<T1, T2, T3, T4, T5> : IFdbKey
 		, IEquatable<FdbTupleKey<T1, T2, T3, T4, T5>>, IComparable<FdbTupleKey<T1, T2, T3, T4, T5>>
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5>, FdbTupleKey<T1, T2, T3, T4, T5>, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5>, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5>, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5>, Slice, bool>
+#endif
 		, IComparable
 	{
 
@@ -2310,10 +2328,13 @@ namespace FoundationDB.Client
 	public readonly struct FdbTupleKey<T1, T2, T3, T4, T5, T6> : IFdbKey
 		, IEquatable<FdbTupleKey<T1, T2, T3, T4, T5, T6>>, IComparable<FdbTupleKey<T1, T2, T3, T4, T5, T6>>
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6>, FdbTupleKey<T1, T2, T3, T4, T5, T6>, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6>, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6>, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6>, Slice, bool>
+#endif
 		, IComparable
 	{
 
@@ -2677,10 +2698,13 @@ namespace FoundationDB.Client
 	public readonly struct FdbTupleKey<T1, T2, T3, T4, T5, T6, T7> : IFdbKey
 		, IEquatable<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7>>, IComparable<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7>>
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7>, FdbTupleKey<T1, T2, T3, T4, T5, T6, T7>, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7>, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7>, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7>, Slice, bool>
+#endif
 		, IComparable
 	{
 
@@ -3035,10 +3059,13 @@ namespace FoundationDB.Client
 	public readonly struct FdbTupleKey<T1, T2, T3, T4, T5, T6, T7, T8> : IFdbKey
 		, IEquatable<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7, T8>>, IComparable<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7, T8>>
 		, IEquatable<FdbTupleKey>, IComparable<FdbTupleKey>
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7, T8>, FdbTupleKey<T1, T2, T3, T4, T5, T6, T7, T8>, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7, T8>, FdbTupleKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7, T8>, FdbRawKey, bool>
 		, IComparisonOperators<FdbTupleKey<T1, T2, T3, T4, T5, T6, T7, T8>, Slice, bool>
+#endif
 		, IComparable
 	{
 

@@ -151,8 +151,14 @@ namespace FoundationDB.Client
 
 			Contract.Debug.Ensures((options.Limit ?? 0) >= 0, "Limit cannot be negative");
 			Contract.Debug.Ensures((options.TargetBytes ?? 0) >= 0, "TargetBytes cannot be negative");
+#if NET5_0_OR_GREATER
 			Contract.Debug.Ensures(options.Streaming == null || Enum.IsDefined(options.Streaming.Value), "Streaming mode must be valid");
 			Contract.Debug.Ensures(options.Fetch == null || Enum.IsDefined(options.Fetch.Value), "Reading mode must be valid");
+#else
+			// the generic Enum.IsDefined<T>(T) overload is not available, using the legacy (Type, object) overload instead (which boxes)
+			Contract.Debug.Ensures(options.Streaming == null || Enum.IsDefined(typeof(FdbStreamingMode), options.Streaming.Value), "Streaming mode must be valid");
+			Contract.Debug.Ensures(options.Fetch == null || Enum.IsDefined(typeof(FdbFetchMode), options.Fetch.Value), "Reading mode must be valid");
+#endif
 
 			return options;
 		}

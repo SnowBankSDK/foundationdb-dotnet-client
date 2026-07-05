@@ -68,8 +68,12 @@ namespace FoundationDB.Client
 
 #endif
 
+#if NETCOREAPP3_0_OR_GREATER
 		/// <summary>Tests if the key is <c>Nil</c></summary>
 		bool IsNull => false;
+#else
+		// default interface members need runtime support that netstandard2.0/netfx lacks: the IsNull member is not available on this target (callers can test the encoded Slice instead)
+#endif
 
 		/// <summary>Tests if this key is a prefix of the given key</summary>
 		/// <param name="key">Key being tested</param>

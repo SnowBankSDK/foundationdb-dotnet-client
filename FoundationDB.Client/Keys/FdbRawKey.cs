@@ -35,8 +35,11 @@ namespace FoundationDB.Client
 	/// <para>Please refrain from capturing a key in once transaction and reusing it in another. It is possible that the original subspace would be moved or re-created between both transactions, with a different prefix, which could create silent data corruption!</para>
 	/// </remarks>
 	public readonly struct FdbRawKey : IFdbKey
+#if NET7_0_OR_GREATER
+		// IComparisonOperators<,,> has static abstract members, which need runtime support that netstandard2.0/NetFX lacks (the comparison operators themselves are still defined)
 		, IComparisonOperators<FdbRawKey, FdbRawKey, bool>
 		, IComparisonOperators<FdbRawKey, Slice, bool>
+#endif
 	{
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

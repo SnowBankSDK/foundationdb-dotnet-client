@@ -90,7 +90,12 @@ namespace FoundationDB.Client.Tests
 			string path = Path.GetTempFileName();
 			try
 			{
+#if NETCOREAPP2_0_OR_GREATER
 				await File.WriteAllBytesAsync(path, bytes, this.Cancellation);
+#else
+				// File.WriteAllBytesAsync is not available: write synchronously instead
+				File.WriteAllBytes(path, bytes);
+#endif
 
 				//note: we have to perform at least one read operation, before the client actually attempts to connect to the cluster,
 				// so we have to open with a custom Root path (the directory layer will have to read from the cluster to find the prefix!)
@@ -298,7 +303,12 @@ namespace FoundationDB.Client.Tests
 		public async Task Test_Check_Timeout_On_Non_Existing_Database()
 		{
 			string clusterPath = GetTemporaryPath("notfound.cluster");
+#if NETCOREAPP2_0_OR_GREATER
 			await File.WriteAllTextAsync(clusterPath, "local:thisClusterShouldNotExist@127.0.0.1:4566", this.Cancellation);
+#else
+			// File.WriteAllTextAsync is not available: write synchronously instead
+			File.WriteAllText(clusterPath, "local:thisClusterShouldNotExist@127.0.0.1:4566");
+#endif
 			var options = new FdbConnectionOptions { ClusterFile = clusterPath };
 
 			using var db = await Fdb.OpenAsync(options, this.Cancellation);
