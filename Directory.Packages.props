@@ -136,6 +136,10 @@
   <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))">
     <PackageVersion Include="Aspire.Hosting" Version="13.1.3" />
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.1.3" />
+    <!-- transitive-only pin (via Aspire.Hosting 13.1.x -> StreamJsonRpc): the MessagePack 2.5.192 pulled by the
+         net8 Aspire wave carries known vulnerabilities (e.g. GHSA-hv8m-jj95-wg3x); 2.5.302 is the version the
+         net10/net11 wave already resolves on its own -->
+    <PackageVersion Include="MessagePack" Version="2.5.302" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.28" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.28" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.17" />
