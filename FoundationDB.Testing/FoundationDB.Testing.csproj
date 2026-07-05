@@ -36,8 +36,8 @@
 		<Reference Include="System.Net.Http" />
 		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
 		<PackageReference Include="PolySharp" PrivateAssets="all" />
-		<!-- must match the version required by the Microsoft.Extensions.* 9.x packages resolved for this target -->
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="9.0.17" />
+		<!-- must match the version required by the Microsoft.Extensions.* 10.x packages resolved for this target -->
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="10.0.9" />
 	</ItemGroup>
 
 	<ItemGroup>
