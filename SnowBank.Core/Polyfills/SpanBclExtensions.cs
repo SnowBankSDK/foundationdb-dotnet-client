@@ -557,7 +557,10 @@ namespace SnowBank.Compat
 			var winner = await Task.WhenAny(task, delay).ConfigureAwait(false);
 			if (winner != task)
 			{
-				cancellationToken.ThrowIfCancellationRequested();
+				if (cancellationToken.IsCancellationRequested)
+				{ // the real WaitAsync throws TaskCanceledException (not the base OperationCanceledException)
+					throw new TaskCanceledException(Task.FromCanceled(cancellationToken));
+				}
 				throw new TimeoutException();
 			}
 			cts.Cancel(); // release the timer
@@ -576,7 +579,10 @@ namespace SnowBank.Compat
 			var winner = await Task.WhenAny(task, delay).ConfigureAwait(false);
 			if (winner != task)
 			{
-				cancellationToken.ThrowIfCancellationRequested();
+				if (cancellationToken.IsCancellationRequested)
+				{ // the real WaitAsync throws TaskCanceledException (not the base OperationCanceledException)
+					throw new TaskCanceledException(Task.FromCanceled(cancellationToken));
+				}
 				throw new TimeoutException();
 			}
 			cts.Cancel(); // release the timer
@@ -588,6 +594,141 @@ namespace SnowBank.Compat
 
 		/// <summary>Mirrors <c>Task&lt;T&gt;.WaitAsync(CancellationToken)</c> (.NET 6+).</summary>
 		public static Task<TResult> WaitAsync<TResult>(this Task<TResult> task, CancellationToken cancellationToken) => WaitAsync(task, Timeout.InfiniteTimeSpan, cancellationToken);
+
+		#endregion
+
+		#region Task...
+
+		extension(Task task)
+		{
+
+			/// <summary>Mirrors <c>Task.IsCompletedSuccessfully</c> (.NET Core 2.0+).</summary>
+			public bool IsCompletedSuccessfully => task.Status == TaskStatus.RanToCompletion;
+
+		}
+
+		/// <summary>Mirrors <c>CancellationTokenSource.CancelAsync()</c> (.NET 8+); cancels synchronously on this target (the callbacks run inline before the returned task completes).</summary>
+		public static Task CancelAsync(this CancellationTokenSource cts)
+		{
+			cts.Cancel();
+			return Task.CompletedTask;
+		}
+
+		#endregion
+
+		#region ValueTask statics...
+
+		extension(ValueTask)
+		{
+
+			/// <summary>Mirrors <c>ValueTask.CompletedTask</c> (.NET 5+).</summary>
+			public static ValueTask CompletedTask => default;
+
+			/// <summary>Mirrors <c>ValueTask.FromResult&lt;T&gt;</c> (.NET 5+).</summary>
+			public static ValueTask<T> FromResult<T>(T result) => new(result);
+
+			/// <summary>Mirrors <c>ValueTask.FromCanceled</c> (.NET 5+).</summary>
+			public static ValueTask FromCanceled(CancellationToken cancellationToken) => new(Task.FromCanceled(cancellationToken));
+
+			/// <summary>Mirrors <c>ValueTask.FromCanceled&lt;T&gt;</c> (.NET 5+).</summary>
+			public static ValueTask<T> FromCanceled<T>(CancellationToken cancellationToken) => new(Task.FromCanceled<T>(cancellationToken));
+
+			/// <summary>Mirrors <c>ValueTask.FromException</c> (.NET 5+).</summary>
+			public static ValueTask FromException(Exception exception) => new(Task.FromException(exception));
+
+			/// <summary>Mirrors <c>ValueTask.FromException&lt;T&gt;</c> (.NET 5+).</summary>
+			public static ValueTask<T> FromException<T>(Exception exception) => new(Task.FromException<T>(exception));
+
+		}
+
+		#endregion
+
+		#region Random statics...
+
+		extension(Random)
+		{
+
+			/// <summary>Mirrors <c>Random.Shared</c> (.NET 6+); backed by a per-thread instance on this target (the modern implementation is thread-safe).</summary>
+			public static Random Shared => SharedRandom.Instance ??= new Random(unchecked((Environment.TickCount * 397) ^ Environment.CurrentManagedThreadId));
+
+		}
+
+		private static class SharedRandom
+		{
+			[ThreadStatic]
+			public static Random? Instance;
+		}
+
+		#endregion
+
+		#region Span parsing statics...
+
+		extension(int)
+		{
+
+			/// <summary>Mirrors <c>int.TryParse(ReadOnlySpan&lt;char&gt;, out int)</c> (.NET Core 2.1+); allocates a temporary string on this target.</summary>
+			public static bool TryParse(ReadOnlySpan<char> s, out int result) => int.TryParse(s.ToString(), out result);
+
+		}
+
+		extension(ulong)
+		{
+
+			/// <summary>Mirrors <c>ulong.Parse(ReadOnlySpan&lt;char&gt;, NumberStyles, IFormatProvider)</c> (.NET Core 2.1+); allocates a temporary string on this target.</summary>
+			public static ulong Parse(ReadOnlySpan<char> s, System.Globalization.NumberStyles style, IFormatProvider? provider) => ulong.Parse(s.ToString(), style, provider);
+
+			/// <summary>Mirrors <c>ulong.TryParse(ReadOnlySpan&lt;char&gt;, NumberStyles, IFormatProvider, out ulong)</c> (.NET Core 2.1+); allocates a temporary string on this target.</summary>
+			public static bool TryParse(ReadOnlySpan<char> s, System.Globalization.NumberStyles style, IFormatProvider? provider, out ulong result) => ulong.TryParse(s.ToString(), style, provider, out result);
+
+		}
+
+		extension(System.Net.IPAddress)
+		{
+
+			/// <summary>Mirrors <c>IPAddress.TryParse(ReadOnlySpan&lt;char&gt;, out IPAddress)</c> (.NET Core 3.0+); allocates a temporary string on this target.</summary>
+			public static bool TryParse(ReadOnlySpan<char> ipSpan, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out System.Net.IPAddress? address) => System.Net.IPAddress.TryParse(ipSpan.ToString(), out address);
+
+		}
+
+		#endregion
+
+		#region Collections...
+
+		/// <summary>Mirrors <c>ConcurrentDictionary&lt;K, V&gt;.TryRemove(KeyValuePair&lt;K, V&gt;)</c> (.NET Core 3.0+): removes the entry only if it maps this exact key to this exact value.</summary>
+		public static bool TryRemove<TKey, TValue>(this System.Collections.Concurrent.ConcurrentDictionary<TKey, TValue> self, KeyValuePair<TKey, TValue> item) where TKey : notnull
+			=> ((ICollection<KeyValuePair<TKey, TValue>>) self).Remove(item); // the explicit ICollection implementation has the same "remove this exact pair" semantics
+
+		/// <summary>Mirrors <c>MemoryExtensions.AsSpan(T[], Range)</c> (.NET Core 3.0+).</summary>
+		public static Span<T> AsSpan<T>(this T[]? array, Range range)
+		{
+			var (offset, length) = range.GetOffsetAndLength(array?.Length ?? 0);
+			return array.AsSpan(offset, length);
+		}
+
+		/// <summary>Mirrors <c>MemoryExtensions.Sort(Span&lt;T&gt;, TComparer)</c> (.NET 5+); sorts through a rented temporary array on this target.</summary>
+		public static void Sort<T, TComparer>(this Span<T> span, TComparer comparer) where TComparer : IComparer<T>
+		{
+			if (span.Length <= 1) return;
+			var tmp = System.Buffers.ArrayPool<T>.Shared.Rent(span.Length);
+			span.CopyTo(tmp);
+			Array.Sort(tmp, 0, span.Length, comparer);
+			tmp.AsSpan(0, span.Length).CopyTo(span);
+			System.Buffers.ArrayPool<T>.Shared.Return(tmp, clearArray: RuntimeHelpersCompat.IsReferenceOrContainsReferences<T>());
+		}
+
+		/// <summary>Mirrors <c>MemoryExtensions.LastIndexOfAnyExcept(Span&lt;T&gt;, T)</c> (.NET 8+).</summary>
+		public static int LastIndexOfAnyExcept<T>(this Span<T> span, T value) where T : IEquatable<T>
+			=> LastIndexOfAnyExcept((ReadOnlySpan<T>) span, value);
+
+		/// <summary>Mirrors <c>MemoryExtensions.LastIndexOfAnyExcept(ReadOnlySpan&lt;T&gt;, T)</c> (.NET 8+).</summary>
+		public static int LastIndexOfAnyExcept<T>(this ReadOnlySpan<T> span, T value) where T : IEquatable<T>
+		{
+			for (int i = span.Length - 1; i >= 0; i--)
+			{
+				if (!span[i].Equals(value)) return i;
+			}
+			return -1;
+		}
 
 		#endregion
 

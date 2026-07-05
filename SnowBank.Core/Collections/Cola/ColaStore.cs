@@ -24,8 +24,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is not part of the netstandard2.0 build: COLA store: CollectionsMarshal.AsSpan (in-place), RuntimeHelpers.IsReferenceOrContainsReferences, Span.Sort.
-#if !NETSTANDARD2_0
 
 namespace SnowBank.Collections.CacheOblivious
 {
@@ -979,5 +977,3 @@ namespace SnowBank.Collections.CacheOblivious
 	}
 
 }
-
-#endif

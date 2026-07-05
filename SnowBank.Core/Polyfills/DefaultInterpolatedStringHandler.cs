@@ -154,4 +154,25 @@ namespace System.Runtime.CompilerServices
 
 }
 
+namespace SnowBank.Compat
+{
+	using System.Runtime.CompilerServices;
+
+	/// <summary>Minimal <c>netstandard2.0</c> backport of the interpolated-string overload of <c>string.Create</c>.</summary>
+	public static class StringCreateCompat
+	{
+		extension(string)
+		{
+
+			/// <summary>Creates a new string by using the specified provider to control the formatting of the specified interpolated string.</summary>
+			/// <remarks>Backport of <c>string.Create(IFormatProvider?, ref DefaultInterpolatedStringHandler)</c>: the compiler routes the provider into the handler via <see cref="InterpolatedStringHandlerArgumentAttribute"/>, so the runtime body reduces to <see cref="DefaultInterpolatedStringHandler.ToStringAndClear"/>.</remarks>
+			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+			public static string Create(IFormatProvider? provider, [InterpolatedStringHandlerArgument(nameof(provider))] ref DefaultInterpolatedStringHandler handler)
+				=> handler.ToStringAndClear();
+
+		}
+	}
+
+}
+
 #endif

@@ -24,8 +24,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is not part of the netstandard2.0 build: COLA store: CollectionsMarshal.AsSpan (in-place), RuntimeHelpers.IsReferenceOrContainsReferences, Span.Sort.
-#if !NETSTANDARD2_0
 
 // enables consistency checks after each operation to the set
 //#define ENFORCE_INVARIANTS
@@ -35,6 +33,11 @@ namespace SnowBank.Collections.CacheOblivious
 	using System.Buffers;
 	using System.Runtime.InteropServices;
 	using SnowBank.Buffers;
+#if NETSTANDARD2_0
+	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0 (AsSpan returns a live span over the list's backing array)
+	using MemoryMarshal = SnowBank.Compat.MemoryMarshalCompat; // shim adds CreateReadOnlySpan/CreateSpan/AsRef, absent from netstandard2.0
+	using RuntimeHelpers = SnowBank.Compat.RuntimeHelpersCompat; // shim: IsReferenceOrContainsReferences does not exist on netstandard2.0
+#endif
 
 	/// <summary>Store elements in a list of ordered levels</summary>
 	/// <typeparam name="T">Type of elements stored in the set</typeparam>
@@ -648,7 +651,12 @@ namespace SnowBank.Collections.CacheOblivious
 			else
 			{ // we need to merge one or more levels
 
+#if NETCOREAPP3_0_OR_GREATER
 				MergeCascade(1, m_root, MemoryMarshal.CreateSpan(ref value, 1));
+#else
+				// the portable Span<T> cannot wrap a ref to a single local (the CreateSpan shim only supports types without references): copy the value to a temporary array instead (which allocates)
+				MergeCascade(1, m_root, new[] { value });
+#endif
 				m_root[0] = default!;
 			}
 
@@ -1664,5 +1672,3 @@ namespace SnowBank.Collections.CacheOblivious
 	}
 
 }
-
-#endif
