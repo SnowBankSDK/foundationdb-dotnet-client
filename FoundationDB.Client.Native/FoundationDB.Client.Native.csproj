@@ -20,7 +20,7 @@
 
 	<PropertyGroup>
 		<!-- Override the version here, because it must match the verison of the native dlls, NOT the .NET binding itself! -->
-		<VersionPrefix>7.4.4</VersionPrefix>
+		<VersionPrefix>7.4.4.1</VersionPrefix>
 		<VersionSuffix></VersionSuffix>
 		<AssemblyTitle>Native Client Libraries for FoundationDB</AssemblyTitle>
 		<Description>FoundationDB Native Client libraries for Windows (fdb_c.dll), Linux (libfdb_c.so) and macOS (libfdb_c.dylib).</Description>
@@ -46,8 +46,11 @@
 	</ItemGroup>
 	
 	<ItemGroup Condition="'$(IsPackingSelf)' == 'true'">
-		<!-- Reference FoundationDB.Client via NuGet -->
-		<PackageReference Include="FoundationDB.Client" VersionOverride="[7.3.1,8.0)" />
+		<!-- Reference FoundationDB.Client via NuGet, with the widest compatible range for each target:
+		     this package only adds the native libraries (and a small helper), so it works with much older
+		     versions of the binding. The exception is netstandard2.0, which only exists since 7.4.1. -->
+		<PackageReference Include="FoundationDB.Client" VersionOverride="[7.3.1,8.0)" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
+		<PackageReference Include="FoundationDB.Client" VersionOverride="[7.4.1,8.0)" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
 		<!-- Exclude the other dependencies to prevent them from appearing in the .nuspec -->
 		<!-- How to update: comment all of them, rebuild the package, inspect the .nuspec, and re-add the deps that have appeared (only keep FoundationDB.Client) -->
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" ExcludeAssets="All" />
@@ -55,6 +58,13 @@
 		<PackageReference Include="Microsoft.Extensions.Options" ExcludeAssets="All" />
 		<PackageReference Include="NodaTime" ExcludeAssets="All" />
 		<PackageReference Include="OpenTelemetry.Api" ExcludeAssets="All" />
+		<PackageReference Include="System.IO.Pipelines" ExcludeAssets="All" />
+		<!-- these are pulled by the netstandard2.0 build of FoundationDB.Client/SnowBank.Core -->
+		<PackageReference Include="Microsoft.Bcl.HashCode" ExcludeAssets="All" />
+		<PackageReference Include="System.Collections.Immutable" ExcludeAssets="All" />
+		<PackageReference Include="System.IO.Hashing" ExcludeAssets="All" />
+		<PackageReference Include="System.Memory" ExcludeAssets="All" />
+		<PackageReference Include="System.Threading.Channels" ExcludeAssets="All" />
 	</ItemGroup>
 
 	<!-- Include all the native libraries and tools -->

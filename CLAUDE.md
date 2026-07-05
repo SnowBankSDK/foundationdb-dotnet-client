@@ -29,7 +29,7 @@ dotnet test  FoundationDB.Client.slnx          # run all tests
 ```
 
 - **SDK**: pinned in [`global.json`](global.json) to a **.NET 11 preview** SDK (`rollForward: latestMinor`). `LangVersion` is `preview`.
-- **Target frameworks**: libraries multi-target `net11.0;net10.0;net8.0` (see [`Directory.Build.props`](Directory.Build.props)). Each project builds once per target.
+- **Target frameworks**: libraries multi-target `net11.0;net10.0;net8.0` (see [`Directory.Build.props`](Directory.Build.props)). Each project builds once per target. Several projects **also build a `netstandard2.0` "lite" variant** — see [The netstandard2.0 / net472 "lite" targets](#the-netstandard20--net472-lite-targets) below; keeping it green is part of any change to those projects.
 - **Build output** goes to `artifacts/` (`ArtifactsPath`), not per-project `bin/obj`.
 - **Central package management**: all versions live in [`Directory.Packages.props`](Directory.Packages.props). Add/bump packages there, not in `.csproj` files.
 - **As a submodule**: a parent repo can override targets via `CoreSdkVersions` (or the finer `CoreSdkRuntimeVersions` / `CoreSdkToolsVersions` / `CloudSdkRuntimeVersions`) in its own `Directory.Build.props`. The override import is gated on a `.git` *file* check; bypass with `FDB_BUILD_PROPS_OVERRIDE=1`.
@@ -43,6 +43,21 @@ dotnet test  FoundationDB.Client.slnx          # run all tests
   - ⚠️ Tests write to a dedicated subspace but **can corrupt data** — only point them at a throwaway local cluster.
 - `FoundationDB.FakeDb` provides an in-memory fake for tests that don't want a real cluster.
 - Test classes use the `*Facts` naming convention (e.g. `FdbKeyFacts`, `TuPackFacts`).
+
+### The netstandard2.0 / net472 "lite" targets
+
+`SnowBank.Core`, `FoundationDB.Client`, `FoundationDB.Client.Native`, `FoundationDB.Layers.Common`, and `FoundationDB.FakeDb` **also build for `netstandard2.0`** (gated by `CoreSdkNetStandardEnabled`, default `true`). This is a deliberate stopgap for applications migrating from .NET Framework 4.7.2 to modern .NET: their legacy `main` branch can already consume the modern APIs (`Contract.NotNull`, CrystalJson, `Slice`, `subspace.Key(...)`), which reduces merge pain with their modernized `vnext` branch. The lite build must **run** on the net472 CLR (including the native `fdb_c` interop), not just compile — and it must produce **byte-identical keys/values**: what is written to the database must never depend on the TFM.
+
+**Any change to these projects must keep the `netstandard2.0` target building** (`dotnet build <proj>.csproj -f netstandard2.0`). When code needs something the old BCL lacks:
+
+1. **Missing BCL API with many call sites** → prefer a polyfill in [`SnowBank.Core/Polyfills/`](SnowBank.Core/Polyfills/) so call sites compile unchanged. Public extension polyfills live in the `SnowBank.Compat` namespace (imported via a guarded `global using` in each project's `GlobalUsings.cs`; this includes C# 14 static extension members like `string.Create(provider, $"...")` and `Span<char>.TryWrite($"...")`). Statics that can't be extensions are internal `*Compat` classes redirected per-file: `using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat;` under `#if NETSTANDARD2_0`.
+2. **Point fallback** → `#if`/`#else`/`#endif` with the original implementation FIRST under `#if NETX_0_OR_GREATER` (X = the version that introduced the feature/API), and the fallback in `#else` with a comment on the next line stating what is missing and the cost ("X is not available, doing Y instead (which allocates)").
+3. **Needs runtime support — cannot be polyfilled** (default interface members, `static abstract` interface members, covariant return types, ref fields, `allows ref struct`) → guard the member out, or exclude the whole feature from the lite build (e.g. `FdbValue<TValue, TEncoder>` and `FdbValueCodec.FixedSize`, the FQL `Query/` engine, the JSON source-gen proxies).
+4. **Portable `Span<T>` gotchas**: on netstandard2.0, `Span<T>` cannot wrap raw pointers/refs of types containing references *or pointers* (e.g. `Span<FdbKeyValue>`), and `MemoryMarshal.CreateSpan` shims only support unmanaged types — use direct pointer indexing or a temporary array instead.
+
+**Validation**: `net472` test targets exist on `SnowBank.Core.Tests`, `FoundationDB.Tests`, and `FoundationDB.FakeDb.Tests` (they consume the netstandard2.0 builds and run on the real .NET Framework CLR). Test files covering excluded features are guarded with `#if !NETFRAMEWORK` (or `<Compile Remove>` in the csproj for whole folders). ⚠️ `dotnet test -f net472` hits the VSTest/MTP issue for `FoundationDB.Tests` — run it with the NUnit console runner instead: `~/.nuget/packages/nunit.consolerunner/<version>/tools/nunit3-console.exe artifacts/bin/FoundationDB.Tests/debug_net472/FoundationDB.Tests.dll`. On net472 the fdb test container is driven through the docker CLI (Docker.DotNet cannot run on the netfx CLR); a freshly created test container needs a one-time `docker exec <container> fdbcli --exec "configure new single ssd"`.
+
+Known accepted netfx differences (do not "fix" by changing shared code): doubles may format with 17 digits instead of shortest-roundtrip (`FastDtoa` is excluded), and `IVarTuple` ↔ `ValueTuple`/`ITuple` interop is unavailable (`System.Runtime.CompilerServices.ITuple` is not visible to netstandard2.0).
 
 ## Coding conventions
 
