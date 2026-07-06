@@ -153,6 +153,25 @@ namespace SnowBank.Testing.Framework
 					});
 				}
 
+				// invoke the library-registered completion hooks while the hosts are still up (a typical hook dumps
+				// library-specific state on failure); a throwing hook is reported but can never mask the test outcome
+				if (context.TestCompletedHooks.Count > 0)
+				{
+					var outcome = new DistributedTestOutcome(testContext.Result.FailCount > 0, testContext.Result.FailCount, testContext.AssertCount);
+					using var hookCts = new CancellationTokenSource(5_000);
+					foreach (var hook in context.TestCompletedHooks)
+					{
+						try
+						{
+							hook(context, outcome, hookCts.Token).GetAwaiter().GetResult(); //BUGBUG: await! (same constraint as TearDown below)
+						}
+						catch (Exception e)
+						{
+							context.LogOutputError.Write($"# test-completed hook failed: [{e.GetType().Name}] {e.Message}");
+						}
+					}
+				}
+
 				this.CurrentContext = null;
 				using (var cts = new CancellationTokenSource(5_000))
 				{

@@ -49,10 +49,17 @@ namespace SnowBank.Testing
 	internal static class SimpleTestContractFailureInterceptor
 	{
 
+		/// <summary>Depth of <see cref="SimpleTest.ExpectContractFailure"/> scopes on the current async flow (0 = a contract failure is unexpected and gets logged loudly)</summary>
+		internal static readonly AsyncLocal<int> ExpectedFailures = new();
+
 		static SimpleTestContractFailureInterceptor()
 		{
 			Contract.ContractFailed += ((sender, args) =>
 			{
+				if (ExpectedFailures.Value > 0)
+				{ // the test DELIBERATELY violates a contract (asserting that a precondition throws): stay quiet
+					return;
+				}
 				var st = new StackTrace(skipFrames: 2, fNeedFileInfo: true);
 				SimpleTest.Log($"#!# ContractFailed: {args.FailureKind}, condition=\"{args.Condition}\", message=\"{args.Message}\"{Environment.NewLine}{CleanupStackTrace(st)}");
 				if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
@@ -136,6 +143,32 @@ namespace SnowBank.Testing
 		private long m_testEndTimestamp;
 		private Instant m_testStartInstant;
 		private CancellationTokenSource? m_cts;
+
+		/// <summary>Silences the contract-failure interceptor while the test DELIBERATELY violates a contract (asserting that a precondition throws)</summary>
+		/// <remarks>
+		/// <para>Wrap only the offending assertions: <c>using (ExpectContractFailure()) { Assert.That(() => Foo(null!), Throws.ArgumentNullException); }</c></para>
+		/// <para>Without this, every expected precondition failure echoes a loud <c>#!# ContractFailed</c> line (with a stack trace) into the output of an otherwise green run, training readers to ignore contract failures.</para>
+		/// </remarks>
+		public static IDisposable ExpectContractFailure()
+		{
+			SimpleTestContractFailureInterceptor.ExpectedFailures.Value++;
+			return new ContractFailureExpectation();
+		}
+
+		private sealed class ContractFailureExpectation : IDisposable
+		{
+
+			private int Disposed;
+
+			public void Dispose()
+			{
+				if (Interlocked.Exchange(ref this.Disposed, 1) == 0)
+				{
+					SimpleTestContractFailureInterceptor.ExpectedFailures.Value--;
+				}
+			}
+
+		}
 
 		/// <summary>Clock that is controller by the test infrastructure</summary>
 		public IClock Clock { get; set; } = SystemClock.Instance;
