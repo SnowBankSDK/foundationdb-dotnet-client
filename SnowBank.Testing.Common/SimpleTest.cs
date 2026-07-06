@@ -170,6 +170,31 @@ namespace SnowBank.Testing
 
 		}
 
+		/// <summary>Advances a fake time source in small increments, yielding between steps so that fired timer
+		/// callbacks and their async continuations get a chance to run before virtual time moves further.</summary>
+		/// <param name="provider">The fake, advanceable time source driving the test</param>
+		/// <param name="total">Total amount of virtual time to advance</param>
+		/// <param name="step">Increment per advance (defaults to 250 ms of virtual time; use smaller steps when asserting around fine-grained thresholds)</param>
+		/// <remarks>A single big <c>Advance()</c> fires every due timer INLINE on the calling thread: a callback that
+		/// awaits other virtual events can deadlock, and work scheduled by a fired timer would observe virtual time
+		/// far past its own due time. Stepping with yields keeps the virtual universe causally sane.</remarks>
+		protected static async Task AdvanceAndPump(Microsoft.Extensions.Time.Testing.FakeTimeProvider provider, TimeSpan total, TimeSpan? step = null)
+		{
+			Contract.NotNull(provider);
+			var increment = step ?? TimeSpan.FromMilliseconds(250);
+			if (increment <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(step), "The step must be positive.");
+
+			for (var advanced = TimeSpan.Zero; advanced < total; advanced += increment)
+			{
+				var remaining = total - advanced;
+				provider.Advance(remaining < increment ? remaining : increment);
+
+				// let continuations scheduled by the timers that just fired actually run
+				await Task.Yield();
+				await Task.Delay(1);
+			}
+		}
+
 		/// <summary>Clock that is controller by the test infrastructure</summary>
 		public IClock Clock { get; set; } = SystemClock.Instance;
 

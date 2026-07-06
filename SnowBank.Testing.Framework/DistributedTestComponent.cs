@@ -586,6 +586,9 @@ namespace SnowBank.Testing.Framework
 				services.AddSingleton<IDistributedWebTestComponent>(this);
 				services.AddSingleton(this.GetType(), this);
 				services.AddSingleton<IClock>(testContext.Clock);
+				// the same time source through the TimeProvider facade: when the test installed a dual clock
+				// (e.g. NodaTimeProvider over a FakeTimeProvider), timers/timeouts and Instants advance together
+				services.AddSingleton<TimeProvider>(testContext.Clock as TimeProvider ?? TimeProvider.System);
 				services.AddSingleton<IVirtualNetworkTopology>(testContext.Topology);
 				services.AddSingleton<INetworkMap>((_) => this.NetworkMap);
 				services.AddSingleton<IVirtualNetworkMap>((_) => this.NetworkMap);

@@ -39,6 +39,8 @@
 		<PackageReference Include="Microsoft.Extensions.Logging" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Configuration" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+		<!-- FakeTimeProvider: the advanceable time source for deterministic timeout/timer tests -->
+		<PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
 		<PackageReference Include="NodaTime.Testing" />
 		<PackageReference Include="NUnit" />
 		<PackageReference Include="NUnit.Console" />
