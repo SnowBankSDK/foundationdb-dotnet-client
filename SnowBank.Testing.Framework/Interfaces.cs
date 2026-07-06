@@ -83,7 +83,33 @@ namespace SnowBank.Testing.Framework
 		/// <param name="formatLabel">Optional formatter turning the log message into the journal label; defaults to the message.</param>
 		void RegisterTimelineEvent(string eventName, string category, Func<string?, string>? formatLabel = null);
 
+		/// <summary>Hooks invoked when a test completes (before its hosts are torn down), registered via <see cref="OnTestCompleted"/>.</summary>
+		IReadOnlyList<DistributedTestCompletedHook> TestCompletedHooks { get; }
+
+		/// <summary>Registers a hook invoked when a test completes, BEFORE the hosts are torn down (their services can still be resolved).</summary>
+		/// <remarks>
+		/// <para>This is how a library's test base attaches its own diagnostics to the test lifecycle without this generic
+		/// framework knowing about the library (the lifecycle analog of <see cref="RegisterTimelineEvent"/>): the typical hook
+		/// dumps library-specific state when <see cref="DistributedTestOutcome.Failed"/> is set.</para>
+		/// <para>A hook that throws is reported to the error output but can never mask the outcome of the test itself.</para>
+		/// </remarks>
+		void OnTestCompleted(DistributedTestCompletedHook hook);
+
 	}
+
+	/// <summary>Outcome of a completed distributed test, as seen by a <see cref="DistributedTestCompletedHook"/></summary>
+	/// <param name="Failed">Whether the test failed (at least one assertion failure or error)</param>
+	/// <param name="FailCount">Number of failures reported by the test runner</param>
+	/// <param name="AssertCount">Number of assertions executed by the test</param>
+	[PublicAPI]
+	public readonly record struct DistributedTestOutcome(bool Failed, int FailCount, int AssertCount);
+
+	/// <summary>Hook invoked when a distributed test completes, before its hosts are torn down</summary>
+	/// <param name="context">Live test context: the hosts are still up, so their services can be resolved for a final dump</param>
+	/// <param name="outcome">Outcome of the test (a typical hook only acts when <see cref="DistributedTestOutcome.Failed"/> is set)</param>
+	/// <param name="ct">Token bounding the time budget allowed to the hooks</param>
+	[PublicAPI]
+	public delegate ValueTask DistributedTestCompletedHook(IDistributedTestContext context, DistributedTestOutcome outcome, CancellationToken ct);
 
 	/// <summary>Represents a single network environment</summary>
 	/// <remarks>All test components in this build will share the same "virtual" network</remarks>
@@ -254,6 +280,9 @@ namespace SnowBank.Testing.Framework
 
 		/// <summary>Mappings from a log EventName to a distinct Timeline kind (registered by libraries via the environment builder).</summary>
 		IReadOnlyDictionary<string, TimelineEventRule> TimelineEventRules { get; }
+
+		/// <summary>Hooks invoked when the test completes, before its hosts are torn down (registered by libraries via the environment builder).</summary>
+		IReadOnlyList<DistributedTestCompletedHook> TestCompletedHooks { get; }
 
 		/// <summary>Instant when the test environment was created (but not started)</summary>
 		Instant CreatedAt { get; }

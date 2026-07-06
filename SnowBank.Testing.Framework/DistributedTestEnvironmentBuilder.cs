@@ -102,6 +102,18 @@ namespace SnowBank.Testing.Framework
 			this.TimelineEventRules[eventName] = new() { Category = category, FormatLabel = formatLabel };
 		}
 
+		public List<DistributedTestCompletedHook> TestCompletedHooks { get; } = [ ];
+
+		/// <inheritdoc/>
+		IReadOnlyList<DistributedTestCompletedHook> IDistributedTestEnvironmentBuilder.TestCompletedHooks => this.TestCompletedHooks;
+
+		/// <inheritdoc/>
+		public void OnTestCompleted(DistributedTestCompletedHook hook)
+		{
+			Contract.NotNull(hook);
+			this.TestCompletedHooks.Add(hook);
+		}
+
 		public Dictionary<Type, object> Features { get; } = new();
 
 		/// <inheritdoc/>
