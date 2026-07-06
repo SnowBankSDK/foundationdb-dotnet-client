@@ -148,6 +148,7 @@ namespace SnowBank.Data.Json
 			bool hasExponentSign = false;
 			bool incomplete = true;
 			bool computed = true;
+			bool overflow = false;
 			ulong num = 0;
 			int p = 0;
 			foreach (char c in literal)
@@ -156,7 +157,9 @@ namespace SnowBank.Data.Json
 				if (c is <= '9' and >= '0')
 				{ // digit
 					incomplete = false;
-					num = (num * 10) + (ulong) (c - '0');
+					ulong digit = (ulong) (c - '0');
+					if (num > (ulong.MaxValue - digit) / 10) overflow = true; // no longer fits in a UInt64: fall back to the literal parser below
+					num = (num * 10) + digit;
 					continue;
 				}
 
@@ -225,7 +228,7 @@ namespace SnowBank.Data.Json
 			}
 
 			// if we did not see either a '.' or an 'E', and the number of digits is <= 16, we know that this is a valid integer that has already been computed
-			if (computed)
+			if (computed && !overflow)
 			{
 				if (literal.Length < 4)
 				{
@@ -1170,6 +1173,7 @@ namespace SnowBank.Data.Json
 			bool hasExponentSign = false;
 			bool incomplete = first is < '0' or > '9';
 			bool computed = negative || !incomplete;
+			bool overflow = false;
 			ulong num = incomplete ? 0 : (ulong)(first - '0');
 			while (p < MAX_NUMBER_CHARS)
 			{
@@ -1178,8 +1182,9 @@ namespace SnowBank.Data.Json
 				if ((uint) (c - '0') < 10) // "0" .. "9"
 				{ // digit
 					incomplete = false;
-					num = (num * 10) + (ulong)(c - '0');
-					//REVIEW: fail if more than 17 digits? (ulong.MaxValue) unless we want to handle BigIntegers?
+					ulong digit = (ulong)(c - '0');
+					if (num > (ulong.MaxValue - digit) / 10) overflow = true; // no longer fits in a UInt64: fall back to the literal parser below
+					num = (num * 10) + digit;
 				}
 				else if (CrystalJsonParser.ValidNumberTrailingCharacters.Contains(c))
 				{ // this is a valid end-of-stream character
@@ -1272,7 +1277,7 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			if (computed)
+			if (computed && !overflow)
 			{
 				if (negative)
 				{ // with max 16 digits, there is no risk of overflow due to the negative sign

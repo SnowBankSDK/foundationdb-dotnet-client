@@ -1883,11 +1883,14 @@ namespace SnowBank.Data.Json
 		[Pure]
 		internal static JsonNumber Parse(decimal value, ReadOnlySpan<char> literal, string? original)
 		{
-			// first try to coerce to a smaller integer
-			long l = (long) value;
-			if (l == value)
-			{ // we can probably use a cached number for this
-				return ParseSigned(l, literal, original);
+			// first try to coerce to a smaller integer (only within Int64 range: a decimal->long cast throws if it overflows)
+			if (value is >= long.MinValue and <= long.MaxValue)
+			{
+				long l = (long) value;
+				if (l == value)
+				{ // we can probably use a cached number for this
+					return ParseSigned(l, literal, original);
+				}
 			}
 
 			return new JsonNumber(new Number(value), Kind.Decimal, original ?? (literal.Length > 0 ? literal.ToString() : null));
