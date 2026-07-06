@@ -92,6 +92,14 @@ namespace FdbTop
 
 				SetTitle("fdbtop");
 
+				// prefer the fdb_c library that is bundled with the tool (either next to the executable, or under runtimes/{rid}/native/ when running from source);
+				// if none is found, fall back to the operating system mechanism for locating a system-installed client library.
+				var (nativeLibraryPath, _, _, _) = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
+				if (nativeLibraryPath != null)
+				{
+					Fdb.Options.SetNativeLibPath(nativeLibraryPath);
+				}
+
 				Fdb.Start(620);
 				using (var go = new CancellationTokenSource())
 				{

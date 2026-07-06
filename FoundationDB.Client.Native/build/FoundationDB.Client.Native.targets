@@ -81,8 +81,8 @@ Copyright (c) 2023-2026 SnowBank SAS
 		/>
 	</ItemGroup>
 
-	<!-- Include these files when packing has well -->
-	<ItemGroup Condition="'$(_IsPacking)' == 'true'">
+	<!-- Include these files when packing as well (except for tools: each RID-specific tool sub-package only bundles its own native library, copied next to the executable by the publish targets below) -->
+	<ItemGroup Condition="'$(_IsPacking)' == 'true' and '$(PackAsTool)' != 'true'">
 		<None Include="@(FdbPortableNativeLibraries)" Pack="true" PackagePath="runtimes/" />
 	</ItemGroup>
 	
@@ -133,7 +133,12 @@ Copyright (c) 2023-2026 SnowBank SAS
 
 	<!-- Target-Specific Publish: copy only the files under runtimes/{rid}/native/... to the root of the publishing destination -->
 	<Target Name="FdbCopyPlatformNative74LibrariesToPublish" AfterTargets="Publish" Condition="'$(FdbAllowMultipleVersions)' != 'true' and '$(FdbIsPortableBuild)' != 'true' and '$(FdbIsSourceProjectReference)' == 'true'">
-		
+
+		<!-- A tool package without its native library would not be standalone: fail the pack instead of producing a broken package -->
+		<Error
+			Condition="'$(PackAsTool)' == 'true' and '$(_IsPacking)' == 'true' and @(FdbPlatformNativeLibraries->Count()) == 0"
+			Text="The FoundationDB native client library for '$(FdbTargetRuntimeIdentifier)' was not found under '$(FdbPathToRuntimeFolder)'. Run FoundationDB.Client.Native/DownloadBinaries.ps1 first, or set DISABLE_NATIVE_PACKAGE=true to skip packing the tools." />
+
 		<Message Text="FdbCopyPlatformNativeLibrariesToPublish: Fw=$(TargetFramework), Rid=$(FdbTargetRuntimeIdentifier), IsPortable=$(FdbIsPortableBuild), IsFromSource=$(FdbIsSourceProjectReference), ThisDir=$(MSBuildThisFileDirectory)" Importance="low"/>
 		<Message Text="Copying FDB Client @(FdbNativeVersion) Native Library for target '$(FdbTargetRuntimeIdentifier)' to publish folder -> $(PublishDir)" Importance="high"/>
 

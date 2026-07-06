@@ -2,7 +2,8 @@
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
-		<TargetFrameworks>$(CoreSdkToolsVersions)</TargetFrameworks>
+		<!-- Track the frameworks of the SnowBank.Shell library under test (CoreSdkToolsVersions is now single-TFM, for the packed tools only) -->
+		<TargetFrameworks>$(CloudSdkRuntimeVersions)</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>

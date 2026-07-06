@@ -11,8 +11,17 @@
 		<SignAssembly>true</SignAssembly>
 		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>
 		<AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-		<PublishSingleFile Condition="'$(PublishSingleFile)' == '' AND '$(_IsPublishing)' == 'true'">true</PublishSingleFile>
-		<PublishTrimmed Condition="'$(PublishTrimmed)' == '' AND '$(_IsPublishing)' == 'true'">true</PublishTrimmed>
+		<RollForward>Major</RollForward>
+		<!-- Pack as a platform-specific tool: one sub-package per RID (with only that platform's fdb_c) plus a top-level manifest package; requires the .NET 10+ SDK to install -->
+		<RuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-arm64</RuntimeIdentifiers>
+		<!-- The tool sub-packages are framework-dependent: the .NET 10+ SDK is required to install/run them anyway, and bundling the runtime would triple the size of each package (can still be overridden by publishing as self-contained from the command line) -->
+		<SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+		<!-- Publish as a single-file executable, both for 'dotnet publish -r <rid>' and for the per-RID inner publish performed when packing the tool (the bundled fdb_c native library stays next to the executable) -->
+		<PublishSingleFile Condition="'$(PublishSingleFile)' == '' AND ('$(_IsPublishing)' == 'true' OR '$(RuntimeIdentifier)' != '')">true</PublishSingleFile>
+		<!-- Trimming is only possible when explicitly publishing as self-contained -->
+		<PublishTrimmed Condition="'$(PublishTrimmed)' == '' AND '$(_IsPublishing)' == 'true' AND '$(SelfContained)' == 'true'">true</PublishTrimmed>
+		<!-- Do not ship the XML documentation of the referenced libraries with the tool -->
+		<PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
 		<TrimmerRootAssembly>FoundationDB.Client</TrimmerRootAssembly>
 		<Deterministic>true</Deterministic>
 	</PropertyGroup>
@@ -27,6 +36,11 @@
 		<PackageIcon>foundationdb.png</PackageIcon>
 		<PackAsTool>true</PackAsTool>
 		<ToolCommandName>fdbshell</ToolCommandName>
+	</PropertyGroup>
+
+	<!-- Packing the tool requires the pre-downloaded fdb_c native libraries, which may not be possible in all CI (same convention as FoundationDB.Client.Native) -->
+	<PropertyGroup Condition="'$(DISABLE_NATIVE_PACKAGE)' == 'true'">
+		<IsPackable>false</IsPackable>
 	</PropertyGroup>
 
 	<ItemGroup>
