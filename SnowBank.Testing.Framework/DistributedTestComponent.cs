@@ -710,7 +710,9 @@ namespace SnowBank.Testing.Framework
 									Category = "LOG",
 									Label = s,
 									Level = msg.Level,
-									Failed = msg.Level >= LogLevel.Warning,
+									// Failed drives the "!!" (error) gutter in the journal: reserve it for errors;
+									// a plain warning gets its own "! " gutter from the Level column
+									Failed = msg.Level >= LogLevel.Error,
 								});
 							}
 						};
