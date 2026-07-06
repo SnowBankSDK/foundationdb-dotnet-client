@@ -210,6 +210,15 @@ namespace SnowBank.Data.Json.Binary
 				// les données démarrent juste après les children
 				if ((uint) index >= numEntries) throw ThrowHelper.ArgumentOutOfRangeIndex(index);
 
+				// Ensure the JEntries table (numEntries * 4 bytes, after the 4-byte header) actually fits inside the
+				// container span. GetJsonbOffset() reads table entries via unchecked pointer math, so an untrusted
+				// count that overruns the buffer must be rejected here rather than reading out of bounds.
+				// (long math: numEntries can be up to ~2^29, so the sum could overflow a 32-bit int)
+				if ((long) this.Data.Length < JCONTAINER_CHILDREN_OFFSET + (long) numEntries * JENTRY_SIZEOF)
+				{
+					throw ThrowHelper.FormatException($"Malformed jsonb container: the entries table for {numEntries} element(s) does not fit in the {this.Data.Length}-byte container.");
+				}
+
 				int offset = GetJsonbOffset(index);
 				int len = GetJsonbLength(index, offset);
 
