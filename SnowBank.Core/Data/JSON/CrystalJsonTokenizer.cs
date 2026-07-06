@@ -168,6 +168,19 @@ namespace SnowBank.Data.Json
 
 		internal bool HasReadNextToken() => this.Token != EMPTY_TOKEN;
 
+		/// <summary>Reads the next Unicode code point from the stream, without collapsing it into a <see cref="char"/>.</summary>
+		/// <returns>Next code point (which may be greater than <c>0xFFFF</c>), or <see langword="-1"/> at the end of the stream.</returns>
+		/// <remarks>Unlike <see cref="ReadOne"/>, this preserves the end-of-stream marker (<c>-1</c>) and characters outside the BMP, so a genuine <c>U+FFFF</c> is not confused with the end of the stream and astral characters are not truncated.</remarks>
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal int ReadOneCodePoint()
+		{
+			int c = this.Source.Read();
+#if ENABLE_SOURCE_POSITION
+			UpdateSourcePosition((char) c);
+#endif
+			return c;
+		}
+
 		/// <summary>Reads the next character from the stream</summary>
 		/// <returns>Next character, of <see langword="-1"/> if there are no more characters to read.</returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]

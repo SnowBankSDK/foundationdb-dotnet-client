@@ -1067,7 +1067,9 @@ namespace SnowBank.Data.Json
 
 			while (true)
 			{
-				char c = reader.ReadOne();
+				// read a full Unicode code point: this may be greater than 0xFFFF (outside the BMP), or -1 at the end of the stream.
+				// note: reading a raw code point (instead of a char) is what allows a genuine U+FFFF to be told apart from EOF.
+				int c = reader.ReadOneCodePoint();
 
 				// From most frequent to less frequent:
 				// > letters
@@ -1078,15 +1080,24 @@ namespace SnowBank.Data.Json
 
 				if (c == '"') break; // must be evaluated BEFORE parsing '\"'
 				if (c == '\\')
-				{ // decode the escaped character
+				{ // decode the escaped character (always within the BMP)
 					c = ParseEscapedCharacter(ref reader);
 				}
-				if (c == CrystalJsonParser.EndOfStream)
+				else if (c < 0)
 				{
 					throw reader.FailUnexpectedEndOfStream("String is incomplete");
 				}
 
-				sb.Add(c);
+				if (c <= 0xFFFF)
+				{
+					sb.Add((char) c);
+				}
+				else
+				{ // encode the astral code point as a UTF-16 surrogate pair
+					int v = c - 0x10000;
+					sb.Add((char) (0xD800 | (v >> 10)));
+					sb.Add((char) (0xDC00 | (v & 0x3FF)));
+				}
 			}
 
 			if (sb.Count == 0)

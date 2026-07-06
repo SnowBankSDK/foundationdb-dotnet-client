@@ -79,8 +79,9 @@ namespace SnowBank.Data.Json
 				throw ErrorBufferContainsMalformedUtf8Character();
 			}
 			this.Cursor = cursor + len;
-			return (int) cp;
 
+			// note: we need to convert from the uint value, otherwise \uFFFF will be returned as -1 (instead of 65535), and confused for the EOF marker
+			return (int) cp.Value;
 		}
 
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
