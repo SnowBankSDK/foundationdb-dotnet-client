@@ -168,6 +168,28 @@ The surface (in `SnowBank.Testing.Framework`):
 
 Keep these registrations in the **consuming repo's** test code (next to the producing library), never hard-coded in this generic framework.
 
+## Keeping green runs quiet: expected contract failures
+
+The harness installs a global `Contract.ContractFailed` interceptor: any contract violation prints a loud
+`#!# ContractFailed: ...` line (with a cleaned-up stack trace) into the test output, and breaks into the debugger when
+one is attached. That is deliberate — an UNexpected contract failure is almost always a bug worth loud reporting.
+
+But a test that *deliberately* violates a precondition (asserting that an API rejects bad arguments) would echo that
+same loud line into every green run — noise that trains readers (and agents grepping the output for failures) to ignore
+contract failures entirely. Wrap ONLY the offending assertions in `SimpleTest.ExpectContractFailure()`:
+
+```csharp
+using (ExpectContractFailure())
+{ // these deliberately violate preconditions: keep the contract interceptor quiet
+	Assert.That(() => builder.Get(default!), Throws.InstanceOf<ArgumentNullException>());
+	Assert.That(() => builder.GetDescriptor(-1), Throws.InstanceOf<ArgumentOutOfRangeException>());
+}
+```
+
+The scope is `AsyncLocal`-based: it flows into the assertion lambdas, nests correctly, and does not leak into tests
+running in parallel. Rule of thumb: **if a green run of your suite prints `#!# ContractFailed`, a negative test is
+missing this scope** — grep the output for `#!#` after adding precondition tests.
+
 ## Gotchas / current limitations
 
 - **`TimelineRenderOptions` (`ShowDetails` / `ShowStartup`) is wired but unused** — `DumpReport` always renders with `Default`. Don't rely on it yet (`//TODO` in `Timeline.cs`).
