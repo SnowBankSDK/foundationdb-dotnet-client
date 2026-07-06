@@ -1234,7 +1234,16 @@ namespace SnowBank.Data.Json
 			try
 			{
 				tokenizer = new CrystalJsonTokenizer<TReader>(source, settings ?? CrystalJsonSettings.Json);
-				return CrystalJsonParser<TReader>.ParseJsonValue(ref tokenizer) ?? JsonNull.Missing;
+				var value = CrystalJsonParser<TReader>.ParseJsonValue(ref tokenizer) ?? JsonNull.Missing;
+				if (!tokenizer.Settings.AllowTrailingData)
+				{ // the buffer must contain a single JSON document: reject any extra non-whitespace content (use ParseFragment or the streaming reader to consume multiple fragments)
+					char extra = tokenizer.ReadNextToken();
+					if (extra != CrystalJsonParser.EndOfStream)
+					{
+						throw tokenizer.FailInvalidSyntax($"Unexpected content after the end of the JSON document: '{extra}'");
+					}
+				}
+				return value;
 			}
 			finally
 			{

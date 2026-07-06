@@ -140,6 +140,9 @@ namespace SnowBank.Data.Json
 			StringInterning_IncludeValues = 0x3000,
 			StringInterning_Mask = 0x3000, // all bits set
 
+			// Parsing
+			AllowTrailingData = 0x4000,
+
 			// Target Enum
 			Target_Json = 0x00000,
 			Target_JavaScript = 0x10000,
@@ -411,6 +414,21 @@ namespace SnowBank.Data.Json
 		private static OptionFlags SetDenyComments(OptionFlags flags, bool value)
 			=> value ? flags | OptionFlags.DoNotAllowComments : flags & ~OptionFlags.DoNotAllowComments;
 
+		/// <summary>Specifies whether extra non-whitespace content after the top-level JSON value is tolerated while parsing.</summary>
+		/// <remarks>
+		/// <para>By default (<see langword="false"/>), any content following the first complete value (a second document, or trailing garbage) is a syntax error.</para>
+		/// <para>Enable this (via <see cref="WithTrailingData"/>) to parse only the first value and ignore the rest. To consume consecutive fragments from a buffer, prefer <see cref="CrystalJson.ParseFragment"/> or the streaming reader instead. This only impacts deserialization.</para>
+		/// </remarks>
+		public bool AllowTrailingData
+		{
+			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+			get => (m_flags & OptionFlags.AllowTrailingData) != 0;
+		}
+
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static OptionFlags SetAllowTrailingData(OptionFlags flags, bool value)
+			=> value ? flags | OptionFlags.AllowTrailingData : flags & ~OptionFlags.AllowTrailingData;
+
 		/// <summary>If <see langword="true"/>, overwrite any duplicate field in an object, by keeping only the last value. If <see langword="false"/>, throws an exception in case of duplicates</summary>
 		/// <remarks><para>Please note that is <see cref="IgnoreCaseForNames"/> is set, this will also include casing (ex: "userId" and "UserId" would be considered duplicates)</para></remarks>
 		public bool OverwriteDuplicateFields
@@ -627,6 +645,15 @@ namespace SnowBank.Data.Json
 		/// <summary>Reject JavaScript-style comments (<c>// ...</c> and <c>/* ... */</c>), which will be considered as syntax errors</summary>
 		[Pure]
 		public CrystalJsonSettings WithoutComments() => Update(SetDenyComments(m_flags, true));
+
+		/// <summary>Tolerate extra content after the top-level JSON value (parse only the first value and ignore the rest)</summary>
+		/// <remarks>To consume consecutive fragments from a buffer, prefer <see cref="CrystalJson.ParseFragment"/> or the streaming reader.</remarks>
+		[Pure]
+		public CrystalJsonSettings WithTrailingData() => Update(SetAllowTrailingData(m_flags, true));
+
+		/// <summary>Reject any content after the top-level JSON value as a syntax error (default)</summary>
+		[Pure]
+		public CrystalJsonSettings WithoutTrailingData() => Update(SetAllowTrailingData(m_flags, false));
 
 		/// <summary>If an object has duplicate field names, only the last value will be kept (default)</summary>
 		[Pure]
