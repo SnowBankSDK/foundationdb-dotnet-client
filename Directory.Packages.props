@@ -165,4 +165,27 @@
     <PackageVersion Include="System.Threading.Channels" Version="10.0.9" />
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.9" />
   </ItemGroup>
+  <!-- netstandard2.0 (.NET Framework 4.7.2) compatibility: push the floors down as far as possible.
+       ns2.0 also matches the "net8 or lower" group above (10.0.9); these Update entries override it down
+       to net472-friendly LTS versions. The high-floor APIs (FrozenDictionary, Activity.AddException,
+       ChannelReader.ReadAllAsync) are polyfilled in SnowBank.Core/Polyfills so the packages need not be raised;
+       XxHash128 is already #if NET7_0_OR_GREATER. Applies repo-wide (SnowBank.Core, FoundationDB.Client, ...). -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageVersion Update="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
+    <PackageVersion Update="Microsoft.Extensions.Logging.Abstractions" Version="6.0.0" />
+    <PackageVersion Update="Microsoft.Extensions.Options" Version="8.0.0" />
+    <PackageVersion Update="System.Collections.Immutable" Version="8.0.0" />
+    <PackageVersion Update="System.IO.Hashing" Version="8.0.0" />
+    <!-- SourceLink is build-only; its 10.x transitively pins System.IO.Hashing>=10.0.8. Lower it on ns2.0 so it does not force the runtime Hashing floor up. -->
+    <PackageVersion Update="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <PackageVersion Update="System.IO.Pipelines" Version="6.0.0" />
+    <PackageVersion Update="System.Threading.Channels" Version="6.0.0" />
+    <!-- ns2.0-only packages (in-box / SDK-provided on modern targets, so absent from the other groups) -->
+    <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+    <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="8.0.0" />
+    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.6.3" />
+    <PackageVersion Include="System.Text.Encodings.Web" Version="6.0.0" />
+    <PackageVersion Include="Portable.System.DateTimeOnly" Version="9.0.1" />
+    <PackageVersion Include="System.ComponentModel.Annotations" Version="5.0.0" />
+  </ItemGroup>
 </Project>

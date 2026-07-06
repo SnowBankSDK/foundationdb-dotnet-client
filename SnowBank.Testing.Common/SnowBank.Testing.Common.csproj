@@ -62,7 +62,7 @@
 		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
 		<PackageReference Include="PolySharp" PrivateAssets="all" />
 		<!-- must match the version required by the Microsoft.Extensions.* 10.x packages resolved for this target -->
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="10.0.9" />
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -65,6 +65,8 @@
 		<PackageReference Include="System.IO.Hashing" ExcludeAssets="All" />
 		<PackageReference Include="System.Memory" ExcludeAssets="All" />
 		<PackageReference Include="System.Threading.Channels" ExcludeAssets="All" />
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" ExcludeAssets="All" />
+		<PackageReference Include="System.Diagnostics.DiagnosticSource" ExcludeAssets="All" />
 	</ItemGroup>
 
 	<!-- Include all the native libraries and tools -->

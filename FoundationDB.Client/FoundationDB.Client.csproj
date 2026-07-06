@@ -69,13 +69,13 @@
 		<!-- FdbRangeQuery.ToImmutableArrayAsync -->
 		<PackageReference Include="System.Collections.Immutable" />
 		<!-- ValueTask / ValueTask<T> for netstandard2.0 -->
-		<PackageReference Include="System.Threading.Tasks.Extensions" VersionOverride="4.6.3" />
+		<PackageReference Include="System.Threading.Tasks.Extensions" />
 		<!-- Channel<T> used by the transaction log exporter -->
 		<PackageReference Include="System.Threading.Channels" />
 		<!-- IAsyncDisposable / IAsyncEnumerable for netstandard2.0; must match the version required by the Microsoft.Extensions.* 10.x packages above (MSB3277 otherwise) -->
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="10.0.9" />
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
 		<!-- ActivitySource + Meter/Counter/Histogram used by FdbClientInstrumentation (in-box on modern targets) -->
-		<PackageReference Include="System.Diagnostics.DiagnosticSource" VersionOverride="10.0.9" />
+		<PackageReference Include="System.Diagnostics.DiagnosticSource" />
 	</ItemGroup>
 	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
 		<!-- SnowBank.Core's compat shims for BCL statics that cannot be polyfilled as extension methods

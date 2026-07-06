@@ -54,9 +54,9 @@
 		<!-- Source-generates the compiler-required polyfill attributes/types -->
 		<PackageReference Include="PolySharp" PrivateAssets="all" />
 		<!-- ValueTask / ValueTask<T> for netstandard2.0 -->
-		<PackageReference Include="System.Threading.Tasks.Extensions" VersionOverride="4.6.3" />
+		<PackageReference Include="System.Threading.Tasks.Extensions" />
 		<!-- IAsyncDisposable / IAsyncEnumerable for netstandard2.0 -->
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="10.0.9" />
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -60,29 +60,30 @@
 		<!-- Span<T> / Memory<T> / ReadOnlySpan<T> for netstandard2.0 -->
 		<PackageReference Include="System.Memory" />
 		<!-- Source-generates the compiler-required polyfill attributes/types
-		     (CallerArgumentExpression, StackTraceHidden, DoesNotReturn, nullable attrs, IsExternalInit, ...) -->
+		     (CallerArgumentExpression, EnumeratorCancellation, DoesNotReturn, nullable attrs, IsExternalInit, ...) -->
 		<PackageReference Include="PolySharp" PrivateAssets="all" />
 		<!-- System.HashCode for netstandard2.0 -->
 		<PackageReference Include="Microsoft.Bcl.HashCode" />
 		<!-- NodaTime types (Instant/ZonedDateTime/...) used by the CrystalJson converters -->
 		<PackageReference Include="NodaTime" />
-		<!-- FrozenDictionary + ImmutableArray: the package ships System.Collections.Frozen for netstandard2.0 -->
+		<!-- ImmutableArray (FrozenDictionary is polyfilled locally on this target -> no 8.0 floor) -->
 		<PackageReference Include="System.Collections.Immutable" />
 		<!-- ValueTask / ValueTask<T> for netstandard2.0 -->
-		<PackageReference Include="System.Threading.Tasks.Extensions" VersionOverride="4.6.3" />
+		<PackageReference Include="System.Threading.Tasks.Extensions" />
 		<!-- PipeReader/PipeWriter: restores the Slice pipe helpers -->
 		<PackageReference Include="System.IO.Pipelines" />
-		<!-- XxHash32/64/128: restores the XxHashExtensions helpers -->
+		<!-- XxHash32/64 (XxHash128 is #if NET7_0_OR_GREATER, excluded on this target) -->
 		<PackageReference Include="System.IO.Hashing" />
-		<!-- IAsyncDisposable / IAsyncEnumerable for netstandard2.0; must match the version required by the Microsoft.Extensions.* 10.x packages above (MSB3277 otherwise) -->
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" VersionOverride="10.0.9" />
-		<!-- System.DateOnly / System.TimeOnly for netstandard2.0 (community package; type-forwards to the real BCL types on net6+) -->
-		<PackageReference Include="Portable.System.DateTimeOnly" VersionOverride="9.0.1" />
+		<!-- IAsyncDisposable / IAsyncEnumerable for netstandard2.0 -->
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
+		<!-- Activity / ActivitySource for netstandard2.0 (Activity.AddException is polyfilled locally) -->
+		<PackageReference Include="System.Diagnostics.DiagnosticSource" />
+		<!-- System.DateOnly / System.TimeOnly for netstandard2.0 (type-forwards to the real BCL types on net6+) -->
+		<PackageReference Include="Portable.System.DateTimeOnly" />
 		<!-- System.ComponentModel.DataAnnotations attributes ([Key], ...) for netstandard2.0 -->
-		<PackageReference Include="System.ComponentModel.Annotations" VersionOverride="5.0.0" />
+		<PackageReference Include="System.ComponentModel.Annotations" />
 		<!-- UrlEncoder & friends for netstandard2.0 (in-box on modern targets) -->
-		<PackageReference Include="System.Text.Encodings.Web" VersionOverride="10.0.9" />
-
+		<PackageReference Include="System.Text.Encodings.Web" />
 	</ItemGroup>
 
 	<!-- The parts of the library that are NOT available on netstandard2.0 (ref fields, static abstract
