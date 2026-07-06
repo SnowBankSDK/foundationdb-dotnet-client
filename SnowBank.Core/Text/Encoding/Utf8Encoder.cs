@@ -356,6 +356,26 @@ namespace SnowBank.Text
 			}
 		}
 
+		/// <summary>Tests whether a decoded code point is well-formed: within range, not a surrogate, and encoded using the shortest possible form (i.e. not an overlong encoding).</summary>
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static bool IsWellFormedCodePoint(uint codePoint, int length)
+		{
+			// surrogates (U+D800..U+DFFF) and code points above U+10FFFF are never valid in UTF-8
+			if (codePoint > 0x10FFFFu || (codePoint >= 0xD800u && codePoint <= 0xDFFFu))
+			{
+				return false;
+			}
+			// a code point must use the fewest possible bytes: reject overlong encodings (e.g. C0 AF for '/')
+			return length switch
+			{
+				1 => codePoint <= 0x7Fu,
+				2 => codePoint >= 0x80u,
+				3 => codePoint >= 0x800u,
+				4 => codePoint >= 0x10000u,
+				_ => false,
+			};
+		}
+
 		[Pure]
 		public static bool TryDecodeCodePoint(byte[] buffer, int offset, int count, out UnicodeCodePoint codePoint, out int length)
 		{
@@ -374,6 +394,12 @@ namespace SnowBank.Text
 					return false;
 				}
 			}
+			if (!IsWellFormedCodePoint(codePoint.Value, length))
+			{ // overlong encoding, surrogate, or out of range
+				codePoint = default(UnicodeCodePoint);
+				length = 0;
+				return false;
+			}
 			return true;
 		}
 
@@ -390,6 +416,12 @@ namespace SnowBank.Text
 				{
 					return false;
 				}
+			}
+			if (!IsWellFormedCodePoint(codePoint.Value, length))
+			{ // overlong encoding, surrogate, or out of range
+				codePoint = default;
+				length = 0;
+				return false;
 			}
 			return true;
 		}
