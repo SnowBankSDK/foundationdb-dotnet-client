@@ -126,6 +126,13 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Add a new test component to the current virtual network</summary>
 		IDistributedTestComponent RegisterComponent(IDistributedTestComponent component);
 
+		/// <summary>Declares a virtual load balancer on this network: a public endpoint (<paramref name="alias"/>) that routes each incoming connection to one of several backend hosts, under full test control</summary>
+		/// <param name="id">Identifier of the balancer (e.g. <c>"CLUSTER"</c>), used to retrieve it later via the topology</param>
+		/// <param name="alias">Public name the clients connect to (e.g. <c>"cluster.lan.simulated"</c>)</param>
+		/// <param name="backends">Ids of the backend hosts (they may be declared later in the setup; resolution is lazy)</param>
+		/// <remarks>Routing is deterministic and test-driven: see <see cref="VirtualLoadBalancer.Route"/>, <see cref="VirtualLoadBalancer.ForceNextTarget"/> and <see cref="VirtualLoadBalancer.UseSelector"/>.</remarks>
+		VirtualLoadBalancer WithLoadBalancer(string id, string alias, params string[] backends);
+
 	}
 
 	/// <summary>Container for a global Test Knob</summary>

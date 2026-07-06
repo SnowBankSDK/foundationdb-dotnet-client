@@ -57,6 +57,9 @@ namespace SnowBank.Testing.Framework
 		/// <inheritdoc/>
 		public IDistributedTestComponent RegisterComponent(IDistributedTestComponent component) => this.Parent.RegisterComponent(component);
 
+		/// <inheritdoc/>
+		public VirtualLoadBalancer WithLoadBalancer(string id, string alias, params string[] backends) => this.Parent.Topology.RegisterLoadBalancer(id, alias, backends);
+
 	}
 
 }

@@ -258,6 +258,77 @@ namespace SnowBank.Networking
 		/// <summary>Names registered via <see cref="SetAlias"/> (mutable VIPs), distinguished from the hosts' own immutable keys</summary>
 		private HashSet<string> DynamicAliases { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+		/// <summary>Virtual load balancers registered on this topology, by id</summary>
+		private Dictionary<string, VirtualLoadBalancer> LoadBalancersById { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+		/// <summary>Virtual load balancers registered on this topology, by their public alias</summary>
+		private Dictionary<string, VirtualLoadBalancer> LoadBalancersByAlias { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+		/// <summary>Registers a virtual load balancer: a public alias that routes each incoming connection to one of several backend hosts, under full test control</summary>
+		/// <param name="id">Identifier of the balancer (e.g. <c>"CLUSTER"</c>)</param>
+		/// <param name="alias">Public name the clients connect to (e.g. <c>"cluster.lan.simulated"</c>); must not be the name of a real host</param>
+		/// <param name="backends">Ids of the backend hosts; they may be registered LATER in the setup (resolution is lazy)</param>
+		public VirtualLoadBalancer RegisterLoadBalancer(string id, string alias, string[] backends)
+		{
+			Contract.NotNullOrEmpty(id);
+			Contract.NotNullOrEmpty(alias);
+			Contract.NotNullOrEmpty(backends);
+
+			using (this.Lock.GetWriteLock())
+			{
+				if (this.LoadBalancersById.ContainsKey(id))
+				{
+					throw new ArgumentException($"There is already a load balancer with id '{id}' on this network", nameof(id));
+				}
+				if (this.HostsByNameOrAddress.ContainsKey(alias) || this.LoadBalancersByAlias.ContainsKey(alias))
+				{
+					throw new ArgumentException($"Cannot register load balancer alias '{alias}': this name is already taken", nameof(alias));
+				}
+
+				var lb = new VirtualLoadBalancer(id, alias, backends);
+				this.LoadBalancersById.Add(id, lb);
+				this.LoadBalancersByAlias.Add(alias, lb);
+				return lb;
+			}
+		}
+
+		/// <summary>Gets a registered virtual load balancer, given its identifier</summary>
+		public VirtualLoadBalancer GetLoadBalancer(string id)
+		{
+			using (this.Lock.GetReadLock())
+			{
+				return this.LoadBalancersById.TryGetValue(id, out var lb) ? lb : throw new InvalidOperationException($"There is no load balancer with id '{id}' on this network");
+			}
+		}
+
+		/// <summary>Resolves a load-balanced alias into the backend host that must serve a connection from the given source</summary>
+		/// <param name="alias">Name being resolved (only matches if it is a registered balancer alias)</param>
+		/// <param name="sourceHostId">Id of the connecting host, or <c>null</c> when unknown</param>
+		/// <param name="host">Receives the backend host chosen by the balancer's routing rules</param>
+		/// <returns><c>true</c> if the name is a balancer alias (the connection must go to <paramref name="host"/>); <c>false</c> if it is not (fall through to the regular name resolution)</returns>
+		internal bool TryResolveLoadBalancer(string alias, string? sourceHostId, [MaybeNullWhen(false)] out SimulatedHost host)
+		{
+			VirtualLoadBalancer? lb;
+			using (this.Lock.GetReadLock())
+			{
+				if (!this.LoadBalancersByAlias.TryGetValue(alias, out lb))
+				{
+					host = null;
+					return false;
+				}
+			}
+
+			var target = lb.ResolveTarget(sourceHostId);
+			using (this.Lock.GetReadLock())
+			{
+				if (!this.HostsById.TryGetValue(target, out host))
+				{
+					throw new InvalidOperationException($"Load balancer '{lb.Id}' routed '{sourceHostId ?? "?"}' to backend '{target}', but no such host is registered (yet?)");
+				}
+			}
+			return true;
+		}
+
 		/// <summary>Registers (or re-points) a mutable alias - a virtual VIP - that resolves to the given host</summary>
 		/// <param name="alias">Name the clients connect to (e.g. <c>"cluster.lan.simulated"</c>); must not be the name of a real host</param>
 		/// <param name="hostId">Id of the host that the alias resolves to FROM NOW ON</param>

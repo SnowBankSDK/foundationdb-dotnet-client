@@ -85,6 +85,12 @@ namespace SnowBank.Networking
 				}
 			}
 
+			// a load-balanced alias resolves per SOURCE host (this map's owner), so a test can pin each client to a backend
+			if (this.Topology.TryResolveLoadBalancer(hostOrAddress, this.Host.Id, out var balanced))
+			{
+				return balanced;
+			}
+
 			if (!this.Topology.HostsByNameOrAddress.TryGetValue(hostOrAddress, out var hostId))
 			{
 #if DEBUG
