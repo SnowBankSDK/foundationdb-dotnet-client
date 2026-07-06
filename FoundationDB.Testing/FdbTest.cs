@@ -600,6 +600,24 @@ namespace FoundationDB.Client.Tests
 
 		protected IServiceProvider GetServices() => this.LocalServices ?? ConfigureServices();
 
+		/// <inheritdoc />
+		protected override void OnAfterEachTest()
+		{
+			base.OnAfterEachTest();
+
+			// the local services are scoped to a single test method, and must be discarded so that the next test can configure its own
+			var provider = this.LocalServices;
+			if (provider is not null)
+			{
+				this.LocalServices = null;
+				if (provider is IAsyncDisposable disposable)
+				{
+					//HACKHACK: this could block the thread!
+					disposable.DisposeAsync().GetAwaiter().GetResult();
+				}
+			}
+		}
+
 		protected T GetRequiredService<T>() where T : notnull => GetServices().GetRequiredService<T>();
 
 		/// <summary>Return the database provider for this test</summary>
