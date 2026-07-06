@@ -149,7 +149,7 @@ namespace SnowBank.Buffers
 		public readonly bool TryPeekInt16(out short value)
 		{
 			int p = this.Position;
-			if (p + 3 < this.Buffer.Count)
+			if (p + 1 < this.Buffer.Count)
 			{
 				value = BinaryPrimitives.ReadInt16LittleEndian(this.Buffer.Span.Slice(p, 2));
 				return true;
@@ -162,7 +162,7 @@ namespace SnowBank.Buffers
 		public readonly bool TryPeekInt16BE(out short value)
 		{
 			int p = this.Position;
-			if (p + 3 < this.Buffer.Count)
+			if (p + 1 < this.Buffer.Count)
 			{
 				value = BinaryPrimitives.ReadInt16BigEndian(this.Buffer.Span.Slice(p, 2));
 				return true;
@@ -175,7 +175,7 @@ namespace SnowBank.Buffers
 		public readonly bool TryPeekUInt16(out ushort value)
 		{
 			int p = this.Position;
-			if (p + 3 < this.Buffer.Count)
+			if (p + 1 < this.Buffer.Count)
 			{
 				value = BinaryPrimitives.ReadUInt16LittleEndian(this.Buffer.Span.Slice(p, 2));
 				return true;
@@ -188,7 +188,7 @@ namespace SnowBank.Buffers
 		public readonly bool TryPeekUInt16BE(out ushort value)
 		{
 			int p = this.Position;
-			if (p + 3 < this.Buffer.Count)
+			if (p + 1 < this.Buffer.Count)
 			{
 				value = BinaryPrimitives.ReadUInt16BigEndian(this.Buffer.Span.Slice(p, 2));
 				return true;
@@ -460,7 +460,7 @@ namespace SnowBank.Buffers
 		private bool TryReadSixteenBytesSpan(out ReadOnlySpan<byte> span)
 		{
 			int p = this.Position;
-			if ((uint) (p + 8) > (uint) this.Buffer.Count)
+			if ((uint) (p + 16) > (uint) this.Buffer.Count)
 			{
 				span = default;
 				return false;
@@ -1436,7 +1436,7 @@ namespace SnowBank.Buffers
 			// read bytes until the MSB is unset
 			while (count-- > 0)
 			{
-				if (p > end) throw ThrowHelper.FormatException("Truncated Varint");
+				if (p >= end) throw ThrowHelper.FormatException("Truncated Varint");
 				byte b = buffer[p++];
 
 				x |= (b & 0x7FUL) << s;
@@ -1466,7 +1466,7 @@ namespace SnowBank.Buffers
 			// read bytes until the MSB is unset
 			while (count-- > 0)
 			{
-				if (p > end) goto invalid;
+				if (p >= end) goto invalid;
 				byte b = buffer[p++];
 
 				x |= (b & 0x7FUL) << s;

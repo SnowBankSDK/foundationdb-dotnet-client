@@ -185,6 +185,19 @@ namespace SnowBank.Buffers.Tests
 			Assert.That(() => reader.ReadUInt128(), Throws.InstanceOf<FormatException>());
 			Assert.That(reader.Position, Is.EqualTo(32));
 			Assert.That(reader.Tail, Is.EqualTo(Slice.FromString("WXYZabcdef")));
+
+			// Try* variants must not over-read: a window shorter than 16 bytes must fail cleanly, without reading past the slice
+			{
+				var r15 = data.Substring(0, 15).ToSliceReader(); // 15-byte window inside a larger buffer
+				Assert.That(r15.TryReadUInt128(out _), Is.False, "TryReadUInt128 requires 16 bytes");
+				Assert.That(r15.Position, Is.EqualTo(0), "a failed TryReadUInt128 must not advance the cursor");
+				Assert.That(r15.TryReadInt128(out _), Is.False, "TryReadInt128 requires 16 bytes");
+
+				var r16 = data.Substring(0, 16).ToSliceReader();
+				Assert.That(r16.TryReadUInt128(out var v128), Is.True, "16 bytes is enough for a UInt128");
+				Assert.That(v128, Is.EqualTo(new UInt128(0x4645444342413938, 0x3736353433323130)));
+				Assert.That(r16.Position, Is.EqualTo(16));
+			}
 		}
 
 #endif
@@ -215,6 +228,57 @@ namespace SnowBank.Buffers.Tests
 			Assert.That(() => reader.ReadUuid128(), Throws.InstanceOf<FormatException>());
 			Assert.That(reader.Position, Is.EqualTo(32));
 			Assert.That(reader.Tail, Is.EqualTo(Slice.FromString("WXYZ")));
+		}
+
+		[Test]
+		public void Test_ReadVarInt()
+		{
+			// valid varints
+			Assert.That(Slice.FromBytes([ 0x00 ]).ToSliceReader().ReadVarInt32(), Is.EqualTo(0u));
+			Assert.That(Slice.FromBytes([ 0x7F ]).ToSliceReader().ReadVarInt32(), Is.EqualTo(127u));
+			Assert.That(Slice.FromBytes([ 0x80, 0x01 ]).ToSliceReader().ReadVarInt32(), Is.EqualTo(128u));
+			{
+				var reader = Slice.FromBytes([ 0x80, 0x01, 0x2A ]).ToSliceReader();
+				Assert.That(reader.ReadVarInt32(), Is.EqualTo(128u));
+				Assert.That(reader.Position, Is.EqualTo(2), "must consume exactly the varint bytes");
+				Assert.That(reader.ReadByte(), Is.EqualTo(0x2A));
+			}
+
+			// a varint whose continuation runs to the end of the slice is truncated and must fail, without reading past the slice.
+			// the window is just [0x80]; the following bytes (which would complete the varint) are OUTSIDE the window.
+			{
+				var truncated = Slice.FromBytes([ 0x80, 0x01, 0x02, 0x03, 0x04 ]).Substring(0, 1);
+				Assert.That(() => truncated.ToSliceReader().ReadVarInt32(), Throws.InstanceOf<FormatException>(), "truncated varint must not read past the slice");
+
+				var reader = truncated.ToSliceReader();
+				Assert.That(reader.TryReadVarInt32(out _), Is.False, "TryReadVarInt32 must fail on a truncated varint");
+				Assert.That(reader.Position, Is.EqualTo(0), "a failed TryReadVarInt32 must not advance the cursor");
+			}
+		}
+
+		[Test]
+		public void Test_TryPeek()
+		{
+			// exactly 2 bytes remaining must still be peekable as a 16-bit integer
+			{
+				var reader = Slice.FromString("AB").ToSliceReader(); // 'A'=0x41, 'B'=0x42
+				Assert.That(reader.TryPeekUInt16(out var u16), Is.True, "2 bytes should be peekable as a UInt16");
+				Assert.That(u16, Is.EqualTo(0x4241));
+				Assert.That(reader.TryPeekInt16(out _), Is.True);
+				Assert.That(reader.TryPeekUInt16BE(out var u16be), Is.True);
+				Assert.That(u16be, Is.EqualTo(0x4142));
+				Assert.That(reader.Position, Is.EqualTo(0), "peek must not advance the cursor");
+			}
+
+			// only 1 byte remaining: a 16-bit peek must fail
+			Assert.That(Slice.FromString("A").ToSliceReader().TryPeekUInt16(out _), Is.False);
+
+			// 32/64-bit peeks at their exact boundary
+			Assert.That(Slice.FromString("ABCD").ToSliceReader().TryPeekUInt32(out var u32), Is.True);
+			Assert.That(u32, Is.EqualTo(0x44434241));
+			Assert.That(Slice.FromString("ABC").ToSliceReader().TryPeekUInt32(out _), Is.False);
+			Assert.That(Slice.FromString("01234567").ToSliceReader().TryPeekUInt64(out _), Is.True);
+			Assert.That(Slice.FromString("0123456").ToSliceReader().TryPeekUInt64(out _), Is.False);
 		}
 
 	}
