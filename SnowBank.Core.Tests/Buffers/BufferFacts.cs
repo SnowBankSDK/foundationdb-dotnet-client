@@ -531,6 +531,26 @@ namespace SnowBank.Buffers.Tests
 
 		}
 
+		[Test]
+		public void Test_SpanReader_ReadVarInt()
+		{
+			{
+				var sr = new SpanReader(new byte[] { 0x00 });
+				Assert.That(sr.ReadVarInt32(), Is.EqualTo(0u));
+			}
+			{
+				var sr = new SpanReader(new byte[] { 0x80, 0x01 });
+				Assert.That(sr.ReadVarInt32(), Is.EqualTo(128u));
+				Assert.That(sr.Position, Is.EqualTo(2));
+			}
+			// a varint truncated at the end of the span must fail with a clean FormatException (not IndexOutOfRangeException)
+			Assert.That(() =>
+			{
+				var sr = new SpanReader(new byte[] { 0x80 });
+				return sr.ReadVarInt32();
+			}, Throws.InstanceOf<FormatException>());
+		}
+
 #endif
 
 	}

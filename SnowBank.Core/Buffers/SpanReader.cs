@@ -467,7 +467,7 @@ namespace SnowBank.Buffers
 			// read bytes until the MSB is unset
 			while (count-- > 0)
 			{
-				if (p > end) throw ThrowHelper.FormatException("Truncated Varint");
+				if (p >= end) throw ThrowHelper.FormatException("Truncated Varint");
 				byte b = buffer[p++];
 
 				x |= (b & 0x7FUL) << s;
