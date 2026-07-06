@@ -255,6 +255,38 @@ namespace SnowBank.Networking
 
 		public Dictionary<string, string> HostsByNameOrAddress { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+		/// <summary>Names registered via <see cref="SetAlias"/> (mutable VIPs), distinguished from the hosts' own immutable keys</summary>
+		private HashSet<string> DynamicAliases { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+		/// <summary>Registers (or re-points) a mutable alias - a virtual VIP - that resolves to the given host</summary>
+		/// <param name="alias">Name the clients connect to (e.g. <c>"cluster.lan.simulated"</c>); must not be the name of a real host</param>
+		/// <param name="hostId">Id of the host that the alias resolves to FROM NOW ON</param>
+		/// <remarks>
+		/// <para>This emulates a load balancer re-routing a public endpoint: host resolution happens per REQUEST (see
+		/// <c>VirtualHttpClientHandler.SendAsync</c>), so re-pointing the alias affects the NEXT connection while any
+		/// already-established stream keeps flowing to its original host - exactly like a real VIP change, which never
+		/// migrates live TCP connections.</para>
+		/// </remarks>
+		public void SetAlias(string alias, string hostId)
+		{
+			Contract.NotNullOrEmpty(alias);
+			Contract.NotNullOrEmpty(hostId);
+
+			using (this.Lock.GetWriteLock())
+			{
+				if (!this.HostsById.ContainsKey(hostId))
+				{
+					throw ErrorMissingHost(hostId);
+				}
+				if (this.HostsByNameOrAddress.ContainsKey(alias) && !this.DynamicAliases.Contains(alias))
+				{
+					throw new ArgumentException($"Cannot register alias '{alias}': this name already belongs to a real host", nameof(alias));
+				}
+				this.HostsByNameOrAddress[alias] = hostId;
+				this.DynamicAliases.Add(alias);
+			}
+		}
+
 		/// <summary>Represents a virtual network location, such as "LAN", a Cloud DMZ, or the Loopback interface, as well as all its services (DNS, DHCP, ...).</summary>
 		/// <remarks>
 		/// <para>Hosts belonging to the same network location can talk to each other directly.</para>
