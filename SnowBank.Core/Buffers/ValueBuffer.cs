@@ -223,8 +223,7 @@ namespace SnowBank.Buffers
 					Grow(1);
 					buf = Buffer;
 				}
-				buf[pos] = item;
-				this.Count = pos + 1;
+				buf[pos++] = item;
 			}
 			this.Count = pos;
 		}

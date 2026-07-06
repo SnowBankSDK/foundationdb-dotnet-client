@@ -250,6 +250,28 @@ namespace SnowBank.Buffers.Tests
 		}
 
 		[Test]
+		public void Test_Buffer_AddRange_Enumerable()
+		{
+			// AddRange over a lazy IEnumerable that exposes neither a span nor a known count must still append every
+			// item, including across a resize that happens in the middle of the enumeration.
+			var buffer = new ValueBuffer<int>(new int[2]); // small initial buffer to force a resize mid-enumeration
+			buffer.Add(1);
+			buffer.AddRange(LazyRange(2, 5)); // 2, 3, 4, 5, 6
+
+			Assert.That(buffer.Count, Is.EqualTo(6));
+			Assert.That(buffer.ToArray(), Is.EqualTo((int[]) [ 1, 2, 3, 4, 5, 6 ]));
+
+			// a lazy iterator: exposes no span and no non-enumerated count, so AddRange must take the item-by-item path
+			static IEnumerable<int> LazyRange(int start, int count)
+			{
+				for (int i = 0; i < count; i++)
+				{
+					yield return start + i;
+				}
+			}
+		}
+
+		[Test]
 		public void Test_Buffer_BufferWriter_Like()
 		{
 			// We cannot implement IBufferWriter<T> since we are not able to implement GetMemory(..),
