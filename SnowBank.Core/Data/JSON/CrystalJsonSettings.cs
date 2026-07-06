@@ -151,6 +151,7 @@ namespace SnowBank.Data.Json
 			UseCamelCasingForEnums = 0x100000,
 			DenyTrailingComma = 0x200000,
 			OverwriteDuplicateFields = 0x400000,
+			DoNotAllowComments = 0x800000,
 
 			// Number Formatting
 			FloatFormat_Default    = 0x0_0_000000,
@@ -395,6 +396,21 @@ namespace SnowBank.Data.Json
 		private static OptionFlags SetDenyTrailingComma(OptionFlags flags, bool value)
 			=> value ? flags | OptionFlags.DenyTrailingComma : flags & ~OptionFlags.DenyTrailingComma;
 
+		/// <summary>Specifies whether JavaScript-style comments (<c>// ...</c> and <c>/* ... */</c>) are rejected while parsing.</summary>
+		/// <remarks>
+		/// <para>By default (<see langword="false"/>), comments are allowed and silently skipped.</para>
+		/// <para>Comments are a non-standard extension: enable this setting (via <see cref="WithoutComments"/> or the <see cref="JsonStrict"/> preset) to reject them with a syntax error. This only impacts deserialization.</para>
+		/// </remarks>
+		public bool DenyComments
+		{
+			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+			get => (m_flags & OptionFlags.DoNotAllowComments) != 0;
+		}
+
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static OptionFlags SetDenyComments(OptionFlags flags, bool value)
+			=> value ? flags | OptionFlags.DoNotAllowComments : flags & ~OptionFlags.DoNotAllowComments;
+
 		/// <summary>If <see langword="true"/>, overwrite any duplicate field in an object, by keeping only the last value. If <see langword="false"/>, throws an exception in case of duplicates</summary>
 		/// <remarks><para>Please note that is <see cref="IgnoreCaseForNames"/> is set, this will also include casing (ex: "userId" and "UserId" would be considered duplicates)</para></remarks>
 		public bool OverwriteDuplicateFields
@@ -603,6 +619,15 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public CrystalJsonSettings WithoutTrailingCommas() => Update(SetDenyTrailingComma(m_flags, true));
 
+		/// <summary>Allow JavaScript-style comments (<c>// ...</c> and <c>/* ... */</c>) inside parsed JSON documents (default)</summary>
+		/// <remarks>Comments are a non-standard extension; this setting has no effect when serializing to JSON.</remarks>
+		[Pure]
+		public CrystalJsonSettings WithComments() => Update(SetDenyComments(m_flags, false));
+
+		/// <summary>Reject JavaScript-style comments (<c>// ...</c> and <c>/* ... */</c>), which will be considered as syntax errors</summary>
+		[Pure]
+		public CrystalJsonSettings WithoutComments() => Update(SetDenyComments(m_flags, true));
+
 		/// <summary>If an object has duplicate field names, only the last value will be kept (default)</summary>
 		[Pure]
 		public CrystalJsonSettings FlattenDuplicateFields() => Update(SetOverwriteDuplicateFields(m_flags, true));
@@ -648,7 +673,7 @@ namespace SnowBank.Data.Json
 		public static CrystalJsonSettings JsonIndented { get; } = new CrystalJsonSettings(OptionFlags.Target_Json | OptionFlags.Layout_Indented);
 
 		/// <summary>Parse JSON using strict rules (no support for trailing commas, comments, ...)</summary>
-		public static CrystalJsonSettings JsonStrict { get; } = new CrystalJsonSettings(OptionFlags.Target_Json | OptionFlags.DenyTrailingComma);
+		public static CrystalJsonSettings JsonStrict { get; } = new CrystalJsonSettings(OptionFlags.Target_Json | OptionFlags.DenyTrailingComma | OptionFlags.DoNotAllowComments);
 
 		/// <summary>Parse JSON values, with case-insensitive field names in objects</summary>
 		/// <remarks>

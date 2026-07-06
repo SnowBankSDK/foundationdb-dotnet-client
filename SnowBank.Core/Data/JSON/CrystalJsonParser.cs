@@ -1505,6 +1505,10 @@ namespace SnowBank.Data.Json
 					}
 					case '/':
 					{ // comment
+						if (reader.Settings.DenyComments)
+						{
+							throw reader.FailInvalidSyntax("Comments are not allowed");
+						}
 						ParseComment(ref reader);
 						break;
 					}
@@ -1545,7 +1549,8 @@ namespace SnowBank.Data.Json
 
 			// we already consumed the first '/', we expect the next character to be either '/' (single line) or '*' (multi line)
 
-			char c = reader.ReadOne();
+			// note: read a full code point so that a genuine U+FFFF in the document is not mistaken for the end of the stream
+			int c = reader.ReadOneCodePoint();
 			switch(c)
 			{
 				case '/':
@@ -1560,13 +1565,13 @@ namespace SnowBank.Data.Json
 				}
 				default:
 				{
-					if (c == CrystalJsonParser.EndOfStream)
+					if (c < 0)
 					{
 						throw reader.FailUnexpectedEndOfStream("Incomplete comment");
 					}
 					else
 					{
-						throw reader.FailInvalidSyntax($"Invalid character '{c}' after comment start");
+						throw reader.FailInvalidSyntax($"Invalid character '{(char) c}' after comment start");
 					}
 				}
 			}
@@ -1577,12 +1582,13 @@ namespace SnowBank.Data.Json
 		private static void SkipSingleLineComment(ref CrystalJsonTokenizer<TReader> reader)
 		{
 			// the reader is just after "//" and we will read until next LF or end of stream
-			char c;
+			// note: read full code points so that a genuine U+FFFF in the comment is not mistaken for the end of the stream
+			int c;
 			do
 			{
-				c = reader.ReadOne();
+				c = reader.ReadOneCodePoint();
 			}
-			while (c is not ('\n' or CrystalJsonParser.EndOfStream));
+			while (c >= 0 && c != '\n');
 		}
 
 		/// <summary>Skip a multi-line comment</summary>
@@ -1590,23 +1596,25 @@ namespace SnowBank.Data.Json
 		private static void SkipMultiLineComment(ref CrystalJsonTokenizer<TReader> reader)
 		{
 			// the reader is just after "/*" and we will read until the next '*' followed by '/'
-			while(true)
+			// note: read full code points so that a genuine U+FFFF in the comment is not mistaken for the end of the stream
+			int c = reader.ReadOneCodePoint();
+			while (true)
 			{
-				char c = reader.ReadOne();
-				if (c == '*')
-				{
-					switch((c = reader.ReadOne()))
-					{
-
-						case '/': return;
-						case '*': reader.Push(c); continue;
-						case CrystalJsonParser.EndOfStream: throw reader.FailUnexpectedEndOfStream("Truncated multi-line comment");
-					}
-				}
-				else if (c == CrystalJsonParser.EndOfStream)
+				if (c < 0)
 				{
 					throw reader.FailUnexpectedEndOfStream("Truncated multi-line comment");
 				}
+				if (c == '*')
+				{ // potential end of comment: read the next char and re-test it, so "**/" and "***/" also close correctly
+					c = reader.ReadOneCodePoint();
+					if (c == '/')
+					{
+						return;
+					}
+					// note: do NOT read another character here; loop back and re-test 'c' (it may be another '*')
+					continue;
+				}
+				c = reader.ReadOneCodePoint();
 			}
 		}
 
