@@ -81,7 +81,7 @@ namespace SnowBank.Data.Json
 				return -1;
 			}
 
-			if (!Utf8Encoder.TryDecodeCodePoint(this.Array, index, end, out var cp, out var len))
+			if (!Utf8Encoder.TryDecodeCodePoint(this.Array, index, end - index, out var cp, out var len))
 			{
 				throw new InvalidDataException("Buffer contains malformed UTF-8 characters.");
 			}
