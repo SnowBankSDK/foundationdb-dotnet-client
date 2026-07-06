@@ -49,11 +49,9 @@ namespace SnowBank.Threading
 		/// <remarks>If <see cref="RandomHigh"/> equals <see cref="RandomLow"/> then there is no randomization</remarks>
 		public double RandomHigh { get; }
 
-#if NET8_0_OR_GREATER
 		/// <summary>Provider used to schedule the delays of <see cref="Wait(CancellationToken)"/> (the real system clock by default)</summary>
 		/// <remarks>A test can inject a fake advanceable provider so that reconnect/retry loops run in virtual time.</remarks>
 		public TimeProvider Time { get; init; } = TimeProvider.System;
-#endif
 
 		/// <summary>Last delay</summary>
 		public TimeSpan Last { get; private set; }
@@ -226,12 +224,9 @@ namespace SnowBank.Threading
 		{
 			ct.ThrowIfCancellationRequested();
 			var delay = GetNext(out _);
-#if NET8_0_OR_GREATER
-			await Task.Delay(delay, this.Time, ct).ConfigureAwait(false);
-#else
-			// TimeProvider is not available on netstandard 2.0: delays always follow the real clock
-			await Task.Delay(delay, ct).ConfigureAwait(false);
-#endif
+			// the Delay extension (Microsoft.Bcl.TimeProvider) has the same shape on every target,
+			// and delegates to Task.Delay(delay, provider, ct) on the modern ones
+			await this.Time.Delay(delay, ct).ConfigureAwait(false);
 			return delay;
 		}
 
