@@ -89,6 +89,10 @@ namespace SnowBank.Data.Json.Binary
 		private const int JCONTAINER_CHILDREN_OFFSET = 4; // offset (in the container) to the start of the JEntries
 		private const int JCONTAINER_OFFSET_STRIDE = 32; // number of entries between two jump offsets
 
+		/// <summary>Maximum nesting depth (arrays and objects) allowed while decoding a jsonb document.</summary>
+		/// <remarks>Protects against a <see cref="StackOverflowException"/> (which cannot be caught) when decoding hostile deeply-nested input.</remarks>
+		internal const int MaximumDepth = 64;
+
 		private const int JENTRY_SIZEOF = 4;
 		private const int JENTRY_OFFLENBITS = 28;
 		private const uint JENTRY_OFFLENMASK = (1 << JENTRY_OFFLENBITS) - 1;
@@ -313,7 +317,7 @@ namespace SnowBank.Data.Json.Binary
 				return len;
 			}
 
-			private JsonArray DecodeArray(StringTable? table)
+			private JsonArray DecodeArray(StringTable? table, int depth)
 			{
 				if (!this.IsArray) throw ThrowHelper.InvalidOperationException("Specified jsonb container is not an array.");
 
@@ -337,14 +341,14 @@ namespace SnowBank.Data.Json.Binary
 					}
 
 					GetEntryAt(i, entry, dataOffset, dataLen, out JValue item);
-					arr[i] = item.ToJsonValue(table);
+					arr[i] = item.ToJsonValue(table, depth);
 					dataOffset += dataLen;
 					childOffset += JENTRY_SIZEOF;
 				}
 				return new JsonArray(arr, numElems, readOnly: true);
 			}
 
-			private JsonObject DecodeObject(StringTable? table)
+			private JsonObject DecodeObject(StringTable? table, int depth)
 			{
 				if (!this.IsObject) throw ThrowHelper.InvalidOperationException("Specified jsonb container is not an object.");
 
@@ -363,17 +367,23 @@ namespace SnowBank.Data.Json.Binary
 				{
 					GetContainerEntry(i, numPairs * 2, out var keyItem);
 					GetContainerEntry(i + numPairs, numPairs * 2, out var valueItem);
-					map[keyItem.ToKey(table)] = valueItem.ToJsonValue(table);
+					map[keyItem.ToKey(table)] = valueItem.ToJsonValue(table, depth);
 				}
 				//note: by default we will create immutable objects!
 				//REVIEW: if we need to make this configurable, we would need to add a way to pass settings to this method!
 				return map.FreezeUnsafe();
 			}
 
-			public JsonValue ToJsonValue(StringTable? table = null)
+			public JsonValue ToJsonValue(StringTable? table = null) => ToJsonValue(table, 0);
+
+			public JsonValue ToJsonValue(StringTable? table, int depth)
 			{
-				return this.IsArray ? DecodeArray(table)
-					: this.IsObject ? DecodeObject(table)
+				if (depth >= MaximumDepth)
+				{
+					throw ThrowHelper.FormatException($"The jsonb document exceeds the maximum allowed nesting depth ({MaximumDepth}).");
+				}
+				return this.IsArray ? DecodeArray(table, depth)
+					: this.IsObject ? DecodeObject(table, depth)
 					: ThrowInvalidJsonbContainer();
 			}
 
@@ -471,6 +481,12 @@ namespace SnowBank.Data.Json.Binary
 				while (p < hashes.Length)
 				{
 					int index = ReadIndexFromTable(p, indexes, hashIdxLen);
+
+					// the index map is untrusted: a corrupted entry must not be used to index the JEntries table
+					if ((uint) index >= numPairs)
+					{
+						throw ThrowHelper.FormatException($"Malformed jsonb object: hash index {index} is out of range (0..{numPairs - 1}).");
+					}
 
 					int offset = GetJsonbOffset(index);
 					int len = GetJsonbLength(index, offset);
@@ -575,7 +591,9 @@ namespace SnowBank.Data.Json.Binary
 				this.Value = value;
 			}
 
-			public JsonValue ToJsonValue(StringTable? table)
+			public JsonValue ToJsonValue(StringTable? table) => ToJsonValue(table, 0);
+
+			public JsonValue ToJsonValue(StringTable? table, int depth)
 			{
 				switch (this.Type)
 				{
@@ -627,7 +645,7 @@ namespace SnowBank.Data.Json.Binary
 					case JType.Container:
 					{
 						var container = new JContainer(this.Value);
-						return container.ToJsonValue(table);
+						return container.ToJsonValue(table, depth + 1);
 					}
 					case JType.Integer:
 					{ // signed integer, up to 64 bits

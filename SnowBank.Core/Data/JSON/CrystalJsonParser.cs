@@ -950,6 +950,13 @@ namespace SnowBank.Data.Json
 		/// <summary>Parses the next JSON in the reader</summary>
 		/// <returns>Parsed token, or <see langword="null"/> if we reached the end of the JSON document</returns>
 		public static JsonValue? ParseJsonValue(ref CrystalJsonTokenizer<TReader> reader)
+			=> ParseJsonValue(ref reader, 0);
+
+		/// <summary>Maximum nesting depth (objects and arrays) allowed while parsing a JSON document.</summary>
+		/// <remarks>Protects against a <see cref="StackOverflowException"/> (which cannot be caught and would crash the process) when parsing hostile deeply-nested input.</remarks>
+		internal const int MaximumDepth = 64;
+
+		private static JsonValue? ParseJsonValue(ref CrystalJsonTokenizer<TReader> reader, int depth)
 		{
 #if DEBUG_JSON_PARSER
 			System.Diagnostics.Debug.WriteLine("CrystalJsonConverter.ParseJsonValue(...)");
@@ -963,11 +970,11 @@ namespace SnowBank.Data.Json
 				{
 					case JsonTokenType.Object:
 					{
-						return ParseJsonObject(ref reader);
+						return ParseJsonObject(ref reader, depth);
 					}
 					case JsonTokenType.Array:
 					{
-						return ParseJsonArray(ref reader);
+						return ParseJsonArray(ref reader, depth);
 					}
 					case JsonTokenType.Null:
 					{ // null
@@ -1341,8 +1348,9 @@ namespace SnowBank.Data.Json
 			throw reader.FailInvalidSyntax($"Invalid literal '{StringBuilderCache.GetStringAndRelease(sb)}'");
 		}
 
-		private static JsonObject ParseJsonObject(ref CrystalJsonTokenizer<TReader> reader)
+		private static JsonObject ParseJsonObject(ref CrystalJsonTokenizer<TReader> reader, int depth)
 		{
+			if (depth >= MaximumDepth) throw reader.FailInvalidSyntax($"The JSON document exceeds the maximum allowed nesting depth ({MaximumDepth})");
 #if DEBUG_JSON_PARSER
 			System.Diagnostics.Debug.WriteLine("CrystalJsonConverter.ParseJsonObject(...) [BEGIN]");
 #endif
@@ -1455,7 +1463,7 @@ namespace SnowBank.Data.Json
 						}
 						// must be immediately followed by a value
 
-						props.Add(new (name!, ParseJsonValue(ref reader)!));
+						props.Add(new (name!, ParseJsonValue(ref reader, depth + 1)!));
 						// next should be ',' or '}'
 						state = EXPECT_NEXT;
 						name = null;
@@ -1586,8 +1594,9 @@ namespace SnowBank.Data.Json
 			}
 		}
 
-		private static JsonArray ParseJsonArray(ref CrystalJsonTokenizer<TReader> reader)
+		private static JsonArray ParseJsonArray(ref CrystalJsonTokenizer<TReader> reader, int depth)
 		{
+			if (depth >= MaximumDepth) throw reader.FailInvalidSyntax($"The JSON document exceeds the maximum allowed nesting depth ({MaximumDepth})");
 #if DEBUG_JSON_PARSER
 			System.Diagnostics.Debug.WriteLine("CrystalJsonConverter.ParseJsonArray(...) [BEGIN]");
 #endif
@@ -1640,7 +1649,7 @@ namespace SnowBank.Data.Json
 					if (commaRequired) throw reader.FailInvalidSyntax("Missing comma between two items of an array");
 					reader.Push(c);
 
-					var val = ParseJsonValue(ref reader) ?? throw reader.FailUnexpectedEndOfStream("Array is incomplete");
+					var val = ParseJsonValue(ref reader, depth + 1) ?? throw reader.FailUnexpectedEndOfStream("Array is incomplete");
 					buffer.Add(val);
 					commaRequired = true;
 					valueRequired = false;
