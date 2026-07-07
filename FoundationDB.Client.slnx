@@ -17,6 +17,7 @@
     <Project Path="FoundationDB.Tests.Sandbox/FoundationDB.Tests.Sandbox.csproj" />
     <Project Path="FoundationDB.Tests/FoundationDB.Tests.csproj" />
     <Project Path="SnowBank.Testing.Framework.Tests/SnowBank.Testing.Framework.Tests.csproj" />
+    <Project Path="SnowBank.Testing.Framework.Playwright.Tests/SnowBank.Testing.Framework.Playwright.Tests.csproj" />
   </Folder>
   <Folder Name="/Core/">
     <Project Path="SnowBank.Core/SnowBank.Core.csproj" />
@@ -26,6 +27,7 @@
     <Project Path="SnowBank.Shell/SnowBank.Shell.csproj" />
     <Project Path="SnowBank.Testing.Common/SnowBank.Testing.Common.csproj" />
     <Project Path="SnowBank.Testing.Framework/SnowBank.Testing.Framework.csproj" />
+    <Project Path="SnowBank.Testing.Framework.Playwright/SnowBank.Testing.Framework.Playwright.csproj" />
   </Folder>
   <Folder Name="/Core/Tests/">
     <Project Path="SnowBank.Core.Tests/SnowBank.Core.Tests.csproj" />
