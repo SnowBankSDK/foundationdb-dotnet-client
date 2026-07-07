@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -27,262 +27,138 @@
 namespace SnowBank.Testing.Framework
 {
 	using System.Net;
-	using Microsoft.AspNetCore.Builder;
-	using Microsoft.AspNetCore.Hosting;
-	using Microsoft.AspNetCore.TestHost;
-	using Microsoft.Extensions.Configuration;
+	using SnowBank.Networking;
+	using SnowBank.Networking.Http;
 	using SnowBank.Networking.PacketCapture;
 
-	/// <summary>Simple simulated Web Browser, that runs as a subcomponent of a simulated host.</summary>
+	/// <summary>Base class for simulated web browsers (Playwright, AngleSharp, ...) that render pages by routing their traffic onto the virtual network.</summary>
 	[PublicAPI]
-	public class WebBrowserTestComponent : DistributedTestComponent
+	public abstract class WebBrowserTestComponent : DistributedTestComponent
 	{
 
-		public WebBrowserTestComponent(IDistributedTestComponent parent, string id, IVirtualNetworkLocation location, CancellationToken lifetime)
+		protected WebBrowserTestComponent(string id, IVirtualNetworkLocation location, CancellationToken lifetime, IDistributedTestComponent? parent = null)
 			: base(id, location, lifetime, parent)
+		{ }
+
+		/// <summary>Guards the lazy, one-time start of the packet-capture manager against concurrent <see cref="ForwardToMeshAsync"/> calls.</summary>
+		private object CaptureStartLock { get; } = new();
+
+		/// <summary>Hook for browser engines that must download or update their binaries the first time they run on a host or CI server. Default: no-op.</summary>
+		/// <remarks>Subclasses that need an install step (e.g. Playwright downloading Chromium) override this and invoke it early in their start-up.</remarks>
+		protected virtual ValueTask EnsureBrowserAvailableAsync(CancellationToken ct) => default;
+
+		/// <summary>Result of forwarding a browser request onto the virtual network.</summary>
+		public sealed record MeshResponse
 		{
-			//TODO: user agent?
-		}
-
-		internal List<Action<IServiceCollection>> ConfigureServicesHandlers { get; set; } = [ ];
-
-		internal Func<WebBrowserTestComponent, CancellationToken, ValueTask> StartingHandler { get; set; } = (_, _) => default;
-
-		internal Func<WebBrowserTestComponent, CancellationToken, ValueTask> StoppingHandler { get; set; } = (_, _) => default;
-
-		internal Func<ValueTask> DisposingHandler { get; set; } = () => default;
-
-		internal List<object> Disposables { get; } = [ ];
-
-		protected override void OnRegisterComponent(IDistributedTestContext context)
-		{
-			//
-		}
-
-		protected override void ConfigureServices(WebApplicationBuilder builder)
-		{
-			foreach (var handler in this.ConfigureServicesHandlers)
-			{
-				handler(builder.Services);
-			}
-		}
-
-		protected override void ConfigureApplication(WebApplication app)
-		{
-			//
-			app.UsePacketCapture(); //IMPORTANT: must be *AFTER* response compression, but *BEFORE* the rest!
-		}
-
-		protected override ValueTask OnInitialize(TestServer server, IConfiguration config, CancellationToken startToken)
-		{
-			return default;
-		}
-
-		protected override ValueTask OnStarting(CancellationToken ct)
-		{
-			var packet = this.Services.GetService<PacketCaptureManager>();
-			if (packet != null && !packet.IsRunning) packet.Start();
-
-			return this.StartingHandler(this, ct);
-		}
-
-		protected override async ValueTask OnStopping(CancellationToken ct)
-		{
-			var packet = this.Services.GetService<PacketCaptureManager>();
-			if (packet != null && packet.IsRunning) packet.PrepareShutdown();
-
-			foreach (var instance in this.Disposables)
-			{
-				ct.ThrowIfCancellationRequested();
-				try
-				{
-					if (instance is IAsyncDisposable asyncDisp)
-					{
-						await asyncDisp.DisposeAsync();
-					}
-					else if (instance is IDisposable disp)
-					{
-						disp.Dispose();
-					}
-				}
-				catch (Exception ex)
-				{
-					Log($"Failed to dispose registerd {instance.GetType().GetFriendlyName()} instance: [{ex.GetType().Name}] {ex.Message}");
-				}
-			}
-
-			await this.StoppingHandler(this, ct);
-		}
-
-		protected override ValueTask OnDisposing()
-		{
-			var packet = this.Services.GetService<PacketCaptureManager>();
-			if (packet != null) packet.Shutdown();
-
-			return this.DisposingHandler();
-		}
-
-		public sealed record PageResult
-		{
-			public required Uri Location { get; init; }
-
 			public required HttpStatusCode Status { get; init; }
 
-			public required byte[]? Body { get; init; }
+			public required IReadOnlyList<KeyValuePair<string, string>> Headers { get; init; }
 
-			/// <summary>Returns the "about:blank" page</summary>
-			public static PageResult AboutBlank() => new() { Location = new Uri("about:blank"), Status = HttpStatusCode.OK, Body = [] };
-
-			public string? ReadAsText() => this.Body.AsSlice().ToStringUtf8();
-
+			public required byte[] Body { get; init; }
 		}
 
-		public PageResult Page { get; private set; } = PageResult.AboutBlank();
-
-		public Task<PageResult> NavigateTo(string uri, CancellationToken ct) => NavigateTo(new Uri(uri), ct);
-
-		/// <summary>Navigate to the specified URI, with a GET request</summary>
-		public async Task<PageResult> NavigateTo(Uri uri, CancellationToken ct)
+		/// <summary>Forwards a browser-intercepted HTTP request onto the virtual network and returns the full response (status, headers, body).</summary>
+		/// <param name="capture">When <see langword="true"/>, routes through the capturing <c>BetterHttpClient</c> path so the packet-capture filter fires; when <see langword="false"/>, uses a raw handler that bypasses capture.</param>
+		protected async Task<MeshResponse> ForwardToMeshAsync(HttpMethod method, Uri url, IEnumerable<KeyValuePair<string, string>> headers, byte[]? body, string? contentType, bool capture, CancellationToken ct)
 		{
-			ct.ThrowIfCancellationRequested();
+			Contract.NotNull(method);
+			Contract.NotNull(url);
 
-			var cli = this.GetBetterHttpClient(uri);
-			var req = cli.CreateGetRequest(uri);
-			var page = await cli.SendAsync(req, async (ctx) =>
+			using var request = new HttpRequestMessage(method, url);
+			foreach (var header in headers)
 			{
-				var status = ctx.Response.StatusCode;
-				var responseBody = await ctx.Response.Content.ReadAsByteArrayAsync(ct);
-				return new PageResult
-				{
-					Location = uri,
-					Status = status,
-					Body = responseBody,
-				};
-			}, ct);
-
-			this.Page = page;
-			return page;
-		}
-
-		/// <summary>Navigate to the specified URI, with a POST request</summary>
-		public async Task<PageResult> SubmitTo(Uri uri, Slice requestBody, CancellationToken ct)
-		{
-			ct.ThrowIfCancellationRequested();
-
-			var cli = this.GetLocalBetterHttpClient();
-			var req = cli.CreateGetRequest(uri);
-			var page = await cli.SendAsync(req, async (ctx) =>
-			{
-				var status = ctx.Response.StatusCode;
-				var responseBody = await ctx.Response.Content.ReadAsByteArrayAsync(ct);
-				return new PageResult
-				{
-					Location = uri,
-					Status = status,
-					Body = responseBody,
-				};
-			}, ct);
-
-			this.Page = page;
-			return page;
-		}
-
-	}
-
-	/// <summary>Builder for a <see cref="WebBrowserTestComponent"/></summary>
-	public class WebBrowserTestComponentBuilder : IHostTestBuilder
-	{
-
-		public string Id => this.Component.Id;
-
-		public required WebBrowserTestComponent Component { get; init; }
-
-		IDistributedTestComponent IHostTestBuilder.Component => this.Component;
-
-		public required IHostTestBuilder Builder { get; init; }
-
-		public IDistributedTestNetworkBuilder Parent => this.Builder.Parent;
-
-		public IDistributedTestContext Context => this.Component.Context;
-
-		public IVirtualNetworkMap Network => this.Component.NetworkMap;
-
-		public VirtualHostIdentity Identity => this.Builder.Identity;
-
-		void IHostTestBuilder.AddSubComponent(IDistributedTestComponent component) => throw new NotSupportedException("Cannot add a sub-component to a web browser");
-
-		internal List<Action<IServiceCollection>> ServiceHandlers { get; } = [ ];
-
-		internal Func<WebBrowserTestComponent, CancellationToken, ValueTask>? StartingHandler { get; set; }
-
-		internal Func<WebBrowserTestComponent, CancellationToken, ValueTask>? StoppingHandler { get; set; }
-
-		internal List<object> Disposables { get; } = [ ];
-
-		public void ConfigureServices(Action<IServiceCollection> handler) => this.ServiceHandlers.Add(handler);
-
-		/// <summary>This instance will be disposed when this host is stopped</summary>
-		public void Using(object instance)
-		{
-			if (instance is not IDisposable or IAsyncDisposable)
-			{
-				throw new ArgumentException("Instance must either implement IDisposable or IAsyncDisposable");
+				request.Headers.TryAddWithoutValidation(header.Key, header.Value);
 			}
-			this.Disposables.Add(instance);
+			if (body is not null)
+			{
+				request.Content = new ByteArrayContent(body);
+				if (!string.IsNullOrEmpty(contentType))
+				{
+					request.Content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+				}
+			}
+
+			if (capture)
+			{
+				// capturing path: BetterHttpClient => the PacketCaptureHttpFilter fires.
+				EnsureCaptureStarted();
+
+				// Callback shape mirrors WebRequesterTestComponent.NavigateTo exactly (single ctx arg, closes over ct).
+				var client = this.GetBetterHttpClient(url);
+				return await client.SendAsync(request, async (ctx) =>
+				{
+					var responseBody = await ctx.Response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+					return BuildResponse(ctx.Response, responseBody);
+				}, ct).ConfigureAwait(false);
+			}
+			else
+			{
+				// raw path: a plain HttpClient over the virtual-network handler, no capture filter
+				var factory = this.GetRequiredService<IBetterHttpClientFactory>();
+				using var raw = new HttpClient(factory.CreateHttpHandler(url, new BetterHttpClientOptions()));
+				using var response = await raw.SendAsync(request, ct).ConfigureAwait(false);
+				var responseBody = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+				return BuildResponse(response, responseBody);
+			}
 		}
 
-		public void OnStartup(Action handler) => this.StartingHandler = (host, ct) =>
+		/// <summary>Lazily starts the component's packet-capture manager on the first captured send, exactly once.</summary>
+		/// <remarks>
+		/// <para>The manager must be running for the emitted packet to reach the sink (it is drained automatically on Stop,
+		/// but starting it is not automatic - callers like <c>WebRequesterTestComponent</c> do it from their single-threaded
+		/// <c>OnStarting</c>; a browser subclass may override <c>OnStarting</c> entirely, so we start it lazily here instead).</para>
+		/// <para><see cref="ForwardToMeshAsync"/> is called CONCURRENTLY (a real browser fetches many page assets in parallel),
+		/// so this must be race-safe: <see cref="PacketCaptureManager.Start"/> just assigns <c>RunTask = Task.Run(Run)</c> with no
+		/// internal guard, and two racing starts would orphan the first reader and split the mailbox across two <c>nextId</c>
+		/// sequences (colliding <c>CapturedPacketId</c>s). The lock + re-check ensures at most one thread ever calls Start.</para>
+		/// </remarks>
+		private void EnsureCaptureStarted()
 		{
-			if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
-			handler();
-			return default;
-		};
+			var packetManager = this.Services.GetService<PacketCaptureManager>();
+			if (packetManager is null || packetManager.IsRunning) return;
 
-		public void OnStartup(Action<IServiceProvider> handler) => this.StartingHandler = (host, ct) =>
-		{
-			if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
-			handler(host.Services);
-			return default;
-		};
-
-		public void OnStartup(Func<WebBrowserTestComponent, CancellationToken, ValueTask> handler) => this.StartingHandler = handler;
-
-		public void OnStartup(Delegate handler)
-		{
-			var magic = MagicDelegate.Create(handler);
-			this.StartingHandler = (host, ct) =>
+			lock (this.CaptureStartLock)
 			{
-				if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
-				magic.Invoke(host.Services);
-				return default;
+				if (!packetManager.IsRunning)
+				{
+					packetManager.Start();
+				}
+			}
+		}
+
+		private static MeshResponse BuildResponse(HttpResponseMessage response, byte[] body)
+		{
+			var headers = new List<KeyValuePair<string, string>>();
+			foreach (var h in response.Headers)
+			{
+				AddHeader(headers, h.Key, h.Value);
+			}
+			foreach (var h in response.Content.Headers)
+			{
+				AddHeader(headers, h.Key, h.Value);
+			}
+			return new MeshResponse
+			{
+				Status = response.StatusCode,
+				Headers = headers,
+				Body = body,
 			};
 		}
 
-		public void OnShutdown(Action handler) => this.StoppingHandler = (host, ct) =>
+		/// <summary>Appends a header's values to <paramref name="headers"/>, folding multi-value headers with a comma per RFC 9110 §5.3 - except <c>Set-Cookie</c>, which cannot be comma-folded (RFC 6265 §3): cookie values may themselves legitimately contain commas, and folding several cookies together would produce one malformed value. Each <c>Set-Cookie</c> value is therefore added as its own entry, exactly as it came off the wire.</summary>
+		private static void AddHeader(List<KeyValuePair<string, string>> headers, string name, IEnumerable<string> values)
 		{
-			if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
-			handler();
-			return default;
-		};
-
-		public void OnShutdown(Action<WebBrowserTestComponent> handler) => this.StoppingHandler = (host, ct) =>
-		{
-			if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
-			handler(host);
-			return default;
-		};
-
-		public void OnShutdown(Func<WebBrowserTestComponent, CancellationToken, ValueTask> handler) => this.StoppingHandler = handler;
-
-		public void OnShutdown(Delegate handler)
-		{
-			var magic = MagicDelegate.Create(handler);
-			this.StoppingHandler = (host, ct) =>
+			if (string.Equals(name, "Set-Cookie", StringComparison.OrdinalIgnoreCase))
 			{
-				if (ct.IsCancellationRequested) return ValueTask.FromCanceled(ct);
-				magic.Invoke(host.Services);
-				return default;
-			};
+				foreach (var value in values)
+				{
+					headers.Add(new(name, value));
+				}
+			}
+			else
+			{
+				headers.Add(new(name, string.Join(",", values)));
+			}
 		}
 
 	}

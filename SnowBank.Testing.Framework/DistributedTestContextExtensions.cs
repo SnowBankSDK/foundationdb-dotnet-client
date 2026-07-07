@@ -175,11 +175,11 @@ namespace SnowBank.Testing.Framework
 			return context.GetNamedComponent<MinimalWebHostTestComponent>(id);
 		}
 
-		/// <summary>Add a new simulated <see cref="WebBrowserTestComponent">Web Browser</see>, that runs on this host</summary>
-		/// <param name="builder">Host that will run the virtualized web browser "process"</param>
-		/// <param name="id">Id suffix of this web browser added to the id of the host (ex: if host is "CLIENT" and browser id is "CHROME", the component will have id "CLIENT:CHROME")</param>
-		/// <param name="configure">Configure the browser</param>
-		public static WebBrowserTestComponent WithWebBrowser(this IHostTestBuilder builder, string id, Action<WebBrowserTestComponentBuilder> configure)
+		/// <summary>Add a new simulated <see cref="WebRequesterTestComponent">HTTP requester</see>, that runs on this host</summary>
+		/// <param name="builder">Host that will run the virtualized requester "process"</param>
+		/// <param name="id">Id suffix of this requester added to the id of the host (ex: if host is "CLIENT" and requester id is "PROBE", the component will have id "CLIENT:PROBE")</param>
+		/// <param name="configure">Configure the requester</param>
+		public static WebRequesterTestComponent WithWebRequester(this IHostTestBuilder builder, string id, Action<WebRequesterTestComponentBuilder> configure)
 		{
 			Contract.NotNull(builder);
 			Contract.NotNullOrEmpty(id);
@@ -187,29 +187,26 @@ namespace SnowBank.Testing.Framework
 
 			id = builder.Component.Id + ":" + id;
 
-			var browser = new WebBrowserTestComponent(builder.Component, id, builder.Parent.Location, builder.Parent.Top.Lifetime);
-			var hostBuilder = new WebBrowserTestComponentBuilder() { Component = browser, Builder = builder };
+			var requester = new WebRequesterTestComponent(builder.Component, id, builder.Parent.Location, builder.Parent.Top.Lifetime);
+			var hostBuilder = new WebRequesterTestComponentBuilder() { Component = requester, Builder = builder };
 			configure(hostBuilder);
 
-			builder.AddSubComponent(browser);
+			builder.AddSubComponent(requester);
 
-			browser.ConfigureServicesHandlers.AddRange(hostBuilder.ServiceHandlers);
-			browser.StartingHandler = hostBuilder.StartingHandler ?? browser.StartingHandler;
-			browser.StoppingHandler = hostBuilder.StoppingHandler ?? browser.StoppingHandler;
-			browser.Disposables.AddRange(hostBuilder.Disposables);
+			requester.ConfigureServicesHandlers.AddRange(hostBuilder.ServiceHandlers);
+			requester.StartingHandler = hostBuilder.StartingHandler ?? requester.StartingHandler;
+			requester.StoppingHandler = hostBuilder.StoppingHandler ?? requester.StoppingHandler;
+			requester.Disposables.AddRange(hostBuilder.Disposables);
 
-			//host.Parent.RegisterComponent(browser);
-			builder.Parent.SetNamedComponent(id, browser);
-			//builder.Location.RegisterNetworkService("host", id, "minimal");
-			//builder.Location.RegisterNetworkService("minimal", id, null);
-			builder.Parent.Location.RegisterNetworkService("browser", id, null);
-			return browser;
+			builder.Parent.SetNamedComponent(id, requester);
+			builder.Parent.Location.RegisterNetworkService("requester", id, null);
+			return requester;
 		}
 
-		/// <summary>Returns a simulated <see cref="MinimalWebHostTestComponent">Web Host</see> hosted by this test environment</summary>
-		public static WebBrowserTestComponent GetWebBrowser(this IDistributedTestFeatureCollection context, string id)
+		/// <summary>Returns a simulated <see cref="WebRequesterTestComponent">HTTP requester</see> hosted by this test environment</summary>
+		public static WebRequesterTestComponent GetWebRequester(this IDistributedTestFeatureCollection context, string id)
 		{
-			return context.GetNamedComponent<WebBrowserTestComponent>(id);
+			return context.GetNamedComponent<WebRequesterTestComponent>(id);
 		}
 
 		#endregion
