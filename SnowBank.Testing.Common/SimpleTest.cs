@@ -1220,6 +1220,53 @@ namespace SnowBank.Testing
 				|| host == "testhost";                // ReSharper Test Runner
 		}
 
+		/// <summary>How this process renders test diagnostics: streamed live, consolidated into an end-of-test journal, or both.</summary>
+		/// <remarks>Resolved once from the <c>SNOWBANK_TEST_LOG</c> environment variable (<c>stream</c>/<c>report</c>/<c>both</c>);
+		/// absent, an interactive runner defaults to <see cref="TestLogVerbosity.Stream"/> and everything else (CI, plain
+		/// <c>dotnet</c> runs, AI agents) to <see cref="TestLogVerbosity.Report"/>. See <see cref="TestLogVerbosity"/>.</remarks>
+		public static readonly TestLogVerbosity LogVerbosity = ResolveLogVerbosity();
+
+		private static TestLogVerbosity ResolveLogVerbosity()
+		{
+			var env = Environment.GetEnvironmentVariable("SNOWBANK_TEST_LOG");
+			if (!string.IsNullOrWhiteSpace(env))
+			{
+				switch (env.Trim().ToLowerInvariant())
+				{
+					case "stream": return TestLogVerbosity.Stream;
+					case "report": return TestLogVerbosity.Report;
+					case "both": return TestLogVerbosity.Both;
+					// an unrecognized value falls through to auto-detection (do not fail a whole test run over a typo)
+				}
+			}
+
+			// no explicit choice: an interactive runner streams live; CI, plain dotnet runs and AI agents get the clean report
+			return DetectInteractiveTestRunner() ? TestLogVerbosity.Stream : TestLogVerbosity.Report;
+		}
+
+		/// <summary>Detects an INTERACTIVE test runner (a human watching live), as opposed to CI or a headless run</summary>
+		/// <remarks>Distinct from <see cref="DetectConsoleTestRunner"/>, which also returns <c>true</c> for TeamCity: a CI
+		/// server is NOT interactive and wants the consolidated report, not the live stream.</remarks>
+		private static bool DetectInteractiveTestRunner()
+		{
+			// well-known CI markers are never interactive
+			if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TEAMCITY_VERSION"))
+			 || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")))
+			{
+				return false;
+			}
+
+			// a human stepping through in the IDE is watching live
+			if (Debugger.IsAttached)
+			{
+				return true;
+			}
+
+			string? host = Assembly.GetEntryAssembly()?.GetName().Name;
+			return host == "testhost"                  // ReSharper / Visual Studio test runner
+				|| host == "TestDriven.NetCore.AdHoc";  // TestDriven.NET
+		}
+
 		[DebuggerNonUserCode]
 		private static void WriteToLog(string? message, bool lineBreak = true)
 		{

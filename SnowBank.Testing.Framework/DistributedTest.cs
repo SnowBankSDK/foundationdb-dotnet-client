@@ -185,13 +185,19 @@ namespace SnowBank.Testing.Framework
 					}
 				}
 
-				// Dump the timeline of events
-				var sb = new StringBuilder();
-				context.Timeline.DumpReport(sb, context.Name, context.StartedAt, context.CompletedAt);
-				context.LogOutput.Write(sb.ToString());
+				// Dump the timeline of events. In stream mode a passing test already showed every event live, so the
+				// consolidated journal is redundant and skipped - but a FAILING test always gets it (the post-mortem is
+				// exactly what is needed when something breaks, in every mode).
+				bool failed = TestContext.CurrentContext.Result.FailCount > 0;
+				if (LogVerbosity != TestLogVerbosity.Stream || failed)
+				{
+					var sb = new StringBuilder();
+					context.Timeline.DumpReport(sb, context.Name, context.StartedAt, context.CompletedAt);
+					context.LogOutput.Write(sb.ToString());
+				}
 
 				// if the test fails, we also dump any information that may be useful for troubleshooting!
-				if (TestContext.CurrentContext.Result.FailCount > 0)
+				if (failed)
 				{
 					var packetsDump = DumpNetworkPackets(context);
 					if (packetsDump != null)

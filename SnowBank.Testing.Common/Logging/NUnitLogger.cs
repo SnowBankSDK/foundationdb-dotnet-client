@@ -99,29 +99,47 @@ namespace SnowBank.Testing
 		[ThreadStatic]
 		private static StringBuilder? CachedBuilderInstance;
 
+		// ANSI color for warning/error lines when writing to a real terminal (see NUnitLoggerOptions.UseColor)
+		private const string AnsiReset = "\x1b[0m";
+		private const string AnsiYellow = "\x1b[33m";
+		private const string AnsiRed = "\x1b[31m";
+
 		public void WriteMessage(DateTime now, LogLevel logLevel, string? actorId, string logName, int eventId, string? eventName, string? message, Exception? exception)
 		{
-			var logBuilder = CachedBuilderInstance;
-			CachedBuilderInstance = null;
+			// the per-event line is skipped in the consolidated-report mode, but the journal feed (MessageHandler) must still fire
+			if (this.Options.EmitToOutput)
+			{
+				var logBuilder = CachedBuilderInstance;
+				CachedBuilderInstance = null;
 
-			logBuilder ??= new();
+				logBuilder ??= new();
 
-			CreateDefaultLogMessage(logBuilder, now, logLevel, actorId, logName, eventId, message, exception);
+				CreateDefaultLogMessage(logBuilder, now, logLevel, actorId, logName, eventId, message, exception);
 
-			var output = (logLevel >= LogLevel.Error ? this.Options.OutputError : null) ?? this.Options.Output ?? TestContext.Progress;
-			string text = logBuilder.ToString();
-			output.WriteLine(text);
+				var output = (logLevel >= LogLevel.Error ? this.Options.OutputError : null) ?? this.Options.Output ?? TestContext.Progress;
+				string text = logBuilder.ToString();
 
-			System.Diagnostics.Debug.WriteLine(text);
+				// only warnings and errors are colored: normal lines stay plain so the loud ones actually pop
+				if (this.Options.UseColor && logLevel >= LogLevel.Warning)
+				{
+					output.WriteLine((logLevel >= LogLevel.Error ? AnsiRed : AnsiYellow) + text + AnsiReset);
+				}
+				else
+				{
+					output.WriteLine(text);
+				}
+
+				System.Diagnostics.Debug.WriteLine(text);
+
+				logBuilder.Clear();
+				if (logBuilder.Capacity > 1024)
+				{
+					logBuilder.Capacity = 1024;
+				}
+				CachedBuilderInstance = logBuilder;
+			}
 
 			this.Options.MessageHandler?.Invoke((logLevel, logName, eventId, eventName, message, exception));
-
-			logBuilder.Clear();
-			if (logBuilder.Capacity > 1024)
-			{
-				logBuilder.Capacity = 1024;
-			}
-			CachedBuilderInstance = logBuilder;
 		}
 
 		private void CreateDefaultLogMessage(StringBuilder logBuilder, DateTime now, LogLevel logLevel, string? actorId, string logName, int eventId, string? message, Exception? exception)

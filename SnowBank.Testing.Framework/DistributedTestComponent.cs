@@ -651,11 +651,20 @@ namespace SnowBank.Testing.Framework
 
 				services.AddLogging(logBuilder =>
 				{
+					// WebApplication.CreateBuilder wires the default console/debug/eventsource providers; drop them so the
+					// journal-feeding NUnit logger is the ONLY sink (the default console provider would otherwise emit a
+					// second, uglier, two-line-per-event copy of everything the NUnit logger and the journal already carry).
+					logBuilder.ClearProviders();
+
 					logBuilder.AddNUnitLogging(options =>
 					{
 						options.ActorId = this.Id;
 						options.Output = testOutput;
 						options.OutputError = testOutputError;
+						// report mode suppresses the live per-event stream (the events still feed the end-of-test journal);
+						// color only when streaming to a real terminal (a captured/redirected output would show raw escape codes)
+						options.EmitToOutput = SimpleTest.LogVerbosity != TestLogVerbosity.Report;
+						options.UseColor = !Console.IsOutputRedirected && SimpleTest.LogVerbosity != TestLogVerbosity.Report;
 						options.DateOrigin = this.Context.CreatedAt.ToDateTimeOffset().LocalDateTime;
 						options.IncludeScopes = false;
 						options.LogLevel = LogLevel.Warning; // only while we are starting, will be changed later

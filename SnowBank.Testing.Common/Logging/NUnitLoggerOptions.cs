@@ -45,6 +45,17 @@ namespace SnowBank.Testing
 		/// <summary>If not-null, write Errors (or above) to this output instead of <see cref="Output"/>.</summary>
 		public TextWriter? OutputError { get; set; }
 
+		/// <summary>If <c>false</c>, the per-event line is NOT written to <see cref="Output"/> (only <see cref="MessageHandler"/> still fires).</summary>
+		/// <remarks>Set to <c>false</c> in the consolidated-report mode (<see cref="TestLogVerbosity.Report"/>): the events still
+		/// feed the end-of-test journal via <see cref="MessageHandler"/>, but the live per-event stream is suppressed so the
+		/// output is not duplicated.</remarks>
+		public bool EmitToOutput { get; set; } = true;
+
+		/// <summary>If <c>true</c>, colorize warning/error lines with ANSI escape codes when writing to <see cref="Output"/>.</summary>
+		/// <remarks>Should only be enabled when the output is a real terminal (<c>!Console.IsOutputRedirected</c>): a captured
+		/// output (Visual Studio, a redirected log file, an AI agent) would show the raw escape codes as garbage.</remarks>
+		public bool UseColor { get; set; }
+
 		/// <summary>If true, output the timestamp. If <see cref="DateOrigin"/> is not null, display the relative time from the origin.</summary>
 		public bool TraceTimestamp { get; set; } = true;
 
