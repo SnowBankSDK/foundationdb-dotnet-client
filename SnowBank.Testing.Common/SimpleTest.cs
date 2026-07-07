@@ -338,6 +338,10 @@ namespace SnowBank.Testing
 			{
 				m_testEndTimestamp = GetTimestamp();
 
+				// stop any parasitic load FIRST: the rest of the teardown (failure dumps, service disposal) must not
+				// run starved, and a leaked scope must never outlive its test (the worker threads are joined here)
+				DisposeParasiticLoads();
+
 				// handle failure callbacks here
 				if (currentContext.Result.FailCount > 0)
 				{
@@ -404,6 +408,67 @@ namespace SnowBank.Testing
 		/// <summary>Override this method to insert your own cleanup logic that should run after each test in this class.</summary>
 		protected virtual void OnAfterEachTest()
 		{ }
+
+		#region Parasitic Load...
+
+		/// <summary>Parasitic load scopes started by the current test, force-stopped at teardown</summary>
+		private List<IDisposable> ParasiticLoadScopes { get; } = [ ];
+
+		/// <summary>Runs dedicated CPU-spinning threads until the returned scope is disposed (or the test completes), so a specific test step can execute under controlled starvation.</summary>
+		/// <param name="workers">Number of spinner threads (default: half the logical cores, ~50% pressure on an idle machine)</param>
+		/// <param name="duty">Fraction of each ~20 ms window spent spinning (1.0 = continuous spin, 0.5 = half load per worker)</param>
+		/// <param name="maxDuration">Hard self-expiry even if the scope leaks (default 60 s): a hung test cannot leave the machine pegged</param>
+		/// <param name="assumeExclusive">Set to <c>true</c> ONLY when exclusivity is guaranteed by a fixture- or assembly-level parallelism setting that this method cannot observe</param>
+		/// <remarks>
+		/// <para>Scope the load to exactly the racy window: <c>using (UseParasiticCpuLoad()) { /* the step under pressure */ }</c>.</para>
+		/// <para><b>Exclusivity is enforced:</b> a parasitic load perturbs every test running concurrently with this one,
+		/// which is antagonistic to the parallel test runner. The test must be marked <c>[NonParallelizable]</c> (NUnit
+		/// then runs it on the non-parallel shift, with no other test in flight); this method fails fast otherwise.</para>
+		/// <para>The scope is force-disposed at test teardown even if the test forgets or throws, and the workers honor
+		/// the test's <see cref="Cancellation"/> token, so the spinner threads never outlive the test.</para>
+		/// </remarks>
+		protected IDisposable UseParasiticCpuLoad(int? workers = null, double duty = 1.0, TimeSpan? maxDuration = null, bool assumeExclusive = false)
+		{
+			if (!assumeExclusive && TestContext.CurrentContext.Test.Properties.Get(NUnit.Framework.Internal.PropertyNames.ParallelScope) is not ParallelScope.None)
+			{
+				Assert.Fail("A parasitic CPU load perturbs every test running concurrently with this one: mark the test [NonParallelizable] (or pass assumeExclusive: true when exclusivity is guaranteed by a fixture- or assembly-level setting).");
+			}
+
+			var scope = ParasiticLoad.Cpu(
+				workers ?? Math.Max(2, Environment.ProcessorCount / 2),
+				duty,
+				maxDuration,
+				this.Cancellation
+			);
+			lock (this.ParasiticLoadScopes)
+			{
+				this.ParasiticLoadScopes.Add(scope);
+			}
+			return scope;
+		}
+
+		/// <summary>Force-stops any parasitic load still running when the test completes</summary>
+		private void DisposeParasiticLoads()
+		{
+			IDisposable[]? scopes = null;
+			lock (this.ParasiticLoadScopes)
+			{
+				if (this.ParasiticLoadScopes.Count > 0)
+				{
+					scopes = this.ParasiticLoadScopes.ToArray();
+					this.ParasiticLoadScopes.Clear();
+				}
+			}
+			if (scopes is not null)
+			{
+				foreach (var scope in scopes)
+				{
+					try { scope.Dispose(); } catch { /* double-dispose of a scope the test already closed is fine */ }
+				}
+			}
+		}
+
+		#endregion
 
 		/// <summary>Forces a Full GC, in order to force any pending finalizers to run.</summary>
 		[DebuggerNonUserCode]
