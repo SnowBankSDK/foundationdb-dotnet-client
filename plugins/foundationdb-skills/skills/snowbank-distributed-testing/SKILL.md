@@ -11,6 +11,19 @@ Its single most important diagnostic output is the **unified Timeline journal**:
 
 This skill is layer-agnostic. A specific layer's own probes (e.g. Teleport's `TeleportDebugger`, the BUGGIFY apply-barrier, replay/chaos fuzzing) live in **that layer's testing skill in the consuming repo**, not here.
 
+## Version & compatibility
+
+This skill is versioned **with the code**: it lives in the same repo (`foundationdb-dotnet-client`) as `SnowBank.Testing.Framework` / `FoundationDB.Client`, and every NuGet release is a git **tag whose name is the package version** (`7.4.1`, `7.4.0`, `7.3.2`, …). This copy tracks the repo **tip** — the current API, which may be ahead of any released package.
+
+If your project pins an **older** package, read the version-matched skill rather than this one — the concepts here are stable across versions, but individual members/signatures are not:
+
+```bash
+git show <your-package-version>:.claude/skills/snowbank-distributed-testing/SKILL.md
+# e.g. git show 7.4.1:.claude/skills/snowbank-distributed-testing/SKILL.md
+```
+
+(or browse that path at the matching tag on GitHub). As a rule, **confirm a specific member exists in the assemblies you actually reference** before relying on it. For orientation, the whole surface described below — always-on HTTP packet capture, the three log-level knobs, `GetNetworkPackets(...)`, and `RegisterTimelineEvent(...)` — is already present as of **7.4.1**; if something here seems missing, you are most likely looking for it in the journal (e.g. packet *bodies*) instead of calling the API that exposes it.
+
 ## Running a distributed test
 
 These projects use the **NUnit Microsoft.Testing.Platform runner**, so `dotnet test` is unreliable on the .NET 10+ SDK (*"Testing with VSTest target is no longer supported"*). Build, then **run the test assembly directly**:
