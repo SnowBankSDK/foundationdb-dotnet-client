@@ -39,6 +39,7 @@ namespace FoundationDB.Testing
 	using FoundationDB.Client.Core;
 	using FoundationDB.Client.Native;
 	using SnowBank.Collections.CacheOblivious;
+	using SnowBank.Threading;
 	using static FoundationDB.Testing.FakeDbStore;
 
 	/// <summary>Simulates a FoundationDB cluster running in-memory in the local process</summary>
@@ -1773,9 +1774,21 @@ namespace FoundationDB.Testing
 
 		private static ArrayPool<byte> GlobalPool { get; } = ArrayPool<byte>.Create();
 
-		private IClock Clock { get; }
+		/// <summary>Time source of the simulated cluster, used to schedule the retry backoff (see <see cref="RetryDelayMaximum"/>)</summary>
+		/// <remarks>A test that installs a fake provider (e.g. <c>NodaTimeProvider</c> over a <c>FakeTimeProvider</c>) gets a
+		/// simulated cluster whose retry timing advances with virtual time, instead of blocking the wall clock.</remarks>
+		internal TimeProvider Time { get; }
 
-		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, IClock? clock = null)
+		/// <summary>Base delay before the first retry after a retryable error (when <see cref="RetryDelayMaximum"/> enables the backoff); defaults to 1 ms</summary>
+		public TimeSpan RetryDelayInitial { get; set; } = TimeSpan.FromMilliseconds(1);
+
+		/// <summary>Cap on the exponential retry backoff. <b>Defaults to zero, which disables the wait entirely</b> - a retryable
+		/// error retries immediately, so normal tests run at full speed. Raise it (e.g. 1 s) to emulate realistic recovery
+		/// timing in a "broken cluster" test; the delay rides <see cref="Time"/>, so under a fake clock it costs zero real time.</summary>
+		/// <remarks>The per-transaction <c>MaxRetryDelay</c> option, when set, only tightens this cap (it never enables the backoff).</remarks>
+		public TimeSpan RetryDelayMaximum { get; set; } = TimeSpan.Zero;
+
+		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null)
 		{
 			if (protocolVersion < MIN_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be less than the minimum supported version");
 			if (protocolVersion > MAX_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be greater than the maximum supported version");
@@ -1788,7 +1801,7 @@ namespace FoundationDB.Testing
 
 			this.ApiVersion = apiVersion;
 			this.ProtocolVersion = protocolVersion;
-			this.Clock = clock ?? SystemClock.Instance;
+			this.Time = time ?? TimeProvider.System;
 
 			if (initialVersion <= 0)
 			{
@@ -3106,6 +3119,9 @@ namespace FoundationDB.Testing
 
 			private int RetryCount { get; set; }
 
+			/// <summary>Exponential backoff for this transaction's retries; grows across successive <see cref="OnErrorAsync"/> calls, created lazily only when the store enables a retry delay</summary>
+			private ExponentialRandomizedBackoff? RetryBackoff { get; set; }
+
 			public async Task OnErrorAsync(FdbError code, CancellationToken ct)
 			{
 				ct.ThrowIfCancellationRequested();
@@ -3121,8 +3137,22 @@ namespace FoundationDB.Testing
 							break;
 						}
 
-						//TODO: BUGBUG: exponential backoff!
-						await Task.Delay(0, ct);
+						// realistic-but-virtual retry backoff: scheduled on the store's TimeProvider, so a fake clock
+						// advances it with everything else (and a real backoff costs ZERO real time under virtual time).
+						// The default policy is no wait (RetryDelayMaximum == 0), so normal tests retry instantly - a
+						// "broken cluster" test raises FakeDbStore.RetryDelayMaximum to emulate recovery timing.
+						var maximum = this.Store.RetryDelayMaximum;
+						if (maximum > TimeSpan.Zero)
+						{
+							if (this.OptionMaxRetryDelay > 0)
+							{ // the client's MaxRetryDelay option only TIGHTENS the store's cap (it never enables the backoff)
+								var cap = TimeSpan.FromMilliseconds(this.OptionMaxRetryDelay);
+								if (cap < maximum) maximum = cap;
+							}
+							var backoff = this.RetryBackoff ??= new ExponentialRandomizedBackoff(this.Store.RetryDelayInitial, maximum) { Time = this.Store.Time };
+							await backoff.Wait(ct).ConfigureAwait(false);
+						}
+
 						Reset();
 						return;
 					}
