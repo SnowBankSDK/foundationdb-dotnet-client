@@ -24,6 +24,24 @@ dotnet artifacts/bin/<Project>/debug_net11.0/<Project>.dll \
 
 `--output Detailed` gives per-assert output; the journal is printed regardless (see below). Use `--filter "FullyQualifiedName~Foo"` (not `--treenode-filter`).
 
+### `SNOWBANK_TEST_LOG` — pick the output shape
+
+Every event is available two ways: **live**, streamed per-event as it happens (nice for a human watching in an IDE), and **consolidated**, as the single end-of-test journal. Emitting both duplicates the output — fine interactively, noise in a captured CI/agent log. The `SNOWBANK_TEST_LOG` env var (resolved once per process) picks:
+
+| Value | Live per-event stream | End-of-test journal | For |
+|-------|:---:|:---:|-----|
+| `stream` | ✅ | on **failure** only | interactive (ReSharper / VS / debugger) |
+| `report` | ❌ | ✅ | CI consoles, **AI agents reading the file** |
+| `both` | ✅ | ✅ | deep debugging |
+
+- **Unset** → auto: an interactive runner (`testhost`/debugger, *not* TeamCity/`CI`) resolves to `stream`; everything else (CI, a plain `dotnet …dll` run, an AI agent) to `report`.
+- **A failing test always emits the full journal**, in every mode — the post-mortem is never hidden.
+- Orthogonally, the default ASP.NET console provider is cleared in test hosts, so the per-event view is the framework's own single-line format (`# T+t LEVEL @host [src] "msg"`), not a second two-line copy. In a real terminal (`!Console.IsOutputRedirected`) warnings/errors are ANSI-colored; captured/redirected output (VS, files, agents) stays plain.
+
+```bash
+SNOWBANK_TEST_LOG=report dotnet artifacts/bin/<Project>/debug_net11.0/<Project>.dll --output Detailed
+```
+
 ## Writing one (the entry points)
 
 A test derives from `DistributedTest` and builds an environment with `MakeItSo`:
