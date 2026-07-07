@@ -2386,7 +2386,7 @@ namespace SnowBank.Data.Json
 					break;
 				}
 				case CrystalJsonSettings.DateFormat.Microsoft:
-				{ // "\/Date(#####)\/" pour UTC, ou "\/Date(####+HHMM)\/" pour LocalTime
+				{ // "\/Date(#####)\/" for UTC, or "\/Date(####+HHMM)\/" for LocalTime
 					WriteDateTimeMicrosoft(value);
 					break;
 				}
@@ -2527,7 +2527,7 @@ namespace SnowBank.Data.Json
 		public void WriteDateTimeMicrosoft(DateTimeOffset date)
 		{
 			if (date == DateTimeOffset.MinValue)
-			{ // pour éviter de s'embrouiller avec les TimeZones...
+			{ // to avoid getting confused with TimeZones...
 				m_buffer.Write(JsonTokens.MicrosoftDateTimeMinValue);
 			}
 			else if (date == DateTimeOffset.MaxValue)

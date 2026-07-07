@@ -195,7 +195,7 @@ namespace SnowBank.Testing.Framework
 		{
 			try
 			{
-				// step 1: inter-connect entre components
+				// step 1: inter-connect between components
 				foreach (var component in this.Builder.Components)
 				{
 					try
@@ -220,7 +220,7 @@ namespace SnowBank.Testing.Framework
 					catch (Exception e)
 					{
 						if (e is InvalidOperationException invex && invex.Message.Contains("No constructor for type '") && component is DistributedTestComponent wc)
-						{ // c'est problablement un crash du DI! on va dumper le contenu de tous les services définis
+						{ // this is probably a DI crash! we will dump the content of all defined services
 
 							var sb = new StringBuilder();
 							foreach (var desc in wc.GetRequiredService<IServiceCollection>())

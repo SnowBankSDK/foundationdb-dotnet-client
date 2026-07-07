@@ -564,7 +564,7 @@ namespace FoundationDB.Layers.Experimental.Indexing.Tests
 			Log();
 			DumpIndex("DeadOrAlive", indexOfTheDead, (s, _) => s);
 
-			// Où sont les femmes ?
+			// "Où sont les femmes ?"
 			Log();
 			Log("indexByGender.Lookup('Female')");
 			var females = indexByGender.Lookup("Female")!;

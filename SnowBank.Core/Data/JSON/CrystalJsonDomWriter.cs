@@ -144,10 +144,10 @@ namespace SnowBank.Data.Json
 
 		public static bool AreDefaultSettings(CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver)
 		{
-			// Pas s'il y a un résolver custom...
+			// Not if there is a custom resolver...
 			if (resolver != null && resolver != CrystalJson.DefaultResolver) return false;
 
-			// Les options de layout (compact, indenté, ...) n'ont aucun impact en mode DOM!
+			// The layout options (compact, indented, ...) have no impact in DOM mode!
 			return (settings?.Flags ?? 0 & ~CrystalJsonSettings.OptionFlags.Layout_Mask) == 0;
 		}
 
@@ -366,7 +366,7 @@ namespace SnowBank.Data.Json
 		{
 			Contract.Debug.Requires(value != null && type != null);
 
-			//REVIEW:TODO: m_discardDefaults si on est dans un JsonObject !
+			//REVIEW:TODO: m_discardDefaults if we are inside a JsonObject !
 
 			// Cannot be an Enum because we checked for primitive types only
 			switch (Type.GetTypeCode(type))

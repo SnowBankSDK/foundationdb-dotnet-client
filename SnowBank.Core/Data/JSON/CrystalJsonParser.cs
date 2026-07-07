@@ -1272,7 +1272,7 @@ namespace SnowBank.Data.Json
 				}
 				if (!negative)
 				{
-					// le literal est-il en cache?
+					// is the literal in the cache?
 					if (num <= JsonNumber.CACHED_SIGNED_MAX)
 					{
 						return JsonNumber.GetCachedSmallNumber((int) num);
@@ -1280,7 +1280,7 @@ namespace SnowBank.Data.Json
 				}
 				else
 				{
-					// le literal est-il en cache?
+					// is the literal in the cache?
 					if (num <= -JsonNumber.CACHED_SIGNED_MIN)
 					{
 						return JsonNumber.GetCachedSmallNumber(-((int) num));
@@ -1624,7 +1624,7 @@ namespace SnowBank.Data.Json
 #if DEBUG_JSON_PARSER
 			System.Diagnostics.Debug.WriteLine("CrystalJsonConverter.ParseJsonArray(...) [BEGIN]");
 #endif
-			// on a déjà le ']'
+			// we already have the ']'
 
 			bool commaRequired = false;
 			bool valueRequired = false;

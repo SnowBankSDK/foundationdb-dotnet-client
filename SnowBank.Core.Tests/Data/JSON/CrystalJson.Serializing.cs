@@ -478,15 +478,15 @@ namespace SnowBank.Data.Json.Tests
 			}
 			{ // NaN => '"NaN"'
 				var settings = CrystalJsonSettings.Json.WithFloatFormat(CrystalJsonSettings.FloatFormat.String);
-				CheckSerialize(float.NaN, settings, "\"NaN\"", "Comme le fait JSON.Net");
-				CheckSerialize(float.PositiveInfinity, settings, "\"Infinity\"", "Comme le fait JSON.Net");
-				CheckSerialize(float.NegativeInfinity, settings, "\"-Infinity\"", "Comme le fait JSON.Net");
+				CheckSerialize(float.NaN, settings, "\"NaN\"", "Same as JSON.Net does");
+				CheckSerialize(float.PositiveInfinity, settings, "\"Infinity\"", "Same as JSON.Net does");
+				CheckSerialize(float.NegativeInfinity, settings, "\"-Infinity\"", "Same as JSON.Net does");
 			}
 			{ // NaN => 'null'
 				var settings = CrystalJsonSettings.Json.WithFloatFormat(CrystalJsonSettings.FloatFormat.Null);
-				CheckSerialize(float.NaN, settings, "null", "A défaut d'autre chose...");
-				CheckSerialize(float.PositiveInfinity, settings, "null", "A défaut d'autre chose...");
-				CheckSerialize(float.NegativeInfinity, settings, "null", "A défaut d'autre chose...");
+				CheckSerialize(float.NaN, settings, "null", "For lack of anything better...");
+				CheckSerialize(float.PositiveInfinity, settings, "null", "For lack of anything better...");
+				CheckSerialize(float.NegativeInfinity, settings, "null", "For lack of anything better...");
 			}
 
 			// double
@@ -510,9 +510,9 @@ namespace SnowBank.Data.Json.Tests
 			}
 			{ // NaN => '"NaN"'
 				var settings = CrystalJsonSettings.Json.WithFloatFormat(CrystalJsonSettings.FloatFormat.String);
-				CheckSerialize(double.NaN, settings, "\"NaN\"", "Comme le fait JSON.Net");
-				CheckSerialize(double.PositiveInfinity, settings, "\"Infinity\"", "Comme le fait JSON.Net");
-				CheckSerialize(double.NegativeInfinity, settings, "\"-Infinity\"", "Comme le fait JSON.Net");
+				CheckSerialize(double.NaN, settings, "\"NaN\"", "Same as JSON.Net does");
+				CheckSerialize(double.PositiveInfinity, settings, "\"Infinity\"", "Same as JSON.Net does");
+				CheckSerialize(double.NegativeInfinity, settings, "\"-Infinity\"", "Same as JSON.Net does");
 			}
 			{ // NaN => 'null'
 				var settings = CrystalJsonSettings.Json.WithFloatFormat(CrystalJsonSettings.FloatFormat.Null);
@@ -1160,7 +1160,7 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(localNow, settings, "\"\\/Date(" + ticks.ToString() + GetTimeZoneSuffix(localNow) + ")\\/\"");
 
 			// Local vs Unspecified vs UTC
-			// * 1er Janvier 2000 = GMT + 1 car heure d'hiver
+			// * January 1st 2000 = GMT + 1, because of winter time
 			CheckSerialize(
 				new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc),
 				settings,
@@ -1179,7 +1179,7 @@ namespace SnowBank.Data.Json.Tests
 				"\"\\/Date(" + (946684800000 - 1 * 3600 * 1000).ToString() + "+0100)\\/\"",
 				"2000-01-01 GMT+1 (Paris)"
 			);
-			// * 1er Août 2000 = GMT + 2, car heure d'été
+			// * September 1st 2000 = GMT + 2, because of summer time (DST)
 			CheckSerialize(
 				new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc),
 				settings,
@@ -1251,18 +1251,18 @@ namespace SnowBank.Data.Json.Tests
 
 			// Now (local)
 			DateTime localNow = DateTime.Now;
-			CheckSerialize(localNow, settings, "\"" + localNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffff") + ToUtcOffset(DateTimeOffset.Now.Offset) + "\"", "DateTime.Now doit inclure la TimeZone");
+			CheckSerialize(localNow, settings, "\"" + localNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffff") + ToUtcOffset(DateTimeOffset.Now.Offset) + "\"", "DateTime.Now must include the TimeZone");
 
 			// Local vs Unspecified vs UTC
 			// IMPORTANT: this test only works if you are in the "Romance Standard Time" (Paris, Bruxelles, ...), sorry! (or use the pretext to visit Paris, all expenses paid by the QA dept. !)
-			// Paris: GMT+1 l'hivers, GMT+2 l'état
+			// Paris: GMT+1 in winter, GMT+2 in summer
 
-			// * 1er Janvier 2000 = GMT + 1, car heure d'hiver
+			// * January 1st 2000 = GMT + 1, because of winter time
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), settings, "\"2000-01-01T00:00:00Z\"", "2000-01-01 UTC");
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0), settings, "\"2000-01-01\"", "2000-01-01 (unspecified)");
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local), settings, "\"2000-01-01T00:00:00+01:00\"", "2000-01-01 GMT+1 (Paris)");
 
-			// * 1er Septembre 2000 = GMT + 2, car heure d'été
+			// * September 1st 2000 = GMT + 2, because of summer time (DST)
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc), settings, "\"2000-09-01T00:00:00Z\"", "2000-09-01 UTC");
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0), settings, "\"2000-09-01\"", "2000-09-01 (unspecified)");
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Local), settings, "\"2000-09-01T00:00:00+02:00\"", "2000-09-01 GMT+2 (Paris, DST)");
@@ -1300,17 +1300,17 @@ namespace SnowBank.Data.Json.Tests
 
 			// Now (local)
 			var localNow = DateTimeOffset.Now;
-			CheckSerialize(localNow, settings, "\"" + localNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffff") + ToUtcOffset(localNow.Offset) + "\"", "DateTime.Now doit inclure la TimeZone");
+			CheckSerialize(localNow, settings, "\"" + localNow.ToString("yyyy-MM-ddTHH:mm:ss.fffffff") + ToUtcOffset(localNow.Offset) + "\"", "DateTime.Now must include the TimeZone");
 			//note: this test will not work if the server is running int the UTC/GMT+0 timezone !
 
 			// Local vs Unspecified vs UTC
-			// Paris: GMT+1 l'hivers, GMT+2 l'état
+			// Paris: GMT+1 in winter, GMT+2 in summer
 
-			// * 1er Janvier 2000 = GMT + 1 car heure d'hiver
+			// * January 1st 2000 = GMT + 1, because of winter time
 			CheckSerialize(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero), settings, "\"2000-01-01T00:00:00+00:00\"", "2000-01-01 UTC");
 			CheckSerialize(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1)), settings, "\"2000-01-01T00:00:00+01:00\"", "2000-01-01 GMT+1 (Paris)");
 
-			// * 1er Septembre 2000 = GMT + 2, car heure d'été
+			// * September 1st 2000 = GMT + 2, because of summer time (DST)
 			CheckSerialize(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.Zero), settings, "\"2000-09-01T00:00:00+00:00\"", "2000-09-01 UTC");
 			CheckSerialize(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.FromHours(2)), settings, "\"2000-09-01T00:00:00+02:00\"", "2000-09-01 GMT+2 (Paris, DST)");
 		}
@@ -1345,11 +1345,11 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(localNow, CrystalJsonSettings.JavaScript, $"new Date({ticks})");
 
 			// Local vs Unspecified vs UTC
-			// * 1er Janvier 2000 = GMT + 1 car heure d'hiver
+			// * January 1st 2000 = GMT + 1, because of winter time
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), CrystalJsonSettings.JavaScript, "new Date(946684800000)", "2000-01-01 UTC");
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0), CrystalJsonSettings.JavaScript, "new Date(946681200000)", "2000-01-01 GMT+1 (Paris)");
 			CheckSerialize(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local), CrystalJsonSettings.JavaScript, "new Date(946681200000)", "2000-01-01 GMT+1 (Paris)");
-			// * 1er Août 2000 = GMT + 2 car heure d'été
+			// * August 1st 2000 = GMT + 2, because of summer time (DST)
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc), CrystalJsonSettings.JavaScript, "new Date(967766400000)", "2000-09-01 UTC");
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0), CrystalJsonSettings.JavaScript, "new Date(967759200000)", "2000-08-01 GMT+2 (Paris, DST)");
 			CheckSerialize(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Local), CrystalJsonSettings.JavaScript, "new Date(967759200000)", "2000-08-01 GMT+2 (Paris, DST)");

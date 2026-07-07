@@ -452,13 +452,13 @@ namespace SnowBank.Core.Tests
 				Assert.That(uuid.ToString(), Is.EqualTo("6be5d394-03a6-42ab-aac2-89b7d9312502"));
 			}
 			{ // almost overflow (low)
-				var uuid = @base.Increment(0x553D764826CEDBFDUL); // delta nécessaire pour avoir 0xFFFFFFFFFFFFFFFF a la fin
+				var uuid = @base.Increment(0x553D764826CEDBFDUL); // delta needed to get 0xFFFFFFFFFFFFFFFF at the end
 				Log(uuid);
 				DumpHexa(uuid.ToByteArray());
 				Assert.That(uuid.ToString(), Is.EqualTo("6be5d394-03a6-42ab-ffff-ffffffffffff"));
 			}
 			{ // overflow (low)
-				var uuid = @base.Increment(0x553D764826CEDBFEUL); // encore 1 de plus pour trigger l'overflow
+				var uuid = @base.Increment(0x553D764826CEDBFEUL); // one more to trigger the overflow
 				Log(uuid);
 				DumpHexa(uuid.ToByteArray());
 				Assert.That(uuid.ToString(), Is.EqualTo("6be5d394-03a6-42ac-0000-000000000000"));

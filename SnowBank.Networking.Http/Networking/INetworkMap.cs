@@ -200,7 +200,7 @@ namespace SnowBank.Networking
 	public record VirtualNetworkLocationOptions
 	{
 		public string? IpRange { get; set; }
-		//TODO: comment modeliser des range ip?
+		//TODO: how to model ip ranges?
 
 		public string? DnsSuffix { get; set; }
 

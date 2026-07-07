@@ -34,7 +34,7 @@ namespace SnowBank.Text.Xml
 	{
 		#region Static Members...
 
-		/// <summary>Map indiquant si un caractère est clean</summary>
+		/// <summary>Map indicating whether a character is clean</summary>
 		private static readonly byte[] s_xmlCharMap = InitializeCharMap();
 
 		private const string TokenAmp = "&amp;";
@@ -56,22 +56,22 @@ namespace SnowBank.Text.Xml
 
 		#endregion
 
-		/// <summary>HTMLEncode une chaine de caractère (&amp; => &amp;amp; , etc...)</summary>
-		/// <param name="text">Chaîne à encoder</param>
-		/// <returns>Chaîne encodée</returns>
-		/// <remarks>Version optimisée qui n'alloue pas de mémoire si la chaîne est deja clean</remarks>
+		/// <summary>HTML-encodes a character string (&amp; => &amp;amp; , etc...)</summary>
+		/// <param name="text">String to encode</param>
+		/// <returns>Encoded string</returns>
+		/// <remarks>Optimized version that does not allocate memory if the string is already clean</remarks>
 		public static string Encode(string? text)
 		{
 			if (string.IsNullOrEmpty(text)) return String.Empty;
 
-			if (IsCleanXml(text)) return text; // rien a modifier, retourne la chaîne initiale (fast, no memory used)
+			if (IsCleanXml(text)) return text; // nothing to modify, returns the original string (fast, no memory used)
 
 			return XmlEncodeSlow(new StringBuilder(text.Length + 16), text, true).ToString();
 		}
 
-		/// <summary>HTMLEncode une chaîne de caractère (&amp; => &amp;amp; , etc...)</summary>
-		/// <param name="sb">Buffer où écrire le résultat</param>
-		/// <param name="text">Chaîne à encoder</param>
+		/// <summary>HTML-encodes a character string (&amp; => &amp;amp; , etc...)</summary>
+		/// <param name="sb">Buffer where the result is written</param>
+		/// <param name="text">String to encode</param>
 		public static StringBuilder AppendTo(StringBuilder sb, string? text)
 		{
 			if (string.IsNullOrEmpty(text)) return sb;
@@ -79,7 +79,7 @@ namespace SnowBank.Text.Xml
 			return XmlEncodeSlow(sb, text, true);
 		}
 
-		/// <summary>Extension méthode sur StringBuilder</summary>
+		/// <summary>Extension method on StringBuilder</summary>
 		/// <param name="sb"></param>
 		/// <param name="text"></param>
 		/// <returns></returns>
@@ -146,9 +146,9 @@ namespace SnowBank.Text.Xml
 
 		private static bool IsLegalChar(char c)
 		{
-			// On traite comme "légal" tout ce qui est compris entre ' ' (32) et '~' (126), *SAUF* les caractères '<' '>' '&' '"', ainsi que de 161 a 255
+			// We treat as "legal" everything between ' ' (32) and '~' (126), *EXCEPT* the characters '<' '>' '&' '"', as well as 161 to 255
 
-			// Les specs de XML 1.0 conseille d'encoder les caractères suivants: 
+			// The XML 1.0 spec recommends encoding the following characters:
 			// cf http://www.w3.org/TR/2006/REC-xml-20060816/#charsets
 			//
 			// [#x7F-#x84], [#x86-#x9F], [#xFDD0-#xFDDF],
@@ -157,15 +157,15 @@ namespace SnowBank.Text.Xml
 			// [#x7FFFE-#x7FFFF], [#x8FFFE-#x8FFFF], [#x9FFFE-#x9FFFF],
 			// [#xAFFFE-#xAFFFF], [#xBFFFE-#xBFFFF], [#xCFFFE-#xCFFFF],
 			// [#xDFFFE-#xDFFFF], [#xEFFFE-#xEFFFF], [#xFFFFE-#xFFFFF],
-			// [#x10FFFE-#x10FFFF] // <= dans la pratique on ne peut jamais voir cette range en C# qui est en UCS-2 (donc sera encodé avec une pair de Hi/Lo Surrogates!)
+			// [#x10FFFE-#x10FFFF] // <= in practice we can never see this range in C#, which is UCS-2 (so it will be encoded with a pair of Hi/Lo Surrogates!)
 
 			// A-Z, a-z, 0-9, ' ', '!', '#',
 			if (c <= 0x007F)
 			{
 				// U0000-U007F : Basic Latin, http://www.unicode.org/charts/PDF/U0000.pdf
-				// exception: on laisse passer les retours chariots et les tabulations !
+				// exception: we let carriage returns and tabs through!
 				if (c == '\r' || c == '\n' || c == '\t') return true;
-				// on rejette les <,>,&," et aussi le &#127;
+				// we reject <,>,&," and also &#127;
 				return (c >= ' ' && c <= '~') && (c != '<' && c != '>' && c != '&' && c != '"' && c != 0x7F);
 			}
 
@@ -174,7 +174,7 @@ namespace SnowBank.Text.Xml
 			if (c <= 0x00FF)
 			{
 				// U0080-U00FF : Latin-1 Supplement, http://www.unicode.org/charts/PDF/U0080.pdf
-				// on rejette tout ce qui est entre &#128; et &#160; ansi que &#173;
+				// we reject everything between &#128; and &#160; as well as &#173;
 				return c > 0xA0 && c != 0xAD;
 			}
 
@@ -231,7 +231,7 @@ namespace SnowBank.Text.Xml
 				while (n-- > 0)
 				{
 					if (mask[*ptr++] != 0)
-					{ // pas autorisé!
+					{ // not allowed!
 						return false;
 					}
 				}
@@ -239,15 +239,15 @@ namespace SnowBank.Text.Xml
 			return true;
 		}
 
-		/// <summary>Détermine si le texte HTML est "clean" (ie: ne nécessite pas d'encodage)</summary>
-		/// <param name="sb">Buffer dans lequel écrire le résultat encodé</param>
-		/// <param name="s">Chaîne à vérifier</param>
-		/// <param name="replaceIllegal">Si true, remplace les caractères illegaux par du text équivalent (lossy!)</param>
-		/// <returns>Instance de <paramref name="sb"/></returns>
+		/// <summary>Determines whether the HTML text is "clean" (ie: does not require encoding)</summary>
+		/// <param name="sb">Buffer in which to write the encoded result</param>
+		/// <param name="s">String to check</param>
+		/// <param name="replaceIllegal">If true, replaces illegal characters with equivalent text (lossy!)</param>
+		/// <returns>Instance of <paramref name="sb"/></returns>
 		private static unsafe StringBuilder XmlEncodeSlow(StringBuilder sb, string s, bool replaceIllegal = false)
 		{
 			var mask = s_xmlCharMap;
-			fixed (char* p = s) // JustCode warning (compile sous MS.NET)
+			fixed (char* p = s) // JustCode warning (compiles under MS.NET)
 			{
 				char* ptr = p;
 				char* end = p + s.Length;
@@ -293,26 +293,26 @@ namespace SnowBank.Text.Xml
 						}
 						case HIGH_SURROGATE:
 						{
-							// doit normalement être suivi d'un autre caractère de type "LOW_SURROGATE"!
+							// should normally be followed by another character of type "LOW_SURROGATE"!
 							if (ptr < end)
 							{
 								char c2 = *ptr;
-								// c2 doit être un Low Surrogate!
+								// c2 must be a Low Surrogate!
 								if (mask[c2] == LOW_SURROGATE)
-								{ // combine les deux!
-									++ptr; // consome le low surrogate également
+								{ // combine the two!
+									++ptr; // consume the low surrogate as well
 									EncodeSurrogatePair(sb, c, c2);
 									break;
 								}
 							}
-							// il y a un problème soit il n'y a rien derrière, soit ce n'est pas un Low Surrogate?
-							// => on n'a rien vu, rien entendu!
+							// there is a problem: either there is nothing after it, or it is not a Low Surrogate?
+							// => we saw nothing, we heard nothing!
 							DealWithBadCodePoint(sb, c, replaceIllegal);
 							break;
 						}
 						case LOW_SURROGATE:
 						{
-							// on n'est pas censé tomber sur ce caractère directement, car il doit normalement être précédé d'un HIGH_SURROGATE, et donc géré par le case plus haut?
+							// we are not supposed to hit this character directly, since it should normally be preceded by a HIGH_SURROGATE, and thus handled by the case above?
 							DealWithBadCodePoint(sb, c, replaceIllegal);
 							break;
 						}
@@ -328,16 +328,16 @@ namespace SnowBank.Text.Xml
 
 		private static void DealWithBadCodePoint(StringBuilder sb, char c, bool replaceIllegal)
 		{
-			// Quand on arrive ici, c'est qu'on est confronté à un cas "invalide".
-			// On pourrait throw une Exception, mais cela n'est pas forcément prévu par l'appelant a cet endroit, et puis dans tous les cas cela "brique" le code (si c'est lié au data, on peut refresh tant qu'on veut ca ne changera rien)
-			// => On doit décider si on remplace le caractère par autre chose (fallback), au risque de "corrompre" silencieusement les données, ou alors passer la patate chaude au récipient qui devra se débrouiller avec!
+			// When we get here, it means we are facing an "invalid" case.
+			// We could throw an Exception, but the caller does not necessarily expect that here, and in any case it "bricks" the code (if it is data-related, we can refresh as much as we want, it won't change anything)
+			// => We must decide whether to replace the character with something else (fallback), at the risk of silently "corrupting" the data, or else pass the hot potato to the recipient who will have to deal with it!
 
 			if (replaceIllegal)
-			{ // Compatibilité MSXML, évite que LoadXML provoque une erreur "Invalid Unicode character"
+			{ // MSXML compatibility, prevents LoadXML from raising an "Invalid Unicode character" error
 				EncodeIllegal(sb, c);
 			}
 			else
-			{ // Autre XML encoder normalement constitué
+			{ // Any other properly-built XML encoder
 				EncodeEntity(sb, c);
 			}
 		}
@@ -363,7 +363,7 @@ namespace SnowBank.Text.Xml
 
 		private static void EncodeIllegal(StringBuilder sb, char c)
 		{
-			// On ne peut pas les représenter, on les remplaces par une version de substitution (plutot que '?')
+			// We cannot represent them, so we replace them with a substitution version (rather than '?')
 			if (c >= 0 && c < 32)
 			{ // \0 => "<NUL>", \x1B => "<ESC>"
 				sb.Append(TokenLt).Append(s_asciiControlCodes[c]).Append(TokenGt);

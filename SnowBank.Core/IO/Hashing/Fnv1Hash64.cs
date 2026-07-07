@@ -88,20 +88,20 @@ namespace SnowBank.IO.Hashing
 			return Continue(seed ^ FNV1_64_OFFSET_BASIS, bytes);
 		}
 
-		/// <summary>Calcul le Hash FNV-1 64-bit d'un bloc de données</summary>
-		/// <param name="bytes">Bloc de données</param>
-		/// <returns>Hash 64 bit calculé sur l'intégralité du tableau</returns>
+		/// <summary>Computes the 64-bit FNV-1 hash of a block of data</summary>
+		/// <param name="bytes">Block of data</param>
+		/// <returns>64-bit hash computed over the entire array</returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static ulong FromBytes(Slice bytes)
 		{
 			return Continue(FNV1_64_OFFSET_BASIS, bytes);
 		}
 
-		/// <summary>Calcul le Hash FNV-1 64 bit sur un segment de données</summary>
+		/// <summary>Computes the 64-bit FNV-1 hash over a segment of data</summary>
 		/// <param name="bytes">Backing store for the buffer that contains the bytes to process</param>
 		/// <param name="offset">Offset of the first byte to process</param>
 		/// <param name="count">Number of bytes to process</param>
-		/// <returns>Hash de la section du buffer</returns>
+		/// <returns>Hash of the buffer section</returns>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static ulong FromBytes(byte[] bytes, int offset, int count)
 		{
@@ -147,7 +147,7 @@ namespace SnowBank.IO.Hashing
 			Contract.DoesNotOverflow(buffer, offset, count);
 			if (count == 0) return hash;
 
-			// note: ces tests sont la pour convaincre le JIT de désactiver les checks et unroller la boucle plus bas !!!
+			// note: these tests are here to convince the JIT to disable the checks and unroll the loop below !!!
 			if (offset < 0 || offset >= buffer.Length) ThrowHelper.ThrowArgumentException(nameof(offset), "Offset must be within the buffer");
 			int end = offset + count;
 			if (end < 0 || end > buffer.Length) ThrowHelper.ThrowArgumentException(nameof(buffer), "The buffer does not have enough data for the specified byte count");

@@ -48,7 +48,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Tests if a JSON value is <see cref="JsonNull.Missing"/></summary>
 		/// <param name="value">JSON value</param>
 		/// <returns><see langword="true"/> if <paramref name="value"/> is equal to the <see cref="JsonNull.Missing"/> singleton.</returns>
-		/// <remarks><see cref="JsonNull.Null"/> n'est pas considéré comme manquant (c'est un null explicite)</remarks>
+		/// <remarks><see cref="JsonNull.Null"/> is not considered missing (it is an explicit null)</remarks>
 		[Pure, ContractAnnotation("null=>true"), MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static bool IsMissing([NotNullWhen(false)] this JsonValue? value)
 		{

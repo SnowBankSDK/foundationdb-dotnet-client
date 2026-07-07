@@ -118,7 +118,7 @@ namespace SnowBank.Core.Tests
 			}
 
 			// corner cases
-			Assert.That(Maybe.Return(double.NaN).Equals(Maybe.Return(double.NaN)), Is.True, "M(NaN) == M(NaN)"); // meme si NaN != NaN
+			Assert.That(Maybe.Return(double.NaN).Equals(Maybe.Return(double.NaN)), Is.True, "M(NaN) == M(NaN)"); // even though NaN != NaN
 		}
 
 		[Test]
@@ -352,7 +352,7 @@ namespace SnowBank.Core.Tests
 			Assert.That(m.Error, Is.InstanceOf<Exception>());
 			Assert.That(m.Error.Message, Is.EqualTo("KABOOM"));
 
-			// première fonction intercepte...
+			// first function intercepts...
 
 			m = combined(42);
 			Assert.That(m.HasValue, Is.False);
@@ -362,7 +362,7 @@ namespace SnowBank.Core.Tests
 			Assert.That(m.Error, Is.InstanceOf<InvalidOperationException>());
 			Assert.That(m.Error.Message, Is.EqualTo("F"));
 
-			// deuxième fonction intercepte
+			// second function intercepts
 
 			m = combined(42 * 42);
 			Assert.That(m.HasValue, Is.False);

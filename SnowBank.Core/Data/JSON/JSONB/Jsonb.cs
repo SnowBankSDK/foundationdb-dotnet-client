@@ -207,7 +207,7 @@ namespace SnowBank.Data.Json.Binary
 			/// <param name="result">Decoded value</param>
 			public void GetContainerEntry(int index, int numEntries, out JValue result)
 			{
-				// les données démarrent juste après les children
+				// the data starts just after the children
 				if ((uint) index >= numEntries) throw ThrowHelper.ArgumentOutOfRangeIndex(index);
 
 				// Ensure the JEntries table (numEntries * 4 bytes, after the 4-byte header) actually fits inside the
@@ -1914,7 +1914,7 @@ namespace SnowBank.Data.Json.Binary
 					++index;
 				}
 
-				// copie ensuite toutes les valeurs
+				// then copy all the values
 				foreach (var value in map.Values)
 				{
 					uint meta = WriteValue(value, level + 1);
@@ -2017,7 +2017,7 @@ namespace SnowBank.Data.Json.Binary
 					ArrayPool<int>.Shared.Return(hashBuffer);
 				}
 
-				//TODO: ajouter le flag HASHED !!!!
+				//TODO: add the HASHED flag !!!!
 				return JENTRY_TYPE_CONTAINER | (uint) totalLen;
 			}
 

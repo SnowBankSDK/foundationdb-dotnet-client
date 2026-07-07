@@ -197,7 +197,7 @@ namespace SnowBank.Networking
 			/// <returns>If the port is bound, return a new HTTP message handler that will process request. If the port is unassigned, it will return <see langword="null"/>.</returns>
 			public Func<HttpMessageHandler>? FindHandler(IVirtualNetworkLocation location, int port)
 			{
-				// si c'est un vrai host, on n'a pas de handler custom
+				// if this is a real host, we don't have a custom handler
 				if (this.Passthrough) return null;
 
 				lock (this.Handlers)
@@ -403,7 +403,7 @@ namespace SnowBank.Networking
 			/// <inheritdoc />
 			IVirtualNetworkTopology IVirtualNetworkLocation.Topology => this.Topology;
 
-			/// <summary>Host présent dans cet emplacement</summary>
+			/// <summary>Host present in this location</summary>
 			public Dictionary<string, SimulatedHost> HostsById { get; } = new(StringComparer.OrdinalIgnoreCase);
 
 			public Dictionary<string, string> HostsByNameOrAddress { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -712,7 +712,7 @@ namespace SnowBank.Networking
 
 				SimulatedNetwork? loopback = null;
 				if (location.Type != VirtualNetworkType.Loopback && !identity.PassthroughToPhysicalNetwork)
-				{ // génère automatiquement un "localhost" attaché à ce host
+				{ // automatically generates a "localhost" attached to this host
 					loopback = new SimulatedNetwork(
 						this,
 						id + ":loopback",

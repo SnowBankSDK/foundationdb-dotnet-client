@@ -799,7 +799,7 @@ namespace SnowBank.Data.Json
 			Contract.NotNull(output);
 
 			if (value == null)
-			{ // cas spécial pour null
+			{ // special case for null
 				output.Write(JsonTokens.Null);
 			}
 			else
@@ -840,7 +840,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (value == null)
-			{ // cas spécial pour null
+			{ // special case for null
 				output.Write("null"u8);
 			}
 			else

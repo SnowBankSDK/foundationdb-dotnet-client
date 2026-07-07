@@ -28,10 +28,10 @@ namespace SnowBank.Buffers
 {
 	using System.Text;
 
-	/// <summary>Table de mapping bi-directionnelle entre représentation binaire (<see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;<typeparamref name="TRune"/>&gt;</see>) et litérale (<typeparamref name="TLiteral"/>) d'un <typeparamref name="TToken">token</typeparamref></summary>
-	/// <typeparam name="TToken">Type du token</typeparam>
-	/// <typeparam name="TLiteral">Type de la représentation litérale du token.</typeparam>
-	/// <typeparam name="TRune">Element de la réprésentation binaire du token.</typeparam>
+	/// <summary>Bi-directional mapping table between the binary (<see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;<typeparamref name="TRune"/>&gt;</see>) and literal (<typeparamref name="TLiteral"/>) representation of a <typeparamref name="TToken">token</typeparamref></summary>
+	/// <typeparam name="TToken">Type of the token</typeparam>
+	/// <typeparam name="TLiteral">Type of the literal representation of the token.</typeparam>
+	/// <typeparam name="TRune">Element of the binary representation of the token.</typeparam>
 #if NET9_0_OR_GREATER
 	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
 #endif
@@ -62,13 +62,13 @@ namespace SnowBank.Buffers
 
 		public bool ContainsKey(ReadOnlySpan<TRune> token) => this.Tokens.ContainsKey(token);
 
-		/// <summary>Cherche un token à partir de sa représentation binaire</summary>
+		/// <summary>Looks up a token from its binary representation</summary>
 		public bool TryGetValue(in ReadOnlyMemory<TRune> token, [MaybeNullWhen(false)] out TToken value) => this.Tokens.TryGetValue(token, out value);
 
-		/// <summary>Cherche un token à partir de sa représentation binaire</summary>
+		/// <summary>Looks up a token from its binary representation</summary>
 		public bool TryGetValue(in ReadOnlySpan<TRune> token, [MaybeNullWhen(false)] out TToken value) => this.Tokens.TryGetValue(token, out value);
 
-		/// <summary>Cherche un token à partir de sa représentation textuelle</summary>
+		/// <summary>Looks up a token from its textual representation</summary>
 		public bool TryGetValue(TLiteral literal, [MaybeNullWhen(false)] out TToken value) => this.Literals.TryGetValue(literal, out value);
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -98,8 +98,8 @@ namespace SnowBank.Buffers
 
 	}
 
-	/// <summary>Table de mapping bi-directionnelle entre représentation en mémoire (<see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;<see cref="char"/>&gt;</see>) et litérale (<see cref="string"/>) d'un <typeparamref name="TToken">token</typeparamref></summary>
-	/// <typeparam name="TToken">Type du token</typeparam>
+	/// <summary>Bi-directional mapping table between the in-memory (<see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;<see cref="char"/>&gt;</see>) and literal (<see cref="string"/>) representation of a <typeparamref name="TToken">token</typeparamref></summary>
+	/// <typeparam name="TToken">Type of the token</typeparam>
 #if NET9_0_OR_GREATER
 	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
 #endif
@@ -150,8 +150,8 @@ namespace SnowBank.Buffers
 		
 	}
 
-	/// <summary>Table de mapping bi-directionnelle entre représentation encodée (<see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;<see cref="byte"/>&gt;</see>) et litérale (<see cref="string"/>) d'un <typeparamref name="TToken">token</typeparamref></summary>
-	/// <typeparam name="TToken">Type du token</typeparam>
+	/// <summary>Bi-directional mapping table between the encoded (<see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;<see cref="byte"/>&gt;</see>) and literal (<see cref="string"/>) representation of a <typeparamref name="TToken">token</typeparamref></summary>
+	/// <typeparam name="TToken">Type of the token</typeparam>
 #if NET9_0_OR_GREATER
 	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
 #endif

@@ -29,7 +29,7 @@
 
 namespace SnowBank.Diagnostics.Contracts.Tests
 {
-	/// <summary>Tests sur la classe statique ThrowHelper</summary>
+	/// <summary>Tests for the static ThrowHelper class</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[SetInvariantCulture]
@@ -124,21 +124,21 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		[Test]
 		public void Test_ThrowArgumentNullException()
 		{
-			// note: pas certain que le message par défaut ne change pas d'une version a l'autre de .NET, ou dépende de la langue système ...
+			// note: not certain that the default message doesn't change from one version of .NET to another, or depend on the system language ...
 
 			var x = Assert.Throws<ArgumentNullException>(() => ThrowHelper.ThrowArgumentNullException("foo"));
 			Assert.That(x.ParamName, Is.EqualTo("foo"));
-			Assert.That(x.Message, Is.EqualTo(WithParamName("Value cannot be null.", "foo"))); // <-- peut dépendre de la langue et de la version de .NET !
+			Assert.That(x.Message, Is.EqualTo(WithParamName("Value cannot be null.", "foo"))); // <-- may depend on the language and the version of .NET !
 
 			x = Assert.Throws<ArgumentNullException>(() => ThrowHelper.ThrowArgumentNullException("foo", "Hello world !!!"));
 			Assert.That(x.ParamName, Is.EqualTo("foo"));
-			Assert.That(x.Message, Is.EqualTo(WithParamName("Hello world !!!", "foo"))); // <-- peut dépendre de la langue et de la version de .NET !
+			Assert.That(x.Message, Is.EqualTo(WithParamName("Hello world !!!", "foo"))); // <-- may depend on the language and the version of .NET !
 		}
 
 		[Test]
 		public void Test_ThrowArgumentException()
 		{
-			// note: pas certain que le message par défaut ne change pas d'une version a l'autre de .NET, ou dépende de la langue système ...
+			// note: not certain that the default message doesn't change from one version of .NET to another, or depend on the system language ...
 
 			var x = Assert.Throws<ArgumentException>(() => ThrowHelper.ThrowArgumentException("foo"));
 			Assert.That(x.ParamName, Is.EqualTo("foo"));
@@ -148,11 +148,11 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 			// the netfx ArgumentException renders a null message with the generic exception text
 			Assert.That(x.Message, Is.EqualTo(WithParamName("Exception of type 'System.ArgumentException' was thrown.", "foo")));
 #endif
-			// <-- peut dépendre de la langue et de la version de .NET !
+			// <-- may depend on the language and the version of .NET !
 
 			x = Assert.Throws<ArgumentException>(() => ThrowHelper.ThrowArgumentException("foo", "Hello world !!!"));
 			Assert.That(x.ParamName, Is.EqualTo("foo"));
-			Assert.That(x.Message, Is.EqualTo(WithParamName("Hello world !!!", "foo"))); // <-- peut dépendre de la langue et de la version de .NET !
+			Assert.That(x.Message, Is.EqualTo(WithParamName("Hello world !!!", "foo"))); // <-- may depend on the language and the version of .NET !
 		}
 
 		[Test]

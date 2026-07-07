@@ -73,9 +73,9 @@ namespace SnowBank.Text.Xml
 
 		/// <summary>Encode a string literal for inclusion in a XPATH query</summary>
 		/// <remarks>
-		/// Encode les <c>'</c>, <c>"</c> et <c>\</c> en ajoutant un <c>\</c> devant chaque occurence (ie: <c>'</c> => <c>\'</c>).
-		/// Rajoute optionellement le caractère <paramref name="quote"/> en début et fin du token.
-		/// Si <paramref name="literal"/> est null, retourne soit <code>"null"</code> (si <paramref name="quote"/> est spécifié), soit chaine vide (si égal à <c>'\0'</c>)
+		/// Encodes <c>'</c>, <c>"</c> and <c>\</c> by adding a <c>\</c> in front of each occurrence (ie: <c>'</c> => <c>\'</c>).
+		/// Optionally adds the <paramref name="quote"/> character at the start and end of the token.
+		/// If <paramref name="literal"/> is null, returns either <code>"null"</code> (if <paramref name="quote"/> is specified), or an empty string (if equal to <c>'\0'</c>)
 		/// </remarks>
 		/// <example>
 		/// - EncodeLiteral("Hello World") => `Hello World`
@@ -111,9 +111,9 @@ namespace SnowBank.Text.Xml
 
 		/// <summary>Encode a string literal for inclusion in a XPATH query</summary>
 		/// <remarks>
-		/// Encode les <c>'</c>, <c>"</c> et <c>\</c> en ajoutant un <c>\</c> devant chaque occurence (ie: <c>'</c> => <c>\'</c>).
-		/// Rajoute optionellement le caractère <paramref name="quote"/> en début et fin du token.
-		/// Si <paramref name="literal"/> est null, retourne soit <code>"null"</code> (si <paramref name="quote"/> est spécifié), soit chaine vide (si égal à <c>'\0'</c>)
+		/// Encodes <c>'</c>, <c>"</c> and <c>\</c> by adding a <c>\</c> in front of each occurrence (ie: <c>'</c> => <c>\'</c>).
+		/// Optionally adds the <paramref name="quote"/> character at the start and end of the token.
+		/// If <paramref name="literal"/> is null, returns either <code>"null"</code> (if <paramref name="quote"/> is specified), or an empty string (if equal to <c>'\0'</c>)
 		/// </remarks>
 		/// <example>
 		/// - EncodeLiteral("Hello World") => `Hello World`

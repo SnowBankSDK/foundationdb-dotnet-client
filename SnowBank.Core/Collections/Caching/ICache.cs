@@ -33,64 +33,64 @@ namespace SnowBank.Collections.Caching
 		// int Count { get; }
 		// void Clear();
 
-		/// <summary>Capacité actuelle du cache (en nombre d'items)</summary>
-		/// <remarks>Les caches qui n'ont pas de capacité de stockage doivent retourner int.MaxValue.</remarks>
+		/// <summary>Current capacity of the cache (in number of items)</summary>
+		/// <remarks>Caches that have no storage capacity limit must return int.MaxValue.</remarks>
 		int Capacity { get; }
 
-		/// <summary>Indique si le cache a une capacité maximale (false), ou s'il n'a pas de limite particulière (false)</summary>
-		/// <remarks>Si IsCapped retourne true, il faut consulter la valeur de <see cref="Capacity"/> pour connaître la capacité maximale.</remarks>
+		/// <summary>Indicates whether the cache has a maximum capacity (true), or has no particular limit (false)</summary>
+		/// <remarks>If IsCapped returns true, consult the value of <see cref="Capacity"/> to find the maximum capacity.</remarks>
 		bool IsCapped { get; }
 
-		/// <summary>Comparateur utilisé pour les clés du cache</summary>
+		/// <summary>Comparer used for the cache keys</summary>
 		IEqualityComparer<TKey> KeyComparer { get; }
 
-		/// <summary>Retourne un entrée du cache, si elle existe</summary>
-		/// <param name="key">Clé de l'entrée recherchée</param>
-		/// <param name="value">Reçoit la valeur en cache si elle existe (et est toujours valide)</param>
-		/// <returns>True si la valeur existe dans le cache; false si elle n'existe pas (ou n'est plus valide)</returns>
+		/// <summary>Returns an entry from the cache, if it exists</summary>
+		/// <param name="key">Key of the entry being looked up</param>
+		/// <param name="value">Receives the cached value if it exists (and is still valid)</param>
+		/// <returns>True if the value exists in the cache; false if it does not exist (or is no longer valid)</returns>
 		bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TElement value);
 
-		/// <summary>Retourne la valeur d'une entrée dans le cache, en la créant si nécessaire</summary>
-		/// <param name="key">Clé de l'entrée recherchée</param>
-		/// <param name="addValue">Valeur qui sera ajoutée dans le cache pour cette clé, si elle n'existait pas</param>
-		/// <returns>Valeur de l'entrée si elle existait, ou <paramref name="addValue"/> si elle n'existait pas</returns>
+		/// <summary>Returns the value of an entry in the cache, creating it if necessary</summary>
+		/// <param name="key">Key of the entry being looked up</param>
+		/// <param name="addValue">Value that will be added to the cache for this key, if it did not already exist</param>
+		/// <returns>Value of the entry if it existed, or <paramref name="addValue"/> if it did not exist</returns>
 		TElement GetOrAdd(TKey key, TElement addValue);
 
-		/// <summary>Retourne la valeur d'une entrée dans le cache, en la créant si nécessaire</summary>
-		/// <param name="key">Clé de l'entrée recherchée</param>
-		/// <param name="factory">Lambda qui sera appelée pour générée la valeur à ajouter, si elle n'existait pas</param>
-		/// <returns>Valeur de l'entrée si elle existait, ou le résultat de <paramref name="factory"/> si elle n'existait pas</returns>
-		/// <reremarks>Attention: certains caches n'offrent aucune garantie sur le fait que valueFactory ne soit pas appelé plusieurs fois!</reremarks>
+		/// <summary>Returns the value of an entry in the cache, creating it if necessary</summary>
+		/// <param name="key">Key of the entry being looked up</param>
+		/// <param name="factory">Lambda that will be called to generate the value to add, if it did not already exist</param>
+		/// <returns>Value of the entry if it existed, or the result of <paramref name="factory"/> if it did not exist</returns>
+		/// <remarks>Warning: some caches offer no guarantee that valueFactory will not be called several times!</remarks>
 		TElement GetOrAdd(TKey key, [InstantHandle] Func<TKey, TElement> factory);
 
-		/// <summary>Retourne la valeur d'une entrée dans le cache, en la créant si nécessaire</summary>
-		/// <param name="key">Clé de l'entrée recherchée</param>
-		/// <param name="factory">Lambda qui sera appelée pour générée la valeur à ajouter, si elle n'existait pas</param>
-		/// <param name="state">Valeur passée en second paramètre à <paramref name="factory"/></param>
-		/// <returns>Valeur de l'entrée si elle existait, ou le résultat de <paramref name="factory"/> si elle n'existait pas</returns>
-		/// <reremarks>Attention: certains caches n'offrent aucune garantie sur le fait que valueFactory ne soit pas appelé plusieurs fois!</reremarks>
+		/// <summary>Returns the value of an entry in the cache, creating it if necessary</summary>
+		/// <param name="key">Key of the entry being looked up</param>
+		/// <param name="factory">Lambda that will be called to generate the value to add, if it did not already exist</param>
+		/// <param name="state">Value passed as the second parameter to <paramref name="factory"/></param>
+		/// <returns>Value of the entry if it existed, or the result of <paramref name="factory"/> if it did not exist</returns>
+		/// <remarks>Warning: some caches offer no guarantee that valueFactory will not be called several times!</remarks>
 		TElement GetOrAdd<TState>(TKey key, [InstantHandle] Func<TKey, TState, TElement> factory, TState state);
 
-		/// <summary>Ecrase la valeur d'une entrée du cache, en la créant si nécessaire</summary>
-		/// <param name="key">Clé de l'entrée</param>
-		/// <param name="newValue">Nouvelle valeur</param>
+		/// <summary>Overwrites the value of a cache entry, creating it if necessary</summary>
+		/// <param name="key">Key of the entry</param>
+		/// <param name="newValue">New value</param>
 		void SetItem(TKey key, TElement newValue);
 
-		/// <summary>Supprime une entrée du cache</summary>
-		/// <param name="key">Clé de l'entrée à supprimer</param>
-		/// <returns>True si l'entrée a été supprimée, false si elle n'existait pas</returns>
+		/// <summary>Removes an entry from the cache</summary>
+		/// <param name="key">Key of the entry to remove</param>
+		/// <returns>True if the entry was removed, false if it did not exist</returns>
 		bool Remove(TKey key);
 
-		/// <summary>Supprime une entrée du cache, uniquement si elle à une valeur spécifique</summary>
-		/// <param name="key">Clé de l'entrée à supprimer</param>
-		/// <param name="expectedValue">Valeur que l'entrée doit avoir pour être supprimé</param>
-		/// <param name="valueComparer">Comparateur optionnel pour les valeurs</param>
-		/// <returns>True si l'entrée existait et avait la valeur attendue, ou false sinon.</returns>
+		/// <summary>Removes an entry from the cache, only if it has a specific value</summary>
+		/// <param name="key">Key of the entry to remove</param>
+		/// <param name="expectedValue">Value that the entry must have to be removed</param>
+		/// <param name="valueComparer">Optional comparer for the values</param>
+		/// <returns>True if the entry existed and had the expected value, or false otherwise.</returns>
 		bool TryRemove(TKey key, TElement expectedValue, IEqualityComparer<TElement>? valueComparer = null);
 
-		/// <summary>Recherche et supprimer des entrées du cache</summary>
-		/// <param name="predicate">Prédicat qui retourne true pour les entrées à supprimer</param>
-		/// <returns>Nombre d'entrées supprimée dans le cache</returns>
+		/// <summary>Finds and removes entries from the cache</summary>
+		/// <param name="predicate">Predicate that returns true for the entries to remove</param>
+		/// <returns>Number of entries removed from the cache</returns>
 		int Cleanup([InstantHandle] Func<TKey, TElement, bool> predicate);
 	}
 

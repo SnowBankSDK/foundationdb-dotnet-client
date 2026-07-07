@@ -126,12 +126,12 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			Assert.DoesNotThrow(() => { Contract.NotNullOrEmpty("foobar", paramName: "x"); });
 
-			// si c'est null => ArgumentNullException
+			// if it is null => ArgumentNullException
 			var anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNullOrEmpty(default(string), paramName: "foo"); });
 			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
-			// si c'est empty => ArgumentException
+			// if it is empty => ArgumentException
 			var aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrEmpty(String.Empty, paramName: "foo"); });
 			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.Length > 0  String cannot be empty.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
@@ -140,12 +140,12 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			Assert.DoesNotThrow(() => { Contract.NotNullOrEmpty(new [] { 1, 2, 3 }, paramName: "x"); });
 
-			// si c'est null => ArgumentNullException
+			// if it is null => ArgumentNullException
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNullOrEmpty(default(int[]), paramName: "foo"); });
 			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
-			// si c'est empty => ArgumentException
+			// if it is empty => ArgumentException
 			aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrEmpty(new int[0], paramName: "foo"); });
 			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.Count > 0  Collection cannot be empty.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
@@ -154,12 +154,12 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 
 			Assert.DoesNotThrow(() => { Contract.NotNullOrEmpty(new List<int> { 1, 2, 3 }, paramName: "x"); });
 
-			// si c'est null => ArgumentNullException
+			// if it is null => ArgumentNullException
 			anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNullOrEmpty(default(List<int>), paramName: "foo"); });
 			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
-			// si c'est empty => ArgumentException
+			// if it is empty => ArgumentException
 			aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrEmpty(new List<int>(), paramName: "foo"); });
 			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.Count > 0  Collection cannot be empty.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
@@ -172,24 +172,24 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		{
 			Assert.DoesNotThrow(() => { Contract.NotNullOrEmpty("foobar", paramName: "x"); });
 			Assert.DoesNotThrow(() => { Contract.NotNullOrEmpty("  foobar", paramName: "x"); });
-			Assert.DoesNotThrow(() => { Contract.NotNullOrEmpty("\0", paramName: "x"); }); //note: '\0' n'est PAS considéré comme du whitespace!
+			Assert.DoesNotThrow(() => { Contract.NotNullOrEmpty("\0", paramName: "x"); }); //note: '\0' is NOT considered whitespace!
 
-			// si c'est null => ArgumentNullException
+			// if it is null => ArgumentNullException
 			var anex = Assert.Throws<ArgumentNullException>(() => { Contract.NotNullOrWhiteSpace(default(string), paramName: "foo"); });
 			Assert.That(anex.Message, Is.EqualTo(WithParamName("Precondition failed: foo != null  Value cannot be null.", "foo")));
 			Assert.That(anex.ParamName, Is.EqualTo("foo"));
 
-			// si c'est empty => ArgumentException
+			// if it is empty => ArgumentException
 			var aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrWhiteSpace(String.Empty, paramName: "foo"); });
 			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.Length > 0  String cannot be empty.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
 
-			// si c'est des espace => ArgumentException
+			// if it is spaces => ArgumentException
 			aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrWhiteSpace("  ", paramName: "foo"); });
 			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.All(c => !char.IsWhiteSpace(c))  String cannot contain only whitespaces.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
 
-			// si c'est n'importe quel type de "whitespace" => ArgumentException
+			// if it is any kind of "whitespace" => ArgumentException
 			aex = Assert.Throws<ArgumentException>(() => { Contract.NotNullOrWhiteSpace("\t \r\n  \n", paramName: "foo"); });
 			Assert.That(aex.Message, Is.EqualTo(WithParamName("Precondition failed: foo.All(c => !char.IsWhiteSpace(c))  String cannot contain only whitespaces.", "foo")));
 			Assert.That(aex.ParamName, Is.EqualTo("foo"));
@@ -403,16 +403,16 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		[Test]
 		public void Test_Contract_Requires_And_Asserts_Map_To_NUnit_Assertion_When_Under_Test()
 		{
-			// il y a de la magie dans le constructeur de Contract, qui détecte si on est dans un test unitaire,
-			// et qui se met a envoeyr des AssertionException, au lieu de ContractException, pour simplifier les tests.
+			// there is some magic in the Contract constructor, which detects whether we are inside a unit test,
+			// and starts throwing AssertionException, instead of ContractException, to simplify the tests.
 
-			// Cette fonction peut etre activée ou désactiver via Contract.IsUnderTesting :
+			// This behavior can be enabled or disabled via Contract.IsUnderTesting:
 
-			// si on l'active, on obtient une AssertionException
+			// if we enable it, we get an AssertionException
 			Contract.IsUnitTesting = true;
 			Assert.Throws<AssertionException>(() => { Contract.Requires(false); });
 
-			// si par contre on désactive ce mode, on doit obtenir une ContractException !
+			// if on the other hand we disable this mode, we should get a ContractException!
 			Contract.IsUnitTesting = false;
 			Assert.Throws<ContractException>(() => { Contract.Requires(false); });
 		}
@@ -420,7 +420,7 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		[Test]
 		public void Test_Contract_Requires_Will_Throw_A_ContractException()
 		{
-			// note: on désactive le testing mode, pour être en situation "réelle"
+			// note: we disable the testing mode, to be in a "real" situation
 			Contract.IsUnitTesting = false;
 
 			Assert.DoesNotThrow(() => { Contract.Requires(true); });
@@ -436,16 +436,16 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		[Test]
 		public void Test_Contract_Assert_Will_Throw_A_ContractException()
 		{
-			// note: on désactive le testing mode, pour être en situation "réelle"
+			// note: we disable the testing mode, to be in a "real" situation
 			Contract.IsUnitTesting = false;
 
 			Assert.DoesNotThrow(() => { Contract.Assert(true); });
 
-			// note: Contract.Assert(...) fait un Debug.Fail(...) pour spammer les logs
+			// note: Contract.Assert(...) does a Debug.Fail(...) which spams the logs
 			int x = 69;
-			Trace.WriteLine("====== vvv IGNORER L'ASSERTION QUI EST JUSTE APRES (C'EST NORMAL! :) vvv ======");
+			Trace.WriteLine("====== vvv IGNORE THE ASSERTION RIGHT AFTER (THIS IS NORMAL! :) vvv ======");
 			var cex = Assert.Throws<ContractException>(() => { Contract.Assert(x == 42, "le message"); });
-			Trace.WriteLine("====== ^^^ IGNORER L'ASSERTION QUI EST JUSTE AVANT (C'EST NORMAL! :) ^^^ ======");
+			Trace.WriteLine("====== ^^^ IGNORE THE ASSERTION RIGHT BEFORE (THIS IS NORMAL! :) ^^^ ======");
 			Assert.That(cex.Message, Is.EqualTo("Assertion failed: x == 42  le message"));
 			Assert.That(cex.UserMessage, Is.EqualTo("le message"), ".UserMessage");
 			Assert.That(cex.Condition, Is.EqualTo("x == 42"), ".Condition");
@@ -455,7 +455,7 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		[Test]
 		public void Test_Contract_Ensures_Will_Throw_A_ContractException()
 		{
-			// note: on désactive le testing mode, pour être en situation "réelle"
+			// note: we disable the testing mode, to be in a "real" situation
 			Contract.IsUnitTesting = false;
 
 			Assert.DoesNotThrow(() => { Contract.Ensures(true); });
@@ -471,7 +471,7 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		[Test]
 		public void Test_Contract_Invariant_Will_Throw_A_ContractException()
 		{
-			// note: on désactive le testing mode, pour être en situation "réelle"
+			// note: we disable the testing mode, to be in a "real" situation
 			Contract.IsUnitTesting = false;
 
 			Assert.DoesNotThrow(() => { Contract.Invariant(true); });
@@ -490,16 +490,16 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 #endif
 		public void Test_Contract_Debug_Requires_And_Asserts_Map_To_NUnit_Assertion_When_Under_Test()
 		{
-			// il y a de la magie dans le constructeur de Contract, qui détecte si on est dans un test unitaire,
-			// et qui se met a envoeyr des AssertionException, au lieu de ContractException, pour simplifier les tests.
+			// there is some magic in the Contract constructor, which detects whether we are inside a unit test,
+			// and starts throwing AssertionException, instead of ContractException, to simplify the tests.
 
-			// Cette fonction peut etre activée ou désactiver via Contract.IsUnderTesting :
+			// This behavior can be enabled or disabled via Contract.IsUnderTesting:
 
-			// si on l'active, on obtient une AssertionException
+			// if we enable it, we get an AssertionException
 			Contract.IsUnitTesting = true;
 			Assert.Throws<AssertionException>(() => { Contract.Debug.Requires(false); });
 
-			// si par contre on désactive ce mode, on doit obtenir une ContractException !
+			// if on the other hand we disable this mode, we should get a ContractException!
 			Contract.IsUnitTesting = false;
 			Assert.Throws<ContractException>(() => { Contract.Debug.Requires(false); });
 		}
@@ -510,7 +510,7 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 #endif
 		public void Test_Contract_Debug_Requires_Will_Throw_A_ContractException()
 		{
-			// note: on désactive le testing mode, pour être en situation "réelle"
+			// note: we disable the testing mode, to be in a "real" situation
 			Contract.IsUnitTesting = false;
 
 			Assert.DoesNotThrow(() => { Contract.Debug.Requires(true); });
@@ -530,17 +530,17 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 #endif
 		public void Test_Contract_Debug_Assert_Will_Throw_A_ContractException()
 		{
-			// note: on désactive le testing mode, pour être en situation "réelle"
+			// note: we disable the testing mode, to be in a "real" situation
 			Contract.IsUnitTesting = false;
 
 			Assert.DoesNotThrow(() => { Contract.Debug.Assert(true); });
 
-			// note: Contract.Assert(...) fait un Debug.Fail(...) pour spammer les logs
+			// note: Contract.Assert(...) does a Debug.Fail(...) which spams the logs
 			// ReSharper disable once RedundantAssignment
 			int x = 69;
-			Trace.WriteLine("====== vvv IGNORER L'ASSERTION QUI EST JUSTE APRES (C'EST NORMAL! :) vvv ======");
+			Trace.WriteLine("====== vvv IGNORE THE ASSERTION RIGHT AFTER (THIS IS NORMAL! :) vvv ======");
 			var cex = Assert.Throws<ContractException>(() => { Contract.Debug.Assert(x == 42, "le message"); });
-			Trace.WriteLine("====== ^^^ IGNORER L'ASSERTION QUI EST JUSTE AVANT (C'EST NORMAL! :) ^^^ ======");
+			Trace.WriteLine("====== ^^^ IGNORE THE ASSERTION RIGHT BEFORE (THIS IS NORMAL! :) ^^^ ======");
 			Assert.That(cex.Message, Is.EqualTo("Assertion failed: x == 42  le message"));
 			Assert.That(cex.UserMessage, Is.EqualTo("le message"), ".UserMessage");
 			Assert.That(cex.Condition, Is.EqualTo("x == 42"), ".Condition");
@@ -553,7 +553,7 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 #endif
 		public void Test_Contract_Debug_Ensures_Will_Throw_A_ContractException()
 		{
-			// note: on désactive le testing mode, pour être en situation "réelle"
+			// note: we disable the testing mode, to be in a "real" situation
 			Contract.IsUnitTesting = false;
 
 			Assert.DoesNotThrow(() => { Contract.Debug.Ensures(true); });
@@ -573,7 +573,7 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 #endif
 		public void Test_Contract_Debug_Invariant_Will_Throw_A_ContractException()
 		{
-			// note: on désactive le testing mode, pour être en situation "réelle"
+			// note: we disable the testing mode, to be in a "real" situation
 			Contract.IsUnitTesting = false;
 
 			Assert.DoesNotThrow(() => { Contract.Debug.Invariant(true); });

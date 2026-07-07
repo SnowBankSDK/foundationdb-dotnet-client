@@ -127,7 +127,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(JsonValue.Parse("-1"), Is.EqualTo(JsonNumber.Return(-1)));
 			Assert.That(JsonValue.Parse("-123"), Is.EqualTo(JsonNumber.Return(-123)));
 
-			// avec exponent
+			// with exponent
 			Assert.That(JsonValue.Parse("1E1"), Is.EqualTo(JsonNumber.Return(10)));
 			Assert.That(JsonValue.Parse("1E2"), Is.EqualTo(JsonNumber.Return(100)));
 			Assert.That(JsonValue.Parse("1.23E2"), Is.EqualTo(JsonNumber.Return(123)));
@@ -135,7 +135,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(JsonValue.Parse("1E-1"), Is.EqualTo(JsonNumber.Return(0.1)));
 			Assert.That(JsonValue.Parse("1E-2"), Is.EqualTo(JsonNumber.Return(0.01)));
 
-			// négatif avec exponent
+			// negative with exponent
 			Assert.That(JsonValue.Parse("-1E1"), Is.EqualTo(JsonNumber.Return(-10)));
 			Assert.That(JsonValue.Parse("-1E2"), Is.EqualTo(JsonNumber.Return(-100)));
 			Assert.That(JsonValue.Parse("-1.23E2"), Is.EqualTo(JsonNumber.Return(-123)));
@@ -228,8 +228,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(num1.IsDecimal, Is.False);
 				var num2 = JsonNumber.Create(0.1234E4);
 				Assert.That(num2.ToDouble(), Is.EqualTo(1234.0));
-				Assert.That(num2.Literal, Is.EqualTo("1234")); //BUGBUG: devrait être "1234.0" ?
-				//Assert.That(num2.IsDecimal, Is.False); //REVIEW: vu qu'on a appelé Return(double), le json est actuellement considéré comme décimal..
+				Assert.That(num2.Literal, Is.EqualTo("1234")); //BUGBUG: should be "1234.0" ?
+				//Assert.That(num2.IsDecimal, Is.False); //REVIEW: since we called Return(double), the json is currently considered as decimal..
 			}
 
 			{ // real decimal
@@ -288,11 +288,11 @@ namespace SnowBank.Data.Json.Tests
 			ParseAreEqual(JsonDateTime.MinValue, "\"\\/Date(-62135596800000)\\/\"", "DateTime.MinValue");
 			ParseAreEqual(JsonDateTime.MaxValue, "\"\\/Date(253402300799999)\\/\"", "DateTime.MaxValue (auto-ajusted)"); // note: should automatically add the missing ".99999" part for milliseconds!
 
-			// 2000-01-01 (heure d'hivers)
+			// 2000-01-01 (winter time)
 			ParseAreEqual(new JsonDateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), "\"\\/Date(946684800000)\\/\"", "2000-01-01 UTC");
 			ParseAreEqual(new JsonDateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local), "\"\\/Date(946681200000+0100)\\/\"", "2000-01-01 GMT+1 (Paris)");
 
-			// 2000-09-01 (heure d'été)
+			// 2000-09-01 (summer time / DST)
 			ParseAreEqual(new JsonDateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc), "\"\\/Date(967766400000)\\/\"", "2000-09-01 UTC");
 			ParseAreEqual(new JsonDateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Local), "\"\\/Date(967759200000+0200)\\/\"", "2000-09-01 GMT+2 (Paris, DST)");
 
@@ -560,7 +560,7 @@ namespace SnowBank.Data.Json.Tests
 
 			// interning corner cases
 
-			{ // values that are small integers (-128..255à should all be refs to cached instances
+			{ // values that are small integers (-128..255) should all be refs to cached instances
 				obj = JsonObject.Parse("""{ "A": 0, "B": 1, "C": 42, "D": -1, "E": 255, "F": -128 }""");
 				Assert.That(obj, Is.Not.Null.And.Count.EqualTo(6));
 				Assert.That(obj["A"], Is.SameAs(JsonNumber.Zero));

@@ -30,8 +30,8 @@ namespace SnowBank.Diagnostics.Contracts
 	using AssertionConditionAttribute = JetBrains.Annotations.AssertionConditionAttribute;
 	using AssertionConditionType = JetBrains.Annotations.AssertionConditionType;
 
-	/// <summary>Classe helper présente uniquement en mode Paranoid, pour la vérification de pré-requis, invariants, assertions, ...</summary>
-	/// <remarks>Les méthodes de cette classes ne sont compilées que si le flag PARANOID_ANDROID est défini</remarks>
+	/// <summary>Helper class present only in Paranoid mode, for checking pre-requisites, invariants, assertions, ...</summary>
+	/// <remarks>The methods of this class are only compiled if the PARANOID_ANDROID flag is defined</remarks>
 	[DebuggerNonUserCode]
 	public static class Paranoid
 	{

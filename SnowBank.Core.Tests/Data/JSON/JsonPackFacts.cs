@@ -109,7 +109,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 			long res = 0;
 			for (int i = offset; i < hexa.Length; i++)
 			{
-				// 4 bits par caractère
+				// 4 bits per character
 				res <<= 4;
 				int c = hexa[i];
 				if (c is >= 48 and <= 57) // '0'..'9'
@@ -202,8 +202,8 @@ namespace SnowBank.Data.Json.Binary.Tests
 		[Test]
 		public void Test_Decode_Reference_Scalars()
 		{
-			// sanity test: on vérifie qu'on est capable de décoder des versions binaires de référence
-			// note: si le format binaire change, il ne faut pas oublier de mettre à jour les encodages de référence!
+			// sanity test: we check that we can decode reference binary versions
+			// note: if the binary format changes, don't forget to update the reference encodings!
 
 			#region null
 
@@ -283,7 +283,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 				1234
 			);
 
-			// zéro (literal)
+			// zero (literal)
 			VerifyReferenceEncoding(
 				"99 01 30",
 				0
@@ -411,7 +411,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 				Foo = new { Bar = new { Baz = 123 } }
 			}));
 
-			// objet avec beaucoup de fields (hashed!)
+			// object with many fields (hashed!)
 			VerifyRoundtrip(JsonObject.FromObject(new
 			{
 				One = 1,

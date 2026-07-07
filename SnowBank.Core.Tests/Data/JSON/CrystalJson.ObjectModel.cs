@@ -941,11 +941,11 @@ namespace SnowBank.Data.Json.Tests
 		{
 			Assert.That(JsonString.Return("2013-03-11T12:34:56.768").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Unspecified)));
 			Assert.That(JsonString.Return("2013-03-11T12:34:56.768Z").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Utc)));
-			Assert.That(JsonString.Return("2013-03-11T12:34:56.768+01:00").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local)), "Ne marche que si la local TZ est Paris !");
-			Assert.That(JsonString.Return("2013-03-11T12:34:56.768+01").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local)), "Ne marche que si la local TZ est Paris !");
-			Assert.That(JsonString.Return("2013-03-11T12:34:56.768-01").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local).AddHours(2)), "Ne marche que si la local TZ est Paris !");
-			Assert.That(JsonString.Return("2013-03-11T12:34:56.768+11:30").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local).AddHours(-10).AddMinutes(-30)), "Ne marche que si la local TZ est Paris !");
-			Assert.That(JsonString.Return("2013-03-11T12:34:56.768-11:30").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local).AddHours(12).AddMinutes(30)), "Ne marche que si la local TZ est Paris !");
+			Assert.That(JsonString.Return("2013-03-11T12:34:56.768+01:00").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local)), "Only works if the local TZ is Paris!");
+			Assert.That(JsonString.Return("2013-03-11T12:34:56.768+01").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local)), "Only works if the local TZ is Paris!");
+			Assert.That(JsonString.Return("2013-03-11T12:34:56.768-01").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local).AddHours(2)), "Only works if the local TZ is Paris!");
+			Assert.That(JsonString.Return("2013-03-11T12:34:56.768+11:30").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local).AddHours(-10).AddMinutes(-30)), "Only works if the local TZ is Paris!");
+			Assert.That(JsonString.Return("2013-03-11T12:34:56.768-11:30").ToDateTime(), Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Local).AddHours(12).AddMinutes(30)), "Only works if the local TZ is Paris!");
 
 			Assert.That(((JsonString) JsonString.Return("2013-03-11T12:34:56.768")).TryConvertToDateTime(out var result), Is.True);
 			Assert.That(result, Is.EqualTo(new DateTime(2013, 3, 11, 12, 34, 56, 768, DateTimeKind.Unspecified)));
@@ -1634,7 +1634,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(JsonNumber.Create(NodaTime.Instant.FromDateTimeUtc(new DateTime(2017, 1, 19, 12, 53, 32, 854, DateTimeKind.Utc))).ToDouble(), Is.EqualTo(1484830412.854), "(UTC).Value");
 			Assert.That(JsonNumber.Create(NodaTime.Instant.MinValue).ToDouble(), Is.EqualTo(NodaTime.Instant.FromUtc(-9998, 1 , 1, 0, 0, 0).ToUnixTimeSeconds()), "MinValue");
 			Assert.That(JsonNumber.Create(NodaTime.Instant.MaxValue).ToDouble(), Is.EqualTo(NodaTime.Instant.FromUtc(9999, 12, 31, 23, 59, 59).ToUnixTimeSeconds() + 0.999999999d), "MaxValue");
-			Assert.That(JsonNumber.NaN.ToInstant(), Is.EqualTo(NodaTime.Instant.MaxValue), "MaxValue"); //par convention, NaN == MaxValue
+			Assert.That(JsonNumber.NaN.ToInstant(), Is.EqualTo(NodaTime.Instant.MaxValue), "MaxValue"); // by convention, NaN == MaxValue
 
 			// String
 			Assert.That(JsonNumber.Zero.Bind<string>(), Is.EqualTo("0"));
@@ -1915,7 +1915,7 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_JsonNumber_RoundingBug()
 		{
 			// When serializing/deserializing a double with the form "7.5318246509562359", there is an issue when convertion from decimal to double (the ULPS will change due to the difference in precision)
-			// => on vérifie que le JsonNumber est capable de gérer correctement ce problème
+			// => we check that JsonNumber is able to handle this problem correctly
 
 			double x = 7.5318246509562359d;
 			Assert.That((double)((decimal)x), Is.Not.EqualTo(x), $"Check that {x:R} gets corrupted during roundtrip by the CLR");
@@ -1927,7 +1927,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(JsonNumber.Return(x).ToString(), Is.EqualTo(x.ToString("R")));
 			Assert.That(((JsonNumber) JsonValue.Parse("3.8219629199346357")).ToDouble(), Is.EqualTo(x), $"Rounding Bug check: {x:R} should not change!");
 
-			// meme problème avec les float !
+			// same problem with floats!
 			float y = 7.53182459f;
 			Assert.That((float)((decimal)y), Is.Not.EqualTo(y), $"Check that {y:R} gets corrupted during roundtrip by the CLR");
 			Assert.That(JsonNumber.Return(y).ToString(), Is.EqualTo(y.ToString("R")));
@@ -2747,7 +2747,7 @@ namespace SnowBank.Data.Json.Tests
 					Assert.That(it.Current, Is.EqualTo(456.0), "#2");
 					Assert.That(it.MoveNext(), Is.True, "#3");
 					Assert.That(it.Current, Is.EqualTo(789.0), "#3");
-					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, mais Count = 3 !");
+					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, but Count = 3!");
 					Assert.That(it.Current, Is.EqualTo(0.0), "After last MoveNext");
 				}
 
@@ -2778,7 +2778,7 @@ namespace SnowBank.Data.Json.Tests
 					Assert.That(it.Current, Is.EqualTo("World"), "#2");
 					Assert.That(it.MoveNext(), Is.True, "#3");
 					Assert.That(it.Current, Is.EqualTo("!!!"), "#3");
-					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, mais Count = 3 !");
+					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, but Count = 3!");
 					Assert.That(it.Current, Is.Null, "After last MoveNext");
 				}
 
@@ -2819,7 +2819,7 @@ namespace SnowBank.Data.Json.Tests
 					Assert.That(it.Current, Is.SameAs(b), "#2");
 					Assert.That(it.MoveNext(), Is.True, "#3");
 					Assert.That(it.Current, Is.SameAs(c), "#3");
-					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, mais Count = 3 !");
+					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, but Count = 3!");
 					Assert.That(it.Current, Is.Null, "After last MoveNext");
 				}
 
@@ -2840,7 +2840,7 @@ namespace SnowBank.Data.Json.Tests
 					Assert.That(it.Current, Is.Null, "#2 should be null!");
 					Assert.That(it.MoveNext(), Is.True, "#3");
 					Assert.That(it.Current, Is.SameAs(c), "#3");
-					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, mais Count = 3 !");
+					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, but Count = 3!");
 					Assert.That(it.Current, Is.Null, "After last MoveNext");
 				}
 				Assert.That(cast.ToArray(), Is.EqualTo(new JsonObject?[] { a, null, c }));
@@ -2860,7 +2860,7 @@ namespace SnowBank.Data.Json.Tests
 					Assert.That(it.Current, Is.SameAs(JsonObject.ReadOnly.Empty), "#2 should be empty singleton!");
 					Assert.That(it.MoveNext(), Is.True, "#3");
 					Assert.That(it.Current, Is.SameAs(c), "#3");
-					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, mais Count = 3 !");
+					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, but Count = 3!");
 					Assert.That(it.Current, Is.Null, "After last MoveNext");
 				}
 				Assert.That(cast.ToArray(), Is.EqualTo(new[] { a, JsonObject.ReadOnly.Empty, c }));
@@ -2922,7 +2922,7 @@ namespace SnowBank.Data.Json.Tests
 					Assert.That(it.Current, Is.SameAs(b), "#2");
 					Assert.That(it.MoveNext(), Is.True, "#3");
 					Assert.That(it.Current, Is.SameAs(c), "#3");
-					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, mais Count = 3 !");
+					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, but Count = 3!");
 					Assert.That(it.Current, Is.Null, "After last MoveNext");
 				}
 				Assert.That(cast.ToArray(), Is.EqualTo(new JsonArray[] { a, b, c }));
@@ -2942,7 +2942,7 @@ namespace SnowBank.Data.Json.Tests
 					Assert.That(it.Current, Is.Null, "#2 should be null!");
 					Assert.That(it.MoveNext(), Is.True, "#3");
 					Assert.That(it.Current, Is.SameAs(c), "#3");
-					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, mais Count = 3 !");
+					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, but Count = 3!");
 					Assert.That(it.Current, Is.Null, "After last MoveNext");
 				}
 				Assert.That(cast.ToArray(), Is.EqualTo(new [] { a, null, c }));
@@ -2962,7 +2962,7 @@ namespace SnowBank.Data.Json.Tests
 					Assert.That(it.Current, Is.SameAs(JsonArray.ReadOnly.Empty), "#2 should be empty singleton!");
 					Assert.That(it.MoveNext(), Is.True, "#3");
 					Assert.That(it.Current, Is.SameAs(c), "#3");
-					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, mais Count = 3 !");
+					Assert.That(it.MoveNext(), Is.False, "Capacity = 4, but Count = 3!");
 					Assert.That(it.Current, Is.Null, "After last MoveNext");
 				}
 				Assert.That(cast.ToArray(), Is.EqualTo(new [] { a, JsonArray.ReadOnly.Empty, c }));
@@ -3308,7 +3308,7 @@ namespace SnowBank.Data.Json.Tests
 			proj = arr.Pick(
 				new JsonObject()
 				{
-					["Id"] = JsonNull.Error, // <= équivalent de null, mais qui peut être détecté spécifiquement
+					["Id"] = JsonNull.Error, // <= equivalent to null, but which can be detected specifically
 					["Name"] = JsonString.Return("John Doe"),
 					["Pseudo"] = JsonNull.Null,
 					["Job"] = JsonString.Return("NEET"),
@@ -4627,11 +4627,11 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonObject_GetString()
 		{
-			// Le type string a un traitement spécial vis-à-vis des chaines vides, ce qui justifie la présence de GetString(..) (et pas GetBool, GetInt, ...)
-			// - required: si true, rejette null/missing
-			// - notEmpty: si true, rejette les chaines vides ou composées uniquement d'espaces
+			// The string type gets special treatment with regard to empty strings, which justifies the presence of GetString(..) (and not GetBool, GetInt, ...)
+			// - required: if true, rejects null/missing
+			// - notEmpty: if true, rejects empty strings or strings composed only of whitespace
 
-			// note: on peut avoir required:false et notEmpty:true pour des champs optionnels "si présent, alors ne doit pas être vide" (ex: un Guid optionnel, etc...)
+			// note: we can have required:false and notEmpty:true for optional fields "if present, then must not be empty" (ex: an optional Guid, etc...)
 
 			var obj = new JsonObject
 			{
@@ -4642,7 +4642,7 @@ namespace SnowBank.Data.Json.Tests
 				["Space"] = "   ", // Space! Space? Space!!!
 			};
 
-			//Get<string>(..) se comporte comme les autres (ne considère que null/missing)
+			//Get<string>(..) behaves like the others (only considers null/missing)
 			Assert.That(obj.Get<string?>("Missing", null), Is.Null);
 			Assert.That(() => obj.Get<string>("Missing"), Throws.InstanceOf<JsonBindingException>());
 			Assert.That(obj.Get<string?>("Void", null), Is.Null);
@@ -4654,8 +4654,8 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonObject_GetPath()
 		{
-			// GetPath(...) est une sorte d'équivalent à SelectSingleNode(..) qui prend un chemin de type "Foo.Bar.Baz" pour dire "le champ Baz du champ Bar du champ Foo de l'objet actuel
-			// ex: obj.GetPath("Foo.Bar.Baz") est l'équivalent de obj["Foo"]["Baz"]["Baz"]
+			// GetPath(...) is a sort of equivalent to SelectSingleNode(..) that takes a path like "Foo.Bar.Baz" to mean "the Baz field of the Bar field of the Foo field of the current object"
+			// ex: obj.GetPath("Foo.Bar.Baz") is the equivalent of obj["Foo"]["Baz"]["Baz"]
 
 			JsonValue value;
 
@@ -4742,8 +4742,8 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonObject_GetPath_JsonPath()
 		{
-			// GetPath(...) est une sorte d'équivalent à SelectSingleNode(..) qui prend un chemin de type "Foo.Bar.Baz" pour dire "le champ Baz du champ Bar du champ Foo de l'objet actuel
-			// ex: obj.GetPath("Foo.Bar.Baz") est l'équivalent de obj["Foo"]["Baz"]["Baz"]
+			// GetPath(...) is a sort of equivalent to SelectSingleNode(..) that takes a path like "Foo.Bar.Baz" to mean "the Baz field of the Bar field of the Foo field of the current object"
+			// ex: obj.GetPath("Foo.Bar.Baz") is the equivalent of obj["Foo"]["Baz"]["Baz"]
 
 			JsonValue value;
 
@@ -5034,7 +5034,7 @@ namespace SnowBank.Data.Json.Tests
 			root.GetOrCreateObject("Narf.Zort.Poit").Set("MDR", "LOL");
 			Assert.That(root, Is.EqualTo(JsonValue.Parse("""{ "Narf": { "Zort": { "Poit": { "MDR": "LOL" } } } }""")));
 
-			// on doit pouvoir écraser un null
+			// we must be able to overwrite a null
 			root = JsonObject.Create();
 			root["Bar"] = JsonNull.Null;
 			var bar = root.GetOrCreateObject("Bar");
@@ -5042,7 +5042,7 @@ namespace SnowBank.Data.Json.Tests
 			bar.Set("Hello", "World");
 			Assert.That(root, Is.EqualTo(JsonValue.Parse("""{ "Bar": { "Hello": "World" } }""")));
 
-			// par contre on doit pas pouvoir écraser un non-object
+			// however we must not be able to overwrite a non-object
 			root = JsonObject.Create("Baz", "Hello");
 			Assert.That(
 				() => root.GetOrCreateObject("Baz"),
@@ -5381,7 +5381,7 @@ namespace SnowBank.Data.Json.Tests
 			root.GetOrCreateArray("Narf.Zort.Poit").AddValue(789);
 			Assert.That(root.ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"Narf":{"Zort":{"Poit":[789]}}}"""));
 
-			// on doit pouvoir écraser un null
+			// we must be able to overwrite a null
 			root = JsonObject.Create();
 			root["Bar"] = JsonNull.Null;
 			var bar = root.GetOrCreateArray("Bar");
@@ -5390,7 +5390,7 @@ namespace SnowBank.Data.Json.Tests
 			bar.AddValue("World");
 			Assert.That(root.ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"Bar":["Hello","World"]}"""));
 
-			// par contre on doit pas pouvoir écraser un non-object
+			// however we must not be able to overwrite a non-object
 			root = JsonObject.Create();
 			root.Set("Baz", "Hello");
 			Assert.That(

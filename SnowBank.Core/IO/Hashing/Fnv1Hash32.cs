@@ -88,10 +88,10 @@ namespace SnowBank.IO.Hashing
 		}
 
 		/// <summary>Computes the 32-bits FNV-1 hash of a byte array segment, with a custom initial seed</summary>
-		/// <param name="bytes">Buffer contenant des données à hasher</param>
-		/// <param name="offset">Offset de départ dans le buffer</param>
-		/// <param name="count">Nombre de données du buffer à hasher</param>
-		/// <returns>Hash de la section du buffer</returns>
+		/// <param name="bytes">Buffer containing the data to hash</param>
+		/// <param name="offset">Starting offset in the buffer</param>
+		/// <param name="count">Number of bytes of the buffer to hash</param>
+		/// <returns>Hash of the buffer section</returns>
 		public static uint FromBytes(byte[] bytes, int offset, int count)
 		{
 			if (offset == 0 && count == bytes.Length)

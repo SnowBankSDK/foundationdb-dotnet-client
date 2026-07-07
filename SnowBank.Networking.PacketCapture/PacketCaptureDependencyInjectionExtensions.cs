@@ -80,7 +80,7 @@ namespace SnowBank.Networking.PacketCapture
 			}
 #endif
 
-			// Singleton qui contiendra nos packets in memory
+			// Singleton that will hold our packets in memory
 			services.AddSingleton<IPacketCaptureStore, PacketCaptureStore>();
 			
 			services.AddSingleton<PacketCaptureManager>();
@@ -157,7 +157,7 @@ namespace SnowBank.Networking.PacketCapture
 							}
 						}
 
-						// On ajoute les options du viewer
+						// We add the viewer options
 						options.AssetsPath = rootSection.GetValue("AssetsPath", PacketCaptureOptions.DefaultAssetsPath);
 
 						options.CaptureStackTraces = rootSection.GetValue("StackTraces", false);

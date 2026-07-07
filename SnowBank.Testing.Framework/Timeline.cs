@@ -156,14 +156,14 @@ namespace SnowBank.Testing.Framework
 		{
 			lock (this.Chunks)
 			{
-				// on veut pre-allouer la liste pour plus éviter trop de resize
+				// we want to pre-allocate the list to avoid too many resizes
 				long count = 0;
 				foreach (var chunk in this.Chunks)
 				{
 					count += chunk.Count;
 				}
 
-				//REVIEW: quid si on a plus de 2G events?? :D
+				//REVIEW: what if we have more than 2G events?? :D
 				var res = new List<Datum>(checked((int) count));
 				foreach (var chunk in this.Chunks)
 				{

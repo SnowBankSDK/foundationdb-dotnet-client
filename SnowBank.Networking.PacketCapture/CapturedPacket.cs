@@ -60,7 +60,7 @@ namespace SnowBank.Networking.PacketCapture
 
 		private static bool IsProbablyText(MediaTypeHeaderValue? mediaType)
 		{
-			if (mediaType == null) return true; // tentes ta chance!
+			if (mediaType == null) return true; // take your chances!
 			if (mediaType.Type == "text") return true;
 			if (mediaType.Type == "image") return false;
 			if (mediaType.Type == "application")
@@ -246,7 +246,7 @@ namespace SnowBank.Networking.PacketCapture
 			return text.Length < padding ? sb.Append(' ', padding - text.Length).Append(text) : sb.Append(text);
 		}
 
-		/// <summary>Encode une chaîne de texte au format W3C LOG</summary>
+		/// <summary>Encodes a text string in the W3C LOG format</summary>
 		private static void LogAppendString(StringBuilder sb, string? text, bool quoted)
 		{
 			// <string> = '"' *<schar> '"'
@@ -257,7 +257,7 @@ namespace SnowBank.Networking.PacketCapture
 			if (string.IsNullOrEmpty(text))
 			{
 				// EXCEPTION: "The dash character must not be used as an abbreviation for an empty string."
-				// ... sauf que beaucoup headers property retournent "" même s'ils sont manquants
+				// ... except that many header properties return "" even if they are missing
 				sb.Append(LOG_TOKEN_EMPTY);
 				return;
 			}
@@ -301,18 +301,18 @@ namespace SnowBank.Networking.PacketCapture
 			sb.Append(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append(' ');
 			// time
 			sb.Append(date.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)).Append(' ');
-			// x-cnx-id : identifiant unique de la connexion
+			// x-cnx-id : unique identifier of the connection
 			LogAppendString(sb, cnx.Id, false);
-			// x-cnx-req: '-' pour première execution pour cette connection, ou nombre de réutilisations de la connection
+			// x-cnx-req: '-' for the first execution on this connection, or the number of reuses of the connection
 			sb.Append(" - "); //TODO: how can we get this value?
 
 			// ### Result
 
-			// cs-bytes : octets envoyés par le client, incluant les headers et le body de la requête
+			// cs-bytes : bytes sent by the client, including the headers and the body of the request
 			LogAppendNumber(sb, this.RequestBody.Count, "N0", 7);
-			// time-taken : nombre de millisecondes écoulées pour traiter la requête de bout en bout
+			// time-taken : number of milliseconds elapsed to process the request end to end
 			LogAppendNumber(sb, durationTotal.TotalMilliseconds, "N1", 7).Append(' ');
-			// sc-bytes : octets envoyés par le serveur, incluant les headers et le body de la réponse
+			// sc-bytes : bytes sent by the server, including the headers and the body of the response
 			LogAppendNumber(sb, this.ResponseBody.Count, "N0", 7);
 
 			// sc-status

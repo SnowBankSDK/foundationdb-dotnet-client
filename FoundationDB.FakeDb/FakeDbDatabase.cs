@@ -1377,7 +1377,7 @@ namespace FoundationDB.Testing
 					var key = this.Inner.Resolve(selector, accessSystemKeys);
 					if (!snapshotRead)
 					{
-						// la range a marker comme conflit dépend de la position de la clé par rapport au selector: si c'est avant, égal, ou apres
+						// the range to mark as a conflict depends on the position of the key relative to the selector: whether it is before, equal, or after
 						int cmp = key.CompareTo(selector.Key);
 						if (cmp == 0)
 						{
@@ -1510,7 +1510,7 @@ namespace FoundationDB.Testing
 					{
 						Kenobi($"*** #{this.Id} BeginKey: {iter.Current.Key:K}");
 
-						//REVIEW: est-ce que la endKey doit etre incluse dans le range?
+						//REVIEW: should the endKey be included in the range?
 						// and start scanning from there!
 
 						int limit = options.Limit ?? 0;
@@ -2410,7 +2410,7 @@ namespace FoundationDB.Testing
 			{
 				lock (this.Lock)
 				{
-					if (this.SnapshotTask != null) throw new InvalidOperationException("Version already set"); //BUGBUG: le meme que le vrai!
+					if (this.SnapshotTask != null) throw new InvalidOperationException("Version already set"); //BUGBUG: same as the real one!
 					this.SnapshotTask = this.Store.StartSnapshotAtVersion(this.Scratch, version, this.LifeTime.Token);
 				}
 			}
@@ -3339,7 +3339,7 @@ namespace FoundationDB.Testing
 							return false;
 						}
 
-						// passthrough le inner as-is
+						// passthrough the inner as-is
 						this.Current = inner.Current;
 						Kenobi($"** #{this.Id} outer done, pass-through inner {this.Current.Key:K} = {this.Current.Value:V}");
 						this.InnerState = STATE_UNKNOWN;
@@ -3353,7 +3353,7 @@ namespace FoundationDB.Testing
 
 					if (this.InnerState == STATE_DEAD)
 					{
-						// passthrough le outer as-is
+						// passthrough the outer as-is
 
 						Kenobi($"** #{this.Id} inner done, pass-through outer {mutation.Op} {outerEntry.Begin:K} ~ {outerEntry.End:K} = {mutation.Parameter:V}");
 						if (mutation.Op is Operation.ClearRange or Operation.Clear)

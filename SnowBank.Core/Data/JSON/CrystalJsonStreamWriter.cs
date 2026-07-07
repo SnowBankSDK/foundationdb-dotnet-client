@@ -480,7 +480,7 @@ namespace SnowBank.Data.Json
 				visitor(item, type, item is not null ? item.GetType() : typeof(object), writer);
 			}
 
-			/// <summary>Ajoute un JsonValue dans un tableau ouvert</summary>
+			/// <summary>Adds a JsonValue to an open array</summary>
 			public void WriteItem(JsonValue item)
 			{
 				m_ct.ThrowIfCancellationRequested();
@@ -494,7 +494,7 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute un JsonValue dans un tableau ouvert</summary>
+			/// <summary>Adds a JsonValue to an open array</summary>
 			public async Task WriteItemAsync(JsonValue item)
 			{
 				m_ct.ThrowIfCancellationRequested();
@@ -508,9 +508,9 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute un élément dans un tableau ouvert</summary>
-			/// <typeparam name="T">Type de l'élément</typeparam>
-			/// <param name="item">Element ajouté</param>
+			/// <summary>Adds an element to an open array</summary>
+			/// <typeparam name="T">Type of the element</typeparam>
+			/// <param name="item">Element added</param>
 			/// <returns></returns>
 			public void WriteItem<T>(T item)
 			{
@@ -525,9 +525,9 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute un élément dans un tableau ouvert</summary>
-			/// <typeparam name="T">Type de l'élément</typeparam>
-			/// <param name="item">Element ajouté</param>
+			/// <summary>Adds an element to an open array</summary>
+			/// <typeparam name="T">Type of the element</typeparam>
+			/// <param name="item">Element added</param>
 			/// <returns></returns>
 			public async Task WriteItemAsync<T>(T item)
 			{
@@ -542,7 +542,7 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute une liste de JsonValue dans un tableau ouvert</summary>
+			/// <summary>Adds a list of JsonValue to an open array</summary>
 			public void WriteBatch(IEnumerable<JsonValue> items)
 			{
 				Contract.NotNull(items);
@@ -559,7 +559,7 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute une liste de JsonValue dans un tableau ouvert</summary>
+			/// <summary>Adds a list of JsonValue to an open array</summary>
 			public async Task WriteBatchAsync(IEnumerable<JsonValue> items)
 			{
 				Contract.NotNull(items);
@@ -576,7 +576,7 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute plusieurs éléments dans un tableau ouvert</summary>
+			/// <summary>Adds several elements to an open array</summary>
 			public void WriteBatch<T>(IEnumerable<T> items)
 			{
 				Contract.NotNull(items);
@@ -596,7 +596,7 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute plusieurs éléments dans un tableau ouvert</summary>
+			/// <summary>Adds several elements to an open array</summary>
 			public async Task WriteBatchAsync<T>(IEnumerable<T> items)
 			{
 				Contract.NotNull(items);
@@ -616,11 +616,11 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute plusieurs éléments dans un tableau ouvert, en appliquant une transformation sur chaque élément</summary>
-			/// <typeparam name="TInput">Type des éléments de la séquence source</typeparam>
-			/// <typeparam name="TOutput">Type des éléments transformés</typeparam>
-			/// <param name="items">Séquence des éléments constituants le batch</param>
-			/// <param name="selector">Transformation appliquée à chaque éléments de <paramref name="items"/></param>
+			/// <summary>Adds several elements to an open array, applying a transformation to each element</summary>
+			/// <typeparam name="TInput">Type of the elements of the source sequence</typeparam>
+			/// <typeparam name="TOutput">Type of the transformed elements</typeparam>
+			/// <param name="items">Sequence of the elements making up the batch</param>
+			/// <param name="selector">Transformation applied to each element of <paramref name="items"/></param>
 			/// <returns></returns>
 			public void WriteBatch<TInput, TOutput>(IEnumerable<TInput> items, [InstantHandle] Func<TInput, TOutput> selector)
 			{
@@ -642,11 +642,11 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			/// <summary>Ajoute plusieurs éléments dans un tableau ouvert, en appliquant une transformation sur chaque élément</summary>
-			/// <typeparam name="TInput">Type des éléments de la séquence source</typeparam>
-			/// <typeparam name="TOutput">Type des éléments transformés</typeparam>
-			/// <param name="items">Séquence des éléments constituants le batch</param>
-			/// <param name="selector">Transformation appliquée à chaque éléments de <paramref name="items"/></param>
+			/// <summary>Adds several elements to an open array, applying a transformation to each element</summary>
+			/// <typeparam name="TInput">Type of the elements of the source sequence</typeparam>
+			/// <typeparam name="TOutput">Type of the transformed elements</typeparam>
+			/// <param name="items">Sequence of the elements making up the batch</param>
+			/// <param name="selector">Transformation applied to each element of <paramref name="items"/></param>
 			/// <returns></returns>
 			public async Task WriteBatchAsync<TInput, TOutput>(IEnumerable<TInput> items, [InstantHandle] Func<TInput, TOutput> selector)
 			{

@@ -203,8 +203,8 @@ namespace SnowBank.Text
 
 		#endregion
 
-		/// <summary>Ajoute une chaîne de texte dans la table, a partir d'octets encodés en UTF8 (ou ASCII)</summary>
-		/// <returns>Chaîne de texte correspondante.</returns>
+		/// <summary>Adds a text string to the table, from bytes encoded in UTF8 (or ASCII)</summary>
+		/// <returns>Corresponding text string.</returns>
 		public string Add(ReadOnlySpan<byte> text)
 		{
 			if (text.Length == 0) return string.Empty;
@@ -214,8 +214,8 @@ namespace SnowBank.Text
 				: AddUtf8(hashCode, text);
 		}
 
-		/// <summary>Ajoute une chaîne de texte dans la table, a partir d'octets encodés en UTF8 (ou ASCII) et un HashCode déjà calculé</summary>
-		/// <returns>Chaîne de texte correspondante.</returns>
+		/// <summary>Adds a text string to the table, from bytes encoded in UTF8 (or ASCII) and an already-computed HashCode</summary>
+		/// <returns>Corresponding text string.</returns>
 		public string Add(int hashCode, ReadOnlySpan<byte> text)
 		{
 			if (text.Length == 0) return string.Empty;

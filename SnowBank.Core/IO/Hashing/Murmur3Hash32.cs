@@ -28,13 +28,13 @@ namespace SnowBank.IO.Hashing
 {
 	using System.Runtime.InteropServices;
 
-	/// <summary>Calcul d'un hash "Murmur3" sur 32 bits</summary>
-	/// <remarks>IMPORTANT: Ce hash n'est PAS cryptographique ! Il peut leaker des informations sur les données hashées, et ne doit donc pas être utilisé publiquement dans un scenario de protection de données! (il faut plutot utiliser SHA ou HMAC pour ce genre de choses)</remarks>
+	/// <summary>Computes a 32-bit "Murmur3" hash</summary>
+	/// <remarks>IMPORTANT: This hash is NOT cryptographic! It can leak information about the hashed data, and must therefore not be used publicly in a data-protection scenario! (you should rather use SHA or HMAC for that kind of thing)</remarks>
 	[PublicAPI]
 	public static class Murmur3Hash32
 	{
-		// Version 32 bits de "MurmurHash3", créé par Austin Appleby. Cet algo de hashing est idéal pour calcule un hashcode pour utilisation avec une table de hashage.
-		// ATTENTION: Ce n'est *PAS* un hash cryptographique (il peut leaker des informations sur les données sources), et ne doit donc être calculé que sur les données déja cryptées.
+		// 32-bit version of "MurmurHash3", created by Austin Appleby. This hashing algo is ideal for computing a hashcode for use with a hash table.
+		// WARNING: This is *NOT* a cryptographic hash (it can leak information about the source data), and must therefore only be computed on already-encrypted data.
 
 		// "MurmurHash3 is the successor to MurmurHash2. It comes in 3 variants - a 32-bit version that targets low latency for hash table use and two 128-bit versions for generating unique identifiers for large blocks of data, one each for x86 and x64 platforms."
 
@@ -51,7 +51,7 @@ namespace SnowBank.IO.Hashing
 		{
 			unsafe
 			{
-				//note: si bytes.Length == 0, pBytes sera null!
+				//note: if bytes.Length == 0, pBytes will be null!
 				fixed (byte* pBytes = bytes)
 				{
 					return ContinueUnsafe(0U, pBytes, bytes.Length);
@@ -93,7 +93,7 @@ namespace SnowBank.IO.Hashing
 		{
 			unsafe
 			{
-				//note: si bytes.Length == 0, pBytes sera null!
+				//note: if bytes.Length == 0, pBytes will be null!
 				fixed (byte* pBytes = bytes)
 				{
 					return ContinueUnsafe(hash, pBytes, bytes.Length);

@@ -75,7 +75,7 @@ namespace SnowBank.Networking.PacketCapture
 		{
 			if (disposing)
 			{
-				//note: on doit maintenir en vie les MemoryStream de capture, car ils sont utilisés après nous!
+				//note: we must keep the capture MemoryStreams alive, because they are used after us!
 			}
 		}
 
@@ -176,8 +176,8 @@ namespace SnowBank.Networking.PacketCapture
 
 	#region OutputStream
 
-	// La raison de cette classe c'est de ne pas avoir de Stream mais un OutputStream dans PacketCaptureConnectionContext
-	// Bien montrer le sens de transport des bytes
+	// The reason for this class is to not have a Stream but an OutputStream in PacketCaptureConnectionContext
+	// To clearly show the direction the bytes are transported
 	internal abstract class OutputInterceptorStream : Stream { }
 	
 	/// <summary>Stream that creates an in-memory copy of everything that was read from an input stream and written to an output stream</summary>
@@ -368,9 +368,9 @@ namespace SnowBank.Networking.PacketCapture
 		{
 			if (this.Mirror?.Length > 0)
 			{
-				// On emit le packet
+				// We emit the packet
 				this.OnMessageWritten?.Invoke();
-				// On clear le mirror, pour "vider" la memoire et faire la place pour le prochain packet
+				// We clear the mirror, to "empty" the memory and make room for the next packet
 				this.Mirror?.SetLength(0);
 			}
 		}

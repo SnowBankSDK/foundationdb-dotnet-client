@@ -28,8 +28,8 @@ namespace SnowBank.IO.Hashing
 {
 	using System.Runtime.InteropServices;
 
-	/// <summary>Calcul de hash xxHash sur 32 bits</summary>
-	/// <remarks>IMPORTANT: Ce hash n'est PAS cryptographique ! Il peut leaker des informations sur les données hashées, et ne doit donc pas être utilisé publiquement dans un scenario de protection de données! (il faut plutot utiliser SHA ou HMAC pour ce genre de choses)</remarks>
+	/// <summary>Computes a 32-bit xxHash</summary>
+	/// <remarks>IMPORTANT: This hash is NOT cryptographic! It can leak information about the hashed data, and must therefore not be used publicly in a data-protection scenario! (you should rather use SHA or HMAC for that kind of thing)</remarks>
 	[Obsolete("Use System.IO.Hashing.XxHash32 instead")]
 	public static class XxHash32
 	{
@@ -49,7 +49,7 @@ namespace SnowBank.IO.Hashing
 		//		MD5-32          0.33 GB/s    10       Ronald L. Rivest
 		//		SHA1-32         0.28 GB/s    10
 
-		// WEIRD: Dans la pratique, L'implémentation ci dessous donne 2.4 GB/s avec xxHash alors que MurmurHash obtiens 4.3GB/s ??
+		// WEIRD: In practice, the implementation below gives 2.4 GB/s with xxHash while MurmurHash gets 4.3GB/s ??
 
 		private const uint INITIAL_SEED = 0;
 
@@ -62,9 +62,9 @@ namespace SnowBank.IO.Hashing
 		/// <summary>Hash of the empty buffer</summary>
 		public const uint HASH0 = 0x02CC5D05;
 
-		/// <summary>Calcul le xxHash 32-bit d'un chaîne (a partir de sa représentation UTF-16 en mémoire)</summary>
-		/// <param name="text">Chaîne de texte à convertir</param>
-		/// <returns>Code xxHash 32 bit calculé sur la représentation UTF-16 de la chaîne. Attention: N'est pas garantit unique!</returns>
+		/// <summary>Computes the 32-bit xxHash of a string (from its in-memory UTF-16 representation)</summary>
+		/// <param name="text">Text string to convert</param>
+		/// <returns>32-bit xxHash code computed over the UTF-16 representation of the string. Warning: Not guaranteed to be unique!</returns>
 		public static uint Compute(string text)
 		{
 			Contract.NotNull(text);
@@ -91,8 +91,8 @@ namespace SnowBank.IO.Hashing
 			}
 		}
 
-		/// <summary>Calcul le xxHash 32-bit d'un chaîne (a partir de sa représentation UTF-16 en mémoire)</summary>
-		/// <returns>Code xxHash 32 bit calculé sur la représentation UTF-16 de la chaîne. Attention: N'est pas garantit unique!</returns>
+		/// <summary>Computes the 32-bit xxHash of a string (from its in-memory UTF-16 representation)</summary>
+		/// <returns>32-bit xxHash code computed over the UTF-16 representation of the string. Warning: Not guaranteed to be unique!</returns>
 		public static uint Compute(char[] buffer, int offset, int count)
 		{
 			Contract.DoesNotOverflow(buffer, offset, count);
@@ -189,7 +189,7 @@ namespace SnowBank.IO.Hashing
 			byte* p = input;
 			if (p == null)
 			{
-				// autorise le null pointer (UNIQUEMENT si len == 0)!
+				// allow the null pointer (ONLY if len == 0)!
 				if (len > 0) throw ThrowHelper.ArgumentNullException(nameof(input));
 				p = (byte*) 16;
 			}

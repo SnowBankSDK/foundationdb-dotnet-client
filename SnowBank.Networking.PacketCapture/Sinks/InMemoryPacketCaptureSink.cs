@@ -49,7 +49,7 @@ namespace SnowBank.Networking.PacketCapture
 
 		public List<CapturedPacket> Dump()
 		{
-			//note: on retourne une copie!
+			//note: we return a copy!
 			return [ ..this.Packets ];
 		}
 

@@ -291,7 +291,7 @@ namespace SnowBank.Numerics
 			var totalElapsed = TimeSpan.Zero;
 			startTimestamp = Stopwatch.GetTimestamp();
 
-			// note: le premier run est toujours ignoré !
+			// note: the first run is always ignored!
 			for (int k = -1; k < runs; k++)
 			{
 				long runStart = Stopwatch.GetTimestamp();

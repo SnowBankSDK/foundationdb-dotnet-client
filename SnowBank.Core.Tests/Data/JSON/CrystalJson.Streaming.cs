@@ -232,7 +232,7 @@ namespace SnowBank.Data.Json.Tests
 				// first obj = meta containing an array of ids
 				await writer.WriteFragmentAsync(metric, cancel);
 
-				// next, une array for each id in the first array
+				// next, an array for each id in the first array
 				foreach(var _ in metric.Metrics)
 				{
 					using var arr = writer.BeginArrayFragment(cancel);

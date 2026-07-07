@@ -30,7 +30,7 @@ namespace SnowBank.Text.Tests
 {
 	using System.Web;
 
-	/// <summary>Tests sur la classe statique KTL</summary>
+	/// <summary>Tests for the static KTL class</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Parallelizable(ParallelScope.All)]
@@ -44,7 +44,7 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_EncodeData()
 		{
-			// Cette fonction encode les valeur en query string (ie, ce qu'il y a après le '?')
+			// This function encodes the values into a query string (ie, what comes after the '?')
 
 			Assert.Multiple(() =>
 			{
@@ -68,7 +68,7 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_EncodeData_UTF8_MultiBytes()
 		{
-			// l'UTF-8 est encodé sur 2 octets (ou plus)
+			// UTF-8 is encoded on 2 bytes (or more)
 			// cf http://www.ltg.ed.ac.uk/~richard/utf-8.cgi
 			Assert.That(UrlEncoding.EncodeData("á"), Is.EqualTo("%c3%a1"));
 			Assert.That(UrlEncoding.EncodeData("ن"), Is.EqualTo("%d9%86"), "ن, U0646 (1606), 'ARABIC LETTER NOON'");
@@ -93,18 +93,18 @@ namespace SnowBank.Text.Tests
 		public void Test_EncodeData_Foreign_Languages()
 		{
 			// Unicode languages
-			// note: obtenu en copiant collant le texte unicode dans le champ de recherche de Google, et extrayant le paramètre 'q=' dans l'url de recherche produite (via "Page Info"), convertit en LowerCase (CTRL-U)
-			// ATTENTION: ffox remplace les ' ' en '%20' dans le cas d'auto-encodage unicode !
+			// note: obtained by copy-pasting the unicode text into Google's search field, and extracting the 'q=' parameter from the produced search url (via "Page Info"), converted to LowerCase (CTRL-U)
+			// WARNING: ffox replaces ' ' with '%20' in the case of unicode auto-encoding!
 			Log(HttpUtility.UrlPathEncode("الصفحة الرئيسية"));
 			Log(HttpUtility.UrlEncode("الصفحة الرئيسية"));
 			Log(Uri.EscapeDataString("الصفحة الرئيسية"));
 			Log(UrlEncoding.EncodeData("الصفحة الرئيسية"));
 
-			Assert.That(UrlEncoding.EncodeData("الصفحة الرئيسية"), Is.EqualTo("%d8%a7%d9%84%d8%b5%d9%81%d8%ad%d8%a9+%d8%a7%d9%84%d8%b1%d8%a6%d9%8a%d8%b3%d9%8a%d8%a9")); // Arabe
-			Assert.That(UrlEncoding.EncodeData("メインページ"), Is.EqualTo("%e3%83%a1%e3%82%a4%e3%83%b3%e3%83%9a%e3%83%bc%e3%82%b8")); // Japonais
-			Assert.That(UrlEncoding.EncodeData("首页"), Is.EqualTo("%e9%a6%96%e9%a1%b5")); // Chinois
-			Assert.That(UrlEncoding.EncodeData("대문"), Is.EqualTo("%eb%8c%80%eb%ac%b8")); // Coréen
-			Assert.That(UrlEncoding.EncodeData("Κύρια Σελίδα"), Is.EqualTo("%ce%9a%cf%8d%cf%81%ce%b9%ce%b1+%ce%a3%ce%b5%ce%bb%ce%af%ce%b4%ce%b1")); // Ellenika
+			Assert.That(UrlEncoding.EncodeData("الصفحة الرئيسية"), Is.EqualTo("%d8%a7%d9%84%d8%b5%d9%81%d8%ad%d8%a9+%d8%a7%d9%84%d8%b1%d8%a6%d9%8a%d8%b3%d9%8a%d8%a9")); // Arabic
+			Assert.That(UrlEncoding.EncodeData("メインページ"), Is.EqualTo("%e3%83%a1%e3%82%a4%e3%83%b3%e3%83%9a%e3%83%bc%e3%82%b8")); // Japanese
+			Assert.That(UrlEncoding.EncodeData("首页"), Is.EqualTo("%e9%a6%96%e9%a1%b5")); // Chinese
+			Assert.That(UrlEncoding.EncodeData("대문"), Is.EqualTo("%eb%8c%80%eb%ac%b8")); // Korean
+			Assert.That(UrlEncoding.EncodeData("Κύρια Σελίδα"), Is.EqualTo("%ce%9a%cf%8d%cf%81%ce%b9%ce%b1+%ce%a3%ce%b5%ce%bb%ce%af%ce%b4%ce%b1")); // Greek
 		}
 
 		[Test]
@@ -149,7 +149,7 @@ namespace SnowBank.Text.Tests
 
 			// Guid
 			Assert.That(UrlEncoding.EncodeDataObject(Guid.Parse("d46272b7-4263-450a-824a-e3283c6a6a46")), Is.EqualTo("d46272b7-4263-450a-824a-e3283c6a6a46"));
-			//TODO: encoder Guid.Empty en String.Empty ?
+			//TODO: encode Guid.Empty as String.Empty?
 			Assert.That(UrlEncoding.EncodeDataObject(Guid.Empty), Is.EqualTo("00000000-0000-0000-0000-000000000000"));
 
 			// Enums
@@ -172,11 +172,11 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_EncodeUri()
 		{
-			// Cette fonction valide l'encodage du PATH d'une URI (ie, ce qui est avant le '?'), c'est à dire qu'elle s'assure qu'il est correctement encodé. Par exemple elle n'encode pas les '/' !
-			// A ne pas confondre avec EncodePath() qui encode une valeur pour intégration dans un path (ie, qui encode les '/')
-			// Elle est utilisée pour générer l'url vers un fichier, par exemple
+			// This function validates the encoding of the PATH of a URI (ie, what comes before the '?'), that is, it ensures it is correctly encoded. For example it does not encode the '/'!
+			// Not to be confused with EncodePath() which encodes a value for integration into a path (ie, which encodes the '/')
+			// It is used to generate the url to a file, for example
 
-			// Vérifie des samples
+			// Check some samples
 			Assert.That(UrlEncoding.EncodeUri(null), Is.EqualTo(string.Empty));
 			Assert.That(UrlEncoding.EncodeUri(String.Empty), Is.EqualTo(string.Empty));
 			Assert.That(UrlEncoding.EncodeUri(" "), Is.EqualTo("%20"), "' ' -> '%20'");
@@ -192,7 +192,7 @@ namespace SnowBank.Text.Tests
 			Assert.That(UrlEncoding.EncodeUri("!.:$^*@="), Is.EqualTo("!.:$^*@="));
 			Assert.That(UrlEncoding.EncodeUri("%%2%z"), Is.EqualTo("%%2%z"));
 
-			// l'UTF-8 est encodé sur 2 octets (ou plus)
+			// UTF-8 is encoded on 2 bytes (or more)
 			// cf http://www.ltg.ed.ac.uk/~richard/utf-8.cgi
 			Assert.That(UrlEncoding.EncodeUri("á"), Is.EqualTo("%c3%a1"));
 			Assert.That(UrlEncoding.EncodeUri("ن"), Is.EqualTo("%d9%86"), "ن, U0646 (1606), 'ARABIC LETTER NOON'");
@@ -200,24 +200,24 @@ namespace SnowBank.Text.Tests
 			Assert.That(UrlEncoding.EncodeUri("思"), Is.EqualTo("%e6%80%9d"), "思, U601D (24605), Kanji for OMOU (think)");
 
 			// Unicode languages
-			// note: obtenu en copiant collant le texte unicode dans le champ de recherche de Google, et extrayant le paramètre 'q=' dans l'url de recherche produite (via "Page Info"), convertit en LowerCase (CTRL-U)
-			Assert.That(UrlEncoding.EncodeUri("الصفحة الرئيسية"), Is.EqualTo("%d8%a7%d9%84%d8%b5%d9%81%d8%ad%d8%a9%20%d8%a7%d9%84%d8%b1%d8%a6%d9%8a%d8%b3%d9%8a%d8%a9")); // Arabe
-			Assert.That(UrlEncoding.EncodeUri("メインページ"), Is.EqualTo("%e3%83%a1%e3%82%a4%e3%83%b3%e3%83%9a%e3%83%bc%e3%82%b8")); // Japonais
-			Assert.That(UrlEncoding.EncodeUri("首页"), Is.EqualTo("%e9%a6%96%e9%a1%b5")); // Chinois
-			Assert.That(UrlEncoding.EncodeUri("대문"), Is.EqualTo("%eb%8c%80%eb%ac%b8")); // Corréen
-			Assert.That(UrlEncoding.EncodeUri("Κύρια Σελίδα"), Is.EqualTo("%ce%9a%cf%8d%cf%81%ce%b9%ce%b1%20%ce%a3%ce%b5%ce%bb%ce%af%ce%b4%ce%b1")); // Ellenika
+			// note: obtained by copy-pasting the unicode text into Google's search field, and extracting the 'q=' parameter from the produced search url (via "Page Info"), converted to LowerCase (CTRL-U)
+			Assert.That(UrlEncoding.EncodeUri("الصفحة الرئيسية"), Is.EqualTo("%d8%a7%d9%84%d8%b5%d9%81%d8%ad%d8%a9%20%d8%a7%d9%84%d8%b1%d8%a6%d9%8a%d8%b3%d9%8a%d8%a9")); // Arabic
+			Assert.That(UrlEncoding.EncodeUri("メインページ"), Is.EqualTo("%e3%83%a1%e3%82%a4%e3%83%b3%e3%83%9a%e3%83%bc%e3%82%b8")); // Japanese
+			Assert.That(UrlEncoding.EncodeUri("首页"), Is.EqualTo("%e9%a6%96%e9%a1%b5")); // Chinese
+			Assert.That(UrlEncoding.EncodeUri("대문"), Is.EqualTo("%eb%8c%80%eb%ac%b8")); // Korean
+			Assert.That(UrlEncoding.EncodeUri("Κύρια Σελίδα"), Is.EqualTo("%ce%9a%cf%8d%cf%81%ce%b9%ce%b1%20%ce%a3%ce%b5%ce%bb%ce%af%ce%b4%ce%b1")); // Greek
 		}
 
 		[Test]
 		public void Test_EncodePath()
 		{
-			// Cette fonction encode les données utilisées pour constuire le PATH d'une URI (ie, ce qui est avant le '?'). Par exemple elle encode les '/', les '.', etc...
-			// C'est celle qui est utilisée dans le cas des URL qui contienent un paramètre
+			// This function encodes the data used to build the PATH of a URI (ie, what comes before the '?'). For example it encodes the '/', the '.', etc...
+			// It is the one used in the case of URLs that contain a parameter
 
 			Assert.Multiple(() =>
 			{
 
-				// Vérifie des samples
+				// Check some samples
 				Assert.That(UrlEncoding.EncodePath(null), Is.EqualTo(string.Empty));
 				Assert.That(UrlEncoding.EncodePath(string.Empty), Is.EqualTo(string.Empty));
 				Assert.That(UrlEncoding.EncodePath(" "), Is.EqualTo("%20"), "' ' -> '%20'");
@@ -234,7 +234,7 @@ namespace SnowBank.Text.Tests
 				Assert.That(UrlEncoding.EncodePath("!.:$^*@="), Is.EqualTo("!.%3A$%5E*@%3D"));
 				Assert.That(UrlEncoding.EncodePath("%%2%z"), Is.EqualTo("%25%252%25z"));
 
-				// l'UTF-8 est encodé sur 2 octets (ou plus)
+				// UTF-8 is encoded on 2 bytes (or more)
 				// cf http://www.ltg.ed.ac.uk/~richard/utf-8.cgi
 				Assert.That(UrlEncoding.EncodePath("á"), Is.EqualTo("%C3%A1"));
 				Assert.That(UrlEncoding.EncodePath("ن"), Is.EqualTo("%D9%86"), "ن, U0646 (1606), 'ARABIC LETTER NOON'");
@@ -242,12 +242,12 @@ namespace SnowBank.Text.Tests
 				Assert.That(UrlEncoding.EncodePath("思"), Is.EqualTo("%E6%80%9D"), "思, U601D (24605), Kanji for OMOU (think)");
 
 				// Unicode languages
-				// note: obtenu en copiant collant le texte unicode dans le champ de recherche de Google, et extrayant le paramètre 'q=' dans l'url de recherche produite (via "Page Info"), convertit en LowerCase (CTRL-U)
-				Assert.That(UrlEncoding.EncodePath("الصفحة الرئيسية"), Is.EqualTo("%D8%A7%D9%84%D8%B5%D9%81%D8%AD%D8%A9%20%D8%A7%D9%84%D8%B1%D8%A6%D9%8A%D8%B3%D9%8A%D8%A9")); // Arabe
-				Assert.That(UrlEncoding.EncodePath("メインページ"), Is.EqualTo("%E3%83%A1%E3%82%A4%E3%83%B3%E3%83%9A%E3%83%BC%E3%82%B8")); // Japonais
-				Assert.That(UrlEncoding.EncodePath("首页"), Is.EqualTo("%E9%A6%96%E9%A1%B5")); // Chinois
-				Assert.That(UrlEncoding.EncodePath("대문"), Is.EqualTo("%EB%8C%80%EB%AC%B8")); // Corréen
-				Assert.That(UrlEncoding.EncodePath("Κύρια Σελίδα"), Is.EqualTo("%CE%9A%CF%8D%CF%81%CE%B9%CE%B1%20%CE%A3%CE%B5%CE%BB%CE%AF%CE%B4%CE%B1")); // Ellenika
+				// note: obtained by copy-pasting the unicode text into Google's search field, and extracting the 'q=' parameter from the produced search url (via "Page Info"), converted to LowerCase (CTRL-U)
+				Assert.That(UrlEncoding.EncodePath("الصفحة الرئيسية"), Is.EqualTo("%D8%A7%D9%84%D8%B5%D9%81%D8%AD%D8%A9%20%D8%A7%D9%84%D8%B1%D8%A6%D9%8A%D8%B3%D9%8A%D8%A9")); // Arabic
+				Assert.That(UrlEncoding.EncodePath("メインページ"), Is.EqualTo("%E3%83%A1%E3%82%A4%E3%83%B3%E3%83%9A%E3%83%BC%E3%82%B8")); // Japanese
+				Assert.That(UrlEncoding.EncodePath("首页"), Is.EqualTo("%E9%A6%96%E9%A1%B5")); // Chinese
+				Assert.That(UrlEncoding.EncodePath("대문"), Is.EqualTo("%EB%8C%80%EB%AC%B8")); // Korean
+				Assert.That(UrlEncoding.EncodePath("Κύρια Σελίδα"), Is.EqualTo("%CE%9A%CF%8D%CF%81%CE%B9%CE%B1%20%CE%A3%CE%B5%CE%BB%CE%AF%CE%B4%CE%B1")); // Greek
 			});
 		}
 
@@ -270,14 +270,14 @@ namespace SnowBank.Text.Tests
 
 			Check("\u0080");
 
-			// Vérifie TOUS les caracètres UNICODEs !
+			// Check ALL UNICODE characters!
 			for (int i = 0; i < 65536; i++)
 			{
 				string s = new string((char) i, 1);
 				Check(s);
 			}
 
-			// Fuzzing ! Génère des strings aléatoires, pour augmenter un peu la probabilité de tomber sur des cas chelous
+			// Fuzzing! Generate random strings, to slightly increase the probability of hitting weird cases
 			var chars = new char[16];
 			var rnd = new Random();
 			for (int i = 0; i < 1000; i++)
@@ -312,11 +312,11 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_Decode_Foreign_Languages()
 		{
-			Assert.That(UrlEncoding.Decode("%D8%A7%D9%84%D8%B5%D9%81%D8%AD%D8%A9_%D8%A7%D9%84%D8%B1%D8%A6%D9%8A%D8%B3%D9%8A%D8%A9"), Is.EqualTo("الصفحة_الرئيسية")); // Arabe
-			Assert.That(UrlEncoding.Decode("%E3%83%A1%E3%82%A4%E3%83%B3%E3%83%9A%E3%83%BC%E3%82%B8"), Is.EqualTo("メインページ")); // Japonais
-			Assert.That(UrlEncoding.Decode("%E9%A6%96%E9%A1%B5"), Is.EqualTo("首页")); // Chinois
-			Assert.That(UrlEncoding.Decode("%EB%8C%80%EB%AC%B8"), Is.EqualTo("대문")); // Corréen
-			Assert.That(UrlEncoding.Decode("%CE%9A%CF%8D%CF%81%CE%B9%CE%B1%20%CE%A3%CE%B5%CE%BB%CE%AF%CE%B4%CE%B1"), Is.EqualTo("Κύρια Σελίδα")); // Ellenika
+			Assert.That(UrlEncoding.Decode("%D8%A7%D9%84%D8%B5%D9%81%D8%AD%D8%A9_%D8%A7%D9%84%D8%B1%D8%A6%D9%8A%D8%B3%D9%8A%D8%A9"), Is.EqualTo("الصفحة_الرئيسية")); // Arabic
+			Assert.That(UrlEncoding.Decode("%E3%83%A1%E3%82%A4%E3%83%B3%E3%83%9A%E3%83%BC%E3%82%B8"), Is.EqualTo("メインページ")); // Japanese
+			Assert.That(UrlEncoding.Decode("%E9%A6%96%E9%A1%B5"), Is.EqualTo("首页")); // Chinese
+			Assert.That(UrlEncoding.Decode("%EB%8C%80%EB%AC%B8"), Is.EqualTo("대문")); // Korean
+			Assert.That(UrlEncoding.Decode("%CE%9A%CF%8D%CF%81%CE%B9%CE%B1%20%CE%A3%CE%B5%CE%BB%CE%AF%CE%B4%CE%B1"), Is.EqualTo("Κύρια Σελίδα")); // Greek
 		}
 
 		[Test]
@@ -325,7 +325,7 @@ namespace SnowBank.Text.Tests
 			var enc = Encoding.UTF8;
 			for (int i = 0; i <= 0xFFFD; i++)
 			{
-				// Attention, on ignore les Surrogates (qui attendent normalement qqchose derrière), car cela plombe le décodeur UTF8 quand il n'y a qu'un seul carac
+				// Careful, we ignore Surrogates (which normally expect something after), because it breaks the UTF8 decoder when there is only a single char
 				if (i >= 0xD800 && i < 0xE000) continue;
 
 				string original = new string((char)i, 1);
@@ -342,10 +342,10 @@ namespace SnowBank.Text.Tests
 		{
 			for (int i = 128; i <= 0xFFFD; i++)
 			{
-				// Attention, on ignore les Surrogates (qui attendent normalement qqchose derrière), car cela plombe le décodeur UTF8 quand il n'y a qu'un seul carac
+				// Careful, we ignore Surrogates (which normally expect something after), because it breaks the UTF8 decoder when there is only a single char
 				if (i >= 0xD800 && i < 0xE000) continue;
 
-				// Majuscules
+				// Uppercase
 				string original = new string((char)i, 1);
 				string encoded = "%u" + i.ToString("X4");
 				string decoded = UrlEncoding.Decode(encoded);
@@ -356,7 +356,7 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_Do_Not_Decode_Malformed_Percent_Encoded()
 		{
-			// Vérifie qu'on ne change pas les "%XX" malformés
+			// Check that we don't change malformed "%XX"
 
 			// Percent Encoded
 			Assert.That(UrlEncoding.Decode("foo%2"), Is.EqualTo("foo%2"));
@@ -372,7 +372,7 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_Do_Not_Decode_Malformed_Unicode_Percent_Encoded()
 		{
-			// Vérifie qu'on ne change pas les "%uXXXX" malformés
+			// Check that we don't change malformed "%uXXXX"
 
 			Assert.That(UrlEncoding.Decode("foo%u123"), Is.EqualTo("foo%u123"));
 			Assert.That(UrlEncoding.Decode("foo%u12"), Is.EqualTo("foo%u12"));
@@ -413,11 +413,11 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_With_Wrong_Encodings()
 		{
-			// Vérifie que d'autres encodings que UTF-8 fonctionnent également
+			// Check that encodings other than UTF-8 also work
 
 			string encoded = UrlEncoding.EncodeData("é", Encoding.UTF8);
 			Assert.That(encoded, Is.EqualTo("%c3%a9"));
-			// Si on se trompte d'encoding, on doit obtenir le classique 'Ã©' qui est le 'é' UTF-8 vu en ANSI.
+			// If we get the encoding wrong, we should get the classic 'Ã©' which is the UTF-8 'é' seen as ANSI.
 			string decoded = UrlEncoding.Decode(encoded, Encoding.GetEncoding(1252));
 			Assert.That(decoded, Is.EqualTo("Ã©"));
 		}
@@ -427,8 +427,8 @@ namespace SnowBank.Text.Tests
 		{
 			const string CHUNK = "0123456789_ABCDEFGHJIKLMNOPQRSTUVWXYZéè@=-+./&%µ£¨§~#{[|}]èçàïô!";
 
-			// test le décodage avec une string très grosse
-			// note: (note: l'implémentation n'utilise la stack que jusqu'a 1K, ici on check que le codepath qui utilise la mémoire fonctionne également
+			// test decoding with a very large string
+			// note: (note: the implementation only uses the stack up to 1K, here we check that the codepath which uses memory also works
 
 			string original = String.Empty;
 			for (int i = 0; i < 32; i++) original += CHUNK;
@@ -466,7 +466,7 @@ namespace SnowBank.Text.Tests
 			Assert.That(values.Get("foo"), Is.EqualTo("hello world"));
 			Assert.That(values.Get("bar"), Is.Null);
 
-			// On doit pouvoir absorber le premier '?' (en cas de mauvaise découpe)
+			// We must be able to absorb the leading '?' (in case of bad splitting)
 			values = UrlEncoding.ParseQueryString("?foo=hello+world");
 			Assert.That(values, Is.Not.Null);
 			Assert.That(values.Count, Is.EqualTo(1));
@@ -486,21 +486,21 @@ namespace SnowBank.Text.Tests
 		[Test]
 		public void Test_ParseQueryString_EmptyParams()
 		{
-			// Par convention "foo" tout court est présent, mais vaut null
+			// By convention "foo" on its own is present, but is null
 			var values = UrlEncoding.ParseQueryString("foo");
 			Assert.That(values, Is.Not.Null);
 			Assert.That(values.Count, Is.EqualTo(1));
 			Assert.That(values.AllKeys.Contains("foo"), Is.True);
 			Assert.That(values["foo"], Is.Null);
 
-			// Par convention "foo=" tout court est présent, et vaut String.Empty
+			// By convention "foo=" on its own is present, and is String.Empty
 			values = UrlEncoding.ParseQueryString("foo=");
 			Assert.That(values, Is.Not.Null);
 			Assert.That(values.Count, Is.EqualTo(1));
 			Assert.That(values.AllKeys.Contains("foo"), Is.True);
 			Assert.That(values["foo"], Is.EqualTo(String.Empty));
 
-			// La présente d'autres params juste après ne doit rien changer
+			// The presence of other params right after must not change anything
 			values = UrlEncoding.ParseQueryString("foo&bar=&baz=123");
 			Assert.That(values, Is.Not.Null);
 			Assert.That(values.Count, Is.EqualTo(3));
@@ -510,7 +510,7 @@ namespace SnowBank.Text.Tests
 			Assert.That(values["bar"], Is.EqualTo(String.Empty));
 			Assert.That(values["baz"], Is.EqualTo("123"));
 
-			// un '&' a la fin est un ignoré
+			// a trailing '&' is ignored
 			values = UrlEncoding.ParseQueryString("foo=123&");
 			Assert.That(values.Count, Is.EqualTo(1));
 			Assert.That(values["foo"], Is.EqualTo("123"));

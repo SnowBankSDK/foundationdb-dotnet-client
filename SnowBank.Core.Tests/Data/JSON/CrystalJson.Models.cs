@@ -331,7 +331,7 @@ namespace SnowBank.Data.Json.Tests
 
 		#region IJsonSerializable Members
 
-		/// <summary>Méthode static utilisée pour sérialiser un objet</summary>
+		/// <summary>Static method used to serialize an object</summary>
 		/// <param name="instance"></param>
 		/// <param name="writer"></param>
 		public static void JsonSerialize(DummyStaticLegacyJson instance, CrystalJsonWriter writer)
@@ -342,12 +342,12 @@ namespace SnowBank.Data.Json.Tests
 			writer.WriteRaw("{ \"custom\":" + JsonEncoding.Encode(instance.m_secret) + " }");
 		}
 
-		/// <summary>Méthode statique utilisée pour désérialiser un objet</summary>
+		/// <summary>Static method used to deserialize an object</summary>
 		public static DummyStaticLegacyJson JsonDeserialize(JsonObject value, ICrystalJsonTypeResolver resolver)
 		{
 			Assert.That(value, Is.Not.Null, "value");
 
-			// doit contenir une string "custom"
+			// must contain a "custom" string
 			var customString = value.Get<string>("custom", message: "Missing 'custom' value for DummyCustomJson");
 			return new DummyStaticLegacyJson(customString);
 

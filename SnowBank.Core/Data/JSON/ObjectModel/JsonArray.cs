@@ -3389,7 +3389,7 @@ namespace SnowBank.Data.Json
 		[Pure, CollectionAccess(CollectionAccessType.Read), UsedImplicitly]
 		private T?[] ToPrimitiveArray<T>(T? defaultValue = default)
 		{
-			//IMPORTANT! typeof(T) doit être un type primitif reconnu par As<T> via compile time scanning!!!
+			//IMPORTANT! typeof(T) must be a primitive type recognized by As<T> via compile time scanning!!!
 
 			var items = this.AsSpan();
 			if (items.Length == 0) return [];

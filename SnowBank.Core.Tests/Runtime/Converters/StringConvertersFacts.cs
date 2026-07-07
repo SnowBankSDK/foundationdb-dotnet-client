@@ -331,7 +331,7 @@ namespace SnowBank.Runtime.Converters.Tests
 		public void Test_ToDateString()
 		{
 
-			//AAAAMMJJ
+			//YYYYMMDD
 			Assert.That(StringConverters.ToDateString(new DateTime(1978, 09, 22)), Is.EqualTo("19780922"));
 			Assert.That(StringConverters.ToDateString(new DateTime(1978, 09, 22, 23, 59, 59, 999)), Is.EqualTo("19780922"));
 			Assert.That(StringConverters.ToDateString(new DateTime(2078, 09, 22)), Is.EqualTo("20780922")); // Y2K ?
@@ -343,14 +343,14 @@ namespace SnowBank.Runtime.Converters.Tests
 		[Test]
 		public void Test_ToDateTimeString()
 		{
-			//AAAAMMJJHHMMSS
-			Assert.That(StringConverters.ToDateTimeString(new DateTime(1978, 09, 22)), Is.EqualTo("19780922000000")); // sans heures
+			//YYYYMMDDHHMMSS
+			Assert.That(StringConverters.ToDateTimeString(new DateTime(1978, 09, 22)), Is.EqualTo("19780922000000")); // without time
 			Assert.That(StringConverters.ToDateTimeString(new DateTime(1978, 09, 22, 23, 59, 59, 999)), Is.EqualTo("19780922235959"));
 			Assert.That(StringConverters.ToDateTimeString(new DateTime(2078, 09, 22, 12, 34, 56, 666)), Is.EqualTo("20780922123456")); // Y2K ?
 			Assert.That(StringConverters.ToDateTimeString(new DateTime(6978, 09, 22, 01, 23, 45, 555)), Is.EqualTo("69780922012345"));  // Unix time ?
 			Assert.That(StringConverters.ToDateTimeString(new DateTime(1978, 09, 22, 12, 30, 00)), Is.EqualTo("19780922123000")); // normal
 			Assert.That(StringConverters.ToDateTimeString(new DateTime(1978, 09, 22, 18, 30, 00)), Is.EqualTo("19780922183000")); // ampm
-			Assert.That(StringConverters.ToDateTimeString(new DateTime(1978, 09, 22, 23, 59, 59, 999)), Is.EqualTo("19780922235959")); // presque jour suivant
+			Assert.That(StringConverters.ToDateTimeString(new DateTime(1978, 09, 22, 23, 59, 59, 999)), Is.EqualTo("19780922235959")); // almost next day
 			Assert.That(StringConverters.ToDateTimeString(DateTime.MinValue), Is.EqualTo("00010101000000"));
 			Assert.That(StringConverters.ToDateTimeString(DateTime.MaxValue), Is.EqualTo("99991231235959"));
 		}
@@ -484,7 +484,7 @@ namespace SnowBank.Runtime.Converters.Tests
 		[Test]
 		public void Test_ParseDateTime()
 		{
-			//AAAAMMJJ
+			//YYYYMMDD
 			Assert.That(StringConverters.ParseDateTime("19780922"), Is.EqualTo(new DateTime(1978, 09, 22)));
 			Assert.That(StringConverters.ParseDateTime("20780922"), Is.EqualTo(new DateTime(2078, 09, 22))); // Y2K ?
 			Assert.That(StringConverters.ParseDateTime("69780922"), Is.EqualTo(new DateTime(6978, 09, 22)));  // Unix time ?
@@ -504,11 +504,11 @@ namespace SnowBank.Runtime.Converters.Tests
 			Assert.That(StringConverters.ParseDateTime("20060101", new DateTime(2006, 2, 2), CultureInfo.InvariantCulture), Is.EqualTo(new DateTime(2006, 1, 1)));
 			Assert.That(StringConverters.ParseDateTime("20070230", DateTime.MaxValue, CultureInfo.InvariantCulture), Is.EqualTo(DateTime.MaxValue));
 
-			//AAAAMMJJHHMMSS
+			//YYYYMMDDHHMMSS
 			Assert.That(StringConverters.ParseDateTime("19780922123000"), Is.EqualTo(new DateTime(1978, 09, 22, 12, 30, 00))); // normal
 			Assert.That(StringConverters.ParseDateTime("19780922183000"), Is.EqualTo(new DateTime(1978, 09, 22, 18, 30, 00))); // ampm
-			Assert.That(StringConverters.ParseDateTime("19780922000000"), Is.EqualTo(new DateTime(1978, 09, 22))); // sans heures
-			Assert.That(StringConverters.ParseDateTime("19780922235959"), Is.EqualTo(new DateTime(1978, 09, 22, 23, 59, 59))); // presque jour suivant
+			Assert.That(StringConverters.ParseDateTime("19780922000000"), Is.EqualTo(new DateTime(1978, 09, 22))); // without time
+			Assert.That(StringConverters.ParseDateTime("19780922235959"), Is.EqualTo(new DateTime(1978, 09, 22, 23, 59, 59))); // almost next day
 
 			//exceptions
 			Assert.That(() => StringConverters.ParseDateTime("20070230"), Throws.InstanceOf<ArgumentOutOfRangeException>());
@@ -543,7 +543,7 @@ namespace SnowBank.Runtime.Converters.Tests
 			Assert.That(StringConverters.TryParseDateTime("Z20060101", CultureInfo.InvariantCulture, out _, false), Is.False);
 			Assert.That(StringConverters.TryParseDateTime("20070230", CultureInfo.InvariantCulture, out _, false), Is.False);
 
-			// Dates vraiment à la con
+			// Really messed-up dates
 			Assert.That(StringConverters.TryParseDateTime("0000", null, out _, false), Is.False);
 			Assert.That(StringConverters.TryParseDateTime("000001", null, out _, false), Is.False);
 			Assert.That(StringConverters.TryParseDateTime("200700", null, out _, false), Is.False);
@@ -582,12 +582,12 @@ namespace SnowBank.Runtime.Converters.Tests
 			Assert.That(StringConverters.ToDateTime("19780922123045", DateTime.MinValue, new CultureInfo("en-US", false)), Is.EqualTo(new DateTime(1978, 09, 22, 12, 30, 45)));
 			Assert.That(StringConverters.ToDateTime("19780922123045", DateTime.MinValue, new CultureInfo("de-DE", false)), Is.EqualTo(new DateTime(1978, 09, 22, 12, 30, 45)));
 
-			// Dates à la con
+			// Messed-up dates
 			Assert.That(StringConverters.ToDateTime("22 Septembre 1978 13:30:45", DateTime.MinValue, new CultureInfo("fr-FR", false)), Is.EqualTo(new DateTime(1978, 09, 22, 13, 30, 45)), "22 Septembre 1978 13:30:45");
 			Assert.That(StringConverters.ToDateTime("22 September 1978 1:30:45 PM", DateTime.MinValue, new CultureInfo("en-US", false)), Is.EqualTo(new DateTime(1978, 09, 22, 13, 30, 45)), "22 September 1978 1:30:45 PM");
 			Assert.That(StringConverters.ToDateTime("22. September 1978 13:30:45", DateTime.MinValue, new CultureInfo("de-DE", false)), Is.EqualTo(new DateTime(1978, 09, 22, 13, 30, 45)), "22. September 1978 13:30:45");
 
-			// Dates encore plus à la con
+			// Even more messed-up dates
 			Assert.That(StringConverters.ToDateTime("Vendredi 22 Septembre 1978 13:30:45", DateTime.MinValue, new CultureInfo("fr-FR", false)), Is.EqualTo(new DateTime(1978, 09, 22, 13, 30, 45)), "Vendredi 22 Septembre 1978 13:30:45");
 			Assert.That(StringConverters.ToDateTime("Vendredi 22 Septembre 1978", DateTime.MinValue, new CultureInfo("fr-FR", false)), Is.EqualTo(new DateTime(1978, 09, 22, 0, 0, 0)), "Vendredi 22 Septembre 1978");
 			Assert.That(StringConverters.ToDateTime("Friday, September 22, 1978 1:30:45 PM", DateTime.MinValue, new CultureInfo("en-US", false)), Is.EqualTo(new DateTime(1978, 09, 22, 13, 30, 45)), "Friday, September 22, 1978 1:30:45 PM");

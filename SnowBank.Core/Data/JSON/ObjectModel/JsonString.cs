@@ -1602,11 +1602,11 @@ namespace SnowBank.Data.Json
 			var lit = m_value;
 			if (lit.Length == 0) { value = 0L; return false; }
 			if (lit.Length == 1)
-			{ // le cas le plus fréquent est un nombre de 0 à 9
+			{ // the most common case is a number from 0 to 9
 				char c = lit[0];
 				if (c >= '0' & c <= '9') { value = c - '0'; return true; }
 			}
-			// note: NumberStyles obtenus via Reflector
+			// note: NumberStyles obtained via Reflector
 			return long.TryParse(lit, NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out value);
 		}
 

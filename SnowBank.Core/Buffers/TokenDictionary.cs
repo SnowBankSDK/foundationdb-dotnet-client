@@ -29,10 +29,10 @@ namespace SnowBank.Buffers
 	using System.Runtime.InteropServices;
 	using System.Text;
 
-	/// <summary>Dictionnaire capable de rechercher des tokens soit via leur représentation <typeparamref name="TLiteral"/> (ex: <c>string</c>), soit via leur représentation sous forme de <see cref="ReadOnlySpan{TRune}"/> (ex: <c>ReadOnlySpan&lt;char&gt;</c>)</summary>
-	/// <typeparam name="TValue">Type des tokens stockés</typeparam>
-	/// <typeparam name="TLiteral">Type de présentation "managée" (ex: string)</typeparam>
-	/// <typeparam name="TRune">Type des éléments constituants du literal (ex: char)</typeparam>
+	/// <summary>Dictionary that can look up tokens either via their <typeparamref name="TLiteral"/> representation (ex: <c>string</c>), or via their representation as a <see cref="ReadOnlySpan{TRune}"/> (ex: <c>ReadOnlySpan&lt;char&gt;</c>)</summary>
+	/// <typeparam name="TValue">Type of the stored tokens</typeparam>
+	/// <typeparam name="TLiteral">Type of the "managed" representation (ex: string)</typeparam>
+	/// <typeparam name="TRune">Type of the elements that make up the literal (ex: char)</typeparam>
 	[DebuggerDisplay("Count={Size}")]
 #if NET9_0_OR_GREATER
 	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
@@ -41,8 +41,8 @@ namespace SnowBank.Buffers
 		where TLiteral : IEquatable<TLiteral>
 		where TRune : struct, IEquatable<TRune>
 	{
-		//notes: c'est un clone de Dictionary<K,V> adapté pour le cas ou K est un ReadOlyMemory<byte>, et avec beaucoup moins de features
-		// le use-case prévu est un dictionnaire static readonly initialisé avec une liste de tokens qui ne change jamais
+		//notes: this is a clone of Dictionary<K,V> adapted for the case where K is a ReadOnlyMemory<byte>, and with far fewer features
+		// the intended use-case is a static readonly dictionary initialized with a list of tokens that never changes
 
 		private struct Entry
 		{
@@ -205,8 +205,8 @@ namespace SnowBank.Buffers
 		/// <remarks>Only stable within the current process execution (like <see cref="string.GetHashCode()"/>), and only used for the internal buckets.</remarks>
 		protected static uint ComputeHashCodeBytes(ReadOnlySpan<byte> value)
 		{
-			// Implémentation d'un "pseudo XXHASH32" optimisée pour des petites valeurs
-			// => la plupart des literals sont assez court (souvent inférieur a 16) donc on peut se contenter de lire par 4 bytes
+			// Implementation of a "pseudo XXHASH32" optimized for small values
+			// => most literals are fairly short (often less than 16) so we can settle for reading 4 bytes at a time
 
 			if (value.Length <= 0) return 0x02CC5D05;
 

@@ -74,7 +74,7 @@ namespace SnowBank.Networking.PacketCapture
 
 		public CapturedHttpFields ShouldCapture(HttpContext context)
 		{
-			//note: le manager fait deja les try/catch!
+			//note: the manager already does the try/catch!
 			return this.Manager.ShouldCaptureRequest(context);
 		}
 
@@ -92,31 +92,31 @@ namespace SnowBank.Networking.PacketCapture
 				var responseBodyMirror = manager.Pool.GetStream();
 
 				OutputInterceptorStream responseInterceptor;
-				// REVIEW : TODO : Vérifier le fonctionnement de WebSocket, il faudra peut-être passer par le même mécanisme
-				// Mais un différent de gRPC car les 5 premiers octets de gRPC sont la taille du message, et c'est donc un détail d'implémentation du protocole et pas commun avec WebSocket
+				// REVIEW : TODO : Check how WebSocket works, we may have to go through the same mechanism
+				// But a different one from gRPC because the first 5 bytes of gRPC are the message size, which is an implementation detail of the protocol and not common with WebSocket
 				if (context.Request.ContentType == "application/grpc")
 				{
-					// Si on est gRPC alors on va déléguer au Flush du stream la responsabilité de Emit un PacketCapture (et non au CompleteRequest)
-					// Le but, étant d'avoir les Stream messages en packets distincts, histoire de les voirs apparaitre au fil de l'eau et non uniquement lorsque
-					// la requête HTTP se termine
-					// De plus, ca nous permettra de ne pas encombrer la mémoire avec des packets en RAM jusqu'a ce que la connexion se termine
-					// Car dans le cas du ClientWindows, la requête REGISTER ne se termine jamais par session!
+					// If we are gRPC then we delegate the responsibility of emitting a PacketCapture to the stream's Flush (and not to CompleteRequest)
+					// The goal being to have the Stream messages in distinct packets, so that we see them appear as they come and not only when
+					// the HTTP request completes
+					// Moreover, this allows us to not clutter the memory with packets in RAM until the connection completes
+					// Because in the case of the ClientWindows, the REGISTER request never completes per session!
 					
 					var isStreaming = context.Features.Get<IEndpointFeature>()?.Endpoint?.Metadata.GetMetadata<GrpcMethodMetadata>()?.Method.Type != MethodType.Unary;
 					if (isStreaming)
 					{
-						// Streaming de messages, besoin d'emit un packet a chaque flush
+						// Streaming of messages, we need to emit a packet on each flush
 						responseInterceptor = new GrpcOutputInterceptorStream(responseBodyOriginal, responseBodyMirror, context);
 					}
 					else
 					{
-						// Si pas de streaming, alors on laisse l'intercepteur basique (1 seul message par requete)
+						// If no streaming, then we keep the basic interceptor (a single message per request)
 						responseInterceptor = new StandardOutputInterceptorStream(responseBodyOriginal, responseBodyMirror);
 					}
 				}
 				else
 				{
-					// Pour tout le reste, alors on utilise l'interceptor basique
+					// For everything else, we use the basic interceptor
 					responseInterceptor = new StandardOutputInterceptorStream(responseBodyOriginal, responseBodyMirror);
 				}
 
@@ -172,9 +172,9 @@ namespace SnowBank.Networking.PacketCapture
 					httpContext.Request.Body = requestContext.RequestBodyOriginal;
 					httpContext.Response.Body = requestContext.ResponseBodyOriginal;
 
-					// Le gRPC Interceptor fonctionne sur la base de messages et non de requêtes
-					// Car on ne peut pas distinguer un stream d'un single, donc le single a le même fonctionnement que le stream
-					// Des qu'un message complet est écrit sur le stream, alors on envoie le packet au manager
+					// The gRPC Interceptor works on the basis of messages and not requests
+					// Because we cannot distinguish a stream from a single, so the single behaves the same way as the stream
+					// As soon as a complete message is written to the stream, we send the packet to the manager
 					var isGrpc = requestContext.ResponseInterceptor is GrpcOutputInterceptorStream;
 
 					//note: we must NOT dispose the inner streams ourselves! (only if someone down the line explicitly called Disposed() on the streams!)
@@ -182,29 +182,29 @@ namespace SnowBank.Networking.PacketCapture
 					requestContext.ResponseInterceptor = null;
 
 					CapturedPacketMetadata metadata = requestContext.GetMetadata();
-					//TODO: conserver le stream?
+					//TODO: keep the stream?
 					Slice requestBody = requestContext.GetRequestBody();
 					Slice responseBody = requestContext.GetResponseBody();
 
 					if (!isGrpc)
 					{
-						// Si on est pas un GrpcOutputInterceptorStream alors besoin d'emettre le packet de la requête lors du complete
+						// If we are not a GrpcOutputInterceptorStream then we need to emit the request packet on complete
 						await requestContext.Connection.Manager.Emit(metadata, requestBody, responseBody);
 					}
 					else
 					{
-						// Si on est gRPC, et que le Header de la Request contient TE:Trailers et qu'on est en mode Streaming, alors il faut emit un packet avec juste les Trailers
+						// If we are gRPC, and the Request Header contains TE:Trailers and we are in Streaming mode, then we must emit a packet with just the Trailers
 						var isStreaming = requestContext.HttpContext.Features.Get<IEndpointFeature>()?.Endpoint?.Metadata.GetMetadata<GrpcMethodMetadata>()?.Method.Type != MethodType.Unary;
 						if (isStreaming && requestContext.HttpContext.Request.Headers.TE == "trailers")
 						{
 							Interlocked.Increment(ref requestContext.CompletedMessages);
-							// On a besoin d'emit les trailers de fin de requête
+							// We need to emit the end-of-request trailers
 							await requestContext.Connection.Manager.Emit(metadata, requestBody, responseBody);
 						}
 					}
 					
 					// return the intercepted streams to the pool!
-					//REVIEW: si on décide de garder les streams dans le store, ca ne sera plus a nous de les dispose!
+					//REVIEW: if we decide to keep the streams in the store, it will no longer be up to us to dispose them!
 					requestContext.RequestBodyMirror?.Dispose();
 					requestContext.ResponseBodyMirror?.Dispose();
 
@@ -227,13 +227,13 @@ namespace SnowBank.Networking.PacketCapture
 				{
 					CapturedPacketMetadata metadata = context.GetMetadata();
 
-					// TODO : Modifier le MetaData.Response.Headers.Date a la date actuelle et non la date de la première réponse
-					
-					//TODO: conserver le stream?
+					// TODO : Change the MetaData.Response.Headers.Date to the current date and not the date of the first response
+
+					//TODO: keep the stream?
 					Slice requestBody = context.GetRequestBody();
 					Slice responseBody = context.GetResponseBody();
 
-					// On crée un packet avec toujours la même request mais le response body est censé contenir uniquement le dernier message gRPC envoyé
+					// We create a packet always with the same request but the response body is supposed to contain only the last gRPC message sent
 					await context.Connection.Manager.Emit(metadata, requestBody, responseBody);
 				}
 				catch (Exception e)

@@ -38,14 +38,14 @@ namespace SnowBank.Networking
 	using SnowBank.Buffers.Binary;
 	using SnowBank.Runtime.Converters;
 
-	/// <summary>Helpers permettant de travailler sur des adresses IP (ou MAC address)</summary>
+	/// <summary>Helpers for working with IP addresses (or MAC addresses)</summary>
 	[PublicAPI]
 	public static class IPAddressHelpers
 	{
 
-		/// <summary>Indique si une adresse IP(v4/v6) est valide syntaxiquement</summary>
-		/// <param name="ip">Adresse IPv4 à vérifier (ex: "192.168.1.0")</param>
-		/// <returns>True si l'adresse IP est valide syntaxiquement (4 nombres de 0 à 255)</returns>
+		/// <summary>Indicates whether an IP address (v4/v6) is syntactically valid</summary>
+		/// <param name="ip">IPv4 address to check (e.g. "192.168.1.0")</param>
+		/// <returns>True if the IP address is syntactically valid (4 numbers from 0 to 255)</returns>
 		
 		public static bool IsValidIP([NotNullWhen(true)] string? ip)
 		{
@@ -54,9 +54,9 @@ namespace SnowBank.Networking
 
 #if !NETSTANDARD2_0
 
-		/// <summary>Indique si une adresse IP(v4/v6) est valide syntaxiquement</summary>
-		/// <param name="ip">Adresse IPv4 à vérifier (ex: "192.168.1.0")</param>
-		/// <returns>True si l'adresse IP est valide syntaxiquement (4 nombres de 0 à 255)</returns>
+		/// <summary>Indicates whether an IP address (v4/v6) is syntactically valid</summary>
+		/// <param name="ip">IPv4 address to check (e.g. "192.168.1.0")</param>
+		/// <returns>True if the IP address is syntactically valid (4 numbers from 0 to 255)</returns>
 		public static bool IsValidIP(ReadOnlySpan<char> ip)
 		{
 			return ip.Length != 0 && IPAddress.TryParse(ip, out _);
@@ -64,9 +64,9 @@ namespace SnowBank.Networking
 
 #endif
 
-		/// <summary>Détermine s'il s'agit d'une adresse IPv4 valide</summary>
-		/// <param name="ip">Chaîne à vérifier</param>
-		/// <returns>true si c'est une IPv4 valide, false dans tout les autres cas</returns>
+		/// <summary>Determines whether this is a valid IPv4 address</summary>
+		/// <param name="ip">String to check</param>
+		/// <returns>true if it is a valid IPv4, false in all other cases</returns>
 		public static bool IsValidIPv4([NotNullWhen(true)] string? ip)
 		{
 			return !string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out var value) && value.AddressFamily == AddressFamily.InterNetwork;
@@ -74,9 +74,9 @@ namespace SnowBank.Networking
 
 #if !NETSTANDARD2_0
 
-		/// <summary>Détermine s'il s'agit d'une adresse IPv4 valide</summary>
-		/// <param name="ip">Chaîne à vérifier</param>
-		/// <returns>true si c'est une IPv4 valide, false dans tout les autres cas</returns>
+		/// <summary>Determines whether this is a valid IPv4 address</summary>
+		/// <param name="ip">String to check</param>
+		/// <returns>true if it is a valid IPv4, false in all other cases</returns>
 		public static bool IsValidIPv4(ReadOnlySpan<char> ip)
 		{
 			return ip.Length != 0 && IPAddress.TryParse(ip, out var value) && value.AddressFamily == AddressFamily.InterNetwork;
@@ -84,9 +84,9 @@ namespace SnowBank.Networking
 
 #endif
 
-		/// <summary>Détermine s'il s'agit d'une adresse IPv6 valide</summary>
-		/// <param name="ip">Chaîne à vérifier</param>
-		/// <returns>true si c'est une IPv6 valide, false dans tout les autres cas</returns>
+		/// <summary>Determines whether this is a valid IPv6 address</summary>
+		/// <param name="ip">String to check</param>
+		/// <returns>true if it is a valid IPv6, false in all other cases</returns>
 		public static bool IsValidIPv6([NotNullWhen(true)] string? ip)
 		{
 			return !string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out var value) && value.AddressFamily == AddressFamily.InterNetworkV6;
@@ -94,9 +94,9 @@ namespace SnowBank.Networking
 
 #if !NETSTANDARD2_0
 
-		/// <summary>Détermine s'il s'agit d'une adresse IPv6 valide</summary>
-		/// <param name="ip">Chaîne à vérifier</param>
-		/// <returns>true si c'est une IPv6 valide, false dans tout les autres cas</returns>
+		/// <summary>Determines whether this is a valid IPv6 address</summary>
+		/// <param name="ip">String to check</param>
+		/// <returns>true if it is a valid IPv6, false in all other cases</returns>
 		public static bool IsValidIPv6(ReadOnlySpan<char> ip)
 		{
 			return ip.Length != 0 && IPAddress.TryParse(ip, out var value) && value.AddressFamily == AddressFamily.InterNetworkV6;
@@ -104,13 +104,13 @@ namespace SnowBank.Networking
 
 #endif
 
-		/// <summary>Détermine s'il s'agit d'une adresse IP "any" (0.0.0.0 ou '::')</summary>
+		/// <summary>Determines whether this is an "any" IP address (0.0.0.0 or '::')</summary>
 		public static bool IsAny(IPAddress? address)
 		{
 			return address != null && (IPAddress.Any.Equals(address) || IPAddress.IPv6Any.Equals(address));
 		}
 
-		/// <summary>Convertit une adresse IP en version triable lexicographiquement</summary>
+		/// <summary>Converts an IP address into a lexicographically sortable version</summary>
 		/// <param name="address"></param>
 		/// <returns></returns>
 		/// <example>ToSortableAddress("172.16.1.1") => "172.016.001.001"</example>
@@ -127,7 +127,7 @@ namespace SnowBank.Networking
 				}
 				case AddressFamily.InterNetworkV6:
 				{
-					//TODO: comment rendre une IPv6 sortable ?
+					//TODO: how do we make an IPv6 sortable?
 					return address.ToString();
 				}
 				default:
@@ -140,11 +140,11 @@ namespace SnowBank.Networking
 		private static unsafe string ToSortableIPv4(IPAddress address)
 		{
 #pragma warning disable 618
-			// Note: on est en IPv4 donc on peut utiliser .Address sans problèmes
+			// Note: we are in IPv4 so we can use .Address without any problem
 			long bytes = address.Address;
 #pragma warning restore 618
 
-			// résultat: "000.000.000.000" = 15 chars mais on on alloue 16 pour que ce soit un nombre rond
+			// result: "000.000.000.000" = 15 chars but we allocate 16 to make it a round number
 			char* buffer = stackalloc char[16];
 			int p = 14;
 
@@ -193,7 +193,7 @@ namespace SnowBank.Networking
 			{
 				case AddressFamily.InterNetwork:
 				{ // IPv4
-					//note: Address est en "network order", donc "AA.BB.CC.DD" => 0xDDCCBBAA !
+					//note: Address is in "network order", so "AA.BB.CC.DD" => 0xDDCCBBAA !
 #pragma warning disable CS0618
 					var bits = address.Address;
 #pragma warning restore CS0618
@@ -206,20 +206,20 @@ namespace SnowBank.Networking
 				}
 				case AddressFamily.InterNetworkV6:
 				{ // IPv6
-					//REVIEW: y-a-t-il d'autres cas?
+					//REVIEW: are there any other cases?
 					return address.IsIPv6SiteLocal;
 				}
 				default:
 				{
-					// note: IPAddress actuellement ne retourne que l'un des deux enum ci-dessus, mais on se protégère contre le futur!
+					// note: IPAddress currently only returns one of the two enums above, but we guard against the future!
 					return false;
 				}
 			}
 		}
 
-		/// <summary>Retourne la première IPv4 dans la liste, ou sinon la première IPv6</summary>
-		/// <param name="list">Liste d'adresse IP candidates</param>
-		/// <returns>Premiere adresse IPv4 trouvée ou null si aucune (ou que du IPv6)</returns>
+		/// <summary>Returns the first IPv4 in the list, or otherwise the first IPv6</summary>
+		/// <param name="list">List of candidate IP addresses</param>
+		/// <returns>First IPv4 address found, or null if none (or only IPv6)</returns>
 		public static IPAddress? GetPreferredAddress(IPAddress[]? list)
 		{
 			if (list == null || list.Length == 0) return null;
@@ -244,14 +244,14 @@ namespace SnowBank.Networking
 			Contract.NotNull(remoteAddress);
 			
 			if (IPAddress.IsLoopback(remoteAddress))
-			{ // en local on retourne la meme
+			{ // locally we return the same one
 				localAddress = remoteAddress;
 				return true;
 			}
 
-			// Life Pro Tip: pour connaitre l'IP correspondant au bon network adapter capable de parler a une IP distance,
-			// il suffit de faire un fake "Connect" sur un socket UDP et de consulter le endpoint local
-			// => l'OS va faire le lookup dans la table de routage pour nous, et nous retourner la bonne valeur!
+			// Life Pro Tip: to find the IP matching the right network adapter able to talk to a remote IP,
+			// just do a fake "Connect" on a UDP socket and inspect the local endpoint
+			// => the OS will do the lookup in the routing table for us, and return the right value!
 			try
 			{
 				using (var sock = new Socket(remoteAddress.AddressFamily, SocketType.Dgram, ProtocolType.Udp))
@@ -270,18 +270,18 @@ namespace SnowBank.Networking
 			}
 		}
 		
-		/// <summary>Convertit une adresse IP en long (ex: "255.255.255.0" -> 0xFFFFFF00</summary>
-		/// <param name="ip">Adresse IP</param>
-		/// <returns>Masque binaire correspondant</returns>
+		/// <summary>Converts an IP address into a long (e.g. "255.255.255.0" -> 0xFFFFFF00)</summary>
+		/// <param name="ip">IP address</param>
+		/// <returns>Corresponding binary mask</returns>
 		public static long IPToMask(string ip)
 		{
 			Contract.NotNull(ip);
 			return IPToMask(IPAddress.Parse(ip));
 		}
 
-		/// <summary>Convertit une adresse IP en long (ex: "255.255.255.0" -> 0xFFFFFF00</summary>
-		/// <param name="ip">Adresse IP</param>
-		/// <returns>Masque binaire correspondant</returns>
+		/// <summary>Converts an IP address into a long (e.g. "255.255.255.0" -> 0xFFFFFF00)</summary>
+		/// <param name="ip">IP address</param>
+		/// <returns>Corresponding binary mask</returns>
 		public static long IPToMask(IPAddress ip)
 		{
 			Contract.NotNull(ip);
@@ -296,10 +296,10 @@ namespace SnowBank.Networking
 			return new IPAddress(v);
 		}
 
-		/// <summary>Détermine l'adresse IP de broadcast à partir d'une adresse IP et d'un masque de sous-réseau</summary>
-		/// <param name="ip">Adresse IP du host (ex: 192.168.1.156)</param>
-		/// <param name="subnet">Masque de sous réseau (ex: 255.255.255.0)</param>
-		/// <returns>Adresse IP de broadcast correspondante (192.168.1.255)</returns>
+		/// <summary>Determines the broadcast IP address from an IP address and a subnet mask</summary>
+		/// <param name="ip">Host IP address (e.g. 192.168.1.156)</param>
+		/// <param name="subnet">Subnet mask (e.g. 255.255.255.0)</param>
+		/// <returns>Corresponding broadcast IP address (192.168.1.255)</returns>
 		public static string IPToBroadcast(string ip, string subnet)
 		{
 			Contract.NotNull(ip);
@@ -327,17 +327,17 @@ namespace SnowBank.Networking
 #endif
 		}
 
-		/// <summary>Teste si une adresse IP fait partie d'une plage.
-		/// il y a plusieurs formats acceptés.
-		/// ex: pour "entre 192.168.1.0 et 192.168.1.255")
+		/// <summary>Tests whether an IP address is part of a range.
+		/// several formats are accepted.
+		/// e.g. for "between 192.168.1.0 and 192.168.1.255")
 		///     "192.168.1.*"
 		///     "192.168.1.0-255"
 		///     "192.168.1.0/255.255.255.0"
 		///     "192.168.1.0/24"
 		/// </summary>
-		/// <param name="ip">Adresse IP à tester</param>
-		/// <param name="range">Plage d'IP</param>
-		/// <returns>'true' si l'IP est dans la plage (bornes incluses)</returns>
+		/// <param name="ip">IP address to test</param>
+		/// <param name="range">IP range</param>
+		/// <returns>'true' if the IP is within the range (bounds included)</returns>
 		public static bool IPMatchRange(string? ip, string? range)
 		{
 			if (string.IsNullOrEmpty(ip)) return false;
@@ -384,7 +384,7 @@ namespace SnowBank.Networking
 			// "10.10.0.0-255"
 			p = range.IndexOf('-');
 			if (p >= 0)
-			{ // TODO: format "192.168.1.0-255" pour IPMatchRange
+			{ // TODO: format "192.168.1.0-255" for IPMatchRange
 
 				string right = range[(p + 1)..].Trim();
 				if (right.IndexOf('.') > 0)
@@ -413,16 +413,16 @@ namespace SnowBank.Networking
 				if (n > Convert.ToInt16(tok[1])) return false;
 				return true;
 			}
-			// plage constitué d'une seule ip ?
+			// range made of a single ip?
 			return (ip == range);
 		}
 
-		/// <summary>Retourne les bornes d'une plage d'adresse IP</summary>
-		/// <param name="range">Plage IP ("192.168.1.0/24", "192.168.1.0|255.255.255.0", "192.168.1.1-192.168.1.255", "192.168.1")</param>
-		/// <param name="first">Récupère la première adresse IP de la plage</param>
-		/// <param name="last">Récupère la dernière adresse IP de la plage</param>
-		/// <param name="include0">Si true, inclue "192.168.0.0" comme adresse valide</param>
-		/// <remarks>Retourne une exception en cas d'erreur, dans lequel cas first et last sont fixés à null</remarks>
+		/// <summary>Returns the bounds of an IP address range</summary>
+		/// <param name="range">IP range ("192.168.1.0/24", "192.168.1.0|255.255.255.0", "192.168.1.1-192.168.1.255", "192.168.1")</param>
+		/// <param name="first">Receives the first IP address of the range</param>
+		/// <param name="last">Receives the last IP address of the range</param>
+		/// <param name="include0">If true, includes "192.168.0.0" as a valid address</param>
+		/// <remarks>Throws an exception on error, in which case first and last are set to null</remarks>
 		public static void DecodeIPRange(string range, out IPAddress first, out IPAddress last, bool include0 = false)
 		{
 			Contract.NotNull(range);
@@ -449,38 +449,38 @@ namespace SnowBank.Networking
 				}
 #endif
 
-				// on connait le subnet (/8, /16, /24, ..) et l'adresse
-				// il faut qu'on en déduise l'adresse de début
+				// we know the subnet (/8, /16, /24, ..) and the address
+				// we need to derive the start address from it
 				if (addr.AddressFamily == AddressFamily.InterNetworkV6) throw new NotSupportedException("IPv6 is not currently supported!");
 
-				// l'adresse sera constitué des "subnet" premiers bits
+				// the address is made of the first "subnet" bits
 				long bytes = addr.GetAddressBytes().AsSpan().ToUInt32BE();
 
-				// check que l'IP est bien adressable si on est en /32
+				// check that the IP is actually addressable if we are in /32
 				if (subnet == 32 && ((bytes & 0xFF) == 0 || (bytes & 0xFF) == 255)) throw new FormatException($"Invalid IP range '{tmp.ToString()}': invalid /32 address! Should be .1 or .254");
 
-				// masque qui va garder les "subnet" bits de poids fort
+				// mask that keeps the "subnet" high-order bits
 				long submask = ((1 << (32 - subnet)) - 1);  // 32 => 0x00000000, 24 => 0x000000FF, 16 => 0x0000FFFF, ...
 				long mask = 0xFFFFFFFF ^ submask;           // 32 => 0xFFFFFFFF, 24 => 0xFFFFFF00, 16 => 0xFFFF0000, ...
 
 				long start = (bytes & mask);
 				long end = (bytes & mask) + submask;
 
-				// "arrondi" les bords (.0 et .255) quand il ne sont pas des adresses valides)
+				// "round" the edges (.0 and .255) when they are not valid addresses
 				if ((start & 0xFF) == 0 && !include0)
 				{
-					//ie: 192.168.1.0/24, couvre 192.168.1.0 .. 192.168.1.255, bornes qui sont en général écartées
-					// Par contre, 192.168.0.0/16, couvre 192.168.0.0 .. 192.168.255.255. Mais ici, 192.168.1.0 n'est PAS une borne, donc il est légal
+					//ie: 192.168.1.0/24 covers 192.168.1.0 .. 192.168.1.255, bounds that are generally excluded
+					// However, 192.168.0.0/16 covers 192.168.0.0 .. 192.168.255.255. But here, 192.168.1.0 is NOT a bound, so it is legal
 					++start; // 0->1
 				}
 				else if ((start & 0xFF) == 255)
 				{
-					//note: on va par contre on va interdire .255 dans tous les cas, par précaution...
+					//note: however we forbid .255 in all cases, as a precaution...
 					--start; // 255->254
 				}
 				if ((end & 0xFF) == 0 && !include0)
 				{
-					//voire commentaire pour 'start' plus haut
+					//see comment for 'start' above
 					++end; // 0->1
 				}
 				else if ((end & 0xFF) == 255)
@@ -514,7 +514,7 @@ namespace SnowBank.Networking
 				long start = (bytes & mask);
 				long end = (bytes & mask) + submask;
 
-				// "arrondi" les bords (.0 et .255 ne sont pas valides)
+				// "round" the edges (.0 and .255 are not valid)
 				if ((start & 0xFF) == 0 && !include0) start += 1; // 0->1
 				else if ((start & 0xFF) == 255) start -= 1; // 255->254
 				if ((end & 0xFF) == 0 && !include0) end += 1; // 0->1
@@ -535,7 +535,7 @@ namespace SnowBank.Networking
 				if (!IsValidIP(one)) throw new FormatException($"Invalid IP range '{range}' : first term ({one}) is not a valid IP address");
 				if (!IsValidIP(two)) throw new FormatException($"Invalid IP range '{range}' : second term ({two}) is not a valid IP address");
 
-				// "arrondi" les bords (.0 et .255 ne sont pas valides)
+				// "round" the edges (.0 and .255 are not valid)
 				if (one.EndsWith(".0", StringComparison.Ordinal) && !include0) one = one.Substring(0, one.Length - 2) + ".1";
 				if (two.EndsWith(".0", StringComparison.Ordinal) && !include0) two = two.Substring(0, two.Length - 2) + ".1";
 				if (one.EndsWith(".255", StringComparison.Ordinal)) one = one.Substring(0, one.Length - 4) + ".254";
@@ -552,12 +552,12 @@ namespace SnowBank.Networking
 			throw new NotSupportedException($"Range format '{range}' is not supported!");
 		}
 
-		/// <summary>Retourne le nombre d'adresses entre (et incluant) deux bornes</summary>
-		/// <param name="from">Adresse de départ</param>
-		/// <param name="to">Adresse de destination</param>
-		/// <param name="include0">true si on souhaite inclure les adresses en .0</param>
-		/// <param name="include255">true si on souhaite inclure les adresses en .255</param>
-		/// <returns>Nombre </returns>
+		/// <summary>Returns the number of addresses between (and including) two bounds</summary>
+		/// <param name="from">Start address</param>
+		/// <param name="to">Destination address</param>
+		/// <param name="include0">true if we want to include .0 addresses</param>
+		/// <param name="include255">true if we want to include .255 addresses</param>
+		/// <returns>Count</returns>
 		public static long GetHostCountBetween(IPAddress from, IPAddress to, bool include0 = false, bool include255 = false)
 		{
 			Contract.NotNull(from);
@@ -565,45 +565,45 @@ namespace SnowBank.Networking
 			if (from.AddressFamily != to.AddressFamily) throw new ArgumentException("AddressFamily does not match", nameof(to));
 			if (from.AddressFamily == AddressFamily.InterNetworkV6) throw new NotSupportedException("IPv6 not currently supported!!!");
 
-			// cas le plus simple
+			// simplest case
 			if (from.Equals(to))
-			{ // un seul host dans la plage
+			{ // a single host in the range
 				return 1;
 			}
 
-			// récupère les octets pour les comparaisons
+			// get the bytes for the comparisons
 			byte[] fromBytes = from.GetAddressBytes();
 			byte[] toBytes = to.GetAddressBytes();
 			Contract.Debug.Assert(fromBytes.Length == toBytes.Length && fromBytes.Length == 4, "IP address size does not match!");
 
-			// compare le début de l'adresse (en excluant le dernier octet)
+			// compare the start of the address (excluding the last byte)
 			int fromSubnet = (fromBytes[0] << 16) + (fromBytes[1] << 8) + fromBytes[2];
 			int toSubnet = (toBytes[0] << 16) + (toBytes[1] << 8) + toBytes[2];
 
 			if (toSubnet == fromSubnet)
-			{ // même subnet /24, cas le plus simple:
+			{ // same /24 subnet, simplest case:
 				long res = toBytes[3] - fromBytes[3] + 1;
 				if (res <= 0) throw new ArgumentException("The 'to' address should be higher than or equal to the 'from' address!", nameof(to));
 				return res;
 			}
 			else if (toSubnet < fromSubnet)
-			{ // to est inférieur à from !?
+			{ // to is lower than from !?
 				throw new ArgumentException("The 'to' address should be higher than or equal to the 'from' address!", nameof(to));
 			}
 			else
-			{ // subnets différents
-			  // compte le nombre de plages /24 qu'il y a entre les deux en intégrant les adresses en 0
+			{ // different subnets
+			  // count the number of /24 ranges between the two, including the .0 addresses
 				var adressesBySubnet = 254 + (include0 ? 1 : 0) + (include255 ? 1 : 0);
 				long res = ((toSubnet - fromSubnet - 1) * adressesBySubnet) + (255 - fromBytes[3] + (include255 ? 1 : 0)) + toBytes[3] + (include0 ? 1 : 0);
 				return res;
 			}
 		}
 
-		/// <summary>Ajoute un offset à une adresse IP</summary>
-		/// <param name="address">Adresse de base (ex: 192.168.1.23)</param>
-		/// <param name="offset">Offset (ex: 42)</param>
-		/// <returns>Nouvelle adresse (ex: 192.168.1.65)</returns>
-		/// <exception cref="ArgumentException">Si <paramref name="address"/> n'est pas d'un type supporté (IPv4)</exception>
+		/// <summary>Adds an offset to an IP address</summary>
+		/// <param name="address">Base address (e.g. 192.168.1.23)</param>
+		/// <param name="offset">Offset (e.g. 42)</param>
+		/// <returns>New address (e.g. 192.168.1.65)</returns>
+		/// <exception cref="ArgumentException">If <paramref name="address"/> is not a supported type (IPv4)</exception>
 		public static IPAddress AddOffset(IPAddress address, int offset)
 		{
 			if (address.AddressFamily != AddressFamily.InterNetwork) throw new ArgumentException("Only IPv4 are currently supported!", nameof(address));
@@ -616,8 +616,8 @@ namespace SnowBank.Networking
 			return new IPAddress(x);
 		}
 
-		/// <summary>Convertit une adresse MAC binaire en représentation string</summary>
-		/// <param name="mac">Tableau de 6 octets contenant une adresse MAC</param>
+		/// <summary>Converts a binary MAC address into its string representation</summary>
+		/// <param name="mac">Array of 6 bytes containing a MAC address</param>
 		/// <returns>"00-11-22-33-44-55"</returns>
 		/// <version>1.1.0.7</version>
 		public static string MACAddressToString(byte[] mac)
@@ -626,8 +626,8 @@ namespace SnowBank.Networking
 			return MACAddressToString(mac, 0, mac.Length);
 		}
 
-		/// <summary>Convertit une adresse MAC binaire en représentation string</summary>
-		/// <param name="mac">Buffer de 6 octets contenant une adresse MAC</param>
+		/// <summary>Converts a binary MAC address into its string representation</summary>
+		/// <param name="mac">Buffer of 6 bytes containing a MAC address</param>
 		/// <returns>"00-11-22-33-44-55"</returns>
 		/// <version>1.1.0.7</version>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -636,7 +636,7 @@ namespace SnowBank.Networking
 			return MACAddressToString(mac.Span);
 		}
 
-		/// <summary>Convertit une adresse MAC binaire en représentation string</summary>
+		/// <summary>Converts a binary MAC address into its string representation</summary>
 		/// <returns>"00-11-22-33-44-55"</returns>
 		/// <version>1.1.0.7</version>
 		public static string MACAddressToString(byte[] mac, int offset, int count)
@@ -645,12 +645,12 @@ namespace SnowBank.Networking
 			return MACAddressToString(mac.AsSpan(offset, count));
 		}
 
-		/// <summary>Convertit une adresse MAC binaire en représentation string</summary>
+		/// <summary>Converts a binary MAC address into its string representation</summary>
 		/// <returns>"00-11-22-33-44-55"</returns>
 		/// <version>1.1.0.7</version>
 		public static string MACAddressToString(ReadOnlySpan<byte> mac)
 		{
-			// note: normalement ca fait 6 bytes de long, mais la structure MIB_IPNETROW retourne parfois un buffer de 8 bytes (2 derniers a zero)
+			// note: normally this is 6 bytes long, but the MIB_IPNETROW structure sometimes returns an 8-byte buffer (last 2 set to zero)
 			if (mac.Length < 6) throw new ArgumentException("MAC addresses are 6 bytes long", nameof(mac));
 			return string.Format(CultureInfo.InvariantCulture, "{0:X2}-{1:X2}-{2:X2}-{3:X2}-{4:X2}-{5:X2}", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 		}
@@ -741,7 +741,7 @@ namespace SnowBank.Networking
 					var reply = await task.ConfigureAwait(false);
 
 					if (reply.Status is IPStatus.Success or IPStatus.DestinationHostUnreachable)
-					{ // ca ne sert a rien de continuer plus!
+					{ // no point going any further!
 						lock (cts)
 						{
 							if (!abortScan)

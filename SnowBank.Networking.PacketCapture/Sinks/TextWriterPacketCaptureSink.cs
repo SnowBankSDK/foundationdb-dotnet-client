@@ -53,7 +53,7 @@ namespace SnowBank.Networking.PacketCapture
 			var sb = this.Cache;
 			foreach (var packet in packets.Span)
 			{
-				//TODO: faire un vrai log!
+				//TODO: make a real log!
 				sb.AppendLine(packet.GetBasicDump(includeBody: false));
 			}
 			this.Output.Write(sb.ToString());

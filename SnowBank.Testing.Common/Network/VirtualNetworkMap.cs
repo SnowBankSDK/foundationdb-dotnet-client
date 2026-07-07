@@ -241,7 +241,7 @@ namespace SnowBank.Networking
 			{
 				return new (IPAddress.IPv6Loopback);
 			}
-			//HACKHACK: on part du principe que la premiere location est le lan!
+			//HACKHACK: we assume that the first location is the lan!
 			return new (this.Host.Addresses[0]);
 		}
 

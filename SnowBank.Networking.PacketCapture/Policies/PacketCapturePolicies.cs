@@ -40,7 +40,7 @@ namespace SnowBank.Networking.PacketCapture
 					return CapturedHttpFields.None;
 				}
 				//if (request.Request.ContentType == "application/grpc")
-				//{ // par défaut, on ignore les requêtes de type gRPC (a cause du "bug" de manque de Flush sur WriteSingleMessageAsync de https://github.com/grpc/grpc-dotnet/blob/b82c0c7354162a5489027b388f787c3b2a0a97a2/src/Grpc.AspNetCore.Server/Internal/PipeExtensions.cs#L48)
+				//{ // by default, we ignore gRPC-type requests (because of the "bug" of the missing Flush on WriteSingleMessageAsync at https://github.com/grpc/grpc-dotnet/blob/b82c0c7354162a5489027b388f787c3b2a0a97a2/src/Grpc.AspNetCore.Server/Internal/PipeExtensions.cs#L48)
 				//	return CapturedHttpFields.None;
 				//}
 				return CapturedHttpFields.All;

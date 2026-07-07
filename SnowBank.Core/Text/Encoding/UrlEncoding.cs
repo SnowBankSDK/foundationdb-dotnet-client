@@ -52,10 +52,10 @@ namespace SnowBank.Text
 
 		#region Static Members...
 
-		private const byte CLEAN = 0; // Jamais modifié
-		private const byte PATH = 1; // Normalement encodé en Percent, mais traitement spécial ?
-		private const byte SPACE = 2; // Soit '+', soit '%20'
-		private const byte DELIM = 3; // Délimiteur de chemin ('/', ':', ...)
+		private const byte CLEAN = 0; // Never modified
+		private const byte PATH = 1; // Normally Percent-encoded, but special handling?
+		private const byte SPACE = 2; // Either '+' or '%20'
+		private const byte DELIM = 3; // Path delimiter ('/', ':', ...)
 		private const byte INVALID = 4; // "%XX"
 		private const byte UNICODE = 5;
 
@@ -63,22 +63,22 @@ namespace SnowBank.Text
 
 		#region Public Methods...
 
-		/// <summary>Décode une chaîne de texte encodée comme une URL (%XX)</summary>
-		/// <param name="value">Chaîne contenant du texte encodé</param>
-		/// <param name="encoding">Encoding utilisé (par défaut UTF-8 si null)</param>
-		/// <returns>Chaîne décodée</returns>
+		/// <summary>Decodes a text string encoded as a URL (%XX)</summary>
+		/// <param name="value">String containing encoded text</param>
+		/// <param name="encoding">Encoding used (defaults to UTF-8 if null)</param>
+		/// <returns>Decoded string</returns>
 		[Pure]
 		public static string Decode(string? value, Encoding? encoding = null)
 		{
 			return Decode(value, 0, value?.Length ?? 0, encoding);
 		}
 
-		/// <summary>Décode une section d'une chaîne de texte encodée comme une URL (%XX)</summary>
-		/// <param name="value">Chaîne contenant une URI ou tout autre texte encodé comme une URL</param>
-		/// <param name="offset">Offset à partir du début de la chaîne</param>
-		/// <param name="count">Nombre de caractères à décoder</param>
-		/// <param name="encoding">Encoding utilisé (par défaut UTF-8 si null)</param>
-		/// <returns>Section de la chaîne décodée</returns>
+		/// <summary>Decodes a section of a text string encoded as a URL (%XX)</summary>
+		/// <param name="value">String containing a URI or any other text encoded as a URL</param>
+		/// <param name="offset">Offset from the start of the string</param>
+		/// <param name="count">Number of characters to decode</param>
+		/// <param name="encoding">Encoding used (defaults to UTF-8 if null)</param>
+		/// <returns>Decoded section of the string</returns>
 		[Pure]
 		public static string Decode(string? value, int offset, int count, Encoding? encoding = null)
 		{
@@ -97,19 +97,19 @@ namespace SnowBank.Text
 			return value.Substring(offset, count);
 		}
 
-		/// <summary>Parse une QueryString, et passe le couple (attribut, valeur) à une lambda</summary>
-		/// <typeparam name="TState">Type de l'état passé au handler (buffer, liste, ...)</typeparam>
-		/// <param name="qs">QueryString à parser (sous la forme 'name1=value1&amp;name2=value2&amp;...')</param>
-		/// <param name="state">Variable transmise à chaque appel du handler</param>
-		/// <param name="handler">Action appelée pour chaque paramètre, avec le couple name/value (décodés). La value est null si le paramètre n'a pas de section '=xxxx'</param>
-		/// <param name="encoding">Encoding utilisé (par défaut UTF-8 si null)</param>
+		/// <summary>Parses a QueryString, and passes each (attribute, value) pair to a lambda</summary>
+		/// <typeparam name="TState">Type of the state passed to the handler (buffer, list, ...)</typeparam>
+		/// <param name="qs">QueryString to parse (in the form 'name1=value1&amp;name2=value2&amp;...')</param>
+		/// <param name="state">Variable passed to each call of the handler</param>
+		/// <param name="handler">Action called for each parameter, with the name/value pair (decoded). The value is null if the parameter has no '=xxxx' section</param>
+		/// <param name="encoding">Encoding used (defaults to UTF-8 if null)</param>
 		[Pure]
 		internal static TState ParseQueryString<TState>(string? qs, TState state, Action<TState, string, string?> handler, Encoding? encoding = null)
 		{
 			int length;
 			if (qs == null || (length = qs.Length) == 0) return state;
 
-			// on démarre du début, sauf s'il y a un '?'
+			// start from the beginning, unless there is a '?'
 			int start = 0;
 			if (qs[0] == '?') ++start; // skip
 
@@ -118,70 +118,70 @@ namespace SnowBank.Text
 				start = i;
 				int end = -1;
 
-				// recherche la fin du couple 'attr=name' (terminé par un '&' ou la fin de la chaîne)
+				// look for the end of the 'attr=name' pair (terminated by a '&' or the end of the string)
 				while (i < length)
 				{
 					char c = qs[i];
 					if (c == '=')
-					{ // fin du nom, début de la valeur
+					{ // end of the name, start of the value
 						if (end < 0) end = i;
 					}
 					else if (c == '&')
-					{ // fin du couple
+					{ // end of the pair
 						break;
 					}
 					++i;
 				}
 
 				if (start == i)
-				{ // un "&" qui se balade tout seul ??
+				{ // a "&" wandering around on its own ??
 					continue;
 				}
 
 				if (end < 0)
-				{ // pas de valeur
+				{ // no value
 					handler(state, Decode(qs, start, i - start, encoding), null);
 				}
 				else
-				{ // valeur présente
+				{ // value present
 					handler(state, Decode(qs, start, end - start, encoding), Decode(qs, end + 1, i - end - 1, encoding));
 				}
 			}
 			return state;
 		}
 
-		/// <summary>Parse une QueryString, et retourne la liste des paramètres trouvés</summary>
-		/// <param name="qs">QueryString à parser (sous la forme 'name1=value1&amp;name2=value2&amp;...')</param>
-		/// <param name="encoding">Encoding utilisé (par défaut UTF-8 si null)</param>
-		/// <returns>NameValueCollection contenant les paramètres de la querystring</returns>
-		/// <remarks>"foo&amp;..." contiendra null, "foo=&amp;..." contiendra String.Empty</remarks>
+		/// <summary>Parses a QueryString, and returns the list of parameters found</summary>
+		/// <param name="qs">QueryString to parse (in the form 'name1=value1&amp;name2=value2&amp;...')</param>
+		/// <param name="encoding">Encoding used (defaults to UTF-8 if null)</param>
+		/// <returns>NameValueCollection containing the parameters of the querystring</returns>
+		/// <remarks>"foo&amp;..." will contain null, "foo=&amp;..." will contain String.Empty</remarks>
 		[Pure]
 		public static NameValueCollection ParseQueryString(string? qs, Encoding? encoding = null)
 		{
 			return ParseQueryString(qs, new NameValueCollection(), (values, name, value) => values.Add(name, value), encoding);
 		}
 
-		/// <summary>Décode une chaîne de texte contenant une URL</summary>
-		/// <param name="value">Chaîne à décoder</param>
-		/// <param name="offset">Offset à partir du début de la chaîne</param>
-		/// <param name="count">Nombre de caractères à décoder</param>
-		/// <param name="encoding">Encoding utilisé (par défaut UTF-8 si null)</param>
-		/// <returns>Section de l'url décodée</returns>
+		/// <summary>Decodes a text string containing a URL</summary>
+		/// <param name="value">String to decode</param>
+		/// <param name="offset">Offset from the start of the string</param>
+		/// <param name="count">Number of characters to decode</param>
+		/// <param name="encoding">Encoding used (defaults to UTF-8 if null)</param>
+		/// <returns>Decoded section of the url</returns>
 		[Pure]
 		private static string DecodeString(string value, int offset, int count, Encoding? encoding)
 		{
 			encoding ??= Encoding.UTF8;
 
-			// s'il n'y a rien à décoder, la taille du buffer de sortie est la même que celle de la string
-			// s'il y a des choses, elle sera plus petite, avec une taille de 1/3 dans le pire des cas
+			// if there is nothing to decode, the output buffer size is the same as the string's
+			// if there is something, it will be smaller, down to 1/3 of the size in the worst case
 
 			unsafe
 			{
 				fixed (char* chars = value)
 				{
 					if (count > 1024)
-					{ // trop gros pour allouer sur la stack
-						// => on alloue en mémoire
+					{ // too big to allocate on the stack
+						// => allocate on the heap
 						var buffer = new byte[count];
 						int size;
 						fixed (byte* bytes = buffer)
@@ -191,27 +191,27 @@ namespace SnowBank.Text
 						return encoding.GetString(buffer, 0, size);
 					}
 					else
-					{ // ca peut passer sur la stack
-						// décode dans un buffer sur la stack
+					{ // this can fit on the stack
+						// decode into a buffer on the stack
 						byte* bytes = stackalloc byte[count];
 						int numBytes = DecodeBytes(chars, offset, count, bytes, encoding);
-						// détermine le nb de caractères
+						// determine the number of characters
 						int numChars = encoding.GetCharCount(bytes, numBytes);
-						// alloue le buffer de chars (sur la stack aussi)
+						// allocate the char buffer (on the stack as well)
 						char* result = stackalloc char[numChars];
 						int n = encoding.GetChars(bytes, numBytes, result, numChars);
-						// retourne la string correspondante
+						// return the corresponding string
 						return new string(result, 0, n);
 					}
 				}
 			}
 		}
 
-		/// <summary>Détermine si la chaîne nécessite d'être décodée (de manière pessimiste)</summary>
-		/// <param name="value">Chaîne de texte présente dans une URL</param>
+		/// <summary>Determines whether the string needs to be decoded (pessimistically)</summary>
+		/// <param name="value">Text string present in a URL</param>
 		/// <param name="offset"></param>
 		/// <param name="count"></param>
-		/// <returns>True si la chaîne contient (éventuellement) des caractères à encoder, false si elle est propre.</returns>
+		/// <returns>True if the string (possibly) contains characters to encode, false if it is clean.</returns>
 		[ContractAnnotation("value:null => false")]
 		private static bool NeedsDecoding(string? value, int offset, int count)
 		{
@@ -227,12 +227,12 @@ namespace SnowBank.Text
 			return false;
 		}
 
-		/// <summary>Retourne la valeur décimale d'une digit hexa décimal, ou -1 si ce n'en est pas un</summary>
+		/// <summary>Returns the decimal value of a hexadecimal digit, or -1 if it is not one</summary>
 		/// <param name="c">0-9, A-F, a-f</param>
-		/// <returns>0-15, ou -1 si ce n'est pas un digit hexa décimal</returns>
+		/// <returns>0-15, or -1 if it is not a hexadecimal digit</returns>
 		private static int DecodeHexDigit(char c)
 		{
-			// on accepte A-F, a-f et 0-9
+			// we accept A-F, a-f and 0-9
 			if (c < '0') return -1;
 			if (c <= '9') return c - 48;
 			if (c >= 'A' && c <= 'F') return c - 55;
@@ -240,18 +240,18 @@ namespace SnowBank.Text
 			return -1;
 		}
 
-		/// <summary>Décode une buffer de caractères contenant une URL, vers un buffer d'octets (pour décodage UTF-8)</summary>
-		/// <param name="value">Buffer contenant les caractères de l'URL</param>
-		/// <param name="offset">Offset dans le début du buffer</param>
-		/// <param name="count">Nombre de caractères à décoder</param>
-		/// <param name="bytes">Buffer de sortie où écrire les octets décodés</param>
-		/// <param name="encoding">Encoding utilisé (UTF-8 par défaut si null)</param>
-		/// <returns>Nombre d'octets écrit dans le buffer de sortie</returns>
+		/// <summary>Decodes a character buffer containing a URL, into a byte buffer (for UTF-8 decoding)</summary>
+		/// <param name="value">Buffer containing the characters of the URL</param>
+		/// <param name="offset">Offset from the start of the buffer</param>
+		/// <param name="count">Number of characters to decode</param>
+		/// <param name="bytes">Output buffer where the decoded bytes are written</param>
+		/// <param name="encoding">Encoding used (defaults to UTF-8 if null)</param>
+		/// <returns>Number of bytes written to the output buffer</returns>
 		private static unsafe int DecodeBytes(char* value, int offset, int count, byte* bytes, Encoding? encoding)
 		{
 			encoding ??= Encoding.UTF8;
 
-			//IMPORTANT: on se repose sur le fait que l'appelant a tailler 'bytes' suffisamment grand pour qu'il n'y ait pas d'overflow !!!
+			//IMPORTANT: we rely on the caller having sized 'bytes' large enough that there is no overflow !!!
 
 			int pDst = 0;
 			int pSrc = offset;
@@ -265,10 +265,10 @@ namespace SnowBank.Text
 				else if (val == '%' && count >= 2)
 				{ // Percent-Encoded ?
 
-					// trois possibilités:
+					// three possibilities:
 					// - '%XX' : percent encoded
 					// - '%uXXXX' : unicode encoded
-					// - un '%' mal encodé qu'on doit laisser passer
+					// - a badly-encoded '%' that we must let through
 
 					if (value[pSrc] == 'u' && count >= 5)
 					{ // '%uXXXX' ?
@@ -278,11 +278,11 @@ namespace SnowBank.Text
 						int c = DecodeHexDigit(value[pSrc + 3]);
 						int d = DecodeHexDigit(value[pSrc + 4]);
 						if (a >= 0 && b >= 0 && c >= 0 && d >= 0)
-						{ // les deux sont en hexa, on accepte le caractère
+						{ // both are hex, we accept the character
 
-							// grah, le pb c'est qu'il faut qu'on rajoute les bytes correspondant à de l'UTF-8 :(
+							// grah, the problem is that we have to add the bytes corresponding to UTF-8 :(
 							char ch = (char) ((a << 12) | (b << 8)  | (c << 4) | d);
-							// "%uXXXX" fait 6 bytes, et normalement, il n'y a rien qui peut faire plus de 5 bytes une fois encodé en UTF-8
+							// "%uXXXX" is 6 bytes, and normally nothing can be more than 5 bytes once encoded as UTF-8
 							int n = encoding.GetBytes(&ch, 1, bytes + pDst, count);
 							pDst += n;
 							pSrc += 5;
@@ -292,18 +292,18 @@ namespace SnowBank.Text
 					}
 					else
 					{ // '%XX'
-						// les deux suivants doivent être en hexa
+						// the next two must be hex
 						int hi = DecodeHexDigit(value[pSrc]);
 						int lo = DecodeHexDigit(value[pSrc + 1]);
 						if (hi >= 0 && lo >= 0)
-						{ // les deux sont en hexa, on accepte le caractère
+						{ // both are hex, we accept the character
 							bytes[pDst++] = (byte)((hi << 4) | lo);
 							pSrc += 2;
 							count -= 2;
 							continue; // => next
 						}
 					}
-					// sinon c'est un encodage foireux, on le laisse passer tel quel
+					// otherwise it is a broken encoding, we let it through as-is
 				}
 				bytes[pDst++] = val;
 			}
@@ -314,9 +314,9 @@ namespace SnowBank.Text
 		#region Uri...
 
 		/// <summary>Properly encodes a URI that may be malformed</summary>
-		/// <param name="value">Uri à encoder correctement</param>
-		/// <returns>Uri encodée correctement</returns>
-		/// <remarks>Ne touche pas à la query string s'il y en a une !</remarks>
+		/// <param name="value">Uri to encode correctly</param>
+		/// <returns>Correctly-encoded Uri</returns>
+		/// <remarks>Does not touch the query string if there is one!</remarks>
 		/// <example>EncodeUri("http://server/path to the/file.ext?blah=xxxx") => "http://server/path%20to%20the/file.ext?blah=xxx"</example>
 		[Pure]
 		public static string EncodeUri(string? value)
@@ -327,10 +327,10 @@ namespace SnowBank.Text
 				return string.Empty;
 			}
 
-			// ATTENTION: on ne doit pas toucher à la QueryString !
+			// WARNING: we must not touch the QueryString!
 			int p = value.IndexOf('?');
 			if (p >= 0)
-			{ // appel récursif pour n'encoder que le path, en recollant la QueryString
+			{ // recursive call to encode only the path, then re-attach the QueryString
 				return EncodeUri(value[..p]) + value[p..];
 			}
 
@@ -341,9 +341,9 @@ namespace SnowBank.Text
 
 		#region Path...
 
-		/// <summary>Encode une valeur qui sera utilisée comme segment du chemin d'une URI</summary>
-		/// <param name="value">Valeur à encoder correctement (' ' => '%20')</param>
-		/// <returns>Texte pouvant être intégré dans le chemin d'une URI</returns>
+		/// <summary>Encodes a value that will be used as a segment of a URI path</summary>
+		/// <param name="value">Value to encode correctly (' ' => '%20')</param>
+		/// <returns>Text that can be embedded in a URI path</returns>
 		/// <example>EncodePath("foo bar/baz") => "foo%20bar%2fbaz"</example>
 		[Pure]
 		public static string EncodePath(string? value)
@@ -376,7 +376,7 @@ namespace SnowBank.Text
 			var type = value.GetType();
 			if (type.IsPrimitive)
 			{
-				// Attention: GetTypeCode retourne 'TypeCode.Int32' pour une Enum !
+				// Warning: GetTypeCode returns 'TypeCode.Int32' for an Enum!
 				switch (Type.GetTypeCode(type))
 				{
 					case TypeCode.Boolean: return ((bool)value) ? Tokens.True : Tokens.False;
@@ -391,12 +391,12 @@ namespace SnowBank.Text
 					case TypeCode.UInt64: return ((ulong)value).ToString(null, CultureInfo.InvariantCulture);
 					case TypeCode.Single: return ((float)value).ToString(Tokens.FormatR, CultureInfo.InvariantCulture);
 					case TypeCode.Double: return ((double)value).ToString(Tokens.FormatR, CultureInfo.InvariantCulture);
-					//note: decimal n'est pas primitive !
+					//note: decimal is not primitive!
 				}
 			}
 
 			if (value is TimeSpan ts)
-			{ // TimeSpan => nombre de secondes
+			{ // TimeSpan => number of seconds
 				return ts.TotalSeconds.ToString(Tokens.FormatR, CultureInfo.InvariantCulture);
 			}
 
@@ -423,14 +423,14 @@ namespace SnowBank.Text
 				return fmt.ToString(null, CultureInfo.InvariantCulture);
 			}
 
-			// on croise les doigts...
+			// fingers crossed...
 			return value.ToString() ?? string.Empty;
 		}
 
-		/// <summary>Encode une valeur qui sera utilisée comme valeur dans une QueryString</summary>
-		/// <param name="value">Valeur à encoder correctement (' ' => '+')</param>
-		/// <param name="encoding">Encoding optionnel (UTF-8 par défaut)</param>
-		/// <returns>Texte pouvant être utilisé comme valeur dans une QueryString</returns>
+		/// <summary>Encodes a value that will be used as a value in a QueryString</summary>
+		/// <param name="value">Value to encode correctly (' ' => '+')</param>
+		/// <param name="encoding">Optional encoding (UTF-8 by default)</param>
+		/// <returns>Text that can be used as a value in a QueryString</returns>
 		/// <example>EncodeData("foo bar/baz") => "foo+bar%2fbaz"</example>
 		[Pure]
 		public static string EncodeData(string? value, Encoding? encoding = null)

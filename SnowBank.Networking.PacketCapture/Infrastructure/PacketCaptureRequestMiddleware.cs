@@ -50,8 +50,8 @@ namespace SnowBank.Networking.PacketCapture
 				{
 					await next(context);
 
-					// Suite https://github.com/grpc/grpc-dotnet/issues/1679 (au 05/04/2023 toujours open)
-					// On flush nous même les bytes car WriteSingleMessageAsync ne flush pas (bug ?)
+					// Following https://github.com/grpc/grpc-dotnet/issues/1679 (as of 05/04/2023 still open)
+					// We flush the bytes ourselves because WriteSingleMessageAsync does not flush (bug?)
 					var response = context.Response;
 					var bodyWriter = response.BodyWriter;
 					if (response.HasStarted && bodyWriter.CanGetUnflushedBytes && bodyWriter.UnflushedBytes > 0)

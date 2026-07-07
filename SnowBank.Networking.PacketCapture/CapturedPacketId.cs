@@ -137,7 +137,7 @@ namespace SnowBank.Networking.PacketCapture
 				return false;
 			}
 
-			// réutilise la génération en cache si possible!
+			// reuses the cached generation if possible!
 			var generation = CachedGeneration;
 			if (generation == null || !literal.AsSpan(0, p).SequenceEqual(generation))
 			{

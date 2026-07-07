@@ -200,7 +200,7 @@ namespace SnowBank.Messaging
 		{
 			using (this.Lifetime)
 			{
-				// protection au cas où...
+				// protection just in case...
 				this.Lifetime.CancelAfter(TimeSpan.FromSeconds(5));
 
 				// drain!
@@ -246,7 +246,7 @@ namespace SnowBank.Messaging
 						// read as much as possible in a batch...
 						while (reader.TryRead(out var item))
 						{
-							// soit c'est un signal
+							// either it's a signal
 							if (item is TaskCompletionSource<object?> tcs)
 							{
 								//note: we must dispatch items in the current batch before triggering the signal!

@@ -548,7 +548,7 @@ namespace SnowBank.Collections.Caching
 #pragma warning disable 420
 				if (ReferenceEquals(Interlocked.CompareExchange(ref m_root, updated, original), original))
 #pragma warning restore 420
-				{ // La nouvelle version du cache ne contient plus la clé
+				{ // The new version of the cache no longer contains the key
 					return true;
 				}
 

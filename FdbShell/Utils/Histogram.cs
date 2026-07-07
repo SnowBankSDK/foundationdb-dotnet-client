@@ -141,16 +141,16 @@ namespace FdbShell
 
 		private double TicksToUnit { get; }
 
-		/// <summary>Retourne le nombre d'échantillons: Ts.Count()</summary>
+		/// <summary>Returns the number of samples: Ts.Count()</summary>
 		public int Count { get; private set; }
 
-		/// <summary>Retourne l'échantillon minimum: Ts.Min()</summary>
+		/// <summary>Returns the minimum sample: Ts.Min()</summary>
 		public double Min { get; private set; }
 
-		/// <summary>Retourne l'échantillon maximum: Ts.Max()</summary>
+		/// <summary>Returns the maximum sample: Ts.Max()</summary>
 		public double Max { get; private set; }
 
-		/// <summary>Retourne la somme des valeurs: Ts.Sum(t => t)</summary>
+		/// <summary>Returns the sum of the values: Ts.Sum(t => t)</summary>
 		public double Sum => this.InternalSum / SUM_RATIO;
 
 		private double InternalSum { get; set; }
@@ -158,12 +158,12 @@ namespace FdbShell
 
 		private long[] Buckets { get; set; }
 
-		/// <summary>Retourne l'échantillon médian</summary>
+		/// <summary>Returns the median sample</summary>
 		public double Median => Percentile(50);
 
-		/// <summary>Retourne la valeur du percentile <paramref name="p"/> (entre 0 et 100)</summary>
-		/// <param name="p">Valeur du percentile, entre 0 et 100 (ex: 50 pour la médiane)</param>
-		/// <returns>Valeur du percentile correspondante</returns>
+		/// <summary>Returns the value of percentile <paramref name="p"/> (between 0 and 100)</summary>
+		/// <param name="p">Percentile value, between 0 and 100 (e.g. 50 for the median)</param>
+		/// <returns>Corresponding percentile value</returns>
 		public double Percentile(double p)
 		{
 			double threshold = this.Count * (p / 100.0d);
@@ -188,7 +188,7 @@ namespace FdbShell
 			return this.Max;
 		}
 
-		/// <summary>Retourne la valeur moyenne</summary>
+		/// <summary>Returns the average value</summary>
 		public double Average => this.Count == 0 ? 0 : (this.Sum / this.Count);
 
 		public static string FormatHistoBar(double value, int chars, char pad = '\0', bool sparse = false)

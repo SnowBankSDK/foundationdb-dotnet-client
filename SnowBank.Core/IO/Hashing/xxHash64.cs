@@ -28,17 +28,17 @@ namespace SnowBank.IO.Hashing
 {
 	using System.Runtime.InteropServices;
 
-	/// <summary>Calcul de hash xxHash sur 64 bits</summary>
-	/// <remarks>IMPORTANT: Ce hash n'est PAS cryptographique ! Il peut leaker des informations sur les données hashées, et ne doit donc pas être utilisé publiquement dans un scenario de protection de données! (il faut plutot utiliser SHA ou HMAC pour ce genre de choses)</remarks>
+	/// <summary>Computes a 64-bit xxHash</summary>
+	/// <remarks>IMPORTANT: This hash is NOT cryptographic! It can leak information about the hashed data, and must therefore not be used publicly in a data-protection scenario! (you should rather use SHA or HMAC for that kind of thing)</remarks>
 	[Obsolete("Use System.IO.Hashing.XxHash64 instead")]
 	public static class XxHash64
 	{
 		// From https://code.google.com/p/xxhash/
 
-		// En théorie, 2x plus rapide que XXH32 sur x64, par contre beaucoup plus lent (~3x) sur x86
+		// In theory, 2x faster than XXH32 on x64, but much slower (~3x) on x86
 		// See http://fastcompression.blogspot.fr/2014/07/xxhash-wider-64-bits.html
 
-		// Implémentation basée sur le patch r35: https://code.google.com/p/xxhash/source/detail?r=35
+		// Implementation based on patch r35: https://code.google.com/p/xxhash/source/detail?r=35
 
 		private const ulong INITIAL_SEED = 0;
 
@@ -51,9 +51,9 @@ namespace SnowBank.IO.Hashing
 		/// <summary>Hash of the empty buffer</summary>
 		public const ulong HASH0 = 0xEF46DB3751D8E999UL;
 
-		/// <summary>Calcul le xxHash 64-bit d'un chaîne (a partir de sa représentation UTF-16 en mémoire)</summary>
-		/// <param name="text">Chaîne de texte à convertir</param>
-		/// <returns>Code xxHash 64 bit calculé sur la représentation UTF-16 de la chaîne. Attention: N'est pas garantit unique!</returns>
+		/// <summary>Computes the 64-bit xxHash of a string (from its in-memory UTF-16 representation)</summary>
+		/// <param name="text">Text string to convert</param>
+		/// <returns>64-bit xxHash code computed over the UTF-16 representation of the string. Warning: Not guaranteed to be unique!</returns>
 		public static ulong FromText(string text)
 		{
 			Contract.NotNull(text);
@@ -67,8 +67,8 @@ namespace SnowBank.IO.Hashing
 			}
 		}
 
-		/// <summary>Calcul le xxHash 64-bit d'un chaîne (a partir de sa représentation UTF-16 en mémoire)</summary>
-		/// <returns>Code xxHash 64 bit calculé sur la représentation UTF-16 de la chaîne. Attention: N'est pas garantit unique!</returns>
+		/// <summary>Computes the 64-bit xxHash of a string (from its in-memory UTF-16 representation)</summary>
+		/// <returns>64-bit xxHash code computed over the UTF-16 representation of the string. Warning: Not guaranteed to be unique!</returns>
 		public static ulong FromText(ReadOnlySpan<char> buffer)
 		{
 			unsafe

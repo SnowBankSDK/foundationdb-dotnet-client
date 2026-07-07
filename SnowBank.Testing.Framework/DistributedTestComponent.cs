@@ -541,7 +541,7 @@ namespace SnowBank.Testing.Framework
 						hostBuilder.WebHost.UseWebRoot(Path.Combine(contentRoot, "wwwroot"));
 					}
 
-					// assembly dans lequel le test appelant se trouve
+					// assembly in which the calling test is located
 					if (!string.IsNullOrWhiteSpace(testAssemblyName))
 					{
 						hostBuilder.WebHost.UseSetting(WebHostDefaults.StaticWebAssetsKey, testAssemblyName + ".staticwebassets.runtime.json");
@@ -1212,7 +1212,7 @@ namespace SnowBank.Testing.Framework
 					await component.Stop(stopToken);
 				}
 
-				// stop le reste du component
+				// stop the rest of the component
 				if (m_services is not null)
 				{
 					try

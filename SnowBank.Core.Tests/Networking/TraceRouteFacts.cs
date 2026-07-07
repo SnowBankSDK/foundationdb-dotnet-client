@@ -39,7 +39,7 @@ namespace SnowBank.Networking.Tests
 		[Test]
 		public async Task Test_Can_Traceroute_Internet()
 		{
-			// ce test a besoin de faire des tests avec des "vrai" IP, et donc le runner doit avoir accès au lan et a internet!
+			// this test needs to run with "real" IPs, so the runner must have access to the LAN and the internet!
 			var target = IPAddress.Parse("8.8.8.8"); // Google DNS
 
 			Log($"# Traceroute: {target}");
@@ -49,11 +49,11 @@ namespace SnowBank.Networking.Tests
 			Assert.That(res.Status, Is.EqualTo(IPStatus.Success), $"Failed to traceroute {target}");
 			Assert.That(res.Hops, Has.Count.GreaterThan(3), $"Should need at least 3 hops for {target}");
 			Assert.That(res.Hops.Select(x => x.Address), Is.All.Not.Null, "Hops[*].Address");
-			//note: on ne peut pas facilement tester "Distance" car parfois il y a des nodes qui ne répondent pas.
-			// => on juste vérifier qu'ils sont positifs, et tous différents
+			//note: we cannot easily test "Distance" because sometimes there are nodes that don't respond.
+			// => we just check that they are positive, and all different
 			Assert.That(res.Hops.Select(x => x.Distance), Is.Unique.And.All.GreaterThan(0), "Hops[*].Distance");
 			Assert.That(res.Hops.Select(x => x.Rtt), Is.All.GreaterThan(TimeSpan.Zero), "Hops[*].Rtt");
-			//note: seulement les premiers hops sont "private", les derniers sont "public"!
+			//note: only the first hops are "private", the last ones are "public"!
 
 			Assert.That(res.Hops[^1].Address, Is.EqualTo(target), "Last address should be the target");
 			Assert.That(res.Hops.Take(res.Hops.Count - 1).Select(x => x.Address), Is.All.Not.EqualTo(target), "All except the last should be different than the target!");
@@ -66,7 +66,7 @@ namespace SnowBank.Networking.Tests
 		[Ignore("This test requires an actual LAN to run")]
 		public async Task Test_Can_Traceroute_LAN_Host()
 		{
-			// ce test a besoin de faire des tests avec des "vrai" IP, et donc le runner doit avoir accès au lan et a internet!
+			// this test needs to run with "real" IPs, so the runner must have access to the LAN and the internet!
 			var target = IPAddress.Parse("10.10.0.1"); // DC01
 
 			Log($"# Traceroute: {target}");
@@ -84,7 +84,7 @@ namespace SnowBank.Networking.Tests
 		[Test]
 		public async Task Test_Can_Traceroute_Self()
 		{
-			// on va tracertoute l'ip public du host local
+			// we traceroute the public ip of the local host
 #if NET6_0_OR_GREATER
 			var target = IPAddressHelpers.GetPreferredAddress(await Dns.GetHostAddressesAsync(Environment.MachineName, AddressFamily.InterNetwork, this.Cancellation));
 #else
@@ -105,16 +105,16 @@ namespace SnowBank.Networking.Tests
 		[Ignore("This test requires an actual LAN to run")]
 		public async Task Test_Can_Traceroute_LAN_Host_Unreachable()
 		{
-			// ce test a besoin de faire des tests avec des "vrai" IP, et donc le runner doit avoir accès au lan et a internet!
+			// this test needs to run with "real" IPs, so the runner must have access to the LAN and the internet!
 
-			var target = IPAddress.Parse("10.10.254.253"); // y a interet a ce qu'elle existe pas!
+			var target = IPAddress.Parse("10.10.254.253"); // it had better not exist!
 
 			Log($"# Traceroute: {target}");
 			var (res, elapsed) = await Time(() => IPAddressHelpers.TracerouteAsync(target, 16, TimeSpan.FromSeconds(2), this.Cancellation));
 			Log($"> [{elapsed.TotalSeconds:N3}s]");
 			Dump(res);
-			//note: suivant le coefficient de marée, on a soit DestinationHostUnreachable, soit TimedOut.
-			// => les conditions exactes pouir avoir DestinationHostUnreachable sont assez difficiles a reproduire exactement, surtout en CI!
+			//note: depending on the tide coefficient, we get either DestinationHostUnreachable or TimedOut.
+			// => the exact conditions to get DestinationHostUnreachable are quite hard to reproduce exactly, especially in CI!
 			Assert.That(res.Status, Is.EqualTo(IPStatus.DestinationHostUnreachable).Or.EqualTo(IPStatus.TimedOut), $"Traceroute should have failed: {target}");
 			Assert.That(res.Hops, Has.Count.EqualTo(1), $"Only one hop {target}");
 		}
@@ -123,10 +123,10 @@ namespace SnowBank.Networking.Tests
 		[Ignore("This test requires an actual LAN to run")]
 		public async Task Test_Can_Traceroute_LAN_Host_Timeout()
 		{
-			// ce test a besoin de faire des tests avec des "vrai" IP, et donc le runner doit avoir accès au lan et a internet!
+			// this test needs to run with "real" IPs, so the runner must have access to the LAN and the internet!
 
-			// IP qui n'est pas dans notre /16, mais qui est quand meme dans le coin!
-			var target = IPAddress.Parse("10.254.253.252"); // y a interet a ce qu'elle existe pas!
+			// IP that is not in our /16, but is still in the neighborhood!
+			var target = IPAddress.Parse("10.254.253.252"); // it had better not exist!
 
 			Log($"# Traceroute: {target}");
 			var (res, elapsed) = await Time(() => IPAddressHelpers.TracerouteAsync(target, 16, TimeSpan.FromSeconds(2), this.Cancellation));

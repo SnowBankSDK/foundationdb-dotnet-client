@@ -51,9 +51,9 @@ namespace System
 		// ==================================================================================
 		//  m_hasValue |   m_value   |  m_error     | description
 		// ==================================================================================
-		//     True    |   Résultat  |   null       | Le calcul a produit un résultat (qui peut être le défaut du type, mais qui n'est pas "vide")
-		//     False   |      -      |   null       | Le calcul n'a pas produit de résultat
-		//     False   |      -      |   Exception  | Le calcul a provoqué une exception
+		//     True    |   Result    |   null       | The computation produced a result (which may be the type's default, but which is not "empty")
+		//     False   |      -      |   null       | The computation did not produce a result
+		//     False   |      -      |   Exception  | The computation threw an exception
 
 		/// <summary>If <see langword="true"/>, there is a value. If <see langword="false"/>, either no value or an exception</summary>
 		private readonly T? m_value;

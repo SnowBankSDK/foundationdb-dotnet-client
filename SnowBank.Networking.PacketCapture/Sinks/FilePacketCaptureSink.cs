@@ -71,7 +71,7 @@ namespace SnowBank.Networking.PacketCapture
 			filePath = filePath.Replace("{Path}", metadata.Request.Path?.Replace('/', '~') ?? "unkown");
 			filePath = filePath.Replace("{TraceId}", metadata.TraceId.Replace(':', '_'));
 			string path = Path.Combine(basePath, filePath);
-			//BUGBUG: TODO: comment faire de manière efficace pour vérifier que le filepath ne s'est pas échapé du basepath?
+			//BUGBUG: TODO: how to efficiently check that the filepath has not escaped the basepath?
 			Contract.Debug.Ensures(!System.IO.Path.GetRelativePath(basePath, path).StartsWith('.'), "Packet path cannot escape the base path!");
 			return path;
 		}

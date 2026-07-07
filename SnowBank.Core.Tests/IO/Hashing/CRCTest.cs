@@ -54,7 +54,7 @@ namespace SnowBank.IO.Hashing.Tests
 			Assert.That(Fnv1Hash32.FromBytes(new byte[] { 65, 66, 67 }), Is.EqualTo(0x634CAFEB));
 			Assert.That(Fnv1Hash32.FromBytes(new byte[] { 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64 }), Is.EqualTo(0x1282A4EF));
 
-			// TODO: utiliser des test vectors à partir de http://www.isthe.com/chongo/src/fnv/test_fnv.c
+			// TODO: use test vectors from http://www.isthe.com/chongo/src/fnv/test_fnv.c
 		}
 
 		[Test]
@@ -80,7 +80,7 @@ namespace SnowBank.IO.Hashing.Tests
 			Assert.That(Fnv1Hash64.FromUInt16(0xFEDC), Is.EqualTo(0x0831AC07B4E9FAE7));
 			Assert.That(Fnv1Hash64.FromByte(42), Is.EqualTo(0xAF63BD4C8601B7F5));
 
-			// les FromXXX doivent être équivalent a FromBytes(XXX.ToBytes())
+			// the FromXXX must be equivalent to FromBytes(XXX.ToBytes())
 			Assert.That(Fnv1Hash64.FromInt64(0x0123456789abcdefL), Is.EqualTo(Fnv1Hash64.FromBytes(BitConverter.GetBytes(0x0123456789abcdefL))));
 			Assert.That(Fnv1Hash64.FromUInt64(0xfedcba9876543210UL), Is.EqualTo(Fnv1Hash64.FromBytes(BitConverter.GetBytes(0xfedcba9876543210UL))));
 			Assert.That(Fnv1Hash64.FromInt32(0x12345678), Is.EqualTo(Fnv1Hash64.FromBytes(BitConverter.GetBytes(0x12345678))));
@@ -92,7 +92,7 @@ namespace SnowBank.IO.Hashing.Tests
 			Assert.That(Fnv1Hash64.FromBytes(Guid.Parse("c71679bc-14fd-4373-a10a-28e3789102de").ToByteArray()), Is.EqualTo(0x5BCB33EF746B1C43));
 			Assert.That(Fnv1Hash64.FromGuid(Guid.Parse("c71679bc-14fd-4373-a10a-28e3789102de")), Is.EqualTo(0x5BCB33EF746B1C43));
 
-			// TODO: utiliser des test vectors à partir de http://www.isthe.com/chongo/src/fnv/test_fnv.c
+			// TODO: use test vectors from http://www.isthe.com/chongo/src/fnv/test_fnv.c
 		}
 
 		#endregion
@@ -103,8 +103,8 @@ namespace SnowBank.IO.Hashing.Tests
 		[SuppressMessage("ReSharper", "AssignNullToNotNullAttribute")]
 		public void TestXxHash32()
 		{
-			//TODO: je n'ai pas vraiment trouvé de test suite avec des valeurs de ref
-			// tout ce que j'ai trouvé c'est que Hash(123, "test") => 2758658570
+			//TODO: I haven't really found a test suite with reference values
+			// all I found is that Hash(123, "test") => 2758658570
 
 			Assert.That(XxHash32.Compute(Array.Empty<byte>()), Is.EqualTo(0x02CC5D05));
 			Assert.That(XxHash32.Compute(new byte[] { 65, 66, 67 }), Is.EqualTo(0x80712ED5));
@@ -191,7 +191,7 @@ namespace SnowBank.IO.Hashing.Tests
 			Assert.That(XxHash64.FromText("Hello World "), Is.EqualTo(17307987487561287563UL));
 			Assert.That(XxHash64.FromText("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"), Is.EqualTo(12826112420584064250));
 			Assert.That(XxHash64.FromText("foobar".AsSpan(1, 0)), Is.EqualTo(17241709254077376921UL));
-			//note: taille == 11 et non pas 10 car il y a un diacrytic!
+			//note: length == 11 and not 10 because there is a diacritic!
 			Assert.That(XxHash64.FromText("Spın̈al Tap"), Is.EqualTo(14255674348978296242UL));
 			Assert.That(XxHash64.FromText("This is Spın̈al Tap!!!".AsSpan("This is ".Length, "Spın̈al Tap".Length)), Is.EqualTo(14255674348978296242UL));
 			Assert.That(XxHash64.FromText("foobar".ToCharArray().AsSpan().Slice(0, 0)), Is.EqualTo(17241709254077376921));
@@ -375,16 +375,16 @@ namespace SnowBank.IO.Hashing.Tests
 
 		#region Verification Tests....
 
-		/// <summary>Helper fonction utilisée pour vérifier une Hash Function</summary>
+		/// <summary>Helper function used to verify a Hash Function</summary>
 		public static uint VerificationTest(int hashBits, Func<uint, byte[], byte[]> hashFunction)
 		{
 			Assert.That(hashFunction, Is.Not.Null, "hashFunction");
 
 			int hashBytes = hashBits / 8;
 
-			// Calcul les 256 hashs des vecteurs {0}, {0, 1}, {0, 1, 2}, ...., {0, ..., 255}
-			// Concatènes chaque hash dans un tableau de 4 * 256 bytes (ie : bytes 0-3 = hash de {0}, bytes 4-7 = hash de {0, 1}, bytes 1023-1023 = hash de {0, ..., 255 }
-			// Calcul le hash final sur le vecteur total
+			// Compute the 256 hashes of the vectors {0}, {0, 1}, {0, 1, 2}, ...., {0, ..., 255}
+			// Concatenate each hash into an array of 4 * 256 bytes (ie: bytes 0-3 = hash of {0}, bytes 4-7 = hash of {0, 1}, bytes 1023-1023 = hash of {0, ..., 255 }
+			// Compute the final hash over the whole vector
 
 			var key = new byte[256];
 			var hashes = new byte[hashBytes * 256];
@@ -408,8 +408,8 @@ namespace SnowBank.IO.Hashing.Tests
 
 		private static byte[] Md5RefTest(uint seed, byte[] bytes)
 		{
-			// note: la seed est ignorée!
-			// on ne retourne que les 4 premiers octets
+			// note: the seed is ignored!
+			// we only return the first 4 bytes
 
 			using (var md5 = System.Security.Cryptography.MD5.Create())
 			{
@@ -423,8 +423,8 @@ namespace SnowBank.IO.Hashing.Tests
 		[Test]
 		public void Test_VerificitationTest_Md5_Reference()
 		{
-			// ce test est la plutôt pour vérifier que notre vérificateur fonctionne :)
-			// (on utilise l'implémentation de référence de MD5, donc si le hash calculé n'est pas celui attendu, c'est que le framework de test est buggué...)
+			// this test is here rather to verify that our verifier works :)
+			// (we use the reference implementation of MD5, so if the computed hash is not the expected one, it means the test framework is buggy...)
 
 			var found = VerificationTest(32, (seed, bytes) => Md5RefTest(seed, bytes));
 			// cf http://code.google.com/p/smhasher/source/browse/trunk/main.cpp

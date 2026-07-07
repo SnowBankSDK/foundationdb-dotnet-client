@@ -81,7 +81,7 @@ namespace SnowBank.Buffers
 
 		/// <summary>Create a new empty binary buffer with an initial allocated size</summary>
 		/// <param name="capacity">Initial capacity of the buffer</param>
-		/// <param name="pool">Pool qui sera utilisé pour la gestion des buffers</param>
+		/// <param name="pool">Pool that will be used to manage the buffers</param>
 		public SliceWriter([Positive] int capacity, ArrayPool<byte>? pool)
 		{
 			Contract.Positive(capacity);
@@ -92,7 +92,7 @@ namespace SnowBank.Buffers
 		}
 
 		/// <summary>Create a new empty binary buffer with an initial allocated size</summary>
-		/// <param name="pool">Pool qui sera utilisé pour la gestion des buffers</param>
+		/// <param name="pool">Pool that will be used to manage the buffers</param>
 		public SliceWriter(ArrayPool<byte>? pool)
 		{
 			this.Buffer = [ ];

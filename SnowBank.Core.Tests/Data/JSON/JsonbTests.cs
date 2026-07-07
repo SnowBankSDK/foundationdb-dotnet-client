@@ -166,8 +166,8 @@ namespace SnowBank.Data.Json.Binary.Tests
 		[Test]
 		public void Test_Decode_Reference_Scalars()
 		{
-			// sanitity test: on vérifie qu'on est capable de décoder des versions binaires de référence
-			// note: si le format binaire change, il ne faut pas oublier de mettre à jour les encodages de référence!
+			// sanity test: we check that we can decode reference binary versions
+			// note: if the binary format changes, don't forget to update the reference encodings!
 
 			#region strings
 
@@ -235,7 +235,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 				1234
 			);
 
-			// zéro (literal)
+			// zero (literal)
 			VerifyReferenceEncoding(
 				"0D 00 00 00 01 00 00 50 01 00 00 E0 30",
 				0
@@ -356,7 +356,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 				Foo = new { Bar = new { Baz = 123 } }
 			}));
 
-			// objet avec beaucoup de fields (hashed!)
+			// object with many fields (hashed!)
 			VerifyRoundtrip(JsonObject.FromObject(new
 			{
 				One = 1,
@@ -442,7 +442,7 @@ namespace SnowBank.Data.Json.Binary.Tests
 					int idx = i % items.Length;
 					var k = items[idx].Key;
 					sw.Restart();
-					// we have an issue where it is "too fast" in Release and the stopwatch may or may not have enough precision pour measure the time taken
+					// we have an issue where it is "too fast" in Release and the stopwatch may or may not have enough precision to measure the time taken
 					int x = Jsonb.Get<int>(packed, k, -1);
 					histo.Add(sw.Elapsed);
 					if (x != idx) Assert.That(x, Is.EqualTo(items[idx].Value), "Found the wrong field!");

@@ -145,7 +145,7 @@ namespace SnowBank.Networking.PacketCapture
 			}
 		}
 
-		//TODO: REVIEW: passer des MemoryStream plutot?
+		//TODO: REVIEW: pass MemoryStreams instead?
 		public ValueTask Emit(CapturedPacketMetadata metadata, Slice requestBody, Slice responseBody)
 		{
 
@@ -171,10 +171,10 @@ namespace SnowBank.Networking.PacketCapture
 					{
 						await this.Pipeline.Writer.WriteAsync((null, default, default, tcs), cts.Token);
 
-						// on doit stopper si:
-						// - notre signal est trigger par la run task
-						// - la run task a stoppé pour une raison ou une autre
-						// - le CancellationToken de l'appelant est triggered
+						// we must stop if:
+						// - our signal is triggered by the run task
+						// - the run task has stopped for one reason or another
+						// - the caller's CancellationToken is triggered
 						var delay = Task.Delay(Timeout.Infinite, cts.Token);
 						var t = await Task.WhenAny(tcs.Task, delay, this.RunTask);
 						if (t == delay)
@@ -224,14 +224,14 @@ namespace SnowBank.Networking.PacketCapture
 					{
 						if (entry.Signal != null)
 						{
-							// on doit flush le batch existant s'il y en a un
+							// we must flush the existing batch if there is one
 							if (offset != 0)
 							{
 								await EmitPacketBatch(buffer.AsMemory(0, offset), ct);
 								offset = 0;
 							}
 
-							// puis on peut trigger le signal
+							// then we can trigger the signal
 							entry.Signal.TrySetResult();
 							continue;
 						}
@@ -269,7 +269,7 @@ namespace SnowBank.Networking.PacketCapture
 
 		private async ValueTask EmitPacketBatch(ReadOnlyMemory<CapturedPacket> packets, CancellationToken ct)
 		{
-			// on ajoute les packets a notre store local (qui peut faire dev>null selon la cfg)
+			// we add the packets to our local store (which can act as dev>null depending on the config)
 			await this.Store.AddBatch(packets, ct);
 
 			foreach (var sink in this.Sinks)

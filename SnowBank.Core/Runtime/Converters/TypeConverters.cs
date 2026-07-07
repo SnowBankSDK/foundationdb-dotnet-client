@@ -833,7 +833,7 @@ namespace SnowBank.Runtime.Converters
 		[return: NotNullIfNotNull("value")]
 		public static string? ToString<TInput>(TInput value)
 		{
-			//note: raccourci pour Convert<TInput, string>(..) dont le but est d'être inliné par le JIT en release
+			//note: shortcut for Convert<TInput, string>(..) whose purpose is to be inlined by the JIT in release
 			return Cache<TInput, string?>.Converter.Convert(value);
 		}
 
@@ -847,7 +847,7 @@ namespace SnowBank.Runtime.Converters
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static TOutput FromString<TOutput>(string? text)
 		{
-			//note: raccourci pour Convert<TInput, string>(..) dont le but est d'être inliné par le JIT en release
+			//note: shortcut for Convert<TInput, string>(..) whose purpose is to be inlined by the JIT in release
 			return Cache<string?, TOutput>.Converter.Convert(text);
 		}
 

@@ -1283,7 +1283,7 @@ namespace SnowBank.Data.Json
 
 			writer.MarkVisited(enumerable);
 
-			// les valeurs sont déjà des string
+			// the values are already strings
 			using (var it = enumerable.GetEnumerator())
 			{
 				int n = 10;
@@ -1783,7 +1783,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (dictionary.Count == 0)
-			{ // vide => "{}"
+			{ // empty => "{}"
 				writer.WriteEmptyObject(); // "{}"
 				return;
 			}

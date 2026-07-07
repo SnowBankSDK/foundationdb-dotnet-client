@@ -1119,7 +1119,7 @@ namespace SnowBank.Diagnostics.Contracts
 					// README: If you breakpoint here, you are too deep and must go up the stack, until you find the method that invoked any of the Contract.xxx(...) helpers!
 					if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
 					// note: starting from VS 2015 Up2, [DebuggerNonUserCode] has no effect anymore, if the registry key AlwaysEnableExceptionCallbacksOutsideMyCode is not set to 1, for performance reasons.
-					// cf "How to Suppress Ignorable Exceptions with DebuggerNonUserCode" dans https://blogs.msdn.microsoft.com/visualstudioalm/2016/02/12/using-the-debuggernonusercode-attribute-in-visual-studio-2015/
+					// cf "How to Suppress Ignorable Exceptions with DebuggerNonUserCode" at https://blogs.msdn.microsoft.com/visualstudioalm/2016/02/12/using-the-debuggernonusercode-attribute-in-visual-studio-2015/
 #endif
 					if (ex is not null) return ex;
 					// if not null, continue

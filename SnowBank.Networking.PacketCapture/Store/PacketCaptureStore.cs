@@ -154,7 +154,7 @@ namespace SnowBank.Networking.PacketCapture
 
 			if (cursor >= last)
 			{ // caller is up to date
-				//TODO:BUGBUG: si cursor > last, y a un problème! (reboot?)
+				//TODO:BUGBUG: if cursor > last, there is a problem! (reboot?)
 				return Task.FromResult(result);
 			}
 			

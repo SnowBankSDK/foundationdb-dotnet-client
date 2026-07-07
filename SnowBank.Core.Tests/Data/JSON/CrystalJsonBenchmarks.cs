@@ -119,7 +119,7 @@ namespace SnowBank.Data.Json.Tests
 					{
 						Id = 1,
 						Title = "The Big Bang Theory",
-						Cancelled = false, // (j'espère que c'est toujours le cas ^^; )
+						Cancelled = false, // (I hope that's always the case ^^; )
 						Cast = new[] { new { Character = "Sheldon Cooper", Actor = "Jim Parsons", Female = false }, new { Character = "Leonard Hofstadter", Actor = "Johny Galecki", Female = false }, new { Character = "Penny", Actor = "Kaley Cuoco", Female = true }, new { Character = "Howard Wolowitz", Actor = "Simon Helberg", Female = false }, new { Character = "Raj Koothrappali", Actor = "Kunal Nayyar", Female = false }, },
 						Seasons = 4,
 						ScoreIMDB = 8.4, // (26/10/2010)
@@ -195,7 +195,7 @@ namespace SnowBank.Data.Json.Tests
 			Log($"* CRYSTAL DESERIALIZATION: {report.IterationsPerRun:N0} in {report.BestDuration.TotalMilliseconds:F1} ms at {report.BestIterationsPerSecond:N0} op/s ({report.BestIterationsNanos:N0} nanos)");
 
 #if ENABLE_NEWTONSOFT
-			// comparaison avec NewtonSoft.JSON
+			// comparison with NewtonSoft.JSON
 			if (newtonOk)
 			{
 				report = RobustBenchmark.Run(
@@ -277,7 +277,7 @@ namespace SnowBank.Data.Json.Tests
 			var media = MediaContent.GetMedia1();
 
 			#region Warmup
-			{ // premier run pour vérifier que tout est ok
+			{ // first run to check that everything is ok
 				
 				Log("Warming up...");
 				
@@ -348,7 +348,7 @@ namespace SnowBank.Data.Json.Tests
 			var media = MediaContent.GetMedia1();
 
 			#region Warmup
-			// premier run pour vérifier que tout est ok
+			// first run to check that everything is ok
 			for (int i = 0; i < 10; i++)
 			{
 				_ = CrystalJson.Serialize(media, CrystalJsonSettings.JsonCompact);
@@ -410,7 +410,7 @@ namespace SnowBank.Data.Json.Tests
 
 			#region Warmup
 			string jsonText = CrystalJson.Serialize(media, CrystalJsonSettings.JsonCompact);
-			{ // premier run pour vérifier que tout est ok
+			{ // first run to check that everything is ok
 				Assert.That(CrystalJson.Deserialize<MediaContent>(jsonText), Is.EqualTo(media), "clone != media ??");
 #if ENABLE_NEWTONSOFT
 				Assert.That(new NJ.JsonSerializer().Deserialize<MediaContent>(new NJ.JsonTextReader(new StringReader(jsonText))), Is.EqualTo(media), "newtonsoft check");
@@ -809,7 +809,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Bench_Compare_Utf8_Readers()
 		{
-			// Ce test compare les différentes façons de parser du JSON: via strings, via des Slice, ou via un Stream, avec ASCII vs UTF-8
+			// This test compares the different ways of parsing JSON: via strings, via Slices, or via a Stream, with ASCII vs UTF-8
 
 			Log("# Warming up...");
 

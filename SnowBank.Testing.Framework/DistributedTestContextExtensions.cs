@@ -463,14 +463,14 @@ namespace SnowBank.Testing.Framework
 			app.UseEndpoints(builder =>
 			{
 				#region Test Endpoints...
-				// Endpoints spécifiques pour les tests unitaires
+				// Endpoints specific to unit tests
 
 				// GET /test/status => 200 OK, { "Code": "success", "SysTime": "....", "Rnd": "GUID" }
 				builder.MapGet(
 					"/test/status",
 					async context =>
 					{
-						//HACKHACK: je sais pas vraiment comment faire ça de manière idiomatique!
+						//HACKHACK: I don't really know how to do this idiomatically!
 						if (context.Request.Headers["Accept"].Any(x => x == "application/json" || (x is not null && x.StartsWith("application/json;", StringComparison.Ordinal))))
 						{
 							var json = new JsonObject

@@ -30,11 +30,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 			// The only distinctive signs are: (cf http://stackoverflow.com/questions/315146/anonymous-types-are-there-any-distingushing-characteristics )
 			// * Must be a class
 			// * must have the attribute [CompilerGeneratedAttribute]
-			// * Must be sealed Elle est sealed
+			// * Must be sealed
 			// * Must derive from System.Object
 			// * Must be generic, with has many type arguments than properties
 			// * Must have a single ctor, with the same number of parameters
-			// * Must override Equals, GetHashcode et ToString(), and nothing else
+			// * Must override Equals, GetHashcode and ToString(), and nothing else
 			// * Name will be "<>f_AnonymousType...." in C#, and "VB$AnonymousType..." in VB.NET
 
 			return type.IsClass
