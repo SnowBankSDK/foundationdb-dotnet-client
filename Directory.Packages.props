@@ -13,7 +13,8 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
     <PackageVersion Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageVersion Include="Microsoft.Bcl.HashCode" Version="6.0.0" />
-    <PackageVersion Include="Microsoft.Bcl.TimeProvider" Version="8.0.1" />
+    <!-- Microsoft.Bcl.TimeProvider is a platform-wave package (SignalR.Client on net8+ transitively pins it >= 10.0.9),
+         so it is versioned per-TFM in the buckets below, not here. -->
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="8.10.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
@@ -85,6 +86,7 @@
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.4.6" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Bcl.TimeProvider" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
@@ -114,6 +116,7 @@
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.4.6" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.17" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Bcl.TimeProvider" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
@@ -143,6 +146,7 @@
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.4.6" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.28" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Bcl.TimeProvider" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
@@ -182,6 +186,9 @@
     <PackageVersion Update="Microsoft.SourceLink.GitHub" Version="8.0.0" />
     <PackageVersion Update="System.IO.Pipelines" Version="6.0.0" />
     <PackageVersion Update="System.Threading.Channels" Version="6.0.0" />
+    <!-- SignalR forces TimeProvider>=10.0.9 on net8+, but ns2.0 has no such consumer: keep the 8.0.1 LTS floor
+         (net472-friendly, and its ns2.0 asset matches the Microsoft.Bcl.AsyncInterfaces 8.0.0 pin below). -->
+    <PackageVersion Update="Microsoft.Bcl.TimeProvider" Version="8.0.1" />
     <!-- ns2.0-only packages (in-box / SDK-provided on modern targets, so absent from the other groups) -->
     <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
     <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="8.0.0" />

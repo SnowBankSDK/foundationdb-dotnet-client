@@ -224,8 +224,6 @@ namespace SnowBank.Threading
 		{
 			ct.ThrowIfCancellationRequested();
 			var delay = GetNext(out _);
-			// the Delay extension (Microsoft.Bcl.TimeProvider) has the same shape on every target,
-			// and delegates to Task.Delay(delay, provider, ct) on the modern ones
 			await this.Time.Delay(delay, ct).ConfigureAwait(false);
 			return delay;
 		}

@@ -38,9 +38,8 @@
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 		<PackageReference Include="Microsoft.Extensions.Options" />
-		<!-- provider.Delay(...) / provider.CreateCancellationTokenSource(...) extension methods: the modern build of
-		     the package delegates to the built-in BCL overloads, giving ONE call shape across all targets -->
-		<PackageReference Include="Microsoft.Bcl.TimeProvider" />
+		<!-- Microsoft.Bcl.TimeProvider is NOT referenced here: TimeProvider is in-box on net8+, and the one Delay
+		     call site uses the in-box Task.Delay(delay, provider, ct) overload (see ExponentialRandomizedBackoff). -->
 		<PackageReference Include="NodaTime" />
 		<PackageReference Include="OpenTelemetry.Api" />
 		<PackageReference Include="System.IO.Pipelines" Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))" />
@@ -67,8 +66,8 @@
 		<PackageReference Include="PolySharp" PrivateAssets="all" />
 		<!-- System.HashCode for netstandard2.0 -->
 		<PackageReference Include="Microsoft.Bcl.HashCode" />
-		<!-- System.TimeProvider + ITimer + Delay/CreateCancellationTokenSource extensions for netstandard2.0
-		     (type-forwards to the real BCL type on net8+, so there is ONE TimeProvider identity everywhere) -->
+		<!-- System.TimeProvider + ITimer + the Task.Delay(..., TimeProvider, ...) extension for netstandard2.0.
+		     net8+ has all of these in-box, so this package is only referenced on this target. -->
 		<PackageReference Include="Microsoft.Bcl.TimeProvider" />
 		<!-- NodaTime types (Instant/ZonedDateTime/...) used by the CrystalJson converters -->
 		<PackageReference Include="NodaTime" />
