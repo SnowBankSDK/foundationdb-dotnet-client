@@ -205,6 +205,9 @@ namespace SnowBank.Testing
 			Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 #endif
 
+			// late fallback for runners that read Console.Out lazily; see EnsureUtf8Console for the real fix
+			EnsureUtf8Console();
+
 			// JIT warmup of a few common types
 			RobustHistogram.Warmup();
 			RobustBenchmark.Warmup();
@@ -216,6 +219,38 @@ namespace SnowBank.Testing
 				WriteToLog("WARN: Server GC is *NOT* enabled! Performance may be slower than expected");
 				WriteToLog("#########################################################################");
 				WriteToLog("");
+			}
+		}
+
+		/// <summary>Switches the process's console output to UTF-8, so the box-drawing glyphs used by the journals and state dumps survive redirection to log files</summary>
+		/// <remarks>
+		/// <para>On Windows the default console output encoding is the OEM codepage, which mangles '─'/'│' when the
+		/// output is redirected to a log file (the bytes render as 'Ä'/'³' in a viewer that assumes ANSI) and silently
+		/// DESTROYS the glyphs it cannot represent ('╭', '╌', '⇨' become '?'). UTF-8 round-trips everything.</para>
+		/// <para>The <see cref="SimpleTest"/> static constructor already calls this, but test runners that cache their
+		/// output writer at startup (e.g. the Microsoft.Testing.Platform console host) do so BEFORE any test framework
+		/// code runs: to beat them, call this from a <c>[ModuleInitializer]</c> in the TEST assembly itself (the entry
+		/// module's initializer is guaranteed to run before Main):</para>
+		/// <code>
+		/// internal static class TestHostBootstrap
+		/// {
+		///     [ModuleInitializer]
+		///     internal static void Init() => SimpleTest.EnsureUtf8Console();
+		/// }
+		/// </code>
+		/// </remarks>
+		public static void EnsureUtf8Console()
+		{
+			try
+			{
+				if (!Equals(Console.OutputEncoding, Encoding.UTF8))
+				{
+					Console.OutputEncoding = Encoding.UTF8;
+				}
+			}
+			catch (Exception)
+			{
+				// no console handle (some hosted runners): keep the default, the output is not going to a console anyway
 			}
 		}
 
