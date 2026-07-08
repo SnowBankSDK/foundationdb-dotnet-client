@@ -36,21 +36,38 @@ namespace SnowBank.Networking
 	internal class VirtualHttpClientHandler : DelegatingHandler
 	{
 
-		public VirtualHttpClientHandler(VirtualNetworkMap map, Uri baseAddress, BetterHttpClientOptions options)
+		public VirtualHttpClientHandler(VirtualNetworkMap map, BetterHttpClientOptions options)
 		{
 			this.Map = map;
-			this.BaseAddress = baseAddress;
 			this.Options = options;
 		}
 
 		/// <summary>Virtual network</summary>
 		public VirtualNetworkMap Map { get; }
 
-		/// <summary>Base address of the HTTP request</summary>
-		public Uri BaseAddress { get; }
-
 		/// <summary>Options used for the request</summary>
 		public BetterHttpClientOptions Options { get; }
+
+		/// <summary>Real-network handler used to service <see cref="IVirtualNetworkHost.Passthrough">passthrough</see> hosts.</summary>
+		/// <remarks>Created lazily on the first passthrough request and reused for the life of this transport: the previous code
+		/// built a fresh <see cref="HttpClientHandler"/> (and <see cref="HttpMessageInvoker"/>) on EVERY request, leaking a
+		/// socket pool each time. Disposed in <see cref="Dispose(bool)"/>.</remarks>
+		private HttpMessageHandler? PassthroughHandler { get; set; }
+
+		/// <summary>Guards the lazy creation of <see cref="PassthroughHandler"/>.</summary>
+		private readonly object PassthroughLock = new();
+
+		/// <summary>Returns the shared real-network handler for passthrough hosts, creating and configuring it once.</summary>
+		private HttpMessageHandler GetOrCreatePassthroughHandler()
+		{
+			var handler = this.PassthroughHandler;
+			if (handler is not null) return handler;
+
+			lock (this.PassthroughLock)
+			{
+				return this.PassthroughHandler ??= this.Options.Configure(new HttpClientHandler());
+			}
+		}
 
 		/// <summary>Simulated source port for this handler, used only to give the host a distinct peer address in the
 		/// <c>X-SBK-ORIGIN</c> tag (see <see cref="SendAsync"/>).</summary>
@@ -106,14 +123,13 @@ namespace SnowBank.Networking
 		/// <inheritdoc />
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
+			// The transport is target-agnostic: nothing about the destination is captured at construction, so the request MUST
+			// carry an absolute URI (HttpClient resolves relative URIs against its BaseAddress before the handler runs). A bare
+			// invoker with a relative/missing URI has no base to resolve against - fail loudly rather than silently mis-route.
 			var uri = request.RequestUri;
-			if (uri == null)
+			if (uri is null || !uri.IsAbsoluteUri)
 			{
-				uri = this.BaseAddress;
-			}
-			else if (!uri.IsAbsoluteUri)
-			{
-				uri = new Uri(this.BaseAddress, uri);
+				throw new InvalidOperationException("The virtual transport requires an absolute request URI (set HttpClient.BaseAddress or send an absolute URI).");
 			}
 
 			// From the host name in the URI of the request, we will check:
@@ -154,12 +170,10 @@ namespace SnowBank.Networking
 
 			if (host.Passthrough)
 			{ // this is an actual real physical host, and the request will be sent "to the real world".
-				var handler = new HttpClientHandler()
-				{
-					// ??
-				};
-				var configuredHandler = this.Options.Configure(handler);
-				var invoker = new HttpMessageInvoker(configuredHandler);
+				// Reuse ONE cached real-network handler (see PassthroughHandler) instead of building a fresh handler + invoker
+				// - and leaking its socket pool - on every request. The invoker is a cheap throwaway wrapper; disposeHandler:
+				// false keeps the cached handler alive across calls.
+				var invoker = new HttpMessageInvoker(GetOrCreatePassthroughHandler(), disposeHandler: false);
 				return invoker.SendAsync(request, cancellationToken);
 			}
 
@@ -172,26 +186,28 @@ namespace SnowBank.Networking
 			if (local != null && remote != null)
 			{ // we found a valid path through the virtual network!
 
-				if (local.Type != VirtualNetworkType.LocalNetwork)
-				{
-					if (this.Map.Host.Offline)
-					{ // We are offline!
-						//TODO: maybe this would be a different error? if the local host has no online network adapter, the error may be different
+				// Offline/started state is resolved PER-REQUEST against the live host, so a client held across a node stop/start
+				// sees the outage (and the recovery) on its very next request. This now runs on every path, not just non-LAN
+				// hops: a stopped node tears down its listeners and drops off the network in every direction - previously a
+				// stopped host reached over the LAN leaked the binding's "server not ready" error instead of a network fault.
+				// The simulated fault shapes are unchanged.
+				if (this.Map.Host.Offline)
+				{ // the local host has no network -> it cannot send anything
+					//TODO: maybe this would be a different error? if the local host has no online network adapter, the error may be different
 
-						// => for now, simply simulate a generic connection timeout
-						throw SimulateConnectFailure($"Local virtual host '{this.Map.Host.Id}' is currently marked as offline and cannot send any request to remote host {host.Id}.");
-					}
+					// => for now, simply simulate a generic connection timeout
+					throw SimulateConnectFailure($"Local virtual host '{this.Map.Host.Id}' is currently marked as offline and cannot send any request to remote host {host.Id}.");
+				}
 
-					if (host.Offline)
-					{ // the host is offline (rebooting? disconnected from ethernet/Wi-Fi?)
+				if (host.Offline)
+				{ // the remote host is offline (stopped? rebooting? disconnected from ethernet/Wi-Fi?)
 
-						//TODO: depending on the situation, we should either simulate a name resolution failure, OR a tcp connect timeout:
-						// - if the DNS entry for the host is statically assigned, OR the caller still as the IP in cache from an earlier query, it would attempt to connect with the remote host, and fail with a timeout.
-						// - if the host use DHCP, and/or has a very short TTL, and/or use WINS, then the caller would fail with a name resolution error.
+					//TODO: depending on the situation, we should either simulate a name resolution failure, OR a tcp connect timeout:
+					// - if the DNS entry for the host is statically assigned, OR the caller still as the IP in cache from an earlier query, it would attempt to connect with the remote host, and fail with a timeout.
+					// - if the host use DHCP, and/or has a very short TTL, and/or use WINS, then the caller would fail with a name resolution error.
 
-						// => for now, simply assume that the DNS is static and/or already cached, and simulate a socket connection timeout (ie: the host was alive at some point and now suddenly became offline)
-						throw SimulateConnectFailure($"Remote virtual host '{host.Id}' is currently marked as offline and will not respond to any request.");
-					}
+					// => for now, simply assume that the DNS is static and/or already cached, and simulate a socket connection timeout (ie: the host was alive at some point and now suddenly became offline)
+					throw SimulateConnectFailure($"Remote virtual host '{host.Id}' is currently marked as offline and will not respond to any request.");
 				}
 
 				// ask the remote host if it can respond on the specified port
@@ -258,6 +274,17 @@ namespace SnowBank.Networking
 				linked.Dispose();
 				throw;
 			}
+		}
+
+		/// <inheritdoc />
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing)
+			{
+				this.PassthroughHandler?.Dispose();
+				this.PassthroughHandler = null;
+			}
+			base.Dispose(disposing);
 		}
 
 		/// <summary>Forwards an <see cref="HttpContent"/> and disposes the linked token source when the content is disposed.</summary>

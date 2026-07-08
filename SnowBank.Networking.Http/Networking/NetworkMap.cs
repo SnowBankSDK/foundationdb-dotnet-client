@@ -44,22 +44,29 @@ namespace SnowBank.Networking
 		/// <inheritdoc />
 		public IClock Clock { get; }
 
-		[Obsolete("Use CreateBetterHttpHandler instead")]
+		/// <inheritdoc />
+		public virtual HttpMessageHandler CreateTransportHandler(BetterHttpClientOptions options)
+		{
+			// raw transport only: a socket-backed handler for the real network. No filters/hooks/policies are applied here
+			// (those belong to the client pipeline); the request URI decides the destination per-request.
+			return new BetterHttpClientHandler(this);
+		}
+
+		[Obsolete("Use CreateTransportHandler instead")]
 		public virtual HttpMessageHandler? CreateHttpHandler(string hostOrAddress, int port)
 		{
 			//by default, let the caller use its own handler
 			return null;
 		}
 
-		protected virtual HttpMessageHandler CreateDefaultHttpHandler(Uri baseAddress, BetterHttpClientOptions options)
-		{
-			return options.Configure(new BetterHttpClientHandler(this));
-		}
-
 		/// <inheritdoc />
+		[Obsolete("Use CreateTransportHandler instead")]
 		public virtual HttpMessageHandler CreateBetterHttpHandler(Uri baseAddress, BetterHttpClientOptions options)
 		{
-			return CreateDefaultHttpHandler(baseAddress, options);
+			// Legacy bridge. The base address is ignored: the transport is target-agnostic and the request URI decides the
+			// destination per-request. Kept behaviourally identical to the previous creation path (options.Configure over the
+			// raw transport) so existing callers are unchanged until policy application relocates fully into the pipeline.
+			return options.Configure(CreateTransportHandler(options));
 		}
 
 		/// <inheritdoc />

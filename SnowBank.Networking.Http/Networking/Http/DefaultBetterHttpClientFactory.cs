@@ -61,7 +61,9 @@ namespace SnowBank.Networking.Http
 			this.Builder.Configure?.Invoke(options);
 
 			if (this.Map == null) throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use this method.");
+#pragma warning disable CS0618 // obsolete bridge, retired when policy application moves fully into the client pipeline
 			var handler = this.Map.CreateBetterHttpHandler(hostAddress, options);
+#pragma warning restore CS0618
 
 			return options.WrapHandler(handler, this.Services);
 		}
@@ -79,7 +81,9 @@ namespace SnowBank.Networking.Http
 			if (handler == null)
 			{
 				if (this.Map == null) throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use this method.");
+#pragma warning disable CS0618 // obsolete bridge, retired when policy application moves fully into the client pipeline
 				handler = this.Map.CreateBetterHttpHandler(hostAddress, options);
+#pragma warning restore CS0618
 				Contract.Debug.Assert(handler != null);
 			}
 

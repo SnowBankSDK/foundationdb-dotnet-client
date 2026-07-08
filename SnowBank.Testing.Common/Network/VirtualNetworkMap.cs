@@ -136,7 +136,7 @@ namespace SnowBank.Networking
 		}
 
 		/// <inheritdoc />
-		[Obsolete("Use CreateBetterHttpHandler instead")]
+		[Obsolete("Use CreateTransportHandler instead")]
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public override HttpMessageHandler? CreateHttpHandler(string hostOrAddress, int port)
 		{
@@ -223,9 +223,19 @@ namespace SnowBank.Networking
 		}
 
 		/// <inheritdoc />
+		public override HttpMessageHandler CreateTransportHandler(BetterHttpClientOptions options)
+		{
+			// target-agnostic virtual transport: the destination host is resolved per-request (inside SendAsync) against the
+			// LIVE map, so a client held across a node stop/start/remap reroutes on its very next request.
+			return new VirtualHttpClientHandler(this, options);
+		}
+
+		/// <inheritdoc />
+		[Obsolete("Use CreateTransportHandler instead")]
 		public override HttpMessageHandler CreateBetterHttpHandler(Uri baseAddress, BetterHttpClientOptions options)
 		{
-			return new VirtualHttpClientHandler(this, baseAddress, options);
+			// legacy bridge: the base address is ignored (the target is resolved per-request from the request URI)
+			return CreateTransportHandler(options);
 		}
 
 		/// <inheritdoc />

@@ -371,7 +371,8 @@ namespace SnowBank.Testing.Framework
 					options.AccessTokenProvider = accessTokenProvider;
 					options.HttpMessageHandlerFactory = (_) =>
 					{
-						var handler = remote.NetworkMap.CreateBetterHttpHandler(uri, new BetterHttpClientOptions());
+						// raw virtual transport for the SignalR connection; the target host is resolved per-request from the request URI
+						var handler = remote.NetworkMap.CreateTransportHandler(new BetterHttpClientOptions());
 						//TOOD: customize?
 						return handler;
 					};
