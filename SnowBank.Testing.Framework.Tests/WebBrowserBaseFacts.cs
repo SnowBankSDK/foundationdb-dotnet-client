@@ -91,12 +91,27 @@ namespace SnowBank.Testing.Framework.Tests
 
 			Assert.That(browser.InstallCalls, Is.EqualTo(1), "EnsureBrowserAvailableAsync should run once on start");
 
+			int captured = 0;
 			foreach (var capture in new[] { true, false })
 			{
 				var res = await browser.Fetch(web.GetUri("/hello"), capture, this.Cancellation);
 				Assert.That(res.Status, Is.EqualTo(HttpStatusCode.OK), $"capture={capture}");
 				Assert.That(Encoding.UTF8.GetString(res.Body), Is.EqualTo("world"), $"capture={capture}");
+
+				if (capture)
+				{ // the manager emits through an async channel: poll briefly until the packet lands
+					for (int i = 0; i < 40 && captured == 0; i++)
+					{
+						captured = context.GetNetworkPackets(_ => true).Count();
+						if (captured == 0) await Task.Delay(25, this.Cancellation);
+					}
+					Assert.That(captured, Is.GreaterThanOrEqualTo(1), "the capturing fetch must be recorded in the journal");
+				}
 			}
+
+			// the raw fetch must not have added any packet (small grace so a late emit would be seen)
+			await Task.Delay(250, this.Cancellation);
+			Assert.That(context.GetNetworkPackets(_ => true).Count(), Is.EqualTo(captured), "the raw fetch must not be captured");
 		}
 
 		/// <summary>Regression test for the comma-folding bug in <c>WebBrowserTestComponent.BuildResponse</c>: multiple

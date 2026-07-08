@@ -84,7 +84,8 @@ namespace SnowBank.Testing.Framework
 				EnsureCaptureStarted();
 
 				// Callback shape mirrors WebRequesterTestComponent.NavigateTo exactly (single ctx arg, closes over ct).
-				var client = this.GetBetterHttpClient(url);
+				// The client owns a fresh handler chain, so it must be disposed like the raw branch below does.
+				using var client = this.GetBetterHttpClient(url);
 				return await client.SendAsync(request, async (ctx) =>
 				{
 					var responseBody = await ctx.Response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);

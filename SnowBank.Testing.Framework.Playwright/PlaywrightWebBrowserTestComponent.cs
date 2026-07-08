@@ -89,28 +89,39 @@ namespace SnowBank.Testing.Framework.Playwright
 			}
 		}
 
+		// nullable backing properties: teardown must be able to observe "never assigned" without throwing,
+		// when the startup sequence failed midway (e.g. Chromium install failure after the driver was created)
+
+		private IPlaywright? DriverCore { get; set; }
+
+		private IBrowser? BrowserCore { get; set; }
+
+		private IBrowserContext? BrowserContextCore { get; set; }
+
+		private IPage? PageCore { get; set; }
+
 		public IPlaywright Driver
 		{
-			get => field ?? throw new InvalidOperationException("Browser is not ready yet");
-			set;
+			get => this.DriverCore ?? throw new InvalidOperationException("Browser is not ready yet");
+			set => this.DriverCore = value;
 		}
 
 		public IBrowser Browser
 		{
-			get => field ?? throw new InvalidOperationException("Browser is not ready yet");
-			set;
+			get => this.BrowserCore ?? throw new InvalidOperationException("Browser is not ready yet");
+			set => this.BrowserCore = value;
 		}
 
 		public IBrowserContext BrowserContext
 		{
-			get => field ?? throw new InvalidOperationException("Browser is not ready yet");
-			set;
+			get => this.BrowserContextCore ?? throw new InvalidOperationException("Browser is not ready yet");
+			set => this.BrowserContextCore = value;
 		}
 
 		public IPage Page
 		{
-			get => field ?? throw new InvalidOperationException("Browser is not ready yet");
-			set;
+			get => this.PageCore ?? throw new InvalidOperationException("Browser is not ready yet");
+			set => this.PageCore = value;
 		}
 
 		protected sealed override async ValueTask OnStarting(CancellationToken ct)
@@ -265,9 +276,11 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		protected sealed override async ValueTask OnDisposing()
 		{
-			using (this.Driver)
-			await using (this.Browser)
-			await using (this.BrowserContext)
+			// read the nullable cores: a failed startup can leave some of these unset, and a throwing
+			// getter here would mask the original startup exception with a secondary teardown failure
+			using (this.DriverCore)
+			await using (this.BrowserCore)
+			await using (this.BrowserContextCore)
 			{
 				var packet = this.Services.GetService<PacketCaptureManager>();
 				packet?.Shutdown();
