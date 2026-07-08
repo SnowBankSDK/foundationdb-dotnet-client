@@ -1,12 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<OutputType>Library</OutputType>
+		<!-- Microsoft.Testing.Platform runner (like the other test projects): the test assembly is a self-contained
+		     executable, run directly with `dotnet <dll>` (plus the usual filter options) instead of `dotnet test` -->
+		<OutputType>Exe</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
 		<!-- the net472 validation target consumes the netstandard2.0 builds of FoundationDB.FakeDb and its dependencies, so it follows the same switch -->
 		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<IsTestProject>true</IsTestProject>
+		<EnableNUnitRunner>true</EnableNUnitRunner>
+		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
 		<IsPackable>false</IsPackable>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
@@ -27,6 +32,8 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
+		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" />
 		<PackageReference Include="NUnit" />
 		<PackageReference Include="NUnit.Analyzers">
 			<PrivateAssets>all</PrivateAssets>
@@ -49,6 +56,8 @@
 		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
 		<PackageReference Include="PolySharp" PrivateAssets="all" />
 		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
+		<!-- direct reference so that the binding redirect to 2.2.3 is auto-generated (the NUnit adapter requests 2.1.0) -->
+		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
 	</ItemGroup>
 
 	<ItemGroup>
