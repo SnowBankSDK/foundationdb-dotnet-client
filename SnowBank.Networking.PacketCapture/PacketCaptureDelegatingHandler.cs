@@ -122,7 +122,7 @@ namespace SnowBank.Networking.PacketCapture
 				{
 					Status = (int) res.StatusCode,
 					ReasonPhrase = res.ReasonPhrase,
-					Headers = CloneResponseHeaders(res.Headers, res.Content.Headers),
+					Headers = fields.HasFlag(CapturedHttpFields.ResponseHeaders) ? CloneResponseHeaders(res.Headers, res.Content.Headers) : CapturedHttpHeaders.Empty,
 					HasBody = !this.ResponseBody.IsNull,
 				};
 			}
