@@ -146,7 +146,7 @@ namespace SnowBank.Testing.Framework
 		{
 			ct.ThrowIfCancellationRequested();
 
-			var cli = this.GetBetterHttpClient(uri);
+			using var cli = this.GetBetterHttpClient(uri);
 			var req = cli.CreateGetRequest(uri);
 			var page = await cli.SendAsync(req, async (ctx) =>
 			{
@@ -164,13 +164,13 @@ namespace SnowBank.Testing.Framework
 			return page;
 		}
 
-		/// <summary>Navigate to the specified URI, with a POST request</summary>
+		/// <summary>Submit a request body to the specified URI, with a POST request</summary>
 		public async Task<PageResult> SubmitTo(Uri uri, Slice requestBody, CancellationToken ct)
 		{
 			ct.ThrowIfCancellationRequested();
 
-			var cli = this.GetLocalBetterHttpClient();
-			var req = cli.CreateGetRequest(uri);
+			using var cli = this.GetBetterHttpClient(uri);
+			var req = cli.CreatePostRequest(uri, new ReadOnlyMemoryContent(requestBody.Memory));
 			var page = await cli.SendAsync(req, async (ctx) =>
 			{
 				var status = ctx.Response.StatusCode;
