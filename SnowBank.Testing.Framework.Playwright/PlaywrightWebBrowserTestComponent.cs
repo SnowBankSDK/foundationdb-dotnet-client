@@ -57,6 +57,16 @@ namespace SnowBank.Testing.Framework.Playwright
 		/// capturing path so they show up as packets in the test journal. Set to <see langword="false"/> to bypass capture.</summary>
 		public bool CaptureTraffic { get; set; } = true;
 
+		/// <summary>When <see langword="true"/>, the page runs under a VIRTUAL clock (Playwright's Clock API): <c>Date</c>,
+		/// <c>setTimeout</c>/<c>setInterval</c>, <c>performance.now</c> and <c>requestAnimationFrame</c> are faked, seeded
+		/// from this component's <c>IClock</c> so browser and virtual hosts share the same epoch, and time only moves when
+		/// the test calls <see cref="AdvanceBrowserClockAsync"/> / <see cref="FastForwardBrowserClockAsync"/>.</summary>
+		/// <remarks>This is the browser-side twin of the hosts' fake <c>TimeProvider</c>: advance BOTH in lockstep (in small
+		/// steps, with real-time pumps in between so cross-boundary I/O can land) to emulate passage of time across the
+		/// whole topology; advance only one side to deliberately inject timeout/skew scenarios. Vue's render scheduling
+		/// rides on microtasks (not timers), so components still repaint normally under the fake clock.</remarks>
+		public bool UseVirtualClock { get; set; }
+
 		/// <summary>Optional TCP port on which Chromium exposes its remote debugging (CDP) endpoint.</summary>
 		/// <remarks>
 		/// <para>This is the ONE deliberate crack in the bubble: the endpoint is a REAL loopback socket, so that an external
@@ -177,6 +187,13 @@ namespace SnowBank.Testing.Framework.Playwright
 
 			// 5. Instantiate the base automation page context
 			this.Page = await this.BrowserContext.NewPageAsync();
+
+			if (this.UseVirtualClock)
+			{ // must install before anything runs in the page, so scripts only ever see the faked time sources
+				var epoch = this.Clock.GetCurrentInstant().ToDateTimeOffset().UtcDateTime;
+				await this.Page.Clock.InstallAsync(new() { TimeDate = epoch });
+				this.Log($"# <CLOCK> virtual page clock installed, epoch={epoch:O}");
+			}
 
 			// hook-up the Javascript Console logger
 			var logger = this.CreateLogger<PlaywrightWebBrowserTestComponent>();
@@ -462,6 +479,31 @@ namespace SnowBank.Testing.Framework.Playwright
 			return (1000, string.IsNullOrEmpty(reason) ? $"[{code?.ToString() ?? "?"}]" : $"[{code}] {reason}");
 		}
 
+		/// <summary>Advances the page's virtual clock by <paramref name="delta"/>, firing EVERY timer that falls due along
+		/// the way (like real time passing): an interval scheduled every second fires ~N times over an N-second advance.</summary>
+		/// <remarks>Requires <see cref="UseVirtualClock"/>. To move a whole topology through time, advance the hosts' fake
+		/// <c>TimeProvider</c> and this clock in lockstep, in small steps with real-time pumps in between (the network
+		/// between browser and hosts still runs on real time, so in-flight frames need real milliseconds to land).</remarks>
+		public async Task AdvanceBrowserClockAsync(TimeSpan delta, CancellationToken ct)
+		{
+			// note: the Playwright protocol has no cancellation for clock calls; ct only guards entry
+			ct.ThrowIfCancellationRequested();
+			if (!this.UseVirtualClock) throw new InvalidOperationException("The virtual page clock is not enabled on this browser component (see UseVirtualClock / WithVirtualClock).");
+			await this.Page.Clock.RunForAsync((long) delta.TotalMilliseconds);
+		}
+
+		/// <summary>Jumps the page's virtual clock forward by <paramref name="delta"/>, firing pending timers AT MOST ONCE
+		/// (like a laptop waking from sleep): an interval scheduled every second fires a single time over any jump.</summary>
+		/// <remarks>Requires <see cref="UseVirtualClock"/>. Use this to emulate suspend/resume; use
+		/// <see cref="AdvanceBrowserClockAsync"/> to emulate time genuinely passing.</remarks>
+		public async Task FastForwardBrowserClockAsync(TimeSpan delta, CancellationToken ct)
+		{
+			// note: the Playwright protocol has no cancellation for clock calls; ct only guards entry
+			ct.ThrowIfCancellationRequested();
+			if (!this.UseVirtualClock) throw new InvalidOperationException("The virtual page clock is not enabled on this browser component (see UseVirtualClock / WithVirtualClock).");
+			await this.Page.Clock.FastForwardAsync((long) delta.TotalMilliseconds);
+		}
+
 		/// <summary>Waits for the Chromium remote debugging endpoint to answer, and records it in <see cref="RemoteDebuggingEndpoint"/>.</summary>
 		/// <remarks>Deliberately probes over a REAL loopback socket: the CDP endpoint exists precisely so that EXTERNAL
 		/// tools can attach to the browser (see <see cref="RemoteDebuggingPort"/>) — a stale listener or a port conflict
@@ -633,6 +675,8 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal int? RemoteDebuggingPort { get; private set; }
 
+		internal bool UseVirtualClock { get; private set; }
+
 		/// <summary>Exposes the browser's remote debugging (CDP) endpoint on a real loopback port, so an external controller
 		/// (an inspector, an agent-driven Playwright client, ...) can attach to the same browser with <c>connectOverCDP</c>
 		/// and co-drive it while the component keeps owning all (virtual) routing.</summary>
@@ -641,6 +685,13 @@ namespace SnowBank.Testing.Framework.Playwright
 		{
 			Contract.GreaterThan(port, 0);
 			this.RemoteDebuggingPort = port;
+		}
+
+		/// <summary>Runs the page under a virtual clock, advanced explicitly by the test (see
+		/// <see cref="PlaywrightWebBrowserTestComponent.UseVirtualClock"/> for semantics and the lockstep recipe).</summary>
+		public void WithVirtualClock()
+		{
+			this.UseVirtualClock = true;
 		}
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask>? StartingHandler { get; private set; }
@@ -740,6 +791,7 @@ namespace SnowBank.Testing.Framework.Playwright
 			host.StartingHandler = this.StartingHandler ?? host.StartingHandler;
 			host.StoppingHandler = this.StoppingHandler ?? host.StoppingHandler;
 			host.RemoteDebuggingPort = this.RemoteDebuggingPort ?? host.RemoteDebuggingPort;
+			host.UseVirtualClock = this.UseVirtualClock || host.UseVirtualClock;
 
 			this.Parent.RegisterComponent(host);
 			this.Parent.SetNamedComponent(this.Id, host);
