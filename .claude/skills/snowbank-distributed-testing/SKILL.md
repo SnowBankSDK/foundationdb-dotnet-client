@@ -157,6 +157,8 @@ context.GetWebHost("CLIENT").SetTimelineLogLevel(LogLevel.Debug);
 foreach (var p in context.GetNetworkPackets(p => p.Metadata.Uri.Contains("/x"))) { /* ... */ }
 ```
 
+**What is captured (and what is not).** Capture rides the pooled handler chain as an in-chain handler on *every* registered policy bundle, so it observes any consumer of that chain — not only `BetterHttpClient` send-extension calls, but also a **bare `HttpMessageHandler`** drawn from `IHttpMessageHandlerFactory.CreateHandler(name)`, the shape gRPC channels and SignalR connections use. Their traffic therefore shows up as `H` lines too. Only the deliberately-raw transport (`INetworkMap.CreateTransportHandler`, taken where a path opts out of the pipeline on purpose) stays uncaptured. A long-lived **streaming** response — `application/grpc*` (a gRPC duplex body) or `text/event-stream` (Server-Sent Events) — is captured **at headers only**: request metadata plus response status/headers, the body never mirrored and flagged `Streaming` on the packet, so the live stream is never interposed on or torn. Every **finite** response keeps its exact, complete body capture.
+
 ### Reading order, fast
 
 - Find the failure: scan the **`!!` gutter** for the first `ERROR`/`FATAL`.
@@ -225,7 +227,7 @@ missing this scope** — grep the output for `#!#` after adding precondition tes
 
 - **`TimelineRenderOptions` (`ShowDetails` / `ShowStartup`) is wired but unused** — `DumpReport` always renders with `Default`. Don't rely on it yet (`//TODO` in `Timeline.cs`).
 - **`F` and `M` are not built in** — they only appear if a layer registered the producing `EventId`. There is no FDB-trace capture in the framework itself; a layer wires raw fdb traces in its own test setup (e.g. via the fdb client's `SetDefaultLogHandler`) and/or registers an `EventId`-based summary.
-- **HTTP capture is always on** — every test's journal carries `H` lines; the heavy bodies are only dumped on failure.
+- **HTTP capture is always on** — every test's journal carries `H` lines (for every pooled bundle, bare gRPC/SignalR handlers included); heavy finite bodies are dumped only on failure, and streaming bodies (`application/grpc*` / `text/event-stream`) are captured at headers only.
 - The journal is **in-memory only** (no temp files); it is flushed once, to the per-test NUnit output, at teardown.
 
 ## See also
