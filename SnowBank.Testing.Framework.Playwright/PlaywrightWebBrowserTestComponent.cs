@@ -254,7 +254,13 @@ namespace SnowBank.Testing.Framework.Playwright
 					{
 						try { held = mutex.WaitOne(TimeSpan.FromMinutes(5)); }
 						catch (AbandonedMutexException) { held = true; } // prior holder crashed; re-install is idempotent
-						Microsoft.Playwright.Program.Main([ "install", "chromium" ]);
+						int exitCode = Microsoft.Playwright.Program.Main([ "install", "chromium" ]);
+						if (exitCode != 0)
+						{
+							// fail HERE with an actionable message, instead of falling through to the retry-launch
+							// below which would only report the generic "Executable doesn't exist" again
+							throw new InvalidOperationException($"Automatic 'playwright install chromium' failed with exit code {exitCode}. Run it manually via 'pwsh bin/Debug/<tfm>/playwright.ps1 install chromium'.", ex);
+						}
 					}
 					finally
 					{
