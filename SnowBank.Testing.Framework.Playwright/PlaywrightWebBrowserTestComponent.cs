@@ -140,6 +140,10 @@ namespace SnowBank.Testing.Framework.Playwright
 			this.Browser = await this.LaunchChromiumWithAutoInstallAsync(launchOptions, ct);
 			this.BrowserContext = await this.Browser.NewContextAsync(contextOptions);
 
+			// page-side network tracker (re-injected into every new document): feeds the adaptive readiness wait
+			// (PlaywrightPageExtensions.WaitForPageReadyAsync), replacing fixed delays in tests
+			await this.BrowserContext.AddInitScriptAsync(PlaywrightPageExtensions.NetworkTrackerInitScript);
+
 			// 4. Establish the catch-all pipe intercept loop to bypass socket port bindings, forwarding through the base mesh helper
 			await BindMeshNetworkRoutingAsync(this.BrowserContext);
 
