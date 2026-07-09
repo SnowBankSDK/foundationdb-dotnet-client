@@ -26,6 +26,7 @@
 
 namespace SnowBank.Testing.Framework.Playwright
 {
+	using System.Net.WebSockets;
 	using System.Text;
 	using Microsoft.AspNetCore.Builder;
 	using Microsoft.Extensions.DependencyInjection;
@@ -55,6 +56,19 @@ namespace SnowBank.Testing.Framework.Playwright
 		/// <summary>When <see langword="true"/> (the default), requests forwarded onto the virtual network route through the
 		/// capturing path so they show up as packets in the test journal. Set to <see langword="false"/> to bypass capture.</summary>
 		public bool CaptureTraffic { get; set; } = true;
+
+		/// <summary>Optional TCP port on which Chromium exposes its remote debugging (CDP) endpoint.</summary>
+		/// <remarks>
+		/// <para>This is the ONE deliberate crack in the bubble: the endpoint is a REAL loopback socket, so that an external
+		/// controller (an inspector, an agent-driven Playwright client, ...) can attach to the SAME browser with
+		/// <c>connectOverCDP</c> and co-drive the pages while this component keeps owning all routing — everything the
+		/// external controller triggers still flows through the virtual network, the packet capture and the journal.</para>
+		/// <para>Pick a unique port per parked test; startup fails fast if the endpoint does not answer (port already in use).</para>
+		/// </remarks>
+		public int? RemoteDebuggingPort { get; set; }
+
+		/// <summary>Remote debugging (CDP) endpoint of the running browser, when <see cref="RemoteDebuggingPort"/> was set; otherwise <see langword="null"/>.</summary>
+		public Uri? RemoteDebuggingEndpoint { get; private set; }
 
 		public PlaywrightWebBrowserTestComponent(string id, IVirtualNetworkLocation location, CancellationToken lifetime,
 			IDistributedTestComponent? parent = null)
@@ -137,7 +151,18 @@ namespace SnowBank.Testing.Framework.Playwright
 
 			// 3. Make sure Chromium is installed (self-healing, concurrency-safe), then launch a standalone worker thread
 			await this.EnsureBrowserAvailableAsync(ct);
+			if (this.RemoteDebuggingPort is int debugPort)
+			{ // clone: the registered options object is a shared singleton, it must not be mutated in place
+				launchOptions = new BrowserTypeLaunchOptions(launchOptions)
+				{
+					Args = [ ..(launchOptions.Args ?? [ ]), $"--remote-debugging-port={debugPort}" ],
+				};
+			}
 			this.Browser = await this.LaunchChromiumWithAutoInstallAsync(launchOptions, ct);
+			if (this.RemoteDebuggingPort is int port)
+			{
+				await this.VerifyRemoteDebuggingEndpointAsync(port, ct);
+			}
 			this.BrowserContext = await this.Browser.NewContextAsync(contextOptions);
 
 			// page-side network tracker (re-injected into every new document): feeds the adaptive readiness wait
@@ -146,6 +171,9 @@ namespace SnowBank.Testing.Framework.Playwright
 
 			// 4. Establish the catch-all pipe intercept loop to bypass socket port bindings, forwarding through the base mesh helper
 			await BindMeshNetworkRoutingAsync(this.BrowserContext);
+
+			// 4b. Intercept page WebSockets the same way, bridging their frames to the target virtual host's in-memory TestServer
+			await BindMeshWebSocketRoutingAsync(this.BrowserContext);
 
 			// 5. Instantiate the base automation page context
 			this.Page = await this.BrowserContext.NewPageAsync();
@@ -219,6 +247,256 @@ namespace SnowBank.Testing.Framework.Playwright
 			});
 		}
 
+		#region WebSocket Mesh Bridge...
+
+		/// <summary>Init script that forces every page-side <c>WebSocket.close()</c> to carry a close code and reason.</summary>
+		/// <remarks>
+		/// <para>Microsoft.Playwright 1.61 crashes on any WebSocket close event that omits <c>code</c>/<c>reason</c> (which the
+		/// protocol allows — the TS client types them <c>number | undefined</c>): <c>WebSocketRoute.OnMessage</c> reads them with
+		/// the throwing <c>JsonElement.GetProperty</c>, and the exception escapes <c>Connection.Dispatch</c>, poisoning the WHOLE
+		/// driver connection (the browser dies, every later call throws <c>TargetClosedException</c>). Reported upstream (2026-07).</para>
+		/// <para>The <c>@microsoft/signalr</c> client (and many others) call <c>ws.close()</c> with no arguments during cleanup,
+		/// so without this shim any such close kills the entire test mid-flight. It must be registered AFTER
+		/// <c>RouteWebSocketAsync</c>: the route installs its own init script that REPLACES <c>window.WebSocket</c> with a mock
+		/// class, and the patch must land on that mock's prototype, not on the native one.</para>
+		/// </remarks>
+		private const string WebSocketCloseArgumentsShim =
+			"""
+			{
+				const WS = window.WebSocket;
+				if (WS && WS.prototype && WS.prototype.close)
+				{
+					const origClose = WS.prototype.close;
+					WS.prototype.close = function(code, reason) { return origClose.call(this, code ?? 1000, reason ?? 'client-closed'); };
+				}
+			}
+			""";
+
+		private object WebSocketBridgeLock { get; } = new();
+
+		/// <summary>Bridged websocket routes that are still connected: teardown closes them with an explicit code before
+		/// the browser goes away, so no codeless close event reaches the 1.61 binding while the test is still running.</summary>
+		private List<IWebSocketRoute> LiveWebSocketRoutes { get; } = [];
+
+		private async Task BindMeshWebSocketRoutingAsync(IBrowserContext context)
+		{
+			await context.RouteWebSocketAsync("**/*", this.BridgePageWebSocket);
+
+			// must come after the route registration, so the shim patches the mock WebSocket class (see remarks on the shim)
+			await context.AddInitScriptAsync(WebSocketCloseArgumentsShim);
+		}
+
+		/// <summary>Bridges one page-created WebSocket to the in-memory <c>TestServer</c> of the virtual host its URL points to.</summary>
+		/// <remarks>
+		/// <para>This is the WebSocket analog of <see cref="BindMeshNetworkRoutingAsync"/>: the page believes it holds a real
+		/// socket, but frames are pumped between the Playwright mock and a <c>TestServer.CreateWebSocketClient()</c> connection —
+		/// no socket is bound, no DNS lookup happens.</para>
+		/// <para>The page side is wired BEFORE the server connect completes: early frames (e.g. the SignalR handshake, sent from
+		/// <c>onopen</c>) are queued on a send chain that starts when the server socket is up — awaiting the connect first
+		/// silently drops them, and the server then kills the connection after its handshake timeout.</para>
+		/// <para>Connect-time offline states reject the connection (like the HTTP transport), and both endpoints' online
+		/// tokens sever an ESTABLISHED bridge (close code 4001). Directional link cuts (<c>VirtualNetworkCutEdge</c>) are NOT
+		/// yet honored — the topology's edge API is internal; take this bridge there when it moves into the framework.</para>
+		/// </remarks>
+		private void BridgePageWebSocket(IWebSocketRoute pageWs)
+		{
+			var uri = new Uri(pageWs.Url, UriKind.Absolute);
+
+			// resolve the target host like the virtual DNS would
+			var host = this.NetworkMap.FindHost(uri.Host);
+			if (host is null)
+			{
+				this.Log($"! <WS> found no host matching '{uri.Host}' visible from '{this.Id}' for {uri}");
+				_ = pageWs.CloseAsync(new() { Code = 4404, Reason = $"simulated name resolution failure for '{uri.Host}'" });
+				return;
+			}
+
+			// offline endpoints reject NEW connections (established ones are severed by the online tokens below)
+			if (host.Offline || this.NetworkMap.Host.Offline)
+			{
+				this.Log($"! <WS> host '{host.Id}' or '{this.Id}' is offline, rejecting {uri}");
+				_ = pageWs.CloseAsync(new() { Code = 4503, Reason = $"simulated connection failure: host '{host.Id}' is offline" });
+				return;
+			}
+
+			// find the component that owns this simulated host, to reach its in-memory TestServer
+			var target = this.Context.FindComponents<DistributedTestComponent>()
+				.FirstOrDefault(c => !ReferenceEquals(c, this) && host.Equals(c.NetworkMap.Host));
+			if (target is null)
+			{
+				this.Log($"! <WS> found no test component owning host '{host.Id}' for {uri}");
+				_ = pageWs.CloseAsync(new() { Code = 4502, Reason = $"simulated connection failure: no server on host '{host.Id}'" });
+				return;
+			}
+
+			this.Log($"# <WS> bridging {uri} to virtual host '{target.Id}'");
+
+			// sever the established bridge if either endpoint goes offline mid-flight (like a cut TCP link)
+			var severTokens = new List<CancellationToken>(3) { this.Cancellation };
+			if (this.NetworkMap.Host is VirtualNetworkTopology.SimulatedHost self) severTokens.Add(self.OnlineToken);
+			if (host is VirtualNetworkTopology.SimulatedHost remote) severTokens.Add(remote.OnlineToken);
+			var severed = CancellationTokenSource.CreateLinkedTokenSource([ ..severTokens ]);
+
+			var wsClient = target.Server.CreateWebSocketClient();
+			foreach (var protocol in pageWs.Protocols)
+			{
+				wsClient.SubProtocols.Add(protocol);
+			}
+			var serverWsTask = wsClient.ConnectAsync(uri, severed.Token);
+
+			lock (this.WebSocketBridgeLock) { this.LiveWebSocketRoutes.Add(pageWs); }
+
+			// page -> server: wired synchronously, sends chained in order behind the connect (see remarks)
+			var sendChain = (Task) serverWsTask;
+			pageWs.OnMessage(frame =>
+			{
+				sendChain = sendChain.ContinueWith(async _ =>
+				{
+					try
+					{
+						var serverWs = await serverWsTask.ConfigureAwait(false);
+						if (frame.Text is not null)
+						{
+							await serverWs.SendAsync(Encoding.UTF8.GetBytes(frame.Text), WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None).ConfigureAwait(false);
+						}
+						else
+						{
+							await serverWs.SendAsync(frame.Binary!, WebSocketMessageType.Binary, endOfMessage: true, CancellationToken.None).ConfigureAwait(false);
+						}
+					}
+					catch (Exception ex)
+					{
+						this.Log($"! <WS> page->server send failed for {pageWs.Url}: {ex.Message}");
+					}
+				}, TaskScheduler.Default).Unwrap();
+			});
+
+			// page -> server: close (chained after any pending sends, so it cannot overtake them)
+			pageWs.OnClose((code, reason) =>
+			{
+				this.Log($"# <WS> page closed ({code?.ToString() ?? "no code"}) for {pageWs.Url}");
+				sendChain = sendChain.ContinueWith(async _ =>
+				{
+					try
+					{
+						var serverWs = await serverWsTask.ConfigureAwait(false);
+						if (serverWs.State is WebSocketState.Open or WebSocketState.CloseReceived)
+						{
+							await serverWs.CloseOutputAsync((WebSocketCloseStatus) (code ?? 1000), reason ?? "", CancellationToken.None).ConfigureAwait(false);
+						}
+					}
+					catch
+					{
+						// the server socket may already be gone; nothing to propagate
+					}
+				}, TaskScheduler.Default).Unwrap();
+			});
+
+			// server -> page pump
+			_ = Task.Run(() => PumpServerToPageAsync(pageWs, serverWsTask, severed), CancellationToken.None);
+		}
+
+		private async Task PumpServerToPageAsync(IWebSocketRoute pageWs, Task<WebSocket> serverWsTask, CancellationTokenSource severed)
+		{
+			WebSocket? serverWs = null;
+			try
+			{
+				serverWs = await serverWsTask.ConfigureAwait(false);
+				var buffer = new byte[64 * 1024];
+				using var ms = new MemoryStream();
+				while (serverWs.State is WebSocketState.Open or WebSocketState.CloseSent)
+				{
+					var result = await serverWs.ReceiveAsync(new ArraySegment<byte>(buffer), severed.Token).ConfigureAwait(false);
+					if (result.MessageType == WebSocketMessageType.Close)
+					{
+						this.Log($"# <WS> server closed ({(int?) result.CloseStatus}) for {pageWs.Url}");
+						var (code, reason) = CoercePageCloseArguments((int?) result.CloseStatus, result.CloseStatusDescription);
+						await pageWs.CloseAsync(new() { Code = code, Reason = reason }).ConfigureAwait(false);
+						break;
+					}
+					ms.Write(buffer, 0, result.Count);
+					if (result.EndOfMessage)
+					{
+						if (result.MessageType == WebSocketMessageType.Text)
+						{
+							pageWs.Send(Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int) ms.Length));
+						}
+						else
+						{
+							pageWs.Send(ms.ToArray());
+						}
+						ms.SetLength(0);
+					}
+				}
+			}
+			catch (OperationCanceledException)
+			{ // severed: an endpoint went offline, or the test is shutting down
+				this.Log($"# <WS> bridge severed for {pageWs.Url}");
+				try { await pageWs.CloseAsync(new() { Code = 4001, Reason = "simulated connection severed" }).ConfigureAwait(false); }
+				catch { /* the page may already be gone */ }
+			}
+			catch (Exception ex)
+			{
+				this.Log($"! <WS> server->page pump failed for {pageWs.Url}: {ex.Message}");
+				try { await pageWs.CloseAsync(new() { Code = 4502, Reason = "simulated connection failure" }).ConfigureAwait(false); }
+				catch { /* the page may already be gone */ }
+			}
+			finally
+			{
+				serverWs?.Dispose();
+				severed.Dispose();
+				lock (this.WebSocketBridgeLock) { this.LiveWebSocketRoutes.Remove(pageWs); }
+			}
+		}
+
+		/// <summary>Coerces a server-side close into arguments the Playwright mock accepts.</summary>
+		/// <remarks>The injected mock validates close codes like a browser does: only <c>1000</c> or <c>3000..4999</c> are
+		/// allowed. Out-of-window codes (e.g. <c>1001 GoingAway</c>) are folded to <c>1000</c> with the original code
+		/// prepended to the reason, so tests can still observe what the server actually sent.</remarks>
+		private static (int Code, string Reason) CoercePageCloseArguments(int? code, string? reason)
+		{
+			if (code is int c && (c == 1000 || (c is >= 3000 and <= 4999)))
+			{
+				return (c, reason ?? "");
+			}
+			return (1000, string.IsNullOrEmpty(reason) ? $"[{code?.ToString() ?? "?"}]" : $"[{code}] {reason}");
+		}
+
+		/// <summary>Waits for the Chromium remote debugging endpoint to answer, and records it in <see cref="RemoteDebuggingEndpoint"/>.</summary>
+		/// <remarks>Deliberately probes over a REAL loopback socket: the CDP endpoint exists precisely so that EXTERNAL
+		/// tools can attach to the browser (see <see cref="RemoteDebuggingPort"/>) — a stale listener or a port conflict
+		/// must fail the component start with an actionable message, not surface later as a confusing connect error.</remarks>
+		private async Task VerifyRemoteDebuggingEndpointAsync(int port, CancellationToken ct)
+		{
+			var endpoint = new Uri($"http://127.0.0.1:{port}");
+			using var probe = new HttpClient { BaseAddress = endpoint, Timeout = TimeSpan.FromSeconds(2) };
+			for (int attempt = 0; attempt < 10; attempt++)
+			{
+				try
+				{
+					var version = await probe.GetStringAsync("/json/version", ct);
+					this.RemoteDebuggingEndpoint = endpoint;
+					this.Log($"# <CDP> remote debugging endpoint ready at {endpoint} :: {version.Replace("\n", " ").Replace("\r", "")}");
+					return;
+				}
+				catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+				{
+					await Task.Delay(200, ct);
+				}
+			}
+			throw new InvalidOperationException($"The Chromium remote debugging endpoint did not answer on {endpoint} — the port may already be bound by another process (a previous parked session?); pick a unique port per test.");
+		}
+
+		/// <summary>Matches the exception signature of the playwright-dotnet 1.61 WebSocketRoute close-event bug (see
+		/// <see cref="WebSocketCloseArgumentsShim"/>): once the driver connection is poisoned, teardown calls surface it as
+		/// <c>TargetClosedException</c>/<c>PlaywrightException</c> wrapping "The given key was not present in the dictionary".</summary>
+		private static bool IsKnownWebSocketRouteCloseBug(Exception ex) =>
+			ex is KeyNotFoundException
+			|| (ex is PlaywrightException && ex.Message.Contains("The given key was not present", StringComparison.Ordinal))
+			|| (ex.InnerException is not null && IsKnownWebSocketRouteCloseBug(ex.InnerException));
+
+		#endregion
+
 		// Chromium install must happen at most once per process even if several browser
 		// components (or NUnit parallel tests) reach the missing-executable path together.
 		private static readonly SemaphoreSlim InstallGate = new(1, 1);
@@ -281,6 +559,17 @@ namespace SnowBank.Testing.Framework.Playwright
 			var packet = this.Services.GetService<PacketCaptureManager>();
 			if (packet != null && packet.IsRunning) packet.PrepareShutdown();
 
+			// close the still-bridged websockets with an explicit code while the driver connection is healthy:
+			// letting them die with the page would emit codeless close events that crash the 1.61 binding
+			// (see WebSocketCloseArgumentsShim remarks); the page-destruction ones are contained in OnDisposing.
+			IWebSocketRoute[] liveRoutes;
+			lock (this.WebSocketBridgeLock) { liveRoutes = this.LiveWebSocketRoutes.ToArray(); }
+			foreach (var ws in liveRoutes)
+			{
+				try { await ws.CloseAsync(new() { Code = 1000, Reason = "test shutdown" }); }
+				catch { /* the browser (or the driver connection) may already be gone */ }
+			}
+
 			await this.StoppingHandler(this, ct);
 		}
 
@@ -289,13 +578,27 @@ namespace SnowBank.Testing.Framework.Playwright
 			// read the nullable cores: a failed startup can leave some of these unset, and a throwing
 			// getter here would mask the original startup exception with a secondary teardown failure
 			using (this.DriverCore)
-			await using (this.BrowserCore)
-			await using (this.BrowserContextCore)
 			{
-				var packet = this.Services.GetService<PacketCaptureManager>();
-				packet?.Shutdown();
+				try
+				{
+					await using (this.BrowserCore)
+					await using (this.BrowserContextCore)
+					{
+						var packet = this.Services.GetService<PacketCaptureManager>();
+						packet?.Shutdown();
 
-				await this.DestroyingHandler();
+						await this.DestroyingHandler();
+					}
+				}
+				catch (Exception ex) when (IsKnownWebSocketRouteCloseBug(ex))
+				{
+					// destroying a page that ever had a routed WebSocket makes the upstream dispatcher emit
+					// closePage/closeServer with ONLY wasClean (no code/reason) — even for sockets that closed
+					// cleanly earlier — and the 1.61 binding poisons the driver connection on it. Unavoidable
+					// from user code; the browser is being discarded anyway, so contain the known signature
+					// (the driver process itself is reaped by disposing DriverCore above).
+					this.Log($"# <WS> teardown hit the known playwright-dotnet 1.61 WebSocketRoute close-event bug (contained): {ex.GetType().Name}");
+				}
 			}
 		}
 
@@ -327,6 +630,18 @@ namespace SnowBank.Testing.Framework.Playwright
 		internal List<Action<WebApplicationBuilder>> ServiceHandlers { get; } = [];
 
 		internal List<Action<WebApplication>> ApplicationHandlers { get; } = [];
+
+		internal int? RemoteDebuggingPort { get; private set; }
+
+		/// <summary>Exposes the browser's remote debugging (CDP) endpoint on a real loopback port, so an external controller
+		/// (an inspector, an agent-driven Playwright client, ...) can attach to the same browser with <c>connectOverCDP</c>
+		/// and co-drive it while the component keeps owning all (virtual) routing.</summary>
+		/// <param name="port">Loopback TCP port to expose; must be unique per concurrently-running test.</param>
+		public void WithRemoteDebugging(int port)
+		{
+			Contract.GreaterThan(port, 0);
+			this.RemoteDebuggingPort = port;
+		}
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask>? StartingHandler { get; private set; }
 
@@ -424,6 +739,7 @@ namespace SnowBank.Testing.Framework.Playwright
 			host.ConfigureApplicationHandlers.AddRange(this.ApplicationHandlers);
 			host.StartingHandler = this.StartingHandler ?? host.StartingHandler;
 			host.StoppingHandler = this.StoppingHandler ?? host.StoppingHandler;
+			host.RemoteDebuggingPort = this.RemoteDebuggingPort ?? host.RemoteDebuggingPort;
 
 			this.Parent.RegisterComponent(host);
 			this.Parent.SetNamedComponent(this.Id, host);
