@@ -28,6 +28,7 @@
 
 namespace SnowBank.Networking
 {
+	using System.Collections.Concurrent;
 	using System.Diagnostics.CodeAnalysis;
 	using System.Net;
 	using System.Net.Http;
@@ -357,6 +358,80 @@ namespace SnowBank.Networking
 				this.DynamicAliases.Add(alias);
 			}
 		}
+
+		#region Fault Injection (directional link cuts)...
+
+		/// <summary>Time source used to schedule the DEFERRED fault behaviors (blackhole connect budgets and read/write notice deadlines)</summary>
+		/// <remarks>Tests running on virtual time should point this to their advanceable provider BEFORE injecting <see cref="VirtualNetworkFaultKind.Blackhole"/> faults: a parked connect/read/write then fails only when the fake clock is advanced past its budget, so "30 seconds of silence" costs zero real time.</remarks>
+		public TimeProvider Time { get; set; } = TimeProvider.System;
+
+		/// <summary>Live state of all the directional edges of this network, created lazily per (from, to) pair that talks (or gets cut)</summary>
+		private ConcurrentDictionary<(string From, string To), VirtualNetworkCutEdge> CutEdges { get; } = new();
+
+		/// <summary>Gets (or lazily creates) the live state of the directional edge carrying the traffic FROM one host TO another</summary>
+		/// <remarks>The transport resolves this per-request, and captures the edge's <see cref="VirtualNetworkCutEdge.CutToken"/> per connection - which is why the edge object must be long-lived: a cut applied LATER must still be able to abort the streams established while the edge was healthy.</remarks>
+		internal VirtualNetworkCutEdge GetOrCreateCutEdge(string fromId, string toId)
+		{
+			return this.CutEdges.GetOrAdd((fromId, toId), static (k) => new VirtualNetworkCutEdge(k.From, k.To));
+		}
+
+		/// <summary>Cuts the DIRECTIONAL link carrying the traffic FROM one host TO another, with the given failure mode</summary>
+		/// <param name="fromId">Id of the host whose outgoing traffic (towards <paramref name="toId"/>) is affected</param>
+		/// <param name="toId">Id of the host that becomes unreachable from <paramref name="fromId"/></param>
+		/// <param name="fault">HOW the link fails, as observed by <paramref name="fromId"/> (see <see cref="VirtualNetworkFault"/>)</param>
+		/// <remarks>
+		/// <para>Only this direction is affected: traffic from <paramref name="toId"/> to <paramref name="fromId"/> keeps flowing,
+		/// which is the whole point (asymmetric faults are where failure detectors earn their keep). Use <see cref="CutBoth"/>
+		/// for a symmetric cut. <see cref="SimulatedHost.SetOffline"/> remains the degenerate "every edge of this host, both
+		/// directions" case.</para>
+		/// <para>A <see cref="VirtualNetworkFaultKind.Severed"/> cut also aborts the established connections that were INITIATED
+		/// over this edge (the transport links each connection to the edge's <see cref="VirtualNetworkCutEdge.CutToken"/>); the
+		/// other fault kinds only affect new connection attempts and (for <see cref="VirtualNetworkFaultKind.Blackhole"/>) the
+		/// byte flow of established connections in this direction.</para>
+		/// </remarks>
+		public void Cut(string fromId, string toId, VirtualNetworkFault fault)
+		{
+			Contract.NotNullOrEmpty(fromId);
+			Contract.NotNullOrEmpty(toId);
+			Contract.NotNull(fault);
+
+			using (this.Lock.GetReadLock())
+			{
+				if (!this.HostsById.ContainsKey(fromId)) throw ErrorMissingHost(fromId);
+				if (!this.HostsById.ContainsKey(toId)) throw ErrorMissingHost(toId);
+			}
+
+			GetOrCreateCutEdge(fromId, toId).Apply(fault);
+		}
+
+		/// <summary>Restores the DIRECTIONAL link carrying the traffic FROM one host TO another (the "cable is plugged back in")</summary>
+		/// <remarks>New connections are allowed again, and operations parked on a <see cref="VirtualNetworkFaultKind.Blackhole"/> resume; connections aborted by a <see cref="VirtualNetworkFaultKind.Severed"/> cut STAY dead (latched), like after a real link flap.</remarks>
+		public void Restore(string fromId, string toId)
+		{
+			Contract.NotNullOrEmpty(fromId);
+			Contract.NotNullOrEmpty(toId);
+
+			if (this.CutEdges.TryGetValue((fromId, toId), out var edge))
+			{
+				edge.Restore();
+			}
+		}
+
+		/// <summary>Cuts BOTH directions of the link between two hosts, with the given failure mode (see <see cref="Cut"/>)</summary>
+		public void CutBoth(string hostA, string hostB, VirtualNetworkFault fault)
+		{
+			Cut(hostA, hostB, fault);
+			Cut(hostB, hostA, fault);
+		}
+
+		/// <summary>Restores BOTH directions of the link between two hosts (see <see cref="Restore"/>)</summary>
+		public void RestoreBoth(string hostA, string hostB)
+		{
+			Restore(hostA, hostB);
+			Restore(hostB, hostA);
+		}
+
+		#endregion
 
 		/// <summary>Represents a virtual network location, such as "LAN", a Cloud DMZ, or the Loopback interface, as well as all its services (DNS, DHCP, ...).</summary>
 		/// <remarks>

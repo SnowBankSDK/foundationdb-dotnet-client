@@ -122,6 +122,28 @@ namespace SnowBank.Networking
 			return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
 		}
 
+		/// <summary>Create an exception that replicates a "connection reset by peer" (something in the path is slamming the connection shut with an RST)</summary>
+		/// <param name="debugReason">Text description of the cause of this error (for troubleshooting)</param>
+		/// <returns>Returns an <see cref="HttpRequestException"/> with an inner <see cref="WebException"/> with status <see cref="WebExceptionStatus.ConnectionClosed"/>, itself with an inner <see cref="System.Net.Sockets.SocketException"/> with error code <c>10054</c> (<c>ConnectionReset</c>)</returns>
+		public static Exception SimulateConnectionReset(string debugReason)
+		{
+			var sockEx = new System.Net.Sockets.SocketException(10054); // ConnectionReset
+			var webEx = new System.Net.WebException("An existing connection was forcibly closed by the remote host", sockEx, WebExceptionStatus.ConnectionClosed, null);
+			return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
+		}
+
+		/// <summary>Create an exception that replicates a "connection actively refused" (the target answers SYN with RST: alive, but not accepting this connection)</summary>
+		/// <param name="hostName">Name of the remote host (part of the exception message)</param>
+		/// <param name="port">Port of the service (part of the exception message)</param>
+		/// <param name="debugReason">Text description of the cause of this error (for troubleshooting)</param>
+		/// <returns>Returns an <see cref="HttpRequestException"/> with an inner <see cref="WebException"/> with status <see cref="WebExceptionStatus.ConnectFailure"/>, itself with an inner <see cref="System.Net.Sockets.SocketException"/> with error code <c>10061</c> (<c>ConnectionRefused</c>)</returns>
+		public static Exception SimulateConnectionRefused(string hostName, int port, string debugReason)
+		{
+			var sockEx = new System.Net.Sockets.SocketException(10061); // ConnectionRefused
+			var webEx = new System.Net.WebException($"No connection could be made because the target machine actively refused it {hostName}:{port}", sockEx, WebExceptionStatus.ConnectFailure, null);
+			return new HttpRequestException($"An error occurred while sending the request. [{debugReason}]", webEx);
+		}
+
 		/// <inheritdoc />
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
@@ -212,6 +234,40 @@ namespace SnowBank.Networking
 					throw SimulateConnectFailure($"Remote virtual host '{host.Id}' is currently marked as offline and will not respond to any request.");
 				}
 
+				// The LINK itself may be cut, DIRECTIONALLY (see VirtualNetworkTopology.Cut): resolved per-request too, like
+				// the offline state above, so a cut/restore takes effect on the very next request of a held client. The edge
+				// object is long-lived (created on first use) because its CutToken must be capturable by connections opened
+				// while the edge is still healthy - a later Severed cut aborts them through it.
+				var edge = this.Map.Topology.GetOrCreateCutEdge(this.Map.Host.Id, host.Id);
+				var fault = edge.ActiveFault;
+				if (fault is not null)
+				{
+					switch (fault.Kind)
+					{
+						case VirtualNetworkFaultKind.Severed:
+						{ // something in the path is slamming new connections shut
+							throw SimulateConnectionReset($"The virtual link from '{this.Map.Host.Id}' to '{host.Id}' is cut (severed), and resets new connections.");
+						}
+						case VirtualNetworkFaultKind.Refused:
+						{ // the target answers, but with an RST on the SYN
+							throw SimulateConnectionRefused(hostName, uri.Port, $"The virtual link from '{this.Map.Host.Id}' to '{host.Id}' is cut (refused), and rejects new connections.");
+						}
+						case VirtualNetworkFaultKind.NameResolution:
+						{ // the name no longer resolves from this side
+							throw SimulateNameResolutionError(hostName, $"The virtual link from '{this.Map.Host.Id}' to '{host.Id}' is cut (dns), and the name no longer resolves.");
+						}
+						case VirtualNetworkFaultKind.Blackhole:
+						{ // packets vanish: the attempt PARKS silently (no error), racing its connect budget - measured on the
+						  // topology's (virtualizable) clock - against a restore of the edge
+							return ConnectThroughBlackholedEdgeAsync(fault, edge, request, hostName, cancellationToken);
+						}
+						default:
+						{
+							throw new NotSupportedException($"Virtual network fault kind '{fault.Kind}' is not supported yet.");
+						}
+					}
+				}
+
 				// ask the remote host if it can respond on the specified port
 				int port = uri.Port;
 				var factory = host.FindHandler(remote, port);
@@ -228,12 +284,24 @@ namespace SnowBank.Networking
 					// is aborted, like a severed TCP link. The Offline checks above only reject NEW connections; this is what
 					// severs ESTABLISHED ones (the connect path never re-runs for a live stream). Tokens are captured here, so
 					// a later offline/online cycle leaves this connection aborted (latched) while a freshly-opened one uses
-					// the renewed token.
-					var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.Map.Host.OnlineToken, host.OnlineToken);
+					// the renewed token. The edge's CutToken joins them, so a DIRECTIONAL Severed cut aborts the established
+					// streams that were initiated over this edge (and only those - the reverse direction keeps flowing).
+					var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this.Map.Host.OnlineToken, host.OnlineToken, edge.CutToken);
+
+					// The BYTE FLOW of the established connection is gated per direction, so a Blackhole cut landing LATER
+					// silences it without erroring anything: request bytes flow over this edge (from -> to), response bytes
+					// flow over the REVERSE edge (to -> from). A gated read/write parks (the connection LOOKS alive), then
+					// fails with a read/write timeout when the fault's notice window elapses on the topology's clock.
+					var reverseEdge = this.Map.Topology.GetOrCreateCutEdge(host.Id, this.Map.Host.Id);
+					if (request.Content is not null)
+					{
+						request.Content = new FaultGatedContent(request.Content, edge, this.Map.Topology);
+					}
+
 					// `linked` registers callbacks on the hosts' long-lived OnlineTokens, so it MUST be disposed or they pile
 					// up. It has to outlive SendAsync (a streaming body is read after the headers return), so we release it when
 					// the body is done: its read stream ends/errors/disposes, or the response is disposed (see SendAndReleaseAsync).
-					return SendAndReleaseAsync(invoker, request, linked);
+					return SendAndReleaseAsync(invoker, request, linked, reverseEdge, this.Map.Topology);
 				}
 
 				throw SimulatePortNotBoundFailure(hostName, port, $"Found no port {port} bound on location '{remote}' of target host '{host.Id}', visible from host '{this.Map.Host.Id}' ({this.Map.Host.Fqdn})");
@@ -250,6 +318,29 @@ namespace SnowBank.Networking
 			}
 		}
 
+		/// <summary>Parks a connection attempt over a blackholed edge: silence first, then a lazily-manufactured timeout.</summary>
+		/// <remarks>
+		/// <para>This is the park-then-throw pattern: the fault injector supplies SILENCE only, and the timeout is the
+		/// VICTIM's own budget (<see cref="VirtualNetworkFault.ConnectTimeout"/>), manufactured in its own call stack when
+		/// the topology's clock crosses the deadline - never a deferred <c>Cancel()</c> (wrong shape, wrong owner, wrong
+		/// scope). Under a frozen fake clock the attempt stays parked forever, which IS the silence; the test cranks
+		/// virtual time to make the timeout "pop up".</para>
+		/// <para>If the edge is restored BEFORE the budget elapses, the attempt proceeds like a SYN retransmit that finally
+		/// lands: it re-enters the full per-request decision tree (the network may have changed again while parked).</para>
+		/// </remarks>
+		private async Task<HttpResponseMessage> ConnectThroughBlackholedEdgeAsync(VirtualNetworkFault fault, VirtualNetworkCutEdge edge, HttpRequestMessage request, string hostName, CancellationToken cancellationToken)
+		{
+			var restored = edge.WhenRestored;
+			var deadline = Task.Delay(fault.ConnectTimeout, this.Map.Topology.Time, cancellationToken);
+			var winner = await Task.WhenAny(deadline, restored).ConfigureAwait(false);
+			if (winner == restored)
+			{ // the cable was plugged back in before the budget ran out
+				return await SendAsync(request, cancellationToken).ConfigureAwait(false);
+			}
+			await deadline.ConfigureAwait(false); // propagates the caller's own cancellation, if that is what completed it
+			throw SimulateConnectFailure($"The virtual link from '{this.Map.Host.Id}' towards '{hostName}' is blackholed: the connection attempt timed out after {fault.ConnectTimeout}.");
+		}
+
 		/// <summary>Sends the request and releases <paramref name="linked"/> (unlinking it from the hosts' long-lived
 		/// OnlineTokens) when the response is disposed. The linked source must outlive <c>SendAsync</c> (a streaming body is
 		/// read after the headers return), so its lifetime is tied to the response rather than to this call.</summary>
@@ -258,14 +349,16 @@ namespace SnowBank.Networking
 		/// source until GC. That is bounded (one per live connection) and not a per-request leak - completed and
 		/// reconnected calls release deterministically. Releasing those at host-teardown would require either the sinks
 		/// disposing their calls/connections, or a host-teardown signal plumbed into the virtual transport.</remarks>
-		private static async Task<HttpResponseMessage> SendAndReleaseAsync(HttpMessageInvoker invoker, HttpRequestMessage request, CancellationTokenSource linked)
+		private static async Task<HttpResponseMessage> SendAndReleaseAsync(HttpMessageInvoker invoker, HttpRequestMessage request, CancellationTokenSource linked, VirtualNetworkCutEdge reverseEdge, VirtualNetworkTopology topology)
 		{
 			try
 			{
 				var response = await invoker.SendAsync(request, linked.Token).ConfigureAwait(false);
 				if (response.Content is not null)
 				{
-					response.Content = new ReleasingContent(response.Content, linked);
+					// gate the response bytes against the REVERSE edge (they flow target -> source), then tie the linked
+					// source's release to the (outermost) content lifetime
+					response.Content = new ReleasingContent(new FaultGatedContent(response.Content, reverseEdge, topology), linked);
 				}
 				else
 				{ // no body to attach the lifetime to -> release now
@@ -289,6 +382,168 @@ namespace SnowBank.Networking
 				this.PassthroughHandler = null;
 			}
 			base.Dispose(disposing);
+		}
+
+		/// <summary>Forwards an <see cref="HttpContent"/> while gating its byte flow on the state of one DIRECTIONAL edge of the virtual network.</summary>
+		/// <remarks>Wrapped around every virtual request/response body, so that a <see cref="VirtualNetworkFaultKind.Blackhole"/> cut landing LATER (mid-stream) can silence the flow: while the edge is healthy the gate is a single volatile read per operation.</remarks>
+		private sealed class FaultGatedContent : HttpContent
+		{
+			private readonly HttpContent Inner;
+			private readonly VirtualNetworkCutEdge Edge;
+			private readonly VirtualNetworkTopology Topology;
+
+			public FaultGatedContent(HttpContent inner, VirtualNetworkCutEdge edge, VirtualNetworkTopology topology)
+			{
+				this.Inner = inner;
+				this.Edge = edge;
+				this.Topology = topology;
+				foreach (var header in inner.Headers)
+				{
+					this.Headers.TryAddWithoutValidation(header.Key, header.Value);
+				}
+			}
+
+			// the inner content PUSHES its bytes (CopyToAsync -> inner.SerializeToStreamAsync) into a write-gated view of
+			// the destination, so a duplex/streaming body that keeps writing for the connection's whole life parks on the
+			// gate the moment the edge is blackholed
+			protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => this.Inner.CopyToAsync(new FaultGateStream(stream, this.Edge, this.Topology, leaveInnerOpen: true));
+
+			protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) => this.Inner.CopyToAsync(new FaultGateStream(stream, this.Edge, this.Topology, leaveInnerOpen: true), cancellationToken);
+
+			// the consumer PULLS the bytes through a read-gated view of the inner stream
+			protected override async Task<Stream> CreateContentReadStreamAsync() => new FaultGateStream(await this.Inner.ReadAsStreamAsync().ConfigureAwait(false), this.Edge, this.Topology, leaveInnerOpen: false);
+
+			protected override bool TryComputeLength(out long length)
+			{
+				var len = this.Inner.Headers.ContentLength;
+				length = len ?? 0;
+				return len.HasValue;
+			}
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing)
+				{
+					this.Inner.Dispose();
+				}
+				base.Dispose(disposing);
+			}
+		}
+
+		/// <summary>Stream wrapper that consults the state of one directional edge before every read/write, parking the operation while the edge is blackholed.</summary>
+		/// <remarks>
+		/// <para>The park-then-throw pattern, applied to established connections: a blackholed edge makes reads/writes PARK
+		/// silently (no error - the connection looks alive, there are just no bytes), racing the fault's
+		/// <see cref="VirtualNetworkFault.NoticeAfter"/> window - measured on the topology's (virtualizable) clock - against
+		/// a restore of the edge. The deadline manufactures the classic read/write timeout shape (an <see cref="IOException"/>
+		/// carrying a <see cref="System.Net.Sockets.SocketException"/>(TimedOut)) in the VICTIM's own call stack; a restore
+		/// resumes the operation with the data that piled up, like a link flap that healed.</para>
+		/// <para>A read already awaiting inside the in-process pipe when the cut lands may still deliver one buffered chunk
+		/// (same as bytes already in the kernel buffer when a real cable is yanked); every SUBSEQUENT operation parks.</para>
+		/// </remarks>
+		private sealed class FaultGateStream : Stream
+		{
+			private readonly Stream Inner;
+			private readonly VirtualNetworkCutEdge Edge;
+			private readonly VirtualNetworkTopology Topology;
+			private readonly bool LeaveInnerOpen;
+
+			public FaultGateStream(Stream inner, VirtualNetworkCutEdge edge, VirtualNetworkTopology topology, bool leaveInnerOpen)
+			{
+				this.Inner = inner;
+				this.Edge = edge;
+				this.Topology = topology;
+				this.LeaveInnerOpen = leaveInnerOpen;
+			}
+
+			private static IOException SimulateReadTimeout() => new("Unable to read data from the transport connection: the read operation timed out.", new System.Net.Sockets.SocketException(10060));
+
+			private static IOException SimulateWriteTimeout() => new("Unable to write data to the transport connection: the write operation timed out.", new System.Net.Sockets.SocketException(10060));
+
+			/// <summary>Parks while the edge is blackholed; throws the read/write timeout shape if the notice window elapses (on virtual time) before a restore.</summary>
+			private async ValueTask GateAsync(bool writing, CancellationToken ct)
+			{
+				var fault = this.Edge.ActiveFault;
+				while (fault is { Kind: VirtualNetworkFaultKind.Blackhole })
+				{
+					var restored = this.Edge.WhenRestored;
+					var deadline = Task.Delay(fault.NoticeAfter ?? Timeout.InfiniteTimeSpan, this.Topology.Time, ct);
+					var winner = await Task.WhenAny(deadline, restored).ConfigureAwait(false);
+					if (winner != restored)
+					{
+						await deadline.ConfigureAwait(false); // propagates the caller's own cancellation, if that is what completed it
+						throw writing ? SimulateWriteTimeout() : SimulateReadTimeout();
+					}
+					fault = this.Edge.ActiveFault; // the edge may have been cut again while we were parked
+				}
+				// Severed cuts ride the connection's linked CutToken (the whole stream aborts); the other kinds do not affect established connections
+			}
+
+			public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+			{
+				await GateAsync(writing: false, cancellationToken).ConfigureAwait(false);
+				return await this.Inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+			}
+
+			public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+			public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+			{
+				await GateAsync(writing: true, cancellationToken).ConfigureAwait(false);
+				await this.Inner.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
+			}
+
+			public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+			public override async Task FlushAsync(CancellationToken cancellationToken)
+			{
+				await GateAsync(writing: true, cancellationToken).ConfigureAwait(false);
+				await this.Inner.FlushAsync(cancellationToken).ConfigureAwait(false);
+			}
+
+			// the virtual transport stack is async end-to-end; the sync entry points exist only to satisfy the Stream
+			// contract for exotic consumers, and pay sync-over-async through the same gate
+			public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+
+			public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+
+			public override void Flush() => FlushAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+			public override bool CanRead => this.Inner.CanRead;
+
+			public override bool CanWrite => this.Inner.CanWrite;
+
+			public override bool CanSeek => false;
+
+			public override long Length => this.Inner.Length;
+
+			public override long Position
+			{
+				get => this.Inner.Position;
+				set => throw new NotSupportedException();
+			}
+
+			public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+			public override void SetLength(long value) => throw new NotSupportedException();
+
+			protected override void Dispose(bool disposing)
+			{
+				if (disposing && !this.LeaveInnerOpen)
+				{
+					this.Inner.Dispose();
+				}
+				base.Dispose(disposing);
+			}
+
+			public override async ValueTask DisposeAsync()
+			{
+				if (!this.LeaveInnerOpen)
+				{
+					await this.Inner.DisposeAsync().ConfigureAwait(false);
+				}
+				await base.DisposeAsync().ConfigureAwait(false);
+			}
 		}
 
 		/// <summary>Forwards an <see cref="HttpContent"/> and disposes the linked token source when the content is disposed.</summary>
