@@ -54,25 +54,41 @@ namespace SnowBank.Networking.Http
 			//NOP
 		}
 
+		/// <summary>Creates the protocol instance, handing it the client and the resolved options.</summary>
+		/// <remarks>The default resolves the protocol from the DI container with the client as a parameter. Override this to hand the protocol its <typeparamref name="TOptions"/> explicitly (so it does not have to reach back into the client instance).</remarks>
+		protected virtual TProtocol CreateProtocol(BetterHttpClient client, TOptions options)
+		{
+			return ActivatorUtilities.CreateInstance<TProtocol>(this.Services, client);
+		}
+
 		/// <inheritdoc />
 		//REVIEW: rename to CreateProtocol() ?
 		public TProtocol CreateClient(Uri baseAddress, Action<TOptions>? configure = null)
 		{
-			return CreateClientCore(baseAddress, null, configure);
+			return CreateClientCore(baseAddress, null, null, configure);
+		}
+
+		/// <summary>Creates a new client for sending requests to a remote target, using the named policy bundle for the pooled pipeline.</summary>
+		/// <param name="baseAddress">Host name or IP address of the remote target</param>
+		/// <param name="name">Name of the policy bundle to use for the pooled pipeline (TLS, filters, ...). A registered name is a bundle, NOT an origin.</param>
+		/// <param name="configure">Handler used to further configure the protocol options</param>
+		public TProtocol CreateClient(Uri baseAddress, string name, Action<TOptions>? configure = null)
+		{
+			Contract.NotNullOrWhiteSpace(name);
+			return CreateClientCore(baseAddress, null, name, configure);
 		}
 
 		/// <inheritdoc />
 		//REVIEW: rename to CreateProtocol() or CreateProtocolClient() ?
 		public TProtocol CreateClient(Uri baseAddress, HttpMessageHandler handler, Action<TOptions>? configure = null)
 		{
-			return CreateClientCore(baseAddress, handler, configure);
+			return CreateClientCore(baseAddress, handler, null, configure);
 		}
 
-		private TProtocol CreateClientCore(Uri baseAddress, HttpMessageHandler? handler, Action<TOptions>? configure = null)
+		private TProtocol CreateClientCore(Uri baseAddress, HttpMessageHandler? handler, string? name, Action<TOptions>? configure)
 		{
+			// build the protocol options ONCE (the named bundle drives the pooled pipeline; these options travel with the protocol object)
 			var options = CreateOptions();
-
-			//BUGBUG: REVIEW: any changes we make to the options could be overriden by factory.CreateClient(...) which will also apply its own default options
 
 			var localConfigure = this.Services.GetService<IConfigureOptions<TOptions>>();
 			localConfigure?.Configure(options);
@@ -82,12 +98,22 @@ namespace SnowBank.Networking.Http
 			OnAfterConfigure(options);
 
 			var factory = this.Services.GetRequiredService<IBetterHttpClientFactory>();
-			var client = factory.CreateClient(baseAddress, options, handler);
-			Contract.Debug.Assert(client != null && client.HostAddress != null && client.Options != null);
+			BetterHttpClient client;
+			if (handler is not null)
+			{ // transitional: a caller-provided transport carries the protocol options through a one-shot pipeline
+#pragma warning disable CS0618 // per-call options path, retired when protocol pipelines fully move to named bundles
+				client = factory.CreateClient(baseAddress, options, handler);
+#pragma warning restore CS0618
+			}
+			else
+			{ // pooled shell over the named (or default) policy bundle
+				client = factory.CreateClient(baseAddress, name);
+			}
+			Contract.Debug.Assert(client != null);
 
 			try
 			{
-				return ActivatorUtilities.CreateInstance<TProtocol>(this.Services, client);
+				return CreateProtocol(client, options);
 			}
 			catch (Exception)
 			{

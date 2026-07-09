@@ -129,7 +129,9 @@ namespace SnowBank.Networking.Http
 			return false;
 		}
 
-		internal BetterHttpClient.MagicalHandler WrapHandler(HttpMessageHandler handler, IServiceProvider services)
+		/// <summary>Applies the transport-level wrappers (credentials, custom handlers, filter wrappers) on top of a raw transport handler, WITHOUT the <see cref="MagicalHandler"/>.</summary>
+		/// <remarks>On the pooled path the <see cref="MagicalHandler"/> is registered separately (as an <c>AddHttpMessageHandler</c>); this method builds the rest of the chain that sits between it and the socket transport.</remarks>
+		internal HttpMessageHandler BuildTransportPipeline(HttpMessageHandler handler, IServiceProvider services)
 		{
 			Contract.Debug.Requires(handler is not null);
 
@@ -153,7 +155,12 @@ namespace SnowBank.Networking.Http
 				Contract.Debug.Assert(handler is not null);
 			}
 
-			return new BetterHttpClient.MagicalHandler(handler);
+			return handler;
+		}
+
+		internal MagicalHandler WrapHandler(HttpMessageHandler handler, IServiceProvider services)
+		{
+			return new MagicalHandler(BuildTransportPipeline(handler, services));
 		}
 
 		/// <summary>Applies any default configuration to the specified handler</summary>

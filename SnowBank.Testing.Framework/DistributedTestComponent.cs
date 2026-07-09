@@ -272,7 +272,7 @@ namespace SnowBank.Testing.Framework
 		/// <para>Add the <c>X-SBK-ORIGIN-...</c> and <c>X-SBK-TARGET-...</c>headers, that can be used to help track this host as the origin</para>
 		/// <para>These headers only exist inside the virtual distributed test framework and are not used or recognized in production!</para>
 		/// </remarks>
-		protected static void TagPath(BetterHttpClientOptions options, IDistributedTestComponent origin, IDistributedTestComponent? target, Uri? uri)
+		protected static void TagPath(HttpRequestHeaders headers, IDistributedTestComponent origin, IDistributedTestComponent? target, Uri? uri)
 		{
 			string? originPeer = null;
 			string? targetPeer = null;
@@ -294,10 +294,10 @@ namespace SnowBank.Testing.Framework
 				}
 			}
 
-			options.DefaultRequestHeaders.Add("X-SBK-ORIGIN", $"\"{origin.Id}\"; location=\"{origin.Location.Id}\"; host=\"{origin.NetworkMap.Host.Fqdn}\"{(originPeer is not null ? $"; peer=\"{originPeer}\"" : "")}");
+			headers.Add("X-SBK-ORIGIN", $"\"{origin.Id}\"; location=\"{origin.Location.Id}\"; host=\"{origin.NetworkMap.Host.Fqdn}\"{(originPeer is not null ? $"; peer=\"{originPeer}\"" : "")}");
 			if (target is not null)
 			{
-				options.DefaultRequestHeaders.Add("X-SBK-TARGET", $"\"{target.Id}\"; location=\"{target.Location.Id}\"; host=\"{target.NetworkMap.Host.Fqdn}\"{(targetPeer is not null ? $"; peer=\"{targetPeer}\"" : "")}");
+				headers.Add("X-SBK-TARGET", $"\"{target.Id}\"; location=\"{target.Location.Id}\"; host=\"{target.NetworkMap.Host.Fqdn}\"{(targetPeer is not null ? $"; peer=\"{targetPeer}\"" : "")}");
 			}
 		}
 
@@ -312,12 +312,23 @@ namespace SnowBank.Testing.Framework
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
 		public BetterHttpClient GetBetterHttpClient(IDistributedWebTestComponent remote, BetterHttpClientOptions? options = null)
 		{
-			options ??= new();
 			var uri = remote.GetUri();
-			TagPath(options, this, remote, uri);
-
 			var factory = GetRequiredService<IBetterHttpClientFactory>();
-			var client = factory.CreateClient(uri, options);
+
+			// transient shell over the pooled bundle; per-target tags live on the shell's DefaultRequestHeaders (never the pooled chain)
+			BetterHttpClient client;
+			if (options is not null)
+			{
+#pragma warning disable CS0618 // per-call options path, retired when the harness moves fully to named bundles
+				client = factory.CreateClient(uri, options);
+#pragma warning restore CS0618
+			}
+			else
+			{
+				client = factory.CreateClient(uri);
+			}
+
+			TagPath(client.DefaultRequestHeaders, this, remote, uri);
 			return client;
 		}
 
@@ -328,14 +339,26 @@ namespace SnowBank.Testing.Framework
 		public BetterHttpClient GetBetterHttpClient(Uri hostOrAddress, BetterHttpClientOptions? options = null)
 		{
 			EnsureStarted();
-			options ??= new();
 
 			var remote = this.NetworkMap.FindHost(hostOrAddress.Host);
 			var target = remote is not null ? this.Context.GetHost(remote.Id) : null;
-			TagPath(options, this, target, hostOrAddress);
 
 			var factory = GetRequiredService<IBetterHttpClientFactory>();
-			var client = factory.CreateClient(hostOrAddress, options);
+
+			// transient shell over the pooled bundle; per-target tags live on the shell's DefaultRequestHeaders (never the pooled chain)
+			BetterHttpClient client;
+			if (options is not null)
+			{
+#pragma warning disable CS0618 // per-call options path, retired when the harness moves fully to named bundles
+				client = factory.CreateClient(hostOrAddress, options);
+#pragma warning restore CS0618
+			}
+			else
+			{
+				client = factory.CreateClient(hostOrAddress);
+			}
+
+			TagPath(client.DefaultRequestHeaders, this, target, hostOrAddress);
 			return client;
 		}
 
@@ -348,7 +371,7 @@ namespace SnowBank.Testing.Framework
 			var factory = GetRequiredService<RestHttpProtocolFactory>();
 			var uri = remote.GetUri();
 			var client = factory.CreateClient(uri, configure);
-			TagPath(client.Options, this, remote, uri);
+			TagPath(client.Http.DefaultRequestHeaders, this, remote, uri);
 			return client;
 		}
 

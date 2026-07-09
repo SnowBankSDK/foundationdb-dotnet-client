@@ -40,8 +40,17 @@ namespace SnowBank.Networking.Http
 	public class BetterHttpClientContext
 	{
 
-		/// <summary>Instance of the <see cref="BetterHttpClient">client</see> executing this request</summary>
-		public required BetterHttpClient Client { get; init; }
+		/// <summary>Instance of the client executing this request</summary>
+		/// <remarks>This is the <see cref="HttpClient"/> (typically a <see cref="BetterHttpClient"/>) that the request was sent on. The pipeline reads its state from <see cref="Options"/>/<see cref="Clock"/>/<see cref="Services"/> instead of reaching into the client.</remarks>
+		public HttpClient? Client { get; init; }
+
+		/// <summary>Options used to configure the request pipeline (filters, hooks, credentials, ...)</summary>
+		/// <remarks>These options travel with the request, and are read by the pipeline instead of reaching back into the client instance.</remarks>
+		public required BetterHttpClientOptions Options { get; init; }
+
+		/// <summary>Clock used to measure the timestamps of this request</summary>
+		/// <remarks>Plugins and filters that need to measure time should use this clock instead of their own.</remarks>
+		public required IClock Clock { get; init; }
 
 		/// <summary>Unique ID of this request (for logging purpose)</summary>
 		public required string Id { get; init; }
@@ -83,7 +92,7 @@ namespace SnowBank.Networking.Http
 		public ExceptionDispatchInfo? Error { get; internal set; }
 
 		/// <summary>Provider for services used by this client when creating filters</summary>
-		public IServiceProvider Services => this.Client.Services;
+		public required IServiceProvider Services { get; init; }
 
 		/// <summary>Instant when the query was created</summary>
 		/// <remarks>
@@ -122,7 +131,7 @@ namespace SnowBank.Networking.Http
 		/// <para>This returns the time elapsed between <see cref="CreatedAt"/> and either <see cref="CompletedAt"/>, or the current system time (if <c>null</c>).</para>
 		/// <para>This value will always be greater than the <i>actual</i> network operation between the client and the server, since it includes pre- and post-processing steps.</para>
 		/// </remarks>
-		public Duration Elapsed => (this.CompletedAt ?? this.Client.Clock.GetCurrentInstant()) - this.CreatedAt;
+		public Duration Elapsed => (this.CompletedAt ?? this.Clock.GetCurrentInstant()) - this.CreatedAt;
 
 		/// <summary>Gets HTTP status code returned by the server</summary>
 		/// <remarks>Returns <c>0</c> if the query was not sent, canceled, the server did not respond in time, or an error prevented from processing the response.</remarks>
@@ -132,7 +141,7 @@ namespace SnowBank.Networking.Http
 		internal void SetStage(BetterHttpClientStage stage)
 		{
 			this.Stage = stage;
-			this.Client.Options.Hooks?.OnStageChanged(this, stage);
+			this.Options.Hooks?.OnStageChanged(this, stage);
 		}
 
 		/// <summary>Sets (or clear) an item in the <see cref="State"/> dictionary</summary>

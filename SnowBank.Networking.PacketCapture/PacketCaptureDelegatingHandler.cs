@@ -34,9 +34,6 @@ namespace SnowBank.Networking.PacketCapture
 	internal sealed record PacketCaptureClientHandlerSession
 	{
 
-		/// <summary>Client that is executing the request</summary>
-		public required BetterHttpClient Client { get; set; }
-
 		/// <summary>Trace identifier of this request</summary>
 		/// <remarks>
 		/// <para>This identifier is internal to the client and offers no strong guarantees on uniqueness or ordering.</para>
@@ -44,8 +41,11 @@ namespace SnowBank.Networking.PacketCapture
 		/// </remarks>
 		public required string TraceIdentifier { get; set; }
 
-		/// <summary>Time at which the request was started</summary>
+		/// <summary>Time at which the capture session was started</summary>
 		public required Instant StartedAt { get; set; }
+
+		/// <summary>Time at which the request context was created</summary>
+		public required Instant CreatedAt { get; set; }
 
 		/// <summary>Time at which the response headers were received</summary>
 		public Instant? ProcessedAt { get; set; }
@@ -93,16 +93,16 @@ namespace SnowBank.Networking.PacketCapture
 		{
 			var fields = this.Fields;
 
+			var req = this.Request ?? throw new InvalidOperationException("Request was not prepared correctly on this capture session.");
+
 			var connectionInfo = new CapturedPacketMetadata.ConnectionInfo()
 			{
-				Id = this.Client.Id,
-				StartedAt = this.Client.CreatedAt,
-				RemoteHost = this.Client.HostAddress.DnsSafeHost,
-				RemotePort = this.Client.HostAddress.Port,
+				Id = this.TraceIdentifier,
+				StartedAt = this.CreatedAt,
+				RemoteHost = req.RequestUri?.DnsSafeHost ?? string.Empty,
+				RemotePort = req.RequestUri?.Port ?? 0,
 				//TODO: local peers?
 			};
-
-			var req = this.Request ?? throw new InvalidOperationException("Request was not prepared correctly on this capture session.");
 			var requestInfo = new CapturedPacketMetadata.RequestInfo()
 			{
 				Method = req.Method.Method,

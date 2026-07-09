@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -28,6 +28,7 @@ namespace SnowBank.Networking.Http
 {
 	using Microsoft.Extensions.DependencyInjection;
 	using Microsoft.Extensions.DependencyInjection.Extensions;
+	using Microsoft.Extensions.Options;
 
 	/// <summary>Helper for building <see cref="BetterHttpClientOptions"/></summary>
 	public record BetterHttpClientOptionsBuilder
@@ -41,6 +42,9 @@ namespace SnowBank.Networking.Http
 		/// <summary>List of global handlers that will be called to configure the HTTP Handlers of all requests performed by the client</summary>
 		public List<Func<HttpMessageHandler, BetterHttpClientOptions, IServiceProvider, HttpMessageHandler>> GlobalHandlers { get; set; } = [ ];
 
+		/// <summary>Per-name configuration callbacks for the registered policy bundles.</summary>
+		public Dictionary<string, Action<BetterHttpClientOptions>> NamedConfigures { get; } = new(StringComparer.Ordinal);
+
 	}
 
 	/// <summary>Extensions methods for working with <see cref="BetterHttpClient"/> and other related types.</summary>
@@ -48,21 +52,104 @@ namespace SnowBank.Networking.Http
 	public static class BetterHttpClientExtensions
 	{
 
-		/// <summary>Adds support for <see cref="IBetterHttpClientFactory"/> and configures the global HTTP options</summary>
-		/// <remarks>This gives access to the <see cref="IBetterHttpClientFactory"/> singleton.</remarks>
+		/// <summary>Name of the default (dynamic / by-URI) policy bundle.</summary>
+		/// <remarks>We use an explicit named bundle (rather than <c>ConfigureHttpClientDefaults</c>) so the default chain is wired exactly like a named one - one <c>AddHttpClient</c> registration over the map's transport seam, with the pipeline handler on top.</remarks>
+		internal const string DefaultClientName = "SnowBank.Networking.Http.BetterHttpClient";
+
+		/// <summary>Adds support for <see cref="IBetterHttpClientFactory"/> and configures the default (dynamic) HTTP policy bundle</summary>
+		/// <remarks>This gives access to the <see cref="IBetterHttpClientFactory"/> singleton, whose <c>CreateClient()</c>/<c>CreateClient(uri)</c> hand out transient shells over the pooled default chain.</remarks>
 		public static IServiceCollection AddBetterHttpClient(this IServiceCollection services, Action<BetterHttpClientOptions>? configure = null)
 		{
-			services.TryAddSingleton<IBetterHttpClientFactory, DefaultBetterHttpClientFactory>();
-			services
-				.AddOptions<BetterHttpClientOptionsBuilder>()
-				.Configure(options =>
-				{
-					if (configure != null)
-					{
-						options.Configure += configure;
-					}
-				});
+			RegisterCore(services);
+			if (configure != null)
+			{
+				services
+					.AddOptions<BetterHttpClientOptionsBuilder>()
+					.Configure(options => options.Configure += configure);
+			}
 			return services;
+		}
+
+		/// <summary>Adds a named HTTP policy bundle (TLS, filters, pipeline) and support for <see cref="IBetterHttpClientFactory"/></summary>
+		/// <param name="services">Service collection</param>
+		/// <param name="name">Name of the policy bundle. A registered name is a bundle of policies, NOT an origin: the call site provides the absolute target URI at run time.</param>
+		/// <param name="configure">Optional callback used to configure the options for this bundle.</param>
+		public static IServiceCollection AddBetterHttpClient(this IServiceCollection services, string name, Action<BetterHttpClientOptions>? configure = null)
+		{
+			Contract.NotNullOrWhiteSpace(name);
+			if (string.Equals(name, DefaultClientName, StringComparison.Ordinal)) throw new ArgumentException("This name is reserved for the default policy bundle.", nameof(name));
+
+			RegisterCore(services);
+			if (configure != null)
+			{
+				services
+					.AddOptions<BetterHttpClientOptionsBuilder>()
+					.Configure(options => options.NamedConfigures[name] = configure);
+			}
+			WireBundle(services, name);
+			return services;
+		}
+
+		/// <summary>Ensures the factory, the options builder, the M.E.Http infrastructure and the default policy bundle are registered.</summary>
+		private static void RegisterCore(IServiceCollection services)
+		{
+			services.TryAddSingleton<IBetterHttpClientFactory, DefaultBetterHttpClientFactory>();
+			services.AddOptions<BetterHttpClientOptionsBuilder>();
+			services.AddHttpClient(); // registers IHttpClientFactory / IHttpMessageHandlerFactory
+			WireBundle(services, DefaultClientName);
+		}
+
+		/// <summary>Wires a named M.E.Http bundle: primary handler = the map's transport seam, plus the <see cref="MagicalHandler"/> pipeline on top. Idempotent per name.</summary>
+		private static void WireBundle(IServiceCollection services, string name)
+		{
+			if (!GetWiredBundles(services).Add(name)) return; // already wired
+
+			services
+				.AddHttpClient(name)
+				.ConfigurePrimaryHttpMessageHandler((sp) =>
+				{
+					var map = sp.GetService<INetworkMap>() ?? throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use {nameof(IBetterHttpClientFactory)}.");
+					var options = ResolveBundleOptions(sp, name);
+					// raw transport (sockets in prod, virtual network in tests), plus the transport-level wrappers (credentials, custom handlers, filter wrappers)
+					var transport = map.CreateTransportHandler(options);
+					return options.BuildTransportPipeline(transport, sp);
+				})
+				.AddHttpMessageHandler(() => new MagicalHandler());
+		}
+
+		/// <summary>Resolves the effective <see cref="BetterHttpClientOptions"/> for a policy bundle: global filters/handlers, the global configure, then the per-name configure. A FRESH instance is returned each call (so nothing is mutated across calls).</summary>
+		internal static BetterHttpClientOptions ResolveBundleOptions(IServiceProvider services, string name)
+		{
+			var builder = services.GetRequiredService<IOptions<BetterHttpClientOptionsBuilder>>().Value;
+
+			var options = new BetterHttpClientOptions();
+			options.Filters.AddRange(builder.GlobalFilters);
+			options.Handlers.AddRange(builder.GlobalHandlers);
+			builder.Configure?.Invoke(options);
+
+			if (!string.Equals(name, DefaultClientName, StringComparison.Ordinal) && builder.NamedConfigures.TryGetValue(name, out var configure))
+			{
+				configure(options);
+			}
+
+			return options;
+		}
+
+		/// <summary>Registration-time set of bundle names already wired, so repeated <c>AddBetterHttpClient</c> calls do not stack pipeline handlers.</summary>
+		private static HashSet<string> GetWiredBundles(IServiceCollection services)
+		{
+			var existing = (WiredBundles?) services.FirstOrDefault(d => d.ServiceType == typeof(WiredBundles))?.ImplementationInstance;
+			if (existing is null)
+			{
+				existing = new WiredBundles();
+				services.AddSingleton(existing);
+			}
+			return existing.Names;
+		}
+
+		private sealed class WiredBundles
+		{
+			public HashSet<string> Names { get; } = new(StringComparer.Ordinal);
 		}
 
 		/// <summary>Adds a global <see cref="IBetterHttpFilter">HTTP filter</see> to all clients used by this process</summary>
@@ -121,7 +208,7 @@ namespace SnowBank.Networking.Http
 		/// <param name="factory">Protocol factory that will create the new client.</param>
 		/// <param name="baseAddress">Host name, or IP address of the remote target</param>
 		/// <param name="configure">Optional callback used to further configure the client.</param>
-		/// <returns>Client that will send requests to the remote host at <see cref="baseAddress"/>, using the specified protocol.</returns>
+		/// <returns>Client that will send requests to the remote host at <paramref name="baseAddress"/>, using the specified protocol.</returns>
 		public static TProtocol CreateClient<TProtocol, TOptions>(this IBetterHttpProtocolFactory<TProtocol, TOptions> factory, string baseAddress, Action<TOptions>? configure = null)
 			where TProtocol : IBetterHttpProtocol
 			where TOptions : BetterHttpClientOptions

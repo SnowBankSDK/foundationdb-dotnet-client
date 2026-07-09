@@ -39,6 +39,11 @@ namespace SnowBank.Networking.Http
 		{
 			return new RestHttpClientOptions();
 		}
+
+		protected override RestHttpProtocol CreateProtocol(BetterHttpClient client, RestHttpClientOptions options)
+		{
+			return new RestHttpProtocol(client, options);
+		}
 	}
 
 	/// <summary>Extension methods for registering the <see cref="RestHttpProtocol"/> with the DI</summary>

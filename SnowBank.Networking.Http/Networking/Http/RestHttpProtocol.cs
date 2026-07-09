@@ -31,10 +31,10 @@ namespace SnowBank.Networking.Http
 	public class RestHttpProtocol : IBetterHttpProtocol
 	{
 
-		public RestHttpProtocol(BetterHttpClient httpClient)
+		public RestHttpProtocol(BetterHttpClient httpClient, RestHttpClientOptions options)
 		{
 			this.Http = httpClient;
-			this.Options = httpClient.Options as RestHttpClientOptions ?? throw new ArgumentException("Client options must implement " + nameof(RestHttpClientOptions), nameof(httpClient));
+			this.Options = options;
 		}
 
 		public RestHttpClientOptions Options { get; }

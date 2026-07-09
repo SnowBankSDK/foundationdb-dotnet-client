@@ -94,9 +94,8 @@ namespace SnowBank.Testing.Framework
 			}
 			else
 			{
-				// raw path: a plain HttpClient over the virtual-network handler, no capture filter
-				var factory = this.GetRequiredService<IBetterHttpClientFactory>();
-				using var raw = new HttpClient(factory.CreateHttpHandler(url, new BetterHttpClientOptions()));
+				// raw path: a plain HttpClient over the virtual-network transport, no capture filter
+				using var raw = new HttpClient(this.NetworkMap.CreateTransportHandler(new BetterHttpClientOptions()));
 				using var response = await raw.SendAsync(request, ct).ConfigureAwait(false);
 				var responseBody = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
 				return BuildResponse(response, responseBody);

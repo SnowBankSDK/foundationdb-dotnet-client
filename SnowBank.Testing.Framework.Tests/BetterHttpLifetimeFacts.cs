@@ -105,6 +105,30 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
+		public async Task Test_Disposing_Clients_Does_Not_Kill_The_Pooled_Chain()
+		{
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("WEB", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/ping", (HttpContext _) => "pong"));
+				});
+			}));
+			var web = context.GetWebHost("WEB");
+			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
+			var uri = web.GetUri("/ping");
+
+			// create, use, dispose N clients: every request must succeed - disposing a shell must never tear down the shared chain
+			for (int i = 0; i < 5; i++)
+			{
+				using var client = factory.CreateClient(uri);
+				var res = await client.SendAsync(client.CreateGetRequest(uri), async (ctx) =>
+					await ctx.Response.Content.ReadAsStringAsync(this.Cancellation), this.Cancellation);
+				Assert.That(res, Is.EqualTo("pong"), $"iteration {i}");
+			}
+		}
+
+		[Test]
 		public async Task Test_Remap_Reroutes_A_Live_Client_To_A_Different_Node()
 		{
 			// two distinct backends behind one public VIP; the origin (CLIENT) only lends its map for resolution.

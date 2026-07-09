@@ -31,6 +31,7 @@ namespace SnowBank.Testing.Framework
 	using Microsoft.AspNetCore.Hosting;
 	using Microsoft.AspNetCore.TestHost;
 	using Microsoft.Extensions.Configuration;
+	using SnowBank.Networking.Http;
 	using SnowBank.Networking.PacketCapture;
 
 	/// <summary>Simulated HTTP requester that fires GET/POST requests from a host and returns the raw response, for tests to inspect.</summary>

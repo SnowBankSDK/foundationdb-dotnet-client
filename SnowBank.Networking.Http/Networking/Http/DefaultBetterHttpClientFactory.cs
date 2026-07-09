@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -26,76 +26,137 @@
 
 namespace SnowBank.Networking.Http
 {
-	using Microsoft.Extensions.Logging;
-	using Microsoft.Extensions.Logging.Abstractions;
-	using Microsoft.Extensions.Options;
+	using Microsoft.Extensions.DependencyInjection;
 
-	/// <summary>Factory for creating <see cref="BetterHttpClient"/> instances with the global defaults</summary>
+	/// <summary>Factory that hands out <see cref="BetterHttpClient"/> shells over pooled handler chains sourced from <see cref="IHttpMessageHandlerFactory"/>.</summary>
 	public class DefaultBetterHttpClientFactory : IBetterHttpClientFactory
 	{
 
+		private IHttpMessageHandlerFactory HandlerFactory { get; }
+
 		private INetworkMap? Map { get; }
-
-		private BetterHttpClientOptionsBuilder Builder { get; }
-
-		private ILogger<BetterHttpClient> Logger { get; }
 
 		private NodaTime.IClock Clock { get; }
 
 		private IServiceProvider Services { get; }
 
-		public DefaultBetterHttpClientFactory(INetworkMap? map, IOptions<BetterHttpClientOptionsBuilder> optionsBuilder, ILogger<BetterHttpClient>? logger, NodaTime.IClock? clock, IServiceProvider services)
+		public DefaultBetterHttpClientFactory(IHttpMessageHandlerFactory handlerFactory, INetworkMap? map, NodaTime.IClock? clock, IServiceProvider services)
 		{
+			this.HandlerFactory = handlerFactory;
 			this.Map = map;
-			this.Builder = optionsBuilder.Value;
-			this.Logger = logger ?? NullLogger<BetterHttpClient>.Instance;
 			this.Clock = clock ?? NodaTime.SystemClock.Instance;
 			this.Services = services;
 		}
 
 		/// <inheritdoc />
+		public BetterHttpClient CreateClient()
+			=> CreateClientCore(BetterHttpClientExtensions.DefaultClientName, baseAddress: null);
+
+		/// <inheritdoc />
+		public BetterHttpClient CreateClient(string name)
+		{
+			Contract.NotNullOrWhiteSpace(name);
+			return CreateClientCore(name, baseAddress: null);
+		}
+
+		/// <inheritdoc />
+		public BetterHttpClient CreateClient(Uri baseAddress, string? name = null)
+		{
+			Contract.NotNull(baseAddress);
+			return CreateClientCore(name ?? BetterHttpClientExtensions.DefaultClientName, baseAddress);
+		}
+
+		private BetterHttpClient CreateClientCore(string name, Uri? baseAddress)
+		{
+			// pooled handler chain (transport + pipeline), owned and rotated by the platform
+			var handler = this.HandlerFactory.CreateHandler(name);
+
+			var options = BetterHttpClientExtensions.ResolveBundleOptions(this.Services, name);
+
+			var client = new BetterHttpClient(handler);
+			if (baseAddress is not null)
+			{
+				client.BaseAddress = baseAddress;
+			}
+			client.DefaultRequestVersion = options.DefaultRequestVersion;
+			client.DefaultVersionPolicy = options.DefaultVersionPolicy;
+			options.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
+
+			// attach the runtime that the send extensions read back at request time
+			BetterHttpClientRuntime.Attach(client, new BetterHttpClientRuntimeInfo()
+			{
+				Options = options,
+				Clock = this.Clock,
+				Services = this.Services,
+				Id = CorrelationIdGenerator.GetNextId(),
+			});
+
+			return client;
+		}
+
+		/// <inheritdoc />
+		[Obsolete("Register a named policy bundle with AddBetterHttpClient(name, ...) and resolve the pooled chain via IHttpMessageHandlerFactory.CreateHandler(name) instead.")]
 		public HttpMessageHandler CreateHttpHandler(Uri hostAddress, BetterHttpClientOptions options)
 		{
-			options.Filters.AddRange(this.Builder.GlobalFilters);
-			options.Handlers.AddRange(this.Builder.GlobalHandlers);
-			this.Builder.Configure?.Invoke(options);
+			Contract.NotNull(hostAddress);
+			Contract.NotNull(options);
 
-			if (this.Map == null) throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use this method.");
-#pragma warning disable CS0618 // obsolete bridge, retired when policy application moves fully into the client pipeline
-			var handler = this.Map.CreateBetterHttpHandler(hostAddress, options);
-#pragma warning restore CS0618
+			ApplyGlobals(options);
+
+			if (this.Map == null) throw ErrorNoNetworkMap();
+			var handler = this.Map.CreateTransportHandler(options);
 
 			return options.WrapHandler(handler, this.Services);
 		}
 
 		/// <inheritdoc />
+		[Obsolete("Register a named policy bundle with AddBetterHttpClient(name, ...) and use CreateClient(name)/CreateClient(uri) instead.")]
 		public BetterHttpClient CreateClient(Uri hostAddress, BetterHttpClientOptions options, HttpMessageHandler? handler = null)
 		{
 			Contract.NotNull(hostAddress);
 			Contract.NotNull(options);
 
-			options.Filters.AddRange(this.Builder.GlobalFilters);
-			options.Handlers.AddRange(this.Builder.GlobalHandlers);
-			this.Builder.Configure?.Invoke(options);
+			ApplyGlobals(options);
 
 			if (handler == null)
 			{
-				if (this.Map == null) throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use this method.");
-#pragma warning disable CS0618 // obsolete bridge, retired when policy application moves fully into the client pipeline
-				handler = this.Map.CreateBetterHttpHandler(hostAddress, options);
-#pragma warning restore CS0618
-				Contract.Debug.Assert(handler != null);
+				if (this.Map == null) throw ErrorNoNetworkMap();
+				handler = this.Map.CreateTransportHandler(options);
 			}
 
-			return new BetterHttpClient(
-				hostAddress,
-				options,
-				handler,
-				this.Logger,
-				this.Clock,
-				this.Services
-			);
+			// build the full one-shot pipeline over the provided transport (transport wrappers + MagicalHandler)
+			var wrapped = options.WrapHandler(handler, this.Services);
+			var client = new BetterHttpClient(wrapped)
+			{
+				BaseAddress = hostAddress,
+				DefaultRequestVersion = options.DefaultRequestVersion,
+				DefaultVersionPolicy = options.DefaultVersionPolicy,
+			};
+			options.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
+
+			BetterHttpClientRuntime.Attach(client, new BetterHttpClientRuntimeInfo()
+			{
+				Options = options,
+				Clock = this.Clock,
+				Services = this.Services,
+				Id = CorrelationIdGenerator.GetNextId(),
+			});
+
+			return client;
 		}
+
+		/// <summary>Merges the process-wide global filters/handlers and the global configure into the caller-provided options (used by the transitional per-call creation path).</summary>
+		private void ApplyGlobals(BetterHttpClientOptions options)
+		{
+			var builder = this.Services.GetService<Microsoft.Extensions.Options.IOptions<BetterHttpClientOptionsBuilder>>()?.Value;
+			if (builder is null) return;
+			options.Filters.AddRange(builder.GlobalFilters);
+			options.Handlers.AddRange(builder.GlobalHandlers);
+			builder.Configure?.Invoke(options);
+		}
+
+		private static InvalidOperationException ErrorNoNetworkMap()
+			=> new($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use this method.");
 
 	}
 

@@ -62,8 +62,8 @@ namespace SnowBank.Networking.PacketCapture
 
 			var session = new PacketCaptureClientHandlerSession
 			{
-				Client = context.Client,
 				StartedAt = this.Manager.Clock.GetCurrentInstant(),
+				CreatedAt = context.CreatedAt,
 				Fields = this.Manager.Options.AllowedFields,
 				TraceIdentifier = context.Id,
 				StackTrace = this.Manager.Options.CaptureStackTraces ? new StackTrace(2).ToString() : null,

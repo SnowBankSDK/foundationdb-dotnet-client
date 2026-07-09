@@ -591,7 +591,7 @@ namespace SnowBank.Networking.Http
 			if (ct.IsCancellationRequested) return new ValueTask<Stream>(Task.FromCanceled<Stream>(ct));
 
 			// grab the BetterHttpClientContext (if there is one)
-			context.InitialRequestMessage.Options.TryGetValue(BetterHttpClient.OptionKey, out var clientContext);
+			context.InitialRequestMessage.Options.TryGetValue(BetterHttpRequestExtensions.OptionKey, out var clientContext);
 
 			if (IPAddress.TryParse(context.DnsEndPoint.Host, out var address))
 			{ // already an IP address, we can connect directly to the remote socket
@@ -613,14 +613,14 @@ namespace SnowBank.Networking.Http
 				await socket.ConnectAsync(endpoint, ct).ConfigureAwait(false);
 				sw.Stop();
 				this.Network.RecordEndpointConnectionAttempt(endpoint, sw.Elapsed, null, hostName, GetLocalEndpointAddress(socket));
-				context?.Client.Options.Hooks?.OnSocketConnected(context, socket);
+				context?.Options.Hooks?.OnSocketConnected(context, socket);
 				return new NetworkStream(socket);
 			}
 			catch (Exception e)
 			{
 				sw.Stop();
 				this.Network.RecordEndpointConnectionAttempt(endpoint, sw.Elapsed, e, hostName, localAddress: null);
-				context?.Client.Options.Hooks?.OnSocketFailed(context, socket, e);
+				context?.Options.Hooks?.OnSocketFailed(context, socket, e);
 				socket.Dispose();
 				throw;
 			}
@@ -856,7 +856,7 @@ namespace SnowBank.Networking.Http
 
 			Contract.Debug.Assert(theOneTrueSocket != null);
 
-			clientContext?.Client.Options.Hooks?.OnSocketConnected(clientContext, theOneTrueSocket);
+			clientContext?.Options.Hooks?.OnSocketConnected(clientContext, theOneTrueSocket);
 
 			return new NetworkStream(theOneTrueSocket, ownsSocket: true);
 		}
