@@ -65,7 +65,9 @@ namespace SnowBank.Networking
 
 			lock (this.PassthroughLock)
 			{
-				return this.PassthroughHandler ??= this.Options.Configure(new HttpClientHandler());
+				// apply only the socket-level knobs to the real-network handler; the filters wrap ABOVE this transport, in the
+				// pipeline, so they must NOT be re-applied here (that used to double-wrap them on the passthrough path).
+				return this.PassthroughHandler ??= this.Options.ConfigureTransport(new HttpClientHandler());
 			}
 		}
 
@@ -216,7 +218,9 @@ namespace SnowBank.Networking
 				if (factory != null)
 				{
 					var handler = factory();
-					handler = this.Options.Configure(handler);
+					// apply only the socket-level knobs to the target's in-memory handler; the filters (and packet capture) wrap
+					// ABOVE this transport, in the pipeline, and must NOT be re-applied here - that used to double-wrap them.
+					handler = this.Options.ConfigureTransport(handler);
 					var invoker = new HttpMessageInvoker(handler);
 
 					// Link the call to BOTH endpoints' "online" tokens, so that if either host goes offline mid-flight, the

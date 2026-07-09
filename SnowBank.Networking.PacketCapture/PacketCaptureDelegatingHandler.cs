@@ -71,6 +71,9 @@ namespace SnowBank.Networking.PacketCapture
 		/// <remarks>If <see cref="Slice.Nil"/>, it means either means that the method does not expect a response body (ex: PUT, ...), OR that capture of the response body was not enabled in <see cref="Fields"/>.</remarks>
 		public Slice ResponseBody { get; set; }
 
+		/// <summary>Indicates that the response was a long-lived stream (gRPC duplex or Server-Sent Events) passed through untouched: it was captured at headers only and its body was deliberately not mirrored.</summary>
+		public bool ResponseStreaming { get; set; }
+
 		public string? StackTrace { get; set; }
 
 		internal static bool CanHaveRequestBody(HttpMethod method) => method.Method switch
@@ -124,6 +127,7 @@ namespace SnowBank.Networking.PacketCapture
 					ReasonPhrase = res.ReasonPhrase,
 					Headers = fields.HasFlag(CapturedHttpFields.ResponseHeaders) ? CloneResponseHeaders(res.Headers, res.Content.Headers) : CapturedHttpHeaders.Empty,
 					HasBody = !this.ResponseBody.IsNull,
+					Streaming = this.ResponseStreaming,
 				};
 			}
 			else

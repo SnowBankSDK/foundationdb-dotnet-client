@@ -28,6 +28,7 @@ namespace SnowBank.Networking.Http
 {
 	using Microsoft.Extensions.DependencyInjection;
 	using Microsoft.Extensions.DependencyInjection.Extensions;
+	using Microsoft.Extensions.Http;
 	using Microsoft.Extensions.Options;
 
 	/// <summary>Helper for building <see cref="BetterHttpClientOptions"/></summary>
@@ -53,8 +54,18 @@ namespace SnowBank.Networking.Http
 	{
 
 		/// <summary>Name of the default (dynamic / by-URI) policy bundle.</summary>
-		/// <remarks>We use an explicit named bundle (rather than <c>ConfigureHttpClientDefaults</c>) so the default chain is wired exactly like a named one - one <c>AddHttpClient</c> registration over the map's transport seam, with the pipeline handler on top.</remarks>
-		internal const string DefaultClientName = "SnowBank.Networking.Http.BetterHttpClient";
+		/// <remarks>
+		/// <para>We use an explicit named bundle (rather than <c>ConfigureHttpClientDefaults</c>) so the default chain is wired exactly like a named one - one <c>AddHttpClient</c> registration over the map's transport seam, with the pipeline handler on top.</para>
+		/// <para>This is the name to pass to <see cref="System.Net.Http.IHttpMessageHandlerFactory.CreateHandler"/> to obtain a bare, pooled handler that carries the full default pipeline (packet capture included).</para>
+		/// </remarks>
+		public const string DefaultClientName = "SnowBank.Networking.Http.BetterHttpClient";
+
+		/// <summary>Service key under which a higher layer can register an OUTER "capture" delegating handler that rides every pooled bundle chain.</summary>
+		/// <remarks>
+		/// <para>The <c>SnowBank.Networking.PacketCapture</c> layer registers its in-chain capture handler under this key (keyed + transient). When present, <see cref="WireBundle"/> inserts it as the OUTERMOST handler of the bundle (above the pipeline's <see cref="MagicalHandler"/>), so capture observes the entire request/response for any consumer of the pooled chain.</para>
+		/// <para>This is a DI-key seam because <c>SnowBank.Networking.Http</c> must not depend on the packet-capture layer (the dependency runs the other way).</para>
+		/// </remarks>
+		public const string CaptureHandlerServiceKey = "SnowBank.Networking.Http.CaptureHandler";
 
 		/// <summary>Adds support for <see cref="IBetterHttpClientFactory"/> and configures the default (dynamic) HTTP policy bundle</summary>
 		/// <remarks>This gives access to the <see cref="IBetterHttpClientFactory"/> singleton, whose <c>CreateClient()</c>/<c>CreateClient(uri)</c> hand out transient shells over the pooled default chain.</remarks>
@@ -84,7 +95,14 @@ namespace SnowBank.Networking.Http
 			{
 				services
 					.AddOptions<BetterHttpClientOptionsBuilder>()
-					.Configure(options => options.NamedConfigures[name] = configure);
+					.Configure(options =>
+					{
+						// compose repeated registrations for the same name (like the default overload's Configure +=), instead of
+						// the previous last-wins: several call sites can contribute policies to one bundle.
+						options.NamedConfigures[name] = options.NamedConfigures.TryGetValue(name, out var previous)
+							? (opts => { previous(opts); configure(opts); })
+							: configure;
+					});
 			}
 			WireBundle(services, name);
 			return services;
@@ -115,9 +133,25 @@ namespace SnowBank.Networking.Http
 					return options.BuildTransportPipeline(transport, sp);
 				})
 				.AddHttpMessageHandler(() => new MagicalHandler());
+
+			// If a higher layer registered an outer capture handler (e.g. packet capture) under CaptureHandlerServiceKey, insert it
+			// as the OUTERMOST handler of this bundle - ABOVE the MagicalHandler - so capture rides the whole pipeline (a bare handler
+			// obtained from IHttpMessageHandlerFactory is captured too, not just BetterHttpClient sends). Resolved per chain build, so
+			// it rotates with the pooled chain; conditional + Insert(0) means no cost (and no extra handler) when capture is absent.
+			services.Configure<HttpClientFactoryOptions>(name, options =>
+			{
+				options.HttpMessageHandlerBuilderActions.Add(builder =>
+				{
+					if (builder.Services.GetKeyedService<DelegatingHandler>(CaptureHandlerServiceKey) is { } capture)
+					{
+						builder.AdditionalHandlers.Insert(0, capture);
+					}
+				});
+			});
 		}
 
 		/// <summary>Resolves the effective <see cref="BetterHttpClientOptions"/> for a policy bundle: global filters/handlers, the global configure, then the per-name configure. A FRESH instance is returned each call (so nothing is mutated across calls).</summary>
+		/// <remarks>Caveat: the pooled pipeline (this method, when the primary handler is stitched) and the client runtime (the send extensions) resolve TWO SEPARATE options instances for the same bundle. Filters therefore must keep per-request state in <c>context.State</c> - never in instance fields that try to coordinate their <c>Wrap</c> with their stage callbacks, since the two runs see different option objects.</remarks>
 		internal static BetterHttpClientOptions ResolveBundleOptions(IServiceProvider services, string name)
 		{
 			var builder = services.GetRequiredService<IOptions<BetterHttpClientOptionsBuilder>>().Value;

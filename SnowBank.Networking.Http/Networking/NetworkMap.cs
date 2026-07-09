@@ -47,9 +47,21 @@ namespace SnowBank.Networking
 		/// <inheritdoc />
 		public virtual HttpMessageHandler CreateTransportHandler(BetterHttpClientOptions options)
 		{
-			// raw transport only: a socket-backed handler for the real network. No filters/hooks/policies are applied here
-			// (those belong to the client pipeline); the request URI decides the destination per-request.
-			return new BetterHttpClientHandler(this);
+			// socket-backed transport for the real network; the request URI decides the destination per-request. No filters or
+			// per-request hooks are applied here (those belong to the client pipeline, ABOVE the transport) - only the per-bundle
+			// socket-level knobs, applied ONCE on this shared handler from the resolved options.
+			var handler = new BetterHttpClientHandler(this);
+
+			// bound how stale a warm pooled connection's DNS may get: the platform pools connections per-origin, so without a
+			// lifetime a long-lived client would keep reusing a cached endpoint. Set once, on the shared SocketsHttpHandler.
+			handler.Sockets.PooledConnectionLifetime = BetterHttpDefaults.PooledConnectionLifetime;
+
+			// wire the multi-IP racing / heatmap connect callback: it reads the endpoint heatmap from THIS map (map-scoped) and
+			// the per-request context from request.Options - nothing per-client is stashed on the shared handler.
+			handler.Setup();
+
+			// per-bundle socket-level knobs (TLS/certs/cookies/proxy/redirects/decompression) from the resolved bundle options.
+			return options.ConfigureTransport(handler);
 		}
 
 		[Obsolete("Use CreateTransportHandler instead")]

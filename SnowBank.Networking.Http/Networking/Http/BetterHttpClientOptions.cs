@@ -349,9 +349,34 @@ namespace SnowBank.Networking.Http
 			return handler;
 		}
 
+		/// <summary>Applies the per-bundle socket-level knobs (TLS, client certs, cookies, proxy, redirects, decompression) to a bundle's transport handler.</summary>
+		/// <param name="handler">Transport handler that will be configured (the socket-backed handler in production, or an in-memory test handler).</param>
+		/// <returns>Configured handler. This could be a different instance that wraps the original handler (e.g. when cookies wrap a foreign handler type).</returns>
+		/// <remarks>
+		/// <para>This is the socket-configuration half of <see cref="Configure"/>: it deliberately does NOT apply the filters (they wrap ABOVE the transport, as pipeline handlers rebuilt with each rotation, exactly once) nor the per-request hooks.</para>
+		/// <para>Credentials are applied in the pipeline-build step (<see cref="BuildTransportPipeline"/>), where the DI container needed to resolve them is available; because cookies are set as a <em>property</em> on the pooled <see cref="BetterHttpClientHandler"/> (they only wrap for foreign handler types), the credentials-then-cookies ordering stays safe on the production transport.</para>
+		/// <para>The <see cref="BetterHttpClientHandler"/>-specific bits (the racing/heatmap connect callback and <see cref="BetterHttpDefaults.PooledConnectionLifetime"/>) are wired by the map's <see cref="INetworkMap.CreateTransportHandler"/>, not here.</para>
+		/// </remarks>
+		[MustUseReturnValue]
+		public HttpMessageHandler ConfigureTransport(HttpMessageHandler handler)
+		{
+			Contract.NotNull(handler);
+
+			handler = ConfigureHttps(handler);
+
+			handler = ConfigureDefaults(handler);
+
+			handler = ConfigureProxy(handler);
+
+			handler = ConfigureCookies(handler);
+
+			return handler;
+		}
+
 		/// <summary>Apply these options to a new <see cref="HttpMessageHandler"/></summary>
 		/// <param name="handler">Handler that will be configured</param>
 		/// <returns>Configured handler. This could be a different instance that wraps the original handler</returns>
+		/// <remarks>This applies the socket knobs AND wraps the filters in a single pass; on the pooled path those two concerns are split (socket knobs via <see cref="ConfigureTransport"/> on the transport, filters once in the pipeline), so this method now only backs the transitional <c>[Obsolete]</c> creation bridges.</remarks>
 		[MustUseReturnValue]
 		public HttpMessageHandler Configure(HttpMessageHandler handler)
 		{
@@ -359,7 +384,7 @@ namespace SnowBank.Networking.Http
 
 			if (handler is BetterHttpClientHandler betterHandler)
 			{
-				betterHandler.Setup(this);
+				betterHandler.Setup();
 			}
 
 			handler = ConfigureHttps(handler);

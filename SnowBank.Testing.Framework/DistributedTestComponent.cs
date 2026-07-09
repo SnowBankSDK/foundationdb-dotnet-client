@@ -394,10 +394,10 @@ namespace SnowBank.Testing.Framework
 					options.AccessTokenProvider = accessTokenProvider;
 					options.HttpMessageHandlerFactory = (_) =>
 					{
-						// raw virtual transport for the SignalR connection; the target host is resolved per-request from the request URI
-						var handler = remote.NetworkMap.CreateTransportHandler(new BetterHttpClientOptions());
-						//TOOD: customize?
-						return handler;
+						// pooled bundle chain for the SignalR connection: it carries the FULL pipeline (packet capture included), while the
+						// target host is still resolved per-request from the request URI. This is what makes SignalR traffic ride capture too.
+						var handlerFactory = remote.GetRequiredService<IHttpMessageHandlerFactory>();
+						return handlerFactory.CreateHandler(BetterHttpClientExtensions.DefaultClientName);
 					};
 				});
 

@@ -123,6 +123,10 @@ namespace SnowBank.Networking.PacketCapture
 			[JsonProperty("hasBody")]
 			public bool HasBody { get; init; }
 
+			/// <summary>Indicates that the response was a long-lived stream (gRPC duplex or Server-Sent Events) captured at headers only; its body was passed through untouched and deliberately not recorded (so <see cref="HasBody"/> is <see langword="false"/>).</summary>
+			[JsonProperty("streaming")]
+			public bool Streaming { get; init; }
+
 			public ResponseHeaders GetTypedHeaders() => new(this.Headers);
 
 		}

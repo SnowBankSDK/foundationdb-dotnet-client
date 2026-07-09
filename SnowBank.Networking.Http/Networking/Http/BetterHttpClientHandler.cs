@@ -861,9 +861,10 @@ namespace SnowBank.Networking.Http
 			return new NetworkStream(theOneTrueSocket, ownsSocket: true);
 		}
 
-		internal void Setup(BetterHttpClientOptions options)
+		/// <summary>Wires the multi-IP racing / heatmap connect callback on the underlying sockets.</summary>
+		/// <remarks>The callback reads the endpoint heatmap from the <see cref="Network"/> map (map-scoped) and the per-request <see cref="BetterHttpClientContext"/> from <c>request.Options</c>; it stores nothing client-specific on this shared handler.</remarks>
+		internal void Setup()
 		{
-			this.Sockets.Properties[nameof(BetterHttpClientOptions)] = options;
 			this.Sockets.ConnectCallback = this.SocketsConnectCallback;
 		}
 
