@@ -193,6 +193,57 @@ namespace FoundationDB.Client.Tests
 			Assert.That(backward, Is.EqualTo([ "k3", "k2" ]));
 		}
 
+		[Test]
+		public async Task Test_Runner_Applies_Transaction_Options()
+		{
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "k1", "committed");
+			builder.Commit("A");
+			builder.Begin("A");
+			builder.SetOption("A", ScenarioTransactionOption.ReadYourWritesDisable);
+			builder.Set("A", "k1", "uncommitted");
+			builder.Get("A", "k1"); // RYW disabled: the read must NOT see the transaction's own write
+			builder.Dispose("A");
+			var scenario = builder.Build("runner_options");
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			Assert.That(trace.Events[4].Outcome.Count, Is.EqualTo(0), "SetOption must succeed silently");
+			Assert.That(trace.Events[6].Outcome.Get<string?>("value", null), Is.EqualTo("committed"));
+		}
+
+		[Test]
+		public async Task Test_Runner_Substitutes_Stamps_In_Dump_And_Reads()
+		{
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.SetVersionstampedKey("A", Slice.FromStringAscii("log-") + Slice.Zero(10), 4, "payload");
+			builder.SetVersionstampedValue("A", "marker", Slice.Zero(10), 0);
+			int vs = builder.GetVersionstamp("A");
+			builder.Commit("A");
+			builder.ExpectVersionstamp(vs); // registers the stamp pattern for rendering
+			builder.Begin("A");
+			builder.Get("A", "marker");     // the value IS the raw stamp: must render substituted
+			builder.Dispose("A");
+			var scenario = builder.Build("runner_stamps");
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			var stampSymbol = trace.Events[5].Outcome.Get<string>("stamp");
+			Assert.That(stampSymbol, Does.StartWith("v1#"));
+
+			Assert.That(trace.Events[7].Outcome.Get<string?>("value", null), Is.EqualTo($"<{stampSymbol}>"));
+
+			// the dump contains the stamped key (substituted) and the marker value (substituted)
+			Assert.That(trace.FinalState.Select(kv => kv.Key), Is.EqualTo([ $"log-<{stampSymbol}>", "marker" ]));
+			Assert.That(trace.FinalState[1].Value, Is.EqualTo($"<{stampSymbol}>"));
+		}
+
 	}
 
 }

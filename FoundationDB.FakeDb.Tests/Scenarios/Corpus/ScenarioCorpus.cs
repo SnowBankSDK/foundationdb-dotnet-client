@@ -26,6 +26,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using System.IO;
+	using System.Runtime.CompilerServices;
 	using FoundationDB.Client;
 
 	/// <summary>The hand-authored scenario corpus shared by the replay, record and dual-live fixtures.</summary>
@@ -36,17 +38,51 @@ namespace FoundationDB.Client.Tests
 	public static class ScenarioCorpus
 	{
 
-		/// <summary>All the scenarios of the corpus.</summary>
+		/// <summary>All the scenarios of the corpus: the hand-authored entries plus the pinned generator finds (<c>Corpus/Pinned/*.json</c>).</summary>
 		public static IReadOnlyList<Scenario> All { get; } =
 		[
 			HarnessSmoke(),
 			HarnessInterleaveConflict(),
 			HarnessSelectorsRanges(),
 			HarnessWatchSmoke(),
+			.. LoadPinned(),
 		];
 
 		/// <summary>Returns the scenario with the given name.</summary>
 		public static Scenario Get(string name) => All.FirstOrDefault(s => s.Name == name) ?? throw new ArgumentException($"Unknown scenario '{name}'.", nameof(name));
+
+		/// <summary>The pinned-scenarios folder in the source tree (compile-time anchor).</summary>
+		private static string PinnedSourceDirectory { get; } = ComputePinnedSourceDirectory();
+
+		private static string ComputePinnedSourceDirectory([CallerFilePath] string sourcePath = "") => Path.Combine(Path.GetDirectoryName(sourcePath)!, "Pinned");
+
+		/// <summary>The pinned-scenarios folder copied next to the test assembly by the build.</summary>
+		private static string PinnedOutputDirectory { get; } = Path.Combine(AppContext.BaseDirectory, "Scenarios", "Corpus", "Pinned");
+
+		/// <summary>Loads the generator finds pinned as JSON scenarios (a fresh pin in the source tree wins over a stale output copy).</summary>
+		private static IEnumerable<Scenario> LoadPinned()
+		{
+			var byName = new SortedDictionary<string, Scenario>(StringComparer.Ordinal);
+			foreach (var dir in (string[]) [ PinnedOutputDirectory, PinnedSourceDirectory ]) // source second: overrides
+			{
+				if (!Directory.Exists(dir)) continue;
+				foreach (var file in Directory.EnumerateFiles(dir, "*.json"))
+				{
+					var scenario = Scenario.FromJson(CrystalJson.Parse(File.ReadAllText(file)));
+					byName[scenario.Name] = scenario;
+				}
+			}
+			return byName.Values;
+		}
+
+		/// <summary>Pins a generator find as a permanent regression scenario in the source tree, and returns its path (commit the file).</summary>
+		public static string PinScenario(Scenario scenario)
+		{
+			Directory.CreateDirectory(PinnedSourceDirectory);
+			var path = Path.Combine(PinnedSourceDirectory, scenario.Name + ".json");
+			File.WriteAllText(path, scenario.ToJson().ToJsonText(CrystalJsonSettings.JsonIndented) + Environment.NewLine);
+			return path;
+		}
 
 		/// <summary>Test cases for the mode fixtures (one per scenario, displayed by name).</summary>
 		public static IEnumerable<TestCaseData> TestCases => All.Select(s => new TestCaseData(s.Name));

@@ -60,6 +60,32 @@ namespace FoundationDB.Client.Tests
 			Assert.That(symbols.Stamp(VersionStamp.Incomplete()), Is.EqualTo("incomplete"));
 		}
 
+		[Test]
+		public void Test_Symbolizer_Substitutes_Observed_Stamps_In_Rendered_Bytes()
+		{
+			var symbols = new VersionSymbolizer();
+
+			// observing a stamp (ExpectVersionstamp, GetMetadataVersion) registers its byte pattern
+			var stamp = VersionStamp.Complete(0x0123456789ABCDEFUL, 7);
+			Assert.That(symbols.Stamp(stamp), Is.EqualTo("v1#7"));
+
+			// rendered keys/values substitute the observed pattern
+			var payload = Slice.FromStringAscii("pre") + stamp.ToSlice() + Slice.FromStringAscii("post");
+			Assert.That(symbols.Render(payload), Is.EqualTo("pre<v1#7>post"));
+
+			// multiple occurrences all substitute
+			var twice = stamp.ToSlice() + Slice.FromStringAscii("-") + stamp.ToSlice();
+			Assert.That(symbols.Render(twice), Is.EqualTo("<v1#7>-<v1#7>"));
+
+			// an unobserved stamp stays as raw escaped bytes
+			var other = VersionStamp.Complete(42UL, 0);
+			Assert.That(symbols.Render(other.ToSlice()), Is.EqualTo(ScenarioText.Encode(other.ToSlice())));
+
+			// nil/empty passthrough matches the plain codec
+			Assert.That(symbols.Render(Slice.Nil), Is.Null);
+			Assert.That(symbols.Render(Slice.Empty), Is.EqualTo(""));
+		}
+
 		private static ScenarioTrace MakeTrace(string value = "world", string watchOutcome = "Fired", string lastKey = "k2")
 		{
 			return new()

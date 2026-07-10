@@ -208,7 +208,7 @@ namespace FoundationDB.Client.Tests
 				case ScenarioOp.Get:
 				{
 					var value = await GetReader(step).GetAsync(AbsoluteKey(step.Key).Span);
-					outcome["value"] = ScenarioText.Encode(value);
+					outcome["value"] = this.Symbols.Render(value);
 					break;
 				}
 				case ScenarioOp.GetKey:
@@ -229,7 +229,7 @@ namespace FoundationDB.Client.Tests
 						Streaming = FdbStreamingMode.WantAll,
 					};
 					var chunk = await GetReader(step).GetRangeAsync(AbsoluteSelector(begin), AbsoluteSelector(end), options);
-					outcome["items"] = JsonArray.FromValues(chunk.Items, kv => JsonObject.Create([ ("key", RenderKey(kv.Key)), ("value", ScenarioText.Encode(kv.Value)) ]));
+					outcome["items"] = JsonArray.FromValues(chunk.Items, kv => JsonObject.Create([ ("key", RenderKey(kv.Key)), ("value", this.Symbols.Render(kv.Value)) ]));
 					outcome["hasMore"] = chunk.HasMore;
 					break;
 				}
@@ -293,6 +293,45 @@ namespace FoundationDB.Client.Tests
 					outcome["stamp"] = this.Symbols.Stamp(await task);
 					break;
 				}
+				case ScenarioOp.SetOption:
+				{
+					var tr = GetTransaction(step);
+					switch (step.Option)
+					{
+						case ScenarioTransactionOption.ReadYourWritesDisable:
+						{
+							tr.Options.WithReadYourWritesDisable();
+							break;
+						}
+						case ScenarioTransactionOption.SnapshotReadYourWritesDisable:
+						{
+							tr.Options.SetOption(FdbTransactionOption.SnapshotReadYourWritesDisable);
+							break;
+						}
+						default:
+						{
+							throw AuthoringError(step, "SetOption requires a supported option");
+						}
+					}
+					break;
+				}
+				case ScenarioOp.TouchMetadataVersion:
+				{
+					GetTransaction(step).TouchMetadataVersionKey();
+					break;
+				}
+				case ScenarioOp.GetMetadataVersion:
+				{
+					var stamp = await GetTransaction(step).GetMetadataVersionKeyAsync();
+					outcome["stamp"] = stamp is null ? null : this.Symbols.Stamp(stamp.Value);
+					break;
+				}
+				case ScenarioOp.WatchMetadataVersion:
+				{
+					int handle = step.HandleId ?? throw AuthoringError(step, "WatchMetadataVersion requires a handle id");
+					this.Watches[handle] = GetTransaction(step).Watch(Fdb.System.MetadataVersionKey.Span, this.Cancellation);
+					break;
+				}
 				default:
 				{
 					throw AuthoringError(step, $"unsupported operation {step.Op}");
@@ -354,7 +393,7 @@ namespace FoundationDB.Client.Tests
 		private string RenderKey(Slice absoluteKey)
 		{
 			if (!absoluteKey.StartsWith(this.Prefix)) return OutsideMarker;
-			return ScenarioText.Encode(absoluteKey.Substring(this.Prefix.Count))!;
+			return this.Symbols.Render(absoluteKey.Substring(this.Prefix.Count))!;
 		}
 
 		/// <summary>Dumps the final content of the scenario subspace (fresh read-only transaction, byte order).</summary>
@@ -364,7 +403,7 @@ namespace FoundationDB.Client.Tests
 			{
 				var subspace = await this.Db.Root.Resolve(tr);
 				var items = await tr.GetRange(subspace.ToRange()).ToListAsync();
-				return items.Select(kv => new KeyValuePair<string, string>(RenderKey(kv.Key), ScenarioText.Encode(kv.Value)!)).ToList();
+				return items.Select(kv => new KeyValuePair<string, string>(RenderKey(kv.Key), this.Symbols.Render(kv.Value)!)).ToList();
 			}, this.Cancellation);
 		}
 

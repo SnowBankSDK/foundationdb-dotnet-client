@@ -65,8 +65,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- golden traces of the differential scenario harness: replay fixtures can load them next to the test assembly -->
+		<!-- golden traces + pinned generator finds of the differential scenario harness: loadable next to the test assembly -->
 		<None Include="Scenarios\Goldens\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="Scenarios\Corpus\Pinned\**\*.json" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -149,6 +149,32 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		public void Test_Campaign_Vocabulary_Roundtrips()
+		{
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.SetOption("A", ScenarioTransactionOption.ReadYourWritesDisable);
+			builder.SetOption("A", ScenarioTransactionOption.SnapshotReadYourWritesDisable);
+			builder.TouchMetadataVersion("A");
+			builder.GetMetadataVersion("A");
+			int w = builder.WatchMetadataVersion("A");
+			builder.Commit("A");
+			builder.ExpectFired(w);
+			var scenario = builder.Build("campaign_vocab");
+
+			Assert.That(scenario.Steps[1].Op, Is.EqualTo(ScenarioOp.SetOption));
+			Assert.That(scenario.Steps[1].Option, Is.EqualTo(ScenarioTransactionOption.ReadYourWritesDisable));
+			Assert.That(scenario.Steps[2].Option, Is.EqualTo(ScenarioTransactionOption.SnapshotReadYourWritesDisable));
+			Assert.That(scenario.Steps[3].Op, Is.EqualTo(ScenarioOp.TouchMetadataVersion));
+			Assert.That(scenario.Steps[4].Op, Is.EqualTo(ScenarioOp.GetMetadataVersion));
+			Assert.That(scenario.Steps[5].Op, Is.EqualTo(ScenarioOp.WatchMetadataVersion));
+			Assert.That(scenario.Steps[5].HandleId, Is.EqualTo(w));
+
+			var json = scenario.ToJson();
+			Assert.That(Scenario.FromJson(json).ToJson(), Is.EqualTo(json));
+		}
+
+		[Test]
 		public void Test_Scenario_Json_Rejects_Unknown_Op()
 		{
 			var json = JsonObject.Create(

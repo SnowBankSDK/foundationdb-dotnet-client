@@ -38,6 +38,9 @@ namespace FoundationDB.Client.Tests
 
 		private Dictionary<long, string> Symbols { get; } = new();
 
+		/// <summary>Byte patterns of the observed (complete) versionstamps, substituted by <see cref="Render"/> in rendered keys and values.</summary>
+		private List<(Slice Pattern, string Symbol)> ObservedStamps { get; } = [ ];
+
 		/// <summary>Returns the symbol for a read/commit version (<c>none</c> for the "no version" sentinel).</summary>
 		public string Version(long version)
 		{
@@ -51,11 +54,51 @@ namespace FoundationDB.Client.Tests
 		}
 
 		/// <summary>Returns the symbol for a versionstamp: <c>vN#&lt;order&gt;</c>, plus <c>u&lt;user&gt;</c> when it carries a user version.</summary>
+		/// <remarks>Observing a complete stamp also registers its byte pattern, so later <see cref="Render"/> calls substitute it in rendered keys and values (a stamped key in the final dump, a stamped value read back, ...).</remarks>
 		public string Stamp(VersionStamp stamp)
 		{
 			if (stamp.IsIncomplete) return "incomplete";
 			var text = $"{Version(unchecked((long) stamp.TransactionVersion))}#{stamp.TransactionOrder}";
-			return stamp.HasUserVersion ? text + "u" + stamp.UserVersion.ToString(CultureInfo.InvariantCulture) : text;
+			if (stamp.HasUserVersion) text += "u" + stamp.UserVersion.ToString(CultureInfo.InvariantCulture);
+
+			var pattern = stamp.ToSlice();
+			if (!this.ObservedStamps.Any(x => x.Pattern.Equals(pattern)))
+			{
+				this.ObservedStamps.Add((pattern, text));
+			}
+			return text;
+		}
+
+		/// <summary>Renders bytes with the scenario codec, substituting every occurrence of an observed stamp pattern with <c>&lt;vN#o&gt;</c> (absolute stamp bytes never match across backends or runs).</summary>
+		public string? Render(Slice bytes)
+		{
+			if (bytes.IsNull) return null;
+			if (bytes.Count == 0) return "";
+			if (this.ObservedStamps.Count == 0) return ScenarioText.Encode(bytes);
+
+			var sb = new System.Text.StringBuilder(bytes.Count + 8);
+			int offset = 0;
+			while (offset < bytes.Count)
+			{
+				bool matched = false;
+				foreach (var (pattern, symbol) in this.ObservedStamps)
+				{
+					if (offset + pattern.Count <= bytes.Count && bytes.Substring(offset, pattern.Count).Equals(pattern))
+					{
+						sb.Append('<').Append(symbol).Append('>');
+						offset += pattern.Count;
+						matched = true;
+						break;
+					}
+				}
+				if (!matched)
+				{
+					// the codec is per-byte, so encoding one byte at a time yields the same text as encoding the whole run
+					sb.Append(ScenarioText.Encode(bytes.Substring(offset, 1)));
+					offset++;
+				}
+			}
+			return sb.ToString();
 		}
 
 	}

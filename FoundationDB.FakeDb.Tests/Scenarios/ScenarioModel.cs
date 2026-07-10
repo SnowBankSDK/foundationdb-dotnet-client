@@ -71,6 +71,23 @@ namespace FoundationDB.Client.Tests
 		ExpectPending,
 		/// <summary>Observation point: waits (bounded) for the versionstamp future <see cref="ScenarioStep.HandleId"/> to settle and records the symbolized stamp.</summary>
 		ExpectVersionstamp,
+		/// <summary>Applies the transaction option <see cref="ScenarioStep.Option"/> to the actor's transaction.</summary>
+		SetOption,
+		/// <summary>Bumps the global <c>\xff/metadataVersion</c> key (versionstamped write).</summary>
+		TouchMetadataVersion,
+		/// <summary>Reads the global metadata version; the outcome is the symbolized stamp (or null when never touched).</summary>
+		GetMetadataVersion,
+		/// <summary>Creates a watch on the global <c>\xff/metadataVersion</c> key under <see cref="ScenarioStep.HandleId"/> (exempt from the relative-key rule).</summary>
+		WatchMetadataVersion,
+	}
+
+	/// <summary>Transaction options expressible in a scenario (a deliberate allowlist, extended as campaigns need them).</summary>
+	public enum ScenarioTransactionOption
+	{
+		/// <summary>Reads no longer observe the transaction's own uncommitted writes.</summary>
+		ReadYourWritesDisable,
+		/// <summary>Snapshot reads no longer observe the transaction's own uncommitted writes.</summary>
+		SnapshotReadYourWritesDisable,
 	}
 
 	/// <summary>Declares the accepted slack on a step where the real cluster is legitimately nondeterministic (design spec §6.4); the default comparison is exact.</summary>
@@ -167,6 +184,9 @@ namespace FoundationDB.Client.Tests
 		/// <summary>Accepted nondeterminism on this step (observation steps only); default is exact comparison.</summary>
 		public ScenarioTolerance Tolerance { get; init; }
 
+		/// <summary>Transaction option applied by a <see cref="ScenarioOp.SetOption"/> step.</summary>
+		public ScenarioTransactionOption? Option { get; init; }
+
 		/// <summary>Renders this step to its JSON form (only non-default fields are written).</summary>
 		public JsonObject ToJson()
 		{
@@ -184,6 +204,7 @@ namespace FoundationDB.Client.Tests
 			if (this.StampOffset is not null) obj["stampOffset"] = this.StampOffset.Value;
 			if (this.HandleId is not null) obj["handle"] = this.HandleId.Value;
 			if (this.Tolerance != ScenarioTolerance.None) obj["tolerance"] = this.Tolerance.ToString();
+			if (this.Option is not null) obj["option"] = this.Option.Value.ToString();
 			return obj;
 		}
 
@@ -208,6 +229,7 @@ namespace FoundationDB.Client.Tests
 				StampOffset = obj.Get<int?>("stampOffset", null),
 				HandleId = obj.Get<int?>("handle", null),
 				Tolerance = obj.ContainsKey("tolerance") ? ParseEnum<ScenarioTolerance>(obj.Get<string>("tolerance"), "tolerance") : ScenarioTolerance.None,
+				Option = obj.ContainsKey("option") ? ParseEnum<ScenarioTransactionOption>(obj.Get<string>("option"), "option") : null,
 			};
 		}
 
@@ -345,6 +367,24 @@ namespace FoundationDB.Client.Tests
 
 		/// <summary>Observation point: settles the versionstamp future and records the symbolized stamp (place after the transaction's <see cref="Commit"/>).</summary>
 		public ScenarioBuilder ExpectVersionstamp(int vsId) => Add(new() { Op = ScenarioOp.ExpectVersionstamp, HandleId = vsId });
+
+		/// <summary>Applies a transaction option to the actor's open transaction.</summary>
+		public ScenarioBuilder SetOption(string actor, ScenarioTransactionOption option) => Add(new() { Op = ScenarioOp.SetOption, Actor = actor, Option = option });
+
+		/// <summary>Bumps the global metadata version key.</summary>
+		public ScenarioBuilder TouchMetadataVersion(string actor) => Add(new() { Op = ScenarioOp.TouchMetadataVersion, Actor = actor });
+
+		/// <summary>Reads the global metadata version (symbolized stamp outcome).</summary>
+		public ScenarioBuilder GetMetadataVersion(string actor) => Add(new() { Op = ScenarioOp.GetMetadataVersion, Actor = actor });
+
+		/// <summary>Creates a watch on the global metadata version key; observe it with <see cref="ExpectFired"/> / <see cref="ExpectPending"/>.</summary>
+		/// <returns>The handle id to pass to the observation steps.</returns>
+		public int WatchMetadataVersion(string actor)
+		{
+			int id = this.NextHandleId++;
+			Add(new() { Op = ScenarioOp.WatchMetadataVersion, Actor = actor, HandleId = id });
+			return id;
+		}
 
 		/// <summary>Freezes the current steps into a <see cref="Scenario"/>.</summary>
 		public Scenario Build(string name, string? description = null) => new() { Name = name, Description = description, Steps = this.Steps.ToList() };
