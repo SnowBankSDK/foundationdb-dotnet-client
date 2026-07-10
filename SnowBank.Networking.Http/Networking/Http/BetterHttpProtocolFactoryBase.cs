@@ -93,7 +93,7 @@ namespace SnowBank.Networking.Http
 			var factory = this.Services.GetRequiredService<IBetterHttpClientFactory>();
 
 			// per-call configure = protocol/client behavior only; wire policy = the bundle. Fail loudly on the rest:
-			// under the retired one-shot path a per-call TLS callback or filter used to work, so silence would be a break.
+			// wire policy set here can never reach the shared pooled transport, and silence would be a silent break.
 			options.EnsureOnlyProtocolBehavior($"{GetType().Name}.CreateClient");
 
 			// the shell tier of the protocol options rides the transient shell (per-connection auth headers etc.);

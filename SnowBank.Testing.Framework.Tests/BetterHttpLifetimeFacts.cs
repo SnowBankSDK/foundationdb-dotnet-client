@@ -227,8 +227,8 @@ namespace SnowBank.Testing.Framework.Tests
 		{
 			// The server-certificate callback is a per-bundle transport policy applied to the shared SocketsHttpHandler. Its
 			// shape deliberately has NO HttpRequestMessage argument: the callback validates a CONNECTION (SslStream knows no
-			// request), and the old request-shaped signature forced an internal-type reflection shim
-			// (ConnectHelper+CertificateCallbackMapper) that broke by construction on .NET internals drift.
+			// request), which is what lets it map DIRECTLY onto SslOptions.RemoteCertificateValidationCallback - a
+			// request-shaped signature cannot be honored there without reflecting over runtime internals.
 			using var handler = new BetterHttpClientHandler(new NetworkMap());
 
 			Func<X509Certificate2?, X509Chain?, SslPolicyErrors, bool> callback = static (_, _, _) => true;
@@ -274,8 +274,8 @@ namespace SnowBank.Testing.Framework.Tests
 		{
 			// The contract: per-call configure = protocol/client behavior only; wire policy (TLS, proxy, cookies, filters,
 			// pipeline handlers) = the policy bundle, registered at startup. A per-call TLS callback or filter CANNOT reach
-			// the shared pooled transport - under the retired one-shot path the exact same call used to work, so silence
-			// here would be a silent security/behavior break. It must fail loudly, naming the offending member.
+			// the shared pooled transport, and silently ignoring it would be a silent security/behavior break: it must
+			// fail loudly, naming the offending member.
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 			{
 				lan.WithMinimalWebHost("WEB", host =>
