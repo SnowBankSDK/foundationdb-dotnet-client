@@ -1345,15 +1345,25 @@ namespace FoundationDB.Testing
 					throw ErrorCannotAccessSystemKeys();
 				}
 
-				if (this.Mutations.TryGetValue(key.Begin, out var mutation))
-				{ // stack this operation on top of the previous one
-					var stacked = Mutation.Atomic(type, value);
+				var stacked = Mutation.Atomic(type, value);
+				// note: bounds-aware lookup, because TryGetValue can match a range whose EXCLUSIVE end equals the key
+				var mutation = FindCoveringMutation(key.Begin);
+				if (mutation != null && !mutation.IsRange())
+				{ // a single-key entry at this exact key: stack this operation on top of the previous one
 					(mutation.Tail ?? mutation).Next = stacked;
 					mutation.Tail = stacked;
 				}
+				else if (mutation != null)
+				{ // the key is covered by an uncommitted cleared RANGE: the atomic applies over the locally-cleared (nil)
+				  // value, and must NOT mutate the shared range entry (it covers other keys) — pinned by the RYW fuzzer
+					var head = Mutation.Clear();
+					head.Next = stacked;
+					head.Tail = stacked;
+					mutation = head;
+				}
 				else
 				{
-					mutation = Mutation.Atomic(type, value);
+					mutation = stacked;
 				}
 
 				this.Mutations.Mark(key.Begin, key.End, mutation);
@@ -1455,6 +1465,18 @@ namespace FoundationDB.Testing
 				}
 			}
 
+			/// <summary>Finds the mutation entry covering a key (its begin at or before the key, its END strictly after), or null.</summary>
+			/// <remarks>Unlike <c>TryGetValue</c>, this never matches a range whose exclusive end equals the key.</remarks>
+			private Mutation? FindCoveringMutation(Key key)
+			{
+				foreach (var entry in this.Mutations.IterateOrdered())
+				{
+					if (entry.Begin > key) break;
+					if (entry.End > key) return entry.Value;
+				}
+				return null;
+			}
+
 			/// <summary>Computes the ordered list of keys visible in the merged view (committed snapshot + local mutations), without any side effect on the mutation log or the conflict ranges.</summary>
 			private List<Key> GetMergedVisibleKeys(bool accessSystemKeys)
 			{
@@ -1466,8 +1488,9 @@ namespace FoundationDB.Testing
 				}
 				foreach (var entry in this.Mutations.IterateOrdered())
 				{
-					var op = entry.Value?.Op;
-					if (op is null or Operation.Invalid or Operation.Clear or Operation.ClearRange) continue;
+					var mutation = entry.Value;
+					if (mutation is null || mutation.Op is Operation.Invalid) continue;
+					if (mutation.Op is Operation.Clear or Operation.ClearRange && mutation.Next is null) continue; // pure clears never create keys; Clear-HEADED CHAINS (clear then atomic) can
 					var key = entry.Begin;
 					if (!accessSystemKeys && key.IsSystemKey()) continue;
 					candidates.Add(key);
@@ -1484,7 +1507,8 @@ namespace FoundationDB.Testing
 			/// <summary>Checks whether a key is present in the merged view, evaluating atomic chains purely (no coalescing write-back, no conflict marking).</summary>
 			private bool IsVisibleInMergedView(Key key)
 			{
-				if (this.Mutations.FindFirst(key, key.GetSuccessor(this.Arena), out var mutation))
+				var mutation = FindCoveringMutation(key);
+				if (mutation != null)
 				{
 					if (mutation.IsKv()) return !mutation.Parameter.IsNull; // a single-key Clear is IsKv() with a Nil parameter
 					if (mutation.IsRange()) return false;
@@ -3429,9 +3453,11 @@ namespace FoundationDB.Testing
 					Kenobi($"*** #{this.Id} outer: {this.Outer.Current}");
 					if (selector.Offset > 0)
 					{
-						// move past the reference entry, UNLESS it is a cleared range straddling the pivot (it still masks keys after it)
+						// move past the reference entry, UNLESS it is a cleared range covering keys strictly beyond the
+						// pivot (it still masks them); a point entry AT the pivot has End == successor(pivot) and must
+						// be stepped past, or an end selector like FirstGreaterThan(pivot) would resolve to the pivot itself
 						var entry = this.Outer.Current;
-						if (entry is null || entry.Value?.Op is not (Operation.ClearRange or Operation.Clear) || !(entry.End > selector.Key))
+						if (entry is null || entry.Value?.Op is not (Operation.ClearRange or Operation.Clear) || !(entry.End > selector.Key.GetSuccessor(this.Arena)))
 						{
 							this.OuterState = this.Outer.Next() ? STATE_AVAILABLE : STATE_DEAD;
 							Kenobi($"*** #{this.Id} outer + 1: {this.Outer.Current}");

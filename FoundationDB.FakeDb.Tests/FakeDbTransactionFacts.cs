@@ -37,6 +37,74 @@ namespace FoundationDB.Testing.Tests
 	{
 
 		[Test]
+		public async Task Test_Atomic_Add_Inside_Uncommitted_Cleared_Range_Survives_Commit()
+		{
+			// pinned by the RYW fuzzer: an atomic add on a key covered by an earlier uncommitted clear-range
+			// must create the key with the operand value (add over nil), like the real cluster does
+			var db = await OpenTestDatabaseAsync();
+
+			await db.WriteAsync(tr => tr.Set(Key("k1"), Value("c1")), this.Cancellation);
+
+			using (var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation))
+			{
+				tr.ClearRange(Key("k0"), Key("k6"));
+				tr.Atomic(Key("k1"), Slice.FromFixed64(0x5D), FdbMutationType.Add);
+
+				// diagnostic: dump the mutation log before the commit
+				var handler = (FakeDbStore.TransactionHandler) FdbTransactionDebugger.GetHandler(tr);
+				var snapshot = handler.GetSnapshotBlocking();
+				foreach (var entry in FakeDbDebugger.GetSnapshotMutations(snapshot).IterateOrdered())
+				{
+					Log($"mutation: [{entry.Begin} .. {entry.End}) = {entry.Value}");
+				}
+
+				// the merged read must also see add-over-nil (not add-over-committed)
+				var live = await tr.GetAsync(Key("k1"));
+				Assert.That(live, Is.EqualTo(Slice.FromFixed64(0x5D)), "read-your-writes over clear-then-atomic");
+
+				await tr.CommitAsync();
+			}
+
+			var actual = await db.ReadAsync(tr => tr.GetAsync(Key("k1")), this.Cancellation);
+			Assert.That(actual, Is.EqualTo(Slice.FromFixed64(0x5D)), "the key must exist with the operand value after commit");
+		}
+
+		[Test]
+		public async Task Test_Selector_Resolution_Over_Mixed_Uncommitted_Mutations()
+		{
+			// pinned by the RYW fuzzer (seed 173): LastLessOrEqual(k6) - 1 over a mix of clears, re-sets and
+			// atomic adds must resolve against the merged visible keys {k0,k1,k2,k4,k5,k6} => k5
+			var db = await OpenTestDatabaseAsync();
+
+			using var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
+			tr.ClearRange(Key("k0"), Key("k5"));
+			tr.Atomic(Key("k4"), Slice.FromFixed64(0x2F), FdbMutationType.Add);
+			tr.Set(Key("k0"), Value("v5"));
+			tr.Clear(Key("k2"));
+			tr.Clear(Key("k6"));
+			tr.Clear(Key("k1"));
+			tr.Atomic(Key("k5"), Slice.FromFixed64(0x4F), FdbMutationType.Add);
+			_ = await tr.GetAsync(Key("k7"));
+			tr.ClearRange(Key("k0"), Key("k0z"));
+			_ = await tr.GetRangeAsync(KeySelector.FirstGreaterOrEqual(Key("k0")), KeySelector.FirstGreaterThan(Key("k2")), new FdbRangeOptions { IsReversed = true });
+			tr.Set(Key("k2"), Value("v7"));
+			tr.Set(Key("k6"), Value("v1"));
+			tr.Set(Key("k1"), Value("v1"));
+			tr.Set(Key("k0"), Value("v5"));
+			_ = await tr.GetAsync(Key("k2"));
+
+			var handler = (FakeDbStore.TransactionHandler) FdbTransactionDebugger.GetHandler(tr);
+			var snapshot = handler.GetSnapshotBlocking();
+			foreach (var entry in FakeDbDebugger.GetSnapshotMutations(snapshot).IterateOrdered())
+			{
+				Log($"mutation: [{entry.Begin} .. {entry.End}) = {entry.Value}");
+			}
+
+			var resolved = await tr.GetKeyAsync(new KeySelector(Key("k6"), true, -1));
+			Assert.That(resolved, Is.EqualTo(Key("k5")), "LLE(k6) - 1 over the merged view");
+		}
+
+		[Test]
 		public async Task Test_Retry_Backoff_Runs_On_Virtual_Time()
 		{
 			// A retryable error backs off on the store's TimeProvider: with a fake clock and a realistic
