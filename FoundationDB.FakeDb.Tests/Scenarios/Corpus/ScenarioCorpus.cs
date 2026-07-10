@@ -48,6 +48,7 @@ namespace FoundationDB.Client.Tests
 			.. RywCorpus.All(),
 			.. WatchesCorpus.All(),
 			.. VersionstampsCorpus.All(),
+			.. AtomicsCorpus.All(),
 			.. LoadPinned(),
 		];
 

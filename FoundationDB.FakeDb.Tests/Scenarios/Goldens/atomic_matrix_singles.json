@@ -1,0 +1,648 @@
+{
+	"scenario": "atomic_matrix_singles",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c00",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c01",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c02",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c03",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c04",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c05",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c06",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c07",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 9,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c08",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 10,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "c09",
+				"value": "s7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 11,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 12,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 13,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a00",
+				"value": "\\x05\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 14,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a00"
+			},
+			"outcome": {
+				"value": "\\x05\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 15,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c00",
+				"value": "\\x05\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 16,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c00"
+			},
+			"outcome": {
+				"value": "x7\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 17,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a01",
+				"value": "\\x0f\\x0f\\x0f\\x0f\\x00\\x00\\x00\\x00",
+				"mutation": "BitAnd"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 18,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a01"
+			},
+			"outcome": {
+				"value": "\\x0f\\x0f\\x0f\\x0f\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 19,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c01",
+				"value": "\\x0f\\x0f\\x0f\\x0f\\x00\\x00\\x00\\x00",
+				"mutation": "BitAnd"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 20,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c01"
+			},
+			"outcome": {
+				"value": "\\x03\\x07\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 21,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a02",
+				"value": "\\xf0\\xf0\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "BitOr"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 22,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a02"
+			},
+			"outcome": {
+				"value": "\\xf0\\xf0\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 23,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c02",
+				"value": "\\xf0\\xf0\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "BitOr"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 24,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c02"
+			},
+			"outcome": {
+				"value": "\\xf3\\xf7\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 25,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a03",
+				"value": "\\xff\\x00\\xff\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "BitXor"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 26,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a03"
+			},
+			"outcome": {
+				"value": "\\xff\\x00\\xff\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 27,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c03",
+				"value": "\\xff\\x00\\xff\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "BitXor"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 28,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c03"
+			},
+			"outcome": {
+				"value": "\\x8c7\\xff\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 29,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a04",
+				"value": "+a",
+				"mutation": "AppendIfFits"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 30,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a04"
+			},
+			"outcome": {
+				"value": "+a"
+			}
+		},
+		{
+			"step": 31,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c04",
+				"value": "+a",
+				"mutation": "AppendIfFits"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 32,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c04"
+			},
+			"outcome": {
+				"value": "s7+a"
+			}
+		},
+		{
+			"step": 33,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a05",
+				"value": "`\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Max"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 34,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a05"
+			},
+			"outcome": {
+				"value": "`\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 35,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c05",
+				"value": "`\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Max"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 36,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c05"
+			},
+			"outcome": {
+				"value": "s7\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 37,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a06",
+				"value": "\\x10\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Min"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 38,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a06"
+			},
+			"outcome": {
+				"value": "\\x10\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 39,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c06",
+				"value": "\\x10\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Min"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 40,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c06"
+			},
+			"outcome": {
+				"value": "\\x10\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 41,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a07",
+				"value": "m1",
+				"mutation": "ByteMin"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 42,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a07"
+			},
+			"outcome": {
+				"value": "m1"
+			}
+		},
+		{
+			"step": 43,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c07",
+				"value": "m1",
+				"mutation": "ByteMin"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 44,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c07"
+			},
+			"outcome": {
+				"value": "m1"
+			}
+		},
+		{
+			"step": 45,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a08",
+				"value": "zz",
+				"mutation": "ByteMax"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 46,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a08"
+			},
+			"outcome": {
+				"value": "zz"
+			}
+		},
+		{
+			"step": 47,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c08",
+				"value": "zz",
+				"mutation": "ByteMax"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 48,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c08"
+			},
+			"outcome": {
+				"value": "zz"
+			}
+		},
+		{
+			"step": 49,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "a09",
+				"value": "s7",
+				"mutation": "CompareAndClear"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 50,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "a09"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 51,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "c09",
+				"value": "s7",
+				"mutation": "CompareAndClear"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 52,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "c09"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 53,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "a00",
+			"value": "\\x05\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "a01",
+			"value": "\\x0f\\x0f\\x0f\\x0f\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "a02",
+			"value": "\\xf0\\xf0\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "a03",
+			"value": "\\xff\\x00\\xff\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "a04",
+			"value": "+a"
+		},
+		{
+			"key": "a05",
+			"value": "`\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "a06",
+			"value": "\\x10\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "a07",
+			"value": "m1"
+		},
+		{
+			"key": "a08",
+			"value": "zz"
+		},
+		{
+			"key": "c00",
+			"value": "x7\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "c01",
+			"value": "\\x03\\x07\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "c02",
+			"value": "\\xf3\\xf7\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "c03",
+			"value": "\\x8c7\\xff\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "c04",
+			"value": "s7+a"
+		},
+		{
+			"key": "c05",
+			"value": "s7\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "c06",
+			"value": "\\x10\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "c07",
+			"value": "m1"
+		},
+		{
+			"key": "c08",
+			"value": "zz"
+		}
+	]
+}

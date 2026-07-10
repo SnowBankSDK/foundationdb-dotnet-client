@@ -1055,6 +1055,17 @@ namespace FoundationDB.Testing
 				return value;
 			}
 
+			/// <summary>Compares two equal-length byte strings as unsigned little-endian integers (most significant byte last).</summary>
+			private static int CompareUnsignedLittleEndian(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+			{
+				Contract.Debug.Requires(left.Length == right.Length);
+				for (int i = left.Length - 1; i >= 0; i--)
+				{
+					if (left[i] != right[i]) return left[i] < right[i] ? -1 : +1;
+				}
+				return 0;
+			}
+
 			public static Value CoalesceAtomic(Arena scratch, Value previous, Mutation mutation)
 			{
 				Contract.Debug.Requires(mutation != null && mutation.IsAtomic());
@@ -1102,8 +1113,9 @@ namespace FoundationDB.Testing
 						// If ``param`` is shorter than the existing value in the database, the existing value is truncated to match the length of ``param``.
 						if (previous.IsNull)
 						{
-							// void AND xxx = 000
-							return scratch.AllocateValue(operand.Count, clear: true);
+							// the parameter is stored when the key is missing (api 300+ semantics, pinned against fdb 7.4;
+							// pre-300 clusters stored zeros instead)
+							return scratch.InternValue(operand);
 						}
 						else
 						{
@@ -1148,66 +1160,34 @@ namespace FoundationDB.Testing
 					case Operation.Max:
 					{
 						// Performs a little-endian comparison of byte strings.
-						// If the existing value in the database is not present or shorter than ``param``, it is first extended to the length of ``param`` with zero bytes.
-						// If ``param`` is shorter than the existing value in the database, the existing value is truncated to match the length of ``param``.
-						// The larger of the two values is then stored in the database.
-						if (previous.Count >= operand.Count)
-						{ // previous is same size of larger
-							if (previous.IsNull || operand > previous.Substring(0, operand.Count))
-							{ // new max
-								return scratch.InternValue(operand);
-							}
-							return previous;
-						}
-
-						// previous is shorter
-						//  note: adding '...0000' to 'previous' to pad it, does not change it's ordering
-						if (operand > previous)
-						{ // new max
+						// If the existing value in the database is not present, the parameter is stored.
+						// The existing value is zero-extended or truncated to the operand length, then both are
+						// compared as UNSIGNED LITTLE-ENDIAN integers (pinned against fdb 7.4: the comparison is
+						// numeric, NOT lexicographic — ByteMin/ByteMax are the lexicographic ones).
+						if (previous.IsNull)
+						{
 							return scratch.InternValue(operand);
 						}
-
-						// not larger, but we still need to expand the original key!
-						var tmp = scratch.AllocateValue(operand.Count, clear: true);
-						previous.Span.CopyTo(tmp.UnsafeSpan);
-						return tmp;
+						var adjusted = scratch.AllocateValue(operand.Count, clear: true);
+						previous.Span[..Math.Min(previous.Count, operand.Count)].CopyTo(adjusted.UnsafeSpan);
+						return CompareUnsignedLittleEndian(adjusted.Span, operand.Span) >= 0 ? adjusted : scratch.InternValue(operand);
 					}
 					
 					case Operation.Min:
 					{
 						// Performs a little-endian comparison of byte strings.
-						// If the existing value in the database is not present or shorter than ``param``, it is first extended to the length of ``param`` with zero bytes.
-						// If ``param`` is shorter than the existing value in the database, the existing value is truncated to match the length of ``param``.
-						// The smaller of the two values is then stored in the database.
+						// If the existing value in the database is not present, the parameter is stored (zero-extending
+						// the missing value instead would make MIN always win with zeros).
+						// The existing value is zero-extended or truncated to the operand length, then both are
+						// compared as UNSIGNED LITTLE-ENDIAN integers (pinned against fdb 7.4: the comparison is
+						// numeric, NOT lexicographic — ByteMin/ByteMax are the lexicographic ones).
 						if (previous.IsNull)
-						{ // previous is missing
-							// just expand to match the count
-							return scratch.AllocateValue(operand.Count, clear: true);
-						}
-
-						if (previous.Count >= operand.Count)
-						{ // previous is same size of larger
-							if (operand < previous.Substring(0, operand.Count))
-							{
-								return scratch.InternValue(operand);
-							}
-
-							return previous;
-						}
-
-						// previous is shorter
-						//  note: adding '...0000' to the previous to pad it, does not change it's ordering
-						//BUGBUG: is this true??
-						if (operand < previous)
 						{
 							return scratch.InternValue(operand);
 						}
-
-						{ // not smaller, but still need to expand the original key
-							var tmp = scratch.AllocateValue(operand.Count, clear: true);
-							previous.Span.CopyTo(tmp.UnsafeSpan);
-							return tmp;
-						}
+						var adjusted = scratch.AllocateValue(operand.Count, clear: true);
+						previous.Span[..Math.Min(previous.Count, operand.Count)].CopyTo(adjusted.UnsafeSpan);
+						return CompareUnsignedLittleEndian(adjusted.Span, operand.Span) <= 0 ? adjusted : scratch.InternValue(operand);
 					}
 
 					case Operation.ByteMax:
