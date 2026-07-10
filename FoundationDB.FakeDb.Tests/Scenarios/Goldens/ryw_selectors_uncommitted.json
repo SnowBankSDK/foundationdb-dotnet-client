@@ -1,0 +1,158 @@
+{
+	"scenario": "ryw_selectors_uncommitted",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "c1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k5",
+				"value": "c5"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "u3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k2",
+					"orEqual": false,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"key": "k3"
+			}
+		},
+		{
+			"step": 7,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k3",
+					"orEqual": true,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"key": "k5"
+			}
+		},
+		{
+			"step": 8,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k4",
+					"orEqual": true,
+					"offset": 0
+				}
+			},
+			"outcome": {
+				"key": "k3"
+			}
+		},
+		{
+			"step": 9,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k3",
+					"orEqual": false,
+					"offset": 0
+				}
+			},
+			"outcome": {
+				"key": "k1"
+			}
+		},
+		{
+			"step": 10,
+			"op": "Clear",
+			"actor": "A",
+			"args": {
+				"key": "k5"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 11,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k3",
+					"orEqual": true,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"key": "!outside"
+			}
+		},
+		{
+			"step": 12,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "c1"
+		},
+		{
+			"key": "k5",
+			"value": "c5"
+		}
+	]
+}

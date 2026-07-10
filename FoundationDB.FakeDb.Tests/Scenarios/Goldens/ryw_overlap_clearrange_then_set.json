@@ -1,0 +1,149 @@
+{
+	"scenario": "ryw_overlap_clearrange_then_set",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "c1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k2",
+				"value": "c2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "c3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "ClearRange",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"endKey": "k9"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k2",
+				"value": "n2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 9,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k2"
+			},
+			"outcome": {
+				"value": "n2"
+			}
+		},
+		{
+			"step": 10,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k3"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 11,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k9",
+					"orEqual": false,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k2",
+						"value": "n2"
+					}
+				],
+				"hasMore": false
+			}
+		},
+		{
+			"step": 12,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k2",
+			"value": "n2"
+		}
+	]
+}

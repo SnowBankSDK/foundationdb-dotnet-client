@@ -1,0 +1,131 @@
+{
+	"scenario": "ryw_get_after_atomic",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "counter",
+				"value": "\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "counter"
+			},
+			"outcome": {
+				"value": "\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 3,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "counter",
+				"value": "\\x02\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "counter"
+			},
+			"outcome": {
+				"value": "\\x03\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 5,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "counter",
+				"value": "\\x04\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "counter"
+			},
+			"outcome": {
+				"value": "\\x07\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 9,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 10,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 11,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "counter"
+			},
+			"outcome": {
+				"value": "\\x03\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 12,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "counter",
+			"value": "\\x03\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+		}
+	]
+}

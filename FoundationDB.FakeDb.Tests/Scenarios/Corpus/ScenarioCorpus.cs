@@ -45,6 +45,7 @@ namespace FoundationDB.Client.Tests
 			HarnessInterleaveConflict(),
 			HarnessSelectorsRanges(),
 			HarnessWatchSmoke(),
+			.. RywCorpus.All(),
 			.. LoadPinned(),
 		];
 

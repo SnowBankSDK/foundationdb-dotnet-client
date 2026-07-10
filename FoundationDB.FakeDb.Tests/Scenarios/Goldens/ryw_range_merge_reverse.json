@@ -1,0 +1,134 @@
+{
+	"scenario": "ryw_range_merge_reverse",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "c1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "c3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k5",
+				"value": "c5"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k2",
+				"value": "u2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k4",
+				"value": "u4"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k1",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k9",
+					"orEqual": false,
+					"offset": 1
+				},
+				"limit": 3,
+				"reverse": true
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k5",
+						"value": "c5"
+					},
+					{
+						"key": "k4",
+						"value": "u4"
+					},
+					{
+						"key": "k3",
+						"value": "c3"
+					}
+				],
+				"hasMore": true
+			}
+		},
+		{
+			"step": 9,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "c1"
+		},
+		{
+			"key": "k3",
+			"value": "c3"
+		},
+		{
+			"key": "k5",
+			"value": "c5"
+		}
+	]
+}

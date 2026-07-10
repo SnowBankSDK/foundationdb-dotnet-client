@@ -97,6 +97,8 @@ namespace FoundationDB.Client.Tests
 		None,
 		/// <summary>An <see cref="ScenarioOp.ExpectPending"/> observation also accepts a fired watch (the fdb contract permits spurious fires).</summary>
 		AllowSpuriousWatchFire,
+		/// <summary>A <see cref="ScenarioOp.GetRange"/> whose reference trace reports <c>hasMore</c> also accepts a complete chunk (the real client conservatively hints at more data when local writes were merged into the read).</summary>
+		AllowConservativeHasMore,
 	}
 
 	/// <summary>Key selector operand of a scenario step; <see cref="Key"/> is relative to the scenario root subspace.</summary>
@@ -333,7 +335,7 @@ namespace FoundationDB.Client.Tests
 		public ScenarioBuilder GetKey(string actor, ScenarioSelector selector, bool snapshot = false) => Add(new() { Op = ScenarioOp.GetKey, Actor = actor, Selector = selector, Snapshot = snapshot });
 
 		/// <summary>Reads a range of keys between two selectors.</summary>
-		public ScenarioBuilder GetRange(string actor, ScenarioSelector begin, ScenarioSelector end, int? limit = null, bool reverse = false, bool snapshot = false) => Add(new() { Op = ScenarioOp.GetRange, Actor = actor, Selector = begin, EndSelector = end, Limit = limit, Reverse = reverse, Snapshot = snapshot });
+		public ScenarioBuilder GetRange(string actor, ScenarioSelector begin, ScenarioSelector end, int? limit = null, bool reverse = false, bool snapshot = false, ScenarioTolerance tolerance = ScenarioTolerance.None) => Add(new() { Op = ScenarioOp.GetRange, Actor = actor, Selector = begin, EndSelector = end, Limit = limit, Reverse = reverse, Snapshot = snapshot, Tolerance = tolerance });
 
 		/// <summary>Reads the transaction's read version.</summary>
 		public ScenarioBuilder GetReadVersion(string actor) => Add(new() { Op = ScenarioOp.GetReadVersion, Actor = actor });

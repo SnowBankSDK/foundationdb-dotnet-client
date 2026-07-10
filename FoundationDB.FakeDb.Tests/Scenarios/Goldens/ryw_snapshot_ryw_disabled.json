@@ -1,0 +1,68 @@
+{
+	"scenario": "ryw_snapshot_ryw_disabled",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "SetOption",
+			"actor": "A",
+			"args": {
+				"option": "SnapshotReadYourWritesDisable"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "v1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"snapshot": true
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 4,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": "v1"
+			}
+		},
+		{
+			"step": 5,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "v1"
+		}
+	]
+}

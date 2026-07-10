@@ -98,6 +98,20 @@ namespace FoundationDB.Client.Tests
 						&& expected.Outcome.Get<string?>("watch", null) == "Pending"
 						&& actual.Outcome.Get<string?>("watch", null) == "Fired";
 				}
+				case ScenarioTolerance.AllowConservativeHasMore:
+				{
+					// the real client conservatively reports hasMore on merged range reads: accept a complete chunk instead,
+					// provided everything else in the outcome (the items!) matches exactly
+					if (step.Op != ScenarioOp.GetRange) return false;
+					if (!expected.Outcome.Get<bool>("hasMore", false) || actual.Outcome.Get<bool>("hasMore", true)) return false;
+					var expectedRest = expected.Outcome.Copy();
+					expectedRest.Remove("hasMore");
+					var actualRest = actual.Outcome.Copy();
+					actualRest.Remove("hasMore");
+					var scratch = new List<TraceDivergence>();
+					DiffJson(expected.Step, "outcome", expectedRest, actualRest, scratch);
+					return scratch.Count == 0;
+				}
 				default:
 				{
 					return false;

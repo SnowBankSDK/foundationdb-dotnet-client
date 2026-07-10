@@ -1,0 +1,48 @@
+{
+	"scenario": "ryw_snapshot_default_sees_own_writes",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "v1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"snapshot": true
+			},
+			"outcome": {
+				"value": "v1"
+			}
+		},
+		{
+			"step": 3,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "v1"
+		}
+	]
+}

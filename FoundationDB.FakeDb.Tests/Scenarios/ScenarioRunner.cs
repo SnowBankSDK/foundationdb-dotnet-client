@@ -151,10 +151,10 @@ namespace FoundationDB.Client.Tests
 					var actor = GetActor(step);
 					actor.Transaction?.Dispose(); // an actor owns at most one open transaction: Begin replaces any previous one
 					actor.Transaction = null;
-					var tr = this.Db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
-					actor.Transaction = tr;
-					actor.Subspace = await this.Db.Root.Resolve(tr);
-					if (this.Prefix.IsNull) this.Prefix = actor.Subspace.GetPrefix();
+					actor.Subspace = null;
+					// note: the subspace is resolved lazily at the first key-using step, NOT here — the resolution is a
+					// directory READ, and a step like SetOption(ReadYourWritesDisable) must be able to precede any read
+					actor.Transaction = this.Db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
 					break;
 				}
 				case ScenarioOp.Commit:
@@ -165,6 +165,7 @@ namespace FoundationDB.Client.Tests
 				case ScenarioOp.Reset:
 				{
 					GetTransaction(step).Reset();
+					GetActor(step).Subspace = null; // a reset transaction re-resolves at its next key-using step, like a fresh one
 					break;
 				}
 				case ScenarioOp.Dispose:
@@ -174,27 +175,32 @@ namespace FoundationDB.Client.Tests
 				}
 				case ScenarioOp.Set:
 				{
+					await EnsureSubspaceResolved(step);
 					GetTransaction(step).Set(AbsoluteKey(step.Key).Span, step.Value.Span);
 					break;
 				}
 				case ScenarioOp.Clear:
 				{
+					await EnsureSubspaceResolved(step);
 					GetTransaction(step).Clear(AbsoluteKey(step.Key).Span);
 					break;
 				}
 				case ScenarioOp.ClearRange:
 				{
+					await EnsureSubspaceResolved(step);
 					GetTransaction(step).ClearRange(AbsoluteKey(step.Key).Span, AbsoluteKey(step.EndKey).Span);
 					break;
 				}
 				case ScenarioOp.Atomic:
 				{
+					await EnsureSubspaceResolved(step);
 					GetTransaction(step).Atomic(AbsoluteKey(step.Key).Span, step.Value.Span, step.Mutation ?? throw AuthoringError(step, "Atomic requires a mutation type"));
 					break;
 				}
 				case ScenarioOp.SetVersionstampedKey:
 				{
 					int offset = step.StampOffset ?? throw AuthoringError(step, "SetVersionstampedKey requires a stamp offset");
+					await EnsureSubspaceResolved(step);
 					// the placeholder offset is relative to the scenario key: shift it by the resolved prefix length
 					GetTransaction(step).SetVersionStampedKey(AbsoluteKey(step.Key), this.Prefix.Count + offset, step.Value);
 					break;
@@ -202,11 +208,13 @@ namespace FoundationDB.Client.Tests
 				case ScenarioOp.SetVersionstampedValue:
 				{
 					int offset = step.StampOffset ?? throw AuthoringError(step, "SetVersionstampedValue requires a stamp offset");
+					await EnsureSubspaceResolved(step);
 					GetTransaction(step).SetVersionStampedValue(AbsoluteKey(step.Key), step.Value, offset);
 					break;
 				}
 				case ScenarioOp.Get:
 				{
+					await EnsureSubspaceResolved(step);
 					var value = await GetReader(step).GetAsync(AbsoluteKey(step.Key).Span);
 					outcome["value"] = this.Symbols.Render(value);
 					break;
@@ -214,6 +222,7 @@ namespace FoundationDB.Client.Tests
 				case ScenarioOp.GetKey:
 				{
 					var selector = step.Selector ?? throw AuthoringError(step, "GetKey requires a selector");
+					await EnsureSubspaceResolved(step);
 					var resolved = await GetReader(step).GetKeyAsync(AbsoluteSelector(selector));
 					outcome["key"] = RenderKey(resolved);
 					break;
@@ -222,6 +231,7 @@ namespace FoundationDB.Client.Tests
 				{
 					var begin = step.Selector ?? throw AuthoringError(step, "GetRange requires a begin selector");
 					var end = step.EndSelector ?? throw AuthoringError(step, "GetRange requires an end selector");
+					await EnsureSubspaceResolved(step);
 					var options = new FdbRangeOptions
 					{
 						Limit = step.Limit,
@@ -252,6 +262,7 @@ namespace FoundationDB.Client.Tests
 				case ScenarioOp.Watch:
 				{
 					int handle = step.HandleId ?? throw AuthoringError(step, "Watch requires a handle id");
+					await EnsureSubspaceResolved(step);
 					// the watch outlives the transaction: it must be bound to the runner's token, never the transaction's own
 					this.Watches[handle] = GetTransaction(step).Watch(AbsoluteKey(step.Key).Span, this.Cancellation);
 					break;
@@ -336,6 +347,18 @@ namespace FoundationDB.Client.Tests
 				{
 					throw AuthoringError(step, $"unsupported operation {step.Op}");
 				}
+			}
+		}
+
+		/// <summary>Resolves the actor's subspace inside its own transaction, lazily at the first key-using step (the resolution is a directory READ, which must not precede option steps).</summary>
+		private async ValueTask EnsureSubspaceResolved(ScenarioStep step)
+		{
+			var actor = GetActor(step);
+			if (actor.Subspace is null)
+			{
+				var tr = actor.Transaction ?? throw AuthoringError(step, $"actor '{step.Actor}' has no open transaction");
+				actor.Subspace = await this.Db.Root.Resolve(tr);
+				if (this.Prefix.IsNull) this.Prefix = actor.Subspace.GetPrefix();
 			}
 		}
 

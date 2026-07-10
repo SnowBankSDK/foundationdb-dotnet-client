@@ -1,0 +1,118 @@
+{
+	"scenario": "ryw_disable_after_read_poisons",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "old"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": "old"
+			}
+		},
+		{
+			"step": 5,
+			"op": "SetOption",
+			"actor": "A",
+			"args": {
+				"option": "ReadYourWritesDisable"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"error": "ClientInvalidOperation"
+			}
+		},
+		{
+			"step": 7,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k2",
+				"value": "doomed"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": {
+				"error": "ClientInvalidOperation"
+			}
+		},
+		{
+			"step": 9,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 10,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k2"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 11,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "old"
+		}
+	]
+}
