@@ -2214,6 +2214,10 @@ namespace FoundationDB.Testing
 #endif
 							Kenobi($"WWW watching key {w.Key} at rv {w.ReadVersion} and cv {w.CommitVersion}");
 						}
+
+						// the store now owns these nodes (registered or queued to trigger): whatever remains on the
+						// handler at dispose/reset/failed-commit time is an unarmed watch and must be failed
+						handler.Watches = null;
 					}
 
 					if (updated != null)
@@ -2358,6 +2362,8 @@ namespace FoundationDB.Testing
 			public void Dispose()
 			{
 				this.IsClosed = true;
+				// watches never armed by a successful commit die with the transaction
+				FailPendingWatches(FdbError.TransactionCancelled);
 				this.LifeTime.Dispose();
 				this.Scratch.Dispose();
 			}
@@ -3227,12 +3233,33 @@ namespace FoundationDB.Testing
 				return new FdbWatch(node.Future, node.Key);
 			}
 
+			/// <summary>Fails every watch this transaction created but never armed (its commit did not succeed), like the real client does.</summary>
+			private void FailPendingWatches(FdbError error)
+			{
+				List<WatchNode>? pending;
+				lock (this.Lock)
+				{
+					pending = this.Watches;
+					this.Watches = null;
+				}
+				if (pending is null) return;
+				foreach (var node in pending)
+				{
+					node.Future.TrySetException(new FdbException(error));
+				}
+			}
+
 			public async Task CommitAsync(CancellationToken ct)
 			{
 				ThrowIfPoisoned();
 				try
 				{
 					this.CommittedVersion = await this.Store.Commit(this, ct);
+				}
+				catch (FdbException e)
+				{ // a failed commit (e.g. a conflict) kills the watches it would have armed, with the same error
+					FailPendingWatches(e.Code);
+					throw;
 				}
 				finally
 				{
@@ -3290,6 +3317,8 @@ namespace FoundationDB.Testing
 
 			public void Reset()
 			{
+				// resetting wipes the transaction state: watches created before the reset are cancelled
+				FailPendingWatches(FdbError.TransactionCancelled);
 				lock (this.Lock)
 				{
 					this.SnapshotTask = null;
