@@ -84,6 +84,14 @@ namespace SnowBank.Networking.Http
 				if (shell.DefaultVersionPolicy is not null) options.DefaultVersionPolicy = shell.DefaultVersionPolicy.Value;
 				if (shell.Hooks is not null) options.Hooks = shell.Hooks;
 				if (shell.RequestOptions is not null) (options.Options ??= [ ]).AddRange(shell.RequestOptions);
+				if (shell.Credentials is { } credentials)
+				{ // only the per-request half can act for a shell: a transport-coupled credential would silently skip its configure half
+					if (!credentials.IsPerRequestOnly)
+					{
+						throw new InvalidOperationException($"Per-shell credentials must be per-request only: '{credentials.GetType().Name}' requires transport configuration, which belongs to a policy bundle registered at startup with AddBetterHttpClient(name, ...).");
+					}
+					options.Credentials = credentials;
+				}
 			}
 
 			var client = new BetterHttpClient(handler);

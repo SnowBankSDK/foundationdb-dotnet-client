@@ -31,6 +31,10 @@ namespace SnowBank.Networking.Http
 	public interface IBetterCredentials
 	{
 
+		/// <summary>When <c>true</c>, these credentials act exclusively through <see cref="OnBeforeRequest"/> (their <see cref="Configure"/> half is a no-op), so they may be attached per-shell (<see cref="BetterHttpShellOptions.Credentials"/>) - the "different identity per transient client" pattern.</summary>
+		/// <remarks>Transport-coupled credentials (the default) configure the shared pooled handler when the bundle's chain is built, and therefore belong to a policy bundle registered at startup.</remarks>
+		bool IsPerRequestOnly => false;
+
 		/// <summary>Configures the options to configure any filter or delegating handler that would be required to process these credentials</summary>
 		HttpMessageHandler Configure(HttpMessageHandler handler, BetterHttpClientOptions options, IServiceProvider services);
 

@@ -296,6 +296,9 @@ namespace SnowBank.Testing.Framework.Tests
 			Assert.That(() => factory.CreateClient(uri, o => o.Proxy = new WebProxy("http://proxy.lan.simulated:8080")),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Proxy)),
 				"a per-call proxy must throw (socket knobs are per-bundle transport policy)");
+			Assert.That(() => factory.CreateClient(uri, o => o.Credentials = new WrappedCredentials(new NetworkCredential("user", "password"))),
+				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Credentials)),
+				"per-call TRANSPORT-COUPLED credentials must throw (their handler-configure half cannot run on the pooled chain)");
 		}
 
 		[Test]
@@ -353,6 +356,51 @@ namespace SnowBank.Testing.Framework.Tests
 		private sealed class NoopFilter : IBetterHttpFilter
 		{
 			public string Name => "noop";
+		}
+
+		[Test]
+		public async Task Test_Per_Request_Only_Credentials_Are_Shell_Tier()
+		{
+			// Credentials have two halves: a handler-configure half (transport tier, bundle-only) and a per-request half
+			// (OnBeforeRequest - e.g. a message signer stamping auth onto each request). A credential that declares itself
+			// per-request only (IsPerRequestOnly) is CLIENT behavior - the "different identity per transient client" pattern -
+			// and must ride the shell; a transport-coupled one (e.g. NTLM via WrappedCredentials) must be rejected loudly.
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("WEB", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/echo-stamp", (HttpContext ctx) => ctx.Request.Headers["X-Stamped"].ToString()));
+				});
+			}));
+			var web = context.GetWebHost("WEB");
+			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
+			var uri = web.GetUri("/echo-stamp");
+
+			// the per-request half of a shell credential must run for this client's requests
+			using (var client = factory.CreateClient(uri, new BetterHttpShellOptions() { Credentials = new HeaderStampCredentials() }))
+			{
+				var res = await client.SendAsync(client.CreateGetRequest(uri), (ctx) => ctx.Response.Content.ReadAsStringAsync(this.Cancellation), this.Cancellation);
+				Assert.That(res, Is.EqualTo("stamped"), "a per-request-only shell credential must be invoked for this client's requests");
+			}
+
+			// a transport-coupled credential cannot work per-shell: its configure half will never see the pooled chain
+			Assert.That(() => factory.CreateClient(uri, new BetterHttpShellOptions() { Credentials = new WrappedCredentials(new NetworkCredential("user", "password")) }),
+				Throws.InvalidOperationException.With.Message.Contains(nameof(WrappedCredentials)),
+				"transport-coupled credentials on the shell must fail loudly, not silently skip their configure half");
+		}
+
+		/// <summary>Per-request-only credential that stamps a header on each request (a stand-in for a message signer)</summary>
+		private sealed class HeaderStampCredentials : IBetterCredentials
+		{
+			public bool IsPerRequestOnly => true;
+
+			HttpMessageHandler IBetterCredentials.Configure(HttpMessageHandler handler, BetterHttpClientOptions options, IServiceProvider services) => handler;
+
+			ValueTask IBetterCredentials.OnBeforeRequest(BetterHttpClientContext context)
+			{
+				context.Request!.Headers.Add("X-Stamped", "stamped");
+				return default;
+			}
 		}
 
 		[Test]

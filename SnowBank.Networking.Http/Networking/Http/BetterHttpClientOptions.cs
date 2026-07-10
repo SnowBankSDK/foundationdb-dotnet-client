@@ -191,7 +191,7 @@ namespace SnowBank.Networking.Http
 				: this.Cookies is not null ? nameof(this.Cookies)
 				: this.AllowAutoRedirect is not null ? nameof(this.AllowAutoRedirect)
 				: this.AutomaticDecompression is not null ? nameof(this.AutomaticDecompression)
-				: this.Credentials is not null ? nameof(this.Credentials)
+				: this.Credentials is { IsPerRequestOnly: false } ? nameof(this.Credentials)
 				: this.Filters.Count > 0 ? nameof(this.Filters)
 				: this.Handlers.Count > 0 ? nameof(this.Handlers)
 				: null;
