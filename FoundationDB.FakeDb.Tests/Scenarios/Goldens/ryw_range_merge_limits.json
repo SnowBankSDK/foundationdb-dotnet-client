@@ -104,8 +104,7 @@
 						"key": "k3",
 						"value": "c3"
 					}
-				],
-				"hasMore": true
+				]
 			}
 		},
 		{
@@ -122,8 +121,7 @@
 					"key": "k9",
 					"orEqual": false,
 					"offset": 1
-				},
-				"tolerance": "AllowConservativeHasMore"
+				}
 			},
 			"outcome": {
 				"items": [
@@ -147,8 +145,7 @@
 						"key": "k5",
 						"value": "c5"
 					}
-				],
-				"hasMore": true
+				]
 			}
 		},
 		{

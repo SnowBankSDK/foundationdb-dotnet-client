@@ -241,11 +241,12 @@ namespace FoundationDB.Client.Tests
 					{
 						Limit = step.Limit,
 						IsReversed = step.Reverse,
-						Streaming = FdbStreamingMode.WantAll,
 					};
-					var chunk = await GetReader(step).GetRangeAsync(AbsoluteSelector(begin), AbsoluteSelector(end), options);
-					outcome["items"] = JsonArray.FromValues(chunk.Items, kv => JsonObject.Create([ ("key", RenderKey(kv.Key)), ("value", this.Symbols.Render(kv.Value)) ]));
-					outcome["hasMore"] = chunk.HasMore;
+					// page through the range like a real consumer: the trace captures the database semantics
+					// (which keys/values the read yields), not the client's chunking, which is implementation-specific
+					// (the native client conservatively under-fills chunks when local writes merge into the read)
+					var items = await GetReader(step).GetRange(AbsoluteSelector(begin), AbsoluteSelector(end), options).ToListAsync();
+					outcome["items"] = JsonArray.FromValues(items, kv => JsonObject.Create([ ("key", RenderKey(kv.Key)), ("value", this.Symbols.Render(kv.Value)) ]));
 					break;
 				}
 				case ScenarioOp.GetReadVersion:

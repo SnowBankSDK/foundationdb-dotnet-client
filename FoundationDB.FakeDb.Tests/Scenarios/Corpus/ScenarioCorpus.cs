@@ -143,11 +143,11 @@ namespace FoundationDB.Client.Tests
 			builder.GetRange("A",
 				new ScenarioSelector(Slice.FromStringAscii("k1"), false, 1),
 				new ScenarioSelector(Slice.FromStringAscii("k9"), false, 1),
-				limit: 2);                 // forward, truncated -> k1, k2 + hasMore
+				limit: 2);                 // forward, truncated -> k1, k2
 			builder.GetRange("A",
 				new ScenarioSelector(Slice.FromStringAscii("k1"), false, 1),
 				new ScenarioSelector(Slice.FromStringAscii("k9"), false, 1),
-				limit: 2, reverse: true);  // reverse, truncated -> k3, k2 + hasMore
+				limit: 2, reverse: true);  // reverse, truncated -> k3, k2
 			builder.Get("A", "k2", snapshot: true);
 			builder.Commit("A");
 			return builder.Build("harness_selectors_ranges",

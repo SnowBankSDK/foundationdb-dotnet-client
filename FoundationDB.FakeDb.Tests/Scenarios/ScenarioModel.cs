@@ -97,8 +97,6 @@ namespace FoundationDB.Client.Tests
 		None,
 		/// <summary>An <see cref="ScenarioOp.ExpectPending"/> observation also accepts a fired watch (the fdb contract permits spurious fires).</summary>
 		AllowSpuriousWatchFire,
-		/// <summary>A <see cref="ScenarioOp.GetRange"/> whose reference trace reports <c>hasMore</c> also accepts a complete chunk (the real client conservatively hints at more data when local writes were merged into the read).</summary>
-		AllowConservativeHasMore,
 	}
 
 	/// <summary>Key selector operand of a scenario step; <see cref="Key"/> is relative to the scenario root subspace.</summary>

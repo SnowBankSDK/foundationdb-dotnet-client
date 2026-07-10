@@ -124,10 +124,9 @@ namespace FoundationDB.Client.Tests
 				limit: 3);                     // merged view truncated mid-stream
 			b.GetRange("A",
 				new ScenarioSelector(Slice.FromStringAscii("k1"), OrEqual: false, Offset: 1),
-				new ScenarioSelector(Slice.FromStringAscii("k9"), OrEqual: false, Offset: 1),
-				tolerance: ScenarioTolerance.AllowConservativeHasMore); // the real client hints hasMore on merged unlimited reads
+				new ScenarioSelector(Slice.FromStringAscii("k9"), OrEqual: false, Offset: 1));
 			b.Commit("A");
-			return b.Build("ryw_range_merge_limits", "range reads merge uncommitted writes into committed data, honoring limits and hasMore");
+			return b.Build("ryw_range_merge_limits", "range reads merge uncommitted writes into committed data, honoring limits");
 		}
 
 		private static Scenario RangeMergeReverse()
@@ -144,7 +143,7 @@ namespace FoundationDB.Client.Tests
 			b.GetRange("A",
 				new ScenarioSelector(Slice.FromStringAscii("k1"), OrEqual: false, Offset: 1),
 				new ScenarioSelector(Slice.FromStringAscii("k9"), OrEqual: false, Offset: 1),
-				limit: 3, reverse: true);      // k5, k4, k3 + hasMore
+				limit: 3, reverse: true);      // k5, k4, k3
 			b.Dispose("A");
 			return b.Build("ryw_range_merge_reverse", "reverse range reads merge uncommitted writes, honoring limits from the high end");
 		}

@@ -187,7 +187,6 @@ namespace FoundationDB.Client.Tests
 
 			var forward = trace.Events[9].Outcome.GetArray("items").AsObjects().Select(o => o.Get<string>("key")).ToList();
 			Assert.That(forward, Is.EqualTo([ "k1", "k2" ]));
-			Assert.That(trace.Events[9].Outcome.Get<bool>("hasMore", false), Is.True);
 
 			var backward = trace.Events[10].Outcome.GetArray("items").AsObjects().Select(o => o.Get<string>("key")).ToList();
 			Assert.That(backward, Is.EqualTo([ "k3", "k2" ]));
