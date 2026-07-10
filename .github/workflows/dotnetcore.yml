@@ -28,7 +28,7 @@ jobs:
         dotnet-version: 11.0.x
         dotnet-quality: 'preview'
 
-    # build the solution (Release)
+    # restore nuget packages
     - name: Restore
       run: dotnet restore
 
@@ -55,8 +55,48 @@ jobs:
 
     # In case of error, we want to capture any generated file for troubleshooting
     - name: Capture generated source files
-      if: failure()  
+      if: failure()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: Generated Source Files
-        path: '**/*.g.cs' 
+        path: '**/*.g.cs'
+
+  # Submit the RESOLVED dependency graph (with transitives) to GitHub, so that Dependabot alerts
+  # track what this repository actually restores with its pinned .NET SDK. GitHub's managed
+  # "automatic dependency submission" resolves with its own toolchain, which cannot restore this
+  # solution (preview SDK pinned in global.json), so its snapshots go stale and alerts get stuck
+  # on versions that no current restore produces.
+  dependency-graph:
+
+    # only the default branch feeds the dependency graph and Dependabot
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+
+    runs-on: ubuntu-latest
+
+    # the dependency submission API requires write access to repository contents
+    permissions:
+      contents: write
+
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+    steps:
+
+    # checkout code from repository
+    - name: Checkout repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+    # install the same .NET SDK used by the build (matches global.json)
+    - name: Install .NET SDK
+      uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+      with:
+        dotnet-version: 11.0.x
+        dotnet-quality: 'preview'
+
+    # restore so that component-detection can read the resolved graphs (obj/project.assets.json)
+    - name: Restore
+      run: dotnet restore
+
+    # run microsoft/component-detection and submit the snapshot to the dependency graph
+    - name: Submit dependency snapshot
+      uses: advanced-security/component-detection-dependency-submission-action@31f25a8de68ae5ce2ca274bc28546a78683c15ce # v0.1.4 
