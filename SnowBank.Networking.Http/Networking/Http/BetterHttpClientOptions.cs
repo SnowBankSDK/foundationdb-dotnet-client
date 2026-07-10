@@ -242,11 +242,6 @@ namespace SnowBank.Networking.Http
 			return handler;
 		}
 
-		internal MagicalHandler WrapHandler(HttpMessageHandler handler, IServiceProvider services)
-		{
-			return new MagicalHandler(BuildTransportPipeline(handler, services));
-		}
-
 		/// <summary>Applies any default configuration to the specified handler</summary>
 		protected virtual HttpMessageHandler ConfigureDefaults(HttpMessageHandler handler)
 		{
@@ -312,16 +307,6 @@ namespace SnowBank.Networking.Http
 						return new CookieContainerMessageHandler(this.Cookies, handler);
 					}
 				}
-			}
-			return handler;
-		}
-
-		/// <summary>Apply filters to the specified handler.</summary>
-		protected virtual HttpMessageHandler ConfigureFilters(HttpMessageHandler handler)
-		{
-			foreach (var filter in this.Filters)
-			{
-				handler = filter.Wrap(this, handler);
 			}
 			return handler;
 		}
@@ -452,33 +437,6 @@ namespace SnowBank.Networking.Http
 			handler = ConfigureHttps(handler);
 
 			handler = ConfigureDefaults(handler);
-
-			handler = ConfigureProxy(handler);
-
-			handler = ConfigureCookies(handler);
-
-			return handler;
-		}
-
-		/// <summary>Apply these options to a new <see cref="HttpMessageHandler"/></summary>
-		/// <param name="handler">Handler that will be configured</param>
-		/// <returns>Configured handler. This could be a different instance that wraps the original handler</returns>
-		/// <remarks>This applies the socket knobs AND wraps the filters in a single pass; on the pooled path those two concerns are split (socket knobs via <see cref="ConfigureTransport"/> on the transport, filters once in the pipeline), so this method now only backs the transitional <c>[Obsolete]</c> creation bridges.</remarks>
-		[MustUseReturnValue]
-		public HttpMessageHandler Configure(HttpMessageHandler handler)
-		{
-			Contract.NotNull(handler);
-
-			if (handler is BetterHttpClientHandler betterHandler)
-			{
-				betterHandler.Setup();
-			}
-
-			handler = ConfigureHttps(handler);
-
-			handler = ConfigureDefaults(handler);
-
-			handler = ConfigureFilters(handler);
 
 			handler = ConfigureProxy(handler);
 

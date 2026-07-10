@@ -135,63 +135,6 @@ namespace SnowBank.Networking
 			return null;
 		}
 
-		/// <inheritdoc />
-		[Obsolete("Use CreateTransportHandler instead")]
-		[EditorBrowsable(EditorBrowsableState.Never)]
-		public override HttpMessageHandler? CreateHttpHandler(string hostOrAddress, int port)
-		{
-			Contract.NotNullOrWhiteSpace(hostOrAddress);
-
-			var host = FindHost(hostOrAddress);
-			if (host == null) return base.CreateHttpHandler(hostOrAddress, port);
-
-			var (local, remote) = FindNetworkPath(host, hostOrAddress);
-			if (local != null && remote != null)
-			{
-				// either we are offline, or the remote host is offline (or both)
-				if (local.Type != VirtualNetworkType.Loopback)
-				{
-					if (this.Host.Offline)
-					{ // We are offline!
-
-						//TODO: maybe this would be a different error? if the local host has no online network adapter, the error may be different
-
-						// => for now, simply simulate a generic connection timeout
-						return VirtualDeadHttpClientHandler.SimulateConnectFailure($"Local virtual host '{this.Host.Id}' is currently marked as offline and cannot send any request to remote host {host.Id}.");
-					}
-
-					if (host.Offline)
-					{ // the host is offline (rebooting? disconnected from ethernet/wifi?)
-
-						//TODO: depending on the situation, we should either simulate a name resolution failure, OR a tcp connect timeout:
-						// - if the DNS entry for the host is statically assigned, OR the caller still as the IP in cache from an earlier query, it would attempt to connect with the remote host, and fail with a timeout.
-						// - if the host use DHCP, and/or has a very short TTL, and/or use WINS, then the caller would fail with a name resolution error.
-
-						// => for now, simply assume that the DNS is static and/or already cached, and simulate a socket connection timeout (ie: the host was alive at some point and now suddenly became offline)
-						return VirtualDeadHttpClientHandler.SimulateConnectFailure($"Remote virtual host '{host.Id}' is currently marked as offline and will not respond to any request.");
-					}
-				}
-
-				//TODO: check if the two hosts can talk to each other!
-				var handler = host.FindHandler(remote, port);
-				if (handler != null)
-				{
-					return handler();
-				}
-
-				return VirtualDeadHttpClientHandler.SimulatePortNotBoundFailure($"Found no port {port} bound on location '{remote}' of target host '{host.Id}', visible from host '{this.Host.Id}'");
-			}
-
-			if (IPAddress.TryParse(hostOrAddress, out var ip))
-			{ // the request URI included the IP, so probably it would have failed to a timeout, or maybe a "bad gateway" ?
-				return VirtualDeadHttpClientHandler.SimulateConnectFailure($"Found no valid route from local host {this.Host.Id} to remote host {host.Id} using the IP address '{ip}'.");
-			}
-			else
-			{ // the request URI included the host name, so it could have failed the name resolution.
-				return VirtualDeadHttpClientHandler.SimulateNameResolutionFailure($"Found no valid route from local host {this.Host.Id} to remote host {host.Id} using the host name '{hostOrAddress}'.");
-			}
-		}
-
 		public (VirtualNetworkTopology.SimulatedNetwork? Local, VirtualNetworkTopology.SimulatedNetwork? Remote) FindNetworkPath(VirtualNetworkTopology.SimulatedHost target, string hostOrAddress)
 		{
 			if (target.Equals(this.Host))
@@ -228,14 +171,6 @@ namespace SnowBank.Networking
 			// target-agnostic virtual transport: the destination host is resolved per-request (inside SendAsync) against the
 			// LIVE map, so a client held across a node stop/start/remap reroutes on its very next request.
 			return new VirtualHttpClientHandler(this, options);
-		}
-
-		/// <inheritdoc />
-		[Obsolete("Use CreateTransportHandler instead")]
-		public override HttpMessageHandler CreateBetterHttpHandler(Uri baseAddress, BetterHttpClientOptions options)
-		{
-			// legacy bridge: the base address is ignored (the target is resolved per-request from the request URI)
-			return CreateTransportHandler(options);
 		}
 
 		/// <inheritdoc />

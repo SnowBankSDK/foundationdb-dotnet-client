@@ -65,7 +65,7 @@ namespace SnowBank.Networking.Http
 		//REVIEW: rename to CreateProtocol() ?
 		public TProtocol CreateClient(Uri baseAddress, Action<TOptions>? configure = null)
 		{
-			return CreateClientCore(baseAddress, null, null, configure);
+			return CreateClientCore(baseAddress, null, configure);
 		}
 
 		/// <summary>Creates a new client for sending requests to a remote target, using the named policy bundle for the pooled pipeline.</summary>
@@ -75,17 +75,10 @@ namespace SnowBank.Networking.Http
 		public TProtocol CreateClient(Uri baseAddress, string name, Action<TOptions>? configure = null)
 		{
 			Contract.NotNullOrWhiteSpace(name);
-			return CreateClientCore(baseAddress, null, name, configure);
+			return CreateClientCore(baseAddress, name, configure);
 		}
 
-		/// <inheritdoc />
-		//REVIEW: rename to CreateProtocol() or CreateProtocolClient() ?
-		public TProtocol CreateClient(Uri baseAddress, HttpMessageHandler handler, Action<TOptions>? configure = null)
-		{
-			return CreateClientCore(baseAddress, handler, null, configure);
-		}
-
-		private TProtocol CreateClientCore(Uri baseAddress, HttpMessageHandler? handler, string? name, Action<TOptions>? configure)
+		private TProtocol CreateClientCore(Uri baseAddress, string? name, Action<TOptions>? configure)
 		{
 			// build the protocol options ONCE (the named bundle drives the pooled pipeline; these options travel with the protocol object)
 			var options = CreateOptions();
@@ -98,28 +91,19 @@ namespace SnowBank.Networking.Http
 			OnAfterConfigure(options);
 
 			var factory = this.Services.GetRequiredService<IBetterHttpClientFactory>();
-			BetterHttpClient client;
-			if (handler is not null)
-			{ // transitional: a caller-provided transport carries the protocol options through a one-shot pipeline
-#pragma warning disable CS0618 // per-call options path, retired when protocol pipelines fully move to named bundles
-				client = factory.CreateClient(baseAddress, options, handler);
-#pragma warning restore CS0618
-			}
-			else
-			{ // pooled shell over the named (or default) policy bundle
-				// per-call configure = protocol/client behavior only; wire policy = the bundle. Fail loudly on the rest:
-				// under the retired one-shot path a per-call TLS callback or filter used to work, so silence would be a break.
-				options.EnsureOnlyProtocolBehavior($"{GetType().Name}.CreateClient");
 
-				// the shell tier of the protocol options rides the transient shell (per-connection auth headers etc.);
-				// the request version/policy stay bundle-owned (the protocol options' defaults are not an explicit intent).
-				client = factory.CreateClient(baseAddress, new BetterHttpShellOptions()
-				{
-					DefaultRequestHeaders = options.DefaultRequestHeaders,
-					RequestOptions = options.Options,
-					Hooks = options.Hooks,
-				}, name);
-			}
+			// per-call configure = protocol/client behavior only; wire policy = the bundle. Fail loudly on the rest:
+			// under the retired one-shot path a per-call TLS callback or filter used to work, so silence would be a break.
+			options.EnsureOnlyProtocolBehavior($"{GetType().Name}.CreateClient");
+
+			// the shell tier of the protocol options rides the transient shell (per-connection auth headers etc.);
+			// the request version/policy stay bundle-owned (the protocol options' defaults are not an explicit intent).
+			var client = factory.CreateClient(baseAddress, new BetterHttpShellOptions()
+			{
+				DefaultRequestHeaders = options.DefaultRequestHeaders,
+				RequestOptions = options.Options,
+				Hooks = options.Hooks,
+			}, name);
 			Contract.Debug.Assert(client != null);
 
 			try

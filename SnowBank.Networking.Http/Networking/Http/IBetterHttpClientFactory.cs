@@ -56,21 +56,6 @@ namespace SnowBank.Networking.Http
 		/// <returns>A transient shell carrying the per-shell options over the bundle's pooled chain.</returns>
 		BetterHttpClient CreateClient(Uri baseAddress, BetterHttpShellOptions shell, string? name = null);
 
-		/// <summary>Creates a new <see cref="HttpMessageHandler"/> that can be used to connect to the specified host</summary>
-		/// <param name="hostAddress">Host name or IP address of the remote target</param>
-		/// <param name="options">Custom options used to customize the handler</param>
-		/// <returns>Configured handler that will connect to the specified host</returns>
-		[Obsolete("Register a named policy bundle with AddBetterHttpClient(name, ...) and resolve the pooled chain via IHttpMessageHandlerFactory.CreateHandler(name) instead.")]
-		HttpMessageHandler CreateHttpHandler(Uri hostAddress, BetterHttpClientOptions options);
-
-		/// <summary>Creates a new <see cref="BetterHttpClient"/> that can be used to send requests to the specified host</summary>
-		/// <param name="hostAddress">Host name or IP address of the remote target</param>
-		/// <param name="options">Custom options used to customize the client</param>
-		/// <param name="handler">HTTP handler that should be used. If <c>null</c>, a new handler will be created and configured automatically.</param>
-		/// <returns>Configured client that will send requests to the specified host</returns>
-		[Obsolete("Register a named policy bundle with AddBetterHttpClient(name, ...) and use CreateClient(name)/CreateClient(uri) instead.")]
-		BetterHttpClient CreateClient(Uri hostAddress, BetterHttpClientOptions options, HttpMessageHandler? handler = null);
-
 	}
 
 }

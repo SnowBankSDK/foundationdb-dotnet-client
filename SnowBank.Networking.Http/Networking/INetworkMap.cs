@@ -48,17 +48,6 @@ namespace SnowBank.Networking
 		/// <remarks>The returned handler is target-agnostic (the request URI decides the destination per-request) and carries NO filters, hooks or policies - those belong to the client pipeline.</remarks>
 		HttpMessageHandler CreateTransportHandler(BetterHttpClientOptions options);
 
-		[Obsolete("Use CreateTransportHandler instead")]
-		HttpMessageHandler? CreateHttpHandler(string hostOrAddress, int port);
-
-		/// <summary>Creates a new <see cref="HttpMessageHandler"/> that can send queries to the specified remote host</summary>
-		/// <param name="baseAddress">Base address of the host (ex: <c>"https://api.acme.com"</c>), without any path or querystring</param>
-		/// <param name="options">Configuration options for the client</param>
-		/// <returns>Handler that will be configured for the remote host</returns>
-		/// <remarks>In a test environment, can return a virtual handler that will emulate the HTTP request "in process" to the corresponding virtual host</remarks>
-		[Obsolete("Use CreateTransportHandler instead")]
-		HttpMessageHandler CreateBetterHttpHandler(Uri baseAddress, BetterHttpClientOptions options);
-
 		/// <summary>Resolves the public IP address of the specified target, as seen by the local host</summary>
 		/// <param name="hostNameOrAddress">Host name of IP address</param>
 		/// <param name="ct">Token used to cancel the request</param>

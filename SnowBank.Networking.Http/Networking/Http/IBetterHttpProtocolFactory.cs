@@ -40,12 +40,6 @@ namespace SnowBank.Networking.Http
 		/// <param name="configure">Handler used to further configure the client options</param>
 		TProtocol CreateClient(Uri baseAddress, Action<TOptions>? configure = null);
 
-		/// <summary>Creates a new client for sending requests to a remote target</summary>
-		/// <param name="baseAddress">Host name or IP address of the remote target</param>
-		/// <param name="handler">Custom HTTP handler that will be used to send queries to the target</param>
-		/// <param name="configure">Handler used to further configure the client options</param>
-		TProtocol CreateClient(Uri baseAddress, HttpMessageHandler handler, Action<TOptions>? configure = null);
-
 	}
 
 }

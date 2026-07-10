@@ -216,19 +216,19 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Returns an HTTP client that will talk to this virtual host</summary>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
-		BetterHttpClient GetLocalBetterHttpClient(BetterHttpClientOptions? options = null);
+		BetterHttpClient GetLocalBetterHttpClient(BetterHttpShellOptions? options = null);
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="remote">Remote host</param>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
-		BetterHttpClient GetBetterHttpClient(IDistributedWebTestComponent remote, BetterHttpClientOptions? options = null);
+		BetterHttpClient GetBetterHttpClient(IDistributedWebTestComponent remote, BetterHttpShellOptions? options = null);
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="hostOrAddress">Address of the remote host (note: only the hostname part of the URI is used)</param>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
-		BetterHttpClient GetBetterHttpClient(Uri hostOrAddress, BetterHttpClientOptions? options = null);
+		BetterHttpClient GetBetterHttpClient(Uri hostOrAddress, BetterHttpShellOptions? options = null);
 
 		#endregion
 

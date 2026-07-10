@@ -64,23 +64,6 @@ namespace SnowBank.Networking
 			return options.ConfigureTransport(handler);
 		}
 
-		[Obsolete("Use CreateTransportHandler instead")]
-		public virtual HttpMessageHandler? CreateHttpHandler(string hostOrAddress, int port)
-		{
-			//by default, let the caller use its own handler
-			return null;
-		}
-
-		/// <inheritdoc />
-		[Obsolete("Use CreateTransportHandler instead")]
-		public virtual HttpMessageHandler CreateBetterHttpHandler(Uri baseAddress, BetterHttpClientOptions options)
-		{
-			// Legacy bridge. The base address is ignored: the transport is target-agnostic and the request URI decides the
-			// destination per-request. Kept behaviourally identical to the previous creation path (options.Configure over the
-			// raw transport) so existing callers are unchanged until policy application relocates fully into the pipeline.
-			return options.Configure(CreateTransportHandler(options));
-		}
-
 		/// <inheritdoc />
 		public virtual async ValueTask<IPAddress?> GetPublicIPAddressForHost(string hostNameOrAddress, CancellationToken ct)
 		{
