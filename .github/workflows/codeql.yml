@@ -96,3 +96,24 @@ jobs:
       uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
+        upload: false
+        output: sarif-results
+
+    # Test code is still compiled and analyzed (it is real code), but findings located in it are
+    # filtered out before upload: security alerts on test fixtures (fake cookies over the virtual
+    # network, dummy credentials, throwaway certificates) are noise by construction, and every test
+    # project follows the *.Tests naming convention. Results filtered out here auto-close their
+    # existing alerts on the next scan, and dismissals are never needed for this class again.
+    - name: Filter test projects out of the results
+      uses: advanced-security/filter-sarif@2da736ff05ef065cb2894ac6892e47b5eac2c3c0 # v1.1
+      with:
+        patterns: |
+          -**/*.Tests/**
+        input: sarif-results/${{ matrix.language }}.sarif
+        output: sarif-results/${{ matrix.language }}.sarif
+
+    - name: Upload filtered results
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: sarif-results/${{ matrix.language }}.sarif
+        category: "/language:${{matrix.language}}"
