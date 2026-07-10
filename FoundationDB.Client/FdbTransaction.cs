@@ -1405,6 +1405,27 @@ namespace FoundationDB.Client
 					return;
 				}
 
+				case FdbMutationType.ByteMin:
+				case FdbMutationType.ByteMax:
+				{
+					// shipped with fdb 5.2, same wave as AppendIfFits (they had no case here at all, so the
+					// default branch rejected them as "invalid mutation type" at every API level)
+					if (selectedApiVersion < 520)
+					{
+						if (Fdb.GetMaxApiVersion() >= 520)
+						{
+							throw new NotSupportedException("Atomic mutations ByteMin and ByteMax are only supported starting from API level 520. You need to select API level 520 or more at the start of your process.");
+						}
+						else
+						{
+							throw new NotSupportedException("Atomic mutations ByteMin and ByteMax are only supported starting from client version 5.2. You need to update the version of the client, and select API level 520 or more at the start of your process.");
+						}
+					}
+
+					// ok!
+					return;
+				}
+
 				case FdbMutationType.CompareAndClear:
 				{
 					if (selectedApiVersion < 610)
