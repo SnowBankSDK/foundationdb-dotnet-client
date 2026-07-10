@@ -1659,6 +1659,39 @@ namespace FoundationDB.Testing
 
 			}
 
+			/// <summary>Sums the exact key+value bytes of the committed snapshot over a range (FakeDb's deterministic stand-in for the real sampling estimator).</summary>
+			public long ComputeExactRangeSize(Key begin, Key end)
+			{
+				long sum = 0;
+				foreach (var kv in this.Inner.ScanRange(begin, end))
+				{
+					sum += kv.Key.Count + kv.Value.Count;
+				}
+				return sum;
+			}
+
+			/// <summary>Walks the committed snapshot emitting a split point every ~<paramref name="chunkSize"/> of exact key+value bytes, both endpoints always included.</summary>
+			/// <remarks>The returned slices are detached copies: the caller owns them beyond the transaction, and the inputs live in the transaction's recyclable scratch arena.</remarks>
+			public Slice[] ComputeSplitPoints(Key begin, Key end, long chunkSize)
+			{
+				var splits = new List<Slice> { begin.Slice.Copy() };
+				long accumulated = 0;
+				foreach (var kv in this.Inner.ScanRange(begin, end))
+				{
+					accumulated += kv.Key.Count + kv.Value.Count;
+					if (accumulated >= chunkSize)
+					{
+						if (!kv.Key.Slice.Equals(splits[^1]))
+						{
+							splits.Add(kv.Key.Slice.Copy());
+						}
+						accumulated = 0;
+					}
+				}
+				splits.Add(end.Slice.Copy());
+				return splits.ToArray();
+			}
+
 			public (Snapshot Snapshot, VersionStamp Stamp) ApplyMutations(long commitVersion, Snapshot snapshot/*, Dictionary<Key, List<WatchNode>> activeWatches*/)
 			{
 				var conflicts = snapshot.Conflicts;
@@ -3098,18 +3131,59 @@ namespace FoundationDB.Testing
 
 			public Task<string[]> GetAddressesForKeyAsync(ReadOnlySpan<byte> key, CancellationToken ct)
 			{
-				// in memory => fake some data!
-				return !ct.IsCancellationRequested ? Task.FromResult<string[]>([ "127.0.0.1" ]) : Task.FromCanceled<string[]>(ct);
+				// in memory => fake a single storage process. Starting at API level 630 (IncludePortInAddress
+				// becomes the default) the real client returns "IP:PORT" (or "IP:PORT:tls"); before that, just "IP".
+				var address = this.Store.ApiVersion >= 630 ? "127.0.0.1:4500" : "127.0.0.1";
+				return !ct.IsCancellationRequested ? Task.FromResult<string[]>([ address ]) : Task.FromCanceled<string[]>(ct);
 			}
 
 			public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, CancellationToken ct)
 			{
-				throw new NotImplementedException();
+				// deterministic walk over the committed snapshot, emitting a split every ~chunkSize of exact key+value
+				// bytes, both endpoints always included: the real API derives splits from storage samples (uneven chunks),
+				// so consumers already tolerate jitter, and deterministic splits are the better behavior for a test emulator
+				if (chunkSize <= 0) throw new ArgumentOutOfRangeException(nameof(chunkSize), chunkSize, "Chunk size must be greater than zero");
+				if (ct.IsCancellationRequested) return Task.FromCanceled<Slice[]>(ct);
+
+				var begin = this.Scratch.InternKeyRange(beginKey).Begin;
+				var end = this.Scratch.InternKeyRange(endKey).Begin;
+
+				if (TryGetSnapshot(out var snap))
+				{
+					return Task.FromResult(snap.ComputeSplitPoints(begin, end, chunkSize));
+				}
+				return Deferred(this, begin, end, chunkSize, ct);
+
+				static async Task<Slice[]> Deferred(TransactionHandler self, Key begin, Key end, long chunkSize, CancellationToken ct)
+				{
+					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
+					ct.ThrowIfCancellationRequested();
+					return snap.ComputeSplitPoints(begin, end, chunkSize);
+				}
 			}
 
 			public Task<long> GetEstimatedRangeSizeBytesAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, CancellationToken ct)
 			{
-				throw new NotImplementedException();
+				// exact, deterministic sum of key+value bytes over the committed snapshot: the real API is a noisy
+				// sampling estimator (can lag fresh writes, or return coarse/zero values on small ranges), so tests
+				// must not assert tight bounds on this value
+				if (ct.IsCancellationRequested) return Task.FromCanceled<long>(ct);
+
+				var begin = this.Scratch.InternKeyRange(beginKey).Begin;
+				var end = this.Scratch.InternKeyRange(endKey).Begin;
+
+				if (TryGetSnapshot(out var snap))
+				{
+					return Task.FromResult(snap.ComputeExactRangeSize(begin, end));
+				}
+				return Deferred(this, begin, end, ct);
+
+				static async Task<long> Deferred(TransactionHandler self, Key begin, Key end, CancellationToken ct)
+				{
+					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
+					ct.ThrowIfCancellationRequested();
+					return snap.ComputeExactRangeSize(begin, end);
+				}
 			}
 
 			private void AccountWriteOperation(int payload)

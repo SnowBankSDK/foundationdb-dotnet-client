@@ -1176,8 +1176,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Perform_Atomic_Operations()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence: Atomic() does not gate mutation-type validity by the emulated API version, so a pre-300 FdbMutationType.Max is applied instead of throwing FdbError.InvalidMutationType");
-
 			// test that we can perform atomic mutations on keys
 
 			using var db = await OpenTestPartitionAsync();
@@ -1219,7 +1217,10 @@ namespace FoundationDB.Client.Tests
 			await PerformAtomicOperationAndCheck(db, key, 0x00FF00FF, FdbMutationType.BitXor, 0x018055AA);
 			await PerformAtomicOperationAndCheck(db, key, 0x0F0F0F0F, FdbMutationType.BitXor, 0x018055AA);
 
-			if (Fdb.ApiVersion >= 300)
+			// note: gate on the DATABASE's selected api level, not the process-global Fdb.ApiVersion (which is 0 on
+			// the emulator head, where the native client never starts) — the client-side mutation gate consults the
+			// database level, so both backends behave the same at the same level
+			if (db.GetApiVersion() >= 300)
 			{
 				key = await ResolveKey("max");
 				await PerformAtomicOperationAndCheck(db, key, 0, FdbMutationType.Max, 0);
@@ -3247,8 +3248,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Addresses_For_Key()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence: GetAddressesForKeyAsync hardcodes \"127.0.0.1\" with no port, which FdbEndPoint.TryParse rejects (expects \"IP:PORT\")");
-
 			//note: starting from API level 630, options IncludePortInAddress is the default!
 
 			using var db = await OpenTestPartitionAsync();
@@ -4462,8 +4461,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Range_Split_Points()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence: GetRangeSplitPointsAsync throws NotImplementedException");
-
 			const int NUM_ITEMS = 100_000;
 			const int VALUE_SIZE = 50;
 			const int CHUNK_SIZE = (NUM_ITEMS * (VALUE_SIZE + 16)) / 100; // we would like to split in ~100 chunks
@@ -4548,8 +4545,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Estimated_Range_Size_Bytes()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence: GetEstimatedRangeSizeBytesAsync throws NotImplementedException");
-
 			const int NUM_ITEMS = 50_000;
 			const int VALUE_SIZE = 32;
 

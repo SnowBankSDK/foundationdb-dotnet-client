@@ -105,6 +105,30 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
+		public async Task Test_All_Mutation_Types_Are_Accepted_At_The_Emulation_Floor()
+		{
+			// FakeDb's emulation floor is api level 610 (MIN_API_VERSION), where every mutation type is already
+			// available — so the "old level rejects newer mutations" behavior is unreachable on the emulator by
+			// design. The managed client's gate consults the DATABASE's selected level (identically for a real
+			// database); this pins that the floor level accepts the whole mutation vocabulary.
+			var store = new FakeDbStore(apiVersion: FakeDbStore.MIN_API_VERSION);
+			using var db = store.OpenDatabase(FdbPath.Root, readOnly: false);
+
+			using (var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation))
+			{
+				tr.Atomic(Key("k1"), Slice.FromFixed64(1), FdbMutationType.Add);
+				tr.Atomic(Key("k2"), Slice.FromFixed64(1), FdbMutationType.Max);
+				tr.Atomic(Key("k3"), Slice.FromStringAscii("mm"), FdbMutationType.ByteMin);
+				tr.Atomic(Key("k4"), Slice.FromStringAscii("mm"), FdbMutationType.ByteMax);
+				tr.Atomic(Key("k5"), Slice.FromFixed64(1), FdbMutationType.CompareAndClear);
+				await tr.CommitAsync();
+			}
+
+			var actual = await db.ReadAsync(tr => tr.GetAsync(Key("k3")), this.Cancellation);
+			Assert.That(actual, Is.EqualTo(Slice.FromStringAscii("mm")));
+		}
+
+		[Test]
 		public async Task Test_Retry_Backoff_Runs_On_Virtual_Time()
 		{
 			// A retryable error backs off on the store's TimeProvider: with a fake clock and a realistic
