@@ -66,11 +66,21 @@ namespace FoundationDB.Client.Tests
 
 		#endregion
 
+		/// <summary>When <see langword="true"/> (the default), this fixture requires the local FoundationDB test server (Docker container) and the native client library.</summary>
+		/// <remarks>Emulator-backed conformance fixtures (ex: FakeDb) override this with <see langword="false"/>, which skips the container and native library setup entirely.</remarks>
+		protected virtual bool UseRealServer => true;
+
 		protected virtual Task OnBeforeAllTests() => Task.CompletedTask;
 
 		[OneTimeSetUp]
 		protected async Task BeforeAllTests()
 		{
+			if (!this.UseRealServer)
+			{ // this fixture runs against an in-process emulator: no docker container nor native client required
+				await OnBeforeAllTests();
+				return;
+			}
+
 			// We use the name of the .NET runtime version as part of the name of the container, in order to run the tests on multiple targets concurrently.
 			// ex: for .NET 10, the container will use the "-net10.0" suffix
 			var targetFrameworkVersion = GetRuntimeFrameworkVersion();
@@ -225,7 +235,7 @@ namespace FoundationDB.Client.Tests
 
 		/// <summary>Connect to the local test database</summary>
 		//[DebuggerStepThrough]
-		protected async Task<IFdbDatabase> OpenTestDatabaseAsync(bool readOnly = false)
+		protected virtual async Task<IFdbDatabase> OpenTestDatabaseAsync(bool readOnly = false)
 		{
 			var server = await this.WaitForTestServerToBecomeReady();
 
@@ -240,16 +250,9 @@ namespace FoundationDB.Client.Tests
 			return await Fdb.OpenAsync(options, this.Cancellation);
 		}
 
-		/// <summary>Connect to the local test database</summary>
-		//[DebuggerStepThrough]
-		protected async Task<IFdbDatabase> OpenTestPartitionAsync([CallerMemberName] string? testMethod = null)
+		/// <summary>Computes the isolated directory path used by <see cref="OpenTestPartitionAsync"/> for the current test.</summary>
+		protected FdbPath GetTestPartitionPath(string? testMethod)
 		{
-			// We already use a dedicated fdbserver docker image for each .NET runtime version, so we are isolated
-			// from other processes that would be spawn by test runners that execute the same test suites for 
-			// multiple .NET framework concurrently (ex: ReSharper when using "In all target frameworks" option).
-			// 
-			// We only have to protect against concurrent executions of other test classes interfering with each other by using the caller's name has a subdirectory name.
-
 			var testSuite = GetType().GetFriendlyName();
 			if (testSuite.EndsWith("Facts")) testSuite = testSuite[..^("Facts".Length)];
 
@@ -260,6 +263,21 @@ namespace FoundationDB.Client.Tests
 				if (testMethod.StartsWith("Test_")) testMethod = testMethod["Test_".Length..];
 				path = path[testMethod, "test"];
 			}
+
+			return path;
+		}
+
+		/// <summary>Connect to the local test database</summary>
+		//[DebuggerStepThrough]
+		protected virtual async Task<IFdbDatabase> OpenTestPartitionAsync([CallerMemberName] string? testMethod = null)
+		{
+			// We already use a dedicated fdbserver docker image for each .NET runtime version, so we are isolated
+			// from other processes that would be spawn by test runners that execute the same test suites for
+			// multiple .NET framework concurrently (ex: ReSharper when using "In all target frameworks" option).
+			//
+			// We only have to protect against concurrent executions of other test classes interfering with each other by using the caller's name has a subdirectory name.
+
+			var path = GetTestPartitionPath(testMethod);
 
 			var container = await WaitForTestServerToBecomeReady().ConfigureAwait(false);
 

@@ -18,11 +18,15 @@
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
 		<SignAssembly>true</SignAssembly>
+		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>
 		<DelaySign>false</DelaySign>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
+
+	<PropertyGroup>
+		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+	</PropertyGroup>
 
 	<PropertyGroup>
 		<ServerGarbageCollection>true</ServerGarbageCollection>
@@ -63,6 +67,11 @@
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
+		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />
 	</ItemGroup>
+
+	<!-- Copies the native fdb_c client library to this project's own output folder, so that the real-cluster head (SmokeRealClusterFacts) can locate it via FdbClientNativeExtensions.ProbeNativeLibraryPaths() -->
+	<Import Project="..\FoundationDB.Client.Native\build\FoundationDB.Client.Native.targets" />
 
 </Project>
