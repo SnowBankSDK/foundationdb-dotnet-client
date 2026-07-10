@@ -47,6 +47,7 @@ namespace FoundationDB.Client.Tests
 			HarnessWatchSmoke(),
 			.. RywCorpus.All(),
 			.. WatchesCorpus.All(),
+			.. VersionstampsCorpus.All(),
 			.. LoadPinned(),
 		];
 

@@ -116,6 +116,11 @@ namespace FoundationDB.Client.Tests
 						DisposeActorTransaction(step.Actor!);
 					}
 				}
+				catch (OperationCanceledException) when (!this.Cancellation.IsCancellationRequested)
+				{
+					// an observed future (watch, versionstamp) settled by cancellation, not the runner's own token: a comparable outcome
+					outcome["cancelled"] = true;
+				}
 				catch (Exception e) when (e is not OperationCanceledException)
 				{
 					// a backend threw something that is not an fdb error (e.g. an unimplemented emulator path): record it as a comparable outcome

@@ -1,0 +1,56 @@
+{
+	"scenario": "vs_incomplete_tupack_layout",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "SetVersionstampedKey",
+			"actor": "A",
+			"args": {
+				"key": "\\x02evt\\x003\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\x07",
+				"value": "tupack",
+				"stampOffset": 6
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "GetVersionstamp",
+			"actor": "A",
+			"args": {
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "ExpectVersionstamp",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"stamp": "v1#0"
+			}
+		}
+	],
+	"finalState": [
+		{
+			"key": "\\x02evt\\x003<v1#0>\\x00\\x07",
+			"value": "tupack"
+		}
+	]
+}

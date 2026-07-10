@@ -1,0 +1,81 @@
+{
+	"scenario": "vs_value_stamped",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "SetVersionstampedValue",
+			"actor": "A",
+			"args": {
+				"key": "marker",
+				"value": "ver=\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"stampOffset": 4
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "GetVersionstamp",
+			"actor": "A",
+			"args": {
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "ExpectVersionstamp",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"stamp": "v1#0"
+			}
+		},
+		{
+			"step": 5,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "marker"
+			},
+			"outcome": {
+				"value": "ver=<v1#0>"
+			}
+		},
+		{
+			"step": 7,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "marker",
+			"value": "ver=<v1#0>"
+		}
+	]
+}

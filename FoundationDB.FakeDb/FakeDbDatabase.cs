@@ -3257,7 +3257,9 @@ namespace FoundationDB.Testing
 					this.CommittedVersion = await this.Store.Commit(this, ct);
 				}
 				catch (FdbException e)
-				{ // a failed commit (e.g. a conflict) kills the watches it would have armed, with the same error
+				{ // a failed commit (e.g. a conflict) kills the futures it would have settled:
+					// the watches fail with the commit error, the versionstamp with TransactionInvalidVersion (there is no commit version) — both pinned against the real cluster
+					this.StampSignal?.TrySetException(new FdbException(FdbError.TransactionInvalidVersion));
 					FailPendingWatches(e.Code);
 					throw;
 				}

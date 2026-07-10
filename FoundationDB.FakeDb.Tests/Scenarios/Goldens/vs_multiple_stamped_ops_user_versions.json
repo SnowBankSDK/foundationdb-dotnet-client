@@ -1,0 +1,115 @@
+{
+	"scenario": "vs_multiple_stamped_ops_user_versions",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "SetVersionstampedKey",
+			"actor": "A",
+			"args": {
+				"key": "evt-\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\x00",
+				"value": "first",
+				"stampOffset": 4
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "SetVersionstampedKey",
+			"actor": "A",
+			"args": {
+				"key": "evt-\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\x01",
+				"value": "second",
+				"stampOffset": 4
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "GetVersionstamp",
+			"actor": "A",
+			"args": {
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "ExpectVersionstamp",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"stamp": "v1#0"
+			}
+		},
+		{
+			"step": 6,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "evt-",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "evt.",
+					"orEqual": false,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "evt-<v1#0>\\x00\\x00",
+						"value": "first"
+					},
+					{
+						"key": "evt-<v1#0>\\x00\\x01",
+						"value": "second"
+					}
+				],
+				"hasMore": false
+			}
+		},
+		{
+			"step": 8,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "evt-<v1#0>\\x00\\x00",
+			"value": "first"
+		},
+		{
+			"key": "evt-<v1#0>\\x00\\x01",
+			"value": "second"
+		}
+	]
+}

@@ -1,0 +1,56 @@
+{
+	"scenario": "vs_key_offset_mid_key",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "SetVersionstampedKey",
+			"actor": "A",
+			"args": {
+				"key": "log-\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00-tail",
+				"value": "payload",
+				"stampOffset": 4
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "GetVersionstamp",
+			"actor": "A",
+			"args": {
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "ExpectVersionstamp",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"stamp": "v1#0"
+			}
+		}
+	],
+	"finalState": [
+		{
+			"key": "log-<v1#0>-tail",
+			"value": "payload"
+		}
+	]
+}
