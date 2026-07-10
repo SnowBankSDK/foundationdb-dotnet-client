@@ -77,8 +77,8 @@ jobs:
     permissions:
       contents: write
 
-    env:
-      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+    # note: unlike the build job, the NuGet cache stays at its default location (~/.nuget), OUTSIDE
+    # the workspace, so that component-detection does not scan the cached packages themselves
 
     steps:
 
@@ -93,9 +93,14 @@ jobs:
         dotnet-version: 11.0.x
         dotnet-quality: 'preview'
 
-    # restore so that component-detection can read the resolved graphs (obj/project.assets.json)
-    - name: Restore
-      run: dotnet restore
+    # restore so that component-detection can read the resolved graphs (obj/project.assets.json).
+    # RIDs are cleared for this restore: with RuntimeIdentifiers active, the SDK records runtime-pack
+    # downloads (Microsoft.NETCore.App.Runtime.<rid>, ...) in the assets, and Dependabot then alerts
+    # on THE SDK'S bundled pack versions - which a preview SDK chronically pins one servicing patch
+    # behind. Nothing in this repository ships a runtime (the tools are framework-dependent), so the
+    # packs do not belong in the reported dependency graph. Package references are unaffected.
+    - name: Restore (without runtime packs)
+      run: dotnet restore "-p:RuntimeIdentifiers=" "-p:RuntimeIdentifier="
 
     # run microsoft/component-detection and submit the snapshot to the dependency graph
     - name: Submit dependency snapshot
