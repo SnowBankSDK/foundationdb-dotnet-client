@@ -66,12 +66,28 @@ namespace SnowBank.Networking.Http
 			return CreateClientCore(name ?? BetterHttpClientExtensions.DefaultClientName, baseAddress);
 		}
 
-		private BetterHttpClient CreateClientCore(string name, Uri? baseAddress)
+		/// <inheritdoc />
+		public BetterHttpClient CreateClient(Uri baseAddress, BetterHttpShellOptions shell, string? name = null)
+		{
+			Contract.NotNull(baseAddress);
+			Contract.NotNull(shell);
+			return CreateClientCore(name ?? BetterHttpClientExtensions.DefaultClientName, baseAddress, shell);
+		}
+
+		private BetterHttpClient CreateClientCore(string name, Uri? baseAddress, BetterHttpShellOptions? shell = null)
 		{
 			// pooled handler chain (transport + pipeline), owned and rotated by the platform
 			var handler = this.HandlerFactory.CreateHandler(name);
 
 			var options = BetterHttpClientExtensions.ResolveBundleOptions(this.Services, name);
+
+			if (shell is not null)
+			{ // overlay the per-shell tier onto the freshly-resolved (per-client, mutation-safe) bundle options
+				if (shell.DefaultRequestVersion is not null) options.DefaultRequestVersion = shell.DefaultRequestVersion;
+				if (shell.DefaultVersionPolicy is not null) options.DefaultVersionPolicy = shell.DefaultVersionPolicy.Value;
+				if (shell.Hooks is not null) options.Hooks = shell.Hooks;
+				if (shell.RequestOptions is not null) (options.Options ??= [ ]).AddRange(shell.RequestOptions);
+			}
 
 			var client = new BetterHttpClient(handler);
 			if (baseAddress is not null)
@@ -81,6 +97,7 @@ namespace SnowBank.Networking.Http
 			client.DefaultRequestVersion = options.DefaultRequestVersion;
 			client.DefaultVersionPolicy = options.DefaultVersionPolicy;
 			options.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
+			shell?.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders); // the shell's headers ride on top of the bundle's
 
 			// attach the runtime that the send extensions read back at request time
 			BetterHttpClientRuntime.Attach(client, new BetterHttpClientRuntimeInfo()

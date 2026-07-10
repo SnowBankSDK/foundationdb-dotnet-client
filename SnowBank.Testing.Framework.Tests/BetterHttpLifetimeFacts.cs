@@ -270,6 +270,92 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
+		public async Task Test_Per_Call_Protocol_Configure_Rejects_Wire_Policy()
+		{
+			// The contract: per-call configure = protocol/client behavior only; wire policy (TLS, proxy, cookies, filters,
+			// pipeline handlers) = the policy bundle, registered at startup. A per-call TLS callback or filter CANNOT reach
+			// the shared pooled transport - under the retired one-shot path the exact same call used to work, so silence
+			// here would be a silent security/behavior break. It must fail loudly, naming the offending member.
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("WEB", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/ping", (HttpContext _) => "pong"));
+				});
+			}));
+			var web = context.GetWebHost("WEB");
+			var factory = web.GetRequiredService<RestHttpProtocolFactory>();
+			var uri = web.GetUri("/ping");
+
+			Assert.That(() => factory.CreateClient(uri, o => o.AcceptSelfSignedServerCertificates()),
+				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.ServerCertificateCustomValidationCallback)),
+				"a per-call TLS relaxation must throw (it would silently not reach the wire)");
+			Assert.That(() => factory.CreateClient(uri, o => o.Filters.Add(new NoopFilter())),
+				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Filters)),
+				"a per-call filter must throw (the pooled pipeline is built from the bundle options)");
+			Assert.That(() => factory.CreateClient(uri, o => o.Proxy = new WebProxy("http://proxy.lan.simulated:8080")),
+				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Proxy)),
+				"a per-call proxy must throw (socket knobs are per-bundle transport policy)");
+		}
+
+		[Test]
+		public async Task Test_Per_Call_Protocol_Configure_Blesses_Client_Level_Behavior()
+		{
+			// The blessed half of the same contract: per-connection default headers (the real-world load-bearing per-call
+			// usage - e.g. auth headers on a transient protocol client) apply to the SHELL and must reach the server.
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("WEB", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/echo-auth", (HttpContext ctx) => ctx.Request.Headers["X-Acme-Auth"].ToString()));
+				});
+			}));
+			var web = context.GetWebHost("WEB");
+			var factory = web.GetRequiredService<RestHttpProtocolFactory>();
+			var uri = web.GetUri("/echo-auth");
+
+			using var protocol = factory.CreateClient(uri, o => o.DefaultRequestHeaders.Add("X-Acme-Auth", "token-42"));
+			Assert.That(await protocol.GetTextAsync(uri, this.Cancellation), Is.EqualTo("token-42"),
+				"per-call default headers are client-level behavior and must reach the server");
+		}
+
+		[Test]
+		public async Task Test_Factory_Shell_Options_Apply_To_The_Shell_Only()
+		{
+			// The factory's per-call surface is the SHELL tier: default headers (and hooks/request options) for THIS client,
+			// over the shared pooled chain. A sibling client of the same bundle must not see them.
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("WEB", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/echo-tag", (HttpContext ctx) => ctx.Request.Headers["X-Tag"].ToString()));
+				});
+			}));
+			var web = context.GetWebHost("WEB");
+			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
+			var uri = web.GetUri("/echo-tag");
+
+			var shell = new BetterHttpShellOptions();
+			shell.DefaultRequestHeaders.Add("X-Tag", "42");
+			using (var tagged = factory.CreateClient(uri, shell))
+			{
+				var res = await tagged.SendAsync(tagged.CreateGetRequest(uri), (ctx) => ctx.Response.Content.ReadAsStringAsync(this.Cancellation), this.Cancellation);
+				Assert.That(res, Is.EqualTo("42"), "the shell options' default headers must ride this client's requests");
+			}
+			using (var plain = factory.CreateClient(uri))
+			{
+				var res = await plain.SendAsync(plain.CreateGetRequest(uri), (ctx) => ctx.Response.Content.ReadAsStringAsync(this.Cancellation), this.Cancellation);
+				Assert.That(res, Is.Empty, "a sibling client of the same bundle must not inherit another shell's headers");
+			}
+		}
+
+		/// <summary>No-op filter used to prove that per-call filter registration is rejected</summary>
+		private sealed class NoopFilter : IBetterHttpFilter
+		{
+			public string Name => "noop";
+		}
+
+		[Test]
 		public async Task Test_Bare_Handler_From_Factory_Is_Captured()
 		{
 			// A bare handler straight from the pooled factory carries the FULL pipeline, packet

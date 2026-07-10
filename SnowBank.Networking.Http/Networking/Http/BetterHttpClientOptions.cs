@@ -171,6 +171,36 @@ namespace SnowBank.Networking.Http
 			});
 		}
 
+		/// <summary>Throws when this per-call options instance carries wire policy (transport or pipeline tier), which cannot reach the shared pooled transport.</summary>
+		/// <param name="context">Short description of the call site (e.g. the protocol type name), included in the exception message.</param>
+		/// <remarks>
+		/// <para>The contract: per-call configuration = protocol/client behavior only (default headers, request version, hooks, request options); wire policy = the policy bundle, registered at startup with <c>AddBetterHttpClient(name, ...)</c>.</para>
+		/// <para>Under the retired one-shot creation path a per-call TLS callback, proxy or filter used to work; on the pooled path it would silently do nothing - so it must fail loudly instead.</para>
+		/// </remarks>
+		/// <exception cref="InvalidOperationException">When a transport- or pipeline-tier member is set on this instance.</exception>
+		public void EnsureOnlyProtocolBehavior(string context)
+		{
+			string? offender =
+				  this.ServerCertificateCustomValidationCallback is not null ? nameof(this.ServerCertificateCustomValidationCallback)
+				: this.ClientCertificates is not null ? nameof(this.ClientCertificates)
+				: this.ClientCertificateOptions is not null ? nameof(this.ClientCertificateOptions)
+				: this.CheckCertificateRevocationList is not null ? nameof(this.CheckCertificateRevocationList)
+				: this.SslProtocols is not null ? nameof(this.SslProtocols)
+				: this.Proxy is not null ? nameof(this.Proxy)
+				: this.DefaultProxyCredentials is not null ? nameof(this.DefaultProxyCredentials)
+				: this.Cookies is not null ? nameof(this.Cookies)
+				: this.AllowAutoRedirect is not null ? nameof(this.AllowAutoRedirect)
+				: this.AutomaticDecompression is not null ? nameof(this.AutomaticDecompression)
+				: this.Credentials is not null ? nameof(this.Credentials)
+				: this.Filters.Count > 0 ? nameof(this.Filters)
+				: this.Handlers.Count > 0 ? nameof(this.Handlers)
+				: null;
+			if (offender is not null)
+			{
+				throw new InvalidOperationException($"Per-call configuration can only set protocol/client behavior (default headers, request version, hooks, request options): '{offender}' is wire policy, which belongs to a policy bundle registered at startup with AddBetterHttpClient(name, ...). ({context})");
+			}
+		}
+
 		/// <summary>Checks if a type implementing <see cref="HttpMessageHandler"/> is considered a "test" client that is emulating requests "in-process"</summary>
 		internal static bool IsTestClient(Type type)
 		{

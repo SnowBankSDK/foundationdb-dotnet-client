@@ -107,7 +107,18 @@ namespace SnowBank.Networking.Http
 			}
 			else
 			{ // pooled shell over the named (or default) policy bundle
-				client = factory.CreateClient(baseAddress, name);
+				// per-call configure = protocol/client behavior only; wire policy = the bundle. Fail loudly on the rest:
+				// under the retired one-shot path a per-call TLS callback or filter used to work, so silence would be a break.
+				options.EnsureOnlyProtocolBehavior($"{GetType().Name}.CreateClient");
+
+				// the shell tier of the protocol options rides the transient shell (per-connection auth headers etc.);
+				// the request version/policy stay bundle-owned (the protocol options' defaults are not an explicit intent).
+				client = factory.CreateClient(baseAddress, new BetterHttpShellOptions()
+				{
+					DefaultRequestHeaders = options.DefaultRequestHeaders,
+					RequestOptions = options.Options,
+					Hooks = options.Hooks,
+				}, name);
 			}
 			Contract.Debug.Assert(client != null);
 

@@ -49,6 +49,13 @@ namespace SnowBank.Networking.Http
 		/// <returns>A transient shell whose <see cref="HttpClient.BaseAddress"/> is set to <paramref name="baseAddress"/>.</returns>
 		BetterHttpClient CreateClient(Uri baseAddress, string? name = null);
 
+		/// <summary>Creates a new client bound to a base address, with per-shell options, over a policy bundle.</summary>
+		/// <param name="baseAddress">Base address applied to the transient shell (relative request paths resolve against it). Never touches the pooled chain.</param>
+		/// <param name="shell">Per-shell options (default headers, request version, hooks, request options) applied to THIS client only. Wire policy stays on the bundle.</param>
+		/// <param name="name">Optional name of the policy bundle; the default bundle is used when <c>null</c>.</param>
+		/// <returns>A transient shell carrying the per-shell options over the bundle's pooled chain.</returns>
+		BetterHttpClient CreateClient(Uri baseAddress, BetterHttpShellOptions shell, string? name = null);
+
 		/// <summary>Creates a new <see cref="HttpMessageHandler"/> that can be used to connect to the specified host</summary>
 		/// <param name="hostAddress">Host name or IP address of the remote target</param>
 		/// <param name="options">Custom options used to customize the handler</param>
