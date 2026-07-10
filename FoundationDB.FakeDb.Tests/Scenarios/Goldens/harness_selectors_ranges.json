@@ -1,0 +1,213 @@
+{
+	"scenario": "harness_selectors_ranges",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "v1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k2",
+				"value": "v2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "v3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k2",
+					"orEqual": false,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"key": "k2"
+			}
+		},
+		{
+			"step": 7,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k2",
+					"orEqual": true,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"key": "k3"
+			}
+		},
+		{
+			"step": 8,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k3",
+					"orEqual": true,
+					"offset": 0
+				}
+			},
+			"outcome": {
+				"key": "k3"
+			}
+		},
+		{
+			"step": 9,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k1",
+					"orEqual": false,
+					"offset": 0
+				}
+			},
+			"outcome": {
+				"key": "!outside"
+			}
+		},
+		{
+			"step": 10,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k1",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k9",
+					"orEqual": false,
+					"offset": 1
+				},
+				"limit": 2
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k1",
+						"value": "v1"
+					},
+					{
+						"key": "k2",
+						"value": "v2"
+					}
+				],
+				"hasMore": true
+			}
+		},
+		{
+			"step": 11,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k1",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k9",
+					"orEqual": false,
+					"offset": 1
+				},
+				"limit": 2,
+				"reverse": true
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k3",
+						"value": "v3"
+					},
+					{
+						"key": "k2",
+						"value": "v2"
+					}
+				],
+				"hasMore": true
+			}
+		},
+		{
+			"step": 12,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k2",
+				"snapshot": true
+			},
+			"outcome": {
+				"value": "v2"
+			}
+		},
+		{
+			"step": 13,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "v1"
+		},
+		{
+			"key": "k2",
+			"value": "v2"
+		},
+		{
+			"key": "k3",
+			"value": "v3"
+		}
+	]
+}

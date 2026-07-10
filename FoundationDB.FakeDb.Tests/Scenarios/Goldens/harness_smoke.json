@@ -1,0 +1,155 @@
+{
+	"scenario": "harness_smoke",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "hello"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": "hello"
+			}
+		},
+		{
+			"step": 3,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "counter",
+				"value": "\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "GetCommittedVersion",
+			"actor": "A",
+			"args": { },
+			"outcome": {
+				"version": "v1"
+			}
+		},
+		{
+			"step": 6,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": "hello"
+			}
+		},
+		{
+			"step": 8,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "missing"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 9,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "counter"
+			},
+			"outcome": {
+				"value": "\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+			}
+		},
+		{
+			"step": 10,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "~",
+					"orEqual": false,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "counter",
+						"value": "\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+					},
+					{
+						"key": "k1",
+						"value": "hello"
+					}
+				],
+				"hasMore": false
+			}
+		},
+		{
+			"step": 11,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 12,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "counter",
+			"value": "\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "k1",
+			"value": "hello"
+		}
+	]
+}
