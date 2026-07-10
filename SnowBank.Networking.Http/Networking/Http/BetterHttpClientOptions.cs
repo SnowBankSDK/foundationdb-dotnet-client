@@ -103,6 +103,57 @@ namespace SnowBank.Networking.Http
 			this.ServerCertificateCustomValidationCallback = BetterHttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
 		}
 
+		/// <summary>Trusts the given certificates as additional roots (a private site CA, or a pinned self-signed server certificate), while keeping full chain validation.</summary>
+		/// <param name="trustedRoots">Trust anchors: a private CA whose issued certificates should be accepted, and/or a self-signed server certificate pinned as its own root.</param>
+		/// <remarks>
+		/// <para>This is the recommended policy for internal deployments where endpoints cannot carry publicly-trusted certificates: trust is <em>extended</em> to the given roots, not relaxed - the presented chain must still build (signatures, lifetime) and the host name must still match.</para>
+		/// <para>Certificates the system already trusts (public CAs, an OS-trusted development certificate) remain accepted.</para>
+		/// <para>This is a per-bundle transport policy: register it on a (named) policy bundle at startup, e.g. <c>services.AddBetterHttpClient("teleport", options => options.TrustServerCertificates(siteCa))</c>.</para>
+		/// </remarks>
+		public BetterHttpClientOptions TrustServerCertificates(params X509Certificate2[] trustedRoots)
+		{
+			Contract.NotNullOrEmpty(trustedRoots);
+			var roots = new X509Certificate2Collection(trustedRoots);
+			this.ServerCertificateCustomValidationCallback = (cert, chain, errors) =>
+			{
+				if (errors == SslPolicyErrors.None)
+				{ // the platform already validated the chain against the system store
+					return true;
+				}
+				if (cert is null || (errors & ~SslPolicyErrors.RemoteCertificateChainErrors) != SslPolicyErrors.None)
+				{ // a missing certificate or a host-name mismatch is never forgiven; extra roots only address chain TRUST
+					return false;
+				}
+				// rebuild the chain against the custom trust anchors only
+				using var custom = new X509Chain();
+				custom.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+				custom.ChainPolicy.CustomTrustStore.AddRange(roots);
+				custom.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck; // private roots publish no CRL
+				if (chain is not null)
+				{ // make the intermediates presented by the server available to the resolver
+					foreach (var element in chain.ChainElements)
+					{
+						custom.ChainPolicy.ExtraStore.Add(element.Certificate);
+					}
+				}
+				return custom.Build(cert);
+			};
+			return this;
+		}
+
+		/// <summary>Accepts server certificates whose chain is not trusted (self-signed, or issued by an unknown authority), while still requiring a certificate whose host name matches.</summary>
+		/// <remarks>
+		/// <para>This forgives <em>chain-trust</em> errors only: a host-name mismatch or a missing certificate is still rejected (accepting those is what <see cref="DangerousAcceptAnyServerCertificate"/> would do, and it stays a separate, loud opt-in).</para>
+		/// <para>Prefer <see cref="TrustServerCertificates"/> when the expected certificate (or its issuing CA) is available: it keeps full validation instead of forgiving trust for ANY self-signed endpoint.</para>
+		/// <para>This is a per-bundle transport policy: register it on a (named) policy bundle at startup, e.g. <c>services.AddBetterHttpClient("teleport", options => options.AcceptSelfSignedServerCertificates())</c>.</para>
+		/// </remarks>
+		public BetterHttpClientOptions AcceptSelfSignedServerCertificates()
+		{
+			this.ServerCertificateCustomValidationCallback = static (cert, _, errors)
+				=> cert is not null && (errors & ~SslPolicyErrors.RemoteCertificateChainErrors) == SslPolicyErrors.None;
+			return this;
+		}
+
 		/// <summary>Adds a delegating handler to the chain of handlers used by this client</summary>
 		/// <typeparam name="THandler">Type of handler, that must be constructible using the <see cref="IServiceProvider"/> that will be used to build the client</typeparam>
 		/// <remarks>

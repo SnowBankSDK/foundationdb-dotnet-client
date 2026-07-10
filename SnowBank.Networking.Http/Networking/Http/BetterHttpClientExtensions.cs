@@ -157,8 +157,11 @@ namespace SnowBank.Networking.Http
 		}
 
 		/// <summary>Resolves the effective <see cref="BetterHttpClientOptions"/> for a policy bundle: global filters/handlers, the global configure, then the per-name configure. A FRESH instance is returned each call (so nothing is mutated across calls).</summary>
-		/// <remarks>Caveat: the pooled pipeline (this method, when the primary handler is stitched) and the client runtime (the send extensions) resolve TWO SEPARATE options instances for the same bundle. Filters therefore must keep per-request state in <c>context.State</c> - never in instance fields that try to coordinate their <c>Wrap</c> with their stage callbacks, since the two runs see different option objects.</remarks>
-		internal static BetterHttpClientOptions ResolveBundleOptions(IServiceProvider services, string name)
+		/// <remarks>
+		/// <para>Consumers may use this to INSPECT a bundle's effective policy (e.g. whether it carries a custom certificate-validation callback); mutating the returned instance has no effect on the bundle.</para>
+		/// <para>Caveat: the pooled pipeline (this method, when the primary handler is stitched) and the client runtime (the send extensions) resolve TWO SEPARATE options instances for the same bundle. Filters therefore must keep per-request state in <c>context.State</c> - never in instance fields that try to coordinate their <c>Wrap</c> with their stage callbacks, since the two runs see different option objects.</para>
+		/// </remarks>
+		public static BetterHttpClientOptions ResolveBundleOptions(IServiceProvider services, string name)
 		{
 			var builder = services.GetRequiredService<IOptions<BetterHttpClientOptionsBuilder>>().Value;
 
