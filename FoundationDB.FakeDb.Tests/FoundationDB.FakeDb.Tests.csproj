@@ -65,6 +65,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- golden traces of the differential scenario harness: replay fixtures can load them next to the test assembly -->
+		<None Include="Scenarios\Goldens\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
 		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />

@@ -1,0 +1,198 @@
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// 	* Redistributions of source code must retain the above copyright
+// 	  notice, this list of conditions and the following disclaimer.
+// 	* Redistributions in binary form must reproduce the above copyright
+// 	  notice, this list of conditions and the following disclaimer in the
+// 	  documentation and/or other materials provided with the distribution.
+// 	* Neither the name of SnowBank nor the
+// 	  names of its contributors may be used to endorse or promote products
+// 	  derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL SNOWBANK SAS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#endregion
+
+namespace FoundationDB.Client.Tests
+{
+	/// <summary>Structural tests of the scenario runner, executed against the FakeDb emulator (no Docker, no native client).</summary>
+	[TestFixture]
+	[Category("Fdb-Scenario")]
+	public class ScenarioRunnerFacts : FakeDbScenarioTest
+	{
+
+		[Test]
+		public async Task Test_Runner_Records_One_Event_Per_Step()
+		{
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "k1", "hello");
+			builder.Get("A", "k1"); // read-your-writes: sees the uncommitted value
+			builder.Atomic("A", "counter", Slice.FromFixed64(1), FdbMutationType.Add);
+			builder.Commit("A");
+			builder.Begin("A");
+			builder.Get("A", "k1");
+			builder.Get("A", "missing");
+			builder.Get("A", "counter");
+			builder.Commit("A");
+			var scenario = builder.Build("runner_smoke");
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			Assert.That(trace.ScenarioName, Is.EqualTo("runner_smoke"));
+			Assert.That(trace.Events, Has.Count.EqualTo(scenario.Steps.Count));
+			Assert.That(trace.Events.Select(e => e.Step), Is.EqualTo(Enumerable.Range(0, scenario.Steps.Count)));
+			Assert.That(trace.Events.Select(e => e.Op), Is.EqualTo(scenario.Steps.Select(s => s.Op.ToString())));
+
+			// the RYW read and the post-commit read both observe the value
+			Assert.That(trace.Events[2].Outcome.Get<string?>("value", null), Is.EqualTo("hello"));
+			Assert.That(trace.Events[6].Outcome.Get<string?>("value", null), Is.EqualTo("hello"));
+
+			// a missing key reads as an explicit null
+			Assert.That(trace.Events[7].Outcome.ContainsKey("value"), Is.True);
+			Assert.That(trace.Events[7].Outcome["value"], Is.EqualTo(JsonNull.Null));
+
+			// the atomic add materialized a fixed64 little-endian 1
+			Assert.That(trace.Events[8].Outcome.Get<string?>("value", null), Is.EqualTo(@"\x01\x00\x00\x00\x00\x00\x00\x00"));
+
+			// both commits succeeded (no error field)
+			Assert.That(trace.Events[4].Outcome.ContainsKey("error"), Is.False);
+			Assert.That(trace.Events[9].Outcome.ContainsKey("error"), Is.False);
+
+			// the final state contains the two committed keys (in byte order), rendered relative to the scenario subspace
+			Assert.That(trace.FinalState.Select(kv => kv.Key), Is.EqualTo([ "counter", "k1" ]));
+			Assert.That(trace.FinalState[1].Value, Is.EqualTo("hello"));
+		}
+
+		[Test]
+		public async Task Test_Runner_Records_Conflict_On_Loser_Commit()
+		{
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Get("A", "k1");       // A reads k1...
+			builder.Begin("B");
+			builder.Set("B", "k1", "b1"); // ...B writes it...
+			builder.Commit("B");          // ...and commits first
+			builder.Set("A", "k2", "a1"); // A writes something based on its (now stale) read
+			builder.Commit("A");          // => read-write conflict
+			var scenario = builder.Build("runner_conflict");
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			Assert.That(trace.Events[4].Outcome.ContainsKey("error"), Is.False, "B commits first and must win");
+			Assert.That(trace.Events[6].Outcome.Get<string?>("error", null), Is.EqualTo("NotCommitted"), "A must lose the conflict");
+
+			// only B's write is visible in the final state
+			Assert.That(trace.FinalState.Select(kv => kv.Key), Is.EqualTo([ "k1" ]));
+		}
+
+		[Test]
+		public async Task Test_Runner_Settles_Watch_Observations()
+		{
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "k1", "old");
+			builder.Commit("A");
+			builder.Begin("A");
+			int w = builder.Watch("A", "k1");
+			builder.Commit("A");
+			builder.ExpectPending(w);
+			builder.Begin("B");
+			builder.Set("B", "k1", "new");
+			builder.Commit("B");
+			builder.ExpectFired(w);
+			builder.Begin("A");
+			builder.Get("A", "k1"); // post-fire read observes the new value
+			builder.Commit("A");
+			var scenario = builder.Build("runner_watch");
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			Assert.That(trace.Events[6].Outcome.Get<string?>("watch", null), Is.EqualTo("Pending"));
+			Assert.That(trace.Events[10].Outcome.Get<string?>("watch", null), Is.EqualTo("Fired"));
+			Assert.That(trace.Events[12].Outcome.Get<string?>("value", null), Is.EqualTo("new"));
+		}
+
+		[Test]
+		public async Task Test_Runner_Symbolizes_Versions_And_Stamps()
+		{
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "k1", "v");
+			int vs = builder.GetVersionstamp("A");
+			builder.Commit("A");
+			builder.GetCommittedVersion("A");
+			builder.ExpectVersionstamp(vs);
+			var scenario = builder.Build("runner_versions");
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			// the committed version is the first observed version
+			Assert.That(trace.Events[4].Outcome.Get<string?>("version", null), Is.EqualTo("v1"));
+
+			// the versionstamp of that commit shares the same symbol root
+			Assert.That(trace.Events[5].Outcome.Get<string?>("stamp", null), Does.StartWith("v1#"));
+		}
+
+		[Test]
+		public async Task Test_Runner_Resolves_Selectors_And_Ranges()
+		{
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "k1", "v1");
+			builder.Set("A", "k2", "v2");
+			builder.Set("A", "k3", "v3");
+			builder.Commit("A");
+			builder.Begin("A");
+			builder.GetKey("A", new ScenarioSelector(Slice.FromStringAscii("k2"), OrEqual: false, Offset: 1)); // FirstGreaterOrEqual(k2) -> k2
+			builder.GetKey("A", new ScenarioSelector(Slice.FromStringAscii("k2"), OrEqual: true, Offset: 1));  // FirstGreaterThan(k2) -> k3
+			builder.GetKey("A", new ScenarioSelector(Slice.FromStringAscii("k1"), OrEqual: false, Offset: 0)); // LastLessThan(k1) -> below the subspace
+			builder.GetRange("A",
+				new ScenarioSelector(Slice.FromStringAscii("k1"), false, 1),
+				new ScenarioSelector(Slice.FromStringAscii("k9"), false, 1),
+				limit: 2);
+			builder.GetRange("A",
+				new ScenarioSelector(Slice.FromStringAscii("k1"), false, 1),
+				new ScenarioSelector(Slice.FromStringAscii("k9"), false, 1),
+				limit: 2, reverse: true);
+			builder.Commit("A");
+			var scenario = builder.Build("runner_selectors");
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			Assert.That(trace.Events[6].Outcome.Get<string?>("key", null), Is.EqualTo("k2"));
+			Assert.That(trace.Events[7].Outcome.Get<string?>("key", null), Is.EqualTo("k3"));
+			Assert.That(trace.Events[8].Outcome.Get<string?>("key", null), Is.EqualTo("!outside"));
+
+			var forward = trace.Events[9].Outcome.GetArray("items").AsObjects().Select(o => o.Get<string>("key")).ToList();
+			Assert.That(forward, Is.EqualTo([ "k1", "k2" ]));
+			Assert.That(trace.Events[9].Outcome.Get<bool>("hasMore", false), Is.True);
+
+			var backward = trace.Events[10].Outcome.GetArray("items").AsObjects().Select(o => o.Get<string>("key")).ToList();
+			Assert.That(backward, Is.EqualTo([ "k3", "k2" ]));
+		}
+
+	}
+
+}
