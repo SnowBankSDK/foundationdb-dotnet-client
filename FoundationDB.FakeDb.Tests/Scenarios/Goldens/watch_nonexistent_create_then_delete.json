@@ -1,0 +1,133 @@
+{
+	"scenario": "watch_nonexistent_create_then_delete",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Watch",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "ExpectPending",
+			"args": {
+				"handle": 0,
+				"tolerance": "AllowSpuriousWatchFire"
+			},
+			"outcome": {
+				"watch": "Pending"
+			}
+		},
+		{
+			"step": 4,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Set",
+			"actor": "B",
+			"args": {
+				"key": "k1",
+				"value": "born"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "ExpectFired",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"watch": "Fired"
+			}
+		},
+		{
+			"step": 8,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 9,
+			"op": "Watch",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"handle": 1
+			},
+			"outcome": { }
+		},
+		{
+			"step": 10,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 11,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 12,
+			"op": "Clear",
+			"actor": "B",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 13,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 14,
+			"op": "ExpectFired",
+			"args": {
+				"handle": 1
+			},
+			"outcome": {
+				"watch": "Fired"
+			}
+		}
+	],
+	"finalState": [ ]
+}

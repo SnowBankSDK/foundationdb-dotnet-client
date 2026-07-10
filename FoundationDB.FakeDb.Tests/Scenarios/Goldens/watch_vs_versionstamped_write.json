@@ -1,0 +1,115 @@
+{
+	"scenario": "watch_vs_versionstamped_write",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Watch",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "SetVersionstampedValue",
+			"actor": "B",
+			"args": {
+				"key": "k1",
+				"value": "\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"stampOffset": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "GetVersionstamp",
+			"actor": "B",
+			"args": {
+				"handle": 1
+			},
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "ExpectVersionstamp",
+			"args": {
+				"handle": 1
+			},
+			"outcome": {
+				"stamp": "v1#0"
+			}
+		},
+		{
+			"step": 8,
+			"op": "ExpectFired",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"watch": "Fired"
+			}
+		},
+		{
+			"step": 9,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 10,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": "<v1#0>"
+			}
+		},
+		{
+			"step": 11,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "<v1#0>"
+		}
+	]
+}

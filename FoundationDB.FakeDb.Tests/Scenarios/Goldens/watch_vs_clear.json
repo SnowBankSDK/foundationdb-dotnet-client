@@ -1,0 +1,113 @@
+{
+	"scenario": "watch_vs_clear",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "v"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Watch",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Clear",
+			"actor": "B",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 9,
+			"op": "ExpectFired",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"watch": "Fired"
+			}
+		},
+		{
+			"step": 10,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 11,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 12,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [ ]
+}

@@ -1,0 +1,41 @@
+{
+	"scenario": "watch_tx_disposed_without_commit",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Watch",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "ExpectPending",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"error": "TransactionCancelled"
+			}
+		}
+	],
+	"finalState": [ ]
+}

@@ -1,0 +1,96 @@
+{
+	"scenario": "watch_vs_atomic",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "counter",
+				"value": "\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Watch",
+			"actor": "A",
+			"args": {
+				"key": "counter",
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Atomic",
+			"actor": "B",
+			"args": {
+				"key": "counter",
+				"value": "\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 9,
+			"op": "ExpectFired",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"watch": "Fired"
+			}
+		}
+	],
+	"finalState": [
+		{
+			"key": "counter",
+			"value": "\\x02\\x00\\x00\\x00\\x00\\x00\\x00\\x00"
+		}
+	]
+}

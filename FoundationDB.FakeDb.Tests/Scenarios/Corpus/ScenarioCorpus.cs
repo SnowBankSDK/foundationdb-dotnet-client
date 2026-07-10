@@ -46,6 +46,7 @@ namespace FoundationDB.Client.Tests
 			HarnessSelectorsRanges(),
 			HarnessWatchSmoke(),
 			.. RywCorpus.All(),
+			.. WatchesCorpus.All(),
 			.. LoadPinned(),
 		];
 

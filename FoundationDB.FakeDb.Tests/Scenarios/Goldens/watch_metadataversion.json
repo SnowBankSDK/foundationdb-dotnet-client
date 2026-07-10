@@ -1,0 +1,95 @@
+{
+	"scenario": "watch_metadataversion",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "WatchMetadataVersion",
+			"actor": "A",
+			"args": {
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "ExpectPending",
+			"args": {
+				"handle": 0,
+				"tolerance": "AllowSpuriousWatchFire"
+			},
+			"outcome": {
+				"watch": "Pending"
+			}
+		},
+		{
+			"step": 4,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "TouchMetadataVersion",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "ExpectFired",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"watch": "Fired"
+			}
+		},
+		{
+			"step": 8,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 9,
+			"op": "GetMetadataVersion",
+			"actor": "A",
+			"args": { },
+			"outcome": {
+				"stamp": "v1#0"
+			}
+		},
+		{
+			"step": 10,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [ ]
+}

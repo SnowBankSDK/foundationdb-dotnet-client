@@ -1,0 +1,93 @@
+{
+	"scenario": "watch_tx_commit_conflict",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 2,
+			"op": "Watch",
+			"actor": "A",
+			"args": {
+				"key": "k2",
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Set",
+			"actor": "B",
+			"args": {
+				"key": "k1",
+				"value": "b1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "a1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": {
+				"error": "NotCommitted"
+			}
+		},
+		{
+			"step": 8,
+			"op": "ExpectPending",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"error": "NotCommitted"
+			}
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "b1"
+		}
+	]
+}

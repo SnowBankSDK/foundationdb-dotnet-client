@@ -1,0 +1,55 @@
+{
+	"scenario": "watch_tx_reset",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Watch",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"handle": 0
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Reset",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "ExpectPending",
+			"args": {
+				"handle": 0
+			},
+			"outcome": {
+				"error": "TransactionCancelled"
+			}
+		},
+		{
+			"step": 5,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [ ]
+}
