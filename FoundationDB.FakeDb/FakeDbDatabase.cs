@@ -1377,41 +1377,130 @@ namespace FoundationDB.Testing
 					var key = this.Inner.Resolve(selector, accessSystemKeys);
 					if (!snapshotRead)
 					{
-						// the range to mark as a conflict depends on the position of the key relative to the selector: whether it is before, equal, or after
-						int cmp = key.CompareTo(selector.Key);
-						if (cmp == 0)
-						{
-							// only posible with (orEqual==false, offset=+1) or (orEqual==true, offset==0)
-							// => the only way for the result to change in both cases is if the pivot key is cleared
-							this.ReadConflicts.Mark(key, key.GetSuccessor(this.Arena)); //TODO: scratch!
-						}
-						else if (cmp > 0)
-						{
-							// If can only happend with offset >= 1, because:
-							// - when offset < 0: the result would be less than the pivot key, and in that case 'cmp' would be < 0
-							// - when offset == 0: only possible if orEqual == true and the pivot key exists in the database, but in that case 'cmp' would be == 0
-
-							// this means that only the keys between the pivot key and the result (included) can have an impact on the result
-
-							// the pivot key itself is to be included in the range if (false, 1)
-							if (selector.OrEqual)
-							{
-								this.ReadConflicts.Mark(selector.Key, key.GetSuccessor(this.Arena));
-							}
-							else
-							{
-								this.ReadConflicts.Mark(selector.Key, key);
-							}
-						}
-						else
-						{
-							this.ReadConflicts.Mark(key, selector.Key);
-						}
+						MarkResolveReadConflict(selector, key);
 					}
 					return key;
 				}
 
-				throw new NotImplementedException("Resolve with mutations");
+				// slow path: resolve against the merged view (committed snapshot + local uncommitted mutations)
+				if (!accessSystemKeys && selector.Key > SpecialKeys.SystemPrefix)
+				{
+					throw new FdbException(FdbError.KeyOutsideLegalRange, $"Key selector {selector} requires access to system keys");
+				}
+
+				var merged = GetMergedVisibleKeys(accessSystemKeys);
+
+				// base position: index of the last key <= pivot (orEqual) or < pivot (!orEqual), -1 when none
+				int baseIndex = -1;
+				for (int i = 0; i < merged.Count; i++)
+				{
+					int cmp = merged[i].CompareTo(selector.Key);
+					if (cmp < 0 || (selector.OrEqual && cmp == 0)) { baseIndex = i; } else { break; }
+				}
+
+				long target = (long) baseIndex + selector.Offset;
+				Key resolved;
+				if (target < 0)
+				{ // before the first visible key
+					resolved = Key.Empty;
+				}
+				else if (target >= merged.Count)
+				{ // past the last visible key: clamp like the real cluster does (the walk enters the system range)
+					resolved = accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
+				}
+				else
+				{
+					resolved = merged[(int) target];
+				}
+
+				if (!snapshotRead)
+				{
+					MarkResolveReadConflict(selector, resolved);
+				}
+				return resolved;
+			}
+
+			/// <summary>Marks the read-conflict range implied by a resolved key selector (the range of keys whose change could alter the resolution).</summary>
+			private void MarkResolveReadConflict(Selector selector, Key key)
+			{
+				// the range to mark as a conflict depends on the position of the key relative to the selector: whether it is before, equal, or after
+				int cmp = key.CompareTo(selector.Key);
+				if (cmp == 0)
+				{
+					// only posible with (orEqual==false, offset=+1) or (orEqual==true, offset==0)
+					// => the only way for the result to change in both cases is if the pivot key is cleared
+					this.ReadConflicts.Mark(key, key.GetSuccessor(this.Arena)); //TODO: scratch!
+				}
+				else if (cmp > 0)
+				{
+					// If can only happend with offset >= 1, because:
+					// - when offset < 0: the result would be less than the pivot key, and in that case 'cmp' would be < 0
+					// - when offset == 0: only possible if orEqual == true and the pivot key exists in the database, but in that case 'cmp' would be == 0
+
+					// this means that only the keys between the pivot key and the result (included) can have an impact on the result
+
+					// the pivot key itself is to be included in the range if (false, 1)
+					if (selector.OrEqual)
+					{
+						this.ReadConflicts.Mark(selector.Key, key.GetSuccessor(this.Arena));
+					}
+					else
+					{
+						this.ReadConflicts.Mark(selector.Key, key);
+					}
+				}
+				else
+				{
+					this.ReadConflicts.Mark(key, selector.Key);
+				}
+			}
+
+			/// <summary>Computes the ordered list of keys visible in the merged view (committed snapshot + local mutations), without any side effect on the mutation log or the conflict ranges.</summary>
+			private List<Key> GetMergedVisibleKeys(bool accessSystemKeys)
+			{
+				var candidates = new SortedSet<Key>();
+				foreach (var kv in this.Inner.Data.IterateOrdered())
+				{
+					if (!accessSystemKeys && kv.Key.IsSystemKey()) continue;
+					candidates.Add(kv.Key);
+				}
+				foreach (var entry in this.Mutations.IterateOrdered())
+				{
+					var op = entry.Value?.Op;
+					if (op is null or Operation.Invalid or Operation.Clear or Operation.ClearRange) continue;
+					var key = entry.Begin;
+					if (!accessSystemKeys && key.IsSystemKey()) continue;
+					candidates.Add(key);
+				}
+
+				var visible = new List<Key>(candidates.Count);
+				foreach (var key in candidates)
+				{
+					if (IsVisibleInMergedView(key)) visible.Add(key);
+				}
+				return visible;
+			}
+
+			/// <summary>Checks whether a key is present in the merged view, evaluating atomic chains purely (no coalescing write-back, no conflict marking).</summary>
+			private bool IsVisibleInMergedView(Key key)
+			{
+				if (this.Mutations.FindFirst(key, key.GetSuccessor(this.Arena), out var mutation))
+				{
+					if (mutation.IsKv()) return !mutation.Parameter.IsNull; // a single-key Clear is IsKv() with a Nil parameter
+					if (mutation.IsRange()) return false;
+					if (mutation.IsAtomic())
+					{
+						// evaluate the chain over the committed value; the result decides visibility (e.g. CompareAndClear can erase the key)
+						var value = (mutation.Op is Operation.Set or Operation.Clear) ? default : this.Inner.Read(key);
+						for (var m = mutation; m != null; m = m.Next)
+						{
+							value = CoalesceAtomic(this.Arena, value, m);
+						}
+						return !value.IsNull;
+					}
+					return true;
+				}
+				return this.Inner.ContainsKey(key);
 			}
 
 			public FdbRangeChunk GetRange(
@@ -1491,13 +1580,10 @@ namespace FoundationDB.Testing
 #endif
 
 					// first resolve the end key!
-					Key endKey;
-					if (iter.Seek(endExclusive))
-					{
-						endKey = iter.Current.Key;
-					}
-					else
-					{
+					iter.Seek(endExclusive);
+					var endKey = iter.Current.Key;
+					if (endKey.IsNull)
+					{ // the end selector resolves past the last visible key: the merged scan is only bounded by the system space
 						endKey = SpecialKeys.SystemPrefix;
 					}
 					Kenobi($"*** #{this.Id} EndKey: {endKey:K}");
@@ -1506,6 +1592,8 @@ namespace FoundationDB.Testing
 					long sum = 0;
 					// then resolve the start key
 					bool hasMore = false;
+					int limit = options.Limit ?? 0;
+					bool reversed = options.IsReversed;
 					if (iter.Seek(beginInclusive))
 					{
 						Kenobi($"*** #{this.Id} BeginKey: {iter.Current.Key:K}");
@@ -1513,14 +1601,12 @@ namespace FoundationDB.Testing
 						//REVIEW: should the endKey be included in the range?
 						// and start scanning from there!
 
-						int limit = options.Limit ?? 0;
-
 						do
 						{
 							var cur = iter.Current;
-							if (cur.Key >= endKey) goto complete;
-							if (limit != 0 && res.Count >= limit)
-							{
+							if (cur.Key.IsNull || cur.Key >= endKey) goto complete;
+							if (!reversed && limit != 0 && res.Count >= limit)
+							{ // forward: the limit truncates at the high end; a reverse read must scan the whole range first (see below)
 								hasMore = true;
 								goto complete;
 							}
@@ -1533,6 +1619,20 @@ namespace FoundationDB.Testing
 						while (iter.Next());
 					}
 				complete:
+
+					if (reversed)
+					{ // a reverse read returns the range from its high end; the limit truncates at the low end
+						res.Reverse();
+						if (limit != 0 && res.Count > limit)
+						{
+							hasMore = true;
+							for (int i = limit; i < res.Count; i++)
+							{
+								sum -= res[i].Key.Count + res[i].Value.Count;
+							}
+							res.RemoveRange(limit, res.Count - limit);
+						}
+					}
 
 					var first = res.Count > 0 ? res[0].Key : default;
 					var last = res.Count > 0 ? res[^1].Key : default;
@@ -2313,6 +2413,11 @@ namespace FoundationDB.Testing
 					}
 					case FdbTransactionOption.ReadYourWritesDisable:
 					{
+						if (Volatile.Read(ref m_keyReadCount) > 0)
+						{ // observed on the real cluster: disabling read-your-writes after the transaction has already
+						  // performed a read leaves it unusable — reads and the commit fail, writes are accepted but doomed
+							this.OptionPoisoned = true;
+						}
 						this.OptionReadYourWrites = false;
 						break;
 					}
@@ -2351,6 +2456,17 @@ namespace FoundationDB.Testing
 					{
 						throw new InvalidOperationException("TODO: unsupported transaction option " + option);
 					}
+				}
+			}
+
+			/// <summary>Set when a transaction option was applied too late (e.g. <see cref="FdbTransactionOption.ReadYourWritesDisable"/> after a read): reads and the commit will fail, like on a real cluster.</summary>
+			private bool OptionPoisoned;
+
+			private void ThrowIfPoisoned()
+			{
+				if (this.OptionPoisoned)
+				{
+					throw new FdbException(FdbError.ClientInvalidOperation, "The transaction options were changed after the transaction already performed reads");
 				}
 			}
 
@@ -2438,6 +2554,7 @@ namespace FoundationDB.Testing
 
 			public Task<Slice> GetAsync(ReadOnlySpan<byte> key, bool snapshot, CancellationToken ct)
 			{
+				ThrowIfPoisoned();
 				var k = this.Scratch.InternKeyRange(key);
 				if (TryGetSnapshot(out var snap))
 				{
@@ -2526,6 +2643,7 @@ namespace FoundationDB.Testing
 
 			public Task<Slice[]> GetValuesAsync(ReadOnlySpan<Slice> keys, bool snapshot, CancellationToken ct)
 			{
+				ThrowIfPoisoned();
 				if (ct.IsCancellationRequested) return Task.FromCanceled<Slice[]>(ct);
 
 				var ks = this.Scratch.InternKeyRanges(keys);
@@ -2639,6 +2757,7 @@ namespace FoundationDB.Testing
 
 			public Task<Slice> GetKeyAsync(KeySelector selector, bool snapshot, CancellationToken ct)
 			{
+				ThrowIfPoisoned();
 				var selectorCopy = this.Scratch.InternSelector(selector);
 				if (TryGetSnapshot(out var snap))
 				{
@@ -2667,6 +2786,7 @@ namespace FoundationDB.Testing
 
 			public Task<Slice> GetKeyAsync(KeySpanSelector selector, bool snapshot, CancellationToken ct)
 			{
+				ThrowIfPoisoned();
 				var selectorCopy = this.Scratch.InternSelector(selector);
 				if (TryGetSnapshot(out var snap))
 				{
@@ -2695,6 +2815,7 @@ namespace FoundationDB.Testing
 
 			public Task<Slice[]> GetKeysAsync(ReadOnlySpan<KeySelector> selectors, bool snapshot, CancellationToken ct)
 			{
+				ThrowIfPoisoned();
 				if (ct.IsCancellationRequested) return Task.FromCanceled<Slice[]>(ct);
 
 				// we can't 'await' and have Spans at the same time, but _usually_ the snapshot is already resolved, so we have two paths, with one extra step if we really have to await
@@ -2747,6 +2868,7 @@ namespace FoundationDB.Testing
 				CancellationToken ct
 			)
 			{
+				ThrowIfPoisoned();
 				if (ct.IsCancellationRequested) return Task.FromCanceled<FdbRangeChunk>(ct);
 
 				//TODO: PERF: OPTIMIZE: implement natively instead of first allocated to KV<Slice, Slice> and then converting!
@@ -3107,6 +3229,7 @@ namespace FoundationDB.Testing
 
 			public async Task CommitAsync(CancellationToken ct)
 			{
+				ThrowIfPoisoned();
 				try
 				{
 					this.CommittedVersion = await this.Store.Commit(this, ct);
@@ -3227,9 +3350,11 @@ namespace FoundationDB.Testing
 
 			public bool Seek(Selector selector)
 			{
+				// note: the offset is applied to each layer independently, and the merge picks the smallest candidate.
+				// This is exact for the offsets range queries use (0 or +1: "first key of this layer at/after the pivot");
+				// larger offsets must be resolved on the merged view itself (see ReadYourWritesSnapshot.Resolve).
 				Kenobi($"** #{this.Id} Seek at {selector}: {selector.Key}, {selector.OrEqual}, {selector.Offset}...)");
 				// setup "inner"
-				//note: it is always on a valid key, so no special case required
 				if (this.Inner.Seek(new(selector.Key, default), selector.OrEqual))
 				{
 					Kenobi($"*** #{this.Id} inner: {this.Inner.Current}");
@@ -3245,30 +3370,47 @@ namespace FoundationDB.Testing
 					}
 				}
 				else
-				{
-					this.InnerState = STATE_DEAD;
+				{ // no key at/before the pivot: the layer's whole stream lies after it, and its first key is candidate #1
+					if (this.Inner.SeekFirst())
+					{
+						this.InnerState = STATE_AVAILABLE;
+						for (int i = 1; i < selector.Offset; i++)
+						{
+							if (!this.Inner.Next())
+							{
+								this.InnerState = STATE_DEAD;
+								break;
+							}
+						}
+						Kenobi($"*** #{this.Id} inner (from first): {this.Inner.Current}");
+					}
+					else
+					{
+						this.InnerState = STATE_DEAD;
+					}
 				}
 
-				// setup "outer"
-				//note: it can be on a Clear or ClearRange, so advance until we get a "real" key or the ed
-				if (this.Outer.Seek(new(selector.Key, selector.Key, null), selector.OrEqual)
-					/*&& BacktrackOuterUntilRealKey()*/)
-				{
+				// setup "outer": position at the first entry that can affect keys at/after the pivot.
+				// Clear/ClearRange entries are NEVER skipped: the merge consumes them as masking directives over the inner layer.
+				if (this.Outer.Seek(new(selector.Key, selector.Key, null), selector.OrEqual))
+				{ // positioned at the last entry beginning at/before the pivot
 					this.OuterState = STATE_AVAILABLE;
 					Kenobi($"*** #{this.Id} outer: {this.Outer.Current}");
-					for (int i = 0; i < selector.Offset; i++)
+					if (selector.Offset > 0)
 					{
-						if (!this.Outer.Next() || !AdvanceOuterUntilRealKey())
+						// move past the reference entry, UNLESS it is a cleared range straddling the pivot (it still masks keys after it)
+						var entry = this.Outer.Current;
+						if (entry is null || entry.Value?.Op is not (Operation.ClearRange or Operation.Clear) || !(entry.End > selector.Key))
 						{
-							this.OuterState = STATE_DEAD;
-							break;
+							this.OuterState = this.Outer.Next() ? STATE_AVAILABLE : STATE_DEAD;
+							Kenobi($"*** #{this.Id} outer + 1: {this.Outer.Current}");
 						}
-						Kenobi($"*** #{this.Id} outer + {i+1}: {this.Outer.Current}");
 					}
 				}
 				else
-				{
-					this.OuterState = STATE_DEAD;
+				{ // every entry begins after the pivot: they all can affect the forward stream
+					this.OuterState = this.Outer.SeekFirst() ? STATE_AVAILABLE : STATE_DEAD;
+					Kenobi($"*** #{this.Id} outer (from first): {this.Outer.Current}");
 				}
 
 				Kenobi($"*** #{this.Id} seek initial of {selector}: inner={this.InnerState}:{this.Inner.Current}, outer={this.OuterState}:{this.Outer.Current}");
@@ -3372,15 +3514,13 @@ namespace FoundationDB.Testing
 							}
 							while (mutation != null);
 
-							// patch in-place
+							// patch in-place, and re-examine the entry as a plain Set (returning here would leave a stale Current)
 							outerEntry.Value = Mutation.Set(value);
+							continue;
 						}
-						else
-						{
-							this.Current = new KeyValuePair<Key, Value>(outerEntry.Begin, mutation.GetEffectiveValue());
-							this.OuterState = STATE_UNKNOWN;
-						
-						}
+
+						this.Current = new KeyValuePair<Key, Value>(outerEntry.Begin, mutation.GetEffectiveValue());
+						this.OuterState = STATE_UNKNOWN;
 						return true;
 					}
 
@@ -3419,37 +3559,23 @@ namespace FoundationDB.Testing
 							}
 
 							if (mutation.IsRange())
-							{
-								throw new NotImplementedException("ONION: collision with clear range");
+							{ // the committed key is the first key of a cleared range: it is masked; keep the range (it may mask more keys)
+								this.InnerState = STATE_UNKNOWN;
+								Kenobi($"*** #{this.Id} inner masked by clear range, advance inner: {innerCurrent.Key:K}");
+								continue;
 							}
 
 							if (mutation.IsAtomic())
-							{
-
-								switch (mutation.Op)
+							{ // coalesce the whole chain over the committed value, and re-examine the entry as a plain Set
+								var value = innerCurrent.Value;
+								for (var m = mutation; m != null; m = m.Next)
 								{
-									case Operation.Add:
-									{
-										// patch in-place
-										var x = mutation.Parameter.Slice;
-										// HACKHACK: DO NOT TRY THIS AT HOME!
-										// this is "safe" because we own this chunk of memory
-										var tmp = x.Array.AsSpan(x.Offset, x.Count);
-										ComputeAtomicAdd(tmp, innerCurrent.Value.Span, x.Span);
-										mutation = Mutation.Set(mutation.Parameter);
-
-										this.InnerState = STATE_UNKNOWN;
-										this.OuterState = STATE_UNKNOWN;
-										this.Current = KeyValuePair.Create(outerEntry.Begin, mutation.Parameter);
-										Kenobi($"*** #{this.Id} convert to set, advance outer: {this.Current.Key:K} = {this.Current.Value:V}");
-										return true;
-
-									}
-									default:
-									{
-										throw new NotImplementedException($"ONION: collision with atomic {mutation.Op} between {innerCurrent.Key}={innerCurrent.Value} and {mutation.Op} {outerEntry.Begin}={mutation.Parameter}");
-									}
+									value = ReadYourWritesSnapshot.CoalesceAtomic(this.Arena, value, m);
 								}
+								outerEntry.Value = Mutation.Set(value);
+								this.InnerState = STATE_UNKNOWN; // the committed key is shadowed by the coalesced local value
+								Kenobi($"*** #{this.Id} coalesce atomic chain over committed value: {outerEntry.Begin:K} = {value:V}");
+								continue;
 							}
 							throw new NotSupportedException("Unexpected mutation type while iterating");
 						}
@@ -3487,7 +3613,8 @@ namespace FoundationDB.Testing
 
 							if (mutation.IsAtomic())
 							{
-								// if we end up here, it means the key does not exist. we can coalesce the atomic from an empty value
+								// if we end up here, it means the key does not exist. we can coalesce the atomic from an empty value,
+								// and re-examine the entry as a plain Set (returning here would leave a stale Current)
 								var value = Value.Nil;
 								do
 								{
@@ -3497,7 +3624,7 @@ namespace FoundationDB.Testing
 								while (mutation != null);
 
 								outerEntry.Value = Mutation.Set(value);
-								return true;
+								continue;
 							}
 
 							throw new NotSupportedException("Unexpected mutation type while iterating");
