@@ -4595,7 +4595,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Conflicting_Keys_Manually()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence: SetOption(ReportConflictingKeys) hits the unimplemented default case and throws InvalidOperationException(\"TODO: unsupported transaction option ...\")");
 
 			using var db = await OpenTestPartitionAsync();
 			await CleanLocation(db);
@@ -4661,7 +4660,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Conflicting_Keys_Automatically()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence: SetOption(ReportConflictingKeys) hits the unimplemented default case and throws InvalidOperationException(\"TODO: unsupported transaction option ...\")");
 
 			using var db = await OpenTestPartitionAsync();
 			await CleanLocation(db);

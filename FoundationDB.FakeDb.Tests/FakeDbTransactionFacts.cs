@@ -129,6 +129,39 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
+		public async Task Test_Conflicting_Keys_Report_Serves_Boundary_Pairs()
+		{
+			// the conflicting-keys report is transaction-local: a failed commit collects the conflicting read
+			// ranges (when the option is set), and the special keyspace serves one boundary pair per range
+			var db = await OpenTestDatabaseAsync();
+			await db.WriteAsync(tr =>
+			{
+				tr.Set(Key("A"), Value("a"));
+				tr.Set(Key("B"), Value("b"));
+			}, this.Cancellation);
+
+			using var t1 = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
+			using var t2 = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
+
+			t1.Options.WithReportConflictingKeys();
+			_ = await t1.GetAsync(Key("A"));
+			_ = await t1.GetAsync(Key("B"));
+			t1.Set(Key("X"), Value("x"));
+
+			t2.Set(Key("A"), Value("a2"));
+			await t2.CommitAsync();
+
+			Assert.That(async () => await t1.CommitAsync(), Throws.InstanceOf<FdbException>().With.Property("Code").EqualTo(FdbError.NotCommitted));
+
+			var res = await t1.GetRange(FdbSystemKey.TransactionConflictingKeys.ToRange()).ToArrayAsync();
+			foreach (var kv in res) Log($"  - {kv.Key:K} = {kv.Value:V}");
+			Assert.That(res, Has.Length.EqualTo(2), "one conflicting read range = two boundary entries");
+			Assert.That(res[0].Value, Is.EqualTo(Slice.FromStringAscii("1")), "range begin marker");
+			Assert.That(res[1].Value, Is.EqualTo(Slice.FromStringAscii("0")), "range end marker");
+			Assert.That(res[0].Key.Substring(Fdb.System.TransactionConflictingKeysPrefix.Count), Is.EqualTo(Key("A")));
+		}
+
+		[Test]
 		public async Task Test_Retry_Backoff_Runs_On_Virtual_Time()
 		{
 			// A retryable error backs off on the store's TimeProvider: with a fake clock and a realistic

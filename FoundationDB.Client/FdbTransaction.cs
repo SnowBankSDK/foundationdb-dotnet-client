@@ -1408,8 +1408,7 @@ namespace FoundationDB.Client
 				case FdbMutationType.ByteMin:
 				case FdbMutationType.ByteMax:
 				{
-					// shipped with fdb 5.2, same wave as AppendIfFits (they had no case here at all, so the
-					// default branch rejected them as "invalid mutation type" at every API level)
+					// shipped with fdb 5.2, same wave as AppendIfFits
 					if (selectedApiVersion < 520)
 					{
 						if (Fdb.GetMaxApiVersion() >= 520)

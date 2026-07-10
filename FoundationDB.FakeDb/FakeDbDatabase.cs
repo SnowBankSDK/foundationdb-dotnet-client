@@ -1692,19 +1692,33 @@ namespace FoundationDB.Testing
 				return splits.ToArray();
 			}
 
-			public (Snapshot Snapshot, VersionStamp Stamp) ApplyMutations(long commitVersion, Snapshot snapshot/*, Dictionary<Key, List<WatchNode>> activeWatches*/)
+			/// <summary>Conflicting read ranges collected by the failed commit, when the <see cref="FdbTransactionOption.ReportConflictingKeys"/> option is set; served through the <c>\xff\xff/transaction/conflicting_keys/</c> special keyspace.</summary>
+			public List<KeyValuePair<Key, Key>>? ConflictingReadRanges { get; private set; }
+
+			public (Snapshot Snapshot, VersionStamp Stamp) ApplyMutations(long commitVersion, Snapshot snapshot, bool reportConflictingKeys = false)
 			{
 				var conflicts = snapshot.Conflicts;
 
 				if (this.ReadConflicts.Count > 0)
 				{
+					List<KeyValuePair<Key, Key>>? conflicting = null;
 					foreach (var x in this.ReadConflicts)
 					{
 						if (conflicts.Intersect(x.Begin, x.End, this.Version, (v, cv) => v > cv, out var match))
 						{
 							Kenobi($"$$$ #{this.Id} Read conflict for {x.Begin:K}->{x.End:K} @ {this.Version} by {match.Begin:K}->{match.End:K} @ {match.Value}!");
-							throw new FdbException(FdbError.NotCommitted, $"Read conflict for `{FdbKey.Dump(x.Begin.Span)}` -> `{FdbKey.Dump(x.End.Span)}` @ {this.Version} by `{FdbKey.Dump(match.Begin.Span)}` -> `{FdbKey.Dump(match.End.Span)}` @ {match.Value}!");
+							if (!reportConflictingKeys)
+							{
+								throw new FdbException(FdbError.NotCommitted, $"Read conflict for `{FdbKey.Dump(x.Begin.Span)}` -> `{FdbKey.Dump(x.End.Span)}` @ {this.Version} by `{FdbKey.Dump(match.Begin.Span)}` -> `{FdbKey.Dump(match.End.Span)}` @ {match.Value}!");
+							}
+							// keep scanning: the report must contain EVERY conflicting read range, not just the first
+							(conflicting ??= [ ]).Add(new(x.Begin, x.End));
 						}
+					}
+					if (conflicting != null)
+					{
+						this.ConflictingReadRanges = conflicting;
+						throw new FdbException(FdbError.NotCommitted, $"Read conflicts on {conflicting.Count} range(s) @ {this.Version} (reported through the conflicting-keys special keyspace)");
 					}
 				}
 
@@ -2180,7 +2194,7 @@ namespace FoundationDB.Testing
 				if (snapshot.WriteConflicts.Count != 0)
 				{
 					commitVersion = rv + 1;
-					(updated, stamp) = snapshot.ApplyMutations(commitVersion, current);
+					(updated, stamp) = snapshot.ApplyMutations(commitVersion, current, handler.OptionReportConflictingKeys);
 				}
 				else
 				{
@@ -2430,6 +2444,8 @@ namespace FoundationDB.Testing
 
 			private bool OptionReadYourWrites { get; set; } = true;
 
+			internal bool OptionReportConflictingKeys { get; set; }
+
 			private long OptionTimeout { get; set; }
 
 			private long OptionMaxRetryDelay { get; set; }
@@ -2493,6 +2509,12 @@ namespace FoundationDB.Testing
 					{
 						if (data.Length != 0) throw new FdbException(FdbError.InvalidOptionValue, "SnapshotReadYourWritesDisable option value must be empty");
 						this.OptionSnapshotReadYourWritesDisable = true;
+						break;
+					}
+				case FdbTransactionOption.ReportConflictingKeys:
+					{
+						if (data.Length != 0) throw new FdbException(FdbError.InvalidOptionValue, "ReportConflictingKeys option value must be empty");
+						this.OptionReportConflictingKeys = true;
 						break;
 					}
 					default:
@@ -2920,8 +2942,17 @@ namespace FoundationDB.Testing
 			)
 			{
 				ThrowIfPoisoned();
-				AccountApproximateSize(25 + (2 * (beginInclusive.Key.Length + endExclusive.Key.Length))); // unprobed formula: same shape as a point read over both bounds
 				if (ct.IsCancellationRequested) return Task.FromCanceled<FdbRangeChunk>(ct);
+
+				// the conflicting-keys special keyspace is transaction-local, populated by a failed commit when the
+				// ReportConflictingKeys option is set (like on a real cluster); it never touches the store
+				if (beginInclusive.Key.Length > 2 && beginInclusive.Key[0] == 0xFF && beginInclusive.Key[1] == 0xFF
+					&& beginInclusive.Key.StartsWith(Fdb.System.TransactionConflictingKeysPrefix.Span[..^1]))
+				{
+					return Task.FromResult(BuildConflictingKeysChunk(options, iteration));
+				}
+
+				AccountApproximateSize(25 + (2 * (beginInclusive.Key.Length + endExclusive.Key.Length))); // unprobed formula: same shape as a point read over both bounds
 
 				//TODO: PERF: OPTIMIZE: implement natively instead of first allocated to KV<Slice, Slice> and then converting!
 				var beginSelector = this.Scratch.InternSelector(in beginInclusive);
@@ -2981,6 +3012,20 @@ namespace FoundationDB.Testing
 			)
 			{
 				if (ct.IsCancellationRequested) return Task.FromCanceled<FdbRangeChunk<TResult>>(ct);
+
+				// the conflicting-keys special keyspace is transaction-local (populated by a failed commit when the
+				// ReportConflictingKeys option is set); it never touches the store
+				if (beginInclusive.Key.Length > 2 && beginInclusive.Key[0] == 0xFF && beginInclusive.Key[1] == 0xFF
+					&& beginInclusive.Key.StartsWith(Fdb.System.TransactionConflictingKeysPrefix.Span[..^1]))
+				{
+					var special = BuildConflictingKeysChunk(options, iteration);
+					var decoded = new TResult[special.Count];
+					for (int i = 0; i < special.Count; i++)
+					{
+						decoded[i] = decoder(state, special.Items[i].Key.Span, special.Items[i].Value.Span);
+					}
+					return Task.FromResult(new FdbRangeChunk<TResult>(decoded, special.HasMore, special.Iteration, special.Options, special.First, special.Last, special.TotalBytes));
+				}
 
 				//TODO: PERF: OPTIMIZE: implement natively instead of first allocated to KV<Slice, Slice> and then converting!
 				var beginSelector = this.Scratch.InternSelector(in beginInclusive);
@@ -3055,6 +3100,18 @@ namespace FoundationDB.Testing
 			{
 				if (ct.IsCancellationRequested) return Task.FromCanceled<FdbRangeResult>(ct);
 
+				// same transaction-local special keyspace as in GetRangeAsync: the range-query pipeline reads through this method
+				if (beginInclusive.Key.Length > 2 && beginInclusive.Key[0] == 0xFF && beginInclusive.Key[1] == 0xFF
+					&& beginInclusive.Key.StartsWith(Fdb.System.TransactionConflictingKeysPrefix.Span[..^1]))
+				{
+					var chunk = BuildConflictingKeysChunk(options, iteration);
+					foreach (var kv in chunk.Items)
+					{
+						visitor(state, kv.Key.Span, kv.Value.Span);
+					}
+					return Task.FromResult(new FdbRangeResult(chunk.Count, chunk.HasMore, chunk.Iteration, chunk.Options, chunk.First, chunk.Last, chunk.TotalBytes));
+				}
+
 				var beginSelector = this.Scratch.InternSelector(in beginInclusive);
 				var endSelector = this.Scratch.InternSelector(in endExclusive);
 
@@ -3113,6 +3170,34 @@ namespace FoundationDB.Testing
 				//TODO: if chunk is pooled, we need to return the buffer to the pool, but we need to keep "First" and "Last" around?
 
 				return new(items.Length, chunk.HasMore, chunk.Iteration, chunk.Options, chunk.First, chunk.Last, chunk.TotalBytes);
+			}
+
+			/// <summary>Builds the synthesized chunk for a read of <c>\xff\xff/transaction/conflicting_keys/</c>: one boundary pair per conflicting read range collected by the failed commit (value <c>'1'</c> = begin inclusive, <c>'0'</c> = end exclusive).</summary>
+			private FdbRangeChunk BuildConflictingKeysChunk(FdbRangeOptions options, int iteration)
+			{
+				var items = new List<KeyValuePair<Slice, Slice>>();
+				if (TryGetSnapshot(out var snap) && snap.ConflictingReadRanges is { } ranges)
+				{
+					var prefix = Fdb.System.TransactionConflictingKeysPrefix;
+					foreach (var range in ranges)
+					{ // the collected ranges are disjoint and sorted (the read-conflict set coalesces overlaps), so the boundary values strictly alternate 1/0
+						items.Add(new(prefix + range.Key.Slice, Slice.FromStringAscii("1")));
+						items.Add(new(prefix + range.Value.Slice, Slice.FromStringAscii("0")));
+					}
+					if (options.IsReversed)
+					{
+						items.Reverse();
+					}
+					if (options.Limit is > 0 and var limit && items.Count > limit)
+					{
+						items.RemoveRange(limit, items.Count - limit);
+					}
+				}
+				var first = items.Count > 0 ? items[0].Key : default;
+				var last = items.Count > 0 ? items[^1].Key : default;
+				long sum = 0;
+				foreach (var kv in items) { sum += kv.Key.Count + kv.Value.Count; }
+				return new FdbRangeChunk(items.ToArray(), hasMore: false, iteration, options, first, last, checked((int) sum), SliceOwner.Nil);
 			}
 
 			public Task<(FdbValueCheckResult Result, Slice Actual)> CheckValueAsync(ReadOnlySpan<byte> key, Slice expected, bool snapshot, CancellationToken ct)
