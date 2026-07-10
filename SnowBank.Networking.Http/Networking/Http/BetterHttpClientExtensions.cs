@@ -124,6 +124,12 @@ namespace SnowBank.Networking.Http
 
 			services
 				.AddHttpClient(name)
+				// the transport bounds DNS staleness by itself (PooledConnectionLifetime, set by the map's CreateTransportHandler
+				// on the shared SocketsHttpHandler): platform chain rotation stacked on top would pay socket-pool cold starts
+				// against every active origin every ~2 minutes and buy nothing. A bundle that WANTS periodic chain rebuild
+				// (e.g. to re-evaluate its configure callbacks) opts back in with the stock M.E.Http API, AFTER registration:
+				//     services.AddHttpClient(name).SetHandlerLifetime(...)
+				.SetHandlerLifetime(Timeout.InfiniteTimeSpan)
 				.ConfigurePrimaryHttpMessageHandler((sp) =>
 				{
 					var map = sp.GetService<INetworkMap>() ?? throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use {nameof(IBetterHttpClientFactory)}.");

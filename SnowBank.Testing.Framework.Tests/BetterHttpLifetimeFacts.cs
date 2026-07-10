@@ -31,6 +31,8 @@ namespace SnowBank.Testing.Framework.Tests
 	using Microsoft.AspNetCore.Builder;
 	using Microsoft.AspNetCore.Http;
 	using Microsoft.Extensions.DependencyInjection;
+	using Microsoft.Extensions.Http;
+	using Microsoft.Extensions.Options;
 	using NUnit.Framework;
 	using SnowBank.Networking;
 	using SnowBank.Networking.Http;
@@ -195,6 +197,27 @@ namespace SnowBank.Testing.Framework.Tests
 
 			/// <summary>Resets the construction counter (call at the start of a test).</summary>
 			public static void ResetConstructionCount() => System.Threading.Interlocked.Exchange(ref ConstructionCounter, 0);
+		}
+
+		[Test]
+		public void Test_Wired_Bundles_Default_To_Infinite_Handler_Lifetime()
+		{
+			// DNS staleness is already bounded by the transport itself (PooledConnectionLifetime on the SocketsHttpHandler,
+			// set by NetworkMap.CreateTransportHandler): the platform's default 2-minute chain rotation stacked on top of it
+			// paid pool cold-starts against every active origin and bought nothing. Wired bundles therefore default to an
+			// INFINITE handler lifetime; a bundle that wants periodic chain rebuild opts back in with the stock M.E.Http API
+			// (services.AddHttpClient(name).SetHandlerLifetime(...) AFTER the bundle registration - which is exactly what
+			// Test_Pipeline_Handler_Is_Rebuilt_On_Rotation does, and why it stays green).
+			var services = new ServiceCollection();
+			services.AddBetterHttpClient();
+			services.AddBetterHttpClient("custom");
+			using var provider = services.BuildServiceProvider();
+
+			var factoryOptions = provider.GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>();
+			Assert.That(factoryOptions.Get(BetterHttpClientExtensions.DefaultClientName).HandlerLifetime, Is.EqualTo(Timeout.InfiniteTimeSpan),
+				"the default bundle must not rotate its chain (the transport owns DNS freshness)");
+			Assert.That(factoryOptions.Get("custom").HandlerLifetime, Is.EqualTo(Timeout.InfiniteTimeSpan),
+				"a named bundle must not rotate its chain (the transport owns DNS freshness)");
 		}
 
 		[Test]
