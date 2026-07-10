@@ -223,6 +223,31 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
+		public void Test_Plain_HttpClientFactory_Is_Not_A_Door_To_A_Policy_Bundle()
+		{
+			// IHttpClientFactory.CreateClient(bundleName) would hand out a plain HttpClient over the bundle's pooled
+			// chain but WITHOUT the BetterHttp runtime: no bundle filters, hooks or credentials at the request stage,
+			// so an auth-signing bundle would silently skip signing. The wrong door fails loudly; the supported doors
+			// are IBetterHttpClientFactory (typed shells) and IHttpMessageHandlerFactory.CreateHandler (bare handler).
+			var services = new ServiceCollection();
+			services.AddSingleton<INetworkMap, NetworkMap>();
+			services.AddBetterHttpClient();
+			services.AddBetterHttpClient("signed");
+			using var provider = services.BuildServiceProvider();
+
+			var wrongDoor = provider.GetRequiredService<IHttpClientFactory>();
+			Assert.That(() => wrongDoor.CreateClient("signed"),
+				Throws.InvalidOperationException.With.Message.Contains(nameof(IBetterHttpClientFactory)),
+				"resolving a policy bundle through the plain factory must fail loudly (it would skip the bundle's request pipeline)");
+			Assert.That(() => wrongDoor.CreateClient(BetterHttpClientExtensions.DefaultClientName),
+				Throws.InvalidOperationException,
+				"the default bundle is guarded like any named one");
+
+			Assert.That(() => wrongDoor.CreateClient("not-a-bundle").Dispose(), Throws.Nothing,
+				"the plain factory keeps working normally for names that are not policy bundles");
+		}
+
+		[Test]
 		public void Test_Certificate_Callback_Maps_Onto_SslOptions_Without_Reflection()
 		{
 			// The server-certificate callback is a per-bundle transport policy applied to the shared SocketsHttpHandler. Its

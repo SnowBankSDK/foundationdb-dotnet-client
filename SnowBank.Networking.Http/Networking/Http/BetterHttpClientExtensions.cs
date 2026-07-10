@@ -153,6 +153,14 @@ namespace SnowBank.Networking.Http
 						builder.AdditionalHandlers.Insert(0, capture);
 					}
 				});
+
+				// HttpClientActions run ONLY for clients built by the plain IHttpClientFactory.CreateClient(name) - the
+				// supported doors (IBetterHttpClientFactory shells, IHttpMessageHandlerFactory.CreateHandler) never hit
+				// them. A plain HttpClient over a bundle's chain has no BetterHttp runtime: the bundle's filters, hooks
+				// and credentials never run at the request stage, so e.g. an auth-signing bundle would silently not
+				// sign. Fail the wrong door loudly instead.
+				options.HttpClientActions.Add(_ => throw new InvalidOperationException(
+					$"'{name}' is a BetterHttpClient policy bundle: create clients through {nameof(IBetterHttpClientFactory)} (typed shells carrying the bundle's filters, hooks and credentials), or draw a bare pooled handler from IHttpMessageHandlerFactory.CreateHandler(name). A plain HttpClient from IHttpClientFactory would silently skip the bundle's request pipeline (e.g. authentication signing)."));
 			});
 		}
 
