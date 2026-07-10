@@ -1492,7 +1492,25 @@ namespace SnowBank.Data.Json
 					break;
 				}
 				case (_, JsonNull):
-				{ // delete
+				{ // delete: setting a field to null is the same as removing it from the object
+					JsonObject jsonWithoutField;
+					if (selfJson.IsReadOnly)
+					{ // first mutation, replace the object with a mutable version
+						jsonWithoutField = JsonObject.Copy(selfJson, deep: false, readOnly: false);
+					}
+					else
+					{ // additional mutation, we can update in-place
+						jsonWithoutField = selfJson;
+					}
+					jsonWithoutField.Remove(name);
+
+					// notify the parent chain if we changed the current json instance
+					if (!ReferenceEquals(this.Json, jsonWithoutField))
+					{
+						this.Json = jsonWithoutField;
+						this.NotifyParent(this);
+					}
+
 					this.Context?.RecordDelete(this, name);
 					return true;
 				}

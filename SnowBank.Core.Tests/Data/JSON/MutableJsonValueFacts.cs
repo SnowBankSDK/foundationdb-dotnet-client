@@ -281,6 +281,65 @@ namespace SnowBank.Data.Json.Tests
 			}
 		}
 
+		[Test]
+		public void Test_Set_Field_To_Null_Removes_It_From_The_Object()
+		{
+			// Setting an existing field to null must actually drop the field from the wrapped JsonObject,
+			// and not only record a "delete" mutation in the observable context: the wrapped instance is
+			// what consumers persist (ex: DocStore's UpdateAsync saves the document root, and the writable
+			// document proxies wrap an UNTRACKED value, so the recorded mutation alone changes nothing).
+
+			{ // untracked (no context): this is what the generated writable document proxies use
+				var source = JsonObject.ReadOnly.Create(
+				[
+					("hello", "world"),
+					("level", 8001),
+				]);
+				var obj = MutableJsonValue.Untracked(source);
+
+				obj.Set("hello", (string?) null);
+
+				Assert.That(obj.ContainsKey("hello"), Is.False, "the field should have been removed from the object");
+				Assert.That(obj.ToJsonValue(), IsJson.Object.And.EqualTo(JsonObject.Create("level", 8001)));
+				Assert.That(source, IsJson.EqualTo(JsonObject.Create([ ("hello", "world"), ("level", 8001) ])), "the original read-only instance must not be mutated");
+			}
+
+			{ // tracked: the context must observe the delete, AND the wrapped json must reflect it
+				var tr = new FakeMutableContext() { Logged = true };
+				var obj = tr.FromJson(JsonObject.ReadOnly.Create(
+				[
+					("hello", "world"),
+					("level", 8001),
+				]));
+
+				obj.Set("hello", (string?) null);
+
+				Assert.That(obj.ContainsKey("hello"), Is.False, "the field should have been removed from the object");
+				Assert.That(obj.ToJsonValue(), IsJson.Object.And.EqualTo(JsonObject.Create("level", 8001)));
+				Assert.That(tr.Changes, Has.Count.EqualTo(1));
+				Assert.That(tr.Changes[0].Op, Is.EqualTo("delete"));
+				Assert.That(tr.Changes[0].Path, Is.EqualTo(JsonPath.Create("hello")));
+			}
+
+			{ // nullable value types go through the generic Set<TValue> overload, and must behave the same
+				var obj = MutableJsonValue.Untracked(JsonObject.ReadOnly.Create("level", 8001));
+
+				obj.Set("level", (int?) null);
+
+				Assert.That(obj.ContainsKey("level"), Is.False, "the field should have been removed from the object");
+			}
+
+			{ // setting a MISSING field to null stays a no-op: nothing added, nothing recorded
+				var tr = new FakeMutableContext() { Logged = true };
+				var obj = tr.FromJson(JsonObject.ReadOnly.Create("level", 8001));
+
+				obj.Set("hello", (string?) null);
+
+				Assert.That(obj.ContainsKey("hello"), Is.False);
+				Assert.That(tr.Changes, Is.Empty);
+			}
+		}
+
 	}
 
 }
