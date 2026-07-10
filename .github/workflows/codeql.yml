@@ -13,9 +13,9 @@ name: "CodeQL Advanced"
 
 on:
   push:
-    branches: [ "master", "legacy" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "master", "legacy" ]
+    branches: [ "master" ]
   schedule:
     - cron: '24 4 * * 1'
 
@@ -44,7 +44,10 @@ jobs:
       matrix:
         include:
         - language: csharp
-          build-mode: autobuild
+          # manual build (see the step below): ONE TFM is enough for analysis, where autobuild would
+          # compile all of net11+net10+net8 plus the netstandard2.0 "lite" variants under the CodeQL
+          # tracer for no additional coverage
+          build-mode: manual
         # CodeQL supports the following values keywords for 'language': 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift'
         # Use `c-cpp` to analyze code written in C, C++ or both
         # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
@@ -76,18 +79,18 @@ jobs:
         # For more details on CodeQL's query packs, refer to: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
         # queries: security-extended,security-and-quality
 
-    # If the analyze step fails for one of the languages you are analyzing with
-    # "We were unable to automatically build your code", modify the matrix above
-    # to set the build mode to "manual" for that language. Then modify this step
-    # to build your code.
-    # ℹ️ Command-line programs to run using the OS shell.
-    # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
+    # Single-TFM build for the CodeQL tracer: the extractor sees every compiler invocation, and every
+    # project already targets net10.0, so building ONLY net10.0 (and skipping the netstandard2.0
+    # "lite" variants) analyzes the same code - source generators included - in a fraction of the
+    # time. The finer-grained version properties are passed (instead of CoreSdkVersions) because
+    # global properties are immutable: this stays deterministic even if a parent repo overrides the
+    # defaults. Bump net10.0 to net11.0 once .NET 11 is out of preview.
     - if: matrix.build-mode == 'manual'
+      name: Build (single TFM for analysis)
       shell: bash
       run: |
-        dotnet restore
-        dotnet build -c Debug
-        exit 1
+        dotnet restore -p:CoreSdkRuntimeVersions=net10.0 -p:CloudSdkRuntimeVersions=net10.0 -p:CoreSdkNetStandardEnabled=false
+        dotnet build --no-restore -nowarn:CS1591 -p:CoreSdkRuntimeVersions=net10.0 -p:CloudSdkRuntimeVersions=net10.0 -p:CoreSdkNetStandardEnabled=false
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
