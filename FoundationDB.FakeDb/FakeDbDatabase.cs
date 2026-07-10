@@ -2598,6 +2598,8 @@ namespace FoundationDB.Testing
 			public Task<Slice> GetAsync(ReadOnlySpan<byte> key, bool snapshot, CancellationToken ct)
 			{
 				ThrowIfPoisoned();
+				// note: the native client does not account reads the RYW layer serves locally; always accounting is a deliberate overestimate
+				AccountApproximateSize(25 + (2 * key.Length));
 				var k = this.Scratch.InternKeyRange(key);
 				if (TryGetSnapshot(out var snap))
 				{
@@ -2687,6 +2689,10 @@ namespace FoundationDB.Testing
 			public Task<Slice[]> GetValuesAsync(ReadOnlySpan<Slice> keys, bool snapshot, CancellationToken ct)
 			{
 				ThrowIfPoisoned();
+				foreach (var key in keys)
+				{
+					AccountApproximateSize(25 + (2 * key.Count));
+				}
 				if (ct.IsCancellationRequested) return Task.FromCanceled<Slice[]>(ct);
 
 				var ks = this.Scratch.InternKeyRanges(keys);
@@ -2801,6 +2807,7 @@ namespace FoundationDB.Testing
 			public Task<Slice> GetKeyAsync(KeySelector selector, bool snapshot, CancellationToken ct)
 			{
 				ThrowIfPoisoned();
+				AccountApproximateSize(25 + (2 * selector.Key.Count)); // unprobed formula: same shape as a point read
 				var selectorCopy = this.Scratch.InternSelector(selector);
 				if (TryGetSnapshot(out var snap))
 				{
@@ -2830,6 +2837,7 @@ namespace FoundationDB.Testing
 			public Task<Slice> GetKeyAsync(KeySpanSelector selector, bool snapshot, CancellationToken ct)
 			{
 				ThrowIfPoisoned();
+				AccountApproximateSize(25 + (2 * selector.Key.Length)); // unprobed formula: same shape as a point read
 				var selectorCopy = this.Scratch.InternSelector(selector);
 				if (TryGetSnapshot(out var snap))
 				{
@@ -2912,6 +2920,7 @@ namespace FoundationDB.Testing
 			)
 			{
 				ThrowIfPoisoned();
+				AccountApproximateSize(25 + (2 * (beginInclusive.Key.Length + endExclusive.Key.Length))); // unprobed formula: same shape as a point read over both bounds
 				if (ct.IsCancellationRequested) return Task.FromCanceled<FdbRangeChunk>(ct);
 
 				//TODO: PERF: OPTIMIZE: implement natively instead of first allocated to KV<Slice, Slice> and then converting!
@@ -3202,6 +3211,7 @@ namespace FoundationDB.Testing
 					snapshot.Set(k, v, this.OptionWriteSystemKeys);
 				}
 				AccountWriteOperation(key.Length + value.Length + 28);
+				AccountApproximateSize(69 + (3 * key.Length) + value.Length);
 			}
 
 			public void Atomic(ReadOnlySpan<byte> key, ReadOnlySpan<byte> param, FdbMutationType mutation)
@@ -3223,8 +3233,8 @@ namespace FoundationDB.Testing
 				{
 					snapshot.Atomic(k, v, mutation, this.OptionWriteSystemKeys);
 				}
-				//TODO: what is the overhead for atomic operations?
 				AccountWriteOperation(key.Length + param.Length);
+				AccountApproximateSize(69 + (3 * key.Length) + param.Length); // same native accounting as a Set
 			}
 
 			public void Clear(ReadOnlySpan<byte> key)
@@ -3237,6 +3247,7 @@ namespace FoundationDB.Testing
 				}
 				// The key is converted to range [key, key.'\0'), and there is an overhead of 28-byte per operation
 				AccountWriteOperation((key.Length * 2) + 28 + 1);
+				AccountApproximateSize(50 + (4 * key.Length));
 			}
 
 			public void ClearRange(ReadOnlySpan<byte> beginKeyInclusive, ReadOnlySpan<byte> endKeyExclusive)
@@ -3250,6 +3261,7 @@ namespace FoundationDB.Testing
 				}
 				// There is an overhead of 28-byte per operation
 				AccountWriteOperation(beginKeyInclusive.Length + endKeyExclusive.Length + 28);
+				AccountApproximateSize(68 + (2 * (beginKeyInclusive.Length + endKeyExclusive.Length)));
 			}
 
 			public void AddConflictRange(ReadOnlySpan<byte> beginKeyInclusive, ReadOnlySpan<byte> endKeyExclusive, FdbConflictRangeType type)
@@ -3270,9 +3282,21 @@ namespace FoundationDB.Testing
 				}
 			}
 
+			/// <summary>Commit-size accounting, calibrated per-operation against the fdb 7.4 native client (see the probe in ScenarioProbeFacts):
+			/// GET = 25 + 2k, SET = 69 + 3k + v, CLEAR = 50 + 4k, CLEARRANGE = 68 + 2(b+e), ATOMIC = 69 + 3k + p.</summary>
+			/// <remarks>Where FakeDb cannot know what the native client would do (reads served locally by the RYW layer are
+			/// not accounted natively; selector/range read formulas are unprobed), it accounts anyway: the invariant that
+			/// matters is to never UNDER-estimate — batching loops flush on this value, and an underestimate would produce
+			/// an oversized commit that fails deterministically on every retry.</remarks>
+			private long m_approximateSize;
+
+			private void AccountApproximateSize(long bytes) => Interlocked.Add(ref m_approximateSize, bytes);
+
 			public Task<long> GetApproximateSizeAsync(CancellationToken ct)
 			{
-				return Task.FromResult(0L); //BUGBUG
+				return !ct.IsCancellationRequested
+					? Task.FromResult(Volatile.Read(ref m_approximateSize))
+					: Task.FromCanceled<long>(ct);
 			}
 
 			/// <summary>Watches created by this transaction</summary>
@@ -3411,6 +3435,7 @@ namespace FoundationDB.Testing
 					m_payloadBytes = 0;
 					m_keyReadCount = 0;
 					m_keyReadSize = 0;
+					m_approximateSize = 0;
 				}
 			}
 

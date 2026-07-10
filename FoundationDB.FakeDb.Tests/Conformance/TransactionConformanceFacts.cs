@@ -4291,8 +4291,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Approximate_Size()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence: GetApproximateSizeAsync is stubbed to always return 0 (marked //BUGBUG in FakeDbDatabase.cs), never accounting for read/write bytes");
-
 			using var db = await OpenTestDatabaseAsync();
 
 			// GET(KEY)

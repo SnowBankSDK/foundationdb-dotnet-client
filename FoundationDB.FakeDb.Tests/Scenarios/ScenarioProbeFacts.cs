@@ -66,6 +66,56 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		public async Task Probe_Approximate_Size_Formulas()
+		{
+			// measures the native client's per-operation approximate-size accounting at two key sizes,
+			// to calibrate FakeDb's implementation (FDBV-007)
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.ReadWriteAsync(async tr =>
+			{
+				long size = await tr.GetApproximateSizeAsync();
+
+				async Task<long> Delta(string label)
+				{
+					long now = await tr.GetApproximateSizeAsync();
+					long delta = now - size;
+					size = now;
+					Log($"> {label}: +{delta}");
+					return delta;
+				}
+
+				foreach (int keyLen in (int[]) [ 10, 50 ])
+				{
+					var key = Slice.FromStringAscii(new string('k', keyLen));
+					var key2 = Slice.FromStringAscii(new string('l', keyLen));
+					var value = Slice.FromStringAscii(new string('v', 100));
+
+					await tr.GetAsync(key);
+					await Delta($"get(k{keyLen})");
+
+					tr.Set(key, value);
+					await Delta($"set(k{keyLen}, v100)");
+
+					tr.Clear(key2);
+					await Delta($"clear(k{keyLen})");
+
+					tr.ClearRange(key, key2);
+					await Delta($"clearRange(k{keyLen}, k{keyLen})");
+
+					tr.AtomicAdd64(key, 1);
+					await Delta($"atomicAdd(k{keyLen}, 8)");
+				}
+
+				tr.Reset();
+				long afterReset = await tr.GetApproximateSizeAsync();
+				Log($"> after reset: {afterReset}");
+				return 0;
+			}, this.Cancellation);
+		}
+
+		[Test]
 		public async Task Probe_ReadVersion_Advance_And_Idle()
 		{
 			using var db = await OpenTestPartitionAsync();
