@@ -116,48 +116,9 @@ namespace SnowBank.Networking.Http
 				return lambda.Compile();
 			}
 
-			private static Func<Func<HttpRequestMessage, X509Certificate2?, X509Chain?, SslPolicyErrors, bool>, RemoteCertificateValidationCallback> GetCertificateCallbackMapper()
-			{
-
-				var t = typeof(HttpClientHandler).Assembly.GetType("System.Net.Http.ConnectHelper+CertificateCallbackMapper");
-				if (t == null)
-				{
-#if DEBUG
-					if (Debugger.IsAttached) Debugger.Break();
-#endif
-					throw new NotSupportedException("Could not find System.Net.Http.ConnectHelper+CertificateCallbackMapper. This may be caused by a new version of the .NET Framework that is not supported by this library!");
-				}
-
-				var ctor = t.GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public, null, [ typeof(Func<HttpRequestMessage, X509Certificate2?, X509Chain?, SslPolicyErrors, bool>) ], null);
-				if (ctor == null)
-				{
-#if DEBUG
-					if (Debugger.IsAttached) Debugger.Break();
-#endif
-					throw new NotSupportedException($"Could not find {t.FullName}.ctor(...). This may be caused by a new version of the .NET Framework that is not supported by this library!");
-				}
-
-				var prmHandler = Expression.Parameter(typeof(Func<HttpRequestMessage, X509Certificate2?, X509Chain?, SslPolicyErrors, bool>), "fromHttpClientHandler");
-
-				var body = Expression.Field(
-					Expression.New(ctor, prmHandler),
-					"ForSocketsHttpHandler"
-				);
-
-				return Expression.Lambda<Func<Func<HttpRequestMessage, X509Certificate2?, X509Chain?, SslPolicyErrors, bool>, RemoteCertificateValidationCallback>>(
-					body,
-					"ConnectHelper_CertificateCallbackMapper",
-					tailCall: true,
-					[ prmHandler ]
-				).Compile();
-
-			}
-
 			public static readonly Func<SocketsHttpHandler, HttpRequestMessage, CancellationToken, HttpResponseMessage> SendInvoker = GetSendHandler();
 
 			public static readonly Func<SocketsHttpHandler, HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> SendAsyncInvoker = GetSendAsyncHandler();
-
-			public static readonly Func<Func<HttpRequestMessage, X509Certificate2?, X509Chain?, SslPolicyErrors, bool>, RemoteCertificateValidationCallback> CallbackMapperInvoker = GetCertificateCallbackMapper();
 
 		}
 
@@ -167,14 +128,14 @@ namespace SnowBank.Networking.Http
 		{
 			try
 			{
-				_ = CheatCodes.CallbackMapperInvoker;
+				_ = CheatCodes.SendAsyncInvoker;
 				return true;
 			}
 			catch (Exception)
 			{
 #if DEBUG
 				// If you end up here, it means that the reflection logic failed, meaning that the internals of SocketsHttpHandler have changed!
-				// => inspect what changed inside "ConnectHelper.CertificateCallbackMapper" and fix things accordingly!
+				// => inspect what changed inside "SocketsHttpHandler.Send/SendAsync" and fix things accordingly!
 				if (Debugger.IsAttached) Debugger.Break();
 #endif
 				return false;
@@ -503,14 +464,18 @@ namespace SnowBank.Networking.Http
 		}
 
 		/// <summary>Gets or sets the callback used to validate the certificate provided by the remote server</summary>
-		public Func<HttpRequestMessage, X509Certificate2?, X509Chain?, SslPolicyErrors, bool>? ServerCertificateCustomValidationCallback
+		/// <remarks>
+		/// <para>The callback validates a <em>connection</em> (there is no request at TLS-handshake time), so it receives only the certificate, the chain and the policy errors. It is mapped directly onto <see cref="SslClientAuthenticationOptions.RemoteCertificateValidationCallback"/>.</para>
+		/// </remarks>
+		public Func<X509Certificate2?, X509Chain?, SslPolicyErrors, bool>? ServerCertificateCustomValidationCallback
 		{
 			get;
 			set
 			{
 				ThrowForModifiedManagedSslOptionsIfStarted();
 				field = value;
-				this.Sockets.SslOptions.RemoteCertificateValidationCallback = value != null ? CheatCodes.CallbackMapperInvoker(value) : null;
+				this.Sockets.SslOptions.RemoteCertificateValidationCallback = value is null ? null
+					: (_, cert, chain, errors) => value(cert switch { null => null, X509Certificate2 c2 => c2, var c => new X509Certificate2(c) }, chain, errors);
 			}
 		}
 
@@ -553,7 +518,7 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Certificate validation callback that always returns <c>true</c></summary>
 		/// <remarks>Use with caution! This is only intended for testing, or during local development with self-signed certificates.</remarks>
-		public static readonly Func<HttpRequestMessage, X509Certificate2?, X509Chain?, SslPolicyErrors, bool> DangerousAcceptAnyServerCertificateValidator = (_,_,_,_) => true;
+		public static readonly Func<X509Certificate2?, X509Chain?, SslPolicyErrors, bool> DangerousAcceptAnyServerCertificateValidator = static (_, _, _) => true;
 
 		private void ThrowForModifiedManagedSslOptionsIfStarted()
 		{

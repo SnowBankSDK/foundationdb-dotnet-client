@@ -28,6 +28,8 @@ namespace SnowBank.Testing.Framework.Tests
 {
 	using System.Net;
 	using System.Net.Http;
+	using System.Net.Security;
+	using System.Security.Cryptography.X509Certificates;
 	using Microsoft.AspNetCore.Builder;
 	using Microsoft.AspNetCore.Http;
 	using Microsoft.Extensions.DependencyInjection;
@@ -218,6 +220,26 @@ namespace SnowBank.Testing.Framework.Tests
 				"the default bundle must not rotate its chain (the transport owns DNS freshness)");
 			Assert.That(factoryOptions.Get("custom").HandlerLifetime, Is.EqualTo(Timeout.InfiniteTimeSpan),
 				"a named bundle must not rotate its chain (the transport owns DNS freshness)");
+		}
+
+		[Test]
+		public void Test_Certificate_Callback_Maps_Onto_SslOptions_Without_Reflection()
+		{
+			// The server-certificate callback is a per-bundle transport policy applied to the shared SocketsHttpHandler. Its
+			// shape deliberately has NO HttpRequestMessage argument: the callback validates a CONNECTION (SslStream knows no
+			// request), and the old request-shaped signature forced an internal-type reflection shim
+			// (ConnectHelper+CertificateCallbackMapper) that broke by construction on .NET internals drift.
+			using var handler = new BetterHttpClientHandler(new NetworkMap());
+
+			Func<X509Certificate2?, X509Chain?, SslPolicyErrors, bool> callback = static (_, _, _) => true;
+			handler.ServerCertificateCustomValidationCallback = callback;
+			Assert.That(handler.ServerCertificateCustomValidationCallback, Is.SameAs(callback), "the handler must report the assigned callback");
+			Assert.That(handler.Sockets.SslOptions.RemoteCertificateValidationCallback, Is.Not.Null, "the callback must be mapped onto the socket transport's SslOptions");
+			Assert.That(handler.Sockets.SslOptions.RemoteCertificateValidationCallback!.Invoke(this, null, null, SslPolicyErrors.RemoteCertificateChainErrors), Is.True,
+				"the mapped callback must invoke the assigned validation logic");
+
+			handler.ServerCertificateCustomValidationCallback = null;
+			Assert.That(handler.Sockets.SslOptions.RemoteCertificateValidationCallback, Is.Null, "clearing the callback must clear the socket transport's SslOptions");
 		}
 
 		[Test]

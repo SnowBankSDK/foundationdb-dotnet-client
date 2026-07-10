@@ -78,7 +78,10 @@ namespace SnowBank.Networking.Http
 		public ICredentials? DefaultProxyCredentials { get; set; }
 
 		/// <summary>Callback used to validate the certificate presented by the remote server</summary>
-		public Func<HttpRequestMessage, X509Certificate2?, X509Chain?, SslPolicyErrors, bool>? ServerCertificateCustomValidationCallback { get; set; }
+		/// <remarks>
+		/// <para>This is a per-bundle transport policy, applied to the shared pooled transport when the bundle's chain is built. The callback validates a <em>connection</em> (there is no request at TLS-handshake time), so it receives only the certificate, the chain and the policy errors.</para>
+		/// </remarks>
+		public Func<X509Certificate2?, X509Chain?, SslPolicyErrors, bool>? ServerCertificateCustomValidationCallback { get; set; }
 
 		/// <summary>Options used to configure the certificate that this client will provide when asked to authenticate by the remote server</summary>
 		public ClientCertificateOption? ClientCertificateOptions { get; set; }
@@ -97,7 +100,7 @@ namespace SnowBank.Networking.Http
 		[Obsolete("This is dangerous! Please acknowledge this by using a #pragma to disable this warning.")]
 		public void DangerousAcceptAnyServerCertificate()
 		{
-			this.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+			this.ServerCertificateCustomValidationCallback = BetterHttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
 		}
 
 		/// <summary>Adds a delegating handler to the chain of handlers used by this client</summary>
@@ -321,7 +324,10 @@ namespace SnowBank.Networking.Http
 					case HttpClientHandler clientHandler:
 					{
 						if (this.ClientCertificates is not null) clientHandler.ClientCertificates.AddRange(this.ClientCertificates);
-						if (this.ServerCertificateCustomValidationCallback is not null) clientHandler.ServerCertificateCustomValidationCallback = this.ServerCertificateCustomValidationCallback;
+						if (this.ServerCertificateCustomValidationCallback is { } callback)
+						{ // the BCL handler's callback still carries the (unused at TLS time) request argument: adapt
+							clientHandler.ServerCertificateCustomValidationCallback = (_, cert, chain, errors) => callback(cert, chain, errors);
+						}
 						if (this.ClientCertificateOptions is not null) clientHandler.ClientCertificateOptions = this.ClientCertificateOptions.Value;
 						if (this.CheckCertificateRevocationList is not null) clientHandler.CheckCertificateRevocationList = this.CheckCertificateRevocationList.Value;
 						if (this.SslProtocols is not null) clientHandler.SslProtocols = this.SslProtocols.Value;
