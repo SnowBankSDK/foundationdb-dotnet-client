@@ -11,6 +11,8 @@
 		<PackageTags>foundationdb fdb nosql</PackageTags>
 		<Description>Binding Tester for the FoundationDB .NET Binding</Description>
 		<OutputType>Exe</OutputType>
+		<!-- Internal binding-conformance harness, not shipped as a NuGet package. -->
+		<IsPackable>false</IsPackable>
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
