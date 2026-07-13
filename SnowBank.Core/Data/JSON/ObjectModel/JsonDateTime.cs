@@ -46,10 +46,10 @@ namespace SnowBank.Data.Json
 
 		#region Static Helpers...
 
-		/// <summary>Singleton equivalent to <see cref="DateTime.MinValue"/></summary>
+		/// <summary>Singleton equivalent to <see cref="System.DateTime.MinValue"/></summary>
 		public static readonly JsonDateTime MinValue = new(DateTime.MinValue, NO_TIMEZONE);
 		
-		/// <summary>Singleton equivalent to <see cref="DateTime.MinValue"/></summary>
+		/// <summary>Singleton equivalent to <see cref="System.DateTime.MinValue"/></summary>
 		public static readonly JsonDateTime MaxValue = new(DateTime.MaxValue, NO_TIMEZONE);
 		
 		internal static readonly DateTime MaxValueDate = new(3155378112000000000);
@@ -103,7 +103,7 @@ namespace SnowBank.Data.Json
 			m_offset = offset;
 		}
 
-		/// <summary>Wraps a <see cref="DateTime"/> instance</summary>
+		/// <summary>Wraps a <see cref="System.DateTime"/> instance</summary>
 		public JsonDateTime(DateTime value)
 		{
 			m_value = value;
@@ -781,14 +781,14 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Returns the number of ticks</summary>
-		/// <remarks>Similar to <see cref="DateTime.Ticks"/></remarks>
+		/// <remarks>Similar to <see cref="System.DateTime.Ticks"/></remarks>
 		public override long ToInt64(long _ = 0)
 		{
 			return this.UtcTicks;
 		}
 
 		/// <summary>Returns the number of ticks</summary>
-		/// <remarks>Similar to <see cref="DateTime.Ticks"/></remarks>
+		/// <remarks>Similar to <see cref="System.DateTime.Ticks"/></remarks>
 		public override ulong ToUInt64(ulong _ = 0)
 		{
 			return (ulong) this.UtcTicks;

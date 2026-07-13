@@ -538,7 +538,7 @@ namespace SnowBank.Runtime.Converters
 
 		#region DateTime...
 
-		/// <summary>Writes the text representation of a <see cref="DateTime"/> using the ISO 8601 format</summary>
+		/// <summary>Writes the text representation of a <see cref="System.DateTime"/> using the ISO 8601 format</summary>
 		/// <param name="value">Value to convert</param>
 		/// <returns>Corresponding string literal</returns>
 		[Pure]
@@ -548,7 +548,7 @@ namespace SnowBank.Runtime.Converters
 			return value.ToString(null, NumberFormatInfo.InvariantInfo);
 		}
 
-		/// <summary>Writes the text representation of a <see cref="DateTime"/> using the ISO 8601 format</summary>
+		/// <summary>Writes the text representation of a <see cref="System.DateTime"/> using the ISO 8601 format</summary>
 		/// <param name="output">Destination</param>
 		/// <param name="value">Value to write</param>
 		public static void WriteTo(TextWriter output, DateTime value)
@@ -1256,7 +1256,7 @@ namespace SnowBank.Runtime.Converters
 			return decimal.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, provider, out decimal result) ? result : null;
 		}
 
-		/// <summary>Converts a string literal into its <see cref="DateTime"/> equivalent</summary>
+		/// <summary>Converts a string literal into its <see cref="System.DateTime"/> equivalent</summary>
 		/// <param name="value">Literal to convert (ex: "2025-05-27T16:17:89.456")</param>
 		/// <param name="defaultValue">Fallback value returned if the string literal is empty or not a valid date</param>
 		/// <param name="provider">Optional Format provider</param>
@@ -1266,10 +1266,10 @@ namespace SnowBank.Runtime.Converters
 			return ParseDateTime(value, defaultValue, provider);
 		}
 
-		/// <summary>Converts a string literal into its <see cref="DateTime"/> equivalent</summary>
+		/// <summary>Converts a string literal into its <see cref="System.DateTime"/> equivalent</summary>
 		/// <param name="value">Literal to convert (ex: "2025-05-27T16:17:89.456")</param>
 		/// <param name="provider">Optional Format provider</param>
-		/// <returns>Corresponding <see cref="DateTime"/>, or <see langword="null"/> if it could not be decoded</returns>
+		/// <returns>Corresponding <see cref="System.DateTime"/>, or <see langword="null"/> if it could not be decoded</returns>
 		[Pure]
 		public static DateTime? ToDateTime(string? value, CultureInfo? provider = null)
 		{
@@ -1515,7 +1515,7 @@ namespace SnowBank.Runtime.Converters
 
 		#region Dates...
 
-		/// <summary>Converts a <see cref="DateTime"/> value into a string literal with format <c>YYYYMMDDHHMMSS</c></summary>
+		/// <summary>Converts a <see cref="System.DateTime"/> value into a string literal with format <c>YYYYMMDDHHMMSS</c></summary>
 		/// <param name="date">Date to format</param>
 		/// <returns>Formated date of length 14, with format <c>YYYYMMDDHHMMSS</c></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1545,7 +1545,7 @@ namespace SnowBank.Runtime.Converters
 			return date.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
 		}
 
-		/// <summary>Converts the date component of a <see cref="DateTime"/> value into a string literal with format <c>YYYYMMDD</c></summary>
+		/// <summary>Converts the date component of a <see cref="System.DateTime"/> value into a string literal with format <c>YYYYMMDD</c></summary>
 		/// <param name="date">Date to format</param>
 		/// <returns>Formated date of length 8, with format <c>YYYYMMDD</c></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1555,7 +1555,7 @@ namespace SnowBank.Runtime.Converters
 			return date.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
 		}
 
-		/// <summary>Converts the time component of a <see cref="DateTime"/> value into a string literal with format <c>HHMMSS</c></summary>
+		/// <summary>Converts the time component of a <see cref="System.DateTime"/> value into a string literal with format <c>HHMMSS</c></summary>
 		/// <param name="date">Time to format</param>
 		/// <returns>Formated time of length 6, with format <c>HHMMSS</c></returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1565,9 +1565,9 @@ namespace SnowBank.Runtime.Converters
 			return date.ToString("HHmmss", CultureInfo.InvariantCulture);
 		}
 
-		/// <summary>Parses a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <summary>Parses a string literal with any compatible format into a <see cref="System.DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
 		/// <param name="date">String literal to parse</param>
-		/// <returns>Corresponding <see cref="DateTime"/> value if successful</returns>
+		/// <returns>Corresponding <see cref="System.DateTime"/> value if successful</returns>
 		/// <exception cref="System.ArgumentException">If the date is malformed</exception>
 		[Pure]
 		public static DateTime ParseDateTime(string? date)
@@ -1575,10 +1575,10 @@ namespace SnowBank.Runtime.Converters
 			return ParseDateTime(date, null);
 		}
 
-		/// <summary>Parses a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <summary>Parses a string literal with any compatible format into a <see cref="System.DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
 		/// <param name="date">String literal to parse</param>
 		/// <param name="culture">Optional culture provider</param>
-		/// <returns>Corresponding <see cref="DateTime"/> value if successful</returns>
+		/// <returns>Corresponding <see cref="System.DateTime"/> value if successful</returns>
 		/// <exception cref="System.ArgumentException">If the date is malformed</exception>
 		[Pure]
 		public static DateTime ParseDateTime(string? date, CultureInfo? culture)
@@ -1594,10 +1594,10 @@ namespace SnowBank.Runtime.Converters
 			return new("Invalid date format", "date");
 		}
 
-		/// <summary>Parses a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <summary>Parses a string literal with any compatible format into a <see cref="System.DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
 		/// <param name="date">String literal to parse</param>
 		/// <param name="defaultValue">Default value if null, empty, or malformed</param>
-		/// <returns>Corresponding <see cref="DateTime"/> value if successful; otherwise, <paramref name="defaultValue"/></returns>
+		/// <returns>Corresponding <see cref="System.DateTime"/> value if successful; otherwise, <paramref name="defaultValue"/></returns>
 		/// <exception cref="System.ArgumentException">If the date is malformed</exception>
 		[Pure]
 		public static DateTime ParseDateTime(string? date, DateTime defaultValue)
@@ -1607,11 +1607,11 @@ namespace SnowBank.Runtime.Converters
 			return result;
 		}
 
-		/// <summary>Parses a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <summary>Parses a string literal with any compatible format into a <see cref="System.DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
 		/// <param name="date">String literal to parse</param>
 		/// <param name="defaultValue">Default value if null, empty, or malformed</param>
 		/// <param name="culture">Optional culture provider</param>
-		/// <returns>Corresponding <see cref="DateTime"/> value if successful; otherwise, <paramref name="defaultValue"/></returns>
+		/// <returns>Corresponding <see cref="System.DateTime"/> value if successful; otherwise, <paramref name="defaultValue"/></returns>
 		/// <exception cref="System.ArgumentException">If the date is malformed</exception>
 		[Pure]
 		public static DateTime ParseDateTime(string? date, DateTime defaultValue, CultureInfo? culture)
@@ -1631,10 +1631,10 @@ namespace SnowBank.Runtime.Converters
 #endif
 		}
 
-		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="System.DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
 		/// <param name="date">String literal to parse</param>
 		/// <param name="culture">Optional culture provider</param>
-		/// <param name="result">Receives the parsed <see cref="DateTime"/>, if successful.</param>
+		/// <param name="result">Receives the parsed <see cref="System.DateTime"/>, if successful.</param>
 		/// <param name="throwsFail">If <c>false</c>, catch any parsing exception; otherwise, let them bubble up.</param>
 		/// <returns><c>true</c> if the operation was successful; otherwise, <c>false</c></returns>
 		[Pure]
@@ -1649,10 +1649,10 @@ namespace SnowBank.Runtime.Converters
 			return TryParseDateTime(date.AsSpan(), culture, out result, throwsFail);
 		}
 
-		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
+		/// <summary>Attempts to parse a string literal with any compatible format into a <see cref="System.DateTime"/> (<c>"YYYY"</c>, <c>"YYYYMM"</c>, <c>"YYYYMMDD"</c>, <c>"YYYY-MM-DD"</c>, <c>"YYYYMMDDHHMMSS"</c>, or <c>"YYYY-MM-DDTHH:MM:SS"</c>)</summary>
 		/// <param name="date">String literal to parse</param>
 		/// <param name="culture">Optional culture provider</param>
-		/// <param name="result">Receives the parsed <see cref="DateTime"/>, if successful.</param>
+		/// <param name="result">Receives the parsed <see cref="System.DateTime"/>, if successful.</param>
 		/// <param name="throwsFail">If <c>false</c>, catch any parsing exception; otherwise, let them bubble up.</param>
 		/// <returns><c>true</c> if the operation was successful; otherwise, <c>false</c></returns>
 		[Pure]

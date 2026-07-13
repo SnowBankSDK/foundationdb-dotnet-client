@@ -1481,9 +1481,9 @@ namespace SnowBank.Data.Json
 		/// <param name="value">DateTime to convert</param>
 		/// <returns>JSON value that will be serialized as a decimal value.</returns>
 		/// <remarks>
-		/// <para>By convention, <see cref="DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
+		/// <para>By convention, <see cref="System.DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="System.DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
 		/// <para>This method can introduce rounding errors, so <paramref name="value"/> may not round-trip in all cases.</para>
-		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(DateTime)">as a string</see> instead.</para>
+		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(System.DateTime)">as a string</see> instead.</para>
 		/// </remarks>
 		[Pure]
 		public static JsonNumber Create(DateTime value)
@@ -1500,9 +1500,9 @@ namespace SnowBank.Data.Json
 		/// <param name="value">DateTimeOffset to convert</param>
 		/// <returns>JSON value that will be serialized as a decimal value.</returns>
 		/// <remarks>
-		/// <para>By convention, <see cref="DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
+		/// <para>By convention, <see cref="System.DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="System.DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
 		/// <para>This method can introduce rounding errors, so <paramref name="value"/> may not round-trip in all cases.</para>
-		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(DateTime)">as a string</see> instead.</para>
+		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(System.DateTime)">as a string</see> instead.</para>
 		/// </remarks>
 		[Pure]
 		public static JsonNumber Create(DateTimeOffset value)
@@ -1738,9 +1738,9 @@ namespace SnowBank.Data.Json
 		/// <param name="value">DateTime to convert</param>
 		/// <returns>JSON value that will be serialized as a decimal value.</returns>
 		/// <remarks>
-		/// <para>By convention, <see cref="DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
+		/// <para>By convention, <see cref="System.DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="System.DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
 		/// <para>This method can introduce rounding errors, so <paramref name="value"/> may not round-trip in all cases.</para>
-		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(DateTime)">as a string</see> instead.</para>
+		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(System.DateTime)">as a string</see> instead.</para>
 		/// </remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue Return(DateTime value) => Create(value);
@@ -1749,9 +1749,9 @@ namespace SnowBank.Data.Json
 		/// <param name="value">DateTime to convert, or <see langword="null"/></param>
 		/// <returns>JSON value that will be serialized as a decimal value, or <see cref="JsonNull.Null"/>.</returns>
 		/// <remarks>
-		/// <para>By convention, <see cref="DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
+		/// <para>By convention, <see cref="System.DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="System.DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
 		/// <para>This method can introduce rounding errors, so <paramref name="value"/> may not round-trip in all cases.</para>
-		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(DateTime)">as a string</see> instead.</para>
+		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(System.DateTime)">as a string</see> instead.</para>
 		/// </remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue Return(DateTime? value) => value is not null ? Create(value.Value) : JsonNull.Null;
@@ -1760,9 +1760,9 @@ namespace SnowBank.Data.Json
 		/// <param name="value">DateTimeOffset to convert</param>
 		/// <returns>JSON value that will be serialized as a decimal value.</returns>
 		/// <remarks>
-		/// <para>By convention, <see cref="DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
+		/// <para>By convention, <see cref="System.DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="System.DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
 		/// <para>This method can introduce rounding errors, so <paramref name="value"/> may not round-trip in all cases.</para>
-		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(DateTime)">as a string</see> instead.</para>
+		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(System.DateTime)">as a string</see> instead.</para>
 		/// </remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue Return(DateTimeOffset value) => Create(value);
@@ -1771,9 +1771,9 @@ namespace SnowBank.Data.Json
 		/// <param name="value">DateTimeOffset to convert, or <see langword="null"/></param>
 		/// <returns>JSON value that will be serialized as a decimal value, or <see cref="JsonNull.Null"/>.</returns>
 		/// <remarks>
-		/// <para>By convention, <see cref="DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
+		/// <para>By convention, <see cref="System.DateTime.MinValue"/> is equivalent to <see langword="0"/>, and <see cref="System.DateTime.MaxValue"/> is equivalent to <c>NaN</c>.</para>
 		/// <para>This method can introduce rounding errors, so <paramref name="value"/> may not round-trip in all cases.</para>
-		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(DateTime)">as a string</see> instead.</para>
+		/// <para>If an exact representation is required, please serialize the date <see cref="JsonDateTime.Return(System.DateTime)">as a string</see> instead.</para>
 		/// </remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue Return(DateTimeOffset? value) => value is not null ? Create(value.Value) : JsonNull.Null;
@@ -2430,8 +2430,8 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override Uuid48 ToUuid48(Uuid48 _ = default) => !IsNaN(this) ? Uuid48.FromUInt64(m_value.ToUInt64(m_kind)) : Uuid48.MaxValue;
 
-		/// <summary>Converts this <see cref="JsonNumber"/>, interpreted as the number of seconds since Unix Epoch, into a <see cref="DateTime"/> (UTC)</summary>
-		/// <returns><see cref="DateTime"/> (in UTC) equal to epoch(1970-1-1Z) + seconds(value)</returns>
+		/// <summary>Converts this <see cref="JsonNumber"/>, interpreted as the number of seconds since Unix Epoch, into a <see cref="System.DateTime"/> (UTC)</summary>
+		/// <returns><see cref="System.DateTime"/> (in UTC) equal to epoch(1970-1-1Z) + seconds(value)</returns>
 		public override DateTime ToDateTime(DateTime _ = default)
 		{
 			// By convention, NaN is mapped to DateTime.MaxValue

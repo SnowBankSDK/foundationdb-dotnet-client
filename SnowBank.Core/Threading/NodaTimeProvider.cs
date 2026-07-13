@@ -43,7 +43,7 @@ namespace SnowBank.Threading
 	{
 
 		/// <summary>The real system clock, exposed through both facades</summary>
-		public static readonly NodaTimeProvider System = new(TimeProvider.System);
+		public static new readonly NodaTimeProvider System = new(TimeProvider.System);
 
 		/// <summary>Wraps an existing provider (the system provider in production, a fake advanceable provider in tests)</summary>
 		public NodaTimeProvider(TimeProvider inner)

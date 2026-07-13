@@ -2262,10 +2262,10 @@ namespace SnowBank.Data.Json
 		[Pure][return: NotNullIfNotNull(nameof(defaultValue))]
 		public virtual Uuid48? ToUuid48OrDefault(Uuid48? defaultValue = null) => ToUuid48();
 
-		/// <summary>Returns the equivalent <see cref="DateTime"/>, if there exists a valid conversion</summary>
+		/// <summary>Returns the equivalent <see cref="System.DateTime"/>, if there exists a valid conversion</summary>
 		public virtual DateTime ToDateTime(DateTime defaultValue = default) => throw Errors.JsonConversionNotSupported(this, typeof(DateTime));
 
-		/// <summary>Returns the equivalent <see cref="DateTime"/>, if there exists a valid conversion</summary>
+		/// <summary>Returns the equivalent <see cref="System.DateTime"/>, if there exists a valid conversion</summary>
 		[Pure][return: NotNullIfNotNull(nameof(defaultValue))]
 		public virtual DateTime? ToDateTimeOrDefault(DateTime? defaultValue = null) => ToDateTime();
 

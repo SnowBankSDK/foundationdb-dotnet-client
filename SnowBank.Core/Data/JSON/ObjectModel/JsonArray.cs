@@ -3591,7 +3591,7 @@ namespace SnowBank.Data.Json
 			return buf;
 		}
 
-		/// <summary>Returns the equivalent <see cref="DateTime"/> array</summary>
+		/// <summary>Returns the equivalent <see cref="System.DateTime"/> array</summary>
 		[Pure, CollectionAccess(CollectionAccessType.Read)]
 		public DateTime[] ToDateTimeArray(DateTime defaultValue = default)
 		{

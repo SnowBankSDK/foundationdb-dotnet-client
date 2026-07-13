@@ -2324,7 +2324,7 @@ namespace SnowBank.Data.Json
 
 #endif
 
-		/// <summary>Writes a <see cref="DateTime"/>, as a string literal</summary>
+		/// <summary>Writes a <see cref="System.DateTime"/>, as a string literal</summary>
 		/// <param name="value">Value to write</param>
 		/// <example><code>
 		/// writer.WriteValue(DateTime.UnixEpoch); // => `"1970-01-01T00:00:00.000"`
@@ -2354,7 +2354,7 @@ namespace SnowBank.Data.Json
 			}
 		}
 
-		/// <summary>Writes a nullable <see cref="DateTime"/>, as a string literal</summary>
+		/// <summary>Writes a nullable <see cref="System.DateTime"/>, as a string literal</summary>
 		/// <param name="value">Value to write</param>
 		/// <example><code>
 		/// writer.WriteValue((DateTime?) null); // => `null`
