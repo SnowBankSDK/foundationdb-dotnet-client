@@ -593,6 +593,10 @@ You can also build, test and compile the NuGet packages from the command line us
 - `dotnet build` to build (in DEBUG) all the projects in the solution
 - `dotnet test` to run the unit tests (requires a working local FoundationDB cluster).
 
+The `scripts/` folder contains helpers for common tasks:
+- `scripts/build.ps1` / `scripts/build.sh`: run a fully isolated **standalone** restore, clean and build (this repo's complete target set), even when it is checked out as a sub-module (see the *As a sub-module* section below). Add `Release` for a Release build.
+- `scripts/pack.ps1` / `scripts/pack.sh`: build and validate the NuGet packages (they do not push to any feed).
+
 ### As a sub-module
 
 Most projects in this repository are targeting multiple frameworks, meaning that each project will be build several times, one for each target.
@@ -645,6 +649,25 @@ An example of a parent `Directory.Build.props` that multi-targets `net9.0` and `
 	</PropertyGroup>
 </Project>
 ```
+
+### Building this repository on its own (standalone)
+
+When you want to build, test, or package **this repository on its own** while it is still checked out inside such a parent (for example to validate the `net8.0` or `netstandard2.0` targets that a target-trimming parent would otherwise hide, or to produce a complete NuGet package), force a **standalone** build with the `CORESDK_STANDALONE_BUILD` property set to `true`. This makes the `Directory.Build.props` ignore the parent overrides entirely and restore this repo's own complete target set.
+
+Pass it as an MSBuild property, not as an environment variable, so that it stays scoped to a single command and does not leak into your shell:
+
+```
+dotnet build FoundationDB.Client.slnx -p:CORESDK_STANDALONE_BUILD=true
+```
+
+Or use the helper scripts, which run a consistent `restore`, `clean` and `build` in standalone mode (add `Release` for a Release configuration):
+
+```
+./scripts/build.ps1
+./scripts/build.sh
+```
+
+> **Important:** the restore step writes the shared `artifacts/obj/**/project.assets.json` files for the standalone (complete) target set, which is a superset of what the parent restores. Because the restore state is shared, the next build **from the parent** must re-run `dotnet restore` first, otherwise it fails with `NETSDK1005` (the assets file has no target for the parent's framework). Keep `restore`, `build` and `clean` on the same mode; when you switch modes, re-run `dotnet restore`.
 
 # How to test
 
