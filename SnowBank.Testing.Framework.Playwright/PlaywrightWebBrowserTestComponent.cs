@@ -53,6 +53,8 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal List<string> InitScripts { get; set; } = [];
 
+		internal Func<IConsoleMessage, string?>? ConsoleFormatter { get; set; }
+
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask> StartingHandler { get; set; } = (_, _) => default;
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask> StoppingHandler { get; set; } = (_, _) => default;
@@ -219,11 +221,16 @@ namespace SnowBank.Testing.Framework.Playwright
 			}
 
 			// hook-up the Javascript Console logger
-			var logger = this.CreateLogger<PlaywrightWebBrowserTestComponent>();
 			this.Page.Console += (sender, e) =>
 			{
-				string msg = e.Text;
+				if (this.ConsoleFormatter is { } formatter)
+				{
+					var line = formatter(e);
+					if (line is not null) this.Log(line);
+					return;
+				}
 
+				string msg = e.Text;
 				if (e.Type == "error")
 				{
 					this.Log($"! <JS> {e.Type}: {msg.Replace("\n", "\n!> ")}, Location={e.Location}");
@@ -702,6 +709,8 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal List<string> InitScripts { get; } = [];
 
+		internal Func<IConsoleMessage, string?>? ConsoleFormatter { get; private set; }
+
 		internal int? RemoteDebuggingPort { get; private set; }
 
 		internal bool UseVirtualClock { get; private set; }
@@ -742,6 +751,13 @@ namespace SnowBank.Testing.Framework.Playwright
 		{
 			Contract.NotNullOrEmpty(script);
 			this.InitScripts.Add(script);
+		}
+
+		/// <summary>Replaces the default JS-console log line with <paramref name="formatter"/>: the returned string is written to the test journal, or the message is dropped when it returns <see langword="null"/>. When not set, the default formatting is used.</summary>
+		public void WithConsoleFormatter(Func<IConsoleMessage, string?> formatter)
+		{
+			Contract.NotNull(formatter);
+			this.ConsoleFormatter = formatter;
 		}
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask>? StartingHandler { get; private set; }
@@ -841,6 +857,7 @@ namespace SnowBank.Testing.Framework.Playwright
 			host.BrowserOptionMutators.AddRange(this.BrowserOptionMutators);
 			host.ContextOptionMutators.AddRange(this.ContextOptionMutators);
 			host.InitScripts.AddRange(this.InitScripts);
+			host.ConsoleFormatter = this.ConsoleFormatter ?? host.ConsoleFormatter;
 			host.StartingHandler = this.StartingHandler ?? host.StartingHandler;
 			host.StoppingHandler = this.StoppingHandler ?? host.StoppingHandler;
 			host.RemoteDebuggingPort = this.RemoteDebuggingPort ?? host.RemoteDebuggingPort;
