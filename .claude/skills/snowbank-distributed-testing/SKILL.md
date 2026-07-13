@@ -90,6 +90,7 @@ public class MyFacts : DistributedTest
 - `MakeItSo(Action<IDistributedTestEnvironmentBuilder>)` — builds the topology, runs `Prepare`/`Init`/`Start` on every host, returns the live `DistributedTestContext`.
 - `AddSimpleLan(...)` — a ready-made `192.168.1.0/24` LAN with `*.lan.simulated` DNS. (`AddLocation(...)` for custom topologies.)
 - `WithMinimalWebHost(id, configure)` — one virtual host; `ConfigureServices` / `ConfigureApplication` / `OnStartup`. Each host has its OWN DI container (a restart builds a fresh one).
+- `WithPlaywrightBrowser(id, configure)` (from the `SnowBank.Testing.Framework.Playwright` package): a real headless Chromium on the virtual network, driven via `browser.Page` (a standard Playwright `IPage`). Builder hooks: `WithVirtualClock`, `WithRemoteDebugging(port)`, `WithBrowserOptions` / `WithContextOptions` (tweak the launch and context options on top of the package defaults), `WithInitScript(js)`, `WithConsoleFormatter(msg => ...)` (reformat or drop JS-console lines), and `WithSnapshots(...)` (full-page PNGs plus an HTML contact sheet into the per-test output dir). `IPage.WaitForPageReadyAsync(ct, ..., readyPredicate)` waits for DOM plus network-quiet, plus an optional application-readiness predicate. These tests need Chromium (auto-installed on first run) and are usually `[Explicit]`.
 - Use the injected **`IClock`** for time inside the simulated nodes (it can be a fake clock); use `context.RealClock` only for wall-clock measurements.
 
 ## The unified Timeline journal
