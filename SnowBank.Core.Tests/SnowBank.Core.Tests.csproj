@@ -45,6 +45,13 @@
 		<PackageReference Include="ZstdSharp.Port" />
 	</ItemGroup>
 
+	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
+		<!-- The CoreSDK is x64-only (the FoundationDB native client has no 32-bit build), so keep this
+		     .NET Framework test-host executable 64-bit: the .NET test SDK otherwise defaults net4x test
+		     hosts to win-x86. Only reached when CoreSdkNetStandardEnabled adds the net472 target. -->
+		<PlatformTarget>x64</PlatformTarget>
+	</PropertyGroup>
+
 	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
 		<!-- net472 is the ".NET Framework validation" target: it consumes the netstandard2.0 build of SnowBank.Core
 		     and runs (a subset of) the test suite on the real .NET Framework CLR. -->
