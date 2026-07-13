@@ -51,6 +51,8 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal List<Action<BrowserNewContextOptions>> ContextOptionMutators { get; set; } = [];
 
+		internal List<string> InitScripts { get; set; } = [];
+
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask> StartingHandler { get; set; } = (_, _) => default;
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask> StoppingHandler { get; set; } = (_, _) => default;
@@ -199,6 +201,12 @@ namespace SnowBank.Testing.Framework.Playwright
 
 			// 4b. Intercept page WebSockets the same way, bridging their frames to the target virtual host's in-memory TestServer
 			await BindMeshWebSocketRoutingAsync(this.BrowserContext);
+
+			// consumer init scripts (W2): after the package's own scripts (network tracker + WebSocket shim), before the first page
+			foreach (var script in this.InitScripts)
+			{
+				await this.BrowserContext.AddInitScriptAsync(script);
+			}
 
 			// 5. Instantiate the base automation page context
 			this.Page = await this.BrowserContext.NewPageAsync();
@@ -692,6 +700,8 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal List<Action<BrowserNewContextOptions>> ContextOptionMutators { get; } = [];
 
+		internal List<string> InitScripts { get; } = [];
+
 		internal int? RemoteDebuggingPort { get; private set; }
 
 		internal bool UseVirtualClock { get; private set; }
@@ -725,6 +735,13 @@ namespace SnowBank.Testing.Framework.Playwright
 		{
 			Contract.NotNull(configure);
 			this.ContextOptionMutators.Add(configure);
+		}
+
+		/// <summary>Injects a context-level init script, evaluated in every document AFTER the package's own scripts and BEFORE the first page. Multiple calls compose in registration order.</summary>
+		public void WithInitScript(string script)
+		{
+			Contract.NotNullOrEmpty(script);
+			this.InitScripts.Add(script);
 		}
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask>? StartingHandler { get; private set; }
@@ -823,6 +840,7 @@ namespace SnowBank.Testing.Framework.Playwright
 			host.ConfigureApplicationHandlers.AddRange(this.ApplicationHandlers);
 			host.BrowserOptionMutators.AddRange(this.BrowserOptionMutators);
 			host.ContextOptionMutators.AddRange(this.ContextOptionMutators);
+			host.InitScripts.AddRange(this.InitScripts);
 			host.StartingHandler = this.StartingHandler ?? host.StartingHandler;
 			host.StoppingHandler = this.StoppingHandler ?? host.StoppingHandler;
 			host.RemoteDebuggingPort = this.RemoteDebuggingPort ?? host.RemoteDebuggingPort;
