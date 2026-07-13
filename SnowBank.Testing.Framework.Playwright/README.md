@@ -61,8 +61,12 @@ public class MyBrowserFacts : DistributedTest
 
 - **`WithVirtualClock()`**: run the page under a virtual clock, advanced explicitly by the test, for deterministic time-dependent UI.
 - **`WithRemoteDebugging(port)`**: expose the browser's Chrome DevTools Protocol (CDP) endpoint on a real loopback port, so an external controller (an inspector, or an agent-driven Playwright client) can attach with `connectOverCDP` and co-drive the same browser while the component keeps owning all virtual routing.
+- **`WithBrowserOptions(o => ...)` / `WithContextOptions(o => ...)`**: tweak the Chromium launch and browser-context options (viewport, UserAgent, ...) on top of the component's defaults, without replacing the whole options object.
+- **`WithInitScript(js)`**: inject a context-level init script, evaluated before the first page, for application-specific instrumentation (runs after the package's own scripts).
+- **`WithConsoleFormatter(msg => ...)`**: reformat or drop JS-console lines routed to the test journal (return `null` to drop a line); the default formatting applies when this is not set.
+- **`WithSnapshots(o => ...)`**: capture full-page screenshots via `browser.Snapshots.CaptureAsync(page, "label", ct)` into the per-test output directory, plus an `index.html` contact sheet written at teardown.
 - **`ConfigureServices` / `ConfigureApplication`** and **`OnStartup` / `OnShutdown`**: the usual host-configuration and lifecycle hooks.
 
-The `PlaywrightPageExtensions` helpers add convenience methods on top of the raw `IPage`, for example waiting until a page has settled.
+The `PlaywrightPageExtensions` helpers add convenience methods on top of the raw `IPage`, for example `WaitForPageReadyAsync` (wait until a page has settled: DOM ready, network quiet, and optionally an application-readiness predicate you pass).
 
 > **Note:** these tests drive a real Chromium, so they are heavier than pure unit tests and are usually marked `[Explicit]`. Chromium is installed automatically on first run.
