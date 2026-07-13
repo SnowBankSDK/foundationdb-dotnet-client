@@ -65,8 +65,9 @@
 		<PackageReference Include="System.IO.Hashing" ExcludeAssets="All" />
 		<PackageReference Include="System.Memory" ExcludeAssets="All" />
 		<PackageReference Include="System.Threading.Channels" ExcludeAssets="All" />
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" ExcludeAssets="All" />
-		<PackageReference Include="System.Diagnostics.DiagnosticSource" ExcludeAssets="All" />
+		<!-- these two are in-box on net8+ and only pulled by the netstandard2.0 build, where their PackageVersion is defined; referencing them on net8/10/11 has no central version (NU1010) -->
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" ExcludeAssets="All" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
+		<PackageReference Include="System.Diagnostics.DiagnosticSource" ExcludeAssets="All" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
 	</ItemGroup>
 
 	<!-- Include all the native libraries and tools -->
