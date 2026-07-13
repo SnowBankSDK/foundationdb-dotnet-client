@@ -17,9 +17,9 @@
 	<Import Project="..\Common\VersionInfo.props" />
 
 	<PropertyGroup>
-		<AssemblyTitle>SnowBank HTTP Package Capture</AssemblyTitle>
-		<Description>Core HTTP SDK for writing distributed .NET applications</Description>
-		<PackageTags>snowbank sdk http https rest</PackageTags>
+		<AssemblyTitle>SnowBank HTTP Packet Capture</AssemblyTitle>
+		<Description>Captures HTTP request and response traffic for diagnostics and testing of distributed .NET applications.</Description>
+		<PackageTags>snowbank sdk http capture diagnostics tracing testing</PackageTags>
 		<!--<PackageReadmeFile>README.md</PackageReadmeFile>-->
 		<PackageIcon>snowbank.png</PackageIcon>
 	</PropertyGroup>
