@@ -188,18 +188,15 @@ namespace FoundationDB.Testing.Tests
 				this.Cancellation
 			);
 
-			// the first backoff is on VIRTUAL time: a generous real settle must not let the loop past the first delay
-			await Wait(200);
+			// wait (on the WALL clock) for the transaction's first attempt to run and park on its backoff; without
+			// advancing the fake clock, the loop must stay parked there, because that backoff is gated on VIRTUAL time
+			await WaitUntil(() => attempts >= 1, TimeSpan.FromSeconds(5), "the transaction should execute its first attempt");
 			Assert.That(op.IsCompleted, Is.False, "the retry backoff must be gated by virtual time, not the wall clock");
 			Assert.That(attempts, Is.EqualTo(1), "the retry loop is parked in its first backoff");
 
 			// advancing virtual time past the backoffs lets the loop retry and finally commit on the 3rd attempt
 			await AdvanceAndPump(fake, TimeSpan.FromSeconds(4), TimeSpan.FromMilliseconds(250));
-			for (int i = 0; i < 100 && !op.IsCompleted; i++)
-			{
-				await Wait(10);
-			}
-			Assert.That(op.IsCompleted, Is.True, "advancing virtual time must release the backoff and complete the retry loop");
+			await WaitUntil(() => op.IsCompleted, TimeSpan.FromSeconds(5), "advancing virtual time must release the backoff and complete the retry loop");
 			await op;
 			Assert.That(attempts, Is.EqualTo(3), "two retryable failures, then success");
 		}

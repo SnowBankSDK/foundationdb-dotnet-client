@@ -64,4 +64,15 @@
 		<SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
 	</PropertyGroup>
 
+	<!-- On the netstandard2.0/net472 "lite" targets, XML doc <see cref="..."/> comments that reference BCL
+	     APIs newer than those frameworks (Stopwatch.GetElapsedTime, INumberBase&lt;T&gt;, Stream.DisposeAsync,
+	     StringBuilder.AppendInterpolatedStringHandler, static abstract interface members, ...) cannot be
+	     resolved and raise CS1574/CS1580. Those comments are correct for the modern targets, where the same
+	     crefs DO resolve and stay checked (a genuinely broken cref, like one pointing at a member that exists
+	     on no target, still fails there), so silence only the unresolvable-on-lite noise. Scoped to the lite
+	     TFMs, so a parent that disables netstandard2.0/net472 never sees it. -->
+	<PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == 'net472'">
+		<NoWarn>$(NoWarn);CS1574;CS1580</NoWarn>
+	</PropertyGroup>
+
 </Project>

@@ -48,7 +48,7 @@ namespace SnowBank.Networking
 		/// <summary>Options used for the request</summary>
 		public BetterHttpClientOptions Options { get; }
 
-		/// <summary>Real-network handler used to service <see cref="IVirtualNetworkHost.Passthrough">passthrough</see> hosts.</summary>
+		/// <summary>Real-network handler used to service passthrough hosts (see <see cref="IVirtualNetworkLocation.AddHostPassthrough"/>).</summary>
 		/// <remarks>Created lazily on the first passthrough request and reused for the life of this transport: the previous code
 		/// built a fresh <see cref="HttpClientHandler"/> (and <see cref="HttpMessageInvoker"/>) on EVERY request, leaking a
 		/// socket pool each time. Disposed in <see cref="Dispose(bool)"/>.</remarks>

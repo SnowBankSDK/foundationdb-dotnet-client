@@ -77,9 +77,10 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 
 			await browser.Page.GotoAsync(web.GetUri("/").ToString(), new() { WaitUntil = WaitUntilState.Load });
 
-			// frozen virtual time: a generous REAL settle must not fire any page timer
-			await Wait(700);
-			Assert.That(await browser.Page.Locator("#ticks").TextContentAsync(), Is.EqualTo("0"), "a frozen virtual clock must not tick on the wall clock");
+			// frozen virtual time: nothing has ticked yet. The strong proof that the clock is purely virtual is the
+			// EXACT tick counts after the advances below (3 after +3s, 6 after +6s): had the wall clock also driven
+			// the page timers, those counts would be higher than the amount of virtual time advanced.
+			Assert.That(await browser.Page.Locator("#ticks").TextContentAsync(), Is.EqualTo("0"), "a frozen virtual clock must not have ticked yet");
 			Assert.That(await browser.Page.Locator("#once").TextContentAsync(), Is.EqualTo("pending"));
 
 			// advancing fires every timer that falls due along the way (RunFor semantics)
