@@ -3,8 +3,9 @@
 	<!-- Detect if we are used as a submodule in a parent repository, and if this is true, try to import the parent Directory.Build.props folder that could override the properties defined here -->
 	<!-- We use the fact that git-submodules have a .git _file_, instead of a .git _directory_, which can help prevent from an attacker somehow being able to inject a fake .props file above us -->
 	<!-- If this heuristic does not work, this can be worked around by setting the FDB_BUILD_PROPS_OVERRIDE env variable to a non-empty value -->
+	<!-- Set CORESDK_STANDALONE_BUILD=true to FORCE a standalone build that ignores the parent overrides entirely and restores this repo's own complete target set (net11.0;net10.0;net8.0 + netstandard2.0). Required when packing a release: a parent that trims targets (e.g. to net10/net11 only) would otherwise ship an INCOMPLETE .nupkg. Also use it when building/testing this repo on its own inside such a parent, to catch net8.0 / netstandard2.0-only issues a target-trimming parent would hide. -->
 	<Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))"
-	        Condition="Exists('$(MSBuildThisFileDirectory)../Directory.Build.props') AND ($([System.IO.File]::Exists('$(MSBuildThisFileDirectory)/.git')) OR '$(FDB_BUILD_PROPS_OVERRIDE)' != '')" />
+	        Condition="'$(CORESDK_STANDALONE_BUILD)' != 'true' AND Exists('$(MSBuildThisFileDirectory)../Directory.Build.props') AND ($([System.IO.File]::Exists('$(MSBuildThisFileDirectory)/.git')) OR '$(FDB_BUILD_PROPS_OVERRIDE)' != '')" />
 
 	<PropertyGroup>
 		<!-- All projects will build/pack/publish under "artifacts/*" -->
