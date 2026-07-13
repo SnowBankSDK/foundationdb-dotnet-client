@@ -55,4 +55,13 @@
 
 	</PropertyGroup>
 
+	<!-- net472 is a deliberate ".NET Framework validation" stopgap, only present when CoreSdkNetStandardEnabled
+	     adds it. Some test-only Microsoft.Extensions.* packages (e.g. Microsoft.Extensions.TimeProvider.Testing)
+	     ship a net462 asset but emit a "not tested on net472" advisory. They work here (the net472 suites run on
+	     the real .NET Framework CLR and are green), so the advisory is just noise: silence the TFM-support
+	     warnings for this target. Scoped to net472, so a parent that disables netstandard2.0/net472 never sees it. -->
+	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
+		<SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
+	</PropertyGroup>
+
 </Project>
