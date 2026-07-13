@@ -29,6 +29,7 @@
 // ReSharper disable CompareOfFloatsByEqualityOperator
 namespace FdbTop
 {
+	using System.CommandLine;
 	using SnowBank.Data.Json;
 
 	public static class Program
@@ -80,31 +81,21 @@ namespace FdbTop
 			string title = GetTitle();
 			try
 			{
-				// default settings
-				Options.ClusterFile = null;
-				Options.DefaultTimeout = TimeSpan.FromSeconds(10);
+				using var go = new CancellationTokenSource();
 
-				if (args.Length > 0)
+				var cmd = new FdbTopCommand(go.Token);
+				var result = cmd.Parse(args);
+				if (result.Errors.Count != 0)
 				{
-					//TODO: proper arguments parsing!
-					Options.ClusterFile = args[0];
+					foreach (var parseError in result.Errors)
+					{
+						Console.Error.WriteLine(parseError.Message);
+					}
+					Environment.ExitCode = 1;
+					return;
 				}
 
-				SetTitle("fdbtop");
-
-				// prefer the fdb_c library that is bundled with the tool (either next to the executable, or under runtimes/{rid}/native/ when running from source);
-				// if none is found, fall back to the operating system mechanism for locating a system-installed client library.
-				var (nativeLibraryPath, _, _, _) = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
-				if (nativeLibraryPath != null)
-				{
-					Fdb.Options.SetNativeLibPath(nativeLibraryPath);
-				}
-
-				Fdb.Start(620);
-				using (var go = new CancellationTokenSource())
-				{
-					MainAsync(args, go.Token).GetAwaiter().GetResult();
-				}
+				result.InvokeAsync(cancellationToken: go.Token).GetAwaiter().GetResult();
 			}
 			catch(Exception e)
 			{
@@ -117,7 +108,107 @@ namespace FdbTop
 			{
 				SetTitle(title);
 				Console.CursorVisible = true;
-				Fdb.Stop();
+			}
+		}
+
+		public sealed class FdbTopCommand : RootCommand
+		{
+			public FdbTopCommand(CancellationToken cancel)
+				: base("Monitor a live FoundationDB cluster.")
+			{
+				this.Options.Add(ClusterFileOption);
+				this.Options.Add(ConnectionStringOption);
+				this.Options.Add(ApiVersionOption);
+				this.Options.Add(AspireOption);
+				this.Options.Add(DockerOption);
+				this.Options.Add(TimeoutOption);
+				this.Arguments.Add(ClusterFileArgument);
+
+				this.SetAction((result) => RunTop(result));
+
+				this.Cancellation = cancel;
+			}
+
+			public CancellationToken Cancellation { get; }
+
+			private static readonly Argument<string?> ClusterFileArgument = new("clusterFile")
+			{
+				Description = "Optional path to a cluster file (same as --connfile).",
+				Arity = ArgumentArity.ZeroOrOne,
+			};
+
+			private static readonly Option<string?> ClusterFileOption = new("--connfile", [ "-c", "-C" ])
+			{
+				Description = "The path of a file containing the connection string for the FoundationDB cluster.",
+			};
+
+			private static readonly Option<string?> ConnectionStringOption = new("--connStr")
+			{
+				Description = "The connection string for the FoundationDB cluster.",
+			};
+
+			private static readonly Option<int?> ApiVersionOption = new("--api")
+			{
+				Description = "The API version level that should be used.",
+			};
+
+			private static readonly Option<bool> AspireOption = new("--aspire")
+			{
+				Description = "Connect to a local docker instance managed by .NET Aspire.",
+			};
+
+			private static readonly Option<int?> DockerOption = new("--docker")
+			{
+				Description = "Connect to a local docker instance running on the given port.",
+			};
+
+			private static readonly Option<int?> TimeoutOption = new("--timeout", [ "-t" ])
+			{
+				DefaultValueFactory = (_) => 10,
+				Description = "Default timeout (in seconds) for failed transactions.",
+			};
+
+			private async Task RunTop(ParseResult result)
+			{
+				var clusterFile = result.GetValue(ClusterFileOption) ?? result.GetValue(ClusterFileArgument);
+				var connectionString = result.GetValue(ConnectionStringOption);
+				var apiVersion = result.GetValue(ApiVersionOption);
+				var aspire = result.GetValue(AspireOption);
+				var docker = result.GetValue(DockerOption);
+				var timeout = result.GetValue(TimeoutOption) ?? 10;
+
+				if (aspire || docker != null)
+				{ // connect to a local FoundationDB running in Docker (optionally managed by .NET Aspire)
+					clusterFile = null;
+					var port = docker ?? 4550;
+					connectionString = "docker:docker@127.0.0.1:" + port.ToString();
+				}
+
+				apiVersion ??= (aspire || docker != null) ? 730 : !string.IsNullOrEmpty(connectionString) ? 720 : 620;
+
+				Program.Options.ClusterFile = clusterFile;
+				Program.Options.ConnectionString = connectionString;
+				Program.Options.DefaultTimeout = TimeSpan.FromSeconds(Math.Max(0, timeout));
+
+				SetTitle("fdbtop");
+
+				// prefer the fdb_c library that is bundled with the tool (either next to the executable, or under runtimes/{rid}/native/ when running from source);
+				// if none is found, fall back to the operating system mechanism for locating a system-installed client library.
+				var (nativeLibraryPath, _, _, _) = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
+				if (nativeLibraryPath != null)
+				{
+					Fdb.Options.SetNativeLibPath(nativeLibraryPath);
+				}
+
+				Fdb.Start(apiVersion.Value);
+				try
+				{
+					await MainAsync(this.Cancellation);
+				}
+				finally
+				{
+					Fdb.Stop();
+				}
 			}
 		}
 
@@ -126,7 +217,7 @@ namespace FdbTop
 
 		public static FdbClusterConnectionString? CurrentCoordinators;
 
-		private static async Task MainAsync(string[] args, CancellationToken cancel)
+		private static async Task MainAsync(CancellationToken cancel)
 		{
 			Console.CursorVisible = false;
 			Console.TreatControlCAsInput = true;
