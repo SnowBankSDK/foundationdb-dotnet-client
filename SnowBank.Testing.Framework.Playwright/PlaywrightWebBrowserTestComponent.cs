@@ -55,6 +55,13 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal Func<IConsoleMessage, string?>? ConsoleFormatter { get; set; }
 
+		internal bool SnapshotsEnabled { get; set; }
+
+		internal PlaywrightSnapshotOptions? SnapshotOptions { get; set; }
+
+		/// <summary>Snapshot writer for this browser, once started with <c>WithSnapshots()</c>; otherwise <see langword="null"/>.</summary>
+		public PlaywrightSnapshotWriter? Snapshots { get; private set; }
+
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask> StartingHandler { get; set; } = (_, _) => default;
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask> StoppingHandler { get; set; } = (_, _) => default;
@@ -240,6 +247,11 @@ namespace SnowBank.Testing.Framework.Playwright
 					this.Log($"# <JS> {e.Type}: {msg.Replace("\n", "\n#> ")}, Location={e.Location}");
 				}
 			};
+
+			if (this.SnapshotsEnabled)
+			{
+				this.Snapshots = new PlaywrightSnapshotWriter(this.Id, this.SnapshotOptions ?? new PlaywrightSnapshotOptions());
+			}
 
 			await this.StartingHandler(this, ct);
 		}
@@ -642,6 +654,12 @@ namespace SnowBank.Testing.Framework.Playwright
 				catch { /* the browser (or the driver connection) may already be gone */ }
 			}
 
+			if (this.Snapshots is { } snapshots)
+			{
+				try { await snapshots.WriteContactSheetAsync(ct); }
+				catch (Exception ex) { this.Log($"# <SNAP> contact sheet write failed (ignored): {ex.Message}"); }
+			}
+
 			await this.StoppingHandler(this, ct);
 		}
 
@@ -711,6 +729,10 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal Func<IConsoleMessage, string?>? ConsoleFormatter { get; private set; }
 
+		internal bool SnapshotsEnabled { get; private set; }
+
+		internal PlaywrightSnapshotOptions SnapshotOptions { get; } = new();
+
 		internal int? RemoteDebuggingPort { get; private set; }
 
 		internal bool UseVirtualClock { get; private set; }
@@ -758,6 +780,13 @@ namespace SnowBank.Testing.Framework.Playwright
 		{
 			Contract.NotNull(formatter);
 			this.ConsoleFormatter = formatter;
+		}
+
+		/// <summary>Enables browser snapshots (a full-page PNG per <c>Snapshots.CaptureAsync(...)</c> call, plus an HTML contact sheet written at teardown) into the per-test output directory.</summary>
+		public void WithSnapshots(Action<PlaywrightSnapshotOptions>? configure = null)
+		{
+			this.SnapshotsEnabled = true;
+			configure?.Invoke(this.SnapshotOptions);
 		}
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask>? StartingHandler { get; private set; }
@@ -858,6 +887,8 @@ namespace SnowBank.Testing.Framework.Playwright
 			host.ContextOptionMutators.AddRange(this.ContextOptionMutators);
 			host.InitScripts.AddRange(this.InitScripts);
 			host.ConsoleFormatter = this.ConsoleFormatter ?? host.ConsoleFormatter;
+			host.SnapshotsEnabled = this.SnapshotsEnabled || host.SnapshotsEnabled;
+			if (this.SnapshotsEnabled) host.SnapshotOptions = this.SnapshotOptions;
 			host.StartingHandler = this.StartingHandler ?? host.StartingHandler;
 			host.StoppingHandler = this.StoppingHandler ?? host.StoppingHandler;
 			host.RemoteDebuggingPort = this.RemoteDebuggingPort ?? host.RemoteDebuggingPort;
