@@ -1064,7 +1064,7 @@ namespace SnowBank.Testing.Framework
 
 		/// <summary>Stops this host's current incarnation - tears down the WebApplication, DI container, hub and its peer connections -
 		/// while KEEPING the host's identity, network registration, <see cref="RestartCount"/> and <see cref="Data"/> bag,
-		/// so it can be brought back up with <see cref="StartHost"/>.</summary>
+		/// so it can be brought back up with <see cref="StartHost(CancellationToken)"/>.</summary>
 		/// <remarks>Models a node going down (reboot, scale-in).
 		/// Any durable backing store (e.g. a shared FakeDb) is external and survives.
 		/// Other nodes' connections to this host break; their reconnect loops retry against the fresh incarnation once it starts.</remarks>
@@ -1128,6 +1128,7 @@ namespace SnowBank.Testing.Framework
 		/// and increments <see cref="RestartCount"/> so callbacks can branch on <see cref="IsRestart"/>.
 		/// Sub-components are restarted with it.</summary>
 		/// <param name="options">Options controlling the (re)start (currently a placeholder; defaults are used when <c>null</c>).</param>
+		/// <param name="startToken">Token used to cancel the (re)start.</param>
 		public async ValueTask StartHost(HostStartOptions? options, CancellationToken startToken)
 		{
 			options ??= new HostStartOptions();
@@ -1164,7 +1165,7 @@ namespace SnowBank.Testing.Framework
 			}
 		}
 
-		/// <summary>Restarts this host (and its sub-components): <see cref="StopHost"/> immediately followed by <see cref="StartHost"/>.
+		/// <summary>Restarts this host (and its sub-components): <see cref="StopHost"/> immediately followed by <see cref="StartHost(CancellationToken)"/>.
 		/// For a delayed restart, call StopHost, await your delay, then StartHost.</summary>
 		public ValueTask Restart(CancellationToken ct) => Restart(null, ct);
 

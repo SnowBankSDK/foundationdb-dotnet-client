@@ -338,7 +338,7 @@ namespace SnowBank.Testing.Framework
 				: throw new AssertionException($"There is no virtual test host named '{id}'");
 		}
 
-		/// <summary>Stops a virtual host's current incarnation (it can be brought back up with <see cref="StartHost"/>). Models a node going down (reboot, scale-in).</summary>
+		/// <summary>Stops a virtual host's current incarnation (it can be brought back up with <see cref="StartHost(IDistributedTestFeatureCollection, string, CancellationToken)"/>). Models a node going down (reboot, scale-in).</summary>
 		public static ValueTask StopHost(this IDistributedTestFeatureCollection collection, string id, CancellationToken ct)
 			=> ((DistributedTestComponent) collection.GetHost(id)).StopHost(ct);
 

@@ -58,7 +58,13 @@ namespace SnowBank.Testing.Framework
 		}
 
 		/// <summary>Forwards a browser-intercepted HTTP request onto the virtual network and returns the full response (status, headers, body).</summary>
+		/// <param name="method">HTTP method of the intercepted request.</param>
+		/// <param name="url">Target URL of the request, resolved on the virtual network.</param>
+		/// <param name="headers">Request headers to forward.</param>
+		/// <param name="body">Request body, or <see langword="null"/> for a request without a body.</param>
+		/// <param name="contentType">Content type of <paramref name="body"/>, if any.</param>
 		/// <param name="capture">When <see langword="true"/>, routes through the capturing <c>BetterHttpClient</c> path so the packet-capture filter fires; when <see langword="false"/>, uses a raw handler that bypasses capture.</param>
+		/// <param name="ct">Token used to cancel the operation.</param>
 		protected async Task<MeshResponse> ForwardToMeshAsync(HttpMethod method, Uri url, IEnumerable<KeyValuePair<string, string>> headers, byte[]? body, string? contentType, bool capture, CancellationToken ct)
 		{
 			Contract.NotNull(method);
