@@ -47,6 +47,10 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal List<Action<WebApplication>> ConfigureApplicationHandlers { get; set; } = [];
 
+		internal List<Action<BrowserTypeLaunchOptions>> BrowserOptionMutators { get; set; } = [];
+
+		internal List<Action<BrowserNewContextOptions>> ContextOptionMutators { get; set; } = [];
+
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask> StartingHandler { get; set; } = (_, _) => default;
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask> StoppingHandler { get; set; } = (_, _) => default;
@@ -157,7 +161,18 @@ namespace SnowBank.Testing.Framework.Playwright
 
 			// 2. Resolve configured execution mechanics from the isolated node container
 			var launchOptions = this.Services.GetRequiredService<BrowserTypeLaunchOptions>();
+			if (this.BrowserOptionMutators.Count > 0)
+			{ // apply on a clone so the shared DI singleton is never mutated (mirrors the remote-debugging clone below)
+				launchOptions = new BrowserTypeLaunchOptions(launchOptions);
+				foreach (var mutate in this.BrowserOptionMutators) mutate(launchOptions);
+			}
+
 			var contextOptions = this.Services.GetRequiredService<BrowserNewContextOptions>();
+			if (this.ContextOptionMutators.Count > 0)
+			{
+				contextOptions = new BrowserNewContextOptions(contextOptions);
+				foreach (var mutate in this.ContextOptionMutators) mutate(contextOptions);
+			}
 
 			// 3. Make sure Chromium is installed (self-healing, concurrency-safe), then launch a standalone worker thread
 			await this.EnsureBrowserAvailableAsync(ct);
@@ -673,6 +688,10 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		internal List<Action<WebApplication>> ApplicationHandlers { get; } = [];
 
+		internal List<Action<BrowserTypeLaunchOptions>> BrowserOptionMutators { get; } = [];
+
+		internal List<Action<BrowserNewContextOptions>> ContextOptionMutators { get; } = [];
+
 		internal int? RemoteDebuggingPort { get; private set; }
 
 		internal bool UseVirtualClock { get; private set; }
@@ -692,6 +711,20 @@ namespace SnowBank.Testing.Framework.Playwright
 		public void WithVirtualClock()
 		{
 			this.UseVirtualClock = true;
+		}
+
+		/// <summary>Mutates the browser launch options ON TOP of the component's defaults (does not replace them). Multiple calls compose in registration order.</summary>
+		public void WithBrowserOptions(Action<BrowserTypeLaunchOptions> configure)
+		{
+			Contract.NotNull(configure);
+			this.BrowserOptionMutators.Add(configure);
+		}
+
+		/// <summary>Mutates the browser context options (viewport, UserAgent, ...) ON TOP of the component's defaults (does not replace them). Multiple calls compose in registration order.</summary>
+		public void WithContextOptions(Action<BrowserNewContextOptions> configure)
+		{
+			Contract.NotNull(configure);
+			this.ContextOptionMutators.Add(configure);
 		}
 
 		internal Func<PlaywrightWebBrowserTestComponent, CancellationToken, ValueTask>? StartingHandler { get; private set; }
@@ -788,6 +821,8 @@ namespace SnowBank.Testing.Framework.Playwright
 
 			host.ConfigureServicesHandlers.AddRange(this.ServiceHandlers);
 			host.ConfigureApplicationHandlers.AddRange(this.ApplicationHandlers);
+			host.BrowserOptionMutators.AddRange(this.BrowserOptionMutators);
+			host.ContextOptionMutators.AddRange(this.ContextOptionMutators);
 			host.StartingHandler = this.StartingHandler ?? host.StartingHandler;
 			host.StoppingHandler = this.StoppingHandler ?? host.StoppingHandler;
 			host.RemoteDebuggingPort = this.RemoteDebuggingPort ?? host.RemoteDebuggingPort;
