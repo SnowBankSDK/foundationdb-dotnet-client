@@ -32,7 +32,7 @@ namespace SnowBank.Testing.Framework.Playwright
 	/// <summary>Result of waiting for a page to become ready.</summary>
 	/// <param name="Settled">When <see langword="true"/>, the page reached the "DOM ready" state before the deadline expired (phase 1).</param>
 	/// <param name="ElapsedMilliseconds">Time actually spent waiting.</param>
-	/// <param name="Detail">How the wait ended: <c>"ready"</c> (DOM ready and network quiet), <c>"network-busy"</c> (DOM ready but requests still in flight), or <c>"timeout-dom"</c>.</param>
+	/// <param name="Detail">How the wait ended: <c>"ready"</c> (DOM ready and network quiet, and the readiness predicate held if one was supplied), <c>"network-busy"</c> (DOM ready but requests still in flight), <c>"app-not-ready"</c> (quiet but the supplied predicate never held in time), or <c>"timeout-dom"</c>.</param>
 	public sealed record PageReadyResult(bool Settled, long ElapsedMilliseconds, string Detail);
 
 	/// <summary>"Smart" waits for Playwright pages: wait on a real readiness signal from the browser (DOM state,
@@ -119,7 +119,7 @@ namespace SnowBank.Testing.Framework.Playwright
 		/// <param name="timeoutMs">Maximum duration of phase 1 (DOM + framework).</param>
 		/// <param name="quietMs">Duration of network inactivity required to consider the page stable (debounce).</param>
 		/// <param name="networkTimeoutMs">Maximum duration of phase 2 (network quiet), deliberately short.</param>
-		public static async Task<PageReadyResult> WaitForPageReadyAsync(this IPage page, CancellationToken ct, int timeoutMs = 10_000, int quietMs = 400, int networkTimeoutMs = 3_000)
+		public static async Task<PageReadyResult> WaitForPageReadyAsync(this IPage page, CancellationToken ct, int timeoutMs = 10_000, int quietMs = 400, int networkTimeoutMs = 3_000, Func<IPage, CancellationToken, Task<bool>>? readyPredicate = null)
 		{
 			Contract.NotNull(page);
 			ct.ThrowIfCancellationRequested();
@@ -146,6 +146,26 @@ namespace SnowBank.Testing.Framework.Playwright
 			{
 				// the network never went quiet (ex: a page with a broken JS loop replaying requests): best-effort, carry on
 				detail = "network-busy";
+			}
+
+			if (readyPredicate is not null && detail == "ready")
+			{ // application-readiness gate (W5): once the network is quiet, also require the app predicate, bounded by networkTimeoutMs
+				bool appReady = false;
+				long predicateStart = sw.ElapsedMilliseconds;
+				while (sw.ElapsedMilliseconds - predicateStart < networkTimeoutMs)
+				{
+					ct.ThrowIfCancellationRequested();
+					try
+					{
+						if (await readyPredicate(page, ct).ConfigureAwait(false)) { appReady = true; break; }
+					}
+					catch (Exception e) when (e is PlaywrightException || e.GetType().Name is "TimeoutException")
+					{
+						// treat a predicate evaluation error like a page-side timeout: best-effort, keep polling until the budget expires
+					}
+					await Task.Delay(100, ct).ConfigureAwait(false);
+				}
+				if (!appReady) detail = "app-not-ready";
 			}
 
 			sw.Stop();
