@@ -24,7 +24,7 @@
 		<AssemblyTitle>SnowBank Testing SDK</AssemblyTitle>
 		<Description>Library for writing NUnit tests with the SnowBank SDK</Description>
 		<PackageTags>snowbank sdk nunit test testing tdd</PackageTags>
-		<!--<PackageReadmeFile>README.md</PackageReadmeFile>-->
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>snowbank.png</PackageIcon>
 		<GenerateDocumentationFile Condition="'$(Configuration)' != 'Debug'">true</GenerateDocumentationFile>
 		<IsPackable>true</IsPackable> <!-- must be forced to true, otherwise 'dotnet pack' does nothing on this project, for some reason... ? -->
@@ -32,7 +32,7 @@
 
 	<ItemGroup>
 		<None Include="../Common/snowbank.png" Pack="true" Visible="false" PackagePath="\" />
-		<!--<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />-->
+		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
 	</ItemGroup>
 
 	<ItemGroup>

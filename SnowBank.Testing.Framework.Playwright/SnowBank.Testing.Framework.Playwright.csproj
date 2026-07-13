@@ -22,6 +22,7 @@
 		<AssemblyTitle>SnowBank Distributed Testing SDK - Playwright</AssemblyTitle>
 		<Description>Playwright-based virtual web browser test component for the SnowBank distributed-test framework</Description>
 		<PackageTags>snowbank sdk nunit testing distributed playwright browser</PackageTags>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>snowbank.png</PackageIcon>
 		<GenerateDocumentationFile Condition="'$(Configuration)' != 'Debug'">true</GenerateDocumentationFile>
 		<IsPackable>true</IsPackable>
@@ -29,6 +30,7 @@
 
 	<ItemGroup>
 		<None Include="../Common/snowbank.png" Pack="true" Visible="false" PackagePath="\" />
+		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
 	</ItemGroup>
 
 	<ItemGroup>

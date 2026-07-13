@@ -20,13 +20,13 @@
 		<AssemblyTitle>SnowBank HTTP Packet Capture</AssemblyTitle>
 		<Description>Captures HTTP request and response traffic for diagnostics and testing of distributed .NET applications.</Description>
 		<PackageTags>snowbank sdk http capture diagnostics tracing testing</PackageTags>
-		<!--<PackageReadmeFile>README.md</PackageReadmeFile>-->
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<PackageIcon>snowbank.png</PackageIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<None Include="../Common/snowbank.png" Pack="true" Visible="false" PackagePath="\" />
-		<!--<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />-->
+		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
 	</ItemGroup>
 
 	<ItemGroup>
