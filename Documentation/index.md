@@ -1,9 +1,9 @@
-# FoundationDB .NET Client — Documentation
+# FoundationDB .NET Client: Documentation
 
-A C#/.NET binding for [FoundationDB](https://www.foundationdb.org/), the distributed, ordered, transactional key/value store — plus the general-purpose `SnowBank` libraries it is built on.
+A C#/.NET binding for [FoundationDB](https://www.foundationdb.org/), the distributed, ordered, transactional key/value store, plus the general-purpose `SnowBank` libraries it is built on.
 
 - **New here?** Read the [Introduction](introduction.md), then [Getting Started](getting-started.md).
-- **Building something real?** The [Guide](guide/index.md) is the main event — it walks from key encoding through transactions to advanced, distributed layers (change feeds, retention, fencing):
+- **Building something real?** The [Guide](guide/index.md) is the main event. It walks from key encoding through transactions to advanced, distributed layers (change feeds, retention, fencing):
   - [Keys, Values & Layers](guide/keys-and-layers.md)
   - [Transactions](guide/transactions.md)
   - [Advanced Layers](guide/advanced-layers.md)

@@ -34,7 +34,7 @@ This is the modern replacement for the older dynamic `subspace.Pack(...)` style.
 
 ### Ordered, monotonic keys with VersionStamps
 
-For queues, event logs, and change feeds — anything that needs globally-ordered, collision-free ids — let the database assign a **VersionStamp** at commit time:
+For queues, event logs, and change feeds (anything that needs globally-ordered, collision-free ids), let the database assign a **VersionStamp** at commit time:
 
 ```csharp
 var stamp = tr.CreateVersionStamp(userVersion);              // an incomplete stamp, filled at commit
@@ -53,7 +53,7 @@ tr.GetRange(subspace.Key("user", 123).ToRange()); // everything under one prefix
 FdbKeyRange.Between(subspace.Key(100), subspace.Key(200));  // [100, 200)
 ```
 
-Useful derivations (extension methods on any key): `key.Successor()` (the next key, an exclusive lower bound), `key.NextSibling()` (first key that doesn't have `key` as a prefix — an exclusive upper bound over its children), `subspace.First()` / `subspace.Last()`, and the `KeySelector`s `FirstGreaterOrEqual()` / `LastLessOrEqual()`.
+Useful derivations (extension methods on any key): `key.Successor()` (the next key, an exclusive lower bound), `key.NextSibling()` (first key that doesn't have `key` as a prefix, an exclusive upper bound over its children), `subspace.First()` / `subspace.Last()`, and the `KeySelector`s `FirstGreaterOrEqual()` / `LastLessOrEqual()`.
 
 ## Decoding
 
@@ -84,10 +84,17 @@ await db.WriteAsync(async tr =>
 }, ct);
 ```
 
-Two things to know:
+A few things to know:
 
 - **Resolve every transaction.** The prefix is stable in practice but not guaranteed forever; caching it yourself defeats the Directory layer and risks corruption.
-- **The `db.Root[...]` indexer descends one *segment* at a time.** `db.Root["a", "b"]` is *not* two segments — the two-argument overload is `(name, layerId)`. Chain the indexer (`db.Root["a"]["b"]`) or pass an `FdbPath`.
+- **Resolve opens; it does not create.** `Resolve` throws if the directory does not exist yet. Create it the first time with `location.CreateOrOpenAsync(tr)` in a read-write transaction, which is what a layer does on setup.
+- **The `db.Root[...]` indexer descends one *segment* at a time.** `db.Root["a", "b"]` is *not* two segments: the two-argument overload is `(name, layerId)`. Chain the indexer (`db.Root["a"]["b"]`) or pass an `FdbPath`.
+
+### Why paths instead of raw prefixes
+
+Think of a location as a folder in a file system, and the Directory layer as the table that maps a folder path to an i-node number. Your code thinks in readable paths; the database stores a short integer prefix. If `/Tenant/ACME/MyApp/v1/Documents/Books` is assigned prefix `42`, a key in it is stored as `(42, "BOOK_123")` instead of the full `("Tenant", "ACME", "MyApp", "v1", "Documents", "Books", "BOOK_123")`, saving dozens of bytes on every key.
+
+Prefixes are themselves tuple-encoded, so decoding a stored key with `TuPack.Unpack(...)` yields the prefix as the first element followed by your key's own elements (here, `(42, "BOOK_123")`). With **Directory Partitions**, the prefix is several integers, one per partition level, adding a few bytes per level.
 
 ## Encoding values
 
@@ -96,7 +103,7 @@ Two things to know:
 | Raw bytes / blob | `FdbValue.ToBytes(slice)` |
 | Empty value (index entries) | `FdbValue.Empty` |
 | Text | `FdbValue.ToTextUtf8(s)` / `ToTextUtf16(s)` |
-| A counter you'll mutate atomically | `FdbValue.ToFixed64LittleEndian(n)` — fixed little-endian is required for `AtomicAdd64` |
+| A counter you'll mutate atomically | `FdbValue.ToFixed64LittleEndian(n)` (fixed little-endian is required for `AtomicAdd64`) |
 | A tuple | `FdbValue.FromTuple(("a", 1))` |
 | JSON document | `FdbValue.ToJson(obj)` (CrystalJson) |
 
@@ -104,12 +111,12 @@ Reading back: `slice.ToInt64()`, `slice.ToStringUtf8()`, `CrystalJson.Deserializ
 
 ## Writing a Layer
 
-A **Layer** is the FoundationDB equivalent of a small data-access component (a map, an index, a document collection). Every layer in `FoundationDB.Layers.Common` and in the larger SnowBank layers follows the same shape:
+Rather than scatter database access across controllers and pages, wrap it in a **Layer**. A **Layer** is the FoundationDB equivalent of a small data-access component (a map, an index, a document collection). Every layer in `FoundationDB.Layers.Common` and in the larger SnowBank layers follows the same shape:
 
 1. The layer class is a **thin, reusable wrapper** over an `ISubspaceLocation` (plus codecs/options). It holds **no per-transaction state**.
 2. It implements `IFdbLayer<TState>`. `Resolve(tr)` resolves the location and returns a **`State`** holding the resolved `IKeySubspace`. Memoize it in `tr.Context` so repeated `Resolve(tr)` calls in one transaction are cheap.
 3. All real work is methods that take a transaction and use the `State`'s subspace to build keys.
-4. **The `State` must never escape the transaction** — don't store it in a field or reuse it across retries. (`tr.Context` local data is per-transaction, so memoizing there is safe; a layer field is not.)
+4. **The `State` must never escape the transaction**: don't store it in a field or reuse it across retries. (`tr.Context` local data is per-transaction, so memoizing there is safe; a layer field is not.)
 
 ### Worked example: a document store with a secondary index
 
@@ -166,11 +173,26 @@ await store.WriteAsync(db, (tr, st) => st.Insert(tr, book), ct);
 Book? b = await store.ReadAsync(db, (tr, st) => st.GetAsync(tr, "B1"), ct);
 ```
 
+### Composing layers in one transaction
+
+Because a layer's methods take a transaction rather than opening their own, one retry loop can drive several layers atomically. Insert a document, queue a background job, and publish an event in the same `WriteAsync`, and either all of them commit or none do:
+
+```csharp
+await db.WriteAsync(async tr =>
+{
+    await books.InsertAsync(tr, book);
+    await workers.QueueAsync(tr, new GenerateThumbnails(book.Id));
+    await feed.PublishAsync(tr, new BookCreated(book.Id));
+}, ct);
+```
+
+If the transaction fails to commit, it is as if the request never happened: no document, no job, no event.
+
 ### Maintaining a secondary index correctly
 
-Index entries are **derived data** — your code, not the database, keeps them in sync. This is where layers most often go wrong:
+Index entries are **derived data**: your code, not the database, keeps them in sync. This is where layers most often go wrong:
 
-- **To change the index you must know the OLD indexed value**, and you can only learn it from the **stored document** — never from an object the caller hands you (it may be stale, leaving an orphaned index entry). `Update`/`Patch`/`Delete` therefore read the current document and derive the old index key from *that*.
+- **To change the index you must know the OLD indexed value**, and you can only learn it from the **stored document**, never from an object the caller hands you (it may be stale, leaving an orphaned index entry). `Update`/`Patch`/`Delete` therefore read the current document and derive the old index key from *that*.
 - **Mutate the index in the same transaction as the document**, so it can never drift out of sync on a partial failure.
 - **Only rewrite the index when the indexed value actually changed.** For frequently-updated documents whose indexed field is stable, this avoids needless writes (and the conflicts they cause).
 
@@ -179,7 +201,7 @@ The example offers three update flavors, trading a read against caller obligatio
 | Method | Reads the old doc? | Use when |
 |---|---|---|
 | `UpdateAsync(tr, book)` | yes | the caller built a fresh `Book` and doesn't hold the original |
-| `UpdateAsync(tr, updated, original)` | no | the caller already read `original` **in the same transaction** (its read provides the conflict that keeps the index consistent — passing a stale `original` corrupts the index) |
+| `UpdateAsync(tr, updated, original)` | no | the caller already read `original` **in the same transaction** (its read provides the conflict that keeps the index consistent; passing a stale `original` corrupts the index) |
 | `PatchAsync(tr, id, patch)` | yes | cheap field bumps; a no-op patch (`updated == current`, by record value equality) writes nothing |
 
 ### Making layer keys human-readable

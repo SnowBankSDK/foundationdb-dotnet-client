@@ -1,6 +1,6 @@
 # Transaction Basics
 
-A transaction is the type that lets you interact with the database — reading the values of keys and/or modifying them. This page is the low-level reference for the transaction API; for the practical rules of using transactions well (idempotency, the 5-second limit, conflicts, atomic operations, watches), read the [Transactions guide](guide/transactions.md).
+A transaction is the type that lets you interact with the database, reading the values of keys and/or modifying them. This page is the low-level reference for the transaction API; for the practical rules of using transactions well (idempotency, the 5-second limit, conflicts, atomic operations, watches), read the [Transactions guide](guide/transactions.md).
 
 There are two kinds of transaction:
 
@@ -11,7 +11,7 @@ These are exposed via `IFdbReadOnlyTransaction` and `IFdbTransaction` (which ext
 
 ## Manual transactions
 
-You *can* create and manage transactions by hand. Note that `BeginTransaction`/`BeginReadOnlyTransaction` are synchronous, and `Set`/`Clear` stage mutations locally — nothing is durable until `CommitAsync()`:
+You *can* create and manage transactions by hand. Note that `BeginTransaction`/`BeginReadOnlyTransaction` are synchronous, and `Set`/`Clear` stage mutations locally; nothing is durable until `CommitAsync()`:
 
 ```csharp
 CancellationToken ct = /* ... */;
@@ -45,11 +45,11 @@ using (IFdbTransaction tr = db.BeginTransaction(ct))
 
 Every `IFdbDatabase` provides retry-loop helpers that handle all of the above for you: `ReadAsync`, `WriteAsync`, and `ReadWriteAsync`.
 
-- `ReadAsync` — read-only transactions; any attempt to write throws.
-- `WriteAsync` — read/write transactions that return no result (a `void`-like operation).
-- `ReadWriteAsync` — read/write transactions that return a result.
+- `ReadAsync`: read-only transactions; any attempt to write throws.
+- `WriteAsync`: read/write transactions that return no result (a `void`-like operation).
+- `ReadWriteAsync`: read/write transactions that return a result.
 
-The handler you pass is executed **at least once**; only the result of the last (successful) iteration is returned. On a retryable error the transaction is reset and the handler runs again; on a non-retryable error the loop aborts and rethrows. Every loop takes a caller-provided `CancellationToken` — often the only way to abort a transaction blocked on an outage.
+The handler you pass is executed **at least once**; only the result of the last (successful) iteration is returned. On a retryable error the transaction is reset and the handler runs again; on a non-retryable error the loop aborts and rethrows. Every loop takes a caller-provided `CancellationToken`, often the only way to abort a transaction blocked on an outage.
 
 ```csharp
 CancellationToken ct = /* ... */;
@@ -70,4 +70,4 @@ Slice result2 = await db.ReadWriteAsync(tr =>
 
 > ⚠️ The handler can run more than once, so it **must not mutate state outside the database** (no caches, counters, logging, or messaging inside the lambda). Do that work after the loop returns. This and the rest of the rules are covered in the [Transactions guide](guide/transactions.md).
 
-**Why both `WriteAsync` and `ReadWriteAsync`?** It's a C# type-resolution limitation: "write-only" handlers return `Task` and "read/write" handlers return `Task<T>` (down-castable to `Task`), which causes overload ambiguity. Separate names avoid it — by convention, anything named `Read…` returns a value.
+**Why both `WriteAsync` and `ReadWriteAsync`?** It's a C# type-resolution limitation: "write-only" handlers return `Task` and "read/write" handlers return `Task<T>` (down-castable to `Task`), which causes overload ambiguity. Separate names avoid it. By convention, anything named `Read…` returns a value.

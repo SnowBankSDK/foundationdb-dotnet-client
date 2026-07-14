@@ -1,6 +1,6 @@
 # Tuples
 
-> This page explains the tuple model in depth. In this library, tuples are how you encode **keys** (and sometimes values): the tuple binary encoding produces bytes whose sort order matches the logical order of the elements — exactly what FoundationDB's ordered keyspace needs. For how tuples become database keys via subspaces, see the [Keys, Values & Layers guide](guide/keys-and-layers.md).
+> This page explains the tuple model in depth. In this library, tuples are how you encode **keys** (and sometimes values): the tuple binary encoding produces bytes whose sort order matches the logical order of the elements: exactly what FoundationDB's ordered keyspace needs. For how tuples become database keys via subspaces, see the [Keys, Values & Layers guide](guide/keys-and-layers.md).
 
 _"A tuple is an ordered list of elements."_ - [Wikipedia](http://en.wikipedia.org/wiki/Tuple)
 
@@ -87,7 +87,7 @@ That's why there are several variants, all implementing `IVarTuple`:
 - `STuple<T1>` … `STuple<T1, …, T8>` are the equivalent of the BCL's `Tuple<…>`, but implemented as **structs** (up to 8 elements). They're efficient as a temporary step when building larger tuples, and ideal when you want type safety and good IntelliSense, since the element types are known at compile time.
 - `ListTuple` wraps an `object[]` and exposes a subset of it; taking a sub-range is cheap because it doesn't copy the items.
 - `JoinedTuple` glues two tuples together (of any type); `LinkedTuple` is the special case of appending a single value to an existing tuple.
-- Plus internal variants for parsed and cached representations — for example, ones that lazily decode only the elements you actually access, or that cache the binary encoding of a frequently-reused prefix.
+- Plus internal variants for parsed and cached representations: for example, ones that lazily decode only the elements you actually access, or that cache the binary encoding of a frequently-reused prefix.
 
 ### Creating a tuple
 

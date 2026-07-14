@@ -1,7 +1,17 @@
 - name: Introduction
   href: introduction.md
+- name: Setup
+  items:
+    - name: Prerequisites
+      href: prerequisites.md
+    - name: How it connects
+      href: foundationdb-101.md
+    - name: Cluster setup
+      href: cluster-setup.md
 - name: Getting Started
   href: getting-started.md
+- name: Aspire
+  href: aspire.md
 - name: Guide
   items:
     - name: Overview

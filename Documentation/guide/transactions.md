@@ -1,6 +1,6 @@
 # Transactions
 
-FoundationDB gives you serializable, ACID transactions over the whole keyspace. The catch is that a transaction may **conflict** and need to be retried, and it has hard limits on time and size. This binding handles the retries for you through a **retry loop** — but only if you use it correctly. This guide covers that loop and the behaviors you must design around.
+FoundationDB gives you serializable, ACID transactions over the whole keyspace. The catch is that a transaction may **conflict** and need to be retried, and it has hard limits on time and size. This binding handles the retries for you through a **retry loop**, but only if you use it correctly. This guide covers that loop and the behaviors you must design around.
 
 > This is the companion to the lower-level [Transaction Basics](../Transaction_Basics.md) page. If you're building a data-access *Layer*, read [Keys, Values & Layers](keys-and-layers.md) too.
 
@@ -35,19 +35,19 @@ long balance = await db.ReadWriteAsync(async tr =>
 }, ct);
 ```
 
-The loop **commits for you** (never call `CommitAsync` inside the handler) and re-runs the handler on retryable errors until it succeeds, the `CancellationToken` fires, or a non-retryable error is thrown. The split between `WriteAsync` and `ReadWriteAsync` is about whether you return a value, not about whether you read — both hand you a full read/write transaction; `ReadWriteAsync` simply has no "returns nothing" overload.
+The loop **commits for you** (never call `CommitAsync` inside the handler) and re-runs the handler on retryable errors until it succeeds, the `CancellationToken` fires, or a non-retryable error is thrown. The split between `WriteAsync` and `ReadWriteAsync` is about whether you return a value, not about whether you read. Both hand you a full read/write transaction; `ReadWriteAsync` simply has no "returns nothing" overload.
 
 ## The one rule: your handler must be idempotent
 
 > The handler can and will run more than once. Treat it as a pure function of database state.
 
-Never mutate external or global state inside the handler — no incrementing in-memory counters, adding to caches, logging "done", or sending messages. On a retry, those side effects happen again, but the earlier attempt's database writes were discarded. Do all such work **after** the loop returns successfully:
+Never mutate external or global state inside the handler: no incrementing in-memory counters, adding to caches, logging "done", or sending messages. On a retry, those side effects happen again, but the earlier attempt's database writes were discarded. Do all such work **after** the loop returns successfully:
 
 ```csharp
-// WRONG — _cache is mutated even on attempts that never commit
+// WRONG: _cache is mutated even on attempts that never commit
 await db.WriteAsync(tr => { tr.Set(k, v); _cache[id] = book; }, ct);
 
-// RIGHT — touch external state only after a successful commit
+// RIGHT: touch external state only after a successful commit
 await db.WriteAsync(tr => tr.Set(k, v), ct);
 _cache[id] = book;
 ```
@@ -67,7 +67,7 @@ A range scan that might be large must be **paged across transactions** (resume f
 
 A read-write transaction conflicts if another transaction commits a write to a key this transaction **read**, between its read version and its commit. The retry loop hides the retry, but conflicts cost latency. To reduce them:
 
-- **Use atomic mutations instead of read-modify-write** where you can — they don't read, so they create no read-conflict and never conflict with each other:
+- **Use atomic mutations instead of read-modify-write** where you can. They don't read, so they create no read-conflict and never conflict with each other:
   ```csharp
   tr.AtomicAdd64(counterKey, +1);            // value stored as fixed little-endian 64-bit
   tr.AtomicIncrement64(counterKey);
@@ -75,9 +75,9 @@ A read-write transaction conflicts if another transaction commits a write to a k
   tr.AtomicMax(key, v); tr.AtomicMin(key, v); tr.AtomicAnd/Or/Xor(key, mask);
   ```
 - **Snapshot reads** (`tr.Snapshot.GetAsync/GetRange`) read without creating a read-conflict on those keys. Use them when a slightly stale read is acceptable (counting shards, statistics).
-- **Shard write-hot keys** across N sub-keys and aggregate on read — a single frequently-written key serializes all writers (see `FdbHighContentionCounter`).
+- **Shard write-hot keys** across N sub-keys and aggregate on read: a single frequently-written key serializes all writers (see `FdbHighContentionCounter`).
 
-## Watches — reacting to changes without polling
+## Watches: reacting to changes without polling
 
 `tr.Watch(key, ct)` returns an `FdbWatch` that completes when the key's value changes after the transaction commits. Create it inside a transaction and `await` it **outside**:
 
@@ -86,11 +86,11 @@ FdbWatch watch = await db.ReadWriteAsync(async tr => tr.Watch(signalKey, ct), ct
 await watch;   // resolves when signalKey changes
 ```
 
-- Pass an **application/outer** `CancellationToken` to `Watch`, **not** `tr.Cancellation` — the watch outlives the transaction.
+- Pass an **application/outer** `CancellationToken` to `Watch`, **not** `tr.Cancellation`: the watch outlives the transaction.
 - A watch only **notifies** that the key changed; it does not deliver the new value. When it fires, re-read.
-- Watches are limited per database — use them for low-frequency signals, not high-throughput streaming.
+- Watches are limited per database, so use them for low-frequency signals, not high-throughput streaming.
 
-The canonical use is a **signal-key fan-out**: a producer bumps a single watched key with `AtomicIncrement` in the same transaction as its data write; consumers watch that key and re-read when it fires. This is the backbone of pub/sub and change feeds — see [Advanced Layers](advanced-layers.md).
+The canonical use is a **signal-key fan-out**: a producer bumps a single watched key with `AtomicIncrement` in the same transaction as its data write; consumers watch that key and re-read when it fires. This is the backbone of pub/sub and change feeds (see [Advanced Layers](advanced-layers.md)).
 
 ## Layers inside transactions
 
@@ -106,10 +106,10 @@ await db.WriteAsync(async tr =>
 }, ct);
 ```
 
-When `Resolve` needs an argument — most commonly a tenant — implement `IFdbLayer<TState, TOptions>`, whose `Resolve(tr, options)` and retry-loop helpers take that argument.
+When `Resolve` needs an argument (most commonly a tenant), implement `IFdbLayer<TState, TOptions>`, whose `Resolve(tr, options)` and retry-loop helpers take that argument.
 
 ## Errors
 
-`FdbException` carries an `FdbError` code. Retryable codes (conflicts, `transaction_too_old`, …) are handled by the loop — don't catch them inside the handler. Throwing your *own* exception out of the handler aborts the transaction and propagates (no commit, no retry); use that for genuine application errors.
+`FdbException` carries an `FdbError` code. Retryable codes (conflicts, `transaction_too_old`, …) are handled by the loop, so don't catch them inside the handler. Throwing your *own* exception out of the handler aborts the transaction and propagates (no commit, no retry); use that for genuine application errors.
 
-Next: **[Advanced Layers](advanced-layers.md)** — how the cluster processes all this, and how to make it fast.
+Next: **[Advanced Layers](advanced-layers.md)**, how the cluster processes all this, and how to make it fast.

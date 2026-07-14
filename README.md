@@ -9,517 +9,80 @@ C#/.NET binding for the [FoundationDB](https://www.foundationdb.org/) client lib
 [![Build](https://img.shields.io/github/actions/workflow/status/SnowBankSDK/foundationdb-dotnet-client/dotnetcore.yml)](https://github.com/SnowBankSDK/foundationdb-dotnet-client/actions/workflows/dotnetcore.yml)
 [![Last Commit](https://img.shields.io/github/last-commit/SnowBankSDK/foundationdb-dotnet-client)](https://github.com/SnowBankSDK/foundationdb-dotnet-client/commits/master/)
 
+> **New to FoundationDB, or just trying it out?** The [documentation](Documentation/introduction.md) walks you through it end to end: [Prerequisites](Documentation/prerequisites.md), [How it connects](Documentation/foundationdb-101.md), [Cluster setup](Documentation/cluster-setup.md), then [Getting Started](Documentation/getting-started.md). It covers installing .NET and a local cluster, plus the one pitfall (matching the `FoundationDB.Client.Native` package to your cluster version) that otherwise shows up as mysterious timeouts.
+>
+> Already know FoundationDB? The steps below get you running, and [Getting Started](Documentation/getting-started.md) has the first read and write.
+
 # How to use
 
-To get started, install the [FoundationDB.Client](https://www.nuget.org/packages/FoundationDB.Client) package into your application.
+Install the managed binding and the native client. Pin the native package to your cluster's `major.minor` version (see [Cluster setup](Documentation/cluster-setup.md)); it is the piece that must match your cluster:
 
 ```console
 dotnet add package FoundationDB.Client
+dotnet add package FoundationDB.Client.Native --version "7.4.*"   # match your cluster's version
 ```
 
-You will also probably require the [FoundationDB.Client.Native](https://www.nuget.org/packages/FoundationDB.Client.Native) package that redistributes the native FoundationDB Client libraries for your platform: `fdb_c.dll` on Windows, `libfdb_c.so` on Linux, and `libfdb_c.dylib` on macOS. They are available for x64 and arm64.
+Register FoundationDB with the dependency-injection container in your `Program.cs`. This adds an `IFdbDatabaseProvider` singleton. Point it at a cluster one of three ways, most-preferred first:
 
-```console
-dotnet add package FoundationDB.Client.Native
-```
-
-For local development, you can use [.NET Aspire](https://learn.microsoft.com/en-us/dotnet/aspire/) to quickly spin up a working environment using a locally hosted Docker container.
-
-> **Note:** Using .NET Aspire for local development requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) on Windows.
-
-## Using Dependency Injection
-
-While you can use the binding without dependency injection, it is very easy to register the `IFdbDatabaseProvider` service with the DI container and inject it into any controller, razor page, or other service that needs to query the database.
-
-You can decide to manually configure the database connection, in which case you will need to provide a valid set of settings (API level, root path, ...) as well as copy a valid `fdb.cluster` file so that the process can connect to an existing FoundationDB cluster.
-
-Alternatively, you can use the __.NET Aspire__ integration to automatically setup a local FoundationDB Docker container, and inject the correct connection string.
-
-### Manual configuration
-
-In your Program.cs, you should register FoundationDB with the DI container:
-
-```CSharp
-using FoundationDB.Client; // this is the main namespace of the library
-
-var builder = WebApplication.CreateBuilder(args);
-
-// ...
-
-// Hook up FoundationDB types and interfaces to the DI container.
-// You MUST select the appropriate API version that matches the target cluster.
-// For example, '730' requires at least FoundationDB v7.3.x
-builder.Services.AddFoundationDb(730, options =>
-{
-    // auto-start the connection to the cluster on the first request
-    options.AutoStart = true; 
-
-    // you can configure additional options here, like the path to the .cluster file, default timeouts, ...
-});
-
-var app = builder.Build();
-
-// ...
-
-// note: you don't need to configure anything for this step
-
-app.Run();
-
-```
-
-This will register an instance of the `IFdbDatabaseProvider` singleton, that you can then inject into other types.
-
-### Using Aspire
-
-It is possible to add a FoundationDB cluster resource to your Aspire application model, and pass a reference to this cluster to the projects that need it.
-
-For this, you will need to install the following NuGet packages:
-
-In the AppHost project:
-```console
-dotnet add package FoundationDB.Aspire.Hosting
-```
-
-In each of the projects that need to connect to the FoundationDB cluster:
-```console
-dotnet add package FoundationDB.Aspire
-```
-
-For local development, a local FoundationDB node will be started using the `foundationdb/foundationdb` Docker image, and all projects that use the cluster reference will have a temporary Cluster file pointing to the local instance.
-
-> **Note:** You must have Docker installed on your development machine. See the [Aspire getting started guide](https://learn.microsoft.com/en-us/dotnet/aspire/get-started/add-aspire-existing-app#prerequisites) for details.
-
-In the Program.cs of your AppHost project:
-```c#
-private static void Main(string[] args)
-{
-    var builder = DistributedApplication.CreateBuilder(args);
-
-    // Define a locally hosted FoundationDB cluster
-    var fdb = builder
-        .AddFoundationDb("fdb",
-            apiVersion: 730,
-            root: "/Tenant/ACME/MySuperApp/v1",
-            clusterVersion: "7.4.6",
-            rollForward: FdbVersionPolicy.Exact
-         );
-
-    // Project that needs a reference to this cluster
-    var backend = builder
-        .AddProject<Projects.AwesomeWebApiBackend>("backend")
-        //...
-        .WithReference(fdb); // register the fdb cluster connection
-
-    // ...
-}
-```
-
-> **Note:** While the Aspire host is running, FoundationDB will be available on port `4550`, and can be reached using the `docker:docker@127.0.0.1:4550` connection string.
-
-On the very first start, the cluster will be unavailable until a `create single ssd` command is executed. The simplest solution is to use `Docker Desktop` to run `fdbcli` inside the container. Once this is done, you should probably restart the Aspire host.
-
-For testing/staging/production, or "non local" development, it is also possible to configure a FoundationDB connection resource that will pass the specified Cluster file to the projects that reference the cluster resource.
-
-In the Program.cs of your AppHost project:
-```c#
-private static void Main(string[] args)
-{
-    var builder = DistributedApplication.CreateBuilder(args);
-
-    // Define an external FoundationDB cluster connection
-    var fdb = builder
-        .AddFoundationDbCluster("fdb",
-            apiVersion: 730,
-            root: "/Tenant/ACME/MySuperApp/v1",
-            clusterFile: "/SOME/PATH/TO/testing.cluster"
-         );
-
-    // Project that needs a reference to this cluster
-    var backend = builder
-        .AddProject<Projects.AwesomeWebApiBackend>("backend")
-        //...
-        .WithReference(fdb); // register the fdb cluster connection
-
-    // ...
-}
-```
-
-Then, in the Program.cs, or where you are declaring your services with the DI, use the following extension method to add support for FoundationDB:
-
-```c#
-var builder = WebApplication.CreateBuilder(args);
-
-// Setup Aspire services...
-builder.AddServiceDefaults();
-//...
-
-// Hookup the FoundationDB component
-// note: "fdb" is the same name we used with AddFoundationDb(...) in the AppHost above.
+```csharp
+// 1. Recommended: with the .NET Aspire integration, the AppHost supplies the connection.
+//    Reference the FoundationDB.Aspire package, then:
 builder.AddFoundationDb("fdb");
 
-// ...rest of the startup logic....
+// 2. Manual, from an fdb.cluster file on disk:
+builder.Services.AddFoundationDb(740, options =>
+    options.ConnectionOptions.ClusterFile = "/etc/foundationdb/fdb.cluster");
+
+// 3. Manual, from the cluster's connection string:
+builder.Services.AddFoundationDb(740, options =>
+    options.ConnectionOptions.ConnectionString = "docker:docker@127.0.0.1:4500");
 ```
 
-This will automatically register an instance of the `IFdbDatabaseProvider` service, automatically configured to connect the FDB local or external cluster defined in the AppHost.
+The recommended path is [.NET Aspire](Documentation/aspire.md), which provisions a local cluster and injects the connection for you.
 
-## Writing a simple Document Collection
+Inject that provider (it arrives as the `db` parameter below) and go through the retry loop. Here are two Minimal API endpoints: one lists every greeting, the other adds one.
 
-Let's say we have a `Books` Razor Page, accessible via the `/Books/{id}` route, that will display a summary page for the corresponding book.
-
-Assuming that we already have stored each book as a JSON document in a "collection" or key/value pairs,
-where the key is the ID of the book, and the value is the book encoded as JSON bytes.
-
-The `OnGet` method of this page needs to retrieve the JSON bytes for this document, deserialize the `Book` instance, and store it in the PageModel before rendering the HTML page.
-
-```c#
-namespace MyWebApp.Pages
-{
-
-    using FoundationDB.Client;
-
-    /// <summary>Represent a Book that will be stored (as JSON) into the database</summary>
-    public sealed record Book
-    {
-        public required string Id { get; init; }
-
-        public required string Title { get; init; }
-
-        public required string ISBN { get; init; }
-
-        public required string AuthorId { get; init; }
-
-        // ...
-
-    }
-
-    /// <summary>This page is used to display the details of a specific book</summary>
-    /// <remarks>Accessible via the route '/Books/{id}'</remarks>
-    public class BooksModel : PageModel
-    {
-
-        public BooksModel(IFdbDatabaseProvider db)
-        {
-            this.Db = db;
-        }
-
-        private IFdbDatabaseProvider Db { get; }
-
-        public Book Book { get; private set; }
-
-        public async Task OnGet(string id, CancellationToken ct)
-        {
-            // perform parameter validation, ACL checks, and any pre-processing here
-
-            // start a read-only retry-loop
-            Slice jsonBytes = await this.Db.ReadAsync((IFdbReadOnlyTransaction tr) =>
-            {
-                // Read the value of the ("Books", <ID>) key
-                Slice value = await tr.GetAsync(TuPack.Pack(("Books", id)));
-
-                // the transaction can be used to read additional keys and ranges,
-                // and has a lifetime of max. 5 seconds.
-
-                return value;
-            }, ct);
-
-            // here you can perform any post-processing of the result, outside of the retry-loop
-
-            // if the key does not exist in the database, GetAsync(...) will return Slice.Nil
-            if (jsonBytes.IsNull)
-            {
-                // This book does not exist, return a 404 page to the browser!
-                return NotFound();
-            }
-
-            // If the key exists, then GetAsync(...) will return its value as bytes,
-            // that can be deserialized into a Book instance.
-            Book book = JsonSerializer.Deserialize<Book>(jsonBytes.Span);
-
-            // perform any checks and validation here, like converting the Model
-            // from the database into a ViewModel (for the razor template)
-
-            this.Book = book;
-        }
-    }
-}
-```
-
-Here is a description of each steps:
-- We first inject an instance of the `IFdbDatabaseProvider` via the constructor.
-- Inside the `OnGet(...)` action, we can call any of the `ReadAsync`, `ReadWriteAsync` or `WriteAsync` methods on this instance, to start a transaction retry-loop.
-- Inside the retry-loop, you'll receive either an `IFdbReadOnlyTransaction` (read-only) or an `IFdbTransaction` (read-write).
-- We use this transaction to read the value of the `("Books", <id>)` key from the database.
-  - Please DO NOT mutate any global state from within the transaction handler! The handler could be called MULTIPLE TIMES if there are any conflicts or retryable errors!
-  - Try to perform any pre-processing or post-processing OUTSIDE of the retry-loop. Remember, the transaction instance is only valid for 5 seconds!
-- After the retry loop, inspect the result:
-  - If the key was not found in the database, `GetAsync(...)` will have returned `Slice.Nil`, in which case `IsNull` will be `true`.
-  - Otherwise, `GetAsync(...)` will have returned a `Slice` containing the bytes of the value, which are expected to be a JSON document.
-- We de-serialize the JSON document into a `Book` record, that we can then pass to the Razor Template to be rendered into an HTML page.
-
-## Using the Directory Layer
-
-In real-world usage, it is __strongly encouraged__ to use the __Directory Layer__ to organize your data into <b>subspaces</b>, that can help you split the database into independent "containers".
-
-The Directory Layer emulates a tree of "Subspace Directories", and maintains a mapping from paths to short integer prefixes.
-Each directory can be seen as the equivalent of a "folder" in a traditional disk volume, where the file system would allocate a cluster or i-node number: applications will think using paths and folder names, while the file system will use integers to point to location on the disk.
-
-For example, if the path `/Tenant/ACME/MySuperApp/v1/Documents/Books` is given the prefix `42`, then the keys in this subspace will be shortened to `(42, "BOOK_123")` instead of the very long `("Tenant", "ACME", "MySuperApp", "v1", "Documents", "Books", "BOOK_123")`, allowing for a reduction of almost 50 bytes per key.
-
-In your AppHost:
 ```csharp
+// GET /greetings : read them all back
+app.MapGet("/greetings", (IFdbDatabaseProvider db, CancellationToken ct) =>
+    db.ReadAsync(async tr =>
+    {
+        // resolve the subspace where the Greetings collection's keys are stored
+        var subspace = await db.Root["Examples"]["Greetings"].Resolve(tr);
 
-    // Define a locally hosted FoundationDB cluster
-    var fdb = builder
-        .AddFoundationDb("fdb",
-            apiVersion: 730,
-            root: "/Tenant/ACME/MySuperApp/v1",
-            clusterVersion: "7.4.6",
-            rollForward: FdbVersionPolicy.Exact
-        );
-```
+        // scan every key under that subspace and decode each value back to text
+        return await tr.GetRange(subspace.ToRange())
+            .Select(kv => kv.Value.ToStringUtf8())
+            .ToListAsync();
+    }, ct));
 
-In you web application project:
-```csharp
-public sealed class BookOptions
+// POST /greetings?text=... : add a new one
+app.MapPost("/greetings", async (IFdbDatabaseProvider db, string text, CancellationToken ct) =>
 {
+    await db.WriteAsync(async tr =>
+    {
+        // resolve the Greetings subspace, creating the directory the first time
+        // (a plain Resolve would only open one that already exists)
+        var subspace = await db.Root["Examples"]["Greetings"].CreateOrOpenAsync(tr);
 
-    /// <summary>Path to the root subspace of the application, where all data is stored</summary>
-    public FdbPath BasePath { get; set; } // ex: "Documents/Books"
-
-}
-
-// ...
-
-builder.Services.Configure<BookOptions>(options =>
-{
-    // note: in practice, this value should be read from the Configuration
-    options.BasePath = FdbPath.Relative("Documents", "Books");
+        // store the greeting under a fresh, unique key
+        tr.Set(subspace.Key(Guid.NewGuid()), FdbValue.ToTextUtf8(text));
+    }, ct);
 });
 ```
 
-In your Razor Page:
-```csharp
-public class BooksModel : PageModel
-{
+Keys are built with `subspace.Key(...)` and stay lazily tuple-encoded until the transaction runs, the retry loop handles FoundationDB's conflict-and-retry model, and the Directory layer (`db.Root[...]`) maps readable paths to short binary prefixes so your keyspace stays tidy.
 
-    public BooksModel(IOptions<BookOptions> options, IFdbDatabaseProvider db)
-    {
-        this.Options = options;
-        this.Db = db;
-    }
+**Full walkthrough:** the [documentation](Documentation/introduction.md) takes you from zero (installing .NET, running a local cluster) to your first read and write, then into modeling data with the Directory layer and Layers, and running it all with [.NET Aspire](Documentation/aspire.md).
 
-    private IFdbDatabaseProvider Db { get; }
+What you get:
 
-    private IOptions<BookOptions> Options { get; }
-
-    // ... other properties unchanged
-
-    public async Task OnGet(string id, CancellationToken ct)
-    {
-        // Starts a transaction to read the value of the document in the database
-        Slice jsonBytes = await this.Db.ReadAsync((tr) =>
-        {
-            // Get the location that corresponds to this path
-            var location = this.Db.Root[this.Options.Value.BasePath];
-
-            // "Resolve" this location into a Directory Subspace
-            // that will add the matching prefix to our keys
-            var subspace = await location.Resolve(tr);
-
-            // Use this subspace to generate our key:
-            var key = subspace.Key(id);
-
-            // Read the value of the key in the database.
-            Slice value = await tr.GetAsync(key);
-            // note: the key will be rendered into bytes inside GetAsync(),
-            // using pooled buffers or the stack for small keys
-
-            return value;
-        }, ct);
-
-        // The rest of the logic is the same a the previous version
-        // ...
-    }
-
-}
-```
-
-The call to `location.Resolve()` queries the Directory Layer to resolve the logical path into a key _prefix_, which will usually be two or three bytes long.
-
-The call to `subspace.Key(...)` returns a key that is a small struct wrapping the id (ex: `"BOOK_123"`) and the resolved `subspace` prefix.
-
-This key will not be immediately "rendered" into bytes, meaning it can be further manipulated, converted into a range, other items can be added to it. It is only when it is passed to `tr.GetAsync(...)` that the key will be converted into bytes, using pooled buffers (or the stack for short keys).
-
-In this example, the subspace prefix (`'\x15\x2A'`) and the binary representation of the string `"BOOK_123"` (`'\x02BOOK_123_\x00'`) will be combined
-into the complete binary key `'\x15\x2A\x02BOOK_123_\x00'` which (hopefully) contains the bytes for our JSON document in the database.
-
-A nice property of the Directory Layer is that it also uses the Tuple Encoding to generate the prefixes (from small integers), meaning that decoding the complete key back into a tuple (using `TuPack.Unpack(...)`) will produce a tuple with the subspace prefix as the first element,
-followed by the rest of the elements that make up the key. In our example, it will decode into the tuple `(42, "BOOK_123")`.
-
-Please note that, if you are using **Directory Partitions**, the prefix can be composed of multiple integers (one per partition level).
-If, for example, the `/Tenants/ACME` directory is a **partition** with allocated prefix `(42, ...)` (`'\x15\x2A'` in binary),
-and `./MySuperApp/v1/Documents/Books` is a folder within this partition with allocated prefix `(1234, ...)` (`'\x16\x04\xD2'` in binary),
-then all the keys inside this folder will use the prefix `(42, 1234, ...)` (`'\x15\x2A\x16\x04\xD2'` in binary) adding an overhead of 5 bytes per key.
-
-## Working with Layers
-
-Writing database logic directly inside Razor Pages or API controllers is not very practical or even desirable! In a real application, all this logic should be moved into a separate "data provider" abstraction.
-
-In the FoundationDB ecosystem, such abstractions are commonly called __Layers__.
-
-Some layers can be very simple, directly accessing the database via the low level Key/Value API: `GetAsync`, `GetRange`, `Set`, `Clear`, ...
-
-Other layers can build on top of other layers, adding a new abstraction level, to provide Maps, Indexes, Queues, Stacks, etc...
-
-You can build more and more complex layers until you end up with abstractions such as Document Collections, PubSub, Message Queues, Worker Pools, Metrics, Vector Databases, ...
-
-In our simple example, let's imagine that we want to create a `BooksProvider` service that can create, update, read and query books.
-
-This service would be injected into the controller and provide a set of nicer methods, like `InsertAsync`, `UpdateAsync`, `FetchAsync`, etc...
-
-```csharp
-public sealed class BooksProviderOptions
-{
-
-    /// <summary>Path to the root subspace of the application, where all data is stored</summary>
-    public FdbPath BasePath { get; set; } // ex: "Documents/Books"
-
-    // any other relevant options...
-}
-
-public sealed class BooksProvider
-{
-
-    public BooksProvider(IFdbDatabaseProvider db, IOptions<BooksProviderOptions> options)
-    {
-        this.Db = db;
-        this.Options = options.Value;
-
-        // get the location that corresponds to this path
-        this.Location = this.Db.Root[this.Options.BasePath];
-    }
-
-    public IFdbDatabaseProvider Db { get; }
-
-    public BooksProviderOptions Options { get; }
-
-    public ISubspaceLocation Location { get; }
-
-    public async Task InsertAsync(IFdbTransaction tr, Book book)
-    {
-        // first, convert the book into JSON
-        Slice jsonBytes = /* use your preferred library to serialize a Book into bytes */
-
-        // we need to resolve the subspace
-        var subspace = await this.Location.Resolve(tr);
-
-        // define the key that will hold this document in this subspace
-        var key = subspace.Key(book.Id);
-
-        // set the value of the this key to be the JSON bytes for this new document
-        tr.Set(key, jsonBytes);
-    }
-
-    public async Task<Book?> FetchAsync(IFdbTransaction tr, string id)
-    {
-        // we need to resolve the subspace
-        var subspace = await this.Location.Resolve(tr);
-
-        // define the key that should hold this document in this subspace
-        var key = subspace.Key(id);
-
-        // and store the document
-        var jsonBytes = await tr.GetAsync(key);
-
-        if (jsonBytes.IsNull)
-        { // Document not found !
-            return null;
-        }
-
-        // Deserialize the book
-        Book book = /* use your preferred library to deserialize bytes back into a Book */
-
-        return book;
-    }
-
-    // other methods...
-}
-```
-
-With this simple class, we have created an abstraction that resembles a `Dictionary<string, Book>`, except that it will be stored in the database.
-
-Update your main startup logic to register `BooksProvider` with the DI:
-
-```csharp
-builder.Services
-    .AddSingleton<BooksProvider>()
-    .Configure<BooksProviderOptions>(options =>
-    {
-        options.BasePath = FdbPath.Relative("Documents", "Books");
-        // other settings...
-    });
-```
-
-Now that we have a `BooksProvider`, we can simplify our Razor Page as follows:
-
-```csharp
-public class BooksModel : PageModel
-{
-
-    public BooksModel(BooksProvider books, IFdbDatabaseProvider db)
-    {
-        this.Books = books;
-        this.Db = db;
-    }
-
-    private BooksProvider Books { get; }
-
-    private IFdbDatabaseProvider Db { get; }
-
-    public Book Book { get; private set; }
-
-    public async Task OnGet(string id, CancellationToken ct)
-    {
-        // simply call our provider to fetch the book with this id.
-        this.Book = await this.Db.ReadAsync(tr => this.Books.FetchAsync(tr, id), ct);
-    }
-
-}
-```
-
-You may notice that we are still creating the transaction inside `OnGet`, and passing the transaction to our provider,
-rather than letting it creates its own transaction.
-
-This is because, if the transaction is handled by the controller itself, it can _combine_ multiple layers inside the _same_ transaction.
-
-For example, you might update a book in a Document Collection (with indexes), queue a background job using to Worker Pool, and publish an event to a PubSub channel, all within the same transaction.
-
-```csharp
-public async Task OnPost(Book book, CancellationToken ct)
-{
-    // perform some model validation, ACL checks, ...
-
-    await this.Db.WriteAsync(async tr =>
-    {
-            // insert the new book in the collection
-            await this.Books.InsertAsync(book)
-
-            // instruct a worker to start converting the various thumbnails for the book
-            await this.WorkerPool.QueueWorkItemAsync(new GenerateThumbnailsForNewBookEvent()
-            {
-                Id = book.Id,
-                /* args ... */
-            });
-
-            // push an event notifying subscribers that a new book was created
-            await this.PubSub.Notify(new BookCreationEvent { Id = book.Id, /* args... */});
-    }, ct);
-
-    // handle post-processing, logging, redirecting to the landing page for the new book...
-}
-```
-
-This layered approach ensures __atomicity__: if any step fails, or if the transaction fails to commit for any reason, it will be as if the request never happened: no document was added, no work item was queued, and no event was published.
+- **Strongly-typed, lazy keys**: `subspace.Key("user", 123)` tuple-encodes itself only when handed to a transaction. No manual byte wrangling.
+- **A retry loop**: `ReadAsync` / `WriteAsync` / `ReadWriteAsync` handle FoundationDB's conflict-and-retry model for you.
+- **The Directory layer**: map readable paths to short, dense key prefixes.
+- **Layers**: a small contract (`IFdbLayer<TState>`) for reusable, composable data access.
+- **Allocation-consciousness**: `Slice`, pooled buffers, and `struct` keys/values keep the hot path free of needless `byte[]`.
+- **.NET Aspire**: start a local cluster and inject the connection automatically. See [Aspire](Documentation/aspire.md).
 
 # Deployment
 
@@ -562,7 +125,7 @@ If you need to troubleshoot the connection to the FoundationDB cluster, from the
 
 # AI-assisted development (Claude Code / Agent Skills)
 
-This repository ships a set of **Agent Skills** that teach AI coding agents how to use this library *correctly* — the parts that are easy to get wrong when "vibe-coded": key/value encoding, subspaces and the Directory layer, writing custom Layers, the transaction retry loop, advanced/distributed patterns (change feeds, leases, retention, fencing), and the `Slice` binary toolkit. They live under [`.claude/skills/`](.claude/skills/) and follow the open [Agent Skills](https://agentskills.io) `SKILL.md` format, so they also work with other agents that support it.
+This repository ships a set of **Agent Skills** that teach AI coding agents how to use this library *correctly*, the parts that are easy to get wrong when "vibe-coded": key/value encoding, subspaces and the Directory layer, writing custom Layers, the transaction retry loop, advanced/distributed patterns (change feeds, leases, retention, fencing), and the `Slice` binary toolkit. They live under [`.claude/skills/`](.claude/skills/) and follow the open [Agent Skills](https://agentskills.io) `SKILL.md` format, so they also work with other agents that support it.
 
 The skills are **not** included in the NuGet packages. The easiest way to get them into your own projects (whether you consume this library via NuGet or as a submodule) is to install them as a **Claude Code plugin** from this repository, which doubles as a plugin marketplace:
 

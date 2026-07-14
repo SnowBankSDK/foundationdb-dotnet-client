@@ -1,0 +1,13 @@
+<Project>
+
+  <!--
+    Standalone reference samples for Documentation/getting-started.md.
+    Having a Directory.Build.props here stops the repository-wide props (multi-targeting,
+    submodule detection, central package management) from applying, so these projects build
+    exactly like a reader's own project: plain net10.0 with versioned NuGet PackageReferences.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>

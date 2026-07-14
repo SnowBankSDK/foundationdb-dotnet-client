@@ -1,0 +1,11 @@
+<Project>
+
+  <!--
+    Shadow the repository's central package management so these standalone reference samples
+    can specify versions directly on their PackageReference items, like a reader's own project.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>
