@@ -25,8 +25,7 @@ jobs:
     - name: Install .NET SDK
       uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
       with:
-        dotnet-version: 11.0.x
-        dotnet-quality: 'preview'
+        dotnet-version: 11.0.100-preview.6.26359.118
 
     # restore nuget packages
     - name: Restore
@@ -90,8 +89,7 @@ jobs:
     - name: Install .NET SDK
       uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
       with:
-        dotnet-version: 11.0.x
-        dotnet-quality: 'preview'
+        dotnet-version: 11.0.100-preview.6.26359.118
 
     # restore so that component-detection can read the resolved graphs (obj/project.assets.json).
     # RIDs are cleared for this restore: with RuntimeIdentifiers active, the SDK records runtime-pack
