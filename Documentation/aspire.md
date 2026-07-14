@@ -1,6 +1,6 @@
 # .NET Aspire
 
-[.NET Aspire](https://learn.microsoft.com/en-us/dotnet/aspire/) is the recommended way to run FoundationDB during local development and to wire it into your services. Instead of starting a container and copying a cluster file by hand (as in [Cluster setup](cluster-setup.md)), Aspire starts a local cluster for you and injects the connection string into every project that references it.
+[.NET Aspire](https://aspire.dev/) is the recommended way to run FoundationDB during local development and to wire it into your services. Instead of starting a container and copying a cluster file by hand (as in [Cluster setup](cluster-setup.md)), Aspire starts a local cluster for you and injects the connection string into every project that references it.
 
 It is also one of the main patterns for building modern .NET applications on FoundationDB: an AppHost describes your cluster and services, and each service reads its connection from configuration.
 
