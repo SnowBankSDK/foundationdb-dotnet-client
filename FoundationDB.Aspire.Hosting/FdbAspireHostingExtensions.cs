@@ -41,13 +41,13 @@ namespace Aspire.Hosting
 		public static readonly Version LatestVersion74 = new Version(7, 4, 6);
 
 		/// <summary>Tag for the latest v7.3 docker image</summary>
-		public static readonly Version LatestVersion73 = new Version(7, 3, 70);
+		public static readonly Version LatestVersion73 = new Version(7, 3, 76);
 
 		/// <summary>Tag for the latest v7.2 docker image</summary>
-		public static readonly Version LatestVersion72 = new Version(7, 2, 9);
+		public static readonly Version LatestVersion72 = new Version(7, 2, 8);
 
 		/// <summary>Tag for the latest v7.1 docker image</summary>
-		public static readonly Version LatestVersion71 = new Version(7, 1, 62);
+		public static readonly Version LatestVersion71 = new Version(7, 1, 66);
 
 		#region Fdb Cluster Connections...
 
