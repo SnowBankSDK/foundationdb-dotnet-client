@@ -88,7 +88,7 @@ What you get:
 
 ## Docker containers
 
-The easiest way to deploy is to use one of the [ASP.NET Core Runtime docker images](https://hub.docker.com/r/microsoft/dotnet-aspnet/) provided by Microsoft, such as `mcr.microsoft.com/dotnet/aspnet:9.0` or newer.
+The easiest way to deploy is to use one of the [ASP.NET Core Runtime docker images](https://hub.docker.com/r/microsoft/dotnet-aspnet/) provided by Microsoft, such as `mcr.microsoft.com/dotnet/aspnet:10.0` or newer.
 
 In order to function, the FoundationDB Native client library (`fdb_c.dll` on Windows, `libfdb_c.so`) needs to be present in the container image. The easiest way is to simply copy them from the [FoundationDB Docker image](https://hub.docker.com/r/foundationdb/foundationdb) that contains these files.
 
@@ -147,7 +147,7 @@ The same material is available as human-readable documentation under [`Documenta
 
 ## Visual Studio Solution
 
-You will need Visual Studio 2022 version 17.12 or above to build the solution (C# 13 and .NET 9.0 support is required).
+You will need Visual Studio 2022 version 17.14 or above to build the solution (C# 14 and .NET 10.0 support is required).
 
 ### From the Command Line
 
@@ -166,7 +166,7 @@ Most projects in this repository are targeting multiple frameworks, meaning that
 
 When consuming this repository as a sub-module inside another repository, all the included projects will still want to build for all these targets, even if your parent solution only targets one framework (or a different subset).
 
-This can also cause issues if you application is targeting an older .NET runtime and SDK (for example `net9.0` using the .NET 9.0.x SDK), which do not support more recent targets from this repo (ex: `net10.0`).
+This can also cause issues if you application is targeting an older .NET runtime and SDK (for example `net10.0` using the .NET 10.0.x SDK), which do not support more recent targets from this repo (ex: `net11.0`).
 
 By default, the `Directory.Build.props` will attempt to detect when it is inside a git sub-module, and import any `Directory.Build.props` in the parent directory.
 
@@ -181,33 +181,33 @@ If you are multi-targeting and need more fine grained precision, you can use the
 - `CoreSdkUtilityVersions`: targets for all the internal tools and executables that are only used for building, testing, and are not expected to be redistributed.
 - `CloudSdkRuntimeVersions`: targets for all libraries that reference .NET Aspire (which is only supports .NET 8 or later).
 
-If you parent repository is also multi-targeting, you can specify several targets, like for example `net9.0;net10.0`. Please note that is you target a more recent framework that is not supported by this repo, they may fail to build properly!
+If you parent repository is also multi-targeting, you can specify several targets, like for example `net10.0;net11.0`. Please note that is you target a more recent framework that is not supported by this repo, they may fail to build properly!
 
-An example of a parent `Directory.Build.props` that overrides the build to only target `net9.0`:
+An example of a parent `Directory.Build.props` that overrides the build to only target `net10.0`:
 ```xml
 <Project>
 	<PropertyGroup>
 
-		<!-- Force all projects in the FoundationDB sub-module to target net9.0 -->
-		<CoreSdkVersions>net9.0</CoreSdkVersions>
+		<!-- Force all projects in the FoundationDB sub-module to target net10.0 -->
+		<CoreSdkVersions>net10.0</CoreSdkVersions>
 
 	</PropertyGroup>
 </Project>
 ```
 
-An example of a parent `Directory.Build.props` that multi-targets `net9.0` and `net10.0`, but only want to build the tools for `net10.0`:
+An example of a parent `Directory.Build.props` that multi-targets `net10.0` and `net11.0`, but only want to build the tools for `net11.0`:
 ```xml
 <Project>
 	<PropertyGroup>
 
 		<!-- If you are using FoundationDB.Client, SnowBank.Core, etc... -->
-		<CoreSdkRuntimeVersions>net9.0;net10.0</CoreSdkRuntimeVersions>
+		<CoreSdkRuntimeVersions>net10.0;net11.0</CoreSdkRuntimeVersions>
 
 		<!-- If you are using the FoundationDB .NET Aspire Integration -->
-		<CloudSdkRuntimeVersions>net9.0;net10.0</CloudSdkRuntimeVersions>
+		<CloudSdkRuntimeVersions>net10.0;net11.0</CloudSdkRuntimeVersions>
 
 		<!-- If you are using any of the tools (FdbShell, FdbTop) -->
-		<CoreSdkToolsVersions>net10.0</CoreSdkToolsVersions>
+		<CoreSdkToolsVersions>net11.0</CoreSdkToolsVersions>
 
 	</PropertyGroup>
 </Project>
