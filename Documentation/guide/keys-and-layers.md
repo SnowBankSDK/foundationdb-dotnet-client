@@ -96,6 +96,24 @@ Think of a location as a folder in a file system, and the Directory layer as the
 
 Prefixes are themselves tuple-encoded, so decoding a stored key with `TuPack.Unpack(...)` yields the prefix as the first element followed by your key's own elements (here, `(42, "BOOK_123")`). With **Directory Partitions**, the prefix is several integers, one per partition level, adding a few bytes per level.
 
+In bytes, the complete stored key is just the prefix followed by your own tuple:
+
+```fdb-bytes
+tuple: (42, "BOOK_123")
+int  .15 2A                # dir prefix · 42
+str  .02 'BOOK_123' .00    # string "BOOK_123"
+```
+
+That prefix is allocated dynamically and is not known until the directory is first created, so throughout the rest of these docs we fold it into a leading `...` and write a layer's own key as `(..., "BOOK_123")`. It is the same idea as a relative path `./BOOK_123` instead of the absolute `/Tenant/ACME/MyApp/v1/Documents/Books/BOOK_123`: the prefix bytes are still there, we just do not spell out a value that changes per deployment.
+
+```fdb-bytes
+tuple: (..., "BOOK_123")
+dir  ...                   # dir prefix
+str  .02 'BOOK_123' .00    # string "BOOK_123"
+```
+
+Only when a page is specifically about the complete key, or about the Directory layer itself, do we spell the prefix out.
+
 ## Encoding values
 
 | Need | Use |
@@ -196,6 +214,15 @@ Index entries are **derived data**: your code, not the database, keeps them in s
 - **Mutate the index in the same transaction as the document**, so it can never drift out of sync on a partial failure.
 - **Only rewrite the index when the indexed value actually changed.** For frequently-updated documents whose indexed field is stable, this avoids needless writes (and the conflicts they cause).
 
+Concretely, changing a book's author rewrites the document **in place** and **moves** its index entry, both in one transaction. The document keeps its key, so only its value changes; the index key is genuinely different, so the old entry is deleted and a new one inserted:
+
+```fdb-diff
+title: change a book's author  ·  Tolkien to J.R.R. Tolkien
+~ (..., D:0, "hobbit") = { "title": "The Hobbit", "author": -"Tolkien" +"J.R.R. Tolkien" }
+- (..., I:1, "Tolkien", "hobbit") = ''
++ (..., I:1, "J.R.R. Tolkien", "hobbit") = ''
+```
+
 The example offers three update flavors, trading a read against caller obligations:
 
 | Method | Reads the old doc? | Use when |
@@ -222,6 +249,16 @@ public sealed class SchemaMapper : IFdbLayerSchemaMapper
             FdbValueTypeHint.None);
     }
 }
+```
+
+With that schema published, a raw key stops being opaque bytes and reads as a friendly tuple. The two families render as (`D`/`I` are the display names for subspaces `0`/`1`, and `...` stands for the resolved Directory prefix):
+
+```fdb-fql
+// a book document
+(..., D:0, <id:string>) = <json>
+
+// by-author index entry (empty value)
+(..., I:1, <author:string>, <id:string>) = ''
 ```
 
 The value hint can also be a **function of the decoded key** (`(SpanTuple t) => t.Get<string>(0) switch { … }`) when the value's type depends on the key.

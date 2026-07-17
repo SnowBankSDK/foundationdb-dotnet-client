@@ -6,7 +6,7 @@
 				{
 					"src": "../",
 					"files": [
-						"Doxense.Core/Doxense.Core.csproj",
+						"SnowBank.Core/SnowBank.Core.csproj",
 						"FoundationDB.Client/FoundationDB.Client.csproj",
 						"FoundationDB.Aspire/FoundationDB.Aspire.csproj",
 						"FoundationDB.Aspire.Hosting/FoundationDB.Aspire.Hosting.csproj"
@@ -44,12 +44,14 @@
 		"template": [
 			"default",
 			"modern",
-			"templates/singulinkfx"
+			"templates/snowbank"
 		],
 		"markdownEngineName": "markdig",
 		"globalMetadata": {
 			"_appName": "SnowBank SDK",
 			"_appTitle": "SnowBank SDK | Docs",
+			"_appLogoPath": "images/logo.png",
+			"_appFaviconPath": "images/favicon.png",
 			"_enableSearch": true,
 			"pdf": false
 		}

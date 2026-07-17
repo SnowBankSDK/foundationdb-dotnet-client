@@ -2,11 +2,12 @@
 
 FoundationDB gives you a single, ordered, transactional key/value store and asks you to build everything else on top of it. That freedom is the whole point, and the main source of mistakes. This guide is a practical, opinionated walkthrough of how to use this .NET binding (`FoundationDB.Client` / `SnowBank`) *well*: how to encode keys, how transactions actually behave, and how to build sophisticated, distributed "Layers" without falling into the classic traps.
 
-It is organized in three parts, from foundations to advanced:
+It is organized in four parts:
 
 1. **[Keys, Values & Layers](keys-and-layers.md)**: how data is encoded, and how to package data access into a reusable *Layer*. Start here.
 2. **[Transactions](transactions.md)**: the retry loop, idempotency, conflicts, atomic operations, and watches.
 3. **[Advanced Layers](advanced-layers.md)**: how the cluster processes a transaction, how to make layers fast, and the hard distributed-systems patterns (change feeds, leases, retention, fencing).
+4. **[Binary Data (Slice & Buffers)](slices-and-buffers.md)**: the byte-level toolkit beneath everything else, `Slice` and `SliceReader`/`SliceWriter`, pooled buffers, and the integer encodings. Reach for it when you write custom value codecs.
 
 > These guides are the human-facing companion to the agent-oriented skills under [`.claude/skills/`](../../.claude/skills/), and every code example mirrors the compile-checked samples in [`samples/SkillValidation/`](../../samples/SkillValidation/).
 

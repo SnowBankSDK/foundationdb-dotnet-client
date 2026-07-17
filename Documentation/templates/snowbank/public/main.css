@@ -1,0 +1,302 @@
+/* ============================================================
+   SnowBank SDK - brand overlay for the docfx "modern" template.
+   Layered after "default" + "modern" (see docfx.json template array).
+   Layout override (left sidebar + dark default) is in layout/_master.tmpl.
+   Brand blue sampled from the FoundationDB + SnowBank logos.
+   ============================================================ */
+
+:root {
+	--sb-navy: #123f8e;
+	--sb-azure: #1585c8;
+}
+
+/* ---- Light theme tokens (Bootstrap 5.3 color mode) ---- */
+[data-bs-theme="light"] {
+	--bs-primary: #0a6be0;
+	--bs-primary-rgb: 10, 107, 224;
+	--bs-link-color: #0a6be0;
+	--bs-link-color-rgb: 10, 107, 224;
+	--bs-link-hover-color: #0056d6;
+	--bs-link-hover-color-rgb: 0, 86, 214;
+	--bs-body-bg: #f2f6fc;
+	--bs-body-color: #18222f;
+	--bs-emphasis-color: #102f5c;
+	--bs-border-color: #e2e9f4;
+	--bs-secondary-bg: #e8eef8;
+	--bs-tertiary-bg: #eef3fb;
+	--bs-code-color: #0f4c8a;
+	--sb-code-bg: #ffffff;
+	--sb-callout-bg: rgba(10, 107, 224, 0.06);
+	/* mermaid diagram palette (applied in the Mermaid section below) */
+	--sb-mm-box: #e4eefb;
+	--sb-mm-stroke: #1585c8;
+	--sb-mm-label: #0f3d7a;
+	--sb-mm-note: #eef4fc;
+	--sb-mm-note-border: #cdddf1;
+	--sb-mm-note-txt: #123f8e;
+}
+
+/* ---- Dark theme tokens (this is the default; see _master.tmpl) ---- */
+[data-bs-theme="dark"] {
+	--bs-primary: #4c9ffb;
+	--bs-primary-rgb: 76, 159, 251;
+	--bs-link-color: #4c9ffb;
+	--bs-link-color-rgb: 76, 159, 251;
+	--bs-link-hover-color: #77b6ff;
+	--bs-link-hover-color-rgb: 119, 182, 255;
+	--bs-body-bg: #0d1521;
+	--bs-body-color: #d8e2ef;
+	--bs-emphasis-color: #e8effb;
+	--bs-border-color: #233346;
+	--bs-secondary-bg: #121d2c;
+	--bs-tertiary-bg: #18273a;
+	--bs-code-color: #82bbf1;
+	--sb-code-bg: #0a1220;
+	--sb-callout-bg: rgba(76, 159, 251, 0.10);
+	/* mermaid diagram palette */
+	--sb-mm-box: #17293f;
+	--sb-mm-stroke: #4c9ffb;
+	--sb-mm-label: #dbe7f6;
+	--sb-mm-note: #16263c;
+	--sb-mm-note-border: #2c456b;
+	--sb-mm-note-txt: #c9d8ec;
+}
+
+/* ---- Navbar: brand + search + theme only (the tree lives in the sidebar) ---- */
+#navbar ul.navbar-nav {
+	display: none !important;
+}
+.navbar {
+	padding-top: 0.4rem;
+	padding-bottom: 0.4rem;
+}
+.navbar-brand {
+	font-weight: 700;
+	letter-spacing: -0.01em;
+	gap: 0.5rem;
+}
+.navbar-brand img {
+	height: 26px;
+	width: auto;
+}
+
+/* ---- Left sidebar (.toc): VitePress-like ---- */
+.toc {
+	font-size: 0.875rem;
+}
+.toc .filter {
+	margin-bottom: 0.6rem;
+}
+.toc ul {
+	list-style: none;
+	padding-left: 0;
+	margin-bottom: 0;
+}
+.toc li > a {
+	display: block;
+	/* .nav-link pins 0.875rem via --bs-nav-link-font-size; override here for a more legible sidebar */
+	font-size: 0.9375rem;
+	padding: 0.26rem 0.6rem;
+	border-radius: 6px;
+	color: var(--bs-secondary-color);
+	line-height: 1.4;
+	font-weight: 500;
+	text-decoration: none;
+}
+.toc li > a:hover {
+	color: var(--bs-emphasis-color);
+	background: var(--bs-secondary-bg);
+}
+/* flat active state in brand blue (no pull-out pill) */
+.toc li.active > a {
+	color: var(--bs-primary);
+	font-weight: 600;
+	background: transparent;
+}
+/* nested items sit slightly indented */
+.toc ul ul li > a {
+	padding-left: 1.4rem;
+}
+
+/* ---- Muted secondary text: raise off Bootstrap's #6c757d for WCAG AA ---- */
+/* Bootstrap's .link-secondary (affix "In this article" links) and .text-secondary (page
+   footer + API type-metadata "Namespace/Assembly") both resolve to #6c757d, which fails AA
+   on our grounds (dark 3.9:1, light 4.3:1). Raise per-theme to clear 4.5:1 (lands near 7:1)
+   while still reading as muted. Affix hover -> brand blue signals the link. */
+[data-bs-theme="light"] .link-secondary,
+[data-bs-theme="light"] .text-secondary {
+	color: #4a525e !important;
+}
+[data-bs-theme="dark"] .link-secondary,
+[data-bs-theme="dark"] .text-secondary {
+	color: #9aa4b3 !important;
+}
+.link-secondary:hover {
+	color: var(--bs-primary) !important;
+}
+
+/* ---- Reading column ---- */
+article h2 {
+	margin-top: 2.4rem;
+	padding-top: 1.1rem;
+	border-top: 1px solid var(--bs-border-color);
+}
+
+/* Inline code color is driven by --bs-code-color (set in the theme tokens above),
+   which avoids fighting docfx's stylesheet specificity. */
+
+/* ---- Code blocks ---- */
+pre {
+	border: 1px solid var(--bs-border-color);
+	border-radius: 10px;
+	background: var(--sb-code-bg);
+}
+/* Let code use the <pre> background instead of highlight.js's own (#1e1e1e),
+   which reads too light against the dark page. */
+article .hljs { background-color: transparent !important; }
+
+/* highlight.js light theme colors the [Attribute] / preprocessor "meta" token #2b91af,
+   only 3.6:1 on the white code background; darken it in light theme to clear AA.
+   (Dark theme sits on #0a1220 and already passes, so scope this to light only.) */
+[data-bs-theme="light"] .hljs-meta { color: #17738c !important; }
+
+/* ---- Mermaid diagrams: brand palette, theme-aware ---- */
+/* mermaid is an ESM module (no global, no docfx config hook) and inlines an ID-scoped <style>
+   with plain (non-!important) fills. We recolor the rendered SVG here via the --sb-mm-* tokens,
+   which flip with data-bs-theme so diagrams follow the light/dark toggle. Covers the two types
+   we use: sequenceDiagram and flowchart. */
+.mermaid svg .actor,
+.mermaid svg .node rect,
+.mermaid svg .node polygon,
+.mermaid svg .node path,
+.mermaid svg .node circle {
+	fill: var(--sb-mm-box) !important;
+	stroke: var(--sb-mm-stroke) !important;
+}
+.mermaid svg text.actor,
+.mermaid svg .actor > tspan,
+.mermaid svg .nodeLabel,
+.mermaid svg .node .label {
+	fill: var(--sb-mm-label) !important;
+	color: var(--sb-mm-label) !important;
+}
+.mermaid svg .actor-line,
+.mermaid svg .messageLine0,
+.mermaid svg .messageLine1,
+.mermaid svg .loopLine,
+.mermaid svg .edgePath .path,
+.mermaid svg .flowchart-link {
+	stroke: var(--sb-mm-stroke) !important;
+}
+.mermaid svg marker path {
+	fill: var(--sb-mm-stroke) !important;
+	stroke: var(--sb-mm-stroke) !important;
+}
+.mermaid svg .messageText { fill: var(--bs-body-color) !important; }
+.mermaid svg .edgeLabel,
+.mermaid svg .edgeLabel p {
+	color: var(--bs-body-color) !important;
+	background: var(--bs-body-bg) !important;
+}
+.mermaid svg .edgeLabel rect { fill: var(--bs-body-bg) !important; }
+.mermaid svg .note,
+.mermaid svg .labelBox {
+	fill: var(--sb-mm-note) !important;
+	stroke: var(--sb-mm-note-border) !important;
+}
+.mermaid svg .noteText,
+.mermaid svg .loopText,
+.mermaid svg .loopText tspan,
+.mermaid svg .labelText { fill: var(--sb-mm-note-txt) !important; }
+
+/* ---- Blockquote as a note callout (our docs use plain > quotes) ---- */
+article blockquote {
+	border-left: 3px solid var(--bs-primary);
+	background: var(--sb-callout-bg);
+	padding: 0.8rem 1rem;
+	border-radius: 8px;
+	margin: 1.1rem 0;
+}
+article blockquote > :last-child {
+	margin-bottom: 0;
+}
+
+/* ============================================================
+   FDB doc blocks (fdb-bytes / fdb-diff / fdb-fql), rendered by main.js.
+   Self-contained dark cards, so they read the same in light or dark mode.
+   FQL token colors mirror FoundationDB.Client/Query/FqlSyntaxHighlighter.cs;
+   keep them in sync if that palette ever changes.
+   ============================================================ */
+.fdb-block {
+	--fx-surface: #0a1220;
+	--fx-border: #233346;
+	--fx-text: #d8e2ef;
+	--fx-muted: #93a6bd;
+	--fx-sep: #66cccc;
+	--fx-int: #f2777a;
+	--fx-str: #99cc99;
+	--fx-type: #cc99cc;
+	--fx-name: #6699cc;
+	--fx-cmt: #7f8ea3;
+	--fx-add-bg: rgba(46, 160, 67, .15);
+	--fx-add-gut: rgba(46, 160, 67, .55);
+	--fx-add-fg: #7ee787;
+	--fx-del-bg: rgba(248, 81, 73, .13);
+	--fx-del-gut: rgba(248, 81, 73, .55);
+	--fx-del-fg: #ff9d95;
+	--fx-mono: "Cascadia Code", "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+	margin: 18px 0;
+}
+.fdb-block .f-sep { color: var(--fx-sep); }
+.fdb-block .f-int { color: var(--fx-int); }
+.fdb-block .f-str { color: var(--fx-str); }
+.fdb-block .f-type { color: var(--fx-type); }
+.fdb-block .f-var { color: var(--fx-int); }
+.fdb-block .f-name { color: var(--fx-name); }
+.fdb-block .f-cmt { color: var(--fx-cmt); font-style: italic; }
+.fdb-block .f-op { color: var(--fx-muted); }
+.fdb-block .dt { color: var(--fx-del-fg); text-decoration: line-through; }
+.fdb-block .it { color: var(--fx-add-fg); }
+
+/* fdb-fql / schema */
+.fdb-block .fql-block { background: var(--fx-surface); border: 1px solid var(--fx-border); border-radius: 10px; padding: 12px 16px; font-family: var(--fx-mono); font-size: 0.85rem; color: var(--fx-text); overflow-x: auto; }
+.fdb-block .fql-block .fline { white-space: pre; line-height: 1.95; }
+
+/* fdb-bytes */
+.fdb-block .bytes-card { background: var(--fx-surface); border: 1px solid var(--fx-border); border-radius: 11px; padding: 16px; color: var(--fx-text); }
+.fdb-block .tuple { font-family: var(--fx-mono); font-size: 1rem; margin-bottom: 12px; }
+.fdb-block .strip { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 0.5em; font-family: var(--fx-mono); }
+.fdb-block .grp { display: inline-flex; flex-direction: column; align-items: center; width: min-content; }
+.fdb-block .grp .cells { display: inline-flex; border-radius: 8px; overflow: hidden; }
+.fdb-block .grp.int .cells { background: rgba(242, 119, 122, .08); box-shadow: inset 0 0 0 1px rgba(242, 119, 122, .3); }
+.fdb-block .grp.str .cells { background: rgba(153, 204, 153, .07); box-shadow: inset 0 0 0 1px rgba(153, 204, 153, .28); }
+.fdb-block .grp.vs .cells { background: rgba(102, 153, 204, .09); box-shadow: inset 0 0 0 1px rgba(102, 153, 204, .32); }
+.fdb-block .grp.uuid .cells { background: rgba(204, 153, 204, .09); box-shadow: inset 0 0 0 1px rgba(204, 153, 204, .32); }
+.fdb-block .cell { min-width: 34px; padding: 8px 10px; text-align: center; font-size: 0.94rem; line-height: 1.2; border-right: 1px solid rgba(255, 255, 255, .06); white-space: nowrap; }
+.fdb-block .grp .cells .cell:last-child { border-right: none; }
+.fdb-block .grp.int .cell { color: var(--fx-int); }
+.fdb-block .grp.str .cell { color: var(--fx-str); }
+.fdb-block .grp.vs .cell { color: var(--fx-name); }
+.fdb-block .grp.uuid .cell { color: var(--fx-type); }
+.fdb-block .cell.mk { opacity: .5; font-size: 0.82rem; }
+.fdb-block .cell.ch { font-weight: 700; }
+.fdb-block .cell.blob { font-style: italic; opacity: .9; padding: 8px 14px; }
+.fdb-block .cell.dot { color: var(--fx-muted); font-style: italic; padding: 8px 22px; }
+.fdb-block .grp.dir .cells { background: rgba(147, 166, 189, .07); box-shadow: inset 0 0 0 1px rgba(147, 166, 189, .28); }
+.fdb-block .grp.dir .cell { color: var(--fx-muted); }
+.fdb-block .f-dir { color: var(--fx-muted); }
+.fdb-block .cap { font-size: 0.74rem; color: var(--fx-muted); margin-top: 7px; text-align: center; overflow-wrap: break-word; }
+.fdb-block .cap b { color: #e8effb; font-weight: 600; }
+.fdb-block .raw { font-family: var(--fx-mono); font-size: 0.82rem; color: var(--fx-muted); letter-spacing: 1px; margin-top: 12px; }
+.fdb-block .raw .lbl { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .08em; margin-right: 10px; }
+
+/* fdb-diff */
+.fdb-block .diff { border: 1px solid var(--fx-border); border-radius: 10px; overflow: hidden; }
+.fdb-block .diff-title { font-family: var(--fx-mono); font-size: 0.75rem; color: var(--fx-muted); padding: 8px 14px; border-bottom: 1px solid var(--fx-border); background: #0d1626; }
+.fdb-block .diff-body { background: var(--fx-surface); font-family: var(--fx-mono); font-size: 0.8rem; line-height: 1.7; padding: 8px 0; color: var(--fx-text); overflow-x: auto; }
+.fdb-block .ln { display: block; white-space: pre; padding: 1px 16px 1px 10px; border-left: 3px solid transparent; }
+.fdb-block .ln.mod { border-left-color: #1585c8; background: rgba(21, 133, 200, .07); }
+.fdb-block .ln.del { background: var(--fx-del-bg); border-left-color: var(--fx-del-gut); }
+.fdb-block .ln.add { background: var(--fx-add-bg); border-left-color: var(--fx-add-gut); }
+.fdb-block .g-del { color: var(--fx-del-fg); }
+.fdb-block .g-add { color: var(--fx-add-fg); }

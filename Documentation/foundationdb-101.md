@@ -31,19 +31,9 @@ So a `7.3` cluster is served perfectly well by the latest `FoundationDB.Client` 
 
 ## What a mismatch looks like
 
-```mermaid
-flowchart TB
-    subgraph ok["Matching versions: works"]
-        direction LR
-        a1["fdb_c 7.3"] -->|"connects"| c1[("7.3 cluster")]
-    end
-    subgraph bad["Mismatched versions: every op times out"]
-        direction LR
-        a2["fdb_c 7.4"] -.->|"never connects, keeps retrying"| c2[("7.3 cluster")]
-    end
-```
+The failure is asymmetric, which is what makes it confusing. A matching native client (`fdb_c` `7.3.x` against a `7.3` cluster) connects immediately and every operation succeeds. A mismatched one (`fdb_c` `7.4` against that same `7.3` cluster) still reaches the coordinators, but is rejected as protocol-incompatible, so it never completes the handshake and quietly keeps retrying.
 
-When the native client and the cluster do not match, the coordinators are reachable but rejected as incompatible. The client keeps retrying, and the only thing your code sees is a **transaction timeout**. Meanwhile `fdbcli` (which uses whatever client you installed system-wide, often a matching one) works fine, which makes it look like your app is broken when it is really a version mismatch.
+The only thing your code sees is a **transaction timeout**, with nothing pointing at the version. Worse, `fdbcli` uses whatever client you installed system-wide (often a matching one), so it connects fine, which makes it look like your app is broken when the real problem is the native version your app loaded.
 
 To tell them apart, compare the versions. The cluster side:
 

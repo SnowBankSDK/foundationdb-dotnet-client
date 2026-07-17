@@ -7,6 +7,7 @@ A C#/.NET binding for [FoundationDB](https://www.foundationdb.org/), the distrib
   - [Keys, Values & Layers](guide/keys-and-layers.md)
   - [Transactions](guide/transactions.md)
   - [Advanced Layers](guide/advanced-layers.md)
+  - [Binary Data (Slice & Buffers)](guide/slices-and-buffers.md)
 - **Reference:** [Tuples](Tuples.md) (the tuple model in depth), [Transaction Basics](Transaction_Basics.md) (the low-level transaction API).
 
 The top-level [README](../README.md) is the authoritative getting-started narrative (installation, dependency injection, .NET Aspire, deployment) and is packed into the NuGet package.

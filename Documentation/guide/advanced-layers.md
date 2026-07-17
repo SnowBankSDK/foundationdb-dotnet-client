@@ -79,6 +79,25 @@ A shared clock removes *skew*, but not the fundamental **failure-detector imposs
 
 A change feed lets other nodes observe a stream of changes and maintain an in-memory view of remote state. It composes every primitive above. A full, compile-checked implementation lives in [`samples/SkillValidation/BookStore.ChangeFeed.cs`](../../samples/SkillValidation/BookStore.ChangeFeed.cs).
 
+The whole protocol is one steady-state loop, with a fencing check that turns a missed range into a clean resync instead of silent data loss:
+
+```mermaid
+sequenceDiagram
+    participant P as Producer
+    participant DB as FoundationDB
+    participant C as Consumer
+    Note over P,DB: append + signal share one transaction
+    P->>DB: append change @ VersionStamp, bump signal key
+    loop until caught up
+        C->>DB: GetRange(feed after cursor)
+        DB-->>C: changes, advance cursor
+    end
+    C->>DB: Watch(signal), await outside the transaction
+    P->>DB: next mutation bumps the signal
+    DB-->>C: watch fires
+    Note over C,DB: re-read from the cursor. A tombstone (null value) means<br/>the GC trimmed past it: reload state and resubscribe from now.
+```
+
 **1. Append and signal, in the mutation's own transaction.** Every mutation appends a change under a commit-ordered `VersionStamp` and bumps one watched signal key, all in the same transaction as the data write, so the feed can never disagree with the data:
 
 ```csharp

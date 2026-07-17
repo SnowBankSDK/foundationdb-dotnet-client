@@ -21,6 +21,17 @@ There are various ways to represent a tuple in plain text, and one of them is as
 
 <pre>("Hello", 123, {773166b7-de74-4fcc-845c-84080cc89533})</pre>
 
+That text form is for humans. On disk the tuple is a compact binary string, and its bytes sort in the same order as the elements. Each item opens with a one-byte **type marker**, then its value:
+
+```fdb-bytes
+tuple: ("Hello", 123, {guid})
+str   .02 'Hello' .00      # string "Hello"
+int   .15 7B               # integer 123
+uuid  .30 <uuid:16>        # 128-bit UUID
+```
+
+The markers are what make the ordering work: they sort the types into a fixed order, and the value bytes order values within a type. A long or opaque item like a UUID is shown collapsed, rather than as sixteen raw bytes.
+
 There is a special case, for the tuple of size 1, where we usually add an extra `,` at the end, to distinguish it from an expression:
 
 <pre>("Hello", )</pre>
@@ -153,14 +164,14 @@ xs[1] = 456; // will change the content of the tuples!!
 
 ### Using a tuple
 
-Now that you have a tuple, the first thing you would wan't to know, is its size and if it is empty or not.
+Now that you have a tuple, the first thing you would want to know, is its size and if it is empty or not.
 
 All tuples expose a `Count` property which returns the number of elements in the tuple (0 to N).
     
 To help you verify that a tuple has the correct size before accessing its elements, there is a set of help extension methods just for that:
 
 - `t.IsNullOrEmpty()` returns `true` if either `t == null` or `t.Count == 0`
-- `t.OfSize(3)` checks that `t` is not null, and that `t.Count` is equal to 3, and then returns the tuple itself, so you can write: `t.OfSize(3).DoSomethingWichExceptsThreeElements()`
+- `t.OfSize(3)` checks that `t` is not null, and that `t.Count` is equal to 3, and then returns the tuple itself, so you can write: `t.OfSize(3).DoSomethingWhichExpectsThreeElements()`
 - `t.OfSizeAtLeast(3)` works the same, except it checks that `t.Count >= 3`
 
 Of course, if you have one of the `STuple<T1, ...>` struct, you can skip this step, since the size if known at compile time.
@@ -185,7 +196,7 @@ var z = t.Get<Guid>(-1); // => guid
 
 ### Pretty Printing
 
-Code that manipulate tuples can get complex pretty fast, so you need a way to display the content of a tuple is a nice and understable way.
+Code that manipulates tuples can get complex pretty fast, so you need a way to display the content of a tuple in a nice and understandable way.
 
 For that, every tuple overrides `ToString()` to return a nicely formatted string with a standardized format.
 
@@ -218,9 +229,9 @@ var t3 = STuple.Create("hello", STuple.Empty, "world");
 // t3 = ("hello", (), "world");
 ```
 
-_note: The easy mistake is to call `t1.Append(t2)` instead of `t1.Concat(t2)`, which will add t2 as a single element at the end of t1, instead of adding t2's elements ad the end of t1._
+_note: The easy mistake is to call `t1.Append(t2)` instead of `t1.Concat(t2)`, which will add t2 as a single element at the end of t1, instead of adding t2's elements at the end of t1._
 
-This can be usefull when you want to model a fixed-size key: `(product_id, location_id, order_id)` where location_id is a hierarchical key with a variable size, but still keep a fixed size of 3:
+This can be useful when you want to model a fixed-size key: `(product_id, location_id, order_id)` where location_id is a hierarchical key with a variable size, but still keep a fixed size of 3:
 
 ```CSharp
 var productId = "B00CS8QSSK";
@@ -234,7 +245,7 @@ var t = STuple.Create(productId, STuple.FromArray(locationId), orderId);
 // t[2] => {773166b7-de74-4fcc-845c-84080cc89533}
 ```
 
-You code that want to parse the key can always read `t[2]` to get the order_id, without caring about the actuel size of the location_id.
+You code that want to parse the key can always read `t[2]` to get the order_id, without caring about the actual size of the location_id.
 
 ### Combining tuples
 
@@ -248,7 +259,7 @@ The most common case is to simply add a value to a tuple via the `t.Append<T>(T 
 var location = STuple.Create("MyAwesomeApp", "Documents");
 
 var documentId = Guid.NewGuid();
-var t = location.Append(document);
+var t = location.Append(documentId);
 // t => ("MyAwesomeApp", "Documents", {773166b7-de74-4fcc-845c-84080cc89533});
 ```
 
@@ -274,7 +285,7 @@ You can also split tuples into smaller chunks.
 
 First, you can return a subset of a tuple via on of the `t.Substring(...)` methods, or the `t[from, to]` indexer.
     
-The `Substring()` method works exactly the same way as for regulard strings.
+The `Substring()` method works exactly the same way as for regular strings.
 
 ```CSharp
 var t = STuple.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
@@ -286,13 +297,13 @@ var w = t.Substring(7); // => (8, 9, 10)
 var w = v.Substring(-3); // => (8, 9, 10)
 ```
 
-The `t[from, to]` indexer gets some getting used to. If actual returns all the elements in the tuple with position `from <= p < to`, which means that the `to` is excluded.
+The `t[from, to]` indexer takes some getting used to. It actually returns all the elements in the tuple with position `from <= p < to`, which means that the `to` is excluded.
 
 ```CSharp
 var t = STuple.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 var u = t[0, 3]; // => (1, 2, 3)
 var v = t[5, 7]; // => (6, 7)
-// rember that 'to' is excluded!
+// remember that 'to' is excluded!
 var w = t[7, -1]; // => (8, 9)
 // to fix that, you can use 'null' ("up to the end")
 var w = t[7, null]; // => (8, 9, 10)
@@ -313,7 +324,7 @@ var v = t.Truncate(-3);
 
 ### More advanced stuff
 
-When decoding keys using tuple, you wil often find yourself extracting a fixed number of arguments into local variables, and then constructing an instance of a Model class from your application.
+When decoding keys using tuple, you will often find yourself extracting a fixed number of arguments into local variables, and then constructing an instance of a Model class from your application.
 
 ```CSharp
 public MyFooBar DecodeFoobar(IVarTuple tuple)
@@ -350,7 +361,7 @@ To combat this, you can use on of the `t.With<T1, ..., TN>(Action<T1, ..., TN>)`
 ```CSharp
 public MyFooBar DecodeFoobar(IVarTuple tuple)
 {
-    return tuple.With((Guid productId, Guid categoryId, Guid orderId) => new MyFooBar(productId, categoriyId, orderId));
+    return tuple.With((Guid productId, Guid categoryId, Guid orderId) => new MyFooBar(productId, categoryId, orderId));
     // all three elements are GUID, but adding name help you catch argument inversion errors
 }
 ```

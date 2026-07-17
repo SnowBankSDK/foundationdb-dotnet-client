@@ -37,6 +37,22 @@ long balance = await db.ReadWriteAsync(async tr =>
 
 The loop **commits for you** (never call `CommitAsync` inside the handler) and re-runs the handler on retryable errors until it succeeds, the `CancellationToken` fires, or a non-retryable error is thrown. The split between `WriteAsync` and `ReadWriteAsync` is about whether you return a value, not about whether you read. Both hand you a full read/write transaction; `ReadWriteAsync` simply has no "returns nothing" overload.
 
+Under the hood, one attempt is a short, ordered exchange with the cluster: get a read version, read at that version, run your logic, then commit. If the commit conflicts, the loop runs your handler again from the top.
+
+```mermaid
+sequenceDiagram
+    participant App as Your handler
+    participant FDB as FoundationDB
+    App->>FDB: get read version
+    FDB-->>App: version @ T
+    App->>FDB: read keys @ T
+    FDB-->>App: values
+    Note over App: run your logic,<br/>buffer writes locally
+    App->>FDB: commit (writes + read ranges)
+    FDB-->>App: committed, or conflict
+    Note over App,FDB: on conflict, the loop retries the handler
+```
+
 ## The one rule: your handler must be idempotent
 
 > The handler can and will run more than once. Treat it as a pure function of database state.
@@ -44,10 +60,10 @@ The loop **commits for you** (never call `CommitAsync` inside the handler) and r
 Never mutate external or global state inside the handler: no incrementing in-memory counters, adding to caches, logging "done", or sending messages. On a retry, those side effects happen again, but the earlier attempt's database writes were discarded. Do all such work **after** the loop returns successfully:
 
 ```csharp
-// WRONG: _cache is mutated even on attempts that never commit
+// ❌ WRONG: _cache is mutated even on attempts that never commit
 await db.WriteAsync(tr => { tr.Set(k, v); _cache[id] = book; }, ct);
 
-// RIGHT: touch external state only after a successful commit
+// ✅ RIGHT: touch external state only after a successful commit
 await db.WriteAsync(tr => tr.Set(k, v), ct);
 _cache[id] = book;
 ```
