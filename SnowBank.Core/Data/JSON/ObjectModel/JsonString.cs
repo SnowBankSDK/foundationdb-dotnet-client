@@ -1926,8 +1926,10 @@ namespace SnowBank.Data.Json
 			{
 				if (tz.HasValue)
 				{
-					var utcOffset = TimeZoneInfo.Local.GetUtcOffset(d).Subtract(tz.Value);
-					return d.ToLocalTime().Add(utcOffset);
+					// "/Date(ms+HHMM)/": the milliseconds are always the UTC epoch offset; the suffix only carries the
+					// producer's local offset. Like DCJS, a suffixed ("local") date is surfaced in the reader's local time.
+					// note: the parser rejects values within a day of MinValue/MaxValue, so the conversion cannot overflow
+					return d.ToLocalTime();
 				}
 				return d;
 			}
@@ -1963,8 +1965,8 @@ namespace SnowBank.Data.Json
 			{
 				if (tz.HasValue)
 				{
-					var utcOffset = TimeZoneInfo.Local.GetUtcOffset(result).Subtract(tz.Value);
-					result = result.ToLocalTime().Add(utcOffset);
+					// "/Date(ms+HHMM)/": ms are the UTC epoch offset, the suffix is the producer's local offset (display only)
+					result = result.ToLocalTime();
 				}
 				return true;
 			}
@@ -2049,7 +2051,9 @@ namespace SnowBank.Data.Json
 			{
 				if (tz.HasValue)
 				{
-					return new DateTimeOffset(new DateTime(d.ToLocalTime().Ticks, DateTimeKind.Unspecified), tz.Value);
+					// "/Date(ms+HHMM)/": ms are the UTC epoch offset; keep both the instant and the producer's offset.
+					// note: the parser rejects values within a day of MinValue/MaxValue, so the shift cannot overflow
+					return new DateTimeOffset(d.Ticks + tz.Value.Ticks, tz.Value);
 				}
 
 				return d == DateTime.MinValue ? DateTimeOffset.MinValue
@@ -2086,7 +2090,9 @@ namespace SnowBank.Data.Json
 
 			if (CrystalJsonParser.TryParseMicrosoftDateTime(literal, out var dt, out var tz))
 			{
-				dto = tz.HasValue ? new DateTimeOffset(dt, tz.Value) : new DateTimeOffset(dt);
+				// "/Date(ms+HHMM)/": ms are the UTC epoch offset; keep both the instant and the producer's offset
+				// (dt has Kind=Utc, so the DateTimeOffset(DateTime, TimeSpan) ctor would reject any non-zero offset)
+				dto = tz.HasValue ? new DateTimeOffset(dt.Ticks + tz.Value.Ticks, tz.Value) : new DateTimeOffset(dt);
 				return true;
 			}
 

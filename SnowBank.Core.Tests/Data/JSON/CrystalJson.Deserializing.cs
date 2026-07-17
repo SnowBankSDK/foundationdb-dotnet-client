@@ -223,7 +223,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(946681200000+0100)\\/\""), Is.EqualTo(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local)), "2000-01-01 GMT+1 (Paris)");
 				Assert.That(CrystalJson.Deserialize<DateTime>("\"2000-01-01T00:00:00.0000000-01:00\""), Is.EqualTo(new DateTime(2000, 1, 1, 2, 0, 0, DateTimeKind.Local)), "2000-01-01 GMT-1");
 				Assert.That(CrystalJson.Deserialize<DateTime>("\"2000-01-01T00:00:00-01:00\""), Is.EqualTo(new DateTime(2000, 1, 1, 2, 0, 0, DateTimeKind.Local)), "2000-01-01 GMT-1");
-				Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(946681200000-0100)\\/\""), Is.EqualTo(new DateTime(2000, 1, 1, 2, 0, 0, DateTimeKind.Local)), "2000-01-01 GMT-1");
+				// note: the ms in "/Date(ms±HHMM)/" are always the UTC epoch offset; the suffix does not change the instant (946681200000 = 1999-12-31T23:00Z = 2000-01-01T00:00 Paris)
+				Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(946681200000-0100)\\/\""), Is.EqualTo(new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Local)), "produced at GMT-1, surfaced in reader's local time");
 
 				// 2000-09-01 (summertime)
 				Assert.That(CrystalJson.Deserialize<DateTime>("\"\\/Date(967766400000)\\/\""), Is.EqualTo(new DateTime(2000, 9, 1, 0, 0, 0, DateTimeKind.Utc)), "2000-09-01 UTC");
@@ -286,7 +287,8 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946681200000+0100)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(1))), "2000-01-01 GMT+1 (Paris)");
 				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00.0000000-01:00\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(-1))), "2000-01-01 GMT-1");
 				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"2000-01-01T00:00:00-01:00\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(-1))), "2000-01-01 GMT-1");
-				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946681200000-0100)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(-1))), "2000-01-01 GMT-1");
+				// note: the ms in "/Date(ms±HHMM)/" are always the UTC epoch offset; the suffix only carries the producer's offset (946681200000 = 1999-12-31T23:00Z, viewed at -01:00)
+				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946681200000-0100)\\/\""), Is.EqualTo(new DateTimeOffset(1999, 12, 31, 22, 0, 0, TimeSpan.FromHours(-1))), "1999-12-31T23:00Z produced at GMT-1");
 
 				// 2000-09-01 (summertime)
 				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(967766400000)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 9, 1, 0, 0, 0, TimeSpan.Zero)), "2000-09-01 UTC");
@@ -304,7 +306,8 @@ namespace SnowBank.Data.Json.Tests
 
 				// direct deserialization
 				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(-62135596800000)\\/\""), Is.EqualTo(DateTimeOffset.MinValue));
-				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946681200000+0200)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromHours(2))), "2000-01-01 GMT+2 (Paris, DST on)");
+				// 946681200000 = 1999-12-31T23:00Z; the +0200 suffix preserves the producer's offset, not the instant
+				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"\\/Date(946681200000+0200)\\/\""), Is.EqualTo(new DateTimeOffset(2000, 1, 1, 1, 0, 0, TimeSpan.FromHours(2))), "1999-12-31T23:00Z produced at GMT+2");
 				// YYYYMMDD
 				Assert.That(CrystalJson.Deserialize<DateTimeOffset>("\"20000101\""), Is.EqualTo(new DateTimeOffset(new(2000, 1, 1, 0, 0, 0, DateTimeKind.Local))), "2000-01-01 Local");
 				// YYYYMMDDHHMMSS
