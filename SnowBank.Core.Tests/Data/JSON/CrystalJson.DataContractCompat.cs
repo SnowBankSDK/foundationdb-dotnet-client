@@ -306,6 +306,46 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
+		public void Test_Dictionaries_Emit_The_Legacy_Pair_Array_Shape_On_Demand()
+		{
+			var dto = new DictDto
+			{
+				Counts = new() { ["a"] = 1, ["b"] = 2 },
+				Names = new() { [1] = "one" },
+			};
+			var settings = CrystalJsonSettings.JsonCompact.WithDictionariesAsPairArrays();
+
+			var obj = CrystalJson.Parse(CrystalJson.Serialize(dto, settings)).AsObject();
+			using (Assert.EnterMultipleScope())
+			{
+				var counts = obj.GetArray("Counts");
+				Assert.That(counts.Count, Is.EqualTo(2), "the dictionary must be emitted as a pair array");
+				Assert.That(counts[0].AsObject().Get<string>("Key"), Is.EqualTo("a"));
+				Assert.That(counts[0].AsObject().Get<int>("Value"), Is.EqualTo(1));
+				Assert.That(counts[1].AsObject().Get<string>("Key"), Is.EqualTo("b"));
+
+				var names = obj.GetArray("Names");
+				Assert.That(names[0].AsObject().Get<int>("Key"), Is.EqualTo(1), "non-string keys are emitted with their natural JSON type");
+				Assert.That(names[0].AsObject().Get<string>("Value"), Is.EqualTo("one"));
+			}
+
+			// top-level dictionaries, exact wire shape, and the empty case (DCJS emits [])
+			Assert.That(CrystalJson.Serialize(new Dictionary<string, int> { ["a"] = 1 }, settings), Is.EqualTo("""[{"Key":"a","Value":1}]"""));
+			Assert.That(CrystalJson.Serialize(new Dictionary<string, int>(), settings), Is.EqualTo("[]"));
+
+			// the emitted shape reads back through the default read-side tolerance
+			var back = CrystalJson.Deserialize<DictDto>(CrystalJson.Serialize(dto, settings));
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(back.Counts, Is.EqualTo(dto.Counts));
+				Assert.That(back.Names, Is.EqualTo(dto.Names));
+			}
+
+			// the setting is opt-in: default settings still emit object maps
+			Assert.That(CrystalJson.Parse(CrystalJson.Serialize(dto)).AsObject()["Counts"], Is.InstanceOf<JsonObject>());
+		}
+
+		[Test]
 		public void Test_Legacy_KeyValuePair_Array_Shape_Is_Strict()
 		{
 			// every element must be an object with exactly the two members "Key" and "Value": anything else fails

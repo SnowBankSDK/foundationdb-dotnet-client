@@ -143,6 +143,9 @@ namespace SnowBank.Data.Json
 			// Parsing
 			AllowTrailingData = 0x4000,
 
+			/// <summary>Serialize dictionaries as an array of <c>{ "Key": ..., "Value": ... }</c> objects (the legacy DataContractJsonSerializer wire shape) instead of a JSON object map</summary>
+			DictionariesAsPairArrays = 0x8000,
+
 			// Target Enum
 			Target_Json = 0x00000,
 			Target_JavaScript = 0x10000,
@@ -547,6 +550,26 @@ namespace SnowBank.Data.Json
 		/// <returns></returns>
 		[Pure]
 		public CrystalJsonSettings WithIso8601Dates() => Update(SetDateFormatting(m_flags, DateFormat.TimeStampIso8601));
+
+		/// <summary>Tests if dictionaries are serialized as an array of <c>{ "Key": ..., "Value": ... }</c> objects (the legacy DataContractJsonSerializer wire shape) instead of a JSON object map</summary>
+		/// <remarks>This only affects serialization: on read, both shapes are always accepted.</remarks>
+		public bool DictionariesAsPairArrays
+		{
+			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+			get => (m_flags & OptionFlags.DictionariesAsPairArrays) != 0;
+		}
+
+		private static OptionFlags SetDictionariesAsPairArrays(OptionFlags flags, bool value)
+			=> value ? flags | OptionFlags.DictionariesAsPairArrays : flags & ~OptionFlags.DictionariesAsPairArrays;
+
+		/// <summary>Serialize dictionaries as an array of <c>{ "Key": ..., "Value": ... }</c> objects, the wire shape produced by the legacy DataContractJsonSerializer</summary>
+		/// <remarks>Only for interoperability with clients that cannot read a JSON object map; the shape is also always accepted on read, without this setting.</remarks>
+		[Pure]
+		public CrystalJsonSettings WithDictionariesAsPairArrays() => Update(SetDictionariesAsPairArrays(m_flags, true));
+
+		/// <summary>Serialize dictionaries as a JSON object map (the default)</summary>
+		[Pure]
+		public CrystalJsonSettings WithDictionariesAsMaps() => Update(SetDictionariesAsPairArrays(m_flags, false));
 
 		/// <summary>Serialize dates using the Microsoft notation: <c>"\/Date(xxxxx)\/"</c></summary>
 		[Pure]

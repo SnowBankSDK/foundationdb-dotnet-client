@@ -471,6 +471,66 @@ namespace SnowBank.Data.Json
 			writer.EndArray(state);
 		}
 
+		private static readonly JsonEncodedPropertyName s_pairKeyName = new("Key");
+
+		private static readonly JsonEncodedPropertyName s_pairValueName = new("Value");
+
+		/// <summary>Visit a typed dictionary using the legacy DataContractJsonSerializer wire shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
+		/// <remarks>Used when <see cref="CrystalJsonSettings.DictionariesAsPairArrays"/> is set (interop with clients that cannot read a JSON object map)</remarks>
+		private static void VisitDictionaryAsPairs<TKey, TValue>(IEnumerable<KeyValuePair<TKey, TValue>> items, CrystalJsonWriter writer)
+		{
+			var state = writer.BeginArray();
+			bool first = true;
+			int n = DICTIONARY_AUTO_FLUSH_INTERVAL;
+			foreach (var kvp in items)
+			{
+				if (n == 0)
+				{
+					writer.MaybeFlush();
+					n = DICTIONARY_AUTO_FLUSH_INTERVAL;
+				}
+
+				if (first) { writer.WriteHeadSeparator(); first = false; } else { writer.WriteTailSeparator(); }
+				var obj = writer.BeginObject();
+				writer.WriteName(s_pairKeyName);
+				VisitValue<TKey>(kvp.Key, writer);
+				writer.WriteName(s_pairValueName);
+				VisitValue<TValue>(kvp.Value, writer);
+				writer.EndObject(obj);
+
+				--n;
+			}
+			writer.EndArray(state);
+		}
+
+		/// <summary>Visit a non-generic dictionary using the legacy DataContractJsonSerializer wire shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
+		/// <remarks>Used when <see cref="CrystalJsonSettings.DictionariesAsPairArrays"/> is set (interop with clients that cannot read a JSON object map)</remarks>
+		private static void VisitDictionaryAsPairs(IDictionary dictionary, Type keyType, Type valueType, CrystalJsonWriter writer)
+		{
+			var state = writer.BeginArray();
+			bool first = true;
+			int n = DICTIONARY_AUTO_FLUSH_INTERVAL;
+			foreach (DictionaryEntry entry in dictionary)
+			{
+				if (n == 0)
+				{
+					writer.MaybeFlush();
+					n = DICTIONARY_AUTO_FLUSH_INTERVAL;
+				}
+
+				if (first) { writer.WriteHeadSeparator(); first = false; } else { writer.WriteTailSeparator(); }
+				var obj = writer.BeginObject();
+				writer.WriteName(s_pairKeyName);
+				VisitValue(entry.Key, keyType, writer);
+				writer.WriteName(s_pairValueName);
+				VisitValue(entry.Value, valueType, writer);
+				writer.EndObject(obj);
+
+				--n;
+			}
+			writer.EndArray(state);
+		}
+
 		private static CrystalJsonTypeVisitor CreateVisitorForImmutableArrayType(Type type)
 		{
 			var args = type.GetGenericArguments();
@@ -1566,6 +1626,14 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
+			if (writer.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				writer.MarkVisited(items);
+				VisitDictionaryAsPairs(items, writer);
+				writer.Leave(items);
+				return;
+			}
+
 			if (items.Count == 0)
 			{ // empty => "{}"
 				writer.WriteEmptyObject(); // "{}"
@@ -1594,6 +1662,14 @@ namespace SnowBank.Data.Json
 			if (items == null)
 			{ // "null" or "{}"
 				writer.WriteNull(); // "null"
+				return;
+			}
+
+			if (writer.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				writer.MarkVisited(items);
+				VisitDictionaryAsPairs(items, writer);
+				writer.Leave(items);
 				return;
 			}
 
@@ -1715,6 +1791,14 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
+			if (writer.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				writer.MarkVisited(items);
+				VisitDictionaryAsPairs(items, writer);
+				writer.Leave(items);
+				return;
+			}
+
 			if (items.Count == 0)
 			{ // empty => "{}"
 				writer.WriteEmptyObject(); // "{}"
@@ -1782,6 +1866,14 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
+			if (writer.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				writer.MarkVisited(dictionary);
+				VisitDictionaryAsPairs(dictionary, keyType, valueType, writer);
+				writer.Leave(dictionary);
+				return;
+			}
+
 			if (dictionary.Count == 0)
 			{ // empty => "{}"
 				writer.WriteEmptyObject(); // "{}"
@@ -1836,6 +1928,14 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
+			if (writer.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				writer.MarkVisited(dictionary);
+				VisitDictionaryAsPairs(dictionary, typeof(string), valueType, writer);
+				writer.Leave(dictionary);
+				return;
+			}
+
 			if (dictionary.Count == 0)
 			{ // empty => "{}"
 				writer.WriteEmptyObject(); // "{}"
@@ -1872,6 +1972,14 @@ namespace SnowBank.Data.Json
 			if (dictionary == null)
 			{ // "null" or "{}"
 				writer.WriteNull(); // "null"
+				return;
+			}
+
+			if (writer.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				writer.MarkVisited(dictionary);
+				VisitDictionaryAsPairs(dictionary, writer);
+				writer.Leave(dictionary);
 				return;
 			}
 
@@ -1914,6 +2022,14 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
+			if (writer.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				writer.MarkVisited(dictionary);
+				VisitDictionaryAsPairs(dictionary, typeof(int), valueType, writer);
+				writer.Leave(dictionary);
+				return;
+			}
+
 			if (dictionary.Count == 0)
 			{ // empty => "{}"
 				writer.WriteEmptyObject(); // "{}"
@@ -1950,6 +2066,14 @@ namespace SnowBank.Data.Json
 			if (dictionary == null)
 			{ // "null" or "{}"
 				writer.WriteNull(); // "null"
+				return;
+			}
+
+			if (writer.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				writer.MarkVisited(dictionary);
+				VisitDictionaryAsPairs(dictionary, writer);
+				writer.Leave(dictionary);
 				return;
 			}
 

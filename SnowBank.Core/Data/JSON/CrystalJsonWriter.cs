@@ -6078,6 +6078,12 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
+			if (this.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				VisitDictionaryAsPairs(items, serializer);
+				return;
+			}
+
 			if (items.Count == 0)
 			{ // empty => "{}"
 				WriteEmptyObject(); // "{}"
@@ -6112,6 +6118,12 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
+			if (this.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS wire shape was requested
+				VisitDictionaryAsPairs(items, serializer);
+				return;
+			}
+
 			if (items.Count == 0)
 			{ // empty => "{}"
 				WriteEmptyObject(); // "{}"
@@ -6125,6 +6137,28 @@ namespace SnowBank.Data.Json
 				serializer.Serialize(this, kvp.Value);
 			}
 			EndObject(state); // "}"
+		}
+
+		private static readonly JsonEncodedPropertyName s_pairKeyName = new("Key");
+
+		private static readonly JsonEncodedPropertyName s_pairValueName = new("Value");
+
+		/// <summary>Writes a dictionary using the legacy DataContractJsonSerializer wire shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
+		private void VisitDictionaryAsPairs<TValue>(ICollection<KeyValuePair<string, TValue>> items, IJsonSerializer<TValue> serializer)
+		{
+			var state = BeginArray();
+			bool first = true;
+			foreach (var kvp in items)
+			{
+				if (first) { WriteHeadSeparator(); first = false; } else { WriteTailSeparator(); }
+				var obj = BeginObject();
+				WriteName(s_pairKeyName);
+				WriteValue(kvp.Key);
+				WriteName(s_pairValueName);
+				serializer.Serialize(this, kvp.Value);
+				EndObject(obj);
+			}
+			EndArray(state);
 		}
 
 		public void WriteDictionary(ICollection<KeyValuePair<string, object?>>? items)
