@@ -508,7 +508,18 @@ namespace SnowBank.Data.Json
 						}
 						else if (type.IsGenericInstanceOf(typeof(Dictionary<,>)) || type.IsGenericInstanceOf(typeof(ImmutableDictionary<,>)))
 						{
-							throw new JsonBindingException($"Cannot create a binder from a JSON Array to dictionary type '{type.GetFriendlyName()}'.");
+							// dictionaries normally bind from a JSON object, but the dictionary binder also accepts the
+							// legacy DCJS wire shape [ { "Key": ..., "Value": ... }, ... ]: defer to it when it exists
+							return (resolver, array) =>
+							{
+								if (array is not null
+								 && resolver.TryResolveTypeDefinition(type, out var typeDef)
+								 && typeDef.CustomBinder is not null)
+								{
+									return typeDef.CustomBinder(array, type, resolver);
+								}
+								throw new JsonBindingException($"Cannot create a binder from a JSON Array to dictionary type '{type.GetFriendlyName()}'.");
+							};
 						}
 					}
 				}
@@ -2030,7 +2041,7 @@ namespace SnowBank.Data.Json
 			{ // fast path for basic types
 				var convert = TypeConverters.CreateBoxedConverter<string>(keyType);
 				Contract.Debug.Assert(convert != null);
-				return CreateBinderForDictionary_BoxedKey(generator, valueType, convert!);
+				return CreateBinderForDictionary_BoxedKey(generator, keyType, valueType, convert!);
 			}
 
 			// unsupported key type
@@ -2043,7 +2054,16 @@ namespace SnowBank.Data.Json
 			return (v, t, r) =>
 			{
 				if (v == null || v.IsNull) return null;
-				if (v is not JsonObject obj) throw FailCannotDeserializeNotJsonObject(t);
+				if (v is not JsonObject obj)
+				{
+					if (v is JsonArray arr)
+					{ // tolerate the legacy DCJS wire shape
+						var items = (IDictionary) generator();
+						FillDictionaryFromLegacyPairs(items, arr, typeof(string), GetConverterFor(valueType, r), r);
+						return items;
+					}
+					throw FailCannotDeserializeNotJsonObject(t);
+				}
 
 				var converter = GetConverterFor(valueType, r);
 
@@ -2062,7 +2082,16 @@ namespace SnowBank.Data.Json
 			return (v, t, r) =>
 			{
 				if (v == null || v.IsNull) return null;
-				if (v is not JsonObject obj) throw FailCannotDeserializeNotJsonObject(t);
+				if (v is not JsonObject obj)
+				{
+					if (v is JsonArray arr)
+					{ // tolerate the legacy DCJS wire shape
+						var items = (IDictionary) generator();
+						FillDictionaryFromLegacyPairs(items, arr, typeof(int), GetConverterFor(valueType, r), r);
+						return items;
+					}
+					throw FailCannotDeserializeNotJsonObject(t);
+				}
 
 				var converter = GetConverterFor(valueType, r);
 
@@ -2076,12 +2105,18 @@ namespace SnowBank.Data.Json
 			};
 		}
 
-		private static CrystalJsonTypeBinder CreateBinderForDictionary_BoxedKey(Func<object> generator, Type valueType, Func<string, object> convert)
+		private static CrystalJsonTypeBinder CreateBinderForDictionary_BoxedKey(Func<object> generator, Type keyType, Type valueType, Func<string, object> convert)
 		{
 			return (v, t, r) =>
 			{
 				if (v is not JsonObject obj)
 				{
+					if (v is JsonArray arr)
+					{ // tolerate the legacy DCJS wire shape
+						var items = (IDictionary) generator();
+						FillDictionaryFromLegacyPairs(items, arr, keyType, GetConverterFor(valueType, r), r);
+						return items;
+					}
 					return v == null || v.IsNull ? null : throw FailCannotDeserializeNotJsonObject(t);
 				}
 
@@ -2095,6 +2130,23 @@ namespace SnowBank.Data.Json
 
 				return instance;
 			};
+		}
+
+		/// <summary>Fills a dictionary from the legacy DataContractJsonSerializer wire shape (<c>[ { "Key": ..., "Value": ... }, ... ]</c>)</summary>
+		/// <remarks>
+		/// <para>Only reached when the input is a JSON array, which the object-map binder otherwise rejects, so the regular path pays no cost.</para>
+		/// <para>Strict by design: every element must be an object with exactly the two members <c>Key</c> and <c>Value</c> (exact casing); anything else fails the whole bind.</para>
+		/// </remarks>
+		private static void FillDictionaryFromLegacyPairs(IDictionary instance, JsonArray array, Type keyType, IJsonConverter valueConverter, ICrystalJsonTypeResolver resolver)
+		{
+			for (int i = 0; i < array.Count; i++)
+			{
+				if (array[i] is not JsonObject kv || kv.Count != 2 || !kv.TryGetValue("Key", out var key) || !kv.TryGetValue("Value", out var value))
+				{
+					throw new JsonBindingException($"Cannot bind element #{i} of a legacy key/value-pair array to a dictionary entry: expected an object with exactly the two members 'Key' and 'Value'.", JsonPath.Create(i), array[i], instance.GetType());
+				}
+				instance.Add(key.Bind(keyType, resolver)!, valueConverter.BindJsonValue(value, resolver));
+			}
 		}
 
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]

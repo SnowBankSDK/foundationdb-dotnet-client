@@ -46,8 +46,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	}
 
+	public sealed record ProbeDictDto
+	{
+		public Dictionary<string, int>? Counts { get; set; }
+	}
+
 	[CrystalJsonConverter]
 	[CrystalJsonSerializable(typeof(ProbeLegacyDto))]
+	[CrystalJsonSerializable(typeof(ProbeDictDto))]
 	public static partial class ProbeConverters
 	{
 		// generated code goes here!
@@ -81,6 +87,20 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				// [JsonIgnore] IS honored by the generator (same as the reflection path on non-DataContract types)
 				Assert.That(obj.ContainsKey("Hidden"), Is.False, "the generator honors [JsonIgnore]");
 			}
+		}
+
+		[Test]
+		public void Test_Generated_Converter_Reads_Legacy_Dictionary_Pair_Arrays()
+		{
+			// generated dictionary reads route through the shared runtime binders, so the tolerance for the
+			// DCJS wire shape [ {"Key":..,"Value":..} ] applies to generated converters as well
+			var dto = ProbeConverters.ProbeDictDto.Deserialize("""{ "Counts": [ { "Key": "a", "Value": 1 }, { "Key": "b", "Value": 2 } ] }""");
+			Assert.That(dto.Counts, Is.EqualTo(new Dictionary<string, int> { ["a"] = 1, ["b"] = 2 }));
+
+			// and the strictness applies there too
+			Assert.That(
+				() => ProbeConverters.ProbeDictDto.Deserialize("""{ "Counts": [ { "key": "a", "value": 1 } ] }"""),
+				Throws.InstanceOf<JsonBindingException>(), "non-conforming elements must fail through the generated path as well");
 		}
 
 	}

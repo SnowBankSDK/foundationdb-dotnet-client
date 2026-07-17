@@ -282,14 +282,51 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(back.Names, Is.EqualTo(dto.Names));
 			}
 
-			// the DCJS shape (array of {"Key":..,"Value":..}) is NOT readable into a dictionary
-			Assert.That(
-				() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a", "Value": 1 } ]"""),
-				Throws.InstanceOf<JsonBindingException>(),
-				"the legacy DCJS dictionary wire shape has no built-in reader");
-
 			// a standalone KeyValuePair<K,V> serializes as a 2-element array [key, value]
 			Assert.That(CrystalJson.Serialize(new KeyValuePair<int, string>(1, "one"), CrystalJsonSettings.JsonCompact), Is.EqualTo("""[1,"one"]"""));
+		}
+
+		[Test]
+		public void Test_Dictionaries_Tolerate_The_Legacy_KeyValuePair_Array_Shape_On_Read()
+		{
+			// DCJS serializes IDictionary<K,V> as an array of {"Key":..,"Value":..} objects; reading that shape
+			// into a dictionary is tolerated by default (the object-map fast path is unaffected)
+			var counts = CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a", "Value": 1 }, { "Key": "b", "Value": 2 } ]""");
+			Assert.That(counts, Is.EqualTo(new Dictionary<string, int> { ["a"] = 1, ["b"] = 2 }));
+
+			var names = CrystalJson.Deserialize<Dictionary<int, string>>("""[ { "Key": 1, "Value": "one" } ]""");
+			Assert.That(names, Is.EqualTo(new Dictionary<int, string> { [1] = "one" }));
+
+			// nested inside a DTO member
+			var dto = CrystalJson.Deserialize<DictDto>("""{ "Counts": [ { "Key": "x", "Value": 9 } ] }""");
+			Assert.That(dto.Counts, Is.EqualTo(new Dictionary<string, int> { ["x"] = 9 }));
+
+			// an empty array is a valid (empty) dictionary (DCJS emits [] for an empty dictionary)
+			Assert.That(CrystalJson.Deserialize<Dictionary<string, int>>("[]"), Is.Empty);
+		}
+
+		[Test]
+		public void Test_Legacy_KeyValuePair_Array_Shape_Is_Strict()
+		{
+			// every element must be an object with exactly the two members "Key" and "Value": anything else fails
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(
+					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a" } ]"""),
+					Throws.InstanceOf<JsonBindingException>(), "missing Value must fail");
+				Assert.That(
+					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "key": "a", "value": 1 } ]"""),
+					Throws.InstanceOf<JsonBindingException>(), "wrong member casing must fail");
+				Assert.That(
+					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a", "Value": 1, "Extra": 2 } ]"""),
+					Throws.InstanceOf<JsonBindingException>(), "extra members must fail");
+				Assert.That(
+					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ 1, 2 ]"""),
+					Throws.InstanceOf<JsonBindingException>(), "non-object elements must fail");
+				Assert.That(
+					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a", "Value": 1 }, [ "b", 2 ] ]"""),
+					Throws.InstanceOf<JsonBindingException>(), "one non-conforming element must fail the whole bind");
+			}
 		}
 
 		[Test]
