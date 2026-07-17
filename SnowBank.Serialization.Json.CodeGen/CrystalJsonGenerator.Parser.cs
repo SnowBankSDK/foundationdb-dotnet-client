@@ -51,6 +51,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string JsonIgnoreAttributeFullName = "System.Text.Json.Serialization.JsonIgnoreAttribute";
 
+			public const string JsonIncludeAttributeFullName = "System.Text.Json.Serialization.JsonIncludeAttribute";
+
 			public const string JsonPolymorphicAttributeFullName = "System.Text.Json.Serialization.JsonPolymorphicAttribute";
 
 			public const string JsonDerivedTypeAttributeFullName = "System.Text.Json.Serialization.JsonDerivedTypeAttribute";
@@ -509,6 +511,29 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 			}
 
+			/// <summary>Warns when a non-public member carries <c>[JsonInclude]</c>, which the generator does not support yet (the reflection path does)</summary>
+			private void ReportJsonIncludeNotSupported(ISymbol member)
+			{
+				foreach (var attribute in member.GetAttributes())
+				{
+					if (attribute.AttributeClass?.ToDisplayString() == JsonIncludeAttributeFullName)
+					{
+						ReportDiagnostic(
+							new(
+								"SYSLIB1038", //note: we use the same ID as System.Text.Json, since this is the same situation
+								"The member annotated with JsonIncludeAttribute is not supported by the source generator.",
+								"The member '{0}' has been annotated with JsonIncludeAttribute, but the source generator does not support non-public members yet: it will NOT be part of the generated converter (the reflection path does honor it).",
+								"SnowBank.Serialization.Json.CodeGen",
+								DiagnosticSeverity.Warning,
+								isEnabledByDefault: true
+							),
+							member.Locations.Length > 0 ? member.Locations[0] : null,
+							member.ToDisplayString());
+						return;
+					}
+				}
+			}
+
 			public (CrystalJsonMemberMetadata? Metadata, ITypeSymbol Type) ParseMemberMetadata(ISymbol member, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work, string? namingPolicy)
 			{
 				var memberName = member.Name;
@@ -526,6 +551,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{
 							// REVIEW: what should we do with private properties?
 							// - if they have a backing field, the object may not incomplete when deserialized
+							if (!property.IsImplicitlyDeclared)
+							{
+								ReportJsonIncludeNotSupported(property);
+							}
 							return default;
 						}
 						isField = false;
@@ -557,6 +586,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 						if (field.IsImplicitlyDeclared || field.DeclaredAccessibility is (Accessibility.Private or Accessibility.Protected))
 						{
 							//note: we see the backing fields here, we could maybe capture them somewhere in order to generate optimized unsafe accessors?return null;
+							if (!field.IsImplicitlyDeclared)
+							{
+								ReportJsonIncludeNotSupported(field);
+							}
 							return default;
 						}
 						isField = true;
