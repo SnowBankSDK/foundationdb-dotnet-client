@@ -2169,12 +2169,27 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				foreach (var member in typeDef.Members)
 				{
-					sb.Comment($"\"{member.Name}\" => {member.Type.FullName} {member.MemberName}{(member.IsKey ? ", KEY" : "")}{(member.IsField ? ", field" : ", prop")}{(member.IsRequired ? ", required" : "")}{(member.IsInitOnly ? ", initOnly" : member.IsReadOnly ? ", readOnly" : "")}");
+					sb.Comment($"\"{member.Name}\" => {member.Type.FullName} {member.MemberName}{(member.IsKey ? ", KEY" : "")}{(member.IsField ? ", field" : ", prop")}{(member.IsRequired ? ", required" : "")}{(member.IsInitOnly ? ", initOnly" : member.IsReadOnly ? ", readOnly" : "")}{(member.IgnoreCondition != null ? $", [{member.IgnoreCondition}]" : "")}");
 
 					var getterExpr = $"instance.{member.MemberName}"; //TODO: maybe use unsafe accessors for some fields?
 					var packerExpr = GetMemberPackerExpression(member, getterExpr);
 
-					if (member.Type.IsNullableOfT())
+					if (member.IgnoreCondition == "Never")
+					{ // always present, even as an explicit null
+						sb.AppendLine($"obj.Add({GetLocalPropertyNameRef(member)}, {packerExpr});");
+					}
+					else if (member.IgnoreCondition == "WhenWritingNull")
+					{ // omitted when null, regardless of the settings
+						sb.AppendLine($"obj.AddIfNotNull({GetLocalPropertyNameRef(member)}, {packerExpr});");
+					}
+					else if (member.IgnoreCondition == "WhenWritingDefault")
+					{ // omitted when equal to the member's default, regardless of the settings
+						sb.AppendLine($"if (!global::System.Collections.Generic.EqualityComparer<{member.Type.FullyQualifiedNameAnnotated}>.Default.Equals({getterExpr}, {member.DefaultLiteral}))");
+						sb.EnterBlock();
+						sb.AppendLine($"obj.Add({GetLocalPropertyNameRef(member)}, {packerExpr});");
+						sb.LeaveBlock();
+					}
+					else if (member.Type.IsNullableOfT())
 					{
 						sb.AppendLine($"obj.AddIfNotNull({GetLocalPropertyNameRef(member)}, {packerExpr});");
 					}
@@ -2528,11 +2543,43 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private void WriteMemberSerializer(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member)
 			{
 				sb.NewLine();
-				sb.Comment($"{member.Type.Name} {member.MemberName} => \"{member.Name}\"");
+				sb.Comment($"{member.Type.Name} {member.MemberName} => \"{member.Name}\"{(member.IgnoreCondition != null ? $" [{member.IgnoreCondition}]" : "")}");
 
 				var propertyName = GetPropertyEncodedNameRef(member);
 				var getterExpr = "instance." + member.MemberName;
 
+				switch (member.IgnoreCondition)
+				{
+					case "Never":
+					{ // always emitted, even null or default, bypassing the writer's settings-level discards
+						// note: goes through the runtime visitor (correctness over speed: a pinned member is rare)
+						sb.AppendLine($"writer.WriteName({propertyName});");
+						sb.AppendLine($"{KnownTypeSymbols.CrystalJsonVisitorFullName}.VisitValue<{member.Type.FullyQualifiedNameAnnotated}>({getterExpr}, writer);");
+						return;
+					}
+					case "WhenWritingNull":
+					{ // omitted when null, regardless of the settings; a non-null value is always emitted
+						sb.AppendLine($"if ({getterExpr} is not null)");
+						sb.EnterBlock();
+						this.WriteMemberSerializerCore(sb, member, propertyName, getterExpr);
+						sb.LeaveBlock();
+						return;
+					}
+					case "WhenWritingDefault":
+					{ // omitted when equal to the member's default, regardless of the settings
+						sb.AppendLine($"if (!global::System.Collections.Generic.EqualityComparer<{member.Type.FullyQualifiedNameAnnotated}>.Default.Equals({getterExpr}, {member.DefaultLiteral}))");
+						sb.EnterBlock();
+						this.WriteMemberSerializerCore(sb, member, propertyName, getterExpr);
+						sb.LeaveBlock();
+						return;
+					}
+				}
+
+				this.WriteMemberSerializerCore(sb, member, propertyName, getterExpr);
+			}
+
+			private void WriteMemberSerializerCore(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member, string propertyName, string getterExpr)
+			{
 				if (IsFastPathSerializable(member.Type))
 				{
 					// there is a dedicated method for this type

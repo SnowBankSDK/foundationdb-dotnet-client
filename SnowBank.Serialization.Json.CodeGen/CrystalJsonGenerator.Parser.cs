@@ -49,6 +49,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string JsonPropertyNameAttributeFullName = "System.Text.Json.Serialization.JsonPropertyNameAttribute";
 
+			public const string JsonIgnoreAttributeFullName = "System.Text.Json.Serialization.JsonIgnoreAttribute";
+
 			public const string JsonPolymorphicAttributeFullName = "System.Text.Json.Serialization.JsonPolymorphicAttribute";
 
 			public const string JsonDerivedTypeAttributeFullName = "System.Text.Json.Serialization.JsonDerivedTypeAttribute";
@@ -603,6 +605,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// parameters that can be modified via attributes or keywords on the member
 				string? name = null;
 				bool isKey = false;
+				string? ignoreCondition = null;
 
 				string defaultLiteral = GetDefaultLiteral(type);
 				bool hasNonZeroDefault = false;
@@ -614,6 +617,27 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 					switch (attributeType.ToDisplayString())
 					{
+						case JsonIgnoreAttributeFullName:
+						{ // [JsonIgnore] or [JsonIgnore(Condition = ...)]
+							// JsonIgnoreCondition values: 0 = Never, 1 = Always, 2 = WhenWritingDefault, 3 = WhenWritingNull
+							// (the attribute's Condition property defaults to Always when not specified)
+							int condition = 1;
+							foreach (var kv in attribute.NamedArguments)
+							{
+								if (kv.Key == "Condition" && kv.Value.Value is int n)
+								{
+									condition = n;
+								}
+							}
+							switch (condition)
+							{
+								case 0: ignoreCondition = "Never"; break;
+								case 2: ignoreCondition = "WhenWritingDefault"; break;
+								case 3: ignoreCondition = "WhenWritingNull"; break;
+								default: return default; // Always: excluded from both serialization and deserialization
+							}
+							break;
+						}
 						case KnownTypeSymbols.JsonPropertyAttributeFullName:
 						{ // [JsonProperty("fooBar", ...)]
 							if (attribute.ConstructorArguments.Length > 0)
@@ -678,6 +702,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						IsKey = isKey,
 						HasNonZeroDefault = hasNonZeroDefault,
 						DefaultLiteral = defaultLiteral,
+						IgnoreCondition = ignoreCondition,
 					},
 					typeSymbol
 				);

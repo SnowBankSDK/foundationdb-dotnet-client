@@ -63,9 +63,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	{
 
 		[Test]
-		public void Test_Generator_Ignores_DataContract_And_JsonIgnore()
+		public void Test_Generator_Ignores_DataContract_But_Honors_JsonIgnore()
 		{
-			var dto = new ProbeLegacyDto { Id = "X1", NotAMember = "kept", Hidden = "visible" };
+			var dto = new ProbeLegacyDto { Id = "X1", NotAMember = "kept", Hidden = "invisible" };
 
 			var obj = JsonObject.Parse(ProbeConverters.ProbeLegacyDto.ToJsonText(dto)).AsObject();
 
@@ -78,8 +78,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				// [DataContract] opt-in is NOT recognized: all public members are serialized
 				Assert.That(obj.Get<string>("NotAMember"), Is.EqualTo("kept"), "the generator does not apply the [DataContract] opt-in rule");
 
-				// [JsonIgnore] is NOT recognized by the generator
-				Assert.That(obj.Get<string>("Hidden"), Is.EqualTo("visible"), "the generator does not honor [JsonIgnore]");
+				// [JsonIgnore] IS honored by the generator (same as the reflection path on non-DataContract types)
+				Assert.That(obj.ContainsKey("Hidden"), Is.False, "the generator honors [JsonIgnore]");
 			}
 		}
 
