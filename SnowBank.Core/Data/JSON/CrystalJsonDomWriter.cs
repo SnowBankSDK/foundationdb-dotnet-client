@@ -860,7 +860,20 @@ namespace SnowBank.Data.Json
 			foreach (var member in typeDef.Members)
 			{
 				var v = member.Getter(value);
-				if (v == null)
+				if ((member.Flags & (CrystalJsonMemberFlags.AlwaysEmit | CrystalJsonMemberFlags.OmitNullValues | CrystalJsonMemberFlags.OmitDefaultValues)) != 0)
+				{ // a per-member [JsonIgnore(Condition = ...)] overrides the settings-level discards
+					if ((member.Flags & CrystalJsonMemberFlags.OmitDefaultValues) != 0)
+					{
+						if (member.IsDefaultValue(v)) continue;
+					}
+					else if ((member.Flags & CrystalJsonMemberFlags.OmitNullValues) != 0)
+					{
+						if (v == null) continue;
+					}
+					// AlwaysEmit: never skipped, including an explicit null
+					obj[FormatName(member.Name)] = v == null ? JsonNull.Null : ParseObjectInternal(ref context, v, member.Type, null);
+				}
+				else if (v == null)
 				{
 					if (!m_discardNulls)
 					{

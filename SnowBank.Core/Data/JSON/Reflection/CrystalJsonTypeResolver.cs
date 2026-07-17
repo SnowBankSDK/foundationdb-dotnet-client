@@ -909,7 +909,7 @@ namespace SnowBank.Data.Json
 
 		#endregion
 
-		private static bool FilterMemberByAttributes(MemberInfo member, bool hasDataContract, ref string name, ref object? defaultValue)
+		private static bool FilterMemberByAttributes(MemberInfo member, bool hasDataContract, ref string name, ref object? defaultValue, ref CrystalJsonMemberFlags flags)
 		{
 			if (hasDataContract)
 			{ // must have an attribute "[DataMember]" to be eligible
@@ -923,12 +923,36 @@ namespace SnowBank.Data.Json
 				return true;
 			}
 
-			{ // must not have "[JsonIgnore]" (from JSON.NET)
-				// we cannot "say the name" of this attribute without a ref to the Json.NET package,
+			{ // "[JsonIgnore]" (System.Text.Json, JSON.NET, or any attribute with that name)
+				// we cannot "say the name" of these attributes without referencing their packages,
 				// so we have to search using the name. This could break when using code trimming!
 				if (member.TryGetCustomAttribute("JsonIgnoreAttribute", true, out var attr) && attr != null)
-				{ // skip!
-					return false;
+				{
+					// the System.Text.Json attribute has a Condition property that turns the exclusion into a
+					// per-member serialization rule; read it by name so any TFM (and any lookalike attribute
+					// without the property, like the JSON.NET one) is handled the same way
+					switch (attr.GetType().GetProperty("Condition")?.GetValue(attr)?.ToString())
+					{
+						case "Never":
+						{ // always serialized, even when the settings discard nulls or defaults
+							flags |= CrystalJsonMemberFlags.AlwaysEmit;
+							break;
+						}
+						case "WhenWritingNull":
+						{ // omitted when null, regardless of the settings
+							flags |= CrystalJsonMemberFlags.OmitNullValues;
+							break;
+						}
+						case "WhenWritingDefault":
+						{ // omitted when equal to the member's default, regardless of the settings
+							flags |= CrystalJsonMemberFlags.OmitDefaultValues;
+							break;
+						}
+						default:
+						{ // "Always", or an attribute without a Condition: excluded from both directions
+							return false;
+						}
+					}
 				}
 			}
 
@@ -1077,7 +1101,8 @@ namespace SnowBank.Data.Json
 					throw CrystalJson.Errors.Serialization_CouldNotGetDefaultValueForMember(type, field, e);
 				}
 
-				if (!FilterMemberByAttributes(field, hasDataContract, ref name, ref defaultValue))
+				var flags = CrystalJsonMemberFlags.None;
+				if (!FilterMemberByAttributes(field, hasDataContract, ref name, ref defaultValue, ref flags))
 				{
 					continue; // skip
 				}
@@ -1085,7 +1110,6 @@ namespace SnowBank.Data.Json
 				var visitor = CrystalJsonVisitor.GetVisitorForType(fieldType, atRuntime: false);
 				if (visitor == null) throw new ArgumentException($"Doesn't know how to serialize field {field.Name} of type {fieldType.GetFriendlyName()}", nameof(type));
 
-				var flags = CrystalJsonMemberFlags.None;
 				if (IsInitOnlyMember(field)) flags |= CrystalJsonMemberFlags.InitOnly;
 				if (IsRequiredMember(field)) flags |= CrystalJsonMemberFlags.Required;
 				if (IsKeyMember(field)) flags |= CrystalJsonMemberFlags.Key;
@@ -1134,7 +1158,8 @@ namespace SnowBank.Data.Json
 					throw CrystalJson.Errors.Serialization_CouldNotGetDefaultValueForMember(type, property, e);
 				}
 
-				if (!FilterMemberByAttributes(property, hasDataContract, ref name, ref defaultValue))
+				var flags = CrystalJsonMemberFlags.None;
+				if (!FilterMemberByAttributes(property, hasDataContract, ref name, ref defaultValue, ref flags))
 				{ // skip it !
 					continue; // skip
 				}
@@ -1159,7 +1184,6 @@ namespace SnowBank.Data.Json
 					setter = TryCompileAdderForReadOnlyCollection(property);
 				}
 
-				var flags = CrystalJsonMemberFlags.None;
 				if (setter == null) flags |= CrystalJsonMemberFlags.ReadOnly;
 				if (IsInitOnlyMember(property)) flags |= CrystalJsonMemberFlags.InitOnly;
 				if (IsRequiredMember(property)) flags |= CrystalJsonMemberFlags.Required;

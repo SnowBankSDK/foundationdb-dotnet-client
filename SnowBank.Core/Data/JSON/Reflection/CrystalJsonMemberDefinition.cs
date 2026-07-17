@@ -37,6 +37,12 @@ namespace SnowBank.Data.Json
 		InitOnly = 1 << 4,
 		Required = 1 << 5,
 		Key = 1 << 6,
+		/// <summary>The member is always serialized, even when the settings discard nulls or default values (<c>[JsonIgnore(Condition = JsonIgnoreCondition.Never)]</c>)</summary>
+		AlwaysEmit = 1 << 7,
+		/// <summary>The member is omitted when its value is <see langword="null"/>, regardless of the settings (<c>[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]</c>)</summary>
+		OmitNullValues = 1 << 8,
+		/// <summary>The member is omitted when its value equals its default, regardless of the settings (<c>[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]</c>)</summary>
+		OmitDefaultValues = 1 << 9,
 	}
 
 	/// <summary>Structure that holds the cached serialization metadata for a field or property of a class or struct</summary>

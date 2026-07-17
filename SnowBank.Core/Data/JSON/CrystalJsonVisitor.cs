@@ -2547,7 +2547,19 @@ namespace SnowBank.Data.Json
 			foreach (var member in typeDef.Members)
 			{
 				var child = member.Getter(value);
-				if (discardDefaults)
+				if ((member.Flags & (CrystalJsonMemberFlags.AlwaysEmit | CrystalJsonMemberFlags.OmitNullValues | CrystalJsonMemberFlags.OmitDefaultValues)) != 0)
+				{ // a per-member [JsonIgnore(Condition = ...)] overrides the settings-level discards
+					if ((member.Flags & CrystalJsonMemberFlags.OmitDefaultValues) != 0)
+					{
+						if (member.IsDefaultValue(child)) continue;
+					}
+					else if ((member.Flags & CrystalJsonMemberFlags.OmitNullValues) != 0)
+					{
+						if (child == null) continue;
+					}
+					// AlwaysEmit: never skipped
+				}
+				else if (discardDefaults)
 				{ // ignore 0, false, DateTime.MinValue, ...
 					if (member.IsDefaultValue(child)) continue;
 				}
