@@ -32,6 +32,9 @@ namespace FoundationDB.Client
 
 	public static class FqlSyntaxHighlighter
 	{
+		// These FQL token colors are mirrored by the documentation renderer:
+		// Documentation/templates/snowbank/public/main.css (the .fdb-block .f-* rules) and main.js.
+		// If this palette changes, update the docs to match.
 		private const string COLOR_NAME = "#6699CC";
 		private const string COLOR_ITEM = "#F2777A";
 		private const string COLOR_STRING = "#99CC99";
