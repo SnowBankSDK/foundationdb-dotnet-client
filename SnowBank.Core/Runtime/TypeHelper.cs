@@ -162,23 +162,25 @@ namespace SnowBank.Runtime
 		}
 
 		/// <summary>Generates a getter Lambda <c>(object instance) => (object) ((TInstance) instance).PROPERTY</c></summary>
+		/// <remarks>Set <paramref name="nonPublic"/> to also use a non-public get accessor (compiled expression trees can invoke them)</remarks>
 		[Pure]
-		public static Func<object, object> CompileGetter(this PropertyInfo property)
+		public static Func<object, object> CompileGetter(this PropertyInfo property, bool nonPublic = false)
 		{
 			Contract.NotNull(property);
 			// "object func(object target) { return (object) ((instance.TYPE)instance).get_Property(); }"
 			var prmInstance = Expression.Parameter(typeof(object), "instance");
-			var body = Expression.Call(prmInstance.CastFromObject(property.DeclaringType!), property.GetGetMethod()!).BoxToObject();
+			var body = Expression.Call(prmInstance.CastFromObject(property.DeclaringType!), property.GetGetMethod(nonPublic)!).BoxToObject();
 			return Expression.Lambda<Func<object, object>>(body, prmInstance).Compile();
 		}
 
 		/// <summary>Generates a setter Lambda <c>(object instance, object value) => ((TInstance) instance).PROPERTY = (TValue) value</c></summary>
 		/// <returns>Returns <c>null</c> if the property is read-only</returns>
+		/// <remarks>Set <paramref name="nonPublic"/> to also use a non-public set accessor (compiled expression trees can invoke them)</remarks>
 		[Pure]
-		public static Action<object, object?>? CompileSetter(this PropertyInfo property)
+		public static Action<object, object?>? CompileSetter(this PropertyInfo property, bool nonPublic = false)
 		{
 			Contract.NotNull(property);
-			var setMethod = property.GetSetMethod();
+			var setMethod = property.GetSetMethod(nonPublic);
 			if (setMethod == null) return null; // non modifiable !?
 			// "void func(object target, object value) { ((instance.TYPE)instance).set_Property((value.TYPE)value)); }"
 			var prmInstance = Expression.Parameter(typeof(object), "instance");

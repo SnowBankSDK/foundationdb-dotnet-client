@@ -997,6 +997,10 @@ namespace SnowBank.Data.Json
 			return true;
 		}
 
+		/// <summary>Tests if a member carries the System.Text.Json <c>[JsonInclude]</c> attribute (matched by name, so no TFM needs a package reference)</summary>
+		private static bool HasJsonIncludeAttribute(MemberInfo member)
+			=> member.TryGetCustomAttribute("JsonIncludeAttribute", true, out var attr) && attr != null;
+
 		private static bool FilterMemberByType(MemberInfo _, Type type)
 		{
 			if (typeof(Delegate).IsAssignableFrom(type))
@@ -1077,7 +1081,19 @@ namespace SnowBank.Data.Json
 			bool hasDataContract = type.GetCustomAttribute<DataContractAttribute>(inherit: true) != null;
 
 			var members = new List<CrystalJsonMemberDefinition>();
-			foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.Public))
+
+			// non-public members are invisible by default, but [JsonInclude] (System.Text.Json) opts them in
+			// explicitly (note: this is a superset of STJ, whose reflection serializer rejects non-public members)
+			var fields = new List<FieldInfo>(type.GetFields(BindingFlags.Instance | BindingFlags.Public));
+			foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+			{
+				if (HasJsonIncludeAttribute(field))
+				{
+					fields.Add(field);
+				}
+			}
+
+			foreach (var field in fields)
 			{
 				Contract.Debug.Assert(field != null);
 
@@ -1135,7 +1151,15 @@ namespace SnowBank.Data.Json
 				members.Add(definition);
 			}
 
-			var properties = type.GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public);
+			var properties = new List<PropertyInfo>(type.GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public));
+			foreach (var property in type.GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.NonPublic))
+			{
+				if (HasJsonIncludeAttribute(property))
+				{
+					properties.Add(property);
+				}
+			}
+
 			foreach (var property in properties)
 			{
 				Type propertyType = property.PropertyType;
@@ -1164,20 +1188,23 @@ namespace SnowBank.Data.Json
 					continue; // skip
 				}
 
+				// [JsonInclude] also unlocks the non-public accessors of the property
+				bool includeNonPublic = HasJsonIncludeAttribute(property);
+
 				// skip properties that take parameters (possible in VB.NET)
-				var method = property.GetGetMethod();
+				var method = property.GetGetMethod(includeNonPublic);
 				if (method == null || method.GetParameters().Length > 0) continue;
 
 				var visitor = CrystalJsonVisitor.GetVisitorForType(propertyType);
 				Contract.Debug.Assert(visitor != null);
 
-				var getter = property.CompileGetter();
+				var getter = property.CompileGetter(includeNonPublic);
 
 				Action<object, object?>? setter;
-				method = property.GetSetMethod();
+				method = property.GetSetMethod(includeNonPublic);
 				if (method != null && method.GetParameters().Length == 1)
 				{ // we have a direct setter
-					setter = property.CompileSetter();
+					setter = property.CompileSetter(includeNonPublic);
 				}
 				else
 				{ // attempts to generate a custom setter if there isn't one
