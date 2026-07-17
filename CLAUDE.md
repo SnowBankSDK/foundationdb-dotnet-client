@@ -61,6 +61,12 @@ dotnet test  FoundationDB.Client.slnx          # run all tests
 
 Known accepted netfx differences (do not "fix" by changing shared code): doubles may format with 17 digits instead of shortest-roundtrip (`FastDtoa` is excluded), and `IVarTuple` ↔ `ValueTuple`/`ITuple` interop is unavailable (`System.Runtime.CompilerServices.ITuple` is not visible to netstandard2.0).
 
+## Releasing
+
+The published NuGet packages are cut from [`Common/VersionInfo.props`](Common/VersionInfo.props). The reference **sample and sandbox projects are not part of the release**: they pin *published* `FoundationDB.*` package versions (so a reader can `restore` them like their own app), which means they legitimately lag the in-development version. Fold this sweep into the pre-tag routine:
+
+- **After** the new packages are live on NuGet (they must be restorable), and **before** locking the release with a git tag, bump the pinned `FoundationDB.*` versions in the standalone samples ([`samples/getting-started/`](samples/getting-started/)) and any sandbox projects to the just-published version, then `restore` + build them to confirm they still work against the shipping packages. Doing it before the tag keeps the tagged tree pointing at real, restorable versions; it cannot be done earlier because the packages do not exist yet.
+
 ## Coding conventions
 
 Style is enforced by [`.editorconfig`](.editorconfig) and the `.DotSettings` files. Match the surrounding code; notable points:
