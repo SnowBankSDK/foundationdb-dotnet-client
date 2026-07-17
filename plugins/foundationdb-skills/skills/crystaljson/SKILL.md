@@ -168,8 +168,8 @@ CrystalJson.SerializeTo(textWriterOrStream, value);                    // stream
 
 // PARSE text/bytes -> DOM (JsonValue)
 JsonValue  any = CrystalJson.Parse(json);                              // string, Slice, ReadOnlySpan<char/byte>
-JsonObject o   = CrystalJson.Parse(json).AsObject();                   // or .ParseObject(...)
-JsonArray  a   = CrystalJson.ParseArray(json);
+JsonObject o   = CrystalJson.Parse(json).AsObject();                   // AsObject() throws if it is not an object
+JsonArray  a   = CrystalJson.Parse(json).AsArray();                    // AsArray() likewise
 // Parse a READ-ONLY DOM (cache-safe) by passing read-only settings:
 JsonValue roDom = CrystalJson.Parse(json, CrystalJsonSettings.JsonReadOnly);
 
@@ -186,6 +186,11 @@ Slice  b2 = value.ToJsonSlice(CrystalJsonSettings.JsonCompact);
 to your type. A `null`/empty/missing input deserializes to `null` -> throws for a non-nullable `T` unless you pass a
 `defaultValue`.
 
+⚠️ There is **no `CrystalJson.ParseObject(...)` or `CrystalJson.ParseArray(...)`** - parse, then narrow with
+`.AsObject()` / `.AsArray()` as above. (`JsonObject.Parse(json)` compiles, but it is the *inherited* `JsonValue.Parse`
+and still returns a `JsonValue`, so it needs `.AsObject()` too. `CrystalJsonDomWriter.ParseObject(value)` is unrelated:
+it goes the other way, CLR value -> DOM.)
+
 ### CrystalJsonSettings
 
 Settings are **immutable and cached**; start from a preset and compose with fluent methods.
@@ -199,7 +204,10 @@ Common fluent options (chainable, e.g. `CrystalJsonSettings.Json.Compacted().Cam
 - Naming: `.CamelCased()`, `.PascalCased()`
 - Nulls/defaults: `.WithoutNullMembers()` (default), `.WithNullMembers()`, `.WithoutDefaultValues()`
 - Enums: `.WithEnumAsStrings()` (default is numbers), `.WithEnumAsNumbers()`
-- Dates: `.WithIso8601Dates()` (default), `.WithMicrosoftDates()`
+- Dates: `.WithIso8601Dates()` (default), `.WithMicrosoftDates()` (emits `"\/Date(ms)\/"`; **reading** that legacy
+  format always works, with or without this setting)
+- Dictionaries: `.WithDictionariesAsMaps()` (default, `{"k":v}`), `.WithDictionariesAsPairArrays()` (emits the legacy
+  `[{"Key":k,"Value":v}]` shape; again, **reading** both shapes always works) *(7.4.3+)*
 - Read-only result: `.AsReadOnly()`
 
 ---
@@ -351,7 +359,70 @@ root.Set(p, "new value");           // on a MutableJsonValue
 
 ---
 
-## 9. Golden rules & gotchas
+## 9. Attributes: what each path honors (and legacy interop)
+
+There are **two independent (de)serialization paths, with different attribute vocabularies**. Getting this wrong
+silently changes the wire, so check the matrix before annotating a DTO:
+
+- **Reflection** (`CrystalJsonTypeResolver`) - what `CrystalJson.Serialize` / `Deserialize<T>` / `JsonValue.FromValue`
+  use for a type with no generated converter.
+- **Source generator** - what `[CrystalJsonConverter]` + `[CrystalJsonSerializable(typeof(T))]` emit.
+
+| Attribute | Reflection | Source generator |
+|---|---|---|
+| `[JsonProperty("x")]` (SnowBank; also `DefaultValue`, `EnumFormat`) | YES (all three) | YES, except `EnumFormat` |
+| STJ `[JsonPropertyName("x")]` | YES | YES |
+| STJ `[JsonIgnore]` / `[JsonIgnore(Condition = ...)]` | YES, full STJ semantics *(7.4.3+)* | YES, full STJ semantics *(7.4.3+)* |
+| STJ `[JsonInclude]` (non-public members/accessors) | YES *(7.4.3+)*, a superset of STJ | **no** - emits a `SYSLIB1038` warning and omits the member |
+| STJ `[JsonPolymorphic]` + `[JsonDerivedType]` | YES (discriminator name **and** values are free-form) | YES |
+| `[Key]` (DataAnnotations) | flag only | YES (drives the proxy Id) |
+| C# `required` | detected, **not enforced** on read | **enforced** (throws on a missing member) |
+| `[DataContract]` + `[DataMember]` (opt-in + `Name=`) | YES | **no** (all public members, C# names) |
+| `[DataMember]`'s `Order` / `IsRequired` / `EmitDefaultValue` | no | no |
+| Newtonsoft `[JsonProperty]` (name only) | YES | no |
+| `[XmlIgnore]` / `[XmlElement]` / `[XmlAttribute]` | YES (non-`[DataContract]` types) | no |
+| STJ `[JsonConverter]`, `[JsonPropertyOrder]`, `[JsonNumberHandling]`, `[JsonExtensionData]`, `[JsonConstructor]` | no | no |
+
+`[JsonIgnore(Condition = ...)]` follows System.Text.Json *(7.4.3+, both paths, and both the text-writer and DOM/Pack
+routes)*:
+
+| Condition | Effect on serialization |
+|---|---|
+| `Always` (the default, i.e. bare `[JsonIgnore]`) | member excluded from **both** directions |
+| `Never` | always emitted, even null/default - overrides `WithoutDefaultValues()` / `WithoutNullMembers()` |
+| `WhenWritingNull` | omitted when null, whatever the settings say |
+| `WhenWritingDefault` | omitted when equal to the member's default, whatever the settings say |
+
+Two intentional deviations from STJ: `WhenWritingDefault` compares against the member's **declared** default (so
+`[JsonProperty(DefaultValue = 7)]` composes with it), and `WhenWritingNull` on a non-nullable value type is inert
+instead of throwing.
+
+**Migrating a legacy `[DataContract]` DTO** (e.g. from `DataContractJsonSerializer`): the reflection path already
+reproduces its member selection and `Name=` renames, so an un-touched DTO keeps its wire - **but only on that path**
+(the generator is DataContract-blind, see the gotcha above). Useful equivalences:
+
+- `EmitDefaultValue = false` -> `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]`
+- a non-public `[DataMember]` -> add `[JsonInclude]` (reflection path only, for now)
+- `[KnownType]` -> `[JsonPolymorphic(TypeDiscriminatorPropertyName = "__type")]` + `[JsonDerivedType(typeof(X), "Name:Ns")]`
+- `Order` -> nothing (member order is not part of the contract); `IsRequired` -> C# `required` (enforced by the
+  generator only), or validate at the boundary with `obj.Get<T>("field")`, which throws on null/missing.
+- Never put `[DataMember]` and `[JsonIgnore]` on the same member: reflection lets `[DataMember]` win, the generator
+  lets `[JsonIgnore]` win.
+
+**Legacy wire tolerance (read side, always on, no setting needed):** `"\/Date(ms)\/"` and `"\/Date(ms+HHMM)\/"` dates
+bind to `DateTime`/`DateTimeOffset` (the ms are always UTC; the suffix only carries the producer's offset), and the
+`[{"Key":k,"Value":v}]` dictionary shape binds to `Dictionary<K,V>` *(7.4.3+, strict: every element must be an object
+with exactly `Key` and `Value`)*. To **emit** either legacy shape, opt in with `WithMicrosoftDates()` /
+`WithDictionariesAsPairArrays()` (section 4).
+
+**Lifecycle:** deserialization runs the **parameterless constructor** (public or not), then assigns members; missing
+and explicit-null fields are skipped, so ctor-initialised state survives. The `[OnSerializing]` / `[OnSerialized]` /
+`[OnDeserializing]` / `[OnDeserialized]` callbacks are **never invoked** - move that logic to the ctor, or take over
+the type with `IJsonPackable` / `IJsonDeserializable<T>` (section 7) or a `ctor(JsonValue[, ICrystalJsonTypeResolver])`.
+
+---
+
+## 10. Golden rules & gotchas
 
 ✅ **DO**
 - Use the **source generator** for domain POCOs; use the **DOM** for dynamic/schemaless JSON.
@@ -362,9 +433,12 @@ root.Set(p, "new value");           // on a MutableJsonValue
 - Round-trip-test any manual `IJsonPackable`/`IJsonDeserializable<T>` implementation.
 
 ⚠️ **GOTCHAS**
-- **Not System.Text.Json / Newtonsoft.** `JsonObject`/`JsonArray` here are `SnowBank.Data.Json`. Don't mix attributes or
-  APIs from the other libraries (though `[JsonProperty]`, `[Key]`, and some `System.Text.Json` polymorphism attributes
-  are recognized by the generator).
+- **Not System.Text.Json / Newtonsoft.** `JsonObject`/`JsonArray` here are `SnowBank.Data.Json`, and the *APIs* are not
+  interchangeable with the other libraries. Several of their **attributes** are honored though - see section 10 for the
+  exact per-path matrix, and mind that the two paths do not honor the same set.
+- **The two paths do not agree on legacy `[DataContract]` types** (see section 9): the reflection path honors the
+  `[DataMember]` opt-in and renames, the generator ignores them entirely. Never point `[CrystalJsonSerializable]` at a
+  DTO whose wire contract comes from DataContract attributes.
 - **`JsonNull.Missing` ≠ `JsonNull.Null` ≠ `JsonNull.Error`.** All are "null", but distinct; use `IsNullOrMissing()` /
   `IsMissing()` to tell them apart. Empty/whitespace input parses to `Missing`; literal `"null"` parses to `Null`.
 - **Mutating a read-only `JsonObject`/`JsonArray` throws.** `ToMutable()` first, or build mutable.
@@ -373,4 +447,6 @@ root.Set(p, "new value");           // on a MutableJsonValue
 - **`Add("field", x)` vs `["field"].Add(x)`** - field-set (throws on existing) vs array-append. Pick the right one.
 - **Don't retain a `MutableJsonValue` child across a parent mutation** - it goes stale.
 - **`Deserialize<T>` of `null` throws** for a non-nullable `T` unless you pass a `defaultValue`.
+- **`[JsonIgnore]` means "exclude"; `[JsonIgnore(Condition = ...)]` does NOT** - it is a per-member serialization rule
+  (section 9). Reading is unaffected in both cases except for `Always`.
 - Numbers/dates are **InvariantCulture**; dates default to ISO 8601.
