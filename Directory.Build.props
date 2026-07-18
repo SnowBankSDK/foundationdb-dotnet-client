@@ -75,4 +75,11 @@
 		<NoWarn>$(NoWarn);CS1574;CS1580</NoWarn>
 	</PropertyGroup>
 
+	<!-- Release builds turn on GenerateDocumentationFile, which raises CS1591 (missing XML doc comment) for every
+	     undocumented public member. Until the public API is fully documented in a dedicated sweep (tracked separately),
+	     that is pure noise on every Release build; silence it here. Remove this to drive the documentation sweep. -->
+	<PropertyGroup>
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
+	</PropertyGroup>
+
 </Project>
