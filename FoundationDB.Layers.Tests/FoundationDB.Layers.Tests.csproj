@@ -1,11 +1,12 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<!-- Microsoft.Testing.Platform runner (like the other test projects): the test assembly is a self-contained
 		     executable, run directly with `dotnet <dll>` (plus the usual filter options) instead of `dotnet test` -->
 		<OutputType>Exe</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
-		<!-- the net472 validation target consumes the netstandard2.0 builds of FoundationDB.FakeDb and its dependencies, so it follows the same switch -->
+		<!-- the net472 validation target consumes the netstandard2.0 builds of the layer libraries; layers with no
+		     netstandard2.0 build (Layers.Experimental) have their test folders removed on net472 (see below) -->
 		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<IsTestProject>true</IsTestProject>
@@ -47,19 +48,20 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
+		<!-- real-cluster fixtures ([Category("RealCluster")]) provision a FoundationDB container through FdbTest -->
+		<PackageReference Include="Testcontainers" />
 	</ItemGroup>
 
 	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
-		<!-- nullable-flow false positives: the .NET Framework BCL lacks the nullable annotations the modern BCL
-		     carries (same family as SnowBank.Core's netstandard2.0 target) -->
+		<!-- nullable-flow false positives: the .NET Framework BCL lacks the nullable annotations the modern BCL carries -->
 		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8769;CS8777</NoWarn>
-		<!-- The CoreSDK is x64-only (the FoundationDB native client has no 32-bit build), so keep this
-		     .NET Framework test-host executable 64-bit: the .NET test SDK otherwise defaults net4x test
-		     hosts to win-x86. Only reached when CoreSdkNetStandardEnabled adds the net472 target. -->
+		<!-- the CoreSDK is x64-only (the FoundationDB native client has no 32-bit build) -->
 		<PlatformTarget>x64</PlatformTarget>
 	</PropertyGroup>
 
 	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+		<!-- layers with no netstandard2.0/net472 build: their test folders are removed on net472 (also guarded with #if !NETFRAMEWORK) -->
+		<Compile Remove="FullText/**/*.cs" />
 		<Reference Include="System.Net.Http" />
 		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
 		<PackageReference Include="PolySharp" PrivateAssets="all" />
@@ -69,19 +71,20 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- golden traces + pinned generator finds of the differential scenario harness: loadable next to the test assembly -->
-		<None Include="Scenarios\Goldens\**\*.json" CopyToOutputDirectory="PreserveNewest" />
-		<None Include="Scenarios\Corpus\Pinned\**\*.json" CopyToOutputDirectory="PreserveNewest" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
 		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
+		<ProjectReference Include="..\FoundationDB.Layers.Common\FoundationDB.Layers.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />
 	</ItemGroup>
 
-	<!-- Copies the native fdb_c client library to this project's own output folder, so that the real-cluster head (SmokeRealClusterFacts) can locate it via FdbClientNativeExtensions.ProbeNativeLibraryPaths() -->
+	<ItemGroup Condition="'$(TargetFramework)' != 'net472'">
+		<!-- Layers.Experimental has no netstandard2.0/net472 build: its test files are guarded with #if !NETFRAMEWORK -->
+		<ProjectReference Include="..\FoundationDB.Layers.Experimental\FoundationDB.Layers.Experimental.csproj" />
+	</ItemGroup>
+
+	<!-- Copies the native fdb_c client next to the test assembly so the real-cluster fixtures can locate it -->
 	<Import Project="..\FoundationDB.Client.Native\build\FoundationDB.Client.Native.targets" />
 
 </Project>

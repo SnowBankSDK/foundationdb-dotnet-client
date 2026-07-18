@@ -13,6 +13,7 @@
   </Folder>
   <Folder Name="/Client/Tests/">
     <Project Path="FoundationDB.FakeDb.Tests/FoundationDB.FakeDb.Tests.csproj" />
+    <Project Path="FoundationDB.Layers.Tests/FoundationDB.Layers.Tests.csproj" />
     <Project Path="FoundationDB.Samples/FoundationDB.Samples.csproj" />
     <Project Path="FoundationDB.Tests.Sandbox/FoundationDB.Tests.Sandbox.csproj" />
     <Project Path="FoundationDB.Tests/FoundationDB.Tests.csproj" />

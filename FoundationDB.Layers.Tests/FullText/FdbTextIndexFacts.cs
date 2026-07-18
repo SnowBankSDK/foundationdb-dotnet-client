@@ -26,21 +26,18 @@
 
 #if !NETFRAMEWORK
 
-namespace FoundationDB.Client.Tests
+namespace FoundationDB.Layers.FullText.Tests
 {
-	using System;
 	using System.Collections.Generic;
 	using System.Threading.Tasks;
 	using FoundationDB.Layers.FullText;
-	using FoundationDB.Testing;
-	using FoundationDB.Testing.Tests;
 	using SnowBank.Data.Json;
 
-	/// <summary>Behavioral tests for the experimental <see cref="FdbTextIndex{TId}"/> layer, run against the in-memory FakeDb
-	/// (no cluster and no Docker: this fixture derives from <see cref="FakeDbTest"/>). The scenarios are adapted from the
-	/// Apache Lucene / LeanCorpus style of "index a corpus, search, assert the result set and the ranking".</summary>
-	[TestFixture]
-	public class FdbTextIndexFacts : FakeDbTest
+	/// <summary>Behavioral tests for the experimental <see cref="FdbTextIndex{TId}"/> layer. The suite is backend-agnostic
+	/// (it opens an isolated partition via <see cref="FdbTest.OpenTestPartitionAsync"/>); the concrete fixtures at the bottom
+	/// run it against the in-memory FakeDb (fast, Docker-free) and, opt-in, a real FoundationDB cluster. Scenarios are adapted
+	/// from the Apache Lucene / LeanCorpus style of "index a corpus, search, assert the result set and the ranking".</summary>
+	public abstract class FdbTextIndexFacts : FdbTest
 	{
 
 		// The fields we index, with their relative importance. A hit in the title or author outranks a hit in the blurb,
@@ -78,18 +75,7 @@ namespace FoundationDB.Client.Tests
 			("bravenew",     """{ "title": "Brave New World", "author": "Aldous Huxley", "genre": "dystopian", "isbn": "978-0060850524", "blurb": "An engineered society trades freedom for comfort and chemical happiness." }"""),
 		];
 
-		private static IFdbDatabase OpenDb()
-		{
-			var db = new FakeDbStore().OpenDatabase(null, readOnly: false);
-			db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
-			return db;
-		}
-
 		private static FdbTextIndex<string> CreateIndex(IFdbDatabase db) => new(db.Root["fts"], BookFields);
-
-		// FakeDbTest has no CleanLocation helper, so create the index directory ourselves (fresh FakeDb = nothing to clean).
-		private Task EnsureLocationAsync(IFdbDatabase db, ISubspaceLocation location)
-			=> db.WriteAsync(async tr => { _ = await db.DirectoryLayer.CreateOrOpenAsync(tr, location.Path); }, this.Cancellation);
 
 		private async Task SeedAsync(IFdbDatabase db, FdbTextIndex<string> index)
 		{
@@ -147,9 +133,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Single_Field_Search_By_Author_And_By_Genre()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			// "author" is its own field: "guin" belongs to Ursula K. Le Guin, who wrote one SF and one fantasy book here.
@@ -164,9 +150,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task A_Title_Hit_Outranks_A_Blurb_Hit()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			// "dragon" is the TITLE of The Girl with the Dragon Tattoo (weight 5) and a BLURB word for The Hobbit and Earthsea
@@ -180,9 +166,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Search_Bar_Finds_Across_Fields_Ranked_By_Coverage()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			// The "one prompt to find them all": "ursula science fiction" matches The Left Hand of Darkness on BOTH the
@@ -198,9 +184,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Updating_A_Field_Changes_The_Results()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			// Before: two books are tagged dystopian.
@@ -220,9 +206,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Removing_A_Book_Removes_Its_Terms()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			// "haunted" appears only in The Shining's blurb.
@@ -241,9 +227,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Exact_Phrase_Matches_Only_Consecutive_Terms()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			// "The Girl with the Dragon Tattoo" analyzes (stop-words dropped) to [girl, dragon, tattoo] at positions 0,1,2.
@@ -259,9 +245,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Phrase_Is_Ordered()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			var title = JsonPath.Create("title");
@@ -276,9 +262,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Proximity_Slop_Bridges_A_Gap()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			var title = JsonPath.Create("title");
@@ -291,9 +277,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Phrase_Search_Drops_Stop_Words_On_Both_Sides()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			// "The Left Hand of Darkness" indexes as [left, hand, darkness]; typing the phrase WITH its stop-words still matches,
@@ -310,12 +296,12 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Phrase_Does_Not_Span_Array_Elements()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 
 			// A field whose value is an ARRAY: each element is analyzed separately, and a large position gap is inserted between
 			// elements so a phrase cannot match the last word of one element followed by the first word of the next.
 			var index = new FdbTextIndex<string>(db.Root["fts-array"], [new FdbTextField("tags", 1.0)]);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await db.WriteAsync(async tr =>
 			{
 				var state = await index.Resolve(tr);
@@ -356,9 +342,9 @@ namespace FoundationDB.Client.Tests
 			//   brown@A: tf=1 dl=3 -> (same denominator as quick@A)             = 0.39019170
 			//   fox@A:   tf=1 dl=3 -> 0.98082925 * 2.2/2.65 = 0.98082925 * 0.830189 = 0.81427335
 
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = new FdbTextIndex<string>(db.Root["fts-bm25"], [new FdbTextField("body", 1.0)]);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 
 			foreach (var (id, json) in new[]
 			{
@@ -412,9 +398,9 @@ namespace FoundationDB.Client.Tests
 			//     body  tf=1 dl=1 -> 0.47000363 * 2.2/1.975 = 0.52354830 ; * weight 1.0            => 0.52354830
 			//   D3: no alpha -> not a hit.
 
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = new FdbTextIndex<string>(db.Root["fts-weighted"], [new FdbTextField("title", 3.0), new FdbTextField("body", 1.0)]);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 
 			foreach (var (id, json) in new[]
 			{
@@ -442,9 +428,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Empty_Index_Returns_No_Hits()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			// Deliberately not seeded: every query surface must cope with an empty corpus (document count 0) without throwing.
 
 			Assert.That(await this.SearchIdsAsync(db, index, "dragon"), Is.Empty);
@@ -455,9 +441,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Unknown_Term_Returns_No_Hits()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			Assert.That(await this.SearchIdsAsync(db, index, "zzzznonexistent"), Is.Empty);
@@ -467,9 +453,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Analyzer_Is_Case_Insensitive_And_Keeps_Accented_Letters()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = new FdbTextIndex<string>(db.Root["fts-unicode"], [new FdbTextField("name", 1.0)]);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await db.WriteAsync(async tr =>
 			{
 				var state = await index.Resolve(tr);
@@ -490,9 +476,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task And_Or_Compose_Scores_By_Summation()
 		{
-			using var db = OpenDb();
+			using var db = await OpenTestPartitionAsync();
 			var index = CreateIndex(db);
-			await this.EnsureLocationAsync(db, index.Location);
+			await CleanLocation(db, index.Location);
 			await this.SeedAsync(db, index);
 
 			var author = JsonPath.Create("author");
@@ -512,6 +498,32 @@ namespace FoundationDB.Client.Tests
 			Assert.That(or.Keys, Contains.Item("lefthand"));
 		}
 
+	}
+
+	/// <summary>Runs the full-text index suite against the in-memory FakeDb emulator (no Docker, no native client) for fast iteration.</summary>
+	[TestFixture]
+	public sealed class FdbTextIndexFakeDbFacts : FdbTextIndexFacts
+	{
+
+		private FakeDbTestBackend Backend { get; } = new();
+
+		protected override bool UseRealServer => false;
+
+		[TearDown]
+		public void ResetBackend() => this.Backend.Reset();
+
+		protected override Task<IFdbDatabase> OpenTestDatabaseAsync(bool readOnly = false) => this.Backend.OpenAsync(FdbPath.Root, readOnly);
+
+		protected override Task<IFdbDatabase> OpenTestPartitionAsync(string? testMethod = null) => this.Backend.OpenAsync(GetTestPartitionPath(testMethod));
+
+	}
+
+	/// <summary>Runs the full-text index suite against a real FoundationDB cluster (Testcontainers). Run explicitly from the Unit Test
+	/// Sessions UI or with the <c>RealCluster</c> category; requires a local Docker daemon and the native client.</summary>
+	[TestFixture, Explicit("Requires a local Docker daemon"), Category("RealCluster")]
+	public sealed class FdbTextIndexRealClusterFacts : FdbTextIndexFacts
+	{
+		// inherits the full FdbTest behavior: container startup, native client probing, real connection
 	}
 
 }

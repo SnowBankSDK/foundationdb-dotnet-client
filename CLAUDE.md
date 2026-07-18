@@ -46,6 +46,35 @@ dotnet test  FoundationDB.Client.slnx          # run all tests
 - `FoundationDB.FakeDb` provides an in-memory fake for tests that don't want a real cluster.
 - Test classes use the `*Facts` naming convention (e.g. `FdbKeyFacts`, `TuPackFacts`).
 
+### Test project layout (which tests go where)
+
+Three test projects, split by what they exercise:
+
+- **`FoundationDB.FakeDb.Tests`** — the FakeDb emulator's OWN tests only: conformance against real FDB semantics, internals, and the differential scenario harness. Docker-free. (FdbLite's emulator tests will land here too.)
+- **`FoundationDB.Tests`** — the client binding: transactions, keys, subspaces, values, tenants, error handling, the native handler, plus "don't know where else to put it" tests. Docker-backed (Testcontainers). The Directory-layer tests (`DirectoryFacts`, `FdbPathFacts`) live here and are SPECIAL: they open the database manually at the root, because a test *of* the Directory layer cannot use the Directory-layer-based partition helper (that would test the layer through itself).
+- **`FoundationDB.Layers.Tests`** — the home for every LAYER suite (`Layers.Common`, `Layers.Experimental`). Each suite is written ONCE and runs against BOTH the in-memory FakeDb (fast) and a real cluster (validation).
+
+**Dual-backend pattern** (see `FullText/FdbTextIndexFacts.cs`, and `SmokeConformanceFacts` for the original): a layer suite is an `abstract XxxFacts : FdbTest` whose bodies open an isolated partition with `OpenTestPartitionAsync()` and clear it with `CleanLocation(db, location)` — backend-agnostic. Two thin concrete fixtures pick the backend:
+
+```csharp
+public abstract class FooFacts : FdbTest { /* the tests, via OpenTestPartitionAsync() / CleanLocation() */ }
+
+[TestFixture] // FAST default: in-memory FakeDb, no Docker, no native client
+public sealed class FooFakeDbFacts : FooFacts
+{
+    private FakeDbTestBackend Backend { get; } = new();
+    protected override bool UseRealServer => false;
+    [TearDown] public void ResetBackend() => this.Backend.Reset();
+    protected override Task<IFdbDatabase> OpenTestDatabaseAsync(bool readOnly = false) => this.Backend.OpenAsync(FdbPath.Root, readOnly);
+    protected override Task<IFdbDatabase> OpenTestPartitionAsync(string? testMethod = null) => this.Backend.OpenAsync(GetTestPartitionPath(testMethod));
+}
+
+[TestFixture, Explicit("Requires a local Docker daemon"), Category("RealCluster")]
+public sealed class FooRealClusterFacts : FooFacts { } // inherits the real-cluster FdbTest behavior
+```
+
+**Workflow**: iterate against the `*FakeDbFacts` fixtures (Docker-free, instant); then run the `*RealClusterFacts` fixtures (opt-in via the `RealCluster` category or the Unit Test Sessions UI) to validate against a real cluster. Real-cluster runs require Docker and the native `fdb_c` client (one-time `FoundationDB.Client.Native/DownloadBinaries.ps1` per worktree). The same suites double as a ready-made realistic test bed for a future FdbLite backend (a third `*FdbLiteFacts` subclass).
+
 ### The netstandard2.0 / net472 "lite" targets
 
 `SnowBank.Core`, `FoundationDB.Client`, `FoundationDB.Client.Native`, `FoundationDB.Layers.Common`, and `FoundationDB.FakeDb` **also build for `netstandard2.0`** (gated by `CoreSdkNetStandardEnabled`, default `true`). This is a deliberate stopgap for applications migrating from .NET Framework 4.7.2 to modern .NET: their legacy `main` branch can already consume the modern APIs (`Contract.NotNull`, CrystalJson, `Slice`, `subspace.Key(...)`), which reduces merge pain with their modernized `vnext` branch. The lite build must **run** on the net472 CLR (including the native `fdb_c` interop), not just compile — and it must produce **byte-identical keys/values**: what is written to the database must never depend on the TFM.
