@@ -76,6 +76,7 @@ Style is enforced by [`.editorconfig`](.editorconfig) and the `.DotSettings` fil
 - `Nullable` is **enabled**; `ImplicitUsings` is enabled (shared usings live in each project's `GlobalUsings.cs`).
 - Public API is documented with XML doc comments (`///`) — keep them accurate and add `<remarks>`/`<example>` for non-obvious behavior, as the existing code does heavily.
 - Allocation-consciousness is a core value: prefer `Slice`/`ReadOnlySpan<byte>`, pooled buffers, and `struct` keys/values over `byte[]`. Many hot types are `readonly struct` implementing span-based interfaces (`ISpanEncodable`).
+- **Guard clauses and assertions use the `Contract.*` family** (`SnowBank.Diagnostics.Contracts`, a global using in these projects), **not** raw `throw new ArgumentNullException(...)`, `ArgumentNullException.ThrowIfNull(...)`, `ArgumentOutOfRangeException.ThrowIf*`, or `System.Diagnostics.Debug.Assert(...)`. Always-on preconditions: `Contract.NotNull(x)`, `Contract.NotNullOrEmpty(...)`, `Contract.Positive(n)`, `Contract.Requires(cond)`. Debug-only invariants: `Contract.Debug.Requires(...)` / `Contract.Debug.Assert(...)` (and `Paranoid.*` for the hottest paths). They carry `[CallerArgumentExpression]` param names and integrate with the test harness's contract-failure interceptor.
 - Don't break public surface casually. Retire APIs with `[Obsolete]` (the codebase uses `error: true` for hard-removed ones) rather than deleting outright.
 
 ## Where things live (FoundationDB.Client)

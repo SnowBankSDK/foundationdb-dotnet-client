@@ -77,6 +77,8 @@
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
+		<!-- spike: exercises the experimental FdbTextIndex layer against the in-memory FakeDb (net472 lite target excluded: Layers.Experimental has no net472 build) -->
+		<ProjectReference Include="..\FoundationDB.Layers.Experimental\FoundationDB.Layers.Experimental.csproj" Condition="'$(TargetFramework)' != 'net472'" />
 		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />
 	</ItemGroup>
