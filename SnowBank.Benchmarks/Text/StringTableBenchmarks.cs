@@ -26,34 +26,99 @@
 
 namespace SnowBank.Benchmarks
 {
+	using System.Collections.Generic;
 	using System.Text;
 	using BenchmarkDotNet.Attributes;
 	using SnowBank.Text;
 
-	/// <summary>Baselines the CrystalJson string interner on its hot case: interning a repeated field name (a cache hit,
-	/// the norm when parsing many objects with the same keys) against just decoding the bytes to a fresh string. Answers
-	/// whether the current lossy L1/L2 + FNV interner is a real per-call cost (a perf reason to redesign) or already cheap
-	/// and allocation-free on the hot path (so the redesign would be about elegance, not speed).</summary>
+	/// <summary>Compares the current CrystalJson interner (lossy L1/L2 + FNV) on its hot cache-hit path against modern
+	/// <c>Dictionary.AlternateLookup</c> replacements (probe the map straight from a span, no lossy double-probe), to size
+	/// the perf ceiling of a redesign. A byte-keyed lookup is the apples-to-apples equivalent (the parser has UTF-8 bytes);
+	/// a char-keyed lookup with the BCL's <see cref="StringComparer.Ordinal"/> is the upper bound (SIMD string hashing).
+	/// All measure a hit for a repeated field name; a plain decode is the "no interning" reference.</summary>
 	[MemoryDiagnoser]
 	public class StringTableBenchmarks
 	{
 
-		private static readonly byte[] FieldName = "description"u8.ToArray();
+		private const string Field = "description";
+		private static readonly byte[] FieldUtf8 = Encoding.UTF8.GetBytes(Field);
 
 		private StringTable Table { get; set; } = null!;
+
+		private Dictionary<string, string>.AlternateLookup<ReadOnlySpan<byte>> ByteLookup;
+		private Dictionary<string, string>.AlternateLookup<ReadOnlySpan<char>> CharLookup;
 
 		[GlobalSetup]
 		public void Setup()
 		{
 			this.Table = StringTable.GetInstance();
-			_ = this.Table.Add(FieldName); // prime the cache so the measured Add() is a hit
+			_ = this.Table.Add(FieldUtf8); // prime: the measured Add() is a hit
+
+			var byteDict = new Dictionary<string, string>(Utf8OrdinalComparer.Instance) { [Field] = Field };
+			this.ByteLookup = byteDict.GetAlternateLookup<ReadOnlySpan<byte>>();
+
+			var charDict = new Dictionary<string, string>(StringComparer.Ordinal) { [Field] = Field };
+			this.CharLookup = charDict.GetAlternateLookup<ReadOnlySpan<char>>();
 		}
 
 		[Benchmark(Baseline = true)]
-		public string Intern_Hit() => this.Table.Add(FieldName);
+		public string Current_Intern_Hit() => this.Table.Add(FieldUtf8);
 
 		[Benchmark]
-		public string Decode_NoIntern() => Encoding.UTF8.GetString(FieldName);
+		public string? AltLookup_Bytes_Hit() => this.ByteLookup.TryGetValue(FieldUtf8, out var s) ? s : null;
+
+		[Benchmark]
+		public string? AltLookup_Chars_Hit() => this.CharLookup.TryGetValue(Field.AsSpan(), out var s) ? s : null;
+
+		/// <summary>The realistic redesign path: the parser has UTF-8 bytes, so transcode to a stack char buffer and then use the
+		/// BCL char lookup. This is the end-to-end cost that must beat <see cref="Current_Intern_Hit"/> for the redesign to win on speed.</summary>
+		[Benchmark]
+		public string? Transcode_Then_CharLookup_Hit()
+		{
+			Span<char> chars = stackalloc char[FieldUtf8.Length]; // char count <= byte count for UTF-8
+			int n = Encoding.UTF8.GetChars(FieldUtf8, chars);
+			return this.CharLookup.TryGetValue(chars[..n], out var s) ? s : null;
+		}
+
+		[Benchmark]
+		public string Decode_NoIntern() => Encoding.UTF8.GetString(FieldUtf8);
+
+		/// <summary>Ordinal string comparer that can also probe/insert from a UTF-8 <see cref="ReadOnlySpan{Byte}"/> (ASCII field
+		/// names, the common case). Both hash paths feed the same bytes into <see cref="HashCode"/> so span-hash == string-hash.</summary>
+		private sealed class Utf8OrdinalComparer : IEqualityComparer<string>, IAlternateEqualityComparer<ReadOnlySpan<byte>, string>
+		{
+			public static readonly Utf8OrdinalComparer Instance = new();
+
+			public bool Equals(string? x, string? y) => string.Equals(x, y, StringComparison.Ordinal);
+
+			public int GetHashCode(string obj)
+			{
+				Span<byte> bytes = obj.Length <= 256 ? stackalloc byte[obj.Length] : new byte[obj.Length];
+				for (int i = 0; i < obj.Length; i++) bytes[i] = (byte) obj[i]; // ASCII
+				var hc = new HashCode();
+				hc.AddBytes(bytes);
+				return hc.ToHashCode();
+			}
+
+			public bool Equals(ReadOnlySpan<byte> alternate, string other)
+			{
+				if (alternate.Length != other.Length) return false;
+				for (int i = 0; i < alternate.Length; i++)
+				{
+					if (alternate[i] != (byte) other[i]) return false;
+				}
+				return true;
+			}
+
+			public int GetHashCode(ReadOnlySpan<byte> alternate)
+			{
+				var hc = new HashCode();
+				hc.AddBytes(alternate);
+				return hc.ToHashCode();
+			}
+
+			public string Create(ReadOnlySpan<byte> alternate) => Encoding.UTF8.GetString(alternate);
+		}
 
 	}
 }

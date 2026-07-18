@@ -116,7 +116,7 @@ namespace SnowBank.Data.Tuples
 		public override string ToString() => ToString(null);
 
 		/// <summary>Returns a human-readable representation of this tuple</summary>
-		[Pure]
+		[Pure, SkipLocalsInit]
 		public string ToString(string? format, IFormatProvider? provider = null)
 		{
 			var sb = new FastStringBuilder(stackalloc char[128]);
