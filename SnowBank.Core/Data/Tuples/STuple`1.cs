@@ -255,6 +255,7 @@ namespace SnowBank.Data.Tuples
 		public override string ToString() => ToString(null);
 
 		/// <inheritdoc />
+		[SkipLocalsInit]
 		public string ToString(string? format, IFormatProvider? provider = null)
 		{
 			// singleton tuples end with a trailing ','

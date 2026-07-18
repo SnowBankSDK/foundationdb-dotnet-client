@@ -1663,6 +1663,7 @@ namespace SnowBank.Data.Tuples
 			/// <param name="items">Span of items to stringify</param>
 			/// <returns>String representation of the tuple in the form "(item1, item2, ...)"</returns>
 			/// <example><c>STuple.Formatter.ToString([ 1, 2, 3 ])</c> => <c>"(1, 2, 3)"</c></example>
+			[SkipLocalsInit]
 			public static string ToString<T>(ReadOnlySpan<T> items)
 			{
 				if (items.Length == 0) return TokenTupleEmpty;
@@ -1723,6 +1724,7 @@ namespace SnowBank.Data.Tuples
 			/// <param name="items">Span of items to stringify</param>
 			/// <returns>String representation of the tuple in the form "(item1, item2, ...)"</returns>
 			/// <example><c>STuple.Formatter.ToString([ "hello", 123, true, "world" ])</c> => <c>"(\"hello\", 123, true, \"world\")"</c></example>
+			[SkipLocalsInit]
 			public static string ToString(ReadOnlySpan<object?> items)
 			{
 				if (items.Length == 0) return TokenTupleEmpty;
@@ -1776,6 +1778,7 @@ namespace SnowBank.Data.Tuples
 			/// <param name="items">Sequence of items to stringify</param>
 			/// <returns>String representation of the tuple in the form "(item1, item2, ...)"</returns>
 			/// <example><c>STuple.Formatter.ToString([ "hello", 123, true, "world" ])</c> => <c>"(\"hello\", 123, true, \"world\")"</c></example>
+			[SkipLocalsInit]
 			public static string ToString(IEnumerable<object?>? items)
 			{
 				var sb = new FastStringBuilder(stackalloc char[128]);
@@ -1843,6 +1846,7 @@ namespace SnowBank.Data.Tuples
 			/// <param name="items">Sequence of items to stringify</param>
 			/// <returns>String representation of the tuple in the form "(item1, item2, ...)"</returns>
 			/// <example><c>STuple.Formatter.ToString(STuple.Create("hello", 123, true, "world"))</c> => <c>"(\"hello\", 123, true, \"world\")"</c></example>
+			[SkipLocalsInit]
 			public static string ToString<TTuple>(TTuple items)
 #if NET9_0_OR_GREATER
 				where TTuple : IVarTuple, allows ref struct

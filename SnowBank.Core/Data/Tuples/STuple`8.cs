@@ -431,6 +431,7 @@ namespace SnowBank.Data.Tuples
 		public override string ToString() => ToString(null);
 
 		/// <inheritdoc />
+		[SkipLocalsInit]
 		public string ToString(string? format, IFormatProvider? provider = null)
 		{
 			var sb = new FastStringBuilder(stackalloc char[128]);
