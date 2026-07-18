@@ -33,7 +33,7 @@ namespace SnowBank.Buffers
 	/// <typeparam name="TLiteral">Type of the literal representation of the token.</typeparam>
 	/// <typeparam name="TRune">Element of the binary representation of the token.</typeparam>
 #if NET9_0_OR_GREATER
-	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
+	[Obsolete("Use Dictionary<TKey, TValue>.AlternateLookup<TSpan> (.NET 9+) instead.", error: true)]
 #endif
 	public abstract class TokenMap<TToken, TLiteral, TRune> : IEnumerable<KeyValuePair<TLiteral, TToken>>
 		where TLiteral : IEquatable<TLiteral>
@@ -101,7 +101,7 @@ namespace SnowBank.Buffers
 	/// <summary>Bi-directional mapping table between the in-memory (<see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;<see cref="char"/>&gt;</see>) and literal (<see cref="string"/>) representation of a <typeparamref name="TToken">token</typeparamref></summary>
 	/// <typeparam name="TToken">Type of the token</typeparam>
 #if NET9_0_OR_GREATER
-	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
+	[Obsolete("Use Dictionary<TKey, TValue>.AlternateLookup<TSpan> (.NET 9+) instead.", error: true)]
 #endif
 	public class ByteStringTokenMap<TToken> : TokenMap<TToken, string, byte>
 	{
@@ -153,7 +153,7 @@ namespace SnowBank.Buffers
 	/// <summary>Bi-directional mapping table between the encoded (<see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;<see cref="byte"/>&gt;</see>) and literal (<see cref="string"/>) representation of a <typeparamref name="TToken">token</typeparamref></summary>
 	/// <typeparam name="TToken">Type of the token</typeparam>
 #if NET9_0_OR_GREATER
-	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
+	[Obsolete("Use Dictionary<TKey, TValue>.AlternateLookup<TSpan> (.NET 9+) instead.", error: true)]
 #endif
 	public class CharStringTokenMap<TToken> : TokenMap<TToken, string, char>
 	{

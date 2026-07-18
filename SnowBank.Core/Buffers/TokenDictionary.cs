@@ -35,7 +35,7 @@ namespace SnowBank.Buffers
 	/// <typeparam name="TRune">Type of the elements that make up the literal (ex: char)</typeparam>
 	[DebuggerDisplay("Count={Size}")]
 #if NET9_0_OR_GREATER
-	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
+	[Obsolete("Use Dictionary<TKey, TValue>.AlternateLookup<TSpan> (.NET 9+) instead.", error: true)]
 #endif
 	public abstract class TokenDictionary<TValue, TLiteral, TRune>
 		where TLiteral : IEquatable<TLiteral>
@@ -402,7 +402,7 @@ namespace SnowBank.Buffers
 	/// <summary>Dictionary of tokens with string literals addressable via <see cref="ReadOnlySpan{T}">ReadOnlySpan&lt;char&gt;</see> keys</summary>
 	/// <typeparam name="TValue">Type of tokens stored in the dictionary</typeparam>
 #if NET9_0_OR_GREATER
-	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
+	[Obsolete("Use Dictionary<TKey, TValue>.AlternateLookup<TSpan> (.NET 9+) instead.", error: true)]
 #endif
 	public sealed class CharStringTokenDictionary<TValue> : TokenDictionary<TValue, string, char>
 	{
@@ -456,7 +456,7 @@ namespace SnowBank.Buffers
 	/// <summary>Dictionary of tokens with string literals addressable via their encoded byte representation (ex: UTF-8)</summary>
 	/// <typeparam name="TValue">Type of tokens stored in the dictionary</typeparam>
 #if NET9_0_OR_GREATER
-	[Obsolete("Please consider replacing with regular Dictionary<TKey, TValue>.AlternateLookup<TSpan> available since .NET 9")]
+	[Obsolete("Use Dictionary<TKey, TValue>.AlternateLookup<TSpan> (.NET 9+) instead.", error: true)]
 #endif
 	public sealed class ByteStringTokenDictionary<TValue> : TokenDictionary<TValue, string, byte>
 	{
