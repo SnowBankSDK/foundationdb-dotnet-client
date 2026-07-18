@@ -392,6 +392,126 @@ namespace FoundationDB.Client.Tests
 			Assert.That(fox["A"], Is.GreaterThan(quick["A"]));
 		}
 
+		[Test]
+		public async Task Bm25_Weighted_Sum_Across_Fields_Matches_The_Hand_Computed_Formula()
+		{
+			// The layer's headline is per-field weighted ranking: a term with no field is scored in EVERY field with that field's
+			// own idf / average-length / document-length, multiplied by the field weight, and the per-field contributions are summed.
+			// Two fields: title (weight 3.0) and body (weight 1.0). Three documents (the analyzer changes nothing here):
+			//   D1  title "alpha"   body "alpha beta"
+			//   D2  title "beta"    body "alpha"
+			//   D3  title "gamma"   body "gamma"        N = 3.
+			//   title lengths 1,1,1 -> avgdl_title = 1.0  ; df_title(alpha) = 1  (D1)
+			//   body  lengths 2,1,1 -> avgdl_body  = 4/3  ; df_body(alpha)  = 2  (D1, D2)
+			//   idf_title(df=1) = ln(1 + 2.5/1.5) = 0.98082925 ; idf_body(df=2) = ln(1 + 1.5/2.5) = 0.47000363
+			//
+			//   D1 (alpha in BOTH fields):
+			//     title tf=1 dl=1 -> 0.98082925 * 2.2/2.200 = 0.98082925 ; * weight 3.0 = 2.94248776
+			//     body  tf=1 dl=2 -> 0.47000363 * 2.2/2.650 = 0.39019169 ; * weight 1.0 = 0.39019169   => 3.33267945
+			//   D2 (alpha in body only):
+			//     body  tf=1 dl=1 -> 0.47000363 * 2.2/1.975 = 0.52354830 ; * weight 1.0            => 0.52354830
+			//   D3: no alpha -> not a hit.
+
+			using var db = OpenDb();
+			var index = new FdbTextIndex<string>(db.Root["fts-weighted"], [new FdbTextField("title", 3.0), new FdbTextField("body", 1.0)]);
+			await this.EnsureLocationAsync(db, index.Location);
+
+			foreach (var (id, json) in new[]
+			{
+				("D1", """{ "title": "alpha", "body": "alpha beta" }"""),
+				("D2", """{ "title": "beta",  "body": "alpha" }"""),
+				("D3", """{ "title": "gamma", "body": "gamma" }"""),
+			})
+			{
+				await db.WriteAsync(async tr =>
+				{
+					var state = await index.Resolve(tr);
+					await state.IndexAsync(tr, id, JsonObject.ParseObject(json));
+				}, this.Cancellation);
+			}
+
+			// A term with no field is scored across all fields, weighted and summed.
+			var alpha = await this.ScoresAsync(db, index, new FtsTerm("alpha"));
+
+			Assert.That(alpha.Keys, Is.EquivalentTo(new[] { "D1", "D2" }));
+			Assert.That(alpha["D1"], Is.EqualTo(3.33267945).Within(1e-5)); // the heavy title field dominates
+			Assert.That(alpha["D2"], Is.EqualTo(0.52354830).Within(1e-5));
+			Assert.That(alpha["D1"], Is.GreaterThan(alpha["D2"]));
+		}
+
+		[Test]
+		public async Task Empty_Index_Returns_No_Hits()
+		{
+			using var db = OpenDb();
+			var index = CreateIndex(db);
+			await this.EnsureLocationAsync(db, index.Location);
+			// Deliberately not seeded: every query surface must cope with an empty corpus (document count 0) without throwing.
+
+			Assert.That(await this.SearchIdsAsync(db, index, "dragon"), Is.Empty);
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsTerm("dragon", JsonPath.Create("title"))), Is.Empty);
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["dragon", "tattoo"], JsonPath.Create("title"))), Is.Empty);
+		}
+
+		[Test]
+		public async Task Unknown_Term_Returns_No_Hits()
+		{
+			using var db = OpenDb();
+			var index = CreateIndex(db);
+			await this.EnsureLocationAsync(db, index.Location);
+			await this.SeedAsync(db, index);
+
+			Assert.That(await this.SearchIdsAsync(db, index, "zzzznonexistent"), Is.Empty);
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsTerm("zzzznonexistent", JsonPath.Create("title"))), Is.Empty);
+		}
+
+		[Test]
+		public async Task Analyzer_Is_Case_Insensitive_And_Keeps_Accented_Letters()
+		{
+			using var db = OpenDb();
+			var index = new FdbTextIndex<string>(db.Root["fts-unicode"], [new FdbTextField("name", 1.0)]);
+			await this.EnsureLocationAsync(db, index.Location);
+			await db.WriteAsync(async tr =>
+			{
+				var state = await index.Resolve(tr);
+				// "Grande CAFE" where the last letter is an accented, upper-case E (U+00C9); the source file is UTF-8, which the C# compiler reads by default.
+				await state.IndexAsync(tr, "d1", JsonObject.ParseObject("{ \"name\": \"Grande CAFÉ\" }"));
+			}, this.Cancellation);
+
+			var name = JsonPath.Create("name");
+
+			// Lowercased at index time, and the accented letter is a term character (not a separator): "café" (é = 'é') matches.
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsTerm("café", name)), Is.EqualTo(new[] { "d1" }));
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsTerm("grande", name)), Is.EqualTo(new[] { "d1" }));
+
+			// No diacritic folding (documented simplification): plain "cafe" is a different term and does not match.
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsTerm("cafe", name)), Is.Empty);
+		}
+
+		[Test]
+		public async Task And_Or_Compose_Scores_By_Summation()
+		{
+			using var db = OpenDb();
+			var index = CreateIndex(db);
+			await this.EnsureLocationAsync(db, index.Location);
+			await this.SeedAsync(db, index);
+
+			var author = JsonPath.Create("author");
+			var genre = JsonPath.Create("genre");
+
+			var guin = await this.ScoresAsync(db, index, new FtsTerm("guin", author));
+			var fantasy = await this.ScoresAsync(db, index, new FtsTerm("fantasy", genre));
+			var and = await this.ScoresAsync(db, index, new FtsAnd(new FtsTerm("guin", author), new FtsTerm("fantasy", genre)));
+			var or = await this.ScoresAsync(db, index, new FtsOr(new FtsTerm("guin", author), new FtsTerm("fantasy", genre)));
+
+			// AND keeps only documents matching both sides: earthsea is the one Le Guin book that is also tagged fantasy.
+			Assert.That(and.Keys, Is.EquivalentTo(new[] { "earthsea" }));
+			// AND and OR both add the two sides' scores for a document present on both.
+			Assert.That(and["earthsea"], Is.EqualTo(guin["earthsea"] + fantasy["earthsea"]).Within(1e-9));
+			Assert.That(or["earthsea"], Is.EqualTo(guin["earthsea"] + fantasy["earthsea"]).Within(1e-9));
+			// OR also keeps documents from either side alone: lefthand is the Le Guin science-fiction book (matches guin, not fantasy).
+			Assert.That(or.Keys, Contains.Item("lefthand"));
+		}
+
 	}
 
 }
