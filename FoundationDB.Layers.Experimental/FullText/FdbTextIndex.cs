@@ -30,6 +30,7 @@ namespace FoundationDB.Layers.FullText
 	using System.Collections.Generic;
 	using System.Threading.Tasks;
 	using FoundationDB.Client;
+	using SnowBank.Buffers;
 	using SnowBank.Data.Json;
 	using SnowBank.Diagnostics.Contracts;
 	using SnowBank.Linq;
@@ -62,6 +63,15 @@ namespace FoundationDB.Layers.FullText
 	/// <summary>Matches documents that satisfy <paramref name="Include"/> but NOT <paramref name="Exclude"/>.</summary>
 	public sealed record FtsAndNot(FtsQuery Include, FtsQuery Exclude) : FtsQuery;
 
+	/// <summary>Matches documents where <paramref name="Terms"/> occur IN ORDER within <paramref name="Slop"/> extra positions of each other.</summary>
+	/// <param name="Terms">The already-analyzed terms of the phrase, in order (lowercase, stop-words removed the same way the index analyzes them).</param>
+	/// <param name="Field">Field to match the phrase in. When <see langword="null"/>, the phrase is matched in EVERY configured field, each scaled by its weight.</param>
+	/// <param name="Slop">Allowed number of extra positions between the first and last term beyond a tight run: <c>0</c> is an exact, consecutive
+	/// phrase (<c>"left hand"</c> matches only adjacent <c>left</c>, <c>hand</c>); <c>1</c> lets one other position sit between them (proximity).</param>
+	/// <remarks>Because positions are recorded in the analyzed (stop-word-filtered) term stream, an intervening stop-word does not count as a
+	/// gap; and a phrase never matches across two elements of an array-valued field (a large position gap separates the elements).</remarks>
+	public sealed record FtsPhrase(IReadOnlyList<string> Terms, JsonPath? Field = null, int Slop = 0) : FtsQuery;
+
 	/// <summary>Experimental, tutorial-grade inverted-index (full-text search) layer over FoundationDB.</summary>
 	/// <typeparam name="TId">Type of the document identifier (must be tuple-encodable, e.g. <see cref="string"/>, <see cref="Guid"/>, or <see cref="long"/>).</typeparam>
 	/// <remarks>
@@ -72,7 +82,7 @@ namespace FoundationDB.Layers.FullText
 	/// <para>Key layout, all under the subspace resolved from <see cref="Location"/> (small integer prefixes keep keys short):</para>
 	/// <code>
 	/// (0, id)                = the original JSON document      // kept inline so Update/Remove can recompute the OLD terms
-	/// (1, field, term, id)   = term frequency                 // one posting per (term, document); a term = one range scan
+	/// (1, field, term, id)   = term positions (varint list)   // one posting per (term, document); its length is the term frequency
 	/// (2, id, field)         = field length (term count)       // used by BM25 to normalise for long vs short fields
 	/// (3, field, term)       = document frequency              // how many documents use the term; an atomic counter
 	/// (4, "docs")            = total document count            // atomic counter, the N in BM25's idf
@@ -88,13 +98,17 @@ namespace FoundationDB.Layers.FullText
 		// Sub-parts of the subspace. Tuple-packed, a small integer discriminator is 1-2 bytes; a string like "postings"
 		// would cost that many bytes on EVERY key, so we name integer constants instead (see foundationdb-keys-and-layers).
 		private const int Documents = 0;   // (0, id)                  -> the original JSON document
-		private const int Postings = 1;    // (1, field, term, id)     -> term frequency in that field
+		private const int Postings = 1;    // (1, field, term, id)     -> the term's positions in that field (varint list; its length is the term frequency)
 		private const int DocLengths = 2;  // (2, id, field)           -> number of terms in that field
 		private const int TermStats = 3;   // (3, field, term)         -> document frequency (atomic counter)
 		private const int Metadata = 4;    // (4, "docs") / (4, "sumlen", field)
 
 		private const string MetaDocCount = "docs";     // total number of indexed documents
 		private const string MetaSumLength = "sumlen";  // sum of field lengths, per field (for the average length)
+
+		// A phrase must not match across two elements of an array-valued field, so element boundaries insert a position jump this large.
+		// Any realistic slop stays well below it (Lucene uses the same default), so "last word of element i" is never adjacent to "first word of element i+1".
+		private const int ArrayPositionGap = 100;
 
 		// BM25 tuning constants (the usual defaults). k1 controls how quickly extra occurrences of a term stop helping
 		// (term-frequency saturation); b controls how strongly a long field is penalised relative to the average length.
@@ -255,6 +269,22 @@ namespace FoundationDB.Layers.FullText
 				return this.SearchAsync(trans, query, limit);
 			}
 
+			/// <summary>Convenience phrase search: analyzes <paramref name="phrase"/> with the index analyzer (so stop-words and casing are
+			/// handled the same way as at index time), then runs it as an <see cref="FtsPhrase"/> with the given <paramref name="slop"/>.</summary>
+			/// <param name="field">Field to match the phrase in, or <see langword="null"/> to match it across every configured field (weighted).</param>
+			public Task<List<FtsHit<TId>>> SearchPhraseAsync(IFdbReadOnlyTransaction trans, string phrase, JsonPath? field, int slop, int limit)
+			{
+				Contract.NotNull(trans);
+				Contract.NotNull(phrase);
+
+				var terms = this.Schema.Analyzer.Analyze(phrase);
+				if (terms.Count == 0)
+				{
+					return Task.FromResult(new List<FtsHit<TId>>());
+				}
+				return this.SearchAsync(trans, new FtsPhrase(terms, field, slop), limit);
+			}
+
 			// --- write path -------------------------------------------------------------------------------------------
 
 			/// <summary>Writes the postings for <paramref name="document"/>: for each field, tokenize its value and record one
@@ -264,28 +294,32 @@ namespace FoundationDB.Layers.FullText
 				foreach (var field in this.Schema.Fields)
 				{
 					string fieldKey = field.Path.ToString();
-					var terms = this.ExtractTerms(document, field.Path);
-					if (terms.Count == 0) continue;
+					var tokens = this.ExtractTerms(document, field.Path);
+					if (tokens.Count == 0) continue;
 
-					// Term frequency = how many times each distinct term appears in this field of this document.
-					var frequencies = new Dictionary<string, int>(StringComparer.Ordinal);
-					foreach (var term in terms)
+					// Group each distinct term's positions (kept ascending, in field order) so a phrase/proximity query can test adjacency later.
+					var positions = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+					foreach (var (term, position) in tokens)
 					{
-						frequencies[term] = frequencies.GetValueOrDefault(term) + 1;
+						if (!positions.TryGetValue(term, out var list))
+						{
+							positions[term] = list = [ ];
+						}
+						list.Add(position);
 					}
 
-					foreach (var (term, frequency) in frequencies)
+					foreach (var (term, list) in positions)
 					{
-						// One posting for this (field, term, document); the value carries the term frequency.
-						trans.Set(this.Subspace.Key(Postings, fieldKey, term, id), FdbValue.ToFixed64LittleEndian(frequency));
+						// One posting for this (field, term, document); the value is the term's ascending positions (and its length is the term frequency).
+						trans.Set(this.Subspace.Key(Postings, fieldKey, term, id), EncodePositions(list));
 						// This document now contributes to the term's document frequency. AtomicIncrement avoids a
 						// read-modify-write, so concurrent indexers never conflict on the shared counter.
 						trans.AtomicIncrement64(this.Subspace.Key(TermStats, fieldKey, term));
 					}
 
 					// Field length and its running sum feed BM25's length normalisation (average field length = sum / N).
-					trans.Set(this.Subspace.Key(DocLengths, id, fieldKey), FdbValue.ToFixed64LittleEndian(terms.Count));
-					trans.AtomicAdd64(this.Subspace.Key(Metadata, MetaSumLength, fieldKey), terms.Count);
+					trans.Set(this.Subspace.Key(DocLengths, id, fieldKey), FdbValue.ToFixed64LittleEndian(tokens.Count));
+					trans.AtomicAdd64(this.Subspace.Key(Metadata, MetaSumLength, fieldKey), tokens.Count);
 				}
 			}
 
@@ -296,11 +330,15 @@ namespace FoundationDB.Layers.FullText
 				foreach (var field in this.Schema.Fields)
 				{
 					string fieldKey = field.Path.ToString();
-					var terms = this.ExtractTerms(document, field.Path);
-					if (terms.Count == 0) continue;
+					var tokens = this.ExtractTerms(document, field.Path);
+					if (tokens.Count == 0) continue;
 
 					// We only wrote one posting per DISTINCT term, so we only clear once per distinct term (and decrement df once).
-					var distinct = new HashSet<string>(terms, StringComparer.Ordinal);
+					var distinct = new HashSet<string>(StringComparer.Ordinal);
+					foreach (var (term, _) in tokens)
+					{
+						distinct.Add(term);
+					}
 					foreach (var term in distinct)
 					{
 						trans.Clear(this.Subspace.Key(Postings, fieldKey, term, id));
@@ -309,30 +347,46 @@ namespace FoundationDB.Layers.FullText
 					}
 
 					trans.Clear(this.Subspace.Key(DocLengths, id, fieldKey));
-					trans.AtomicAdd64(this.Subspace.Key(Metadata, MetaSumLength, fieldKey), -terms.Count);
+					trans.AtomicAdd64(this.Subspace.Key(Metadata, MetaSumLength, fieldKey), -tokens.Count);
 				}
 			}
 
-			/// <summary>Pulls the value at <paramref name="path"/> out of the document and runs it through the analyzer.
-			/// A path that points at an array (e.g. multiple authors) is analyzed element by element.</summary>
-			private List<string> ExtractTerms(JsonObject document, JsonPath path)
+			/// <summary>Pulls the value at <paramref name="path"/> out of the document and runs it through the analyzer, tagging each
+			/// term with its position (its index in the analyzed stream). A path that points at an array (e.g. multiple authors) is
+			/// analyzed element by element, with a large position gap between elements so a phrase cannot span two elements.</summary>
+			private List<(string Term, int Position)> ExtractTerms(JsonObject document, JsonPath path)
 			{
+				var tokens = new List<(string, int)>();
 				if (!document.TryGetPathValue(path, out var value))
 				{
-					return [ ];
+					return tokens;
 				}
 
 				if (value is JsonArray array)
 				{
-					var all = new List<string>();
+					int next = 0;
 					foreach (var item in array)
 					{
-						all.AddRange(this.Schema.Analyzer.Analyze(item.ToStringOrDefault()));
+						next = this.AppendTerms(tokens, item.ToStringOrDefault(), next);
 					}
-					return all;
+					return tokens;
 				}
 
-				return this.Schema.Analyzer.Analyze(value.ToStringOrDefault());
+				this.AppendTerms(tokens, value.ToStringOrDefault(), 0);
+				return tokens;
+			}
+
+			/// <summary>Analyzes <paramref name="text"/> and appends its terms starting at <paramref name="startPosition"/>; returns the
+			/// position at which the NEXT array element should start (past a gap, so phrases never straddle an element boundary).</summary>
+			private int AppendTerms(List<(string Term, int Position)> tokens, string? text, int startPosition)
+			{
+				int position = startPosition;
+				foreach (var term in this.Schema.Analyzer.Analyze(text))
+				{
+					tokens.Add((term, position));
+					position++;
+				}
+				return position + ArrayPositionGap;
 			}
 
 			// --- query path -------------------------------------------------------------------------------------------
@@ -357,6 +411,22 @@ namespace FoundationDB.Layers.FullText
 						foreach (var configured in this.Schema.Fields)
 						{
 							MergeSum(accumulated, await this.ScoreFieldTermAsync(trans, configured.Path, configured.Weight, term.Term, documentCount));
+						}
+						return accumulated;
+					}
+					case FtsPhrase phrase:
+					{
+						// A phrase aimed at one field: match it there only.
+						if (phrase.Field is JsonPath field)
+						{
+							return await this.ScoreFieldPhraseAsync(trans, field, 1.0, phrase.Terms, phrase.Slop, documentCount);
+						}
+
+						// A phrase with no field: match it in EVERY configured field, scaled by that field's weight, and sum.
+						var accumulated = new Dictionary<TId, double>();
+						foreach (var configured in this.Schema.Fields)
+						{
+							MergeSum(accumulated, await this.ScoreFieldPhraseAsync(trans, configured.Path, configured.Weight, phrase.Terms, phrase.Slop, documentCount));
 						}
 						return accumulated;
 					}
@@ -414,28 +484,197 @@ namespace FoundationDB.Layers.FullText
 					return result;
 				}
 
-				// Inverse document frequency: rarer terms are more informative and score higher.
-				double idf = Math.Log(1.0 + (documentCount - documentFrequency + 0.5) / (documentFrequency + 0.5));
-				long sumLength = await ReadCounterAsync(trans, this.Subspace.Key(Metadata, MetaSumLength, fieldKey));
-				double averageLength = (double) sumLength / documentCount;
+				double idf = Idf(documentCount, documentFrequency);
+				double averageLength = await this.AverageLengthAsync(trans, fieldKey, documentCount);
 
-				// One range read over (field, term, *) returns every document that uses the term in this field, with its tf.
+				// One range read over (field, term, *) returns every document that uses the term in this field, with its positions.
+				var postings = await this.ReadPostingsAsync(trans, fieldKey, term);
+				foreach (var (id, positions) in postings)
+				{
+					// The term frequency is simply how many positions the term has in this field of this document.
+					long docLength = await ReadCounterAsync(trans, this.Subspace.Key(DocLengths, id, fieldKey));
+					result[id] = weight * Bm25(idf, positions.Length, docLength, averageLength);
+				}
+
+				return result;
+			}
+
+			/// <summary>Scores an ordered phrase/proximity match of <paramref name="terms"/> in one field, weighted by the field's <paramref name="weight"/>. Only documents
+			/// where the terms occur in order within <paramref name="slop"/> are returned, each scored by the summed BM25 of its (co-occurring) terms.</summary>
+			private async Task<Dictionary<TId, double>> ScoreFieldPhraseAsync(IFdbReadOnlyTransaction trans, JsonPath path, double weight, IReadOnlyList<string> terms, int slop, long documentCount)
+			{
+				var result = new Dictionary<TId, double>();
+				if (terms.Count == 0 || documentCount <= 0)
+				{
+					return result;
+				}
+
+				string fieldKey = path.ToString();
+				double averageLength = await this.AverageLengthAsync(trans, fieldKey, documentCount);
+
+				// Read each term's postings (document -> positions) and its idf once. A term absent from this field means the phrase
+				// can never match here, so abandon the whole field.
+				var perTerm = new Dictionary<TId, int[]>[terms.Count];
+				var idfs = new double[terms.Count];
+				for (int i = 0; i < terms.Count; i++)
+				{
+					long documentFrequency = await ReadCounterAsync(trans, this.Subspace.Key(TermStats, fieldKey, terms[i]));
+					if (documentFrequency <= 0)
+					{
+						return result;
+					}
+					idfs[i] = Idf(documentCount, documentFrequency);
+					perTerm[i] = await this.ReadPostingsAsync(trans, fieldKey, terms[i]);
+				}
+
+				// Candidate documents are those containing EVERY term; iterate the rarest term's postings to keep the candidate set small.
+				int pivot = 0;
+				for (int i = 1; i < perTerm.Length; i++)
+				{
+					if (perTerm[i].Count < perTerm[pivot].Count) pivot = i;
+				}
+
+				var lists = new int[terms.Count][];
+				foreach (var id in perTerm[pivot].Keys)
+				{
+					bool present = true;
+					for (int i = 0; i < terms.Count; i++)
+					{
+						if (!perTerm[i].TryGetValue(id, out var positions))
+						{
+							present = false;
+							break;
+						}
+						lists[i] = positions;
+					}
+					if (!present || !PhraseMatches(lists, slop))
+					{
+						continue;
+					}
+
+					long docLength = await ReadCounterAsync(trans, this.Subspace.Key(DocLengths, id, fieldKey));
+					double score = 0.0;
+					for (int i = 0; i < terms.Count; i++)
+					{
+						score += Bm25(idfs[i], lists[i].Length, docLength, averageLength);
+					}
+					result[id] = weight * score;
+				}
+
+				return result;
+			}
+
+			/// <summary>Reads all postings for (field, term): one range read returning every document that uses the term in the field, decoded to its positions.</summary>
+			private async Task<Dictionary<TId, int[]>> ReadPostingsAsync(IFdbReadOnlyTransaction trans, string fieldKey, string term)
+			{
+				var result = new Dictionary<TId, int[]>();
 				var postings = await trans.GetRange(this.Subspace.Key(Postings, fieldKey, term).ToRange()).ToListAsync();
 				foreach (var kv in postings)
 				{
 					// DecodeLast pulls the document id back out of the tuple-encoded posting key.
 					var id = this.Subspace.DecodeLast<TId>(kv.Key)!;
-					long termFrequency = kv.Value.ToInt64();
-					long docLength = await ReadCounterAsync(trans, this.Subspace.Key(DocLengths, id, fieldKey));
+					result[id] = DecodePositions(kv.Value);
+				}
+				return result;
+			}
 
-					// BM25: more occurrences help but with diminishing returns (k1), and a hit in a shorter-than-average field
-					// counts for more (b, docLength vs averageLength).
-					double denominator = termFrequency + K1 * (1.0 - B + (averageLength > 0 ? B * docLength / averageLength : 0.0));
-					double bm25 = idf * (termFrequency * (K1 + 1.0)) / (denominator <= 0 ? 1.0 : denominator);
-					result[id] = weight * bm25;
+			/// <summary>Returns true if the per-term position lists admit an in-order occurrence <c>q0 &lt; q1 &lt; ...</c> with
+			/// <c>(last - first) - (n - 1) &lt;= slop</c> (slop 0 = strictly consecutive, an exact phrase). Each list is ascending.</summary>
+			private static bool PhraseMatches(int[][] positionsPerTerm, int slop)
+			{
+				int termCount = positionsPerTerm.Length;
+				int[] first = positionsPerTerm[0];
+				if (termCount == 1)
+				{
+					return first.Length > 0;
 				}
 
-				return result;
+				// For each starting position of the first term, greedily take the smallest next position after the previous pick: that
+				// minimises the last position for this start, so if even the tightest run exceeds the slop this start cannot match.
+				foreach (int start in first)
+				{
+					int previous = start;
+					bool chained = true;
+					for (int i = 1; i < termCount; i++)
+					{
+						int next = NextGreaterThan(positionsPerTerm[i], previous);
+						if (next < 0)
+						{
+							chained = false;
+							break;
+						}
+						previous = next;
+					}
+					if (chained && (previous - start) - (termCount - 1) <= slop)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+
+			/// <summary>Smallest value in the ascending <paramref name="sortedPositions"/> strictly greater than <paramref name="threshold"/>, or <c>-1</c> if none.</summary>
+			private static int NextGreaterThan(int[] sortedPositions, int threshold)
+			{
+				int lo = 0, hi = sortedPositions.Length;
+				while (lo < hi)
+				{
+					int mid = (int) (((uint) lo + (uint) hi) >> 1);
+					if (sortedPositions[mid] <= threshold)
+					{
+						lo = mid + 1;
+					}
+					else
+					{
+						hi = mid;
+					}
+				}
+				return lo < sortedPositions.Length ? sortedPositions[lo] : -1;
+			}
+
+			/// <summary>Encodes a term's ascending positions as a compact varint list (the posting value). Its length is the term frequency, so that is not stored separately.</summary>
+			private static FdbRawValue EncodePositions(List<int> positions)
+			{
+				var writer = new SliceWriter(positions.Count * 2);
+				foreach (int position in positions)
+				{
+					writer.WriteVarInt32((uint) position);
+				}
+				return FdbValue.ToBytes(writer.ToSlice());
+			}
+
+			/// <summary>Decodes the varint position list written by <see cref="EncodePositions"/>.</summary>
+			private static int[] DecodePositions(Slice value)
+			{
+				if (value.Count == 0)
+				{
+					return [ ];
+				}
+				var reader = new SliceReader(value);
+				var positions = new List<int>();
+				while (reader.HasMore)
+				{
+					positions.Add((int) reader.ReadVarInt32());
+				}
+				return positions.ToArray();
+			}
+
+			/// <summary>The BM25 term score: more occurrences help with diminishing returns (<see cref="K1"/>), and a hit in a shorter-than-average field counts for more (<see cref="B"/>).</summary>
+			private static double Bm25(double idf, long termFrequency, long docLength, double averageLength)
+			{
+				double denominator = termFrequency + K1 * (1.0 - B + (averageLength > 0 ? B * docLength / averageLength : 0.0));
+				return idf * (termFrequency * (K1 + 1.0)) / (denominator <= 0 ? 1.0 : denominator);
+			}
+
+			/// <summary>BM25 inverse document frequency: rarer terms are more informative and score higher.</summary>
+			private static double Idf(long documentCount, long documentFrequency)
+				=> Math.Log(1.0 + (documentCount - documentFrequency + 0.5) / (documentFrequency + 0.5));
+
+			/// <summary>Average length of <paramref name="fieldKey"/> across the corpus (sum of field lengths / N), used by BM25's length normalisation.</summary>
+			private async Task<double> AverageLengthAsync(IFdbReadOnlyTransaction trans, string fieldKey, long documentCount)
+			{
+				long sumLength = await ReadCounterAsync(trans, this.Subspace.Key(Metadata, MetaSumLength, fieldKey));
+				return (double) sumLength / documentCount;
 			}
 
 			/// <summary>Reads a little-endian 64-bit counter, treating a missing key as zero.</summary>

@@ -127,6 +127,23 @@ namespace FoundationDB.Client.Tests
 			return hits.ConvertAll(h => h.Id);
 		}
 
+		private async Task<Dictionary<string, double>> ScoresAsync(IFdbDatabase db, FdbTextIndex<string> index, FtsQuery query)
+		{
+			var hits = await db.ReadAsync(async tr =>
+			{
+				var state = await index.Resolve(tr);
+				return await state.SearchAsync(tr, query, 100);
+			}, this.Cancellation);
+
+			Log($"# {query} -> [{string.Join(", ", hits.ConvertAll(h => $"{h.Id}:{h.Score:F4}"))}]");
+			var scores = new Dictionary<string, double>();
+			foreach (var hit in hits)
+			{
+				scores[hit.Id] = hit.Score;
+			}
+			return scores;
+		}
+
 		[Test]
 		public async Task Single_Field_Search_By_Author_And_By_Genre()
 		{
@@ -219,6 +236,160 @@ namespace FoundationDB.Client.Tests
 
 			Assert.That(removed, Is.True);
 			Assert.That(await this.SearchIdsAsync(db, index, "haunted"), Is.Empty);
+		}
+
+		[Test]
+		public async Task Exact_Phrase_Matches_Only_Consecutive_Terms()
+		{
+			using var db = OpenDb();
+			var index = CreateIndex(db);
+			await this.EnsureLocationAsync(db, index.Location);
+			await this.SeedAsync(db, index);
+
+			// "The Girl with the Dragon Tattoo" analyzes (stop-words dropped) to [girl, dragon, tattoo] at positions 0,1,2.
+			var title = JsonPath.Create("title");
+
+			// An exact phrase finds the consecutive pair "dragon tattoo"...
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["dragon", "tattoo"], title)), Is.EqualTo(new[] { "dragontattoo" }));
+
+			// ...but "girl tattoo" co-occur in the same title WITHOUT being adjacent (girl@0, tattoo@2), so at slop 0 there is no match.
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["girl", "tattoo"], title)), Is.Empty);
+		}
+
+		[Test]
+		public async Task Phrase_Is_Ordered()
+		{
+			using var db = OpenDb();
+			var index = CreateIndex(db);
+			await this.EnsureLocationAsync(db, index.Location);
+			await this.SeedAsync(db, index);
+
+			var title = JsonPath.Create("title");
+
+			// Forward order matches (dragon@1, tattoo@2)...
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["dragon", "tattoo"], title)), Is.EqualTo(new[] { "dragontattoo" }));
+
+			// ...the reverse "tattoo dragon" does not: a phrase matches its terms in order only.
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["tattoo", "dragon"], title)), Is.Empty);
+		}
+
+		[Test]
+		public async Task Proximity_Slop_Bridges_A_Gap()
+		{
+			using var db = OpenDb();
+			var index = CreateIndex(db);
+			await this.EnsureLocationAsync(db, index.Location);
+			await this.SeedAsync(db, index);
+
+			var title = JsonPath.Create("title");
+
+			// girl@0 and tattoo@2 sit one position beyond adjacency: slop 0 rejects them, slop 1 accepts them (proximity).
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["girl", "tattoo"], title, Slop: 0)), Is.Empty);
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["girl", "tattoo"], title, Slop: 1)), Is.EqualTo(new[] { "dragontattoo" }));
+		}
+
+		[Test]
+		public async Task Phrase_Search_Drops_Stop_Words_On_Both_Sides()
+		{
+			using var db = OpenDb();
+			var index = CreateIndex(db);
+			await this.EnsureLocationAsync(db, index.Location);
+			await this.SeedAsync(db, index);
+
+			// "The Left Hand of Darkness" indexes as [left, hand, darkness]; typing the phrase WITH its stop-words still matches,
+			// because SearchPhraseAsync runs the same analyzer over the query (dropping "the"/"of") before matching positions.
+			var hits = await db.ReadAsync(async tr =>
+			{
+				var state = await index.Resolve(tr);
+				return await state.SearchPhraseAsync(tr, "the left hand", JsonPath.Create("title"), slop: 0, limit: 20);
+			}, this.Cancellation);
+
+			Assert.That(hits.ConvertAll(h => h.Id), Is.EqualTo(new[] { "lefthand" }));
+		}
+
+		[Test]
+		public async Task Phrase_Does_Not_Span_Array_Elements()
+		{
+			using var db = OpenDb();
+
+			// A field whose value is an ARRAY: each element is analyzed separately, and a large position gap is inserted between
+			// elements so a phrase cannot match the last word of one element followed by the first word of the next.
+			var index = new FdbTextIndex<string>(db.Root["fts-array"], [new FdbTextField("tags", 1.0)]);
+			await this.EnsureLocationAsync(db, index.Location);
+			await db.WriteAsync(async tr =>
+			{
+				var state = await index.Resolve(tr);
+				await state.IndexAsync(tr, "d1", JsonObject.ParseObject("""{ "tags": [ "red car", "blue bike" ] }"""));
+			}, this.Cancellation);
+
+			var tags = JsonPath.Create("tags");
+
+			// "red car" is a phrase WITHIN one element -> matches.
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["red", "car"], tags)), Is.EqualTo(new[] { "d1" }));
+
+			// "car blue" straddles the element boundary (car ends element 0, blue starts element 1) -> no match.
+			Assert.That(await this.SearchIdsAsync(db, index, new FtsPhrase(["car", "blue"], tags)), Is.Empty);
+		}
+
+		[Test]
+		public async Task Bm25_Scores_Match_The_Hand_Computed_Formula()
+		{
+			// There is no standard corpus of "correct" BM25 scores to assert against: BM25 is a family of variants (see Kamphuis et al.,
+			// "Which BM25 Do You Mean?", ECIR 2020) that differ in the idf form and the (k1+1) numerator, so engines legitimately disagree
+			// on absolute scores. The definitive check for THIS layer is therefore a worked example computed by hand from the exact formula
+			// it implements, on a corpus small enough to derive every input:
+			//
+			//   score = idf * (tf * (k1+1)) / (tf + k1*(1 - b + b*dl/avgdl)),   k1 = 1.2, b = 0.75,
+			//   idf   = ln(1 + (N - df + 0.5) / (df + 0.5))                     (the Lucene idf; our numerator keeps the textbook (k1+1))
+			//
+			// Single field "body", weight 1.0 (so the returned score IS the raw BM25). Analyzer drops "the". Three documents:
+			//   A "quick brown fox" -> [quick, brown, fox]  dl = 3
+			//   B "quick quick"     -> [quick, quick]       dl = 2   (tf(quick) = 2)
+			//   C "brown"           -> [brown]              dl = 1
+			//   N = 3,  sumlen = 6,  avgdl = 2.0.  df(quick) = 2, df(brown) = 2, df(fox) = 1.
+			//
+			//   idf(df=2) = ln(1 + 1.5/2.5)   = ln(1.60000) = 0.47000363
+			//   idf(df=1) = ln(1 + 2.5/1.5)   = ln(2.66667) = 0.98082925
+			//   quick@B: tf=2 dl=2 -> 0.47000363 * 4.4/3.20 = 0.47000363 * 1.375000 = 0.64625499
+			//   quick@A: tf=1 dl=3 -> 0.47000363 * 2.2/2.65 = 0.47000363 * 0.830189 = 0.39019170
+			//   brown@C: tf=1 dl=1 -> 0.47000363 * 2.2/1.75 = 0.47000363 * 1.257143 = 0.59086171
+			//   brown@A: tf=1 dl=3 -> (same denominator as quick@A)             = 0.39019170
+			//   fox@A:   tf=1 dl=3 -> 0.98082925 * 2.2/2.65 = 0.98082925 * 0.830189 = 0.81427335
+
+			using var db = OpenDb();
+			var index = new FdbTextIndex<string>(db.Root["fts-bm25"], [new FdbTextField("body", 1.0)]);
+			await this.EnsureLocationAsync(db, index.Location);
+
+			foreach (var (id, json) in new[]
+			{
+				("A", """{ "body": "quick brown fox" }"""),
+				("B", """{ "body": "quick quick" }"""),
+				("C", """{ "body": "brown" }"""),
+			})
+			{
+				await db.WriteAsync(async tr =>
+				{
+					var state = await index.Resolve(tr);
+					await state.IndexAsync(tr, id, JsonObject.ParseObject(json));
+				}, this.Cancellation);
+			}
+
+			var body = JsonPath.Create("body");
+
+			// tf saturation + length normalization: B (tf=2, short) outscores A (tf=1, long), both matching the exact hand-computed values.
+			var quick = await this.ScoresAsync(db, index, new FtsTerm("quick", body));
+			Assert.That(quick["B"], Is.EqualTo(0.64625499).Within(1e-6));
+			Assert.That(quick["A"], Is.EqualTo(0.39019170).Within(1e-6));
+
+			// Length normalization alone: same tf, but C (dl=1) outscores A (dl=3).
+			var brown = await this.ScoresAsync(db, index, new FtsTerm("brown", body));
+			Assert.That(brown["C"], Is.EqualTo(0.59086171).Within(1e-6));
+			Assert.That(brown["A"], Is.EqualTo(0.39019170).Within(1e-6));
+
+			// idf: a rarer term (df=1) scores higher than a common one (df=2) at equal tf/length.
+			var fox = await this.ScoresAsync(db, index, new FtsTerm("fox", body));
+			Assert.That(fox["A"], Is.EqualTo(0.81427335).Within(1e-6));
+			Assert.That(fox["A"], Is.GreaterThan(quick["A"]));
 		}
 
 	}
