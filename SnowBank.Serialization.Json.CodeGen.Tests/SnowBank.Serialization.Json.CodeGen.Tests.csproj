@@ -1,9 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
+		<!-- Microsoft.Testing.Platform runner (like every other test project): the assembly is a self-contained
+		     executable, run directly with `dotnet <dll>` instead of `dotnet test` / classic VSTest -->
+		<OutputType>Exe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<EnableNUnitRunner>true</EnableNUnitRunner>
+		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
@@ -30,7 +36,9 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
-		<PackageReference Include="Microsoft.TestPlatform.TestHost" />
+		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
+		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" />
+		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
 		<PackageReference Include="NUnit" />
 		<PackageReference Include="NUnit.Analyzers">
 			<PrivateAssets>all</PrivateAssets>
@@ -41,7 +49,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 	</ItemGroup>
-	
+
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />

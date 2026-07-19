@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<OutputType>Library</OutputType>
+		<!-- Microsoft.Testing.Platform runner (like every other test project): self-contained executable, run with `dotnet <dll>` -->
+		<OutputType>Exe</OutputType>
 		<!-- Track the frameworks of the SnowBank.Shell library under test (CoreSdkToolsVersions is now single-TFM, for the packed tools only) -->
 		<TargetFrameworks>$(CloudSdkRuntimeVersions)</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
@@ -18,6 +19,9 @@
 		<IsTestProject>true</IsTestProject>
 		<IsPackable>false</IsPackable>
 		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+		<EnableNUnitRunner>true</EnableNUnitRunner>
+		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -38,6 +42,9 @@
 		<PackageReference Include="Bogus" />
 		<PackageReference Include="MathNet.Numerics.Signed" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
+		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" />
+		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
 		<PackageReference Include="NUnit" />
 		<PackageReference Include="NUnit3TestAdapter" />
 		<PackageReference Include="protobuf-net" />
