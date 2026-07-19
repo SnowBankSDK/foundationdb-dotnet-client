@@ -101,8 +101,7 @@ namespace SnowBank.Shell.Prompt
 						{
 							Change = PromptChange.Done,
 							Command = this.Command,
-							RawToken = "",
-							Tokens = state.Tokens.Push(PromptToken.Create("command", state.RawToken.Trim())),
+							Tokens = state.Tokens.Update("command", state.RawToken.Trim()),
 							CommandBuilder = builder,
 						};
 

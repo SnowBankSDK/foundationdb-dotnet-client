@@ -69,11 +69,8 @@ namespace SnowBank.Shell.Prompt.Tests
 
 				public override PromptState Update(PromptState state)
 				{
-					// we don't expect any argument or option
-					return state with
-					{
-						Tokens = PromptTokenStack.Empty,
-					};
+					// we don't expect any argument or option: keep the command token as-is
+					return state;
 				}
 
 				public override Command Build(PromptState state, FakeVersion descriptor)
