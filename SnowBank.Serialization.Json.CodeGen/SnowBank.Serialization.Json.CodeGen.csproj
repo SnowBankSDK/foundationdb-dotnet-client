@@ -36,6 +36,11 @@
 		<PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.300" PrivateAssets="all" />
 	</ItemGroup>
 
+	<!-- Shared Roslyn helper source (CodeBuilder, TypeRef, RoslynExtensions, ...) consumed BY SOURCE: a generator cannot load a separate helper dll, so these files compile into this analyzer assembly. See SnowBank.SourceAnalysis. -->
+	<ItemGroup>
+		<Compile Include="..\SnowBank.SourceAnalysis\**\*.cs" Exclude="..\SnowBank.SourceAnalysis\GlobalUsings.cs" LinkBase="SourceAnalysis" />
+	</ItemGroup>
+
 	<!-- For redistributing a source generator/analyzer as a nuget package, we need to manually change a few things: -->
 	<!-- 1) We need to make sure the dll is place in the 'analyzers/dotnet/cs' folder inside the package, or it won't be recognized as an Analyzer by the IDE-->
 	<!-- 2) We need to set IncludeBuildOutput to false, otherwise it will also copy the dll in the 'lib/' folder, even though it is not supposed to be published alongside the consuming application.-->

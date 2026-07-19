@@ -27,7 +27,7 @@
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable UnusedMember.Global
 
-namespace SnowBank.Serialization.Json.CodeGen
+namespace SnowBank.SourceAnalysis
 {
 	using System.Collections.Generic;
 	using System.Runtime.InteropServices;
@@ -210,12 +210,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		public static string DefaultOf<T>() => DefaultOf(typeof(T));
 
-		/// <summary>Tests if this type can be written without the namespace</summary>
-		public static bool CanUseShortName(Type t)
-		{
-			if (t.Namespace == KnownTypeSymbols.CrystalJsonNamespace) return true;
-			return false;
-		}
+		/// <summary>Tests if this type can be referenced by its short name (without namespace qualifier) in the generated code.</summary>
+		/// <remarks>The generic builder always fully-qualifies types. A generator whose emitted files import specific namespaces can extend this if it wants short names for those namespaces.</remarks>
+		public static bool CanUseShortName(Type t) => false;
 
 		/// <summary>Returns the canonical name of this type, which can be reference in the generated code without ambiguity</summary>
 		public static string TypeName(Type t) => CanUseShortName(t)

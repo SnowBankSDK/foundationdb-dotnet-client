@@ -1,5 +1,5 @@
 ﻿
-namespace SnowBank.Serialization.Json.CodeGen
+namespace SnowBank.SourceAnalysis
 {
 	using System.Collections.Immutable;
 	using Microsoft.CodeAnalysis;

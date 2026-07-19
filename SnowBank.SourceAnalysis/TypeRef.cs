@@ -24,7 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace SnowBank.Serialization.Json.CodeGen
+namespace SnowBank.SourceAnalysis
 {
 	using System.Collections.Generic;
 	using System.Text;
@@ -119,27 +119,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 	}
 
-	/// <summary>Type of JsonValue instance that would be used to represent a serialized type</summary>
-	public enum JsonPrimitiveType
-	{
-		/// <summary>The type is not a JSON value</summary>
-		None,
-		/// <summary>The type can be anything derived from JsonValue</summary>
-		Value,
-		/// <summary>The type is an instance of JsonObject</summary>
-		Object,
-		/// <summary>The type is an instance of JsonArray</summary>
-		Array,
-		/// <summary>The type is an instance of JsonString</summary>
-		String,
-		/// <summary>The type is an instance of JsonNumber</summary>
-		Number,
-		/// <summary>The type is an instance of JsonBoolean</summary>
-		Boolean,
-		/// <summary>The type is an instance of JsonDateTime</summary>
-		DateTime
-	}
-
 	/// <summary>Extracted metadata about a type symbol, that can be used to detect changes.</summary>
 	[DebuggerDisplay("Name = {Name}")]
 	public sealed record TypeMetadata
@@ -224,30 +203,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 			{
 				// capture this for debugging purpose!
 				this.Interfaces = ifaces.Select(TypeRef.Create).ToImmutableEquatableArray();
-				foreach (var iface in ifaces)
-				{
-					if (iface.ContainingNamespace?.ToDisplayString() == KnownTypeSymbols.CrystalJsonNamespace)
-					{
-						switch (iface.Name)
-						{
-							case "IJsonPackable":
-							{
-								this.IsJsonPackable = true;
-								break;
-							}
-							case "IJsonSerializable":
-							{
-								this.IsJsonSerializable = true;
-								break;
-							}
-							case "IJsonDeserializable":
-							{
-								this.IsJsonDeserializable = true;
-								break;
-							}
-						}
-					}
-				}
 			}
 			else
 			{
@@ -262,47 +217,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 			else if (type is INamedTypeSymbol named)
 			{
-				if (this.NameSpace is KnownTypeSymbols.CrystalJsonNamespace)
-				{ // is it JsonValue (or derived) ?
-					switch (this.Name)
-					{
-						case KnownTypeSymbols.JsonValueName:
-						{
-							this.JsonType = JsonPrimitiveType.Value;
-							break;
-						}
-						case KnownTypeSymbols.JsonObjectName:
-						{
-							this.JsonType = JsonPrimitiveType.Object;
-							break;
-						}
-						case KnownTypeSymbols.JsonArrayName:
-						{
-							this.JsonType = JsonPrimitiveType.Array;
-							break;
-						}
-						case KnownTypeSymbols.JsonStringName:
-						{
-							this.JsonType = JsonPrimitiveType.String;
-							break;
-						}
-						case KnownTypeSymbols.JsonBooleanName:
-						{
-							this.JsonType = JsonPrimitiveType.Boolean;
-							break;
-						}
-						case KnownTypeSymbols.JsonNumberName:
-						{
-							this.JsonType = JsonPrimitiveType.Number;
-							break;
-						}
-						case KnownTypeSymbols.JsonDateTimeName:
-						{
-							this.JsonType = JsonPrimitiveType.DateTime;
-							break;
-						}
-					}
-				}
 
 				if (named.IsGenericType)
 				{
@@ -382,9 +296,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>If this is a "primitive" type that is defined by mscorlib (like <c>string</c>, <c>bool</c>, <c>int</c>, <c>DateTime</c>, <c>Guid</c>, ...)</summary>
 		public bool IsPrimitive { get; }
 
-		/// <summary>Type of element if this type either JsonValue or one of its derived type; otherwise, <see cref="JsonPrimitiveType.None"/></summary>
-		public JsonPrimitiveType JsonType { get; }
-
 		/// <summary>If this is a <see cref="Nullable{T}"/> (ex: <c>int?</c>) references the underlying concrete type (ex: <c>int</c>); otherwise, <c>null</c></summary>
 		public TypeMetadata? NullableOfType { get; }
 
@@ -403,15 +314,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public NullableAnnotation Nullability { get; }
 
 		public ImmutableEquatableArray<TypeRef> Interfaces { get; } //HACKHACK: temporary, while we are debugging this thing!
-
-		/// <summary>If this implements <c>IJsonPackable</c></summary>
-		public bool IsJsonPackable { get; }
-
-		/// <summary>If this implements <c>IJsonSerializable</c></summary>
-		public bool IsJsonSerializable { get; }
-
-		/// <summary>If this implements <c>IJsonDeserializable&lt;T&gt;</c></summary>
-		public bool IsJsonDeserializable { get; }
 
 		public override string ToString() => $"{{ Name = {this.Name}, Kind = {TypeKind}, Special = {SpecialType}{(IsSealed?", Sealed" : "")}{(IsRecord?", Record" : "")}, FullName = {this.Ref.FullName}}}";
 

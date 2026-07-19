@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		Shared Roslyn helper source for SnowBank source generators / analyzers (CodeBuilder, TypeRef, RoslynExtensions, ...).
+
+		This project is consumed BY SOURCE (linked <Compile> items), NOT via a project/dll reference: a Roslyn source
+		generator must be self-contained in 'analyzers/dotnet/cs' and cannot load a separate helper dll at generation time.
+		Each consuming generator links these files so they compile directly into its own analyzer assembly.
+		The dll this project builds is only for standalone compile-checking (and a future SnowBank.SourceAnalysis.Tests); nothing references it.
+	-->
+
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<LangVersion>preview</LangVersion>
+		<Nullable>enable</Nullable>
+
+		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+		<AnalyzerRoslynVersion>4.4</AnalyzerRoslynVersion>
+		<RoslynApiVersion>$(MicrosoftCodeAnalysisVersion_4_4)</RoslynApiVersion>
+		<DefineConstants>$(DefineConstants);ROSLYN4_0_OR_GREATER;ROSLYN4_4_OR_GREATER</DefineConstants>
+
+		<CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
+		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+
+		<!-- source-only helper: nothing consumes the built dll, so do not pack it -->
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<PropertyGroup>
+		<AssemblyTitle>SnowBank Source Analysis Helpers</AssemblyTitle>
+		<Description>Shared Roslyn helper source for SnowBank source generators and analyzers</Description>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" PrivateAssets="all" />
+		<PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.300" PrivateAssets="all" />
+	</ItemGroup>
+
+</Project>

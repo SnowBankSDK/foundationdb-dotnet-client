@@ -863,9 +863,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 								//use default getter
 								getterExpr = null;
 							}
-							else if (member.Type.JsonType is not JsonPrimitiveType.None)
+							else if (member.Type.JsonType() is not JsonPrimitiveType.None)
 							{
-								getterExpr = member.Type.JsonType switch
+								getterExpr = member.Type.JsonType() switch
 								{
 									JsonPrimitiveType.Object => $"/* direct-json-object */ m_value[{this.GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue().{(member.IsNullableRefType() ? "AsObjectOrDefault" : member.IsRequired ? "AsObject" : "AsObjectOrEmpty")}()",
 									JsonPrimitiveType.Array => $"/* direct-json-array */ m_value[{this.GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue().{(member.IsNullableRefType() ? "AsArrayOrDefault" : member.IsRequired ? "AsArray" : "AsArrayOrEmpty")}()",
@@ -873,11 +873,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 									_ => $"/* direct-json-value */ m_value[{this.GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue()"
 								};
 							}
-							else if (member.Type.IsJsonDeserializable)
+							else if (member.Type.IsJsonDeserializable())
 							{
 								getterExpr = $"/* json-deserializable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackJsonDeserializable<{member.Type.FullyQualifiedName}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {member.DefaultLiteral}, null)"; //TODO: default value!
 							}
-							else if (member.Type.IsNullableOfT(out var underlyingType) && underlyingType.IsJsonDeserializable)
+							else if (member.Type.IsNullableOfT(out var underlyingType) && underlyingType.IsJsonDeserializable())
 							{
 								getterExpr = $"/* nullable-json-deserializable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableJsonDeserializable<{underlyingType.FullyQualifiedName}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {member.DefaultLiteral}, null)"; //TODO: default value!
 							}
@@ -1216,7 +1216,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									setterExpr = $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value)";
 								}
 							}
-							else if (member.Type.JsonType is not JsonPrimitiveType.None)
+							else if (member.Type.JsonType() is not JsonPrimitiveType.None)
 							{
 								setterExpr = $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value?.ToJsonValue() ?? JsonNull.Null)";
 								proxyType = KnownTypeSymbols.MutableJsonValueFullName;
@@ -1942,7 +1942,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						continue;
 					}
 
-					if (member.Type.IsJsonDeserializable)
+					if (member.Type.IsJsonDeserializable())
 					{
 						if (member.IsRequired)
 						{
@@ -2029,11 +2029,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 
 					string jsonExpr;
-					if (member.Type.JsonType is JsonPrimitiveType.Object)
+					if (member.Type.JsonType() is JsonPrimitiveType.Object)
 					{
 						jsonExpr = $"/* json-object */ obj.{(member.IsRequired ? "GetObject" : "GetObjectOrDefault")}({GetLocalPropertyNameRef(member)})";
 					}
-					else if (member.Type.JsonType is JsonPrimitiveType.Array)
+					else if (member.Type.JsonType() is JsonPrimitiveType.Array)
 					{
 						jsonExpr = $"/* json-array */ obj.{(member.IsRequired ? "GetArray" : "GetArrayOrDefault")}({GetLocalPropertyNameRef(member)})";
 					}
@@ -2047,12 +2047,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 
 					string getterExpr;
-					if (member.Type.JsonType is not JsonPrimitiveType.None)
+					if (member.Type.JsonType() is not JsonPrimitiveType.None)
 					{
-						getterExpr = member.Type.JsonType switch
+						getterExpr = member.Type.JsonType() switch
 						{
 							JsonPrimitiveType.Value or JsonPrimitiveType.Object or JsonPrimitiveType.Array => jsonExpr,
-							_ => $"((Json{member.Type.JsonType}) {jsonExpr})" //TODO: we don't have specialized "As" methods for them!
+							_ => $"((Json{member.Type.JsonType()}) {jsonExpr})" //TODO: we don't have specialized "As" methods for them!
 						};
 					}
 					else if (member.IsRequired)
@@ -2356,18 +2356,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return $"/* fast-date */ {KnownTypeSymbols.JsonDateTimeFullName}.Return({getterExpr})";
 				}
 
-				if (member.Type.JsonType is not JsonPrimitiveType.None)
+				if (member.Type.JsonType() is not JsonPrimitiveType.None)
 				{
 					// it's already a JSON value, but we may need to convert it to readonly!
 					return $"/* fast-json */ settings.IsReadOnly() ? ({getterExpr})?.ToReadOnly() : ({getterExpr})";
 				}
 
-				if (concreteType.JsonType is not JsonPrimitiveType.None)
+				if (concreteType.JsonType() is not JsonPrimitiveType.None)
 				{
 					return $"/* direct-json-value */ {getterExpr}";
 				}
 
-				if (concreteType.IsJsonPackable)
+				if (concreteType.IsJsonPackable())
 				{
 					return $"/* packable */ {KnownTypeSymbols.JsonValueFullName}.FromValue({getterExpr}, settings, resolver)";
 				}
@@ -2601,13 +2601,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				//TODO: test if implements IJsonSerializable
 
-				if (member.Type.JsonType is not JsonPrimitiveType.None)
+				if (member.Type.JsonType() is not JsonPrimitiveType.None)
 				{ // this is a JsonValue
 					sb.AppendLine($"writer.WriteField({propertyName}, {getterExpr}); // fast-json");
 					return;
 				}
 
-				if (member.Type.IsJsonSerializable)
+				if (member.Type.IsJsonSerializable())
 				{ // the type has its own JsonSerialize method that we will call directly
 					sb.AppendLine($"writer.WriteFieldJsonSerializable({propertyName}, {getterExpr}); // json-serializable");
 					return;
@@ -2651,25 +2651,3 @@ namespace SnowBank.Serialization.Json.CodeGen
 }
 
 
-namespace System.Diagnostics.CodeAnalysis
-{
-
-#if !NETSTANDARD2_1
-
-	/// <summary>Specifies that when a method returns <see cref="ReturnValue"/>, the parameter may be null even if the corresponding type disallows it.</summary>
-	[AttributeUsage(AttributeTargets.Parameter)]
-	internal sealed class MaybeNullWhenAttribute : Attribute
-	{
-		/// <summary>Initializes the attribute with the specified return value condition.</summary>
-		/// <param name="returnValue">
-		/// The return value condition. If the method returns this value, the associated parameter may be null.
-		/// </param>
-		public MaybeNullWhenAttribute(bool returnValue) => this.ReturnValue = returnValue;
-
-		/// <summary>Gets the return value condition.</summary>
-		public bool ReturnValue { get; }
-	}
-
-#endif
-
-}

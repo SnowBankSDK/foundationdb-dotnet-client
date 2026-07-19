@@ -1,5 +1,5 @@
 ﻿
-namespace SnowBank.Serialization.Json.CodeGen
+namespace SnowBank.SourceAnalysis
 {
 	using Microsoft.CodeAnalysis;
 

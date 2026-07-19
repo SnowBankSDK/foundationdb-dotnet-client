@@ -6,7 +6,7 @@
 //
 #endregion
 
-namespace SnowBank.Serialization.Json.CodeGen
+namespace SnowBank.SourceAnalysis
 {
 
 	public static class TypeHelper
