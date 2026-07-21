@@ -1,0 +1,25 @@
+version: 2
+
+updates:
+
+  # Workflow actions are pinned by full SHA, which is immutable (unlike a @v4
+  # tag, which the action owner can repoint). Nothing moves those pins on its
+  # own, so this is what keeps them from rotting: Dependabot rewrites the SHA
+  # and the trailing "# v7.0.1" comment together.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+# NuGet version updates are deliberately NOT enabled here yet. Two reasons:
+#
+#  - the netstandard2.0 bucket at the bottom of Directory.Packages.props lowers
+#    package floors on purpose, to keep the net472 validation target building.
+#    Several of those packages also appear in the net8/net10/net11 buckets,
+#    where they SHOULD be raised, so a blanket "ignore" would be wrong and no
+#    "ignore" at all risks a bump silently undoing the documented floors.
+#  - dotnetcore.yml only triggers on push and workflow_dispatch, so a pull
+#    request opened by Dependabot would get CodeQL but no build. The proposal
+#    would arrive unvalidated.
+#
+# NuGet *security* alerts do not need this file and are already active.
