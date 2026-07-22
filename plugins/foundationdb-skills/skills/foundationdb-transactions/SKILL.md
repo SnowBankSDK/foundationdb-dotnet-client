@@ -212,6 +212,12 @@ Composing layers in one transaction is the core advantage: all writes commit tog
 - A `not_committed` (1020) conflict is normal under contention; it's retried for you.
 - Throwing your **own** exception out of the handler aborts the transaction and propagates (no commit, no retry). Use this for genuine application errors.
 - Don't catch `FdbException` *inside* the handler just to retry manually — that fights the loop.
+- **`FdbErrorDebugger` is not for application code.** It exposes the native client's error
+  translation (`GetErrorMessage`, `MapToException`, `TestErrorPredicate`) as a **test oracle**, for
+  harnesses that need to pin what the real client answers. Calling
+  `TestErrorPredicate(FdbErrorPredicate.Retryable, code)` to decide whether to retry re-implements
+  the retry loop by hand: the loop already applies those predicates. Reach for it in a conformance
+  suite, never in a handler.
 
 ---
 
