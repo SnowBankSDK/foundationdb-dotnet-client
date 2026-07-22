@@ -104,6 +104,19 @@ A read-write transaction conflicts if another transaction commits a write to a k
   ```
   (Counters stored for atomic add **must** be fixed-width little-endian: `FdbValue.ToFixed64LittleEndian` / `Slice.FromFixed64`.)
 
+  ⚠️ **`AtomicMin` / `AtomicMax` compare LITTLE-ENDIAN, not lexicographically.** They also zero-extend or truncate the stored value to the length of your parameter first. That is correct for a fixed-width little-endian counter and **wrong for everything else**: on a tuple-encoded value, a UTF-8 string, a big-endian number or a `VersionStamp`, they will happily store the "larger" of two values under a comparison that has nothing to do with your ordering, and silently corrupt the key.
+
+  For a byte-string ordering (which is what tuple-encoded keys, UUIDs and version stamps use), you want the lexicographic pair:
+
+  ```csharp
+  tr.Atomic(key, value, FdbMutationType.ByteMax);   // keep the lexicographically larger value
+  tr.Atomic(key, value, FdbMutationType.ByteMin);   // keep the lexicographically smaller one
+  ```
+
+  There is deliberately **no `AtomicByteMax` / `AtomicByteMin` helper**: go through `tr.Atomic(...)` with the explicit `FdbMutationType`. Unlike `Min`/`Max`, these do no padding or truncation, and an absent key simply stores your parameter. They need **API level 520 or higher** (fdb 5.2, the same wave as `AppendIfFits`); below that the client throws `NotSupportedException` rather than degrading.
+
+  Rule of thumb: fixed-width little-endian number, use `AtomicMin`/`AtomicMax`; anything you would compare with `Slice.CompareTo`, use `ByteMin`/`ByteMax`.
+
 - **Snapshot reads** (`tr.Snapshot.GetAsync(...)`, `tr.Snapshot.GetRange(...)`) read without creating a read-conflict on those keys. Use them when a stale read is acceptable (e.g. counting shards, statistics). Don't use snapshot reads for values you then use to compute a write that needs consistency.
 
 - **Sharding for write-hot keys**: a single frequently-incremented key serializes all writers. Spread writes across random sub-keys and sum on read — exactly what `FdbHighContentionCounter` does.

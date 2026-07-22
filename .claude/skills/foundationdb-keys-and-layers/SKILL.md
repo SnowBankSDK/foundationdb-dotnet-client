@@ -505,6 +505,8 @@ Reading values: `slice.ToInt64()`, `slice.ToStringUtf8()`, `TuPack.DecodeKey<lon
 
 > **Counters:** store with `FdbValue.ToFixed64LittleEndian` (or `Slice.FromFixed64`) and mutate with `tr.AtomicAdd64(key, delta)` / `tr.AtomicIncrement64(key)`. This avoids read-modify-write conflicts entirely. See `FdbCounterMap` and `FdbHighContentionCounter`.
 
+> **The value encoding you pick decides which atomic comparison is legal on it.** `AtomicMin`/`AtomicMax` compare little-endian, so they are only correct on a fixed-width little-endian number. For any value whose ordering is byte-lexicographic (a tuple encoding, UTF-8 text, a UUID, a `VersionStamp`) the correct mutation is `FdbMutationType.ByteMin` / `ByteMax` via `tr.Atomic(...)`. Getting this pair backwards silently stores the wrong value rather than failing. The `foundationdb-transactions` skill has the full rule.
+
 ---
 
 ## 9. Reference layers to imitate
