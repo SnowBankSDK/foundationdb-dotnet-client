@@ -371,8 +371,13 @@ namespace SnowBank.Collections.CacheOblivious
 			do
 			{
 				int level = m_items.FindNext(kvNext, beginEqual, out var offset, out var candidate);
+				if (level < 0)
+				{ // the search exhausted (empty store, or every key at/after 'begin' already removed):
+				  // 'candidate' is default here, so its comparison against 'end' is meaningless
+					break;
+				}
 				int p = cmp.Compare(candidate.Key, end);
-				if (level < 0 || endEqual ? (p > 0) : (p >= 0))
+				if (endEqual ? (p > 0) : (p >= 0))
 				{
 					break;
 				}
@@ -400,8 +405,13 @@ namespace SnowBank.Collections.CacheOblivious
 			do
 			{
 				int level = m_items.FindNext(kvNext, beginEqual, out var offset, out var candidate);
+				if (level < 0)
+				{ // the search exhausted (empty store, or every key at/after 'begin' already removed):
+				  // 'candidate' is default here, so its comparison against 'end' is meaningless
+					break;
+				}
 				int p = cmp.Compare(candidate.Key, end);
-				if (level < 0 || endEqual ? (p > 0) : (p >= 0))
+				if (endEqual ? (p > 0) : (p >= 0))
 				{
 					break;
 				}

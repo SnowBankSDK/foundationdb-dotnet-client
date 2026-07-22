@@ -47,6 +47,32 @@ namespace SnowBank.Collections.CacheOblivious.Test
 			Assert.That(cola.Capacity, Is.EqualTo(63), "Capacity should be the next power of 2, minus 1");
 		}
 
+		[Test]
+		public void Test_ColaOrderedDictionary_RemoveRange_Boundaries()
+		{
+			// RemoveRange must stop cleanly when the search exhausts: on an empty dictionary, and when
+			// the range extends past the last key (every key at/after 'begin' gets removed first)
+			var cola = new ColaOrderedDictionary<int, string>(Comparer<int>.Default, StringComparer.Ordinal);
+
+			Assert.That(cola.RemoveRange(1, beginEqual: true, 10, endEqual: false), Is.Zero, "empty dictionary");
+
+			cola.Add(1, "one");
+			cola.Add(2, "two");
+			cola.Add(3, "three");
+
+			Assert.That(cola.RemoveRange(5, beginEqual: true, 9, endEqual: false), Is.Zero, "range above every key");
+			Assert.That(cola.Count, Is.EqualTo(3));
+
+			Assert.That(cola.RemoveRange(2, beginEqual: true, 100, endEqual: false), Is.EqualTo(2), "range extending past the last key");
+			Assert.That(cola.Count, Is.EqualTo(1));
+			Assert.That(cola.ContainsKey(1), Is.True);
+
+			Assert.That(cola.RemoveRange(0, beginEqual: true, 100, endEqual: true), Is.EqualTo(1), "inclusive range clearing the rest");
+			Assert.That(cola.Count, Is.Zero);
+
+			Assert.That(cola.RemoveRange(0, beginEqual: true, 100, endEqual: true), Is.Zero, "again on the now-empty dictionary");
+		}
+
 		private void DumpStore<TKey, TValue>(ColaOrderedDictionary<TKey, TValue> store)
 		{
 			var sw = new StringWriter();
