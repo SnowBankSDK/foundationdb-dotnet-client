@@ -2610,6 +2610,7 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("options/access-system-keys")]
 		public async Task Test_Has_Access_To_System_Keys()
 		{
 			using var db = await OpenTestDatabaseAsync();
@@ -2816,6 +2817,7 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("conflicts/explicit-read-conflict-range")]
 		public async Task Test_Can_Add_Read_Conflict_Range()
 		{
 			using var db = await OpenTestPartitionAsync();
@@ -2854,6 +2856,7 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("conflicts/explicit-write-conflict-range")]
 		public async Task Test_Can_Add_Write_Conflict_Range()
 		{
 			using var db = await OpenTestPartitionAsync();
@@ -3246,6 +3249,7 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("introspection/addresses")]
 		public async Task Test_Can_Get_Addresses_For_Key()
 		{
 			//note: starting from API level 630, options IncludePortInAddress is the default!
@@ -4289,6 +4293,7 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("introspection/approximate-size")]
 		public async Task Test_Can_Get_Approximate_Size()
 		{
 			using var db = await OpenTestDatabaseAsync();
@@ -4457,6 +4462,7 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("introspection/split-points")]
 		public async Task Test_Can_Get_Range_Split_Points()
 		{
 			const int NUM_ITEMS = 100_000;
@@ -4541,6 +4547,7 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("introspection/estimated-range-size")]
 		public async Task Test_Can_Get_Estimated_Range_Size_Bytes()
 		{
 			const int NUM_ITEMS = 50_000;
@@ -4593,6 +4600,7 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("conflicts/report-conflicting-keys-option", "conflicts/conflicting-keys-special-keyspace")]
 		public async Task Test_Can_Get_Conflicting_Keys_Manually()
 		{
 
