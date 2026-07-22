@@ -24,6 +24,10 @@
       href: guide/advanced-layers.md
     - name: Binary Data (Slice & Buffers)
       href: guide/slices-and-buffers.md
+- name: Migrations
+  items:
+    - name: 7.4.2 to 7.4.3
+      href: migrations/7.4.2-to-7.4.3.md
 - name: Reference
   items:
     - name: Tuples
