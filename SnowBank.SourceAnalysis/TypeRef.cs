@@ -165,6 +165,7 @@ namespace SnowBank.SourceAnalysis
 			this.Name = type.Name;
 			this.IsAbstract = type.IsAbstract;
 			this.IsSealed = type.IsSealed;
+			this.IsReadOnly = type.IsReadOnly;
 			this.TypeKind = type.TypeKind;
 			this.IsPrimitive = primitive;
 			this.SpecialType = type.OriginalDefinition?.SpecialType ?? default;
@@ -285,6 +286,9 @@ namespace SnowBank.SourceAnalysis
 		public bool IsAbstract { get; }
 
 		public bool IsSealed { get; }
+
+		/// <summary>If this is a struct, whether it is declared <c>readonly</c></summary>
+		public bool IsReadOnly { get; }
 
 		public bool IsRecord { get; }
 

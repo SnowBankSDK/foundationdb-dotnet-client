@@ -32,6 +32,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 {
 	using System;
 	using System.Diagnostics;
+	using System.Threading;
 	using Microsoft.CodeAnalysis;
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -42,6 +43,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 		private const string CrystalJsonConverterAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonConverterAttribute";
 
 		private const string CrystalJsonSerializableAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSerializableAttribute";
+
+		private const string CrystalJsonSelfSerializableAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSelfSerializableAttribute";
 
 #if FULL_DEBUG
 #pragma warning disable RS1035
@@ -103,6 +106,72 @@ namespace SnowBank.Serialization.Json.CodeGen
 				;
 
 			context.RegisterSourceOutput(converterTypes, EmitSourceCode);
+
+			// find all self-serializable types: partial types decorated with an attribute whose class carries the
+			// [CrystalJsonSelfSerializable] meta-marker (the marker cannot be matched by name here, because the
+			// decorating attribute belongs to the application or to another layer, not to this generator)
+			var selfSerializableTypes = context.SyntaxProvider
+				.CreateSyntaxProvider(
+					static (node, _) => node is TypeDeclarationSyntax { AttributeLists.Count: > 0 },
+					static (ctx, ct) => GetSelfSerializableCandidate(ctx, ct)
+				)
+				.Where(static candidate => candidate.TypeDeclaration is not null)
+				.Combine(knownTypeSymbols)
+				.Select(static (tuple, ct) =>
+				{
+					var parser = new Parser(tuple.Right);
+					var containerMetadata = parser.ParseSelfSerializableMetadata(tuple.Left.TypeDeclaration!, tuple.Left.SemanticModel!, ct);
+					var diagnostics = parser.Diagnostics.ToImmutableEquatableArray();
+					return (Metadata: containerMetadata, Diagnostics: diagnostics);
+				})
+				.WithTrackingName("CrystalJsonSelfSpec")
+				;
+
+			context.RegisterSourceOutput(selfSerializableTypes, EmitSourceCode);
+		}
+
+		/// <summary>Filters a type declaration, keeping only self-serializable types (one of their attributes carries the meta-marker)</summary>
+		private static (TypeDeclarationSyntax? TypeDeclaration, SemanticModel? SemanticModel) GetSelfSerializableCandidate(GeneratorSyntaxContext ctx, CancellationToken ct)
+		{
+			var typeDeclaration = (TypeDeclarationSyntax) ctx.Node;
+
+			if (ctx.SemanticModel.GetDeclaredSymbol(typeDeclaration, ct) is not INamedTypeSymbol symbol)
+			{
+				return default;
+			}
+
+			bool found = false;
+			foreach (var attribute in symbol.GetAttributes())
+			{
+				var attributeClass = attribute.AttributeClass;
+				if (attributeClass is null) continue;
+
+				foreach (var marker in attributeClass.GetAttributes())
+				{
+					if (marker.AttributeClass?.ToDisplayString() == CrystalJsonSelfSerializableAttributeFullName)
+					{
+						found = true;
+						break;
+					}
+				}
+				if (found) break;
+			}
+			if (!found)
+			{
+				return default;
+			}
+
+			// a partial type with attributes on several parts matches once per part: only generate for the first
+			// attributed declaration, so that the source is emitted exactly once
+			foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+			{
+				if (syntaxRef.GetSyntax(ct) is TypeDeclarationSyntax { AttributeLists.Count: > 0 } candidate)
+				{
+					return ReferenceEquals(candidate, typeDeclaration) ? (typeDeclaration, ctx.SemanticModel) : default;
+				}
+			}
+
+			return default;
 		}
 
 		private void EmitSourceCode(SourceProductionContext ctx, (CrystalJsonContainerMetadata? Metadata, ImmutableEquatableArray<DiagnosticInfo> Diagnostics) args)

@@ -97,24 +97,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (symbol == null) return null;
 
 				this.ContextClassLocation = contextClassDeclaration.GetLocation();
-				
+
 				Kenobi($"ParseContainerMetadata({symbol.Name}, [{attributes.Length}])");
 
-				var langVersion = (this.KnownSymbols.Compilation as CSharpCompilation)?.LanguageVersion;
-				if (langVersion is null or < LanguageVersion.CSharp9)
+				if (!EnsureSupportedLanguageVersion())
 				{
-					// Unsupported lang version should be the first (and only) diagnostic emitted by the generator.
-					ReportDiagnostic(
-						new(
-							"SYSLIB1221", //note: we use the same ID as System.Text.Json, since this is the same error
-							"C# language version not supported by the source generator.",
-							"The JSON source generator is not available in C# {0}. Please use language version {1} or greater.",
-							"SnowBank.Serialization.Json.CodeGen",
-							DiagnosticSeverity.Error,
-							isEnabledByDefault: true
-						),
-						this.ContextClassLocation,
-						langVersion?.ToDisplayString(), LanguageVersion.CSharp9.ToDisplayString());
 					return null;
 				}
 
@@ -218,6 +205,141 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				Kenobi($"Found {work.Count} root types to include");
 
+				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy);
+
+				if (includedTypes.Count == 0)
+				{
+					ReportDiagnostic(
+						new(
+							"CJSON0002",
+							"At least one type must be included",
+							"The container type {0} must specify at least one type to include, using the [CrystalJsonSerializable] attribute",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Warning,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						[ symbol.ToDisplayString() ]
+					);
+				}
+
+				Kenobi($"Found {includedTypes.Count} total types to generate");
+
+				var containerName = symbol.Name;
+
+				this.ContextClassLocation = null;
+
+				return new()
+				{
+					Name = containerName,
+					Type = TypeMetadata.Create(symbol),
+					IncludedTypes = includedTypes.ToImmutableEquatableArray(),
+					PropertyNameCaseInsensitive = caseInsensitiveNames,
+					PropertyNamingPolicy = propertyNamingPolicy,
+				};
+			}
+
+			/// <summary>Parses a self-serializable type: a partial type decorated with an attribute that carries the <c>[CrystalJsonSelfSerializable]</c> meta-marker</summary>
+			/// <remarks>The type acts as its own container: the generated code is nested under the entity itself (ex: <c>Widget.ReadOnly</c>).</remarks>
+			public CrystalJsonContainerMetadata? ParseSelfSerializableMetadata(TypeDeclarationSyntax typeDeclaration, SemanticModel semanticModel, CancellationToken cancellationToken)
+			{
+				var symbol = semanticModel.GetDeclaredSymbol(typeDeclaration, cancellationToken);
+				if (symbol == null) return null;
+
+				this.ContextClassLocation = typeDeclaration.GetLocation();
+
+				Kenobi($"ParseSelfSerializableMetadata({symbol.Name})");
+
+				if (!EnsureSupportedLanguageVersion())
+				{
+					return null;
+				}
+
+				if (!typeDeclaration.Modifiers.Any(SyntaxKind.PartialKeyword))
+				{
+					ReportDiagnostic(
+						new(
+							"CJSON0004",
+							"Self-serializable type must be partial",
+							"The type {0} is marked for JSON self-serialization, and must be declared 'partial' so that the generated code can be added to it.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						[ symbol.ToDisplayString() ]
+					);
+					this.ContextClassLocation = null;
+					return null;
+				}
+
+				if (symbol.IsGenericType || symbol.ContainingType is not null)
+				{
+					ReportDiagnostic(
+						new(
+							"CJSON0005",
+							"Self-serializable type must be a non-generic top-level type",
+							"The type {0} is marked for JSON self-serialization, but generic or nested types are not supported: no code will be generated for it.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Warning,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						[ symbol.ToDisplayString() ]
+					);
+					this.ContextClassLocation = null;
+					return null;
+				}
+
+				var includedTypes = new List<CrystalJsonTypeMetadata>();
+				var mappedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default) { symbol };
+
+				Queue<INamedTypeSymbol> work = [];
+				work.Enqueue(symbol);
+
+				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy: null);
+
+				Kenobi($"Found {includedTypes.Count} total types to generate for self type {symbol.Name}");
+
+				this.ContextClassLocation = null;
+
+				return new()
+				{
+					Name = symbol.Name,
+					Type = TypeMetadata.Create(symbol),
+					IncludedTypes = includedTypes.ToImmutableEquatableArray(),
+					PropertyNameCaseInsensitive = false,
+					PropertyNamingPolicy = null,
+					IsSelfContained = true,
+				};
+			}
+
+			/// <summary>Ensures that the compilation's language version supports source generation, reporting a diagnostic if not</summary>
+			private bool EnsureSupportedLanguageVersion()
+			{
+				var langVersion = (this.KnownSymbols.Compilation as CSharpCompilation)?.LanguageVersion;
+				if (langVersion is null or < LanguageVersion.CSharp9)
+				{
+					// Unsupported lang version should be the first (and only) diagnostic emitted by the generator.
+					ReportDiagnostic(
+						new(
+							"SYSLIB1221", //note: we use the same ID as System.Text.Json, since this is the same error
+							"C# language version not supported by the source generator.",
+							"The JSON source generator is not available in C# {0}. Please use language version {1} or greater.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						langVersion?.ToDisplayString(), LanguageVersion.CSharp9.ToDisplayString());
+					return false;
+				}
+				return true;
+			}
+
+			/// <summary>Drains the work queue, parsing each type and crawling any nested, derived or referenced type into the included list</summary>
+			private void CrawlIncludedTypes(Queue<INamedTypeSymbol> work, HashSet<INamedTypeSymbol> mappedTypes, List<CrystalJsonTypeMetadata> includedTypes, string? propertyNamingPolicy)
+			{
 				while(work.Count > 0)
 				{
 					var type = work.Dequeue();
@@ -270,37 +392,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 						);
 					}
 				}
-
-				if (includedTypes.Count == 0)
-				{
-					ReportDiagnostic(
-						new(
-							"CJSON0002",
-							"At least one type must be included",
-							"The container type {0} must specify at least one type to include, using the [CrystalJsonSerializable] attribute",
-							"SnowBank.Serialization.Json.CodeGen",
-							DiagnosticSeverity.Warning,
-							isEnabledByDefault: true
-						),
-						this.ContextClassLocation,
-						[ symbol.ToDisplayString() ]
-					);
-				}
-
-				Kenobi($"Found {includedTypes.Count} total types to generate");
-
-				var containerName = symbol.Name;
-
-				this.ContextClassLocation = null;
-
-				return new()
-				{
-					Name = containerName,
-					Type = TypeMetadata.Create(symbol),
-					IncludedTypes = includedTypes.ToImmutableEquatableArray(),
-					PropertyNameCaseInsensitive = caseInsensitiveNames,
-					PropertyNamingPolicy = propertyNamingPolicy,
-				};
 			}
 
 			public CrystalJsonTypeMetadata? ParseTypeMetadata(INamedTypeSymbol type, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work, string? namingPolicy)

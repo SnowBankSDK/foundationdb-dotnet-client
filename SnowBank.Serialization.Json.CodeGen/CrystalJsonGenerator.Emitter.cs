@@ -135,12 +135,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.AppendLine($"namespace {symbol.NameSpace}");
 					sb.EnterBlock("namespace");
 
-					sb.XmlComment("<summary>Generated source code for JSON operations on application types</summary>");
-					sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
-					sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
-					sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");
-					sb.AppendLine($"[{ExcludeFromCodeCoverageAttributeFullName}]");
-					sb.AppendLine($"public static partial class {symbol.Name}");
+					if (!this.Metadata.IsSelfContained)
+					{
+						// note: in self mode, no XML doc or attribute is emitted on the partial: it would apply to the whole entity type, which is user code
+						sb.XmlComment("<summary>Generated source code for JSON operations on application types</summary>");
+						sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
+						sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
+						sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");
+						sb.AppendLine($"[{ExcludeFromCodeCoverageAttributeFullName}]");
+					}
+					sb.AppendLine(GetContainerDeclaration());
 					sb.EnterBlock("container");
 					sb.NewLine();
 
@@ -259,7 +263,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.LeaveBlock("namespace");
 					sb.NewLine();
 
-					this.Context.AddSource($"{this.Metadata.Type.Name}.g.cs", sb.ToString());
+					this.Context.AddSource($"{GetContainerHintName()}.g.cs", sb.ToString());
 				}
 
 				// then, we generate one file for each of the serialized type
@@ -288,7 +292,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					// we also use a lot of helper static methods from this type
 					sb.NewLine();
 
-					sb.AppendLine($"public static partial class {symbol.Name}");
+					sb.AppendLine(GetContainerDeclaration());
 					sb.EnterBlock("Container");
 
 					try
@@ -316,7 +320,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.AppendLine("#endif");
 						sb.NewLine();
 
-						this.Context.AddSource($"{this.Metadata.Type.Name}.{typeDef.Name}.g.cs", sb.ToString());
+						this.Context.AddSource($"{GetContainerHintName()}.{typeDef.Name}.g.cs", sb.ToString());
 
 						this.Context.ReportDiagnostic(
 							Diagnostic.Create(new(
@@ -346,7 +350,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 					}
 
-					this.Context.AddSource($"{this.Metadata.Type.Name}.{hintName}.g.cs", sb.ToString());
+					this.Context.AddSource($"{GetContainerHintName()}.{hintName}.g.cs", sb.ToString());
 				}
 				Kenobi("Done!");
 			}
@@ -369,22 +373,55 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 			}
 
-			private string GetLocalSerializerRef(CrystalJsonTypeMetadata metadata) => $"{this.Metadata.Type.Name}.{GetSerializerName(metadata.Type)}.Default";
-			private string GetLocalSerializerRef(TypeMetadata metadata) => $"{this.Metadata.Type.Name}.{GetSerializerName(metadata)}.Default";
+			/// <summary>Tests if this type is the self-serialized entity that acts as its own container</summary>
+			private bool IsSelfType(TypeMetadata type) => this.Metadata.IsSelfContained && type.Ref.Equals(this.Metadata.Type.Ref);
 
-			private string GetConverterName(CrystalJsonTypeMetadata metadata) => GetSerializerName(metadata.Type) + ".JsonConverter";
+			/// <summary>Name of the nested static class that hosts the holders of the types referenced by a self-serialized entity</summary>
+			/// <remarks>The holders cannot be nested directly in the entity: a holder named like the referenced type would shadow that type inside the entity's own source.</remarks>
+			private const string SelfReferencedTypesHolderName = "JsonConverters";
 
-			private string GetReadOnlyProxyName(TypeMetadata type) => $"{GetSerializerName(type)}.ReadOnly";
+			/// <summary>Returns the path of the generated members for this type, relative to the container</summary>
+			/// <remarks>Empty for a self-serialized entity (its members are nested directly in the entity), <c>"TypeName."</c> for a type hosted in a nested static holder class (<c>"JsonConverters.TypeName."</c> when the container is a self-serialized entity).</remarks>
+			private string GetSerializerScope(TypeMetadata type)
+				=> IsSelfType(type) ? ""
+					: this.Metadata.IsSelfContained ? (SelfReferencedTypesHolderName + "." + GetSerializerName(type) + ".")
+					: (GetSerializerName(type) + ".");
+
+			private string GetLocalSerializerRef(CrystalJsonTypeMetadata metadata) => GetLocalSerializerRef(metadata.Type);
+			private string GetLocalSerializerRef(TypeMetadata metadata) => $"{this.Metadata.Type.Name}.{GetSerializerScope(metadata)}Default";
+
+			private string GetConverterName(CrystalJsonTypeMetadata metadata) => GetSerializerScope(metadata.Type) + "JsonConverter";
+
+			private string GetReadOnlyProxyName(TypeMetadata type) => GetSerializerScope(type) + "ReadOnly";
 			private string GetLocalReadOnlyProxyRef(CrystalJsonTypeMetadata metadata) => $"{this.Metadata.Name}.{GetReadOnlyProxyName(metadata.Type)}";
 
-			private string GetWritableProxyName(TypeMetadata type) => $"{GetSerializerName(type)}.Writable";
+			private string GetWritableProxyName(TypeMetadata type) => GetSerializerScope(type) + "Writable";
 			private string GetLocalWritableProxyRef(CrystalJsonTypeMetadata metadata) => $"{this.Metadata.Name}.{GetWritableProxyName(metadata.Type)}";
 
 			/// <summary>Returns the name of the generated const string with the serialized name of this member, from within the converter itself</summary>
 			private string GetLocalPropertyNameRef(CrystalJsonMemberMetadata member) => "PropertyNames." + member.MemberName;
 
 			/// <summary>Returns the name of the generated const string with the serialized name of this member, from another part of the generated code</summary>
-			private string GetTargetPropertyNameRef(CrystalJsonTypeMetadata type, CrystalJsonMemberMetadata member) => $"{this.Metadata.Name}.{this.GetSerializerName(type.Type)}.PropertyNames.{member.MemberName}";
+			private string GetTargetPropertyNameRef(CrystalJsonTypeMetadata type, CrystalJsonMemberMetadata member) => $"{this.Metadata.Name}.{GetSerializerScope(type.Type)}PropertyNames.{member.MemberName}";
+
+			/// <summary>Returns the declaration that (re)opens the container type in a generated file</summary>
+			/// <remarks>The static container class in container mode; the entity's own partial in self mode (matching its kind, so the compiler can merge the parts).</remarks>
+			private string GetContainerDeclaration()
+			{
+				var type = this.Metadata.Type;
+				if (!this.Metadata.IsSelfContained)
+				{
+					return $"public static partial class {type.Name}";
+				}
+				var keyword = type.IsRecord
+					? (type.IsValueType() ? "record struct" : "record")
+					: (type.IsValueType() ? "struct" : "class");
+				return $"{(type.IsReadOnly ? "readonly " : "")}partial {keyword} {type.Name}";
+			}
+
+			/// <summary>Returns the base name of the generated source files for this container</summary>
+			/// <remarks>Self-serialized entities are namespace-qualified: unlike containers, distinct entities with the same name are common, and hint names must be unique.</remarks>
+			private string GetContainerHintName() => this.Metadata.IsSelfContained ? $"{this.Metadata.Type.NameSpace}.{this.Metadata.Type.Name}" : this.Metadata.Type.Name;
 
 			/// <summary>Returns the name of the generated static singleton with the definition of this member</summary>
 			private string GetPropertyEncodedNameRef(CrystalJsonMemberMetadata member) => "PropertyEncodedNames." + member.MemberName;
@@ -426,9 +463,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 #endif
 
-				sb.XmlComment($"<summary>Set of JSON converters and other various helpers for type <see cref=\"{typeCref}\">{typeName}</see></summary>");
-				sb.AppendLine("public static class " + serializerName);
-				sb.EnterBlock();
+				bool selfType = IsSelfType(typeDef.Type);
+				if (!selfType)
+				{
+					if (this.Metadata.IsSelfContained)
+					{
+						// the holders of referenced types cannot be nested directly in the entity: they would shadow the referenced type inside the entity's own source
+						sb.XmlComment("<summary>Hosts the JSON converters generated for the types referenced by this entity</summary>");
+						sb.AppendLine($"public static partial class {SelfReferencedTypesHolderName}");
+						sb.EnterBlock();
+					}
+					sb.XmlComment($"<summary>Set of JSON converters and other various helpers for type <see cref=\"{typeCref}\">{typeName}</see></summary>");
+					sb.AppendLine("public static class " + serializerName);
+					sb.EnterBlock();
+				}
+				// note: for the self type there is no intermediate holder class: the members below are nested directly in the entity's partial
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>JSON converter for type <see cref=\"{typeCref}\">{typeName}</see></summary>");
@@ -1306,7 +1355,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				#endregion
 
-				sb.LeaveBlock();
+				if (!selfType)
+				{
+					sb.LeaveBlock();
+					if (this.Metadata.IsSelfContained)
+					{
+						sb.LeaveBlock();
+					}
+				}
 				sb.NewLine();
 
 			}

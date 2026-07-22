@@ -104,6 +104,25 @@ namespace SnowBank.Data.Json
 		Web,
 	}
 
+	/// <summary>Meta-attribute that marks another attribute as enabling JSON source code generation on the types it decorates</summary>
+	/// <remarks>
+	/// <para>Apply this attribute to a custom attribute class: any (partial) type decorated with that attribute becomes <b>self-serializable</b>, meaning the source generator emits its converter and proxies nested inside the type itself (ex: <c>Widget.ReadOnly</c>, <c>Widget.Writable</c>, <c>Widget.Default</c>), without requiring a separate container class.</para>
+	/// <para>This allows a library to opt its own marker attributes into JSON code generation, without the application having to reference the generator vocabulary directly.</para>
+	/// <para>Sample: <code>
+	/// // in the library:
+	/// [CrystalJsonSelfSerializable]
+	/// public sealed class DocumentAttribute : Attribute { }
+	///
+	/// // in the application:
+	/// [Document]
+	/// public sealed partial record Widget { ... } // gets Widget.ReadOnly, Widget.Writable, Widget.Default, ...
+	/// </code></para>
+	/// </remarks>
+	[AttributeUsage(AttributeTargets.Class)]
+	public sealed class CrystalJsonSelfSerializableAttribute : Attribute
+	{
+	}
+
 	/// <summary>Attribute that adds a custom JSON converter for one or more types</summary>
 	/// <remarks>Any derived type, nested type, or types referenced by the members of these types will also be included in the source code generation.</remarks>
 	[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
