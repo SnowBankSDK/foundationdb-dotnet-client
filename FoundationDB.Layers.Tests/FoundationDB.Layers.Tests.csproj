@@ -50,6 +50,10 @@
 		</PackageReference>
 		<!-- real-cluster fixtures ([Category("RealCluster")]) provision a FoundationDB container through FdbTest -->
 		<PackageReference Include="Testcontainers" />
+		<!-- the Experimental/Documents suite exercises a protobuf-net based document codec -->
+		<PackageReference Include="protobuf-net" />
+		<!-- the Experimental/Indexing bitmap suite uses MathNet distributions to generate test data -->
+		<PackageReference Include="MathNet.Numerics.Signed" />
 	</ItemGroup>
 
 	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
@@ -62,6 +66,7 @@
 	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
 		<!-- layers with no netstandard2.0/net472 build: their test folders are removed on net472 (also guarded with #if !NETFRAMEWORK) -->
 		<Compile Remove="FullText/**/*.cs" />
+		<Compile Remove="Experimental/**/*.cs" />
 		<Reference Include="System.Net.Http" />
 		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
 		<PackageReference Include="PolySharp" PrivateAssets="all" />

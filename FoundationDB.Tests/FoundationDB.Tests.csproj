@@ -40,13 +40,11 @@
 
 	<ItemGroup>
 		<PackageReference Include="Bogus" />
-		<PackageReference Include="MathNet.Numerics.Signed" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
 		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" />
 		<PackageReference Include="NUnit" />
 		<PackageReference Include="NUnit3TestAdapter" />
-		<PackageReference Include="protobuf-net" />
 		<PackageReference Include="Testcontainers" />
 	</ItemGroup>
 	
@@ -59,8 +57,7 @@
 	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
 		<!-- net472 is the ".NET Framework validation" target: it consumes the netstandard2.0 builds of the
 		     FoundationDB.* libraries and runs (a subset of) the test suite on the real .NET Framework CLR. -->
-		<!-- these test the Layers.Experimental / Linq.Providers projects, which have no netstandard2.0 build -->
-		<Compile Remove="Experimental/**/*.cs" />
+		<!-- these test the Linq.Providers project, which has no netstandard2.0 build -->
 		<Compile Remove="Providers/**/*.cs" />
 		<Reference Include="System.Net.Http" />
 		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
@@ -80,7 +77,6 @@
 
 	<ItemGroup Condition="'$(TargetFramework)' != 'net472'">
 		<!-- these projects have no netstandard2.0/net472 build: their test files are guarded with #if !NETFRAMEWORK -->
-		<ProjectReference Include="..\FoundationDB.Layers.Experimental\FoundationDB.Layers.Experimental.csproj" />
 		<ProjectReference Include="..\FoundationDB.Linq.Providers\FoundationDB.Linq.Providers.csproj" />
 	</ItemGroup>
 

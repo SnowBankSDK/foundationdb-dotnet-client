@@ -24,6 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+#if !NETFRAMEWORK
+
 // ReSharper disable AccessToModifiedClosure
 // ReSharper disable ConvertToLocalFunction
 // ReSharper disable StringLiteralTypo
@@ -966,3 +968,5 @@ namespace FoundationDB.Layers.Experimental.Indexing.Tests
 	}
 
 }
+
+#endif

@@ -44,9 +44,22 @@ namespace FoundationDB.Client.Tests
 		/// <summary>Opens a database rooted at <paramref name="path"/> from the current (lazily created) store.</summary>
 		public Task<IFdbDatabase> OpenAsync(FdbPath path, bool readOnly = false)
 		{
-			var db = (this.Store ??= new FakeDbStore()).OpenDatabase(path, readOnly);
-			db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
-			return Task.FromResult<IFdbDatabase>(db);
+			try
+			{
+				var db = (this.Store ??= new FakeDbStore()).OpenDatabase(path, readOnly);
+				db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
+				return Task.FromResult<IFdbDatabase>(db);
+			}
+			catch (ObjectDisposedException)
+			{
+				// disposing a database opened from the store disposes the store with it: a test that opens
+				// several partitions in sequence (bench loops) gets a fresh, empty store per iteration,
+				// which matches the isolated-partition semantics the suites rely on
+				this.Store = new FakeDbStore();
+				var db = this.Store.OpenDatabase(path, readOnly);
+				db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
+				return Task.FromResult<IFdbDatabase>(db);
+			}
 		}
 
 	}

@@ -27,9 +27,8 @@
 namespace FoundationDB.Layers.Interning.Tests
 {
 
-	[TestFixture]
 	[Obsolete]
-	public class StringInternFacts : FdbTest
+	public abstract class StringInternFacts : FdbTest
 	{
 
 		[Test]
@@ -107,4 +106,32 @@ namespace FoundationDB.Layers.Interning.Tests
 		}
 
 	}
+
+	/// <summary>Runs the suite against the in-memory FakeDb emulator (no Docker, no native client) for fast iteration.</summary>
+	[TestFixture]
+	[Obsolete]
+	public sealed class StringInternFactsFakeDbFacts : StringInternFacts
+	{
+
+		private FakeDbTestBackend Backend { get; } = new();
+
+		protected override bool UseRealServer => false;
+
+		[TearDown]
+		public void ResetBackend() => this.Backend.Reset();
+
+		protected override Task<IFdbDatabase> OpenTestDatabaseAsync(bool readOnly = false) => this.Backend.OpenAsync(FdbPath.Root, readOnly);
+
+		protected override Task<IFdbDatabase> OpenTestPartitionAsync(string? testMethod = null) => this.Backend.OpenAsync(GetTestPartitionPath(testMethod));
+
+	}
+
+	/// <summary>Runs the suite against a real FoundationDB cluster (Testcontainers). Run explicitly from the Unit Test Sessions UI or with the <c>RealCluster</c> category; requires a local Docker daemon and the native client.</summary>
+	[TestFixture, Explicit("Requires a local Docker daemon"), Category("RealCluster")]
+	[Obsolete]
+	public sealed class StringInternFactsRealClusterFacts : StringInternFacts
+	{
+		// inherits the full FdbTest behavior: container startup, native client probing, real connection
+	}
+
 }

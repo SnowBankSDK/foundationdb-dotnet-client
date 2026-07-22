@@ -1,11 +1,23 @@
 global using System;
+global using System.Buffers;
 global using System.Collections.Generic;
+global using System.Diagnostics;
+global using System.Globalization;
+global using System.IO;
+global using System.Linq;
+global using System.Text;
 global using System.Threading;
 global using System.Threading.Tasks;
 global using FoundationDB.Client;
 global using FoundationDB.Client.Tests;
 global using NUnit.Framework;
+global using SnowBank.Buffers;
+global using SnowBank.Data.Binary;
 global using SnowBank.Data.Json;
+global using SnowBank.Data.Tuples;
+global using SnowBank.Data.Tuples.Binary;
+global using SnowBank.Linq;
+global using SnowBank.Runtime;
 global using SnowBank.Testing;
 
 #if NETFRAMEWORK
