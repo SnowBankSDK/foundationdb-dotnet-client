@@ -1,6 +1,18 @@
 ---
 name: foundationdb-keys-and-layers
-description: How to correctly encode keys and values, use subspaces and the Directory layer, and write custom "Layers" with the FoundationDB .NET client (FoundationDB.Client / SnowBank). Use whenever code reads or writes FoundationDB keys, builds tuple keys, uses subspace.Key(...)/FdbValue/TuPack, resolves a subspace/location, or defines a class that stores data in FoundationDB (a "Layer", e.g. a map, index, queue, document collection). Read this BEFORE writing or reviewing any such code.
+description: >-
+  How to correctly encode keys and values, use subspaces and the Directory layer, and write custom "Layers"
+  with the FoundationDB .NET client (FoundationDB.Client / SnowBank). Covers the lazy strongly-typed key
+  structs (subspace.Key(...), FdbTupleKey, FdbRawKey, FdbKey.Increment / Successor / Dump), the tuple encoding
+  (TuPack, IVarTuple, STuple), value encodings (FdbValue.ToBytes / ToTextUtf8 / FromTuple / ToJson /
+  ToFixed64LittleEndian and which one a given access pattern requires), subspaces and ISubspaceLocation, the
+  Directory layer (FdbDirectoryLayer, FdbPath, FdbDirectorySubspace), and the IFdbLayer contract with its
+  per-transaction Resolve(tr) State that must never escape the transaction. Use whenever code reads or writes
+  FoundationDB keys, builds or decodes a tuple key, picks a value encoding, resolves a subspace or location,
+  designs a key layout for a table / secondary index / queue / document collection, reasons about key ordering,
+  prefixes and range boundaries, or defines a class that stores data in FoundationDB. Also use it for "how do I
+  model X in FoundationDB", for range scans that return too much or nothing, and for keys that are too big.
+  Read this BEFORE writing or reviewing any such code.
 ---
 
 # FoundationDB .NET — Keys, Values & Layers

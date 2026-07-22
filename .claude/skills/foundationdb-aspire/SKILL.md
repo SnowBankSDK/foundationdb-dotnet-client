@@ -19,7 +19,7 @@ Application code resolves an **`IFdbDatabaseProvider`** (then `await provider.Ge
 | **No DI** | `FdbDatabaseProvider.Create(new FdbDatabaseProviderOptions { ApiVersion = 730, … })` | tools/tests/standalone; call `provider.Start()` |
 | **Aspire client** | `builder.AddFoundationDb("fdb", settings, options)` | the connection string is injected by an Aspire AppHost (see §3) |
 
-`apiVersion` selects the client API level and **caps the features you can use**; `730` ⇒ FoundationDB 7.3 semantics. The provider also carries a **root** `FdbPath` (a directory-layer partition); everything else resolves relative to it.
+`apiVersion` selects the client API level and **caps the features you can use**: `730` ⇒ FoundationDB 7.3 semantics, `740` ⇒ 7.4. This client accepts **610 to 740**, and `Fdb.DefaultApiVersion` is **730**, which is why 730 appears in most examples. Pick the level whose semantics you actually rely on, not the newest available: raising it is a behavior change, and it must stay ≤ what the cluster supports. The provider also carries a **root** `FdbPath` (a directory-layer partition); everything else resolves relative to it.
 
 Plain-DI / no-DI namespaces: `FoundationDB.DependencyInjection`. These all still need the **native client** loaded (§5).
 
@@ -33,16 +33,15 @@ On a `IDistributedApplicationBuilder` (the AppHost), namespace `Aspire.Hosting`:
 // starts a FoundationDB cluster as a Docker container, and emits a connection string named "fdb"
 var fdb = builder.AddFoundationDb("fdb",
         apiVersion: 730,
-        root: "/MyApp",
-        clusterVersion: "7.3.54",                 // the Docker image tag — see the version rule in §6
-        rollForward: FdbVersionPolicy.Exact)
-    .WithLifetime(ContainerLifetime.Persistent);  // reuse the container across runs (faster restarts)
+        root: "/MyApp")                            // clusterVersion omitted on purpose - see below
+    .WithLifetime(ContainerLifetime.Persistent);   // reuse the container across runs (faster restarts)
 
 builder.AddProject<Projects.MyApp>("app")
     .WithReference(fdb)                            // injects the "fdb" connection string into the app
     .WaitFor(fdb);                                 // hold the app until the cluster is healthy
 ```
 
+- **Prefer omitting `clusterVersion`.** Left out, the hosting package picks its own last-known-good Docker tag for the major it selects (the `FdbAspireHostingExtensions.LatestVersionNN` constants, refreshed from Docker Hub by `scripts/check-fdb-image-tags.ps1`). A tag you hardcode is a number that rots in your AppHost: pin one only when you need a specific image, and then treat it as something to review, alongside `rollForward: FdbVersionPolicy.Exact`.
 - `AddFoundationDb(...)` → `IResourceBuilder<FdbClusterResource>` **runs a container**.
 - `AddFoundationDbCluster(name, apiVersion, root, clusterFile?, clusterVersion?)` → `IResourceBuilder<FdbConnectionResource>` instead **connects to an already-running cluster** (no container) given a cluster file.
 - `FdbVersionPolicy` (`Exact`, etc.) lives in `Aspire.Hosting.ApplicationModel`. `.WithDefaults(timeout, retryLimit, tracing)` tunes the connection.
@@ -62,7 +61,7 @@ builder.AddFoundationDb("fdb",
     options  => options.UseNativeClient());        // load libfdb_c (see §5)
 ```
 
-The app references `FoundationDB.Aspire`. The injected connection string looks like `ApiVersion=730;Root=/MyApp;ClusterFileContents=…;ClusterVersion=7.3.54`. Standalone (no AppHost), provide the cluster file via configuration instead.
+The app references `FoundationDB.Aspire`. The injected connection string looks like `ApiVersion=730;Root=/MyApp;ClusterFileContents=…;ClusterVersion=7.4.6` (the `ClusterVersion` is whatever tag the AppHost resolved, so do not read the one in this example as a recommendation). Standalone (no AppHost), provide the cluster file via configuration instead.
 
 > Don't confuse the two `AddFoundationDb`s: the **AppHost** one (`IDistributedApplicationBuilder`, starts the container) vs the **client** one (`IHostApplicationBuilder`, consumes the connection). They have different receivers, so they never collide.
 
@@ -112,8 +111,8 @@ The loader searches the **app's output directory** and the standard dyld paths �
 The **client library version must be compatible with the cluster version.** A 7.3 client **cannot** talk to a 7.4 cluster.
 
 - Symptom: transactions **hang** (no exception); `fdbcli` against the cluster reports *"One or more processes … incompatible"* and *"database is unavailable"*, even though the cluster is internally healthy.
-- Fix: make the AppHost `clusterVersion` (the Docker image tag) match the `libfdb_c` available to the app. Check the client with `fdbcli --version`, the server with `docker exec <container> fdbcli --version`.
-- The `apiVersion` (e.g. `730`) must be ≤ the cluster's supported level; `730` ⇒ 7.3.
+- Fix: make the AppHost `clusterVersion` (the Docker image tag) match the `libfdb_c` available to the app. Check the client with `fdbcli --version`, the server with `docker exec <container> fdbcli --version`. If you did not pin a tag, the mismatch is almost always a **system** `libfdb_c` shadowing the redistributed one (see §5), not the container.
+- The `apiVersion` (e.g. `730`) must be ≤ the cluster's supported level; `730` ⇒ 7.3, `740` ⇒ 7.4.
 
 For talking to **multiple** cluster versions from one process, FoundationDB's multi-version client loads several external `libfdb_c` libraries — but the simplest demo/dev setup is: one cluster version, one matching client library.
 
@@ -124,7 +123,7 @@ For talking to **multiple** cluster versions from one process, FoundationDB's mu
 ✅ **DO**
 - Pick the provider source by context: Aspire client integration under an AppHost; plain `services.AddFoundationDb(...)` / `FdbDatabaseProvider.Create(...)` otherwise.
 - Launch the AppHost with `aspire run`; keep a `launchSettings.json` only as the `dotnet run`/F5 fallback.
-- Pin `clusterVersion` to match the installed `libfdb_c`; verify both with `fdbcli --version`.
+- Keep the cluster image and the client library on the **same major.minor** (7.4 with 7.4). Omitting `clusterVersion` lets the hosting package pair them for you against the `libfdb_c` that `FoundationDB.Client.Native` redistributes; pin it only when you supply your own client library, and then verify both with `fdbcli --version`.
 - On macOS, ensure a matching-arch `libfdb_c.dylib` is loadable (next to the app) and use `UseNativeClient(allowSystemFallback: true)`.
 
 ⚠️ **GOTCHAS**

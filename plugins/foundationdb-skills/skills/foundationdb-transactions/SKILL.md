@@ -1,6 +1,17 @@
 ---
 name: foundationdb-transactions
-description: How to correctly run transactions with the FoundationDB .NET client (FoundationDB.Client / SnowBank) — the ReadAsync/WriteAsync/ReadWriteAsync retry loop, idempotency, the 5-second limit, size limits, atomic mutations, snapshot reads, conflict ranges, and watches. Use whenever code opens a transaction, calls db.ReadAsync/WriteAsync/ReadWriteAsync, handles fdb retry/conflict errors, designs a read-modify-write, or worries about transaction conflicts and consistency. Pairs with the foundationdb-keys-and-layers skill.
+description: >-
+  How to correctly run transactions with the FoundationDB .NET client (FoundationDB.Client / SnowBank): the
+  db.ReadAsync / WriteAsync / ReadWriteAsync retry loop and why a handler must be safe to run more than once,
+  the 5-second and size limits, conflicts and how to avoid them, snapshot reads, explicit conflict ranges,
+  atomic mutations (AtomicAdd32/64, AtomicIncrement, AtomicMin/Max and the lexicographic ByteMin/ByteMax,
+  AtomicAnd/Or/Xor, AtomicCompareAndClear, AtomicAppendIfFits), and watches. Use whenever code opens a
+  transaction or calls BeginTransaction, writes a read-modify-write, increments a counter, waits on a key with
+  a watch, pages a large range scan across transactions, or hits an FdbException: NotCommitted,
+  TransactionTooOld ("Transaction is too old to perform reads"), CommitUnknownResult, TransactionTimedOut,
+  transaction_too_large. Also use it for "why does my transaction keep retrying / conflict / run twice", for
+  high-contention or write-hot keys, and before deciding that a value must be read and written back. Pairs
+  with the foundationdb-keys-and-layers skill.
 ---
 
 # FoundationDB .NET — Transactions & the Retry Loop
