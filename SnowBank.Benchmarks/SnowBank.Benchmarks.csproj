@@ -24,6 +24,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
 	</ItemGroup>
 
 </Project>

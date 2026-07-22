@@ -1,0 +1,221 @@
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// 	* Redistributions of source code must retain the above copyright
+// 	  notice, this list of conditions and the following disclaimer.
+// 	* Redistributions in binary form must reproduce the above copyright
+// 	  notice, this list of conditions and the following disclaimer in the
+// 	  documentation and/or other materials provided with the distribution.
+// 	* Neither the name of SnowBank nor the
+// 	  names of its contributors may be used to endorse or promote products
+// 	  derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL SNOWBANK SAS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#endregion
+
+namespace FoundationDB.Testing
+{
+	using FoundationDB.Client;
+	using SnowBank.Collections.CacheOblivious;
+	using static FoundationDB.Testing.FakeDbStore;
+
+	/// <summary>Committed keyspace of a single <see cref="Snapshot"/>, seen at one version.</summary>
+	/// <remarks>The keys and values returned by this store (and its cursors) are only valid for the lifetime of the pinned snapshot: they are backed by the snapshot's arena today, and by memory-mapped pages under a future B-tree backend. Copy anything that must outlive the snapshot.</remarks>
+	public interface IFdbCommittedStore
+	{
+
+		/// <summary>Number of key/value pairs in the committed keyspace</summary>
+		int Count { get; }
+
+		/// <summary>Reads the value for a key, if it is present in the committed keyspace</summary>
+		bool TryGetValue(Key key, out Value value);
+
+		/// <summary>Tests whether a key is present in the committed keyspace</summary>
+		bool ContainsKey(Key key);
+
+		/// <summary>Reads a value and decodes it IN PLACE: the decoder receives the backend's raw bytes (or an empty span with <c>found == false</c>) and must not let them escape the call.</summary>
+		/// <remarks>This is the zero-copy leg of the two-tier read contract: a page-backed backend passes a span straight over its own memory, valid only for the delegate's scope (inside the caller's snapshot pin); the value-returning members hand out caller-owned copies instead.</remarks>
+		TResult Read<TState, TResult>(Key key, TState state, FdbValueDecoder<TState, TResult> decoder);
+
+		/// <summary>Returns a fresh ordered bidirectional cursor over the committed keyspace</summary>
+		IFdbCommittedCursor GetCursor();
+
+		/// <summary>Enumerates the key/value pairs of a range, in key order (or reverse key order).</summary>
+		/// <param name="begin">Inclusive lower bound</param>
+		/// <param name="end">Exclusive upper bound</param>
+		/// <param name="reversed">When <c>true</c>, the range is enumerated from its high end down to its low end</param>
+		IEnumerable<KeyValuePair<Key, Value>> Scan(Key begin, Key end, bool reversed);
+
+		/// <summary>Enumerates every key/value pair, in key order</summary>
+		IEnumerable<KeyValuePair<Key, Value>> IterateOrdered();
+
+		#region Mutation / publish surface (used to build the next snapshot in ApplyMutations)...
+
+		/// <summary>Creates a mutable copy that can be published as the next snapshot</summary>
+		IFdbCommittedStore Copy();
+
+		/// <summary>Removes a key</summary>
+		bool Remove(Key key);
+
+		/// <summary>Reads the stored key/value pair for a key (the stored key may be a different instance than the lookup key)</summary>
+		bool TryGetKeyValue(Key key, out KeyValuePair<Key, Value> entry);
+
+		/// <summary>Removes every key in the <c>[begin, end)</c> range</summary>
+		int RemoveRange(Key begin, Key end);
+
+		/// <summary>Sets the value for a key</summary>
+		Value this[Key key] { set; }
+
+		#endregion
+
+	}
+
+	/// <summary>Committed store whose cursor is exposed as its concrete struct type, so the read hot core can monomorphize per backend.</summary>
+	/// <remarks>The read machinery is generic over <typeparamref name="TCursor"/> (<c>where TCursor : struct, IFdbCommittedCursor</c>): the JIT stamps a dedicated code copy per backend and devirtualizes + inlines the per-key cursor calls in the scan loops. The non-generic <see cref="IFdbCommittedStore"/> surface remains for tooling and per-operation call sites, where a single interface dispatch is irrelevant.</remarks>
+	public interface IFdbCommittedStore<TCursor> : IFdbCommittedStore
+		where TCursor : struct, IFdbCommittedCursor
+	{
+
+		/// <summary>Returns a fresh ordered bidirectional cursor over the committed keyspace, typed as the backend's concrete struct</summary>
+		new TCursor GetCursor();
+
+	}
+
+	/// <summary>Ordered bidirectional cursor over the committed keyspace of a single <see cref="Snapshot"/>, seen at one version.</summary>
+	/// <remarks>The keys and values exposed through <see cref="Current"/> are only valid for the lifetime of the pinned snapshot: they are backed by the snapshot's arena today, and by memory-mapped pages under a future B-tree backend. Copy anything that must outlive the snapshot.</remarks>
+	public interface IFdbCommittedCursor
+	{
+
+		/// <summary>Key/value pair at the current position</summary>
+		KeyValuePair<Key, Value> Current { get; }
+
+		/// <summary>Seeks the largest key that is less than <paramref name="key"/> (or equal to it when <paramref name="orEqual"/> is <c>true</c>).</summary>
+		bool Seek(Key key, bool orEqual);
+
+		/// <summary>Seeks the smallest key in the store</summary>
+		bool SeekFirst();
+
+		/// <summary>Sets the cursor just before the first key in the store</summary>
+		void SeekBeforeFirst();
+
+		/// <summary>Moves the cursor to the smallest key that is greater than the current one</summary>
+		bool Next();
+
+		/// <summary>Moves the cursor to the smallest key that is greater than the current one, returning it</summary>
+		bool Next(out KeyValuePair<Key, Value> value);
+
+		/// <summary>Moves the cursor to the largest key that is smaller than the current one</summary>
+		bool Previous();
+
+	}
+
+	/// <summary><see cref="IFdbCommittedStore"/> backed by a <see cref="ColaOrderedDictionary{TKey,TValue}"/></summary>
+	public sealed class ColaCommittedStore : IFdbCommittedStore<ColaCommittedCursor>
+	{
+
+		/// <summary>Underlying ColaStore-backed committed keyspace</summary>
+		internal ColaOrderedDictionary<Key, Value> Inner { get; }
+
+		public ColaCommittedStore(ColaOrderedDictionary<Key, Value> inner)
+		{
+			Contract.Debug.Requires(inner != null);
+			this.Inner = inner;
+		}
+
+		/// <inheritdoc />
+		public int Count => this.Inner.Count;
+
+		/// <inheritdoc />
+		public bool TryGetValue(Key key, out Value value) => this.Inner.TryGetValue(key, out value);
+
+		/// <inheritdoc />
+		public bool ContainsKey(Key key) => this.Inner.ContainsKey(key);
+
+		/// <inheritdoc />
+		public TResult Read<TState, TResult>(Key key, TState state, FdbValueDecoder<TState, TResult> decoder)
+		{
+			return this.Inner.TryGetValue(key, out var value)
+				? decoder(state, value.Span, true)
+				: decoder(state, default, false);
+		}
+
+		/// <inheritdoc />
+		public ColaCommittedCursor GetCursor() => new(this.Inner.GetIterator());
+
+		/// <inheritdoc />
+		IFdbCommittedCursor IFdbCommittedStore.GetCursor() => GetCursor();
+
+		/// <inheritdoc />
+		public IEnumerable<KeyValuePair<Key, Value>> Scan(Key begin, Key end, bool reversed)
+			=> reversed
+				? this.Inner.ScanReverse(begin, true, end, false)
+				: this.Inner.Scan(begin, true, end, false);
+
+		/// <inheritdoc />
+		public IEnumerable<KeyValuePair<Key, Value>> IterateOrdered() => this.Inner.IterateOrdered();
+
+		/// <inheritdoc />
+		public IFdbCommittedStore Copy() => new ColaCommittedStore(this.Inner.Copy());
+
+		/// <inheritdoc />
+		public bool Remove(Key key) => this.Inner.Remove(key);
+
+		/// <inheritdoc />
+		public bool TryGetKeyValue(Key key, out KeyValuePair<Key, Value> entry) => this.Inner.TryGetKeyValue(key, out entry);
+
+		/// <inheritdoc />
+		public int RemoveRange(Key begin, Key end) => this.Inner.RemoveRange(begin, true, end, false);
+
+		/// <inheritdoc />
+		public Value this[Key key] { set => this.Inner[key] = value; }
+
+	}
+
+	/// <summary><see cref="IFdbCommittedCursor"/> backed by a <see cref="ColaOrderedDictionary{TKey,TValue}"/>'s iterator</summary>
+	/// <remarks>A thin struct over the class iterator: the struct satisfies the read hot core's <c>TCursor : struct</c> constraint (devirtualizing the seam), and every member forwards to the wrapped iterator, so copies of the struct share position by construction.</remarks>
+	public readonly struct ColaCommittedCursor : IFdbCommittedCursor
+	{
+
+		private readonly ColaStore<KeyValuePair<Key, Value>>.Iterator Iter;
+
+		public ColaCommittedCursor(ColaStore<KeyValuePair<Key, Value>>.Iterator iter)
+		{
+			Contract.Debug.Requires(iter != null);
+			this.Iter = iter;
+		}
+
+		/// <inheritdoc />
+		public KeyValuePair<Key, Value> Current => this.Iter.Current;
+
+		/// <inheritdoc />
+		public bool Seek(Key key, bool orEqual) => this.Iter.Seek(new(key, default), orEqual);
+
+		/// <inheritdoc />
+		public bool SeekFirst() => this.Iter.SeekFirst();
+
+		/// <inheritdoc />
+		public void SeekBeforeFirst() => this.Iter.SeekBeforeFirst();
+
+		/// <inheritdoc />
+		public bool Next() => this.Iter.Next();
+
+		/// <inheritdoc />
+		public bool Next(out KeyValuePair<Key, Value> value) => this.Iter.Next(out value);
+
+		/// <inheritdoc />
+		public bool Previous() => this.Iter.Previous();
+
+	}
+
+}

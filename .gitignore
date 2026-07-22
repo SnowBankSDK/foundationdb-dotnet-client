@@ -52,3 +52,4 @@ Generated/
 
 # OSX
 .DS_Store
+BenchmarkDotNet.Artifacts/

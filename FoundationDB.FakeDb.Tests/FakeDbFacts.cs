@@ -112,8 +112,8 @@ namespace FoundationDB.Testing.Tests
 			Assert.That(tr, Is.Not.Null);
 			Assert.That(tr.Cancellation.IsCancellationRequested, Is.False);
 			Assert.That(tr.Context.Database, Is.SameAs(db));
-			Assert.That(tr.Context.GetTransactionHandler(), Is.InstanceOf<FakeDbStore.TransactionHandler>());
-			var handler = (FakeDbStore.TransactionHandler) tr.Context.GetTransactionHandler();
+			Assert.That(tr.Context.GetTransactionHandler(), Is.InstanceOf<FakeDbStore.TransactionHandler<ColaCommittedCursor>>());
+			var handler = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) tr.Context.GetTransactionHandler();
 			Assert.That(handler.Store, Is.SameAs(store));
 
 			tr.Dispose();
@@ -515,7 +515,7 @@ namespace FoundationDB.Testing.Tests
 						
 						DumpStore(store, "in transaction");
 
-						var h = (FakeDbStore.TransactionHandler) tr.Context.GetTransactionHandler();
+						var h = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) tr.Context.GetTransactionHandler();
 						var s = h.GetSnapshotBlocking();
 						var mutations = FakeDbDebugger.GetSnapshotMutations(s);
 						Log($"% Mutations: {mutations.Count:N0}");
@@ -589,7 +589,7 @@ namespace FoundationDB.Testing.Tests
 
 						DumpStore(store, "in transaction");
 
-						var h = (FakeDbStore.TransactionHandler) tr.Context.GetTransactionHandler();
+						var h = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) tr.Context.GetTransactionHandler();
 						var s = h.GetSnapshotBlocking();
 						var mutations = FakeDbDebugger.GetSnapshotMutations(s);
 						Log($"% Mutations: {mutations.Count:N0}");

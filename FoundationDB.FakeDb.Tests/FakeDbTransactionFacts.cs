@@ -51,7 +51,7 @@ namespace FoundationDB.Testing.Tests
 				tr.Atomic(Key("k1"), Slice.FromFixed64(0x5D), FdbMutationType.Add);
 
 				// diagnostic: dump the mutation log before the commit
-				var handler = (FakeDbStore.TransactionHandler) FdbTransactionDebugger.GetHandler(tr);
+				var handler = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) FdbTransactionDebugger.GetHandler(tr);
 				var snapshot = handler.GetSnapshotBlocking();
 				foreach (var entry in FakeDbDebugger.GetSnapshotMutations(snapshot).IterateOrdered())
 				{
@@ -93,7 +93,7 @@ namespace FoundationDB.Testing.Tests
 			tr.Set(Key("k0"), Value("v5"));
 			_ = await tr.GetAsync(Key("k2"));
 
-			var handler = (FakeDbStore.TransactionHandler) FdbTransactionDebugger.GetHandler(tr);
+			var handler = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) FdbTransactionDebugger.GetHandler(tr);
 			var snapshot = handler.GetSnapshotBlocking();
 			foreach (var entry in FakeDbDebugger.GetSnapshotMutations(snapshot).IterateOrdered())
 			{

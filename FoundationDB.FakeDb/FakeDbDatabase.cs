@@ -562,6 +562,9 @@ namespace FoundationDB.Testing
 				this.Arena = arena;
 			}
 
+			/// <summary>Wraps caller-owned heap bytes as a value (no arena: interning treats it as already stable)</summary>
+			public Value(Slice slice) : this(slice, null) { }
+
 			public bool IsNull => this.Slice.IsNull;
 
 			public bool IsEmpty => this.Slice.IsEmpty;
@@ -726,7 +729,7 @@ namespace FoundationDB.Testing
 			public long Version { get; }
 
 			/// <summary>Key/Value pairs in this snapshot</summary>
-			internal ColaOrderedDictionary<Key, Value> Data { get; }
+			internal IFdbCommittedStore Data { get; }
 
 			/// <summary>Conflicts ranges in this snapshot</summary>
 			internal ColaRangeDictionary<Key, long> Conflicts { get; }
@@ -738,7 +741,7 @@ namespace FoundationDB.Testing
 
 			public Arena Arena { get; }
 
-			public Snapshot(long version, ColaOrderedDictionary<Key, Value> data, ColaRangeDictionary<Key, long> conflicts, VersionStamp stamp, Arena arena)
+			public Snapshot(long version, IFdbCommittedStore data, ColaRangeDictionary<Key, long> conflicts, VersionStamp stamp, Arena arena)
 			{
 				Contract.Debug.Requires(version >= 0 && data != null && conflicts != null && !stamp.IsIncomplete && arena != null);
 				this.Version = version;
@@ -755,7 +758,8 @@ namespace FoundationDB.Testing
 			public bool ContainsKey(Key key) => this.Data.ContainsKey(key);
 
 			[Pure]
-			public Key Resolve(Selector selector, bool accessSystemKeys)
+			public Key Resolve<TCursor>(Selector selector, bool accessSystemKeys)
+				where TCursor : struct, IFdbCommittedCursor
 			{
 				//HACKHACK:
 
@@ -764,8 +768,8 @@ namespace FoundationDB.Testing
 					throw new FdbException(FdbError.KeyOutsideLegalRange, $"Key selector {selector} requires access to system keys");
 				}
 
-				var iter = this.Data.GetIterator();
-				if (!iter.Seek(new KeyValuePair<Key, Value>(selector.Key, default), selector.OrEqual))
+				var iter = ((IFdbCommittedStore<TCursor>) this.Data).GetCursor();
+				if (!iter.Seek(selector.Key, selector.OrEqual))
 				{
 					iter.SeekBeforeFirst();
 				}
@@ -808,19 +812,17 @@ namespace FoundationDB.Testing
 
 			public IEnumerable<KeyValuePair<Key, Value>> ScanRange(Key beginInclusive, Key endExclusive, bool reversed = false)
 			{
-				var source = reversed
-					? this.Data.ScanReverse(beginInclusive, true, endExclusive, false)
-					: this.Data.Scan(beginInclusive, true, endExclusive, false);
-
-				return source;
+				return this.Data.Scan(beginInclusive, endExclusive, reversed);
 			}
 
 			[Pure]
-			public FdbRangeChunk GetRange(Key beginInclusive, Key endExclusive, FdbRangeOptions options, int iteration)
+			public FdbRangeChunk GetRange<TCursor>(Key beginInclusive, Key endExclusive, FdbRangeOptions options, int iteration)
+				where TCursor : struct, IFdbCommittedCursor
 			{
-				var source = options.IsReversed
-					? this.Data.ScanReverse(beginInclusive, true, endExclusive, false)
-					: this.Data.Scan(beginInclusive, true, endExclusive, false);
+				// each backend's Scan() is its own optimal range iteration: the ColaStore level-merge enumerable
+				// measures ~2x faster per key than stepping the seam cursor (see the committed-store scan
+				// benchmarks); a backend whose cursor is span-cheap reclaims the loop inside its Scan()
+				var source = this.Data.Scan(beginInclusive, endExclusive, options.IsReversed);
 
 				var res = new List<KeyValuePair<Slice, Slice>>();
 				bool hasMore = false;
@@ -844,7 +846,7 @@ namespace FoundationDB.Testing
 					// very unlikely, but make should that we would not read more than 2GB !?
 					int delta = checked(kv.Key.Count + kv.Value.Count);
 					if (bytes + delta >= int.MaxValue)
-					{ 
+					{
 						hasMore = true;
 						break;
 					}
@@ -861,7 +863,7 @@ namespace FoundationDB.Testing
 			}
 
 			/// <summary>Exposes all the key/value pairs in this snapshot</summary>
-			public IEnumerable<KeyValuePair<Key, Value>> ReadData() => this.Data;
+			public IEnumerable<KeyValuePair<Key, Value>> ReadData() => this.Data.IterateOrdered();
 
 			/// <summary>Exposes all the conflict ranges in this snapshot</summary>
 			public IEnumerable<(Key Begin, Key End, long Version)> ReadConflicts()
@@ -874,8 +876,8 @@ namespace FoundationDB.Testing
 
 			public IEnumerable<(Key Key, Value Before, Value After)> Diff(Snapshot previous)
 			{
-				var itBefore = previous.Data.GetIterator();
-				var itAfter = this.Data.GetIterator();
+				var itBefore = previous.Data.GetCursor();
+				var itAfter = this.Data.GetCursor();
 
 				KeyValuePair<Key, Value> curBefore = default;
 				KeyValuePair<Key, Value> curAfter = default;
@@ -1360,11 +1362,12 @@ namespace FoundationDB.Testing
 				this.WriteConflicts.Mark(beginInclusive, endExclusive);
 			}
 
-			public Key Resolve(Selector selector, bool ryw, bool snapshotRead, bool accessSystemKeys)
+			public Key Resolve<TCursor>(Selector selector, bool ryw, bool snapshotRead, bool accessSystemKeys)
+				where TCursor : struct, IFdbCommittedCursor
 			{
 				if (!ryw || this.WriteConflicts.Count == 0)
 				{ // fast path for read-only transactions!
-					var key = this.Inner.Resolve(selector, accessSystemKeys);
+					var key = this.Inner.Resolve<TCursor>(selector, accessSystemKeys);
 					if (!snapshotRead)
 					{
 						MarkResolveReadConflict(selector, key);
@@ -1507,7 +1510,7 @@ namespace FoundationDB.Testing
 				return this.Inner.ContainsKey(key);
 			}
 
-			public FdbRangeChunk GetRange(
+			public FdbRangeChunk GetRange<TCursor>(
 				Selector beginInclusive,
 				Selector endExclusive,
 				FdbRangeOptions options,
@@ -1515,20 +1518,21 @@ namespace FoundationDB.Testing
 				bool ryw,
 				bool snapshotRead,
 				bool accessSystemKeys)
+				where TCursor : struct, IFdbCommittedCursor
 			{
 
 				// if there are no writes, it's the same thing as a snapshot read
 				if (!ryw || this.WriteConflicts.Count == 0)
 				{
-					var begin = this.Inner.Resolve(beginInclusive, accessSystemKeys);
-					var end = this.Inner.Resolve(endExclusive, accessSystemKeys);
+					var begin = this.Inner.Resolve<TCursor>(beginInclusive, accessSystemKeys);
+					var end = this.Inner.Resolve<TCursor>(endExclusive, accessSystemKeys);
 
 					if (begin.Equals(end))
 					{ // empty range!
 						return new([], false, iteration, options, default, default, 0, SliceOwner.Nil);
 					}
 
-					var res = this.Inner.GetRange(begin, end, options, iteration);
+					var res = this.Inner.GetRange<TCursor>(begin, end, options, iteration);
 					if (!snapshotRead)
 					{
 						// we have to take into account the limit, which reduces the conflict range
@@ -1567,7 +1571,7 @@ namespace FoundationDB.Testing
 				}
 				else
 				{
-					var iter = GetIterator();
+					var iter = GetIterator<TCursor>();
 
 #if FULL_DEBUG
 					Kenobi($"* #{this.Id} GetRange({beginInclusive}, {endExclusive}, ...)");
@@ -1653,10 +1657,10 @@ namespace FoundationDB.Testing
 				}
 			}
 
-			public OnionIterator GetIterator()
+			public OnionIterator<TCursor> GetIterator<TCursor>()
+				where TCursor : struct, IFdbCommittedCursor
 			{
-				return new OnionIterator(this.Inner.Data, this.Mutations, this.Arena, this.Id);
-
+				return new OnionIterator<TCursor>((IFdbCommittedStore<TCursor>) this.Inner.Data, this.Mutations, this.Arena, this.Id);
 			}
 
 			/// <summary>Sums the exact key+value bytes of the committed snapshot over a range (FakeDb's deterministic stand-in for the real sampling estimator).</summary>
@@ -1777,7 +1781,7 @@ namespace FoundationDB.Testing
 						var range = arena.InternKeyRange(entry.Begin, entry.End);
 						Kenobi($"$$ #{this.Id} clearRange {range}");
 
-						_ = newData.RemoveRange(range.Begin, true, range.End, false);
+						_ = newData.RemoveRange(range.Begin, range.End);
 					}
 					else if (mutation.IsAtomic())
 					{
@@ -1862,7 +1866,7 @@ namespace FoundationDB.Testing
 
 #if CHECK_INVARIANTS
 				// invariant checks: all keys & values are using the snapshot's arena (or null)
-				foreach (var kv in newData)
+				foreach (var kv in newData.IterateOrdered())
 				{
 					if (kv.Key.Arena != arena & kv.Key.Arena != null) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' uses an unexpected arena!");
 					if (kv.Key.IsNull) throw new InvalidOperationException("Invariant broken: illegal 'null' key!");
@@ -1904,9 +1908,9 @@ namespace FoundationDB.Testing
 		/// </remarks>
 		public Dictionary<Slice, List<WatchNode>> ActiveWatches { get; } = new(Slice.Comparer.Default);
 
-		private ReaderWriterLockSlim GlobalLock { get; set; } = new();
+		protected ReaderWriterLockSlim GlobalLock { get; } = new();
 
-		private long ReadVersion { get; set; }
+		protected long ReadVersion { get; set; }
 
 		/// <summary>Minimum API version supported by this implementation</summary>
 		public const int MIN_API_VERSION = 610;
@@ -1940,6 +1944,39 @@ namespace FoundationDB.Testing
 		public TimeSpan RetryDelayMaximum { get; set; } = TimeSpan.Zero;
 
 		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null)
+			: this(apiVersion, protocolVersion, time)
+		{
+			if (initialVersion <= 0)
+			{
+				initialVersion = 0xfdb1337000000;
+			}
+			var initialStamp = MakeVersionStamp(initialVersion, 0);
+
+			var arena = new Arena(128 * 1024, 512 * 1024, GlobalPool);
+
+			var data = new ColaOrderedDictionary<Key, Value>(Key.Comparer.Default, Value.Comparer.Default);
+			data[SpecialKeys.SystemRoot] = arena.InternValue(SystemRootSentinelValue);
+			data[SpecialKeys.SystemMetadataVersion] = arena.InternValue(initialStamp.ToSlice());
+			data[SpecialKeys.SystemEnd] = Value.Empty;
+
+			var conflicts = new ColaRangeDictionary<Key, long>(Key.Comparer.Default);
+
+			var snapshot = new Snapshot(
+				initialVersion,
+				new ColaCommittedStore(data),
+				conflicts,
+				initialStamp,
+				arena
+			);
+
+			InitializeSnapshot(snapshot);
+		}
+
+		/// <summary>Value seeded under <see cref="SpecialKeys.SystemRoot"/> in every fresh store, whichever backend</summary>
+		protected static readonly Slice SystemRootSentinelValue = Slice.FromString("You shall not pass!");
+
+		/// <summary>Shared initialization for backend subclasses: the derived constructor MUST call <see cref="InitializeSnapshot"/> (with a snapshot seeding the same system keys a fresh in-memory store gets) before the store is used.</summary>
+		protected FakeDbStore(int apiVersion, int protocolVersion, TimeProvider? time)
 		{
 			if (protocolVersion < MIN_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be less than the minimum supported version");
 			if (protocolVersion > MAX_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be greater than the maximum supported version");
@@ -1953,30 +1990,13 @@ namespace FoundationDB.Testing
 			this.ApiVersion = apiVersion;
 			this.ProtocolVersion = protocolVersion;
 			this.Time = time ?? TimeProvider.System;
+			this.CurrentSnapshotUnsafe = null!;
+		}
 
-			if (initialVersion <= 0)
-			{
-				initialVersion = 0xfdb1337000000;
-			}
-			var initialStamp = MakeVersionStamp(initialVersion, 0);
-
-			var arena = new Arena(128 * 1024, 512 * 1024, GlobalPool);
-
-			var data = new ColaOrderedDictionary<Key, Value>(Key.Comparer.Default, Value.Comparer.Default);
-			data[SpecialKeys.SystemRoot] = arena.InternValue(Slice.FromString("You shall not pass!"));
-			data[SpecialKeys.SystemMetadataVersion] = arena.InternValue(initialStamp.ToSlice());
-			data[SpecialKeys.SystemEnd] = Value.Empty;
-
-			var conflicts = new ColaRangeDictionary<Key, long>(Key.Comparer.Default);
-
-			var snapshot = new Snapshot(
-				initialVersion,
-				data,
-				conflicts,
-				initialStamp,
-				arena
-			);
-
+		/// <summary>Installs the store's initial committed snapshot (once, from the constructor path).</summary>
+		protected void InitializeSnapshot(Snapshot snapshot)
+		{
+			Contract.NotNull(snapshot);
 			this.Snapshots[0] = snapshot;
 			this.CurrentSnapshotUnsafe = snapshot;
 			this.ReadVersion = snapshot.Version;
@@ -2083,7 +2103,7 @@ namespace FoundationDB.Testing
 			}
 		}
 
-		public void Dispose()
+		public virtual void Dispose()
 		{
 			if (!this.IsClosed)
 			{
@@ -2146,7 +2166,7 @@ namespace FoundationDB.Testing
 
 		Task IFdbDatabaseHandler.CreateSnapshotAsync(ReadOnlySpan<char> uid, ReadOnlySpan<char> snapCommand, CancellationToken ct) => throw new NotImplementedException();
 
-		internal Task<ReadYourWritesSnapshot> StartNewSnapshot(Arena arena, CancellationToken ct)
+		protected internal virtual Task<ReadYourWritesSnapshot> StartNewSnapshot(Arena arena, CancellationToken ct)
 		{
 			if (ct.IsCancellationRequested) return Task.FromCanceled<ReadYourWritesSnapshot>(ct);
 			using (this.GlobalLock.GetReadLock())
@@ -2162,7 +2182,7 @@ namespace FoundationDB.Testing
 			}
 		}
 
-		internal Task<ReadYourWritesSnapshot> StartSnapshotAtVersion(Arena arena, long version, CancellationToken ct)
+		protected internal virtual Task<ReadYourWritesSnapshot> StartSnapshotAtVersion(Arena arena, long version, CancellationToken ct)
 		{
 			if (ct.IsCancellationRequested) return Task.FromCanceled<ReadYourWritesSnapshot>(ct);
 			using (this.GlobalLock.GetReadLock())
@@ -2175,7 +2195,8 @@ namespace FoundationDB.Testing
 			}
 		}
 
-		internal async Task<long> Commit(TransactionHandler handler, CancellationToken ct)
+		internal async Task<long> Commit<TCursor>(TransactionHandler<TCursor> handler, CancellationToken ct)
+			where TCursor : struct, IFdbCommittedCursor
 		{
 			ct.ThrowIfCancellationRequested();
 			var snapshot = await handler.GetSnapshot(ct);
@@ -2213,9 +2234,7 @@ namespace FoundationDB.Testing
 
 					if (updated != null)
 					{
-						this.CurrentSnapshotUnsafe = updated;
-						this.Snapshots[commitVersion] = updated;
-						this.ReadVersion = commitVersion;
+						updated = PublishSnapshot(updated, commitVersion);
 					}
 
 					if (handler.Watches != null)
@@ -2343,6 +2362,27 @@ namespace FoundationDB.Testing
 
 		}
 
+		/// <summary>Backend hook, called under the global write lock: makes a committed snapshot durable, applies the backend's retention policy, and publishes it as the current state; returns the instance the rest of the commit works with.</summary>
+		/// <remarks>The in-memory backend keeps every version forever (the test-mode movie) and returns the snapshot unchanged; a persistent backend flushes its generation first, may return a frozen re-wrap, and trims its retained window.</remarks>
+		protected virtual Snapshot PublishSnapshot(Snapshot updated, long commitVersion)
+		{
+			this.CurrentSnapshotUnsafe = updated;
+			this.Snapshots[commitVersion] = updated;
+			this.ReadVersion = commitVersion;
+			return updated;
+		}
+
+		/// <summary>Backend hook: a transaction is done with its resolved snapshot (dispose or reset). The in-memory backend does not care; a persistent backend releases the read pin that held the snapshot's generation.</summary>
+		protected internal virtual void OnTransactionEnd(ReadYourWritesSnapshot snapshot)
+		{
+		}
+
+		/// <summary>Backend helper: the committed store under a snapshot (the seam surface a backend implements).</summary>
+		protected static IFdbCommittedStore GetSnapshotStore(Snapshot snapshot) => snapshot.Data;
+
+		/// <summary>Backend helper: re-wraps a snapshot around a replacement committed store (a persistent backend freezes its writable store into a readable one at publish).</summary>
+		protected static Snapshot ReplaceSnapshotStore(Snapshot snapshot, IFdbCommittedStore data) => new(snapshot.Version, data, snapshot.Conflicts, snapshot.Stamp, snapshot.Arena);
+
 		public IFdbTenantHandler OpenTenant(FdbTenantName name) => throw new NotImplementedException();
 
 		public FdbDatabase OpenDatabase(FdbPath? rootPath, bool readOnly)
@@ -2379,14 +2419,16 @@ namespace FoundationDB.Testing
 			this.Options[option] = Slice.FromBytes(data);
 		}
 
-		public IFdbTransactionHandler CreateTransaction(FdbOperationContext context)
+		public virtual IFdbTransactionHandler CreateTransaction(FdbOperationContext context)
 		{
-			return new TransactionHandler(this, context);
+			// closes the FL-15 generic boundary for this backend: the whole handler monomorphizes over the ColaStore cursor
+			return new TransactionHandler<ColaCommittedCursor>(this, context);
 		}
 
 		#endregion
 
-		public class TransactionHandler : IFdbTransactionHandler
+		public class TransactionHandler<TCursor> : IFdbTransactionHandler
+			where TCursor : struct, IFdbCommittedCursor
 		{
 
 			private static readonly ArrayPool<byte> BufferPool = ArrayPool<byte>.Create();
@@ -2415,6 +2457,10 @@ namespace FoundationDB.Testing
 				this.IsClosed = true;
 				// watches never armed by a successful commit die with the transaction
 				FailPendingWatches(FdbError.TransactionCancelled);
+				if (TryGetSnapshot(out var snapshot))
+				{ // the backend may hold a read pin for the snapshot's generation
+					this.Store.OnTransactionEnd(snapshot);
+				}
 				this.LifeTime.Dispose();
 				this.Scratch.Dispose();
 			}
@@ -2550,7 +2596,7 @@ namespace FoundationDB.Testing
 				}
 				return GetReadVersionDeferred(this, ct);
 
-				static async Task<long> GetReadVersionDeferred(TransactionHandler self, CancellationToken ct)
+				static async Task<long> GetReadVersionDeferred(TransactionHandler<TCursor> self, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					return snap.Version;
@@ -2635,7 +2681,7 @@ namespace FoundationDB.Testing
 				}
 				return Deferred(this, k, snapshot, ct);
 
-				static async Task<Slice> Deferred(TransactionHandler self, KeyRange key, bool isSnapshotRead, CancellationToken ct)
+				static async Task<Slice> Deferred(TransactionHandler<TCursor> self, KeyRange key, bool isSnapshotRead, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					lock (self.Lock)
@@ -2664,7 +2710,7 @@ namespace FoundationDB.Testing
 				}
 				return Deferred(this, k, snapshot, decoder, ct);
 
-				static async Task<TResult> Deferred(TransactionHandler self, KeyRange key, bool isSnapshotRead, FdbValueDecoder<TResult> decoder, CancellationToken ct)
+				static async Task<TResult> Deferred(TransactionHandler<TCursor> self, KeyRange key, bool isSnapshotRead, FdbValueDecoder<TResult> decoder, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					Value value;
@@ -2694,7 +2740,7 @@ namespace FoundationDB.Testing
 				}
 				return Deferred(this, k, snapshot, state, decoder, ct);
 
-				static async Task<TResult> Deferred(TransactionHandler self, KeyRange key, bool isSnapshotRead, TState state, FdbValueDecoder<TState, TResult> decoder, CancellationToken ct)
+				static async Task<TResult> Deferred(TransactionHandler<TCursor> self, KeyRange key, bool isSnapshotRead, TState state, FdbValueDecoder<TState, TResult> decoder, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					Value value;
@@ -2740,7 +2786,7 @@ namespace FoundationDB.Testing
 
 				return GetValuesDeferred(this, ks, snapshot, ct);
 
-				static async Task<Slice[]> GetValuesDeferred(TransactionHandler self, KeyRange[] ks, bool isSnapshotRead, CancellationToken ct)
+				static async Task<Slice[]> GetValuesDeferred(TransactionHandler<TCursor> self, KeyRange[] ks, bool isSnapshotRead, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					var values = new Slice[ks.Length];
@@ -2781,7 +2827,7 @@ namespace FoundationDB.Testing
 
 				return GetValuesDeferred(this, ks, values, decoder, snapshot, ct);
 
-				static async Task<long> GetValuesDeferred(TransactionHandler self, KeyRange[] ks, Memory<TValue> values, FdbValueDecoder<TValue> decoder, bool isSnapshotRead, CancellationToken ct)
+				static async Task<long> GetValuesDeferred(TransactionHandler<TCursor> self, KeyRange[] ks, Memory<TValue> values, FdbValueDecoder<TValue> decoder, bool isSnapshotRead, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					lock (self.Lock)
@@ -2813,7 +2859,7 @@ namespace FoundationDB.Testing
 
 				return GetValuesDeferred(this, ks, values, state, decoder, snapshot, ct);
 
-				static async Task<long> GetValuesDeferred(TransactionHandler self, KeyRange[] ks, Memory<TValue> values, TState state, FdbValueDecoder<TState, TValue> decoder, bool isSnapshotRead, CancellationToken ct)
+				static async Task<long> GetValuesDeferred(TransactionHandler<TCursor> self, KeyRange[] ks, Memory<TValue> values, TState state, FdbValueDecoder<TState, TValue> decoder, bool isSnapshotRead, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					lock (self.Lock)
@@ -2835,7 +2881,7 @@ namespace FoundationDB.Testing
 				{
 					lock (this.Lock)
 					{
-						var result = snap.Resolve(selectorCopy, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
+						var result = snap.Resolve<TCursor>(selectorCopy, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
 						AccountReadOperation(1, result.Count);
 						return Task.FromResult<Slice>(result);
 					}
@@ -2843,13 +2889,13 @@ namespace FoundationDB.Testing
 
 				return GetKeyDeferred(this, selectorCopy, snapshot, ct);
 
-				static async Task<Slice> GetKeyDeferred(TransactionHandler self, Selector selector, bool isSnapshotRead, CancellationToken ct)
+				static async Task<Slice> GetKeyDeferred(TransactionHandler<TCursor> self, Selector selector, bool isSnapshotRead, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct);
 					lock (self.Lock)
 					{
 						ct.ThrowIfCancellationRequested();
-						var result = snap.Resolve(selector, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
+						var result = snap.Resolve<TCursor>(selector, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
 						self.AccountReadOperation(1, result.Count);
 						return result;
 					}
@@ -2865,7 +2911,7 @@ namespace FoundationDB.Testing
 				{
 					lock (this.Lock)
 					{
-						var result = snap.Resolve(selectorCopy, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
+						var result = snap.Resolve<TCursor>(selectorCopy, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
 						AccountReadOperation(1, result.Count);
 						return Task.FromResult<Slice>(result);
 					}
@@ -2873,13 +2919,13 @@ namespace FoundationDB.Testing
 
 				return GetKeyDeferred(this, selectorCopy, snapshot, ct);
 
-				static async Task<Slice> GetKeyDeferred(TransactionHandler self, Selector selector, bool isSnapshotRead, CancellationToken ct)
+				static async Task<Slice> GetKeyDeferred(TransactionHandler<TCursor> self, Selector selector, bool isSnapshotRead, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct);
 					lock (self.Lock)
 					{
 						ct.ThrowIfCancellationRequested();
-						var result = snap.Resolve(selector, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
+						var result = snap.Resolve<TCursor>(selector, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
 						self.AccountReadOperation(1, result.Count);
 						return result;
 					}
@@ -2900,7 +2946,7 @@ namespace FoundationDB.Testing
 						long total = 0;
 						for (int i = 0; i < selectors.Length; i++)
 						{
-							var r = s.Resolve(this.Scratch.InternSelector(selectors[i]), GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
+							var r = s.Resolve<TCursor>(this.Scratch.InternSelector(selectors[i]), GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
 							total += r.Count;
 							res[i] = r;
 						}
@@ -2911,7 +2957,7 @@ namespace FoundationDB.Testing
 
 				return GetKeysDeferred(this, this.Scratch.InternSelectors(selectors), snapshot, ct);
 
-				static async Task<Slice[]> GetKeysDeferred(TransactionHandler self, Selector[] selectors, bool isSnapshotRead, CancellationToken ct)
+				static async Task<Slice[]> GetKeysDeferred(TransactionHandler<TCursor> self, Selector[] selectors, bool isSnapshotRead, CancellationToken ct)
 				{
 					var s = await self.GetSnapshot(ct).ConfigureAwait(false);
 
@@ -2922,7 +2968,7 @@ namespace FoundationDB.Testing
 						long total = 0;
 						for (int i = 0; i < selectors.Length; i++)
 						{
-							var r = s.Resolve(selectors[i], self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
+							var r = s.Resolve<TCursor>(selectors[i], self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
 							total += r.Count;
 							res[i] = r;
 						}
@@ -2974,7 +3020,7 @@ namespace FoundationDB.Testing
 					return Task.FromException<FdbRangeChunk>(e);
 				}
 
-				static async Task<FdbRangeChunk> GetRangeDeferred(TransactionHandler self, Selector beginInclusive, Selector endExclusive, FdbRangeOptions options, int iteration, bool snapshot, CancellationToken ct)
+				static async Task<FdbRangeChunk> GetRangeDeferred(TransactionHandler<TCursor> self, Selector beginInclusive, Selector endExclusive, FdbRangeOptions options, int iteration, bool snapshot, CancellationToken ct)
 				{
 					var s = await self.GetSnapshot(ct).ConfigureAwait(false);
 					var chunk = self.GetRangeCore(s, beginInclusive, endExclusive, options, iteration, snapshot, ct);
@@ -2995,7 +3041,7 @@ namespace FoundationDB.Testing
 			{
 				lock (this.Lock)
 				{
-					return s.GetRange(beginInclusive, endExclusive, options, iteration, GetEffectiveRyw(isSnapshotRead), isSnapshotRead, this.OptionReadSystemKeys);
+					return s.GetRange<TCursor>(beginInclusive, endExclusive, options, iteration, GetEffectiveRyw(isSnapshotRead), isSnapshotRead, this.OptionReadSystemKeys);
 				}
 			}
 
@@ -3047,7 +3093,7 @@ namespace FoundationDB.Testing
 					return Task.FromException<FdbRangeChunk<TResult>>(e);
 				}
 
-				static async Task<FdbRangeChunk<TResult>> GetRangeDeferred(TransactionHandler self, Selector beginInclusive, Selector endExclusive, bool isSnapshotRead, TState state, FdbKeyValueDecoder<TState, TResult> decoder, FdbRangeOptions options, int iteration, CancellationToken ct)
+				static async Task<FdbRangeChunk<TResult>> GetRangeDeferred(TransactionHandler<TCursor> self, Selector beginInclusive, Selector endExclusive, bool isSnapshotRead, TState state, FdbKeyValueDecoder<TState, TResult> decoder, FdbRangeOptions options, int iteration, CancellationToken ct)
 				{
 					var s = await self.GetSnapshot(ct).ConfigureAwait(false);
 					var chunk = self.GetRangeCore(s, beginInclusive, endExclusive, isSnapshotRead, state, decoder, options, iteration, ct);
@@ -3071,7 +3117,7 @@ namespace FoundationDB.Testing
 				FdbRangeChunk chunk;
 				lock (this.Lock)
 				{
-					chunk = s.GetRange(beginInclusive, endExclusive, options, iteration, GetEffectiveRyw(isSnapshotRead), isSnapshotRead, this.OptionReadSystemKeys);
+					chunk = s.GetRange<TCursor>(beginInclusive, endExclusive, options, iteration, GetEffectiveRyw(isSnapshotRead), isSnapshotRead, this.OptionReadSystemKeys);
 				}
 
 				var items = chunk.Items;
@@ -3131,7 +3177,7 @@ namespace FoundationDB.Testing
 					return Task.FromException<FdbRangeResult>(e);
 				}
 
-				static async Task<FdbRangeResult> VisitRangeDeferred(TransactionHandler self, Selector beginInclusive, Selector endExclusive, bool snapshot, TState state, FdbKeyValueAction<TState> visitor, FdbRangeOptions options, int iteration, CancellationToken ct)
+				static async Task<FdbRangeResult> VisitRangeDeferred(TransactionHandler<TCursor> self, Selector beginInclusive, Selector endExclusive, bool snapshot, TState state, FdbKeyValueAction<TState> visitor, FdbRangeOptions options, int iteration, CancellationToken ct)
 				{
 					var s = await self.GetSnapshot(ct).ConfigureAwait(false);
 					var result = self.VisitRangeCore<TState>(s, beginInclusive, endExclusive, snapshot, state, visitor, options, iteration, ct);
@@ -3157,7 +3203,7 @@ namespace FoundationDB.Testing
 				FdbRangeChunk chunk;
 				lock (this.Lock)
 				{
-					chunk = s.GetRange(beginInclusive, endExclusive, options, iteration, GetEffectiveRyw(isSnapshotRead), isSnapshotRead, this.OptionReadSystemKeys);
+					chunk = s.GetRange<TCursor>(beginInclusive, endExclusive, options, iteration, GetEffectiveRyw(isSnapshotRead), isSnapshotRead, this.OptionReadSystemKeys);
 				}
 
 				var items = chunk.Items;
@@ -3205,7 +3251,7 @@ namespace FoundationDB.Testing
 				var k = this.Scratch.InternKeyRange(key);
 				return Deferred(this, GetSnapshot(ct), k, expected, snapshot, ct);
 
-				static async Task<(FdbValueCheckResult Result, Slice Actual)> Deferred(TransactionHandler self, Task<ReadYourWritesSnapshot> st, KeyRange key, Slice expected, bool isSnapshotRead, CancellationToken ct)
+				static async Task<(FdbValueCheckResult Result, Slice Actual)> Deferred(TransactionHandler<TCursor> self, Task<ReadYourWritesSnapshot> st, KeyRange key, Slice expected, bool isSnapshotRead, CancellationToken ct)
 				{
 					var s = await st.ConfigureAwait(false);
 					ct.ThrowIfCancellationRequested();
@@ -3248,7 +3294,7 @@ namespace FoundationDB.Testing
 				}
 				return Deferred(this, begin, end, chunkSize, ct);
 
-				static async Task<Slice[]> Deferred(TransactionHandler self, Key begin, Key end, long chunkSize, CancellationToken ct)
+				static async Task<Slice[]> Deferred(TransactionHandler<TCursor> self, Key begin, Key end, long chunkSize, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					ct.ThrowIfCancellationRequested();
@@ -3272,7 +3318,7 @@ namespace FoundationDB.Testing
 				}
 				return Deferred(this, begin, end, ct);
 
-				static async Task<long> Deferred(TransactionHandler self, Key begin, Key end, CancellationToken ct)
+				static async Task<long> Deferred(TransactionHandler<TCursor> self, Key begin, Key end, CancellationToken ct)
 				{
 					var snap = await self.GetSnapshot(ct).ConfigureAwait(false);
 					ct.ThrowIfCancellationRequested();
@@ -3508,6 +3554,10 @@ namespace FoundationDB.Testing
 			{
 				// resetting wipes the transaction state: watches created before the reset are cancelled
 				FailPendingWatches(FdbError.TransactionCancelled);
+				if (TryGetSnapshot(out var snapshot))
+				{ // the backend may hold a read pin for the snapshot's generation
+					this.Store.OnTransactionEnd(snapshot);
+				}
 				lock (this.Lock)
 				{
 					this.SnapshotTask = null;
@@ -3531,7 +3581,8 @@ namespace FoundationDB.Testing
 
 		}
 
-		public struct OnionIterator
+		public struct OnionIterator<TCursor>
+			where TCursor : struct, IFdbCommittedCursor
 		{
 			/// <summary>We used the current value and the iterator must be advanced</summary>
 			private const int STATE_UNKNOWN = 0;
@@ -3550,18 +3601,19 @@ namespace FoundationDB.Testing
 
 			private readonly ColaStore<ColaRangeDictionary<Key, Mutation>.Entry>.Iterator Outer;
 
-			private readonly ColaStore<KeyValuePair<Key, Value>>.Iterator Inner;
+			// non-readonly: the cursor is a mutable struct whose position advances in place (copying it would fork the position for a value-state backend cursor)
+			private TCursor Inner;
 
 			private readonly Arena Arena;
 
 			internal long Id;
 
-			public OnionIterator(ColaOrderedDictionary<Key, Value> inner, ColaRangeDictionary<Key, Mutation> outer, Arena arena, long id)
+			public OnionIterator(IFdbCommittedStore<TCursor> inner, ColaRangeDictionary<Key, Mutation> outer, Arena arena, long id)
 			{
 				this.OuterState = STATE_UNKNOWN;
 				this.InnerState = STATE_UNKNOWN;
 				this.Outer = outer.GetIterator();
-				this.Inner = inner.GetIterator();
+				this.Inner = inner.GetCursor();
 				this.Current = default;
 				this.Arena = arena;
 				this.Id = id;
@@ -3574,7 +3626,7 @@ namespace FoundationDB.Testing
 				// larger offsets must be resolved on the merged view itself (see ReadYourWritesSnapshot.Resolve).
 				Kenobi($"** #{this.Id} Seek at {selector}: {selector.Key}, {selector.OrEqual}, {selector.Offset}...)");
 				// setup "inner"
-				if (this.Inner.Seek(new(selector.Key, default), selector.OrEqual))
+				if (this.Inner.Seek(selector.Key, selector.OrEqual))
 				{
 					Kenobi($"*** #{this.Id} inner: {this.Inner.Current}");
 					this.InnerState = STATE_AVAILABLE;
@@ -3675,18 +3727,18 @@ namespace FoundationDB.Testing
 
 			public bool Next()
 			{
-				var inner = this.Inner;
+				// the inner cursor stays a field access throughout: a local copy of a struct cursor would fork its position
 				var outer = this.Outer;
 
 				while (true)
 				{
-					Kenobi($"**** #{this.Id} next({this.InnerState}:{inner.Current.Key:K}, {this.OuterState}:{outer.Current})");
+					Kenobi($"**** #{this.Id} next({this.InnerState}:{this.Inner.Current.Key:K}, {this.OuterState}:{outer.Current})");
 
 					// advance one or the other
 					if (this.InnerState == STATE_UNKNOWN)
 					{ // get next from inner
-						this.InnerState = inner.Next() ? STATE_AVAILABLE : STATE_DEAD;
-						Kenobi($"**** #{this.Id} fetched inner => {this.InnerState}:{inner.Current}");
+						this.InnerState = this.Inner.Next() ? STATE_AVAILABLE : STATE_DEAD;
+						Kenobi($"**** #{this.Id} fetched inner => {this.InnerState}:{this.Inner.Current}");
 					}
 
 					if (this.OuterState == STATE_UNKNOWN)
@@ -3696,14 +3748,14 @@ namespace FoundationDB.Testing
 					}
 
 					if (this.OuterState == STATE_DEAD)
-					{ 
+					{
 						if (this.InnerState == STATE_DEAD)
 						{ // done iterating on both!
 							return false;
 						}
 
 						// passthrough the inner as-is
-						this.Current = inner.Current;
+						this.Current = this.Inner.Current;
 						Kenobi($"** #{this.Id} outer done, pass-through inner {this.Current.Key:K} = {this.Current.Value:V}");
 						this.InnerState = STATE_UNKNOWN;
 						return true;
@@ -3745,7 +3797,7 @@ namespace FoundationDB.Testing
 						return true;
 					}
 
-					var innerCurrent = inner.Current;
+					var innerCurrent = this.Inner.Current;
 					int cmp = innerCurrent.Key.CompareTo(outerEntry.Begin);
 					Kenobi($"** #{this.Id} ({cmp}) [{innerCurrent.Key:V} = {innerCurrent.Value:V}] vs {mutation.Op} [{outerEntry.Begin:K} ~ {outerEntry.End:K} = {mutation.Parameter:V}]");
 
@@ -3904,7 +3956,7 @@ namespace FoundationDB.Testing
 
 			var snapshot = new Snapshot(
 				initialVersion,
-				data,
+				new ColaCommittedStore(data),
 				conflicts,
 				initialStamp,
 				arena
@@ -4163,7 +4215,7 @@ namespace FoundationDB.Testing
 	public static class FakeDbDebugger
 	{
 
-		public static ColaOrderedDictionary<FakeDbStore.Key, FakeDbStore.Value> GetSnapshotData(FakeDbStore.Snapshot snapshot) => snapshot.Data;
+		public static ColaOrderedDictionary<FakeDbStore.Key, FakeDbStore.Value> GetSnapshotData(FakeDbStore.Snapshot snapshot) => ((ColaCommittedStore) snapshot.Data).Inner;
 
 		public static ColaRangeDictionary<FakeDbStore.Key, long> GetSnapshotConflictRanges(FakeDbStore.Snapshot snapshot) => snapshot.Conflicts;
 
