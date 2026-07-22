@@ -43,6 +43,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		internal sealed class Parser
 		{
 
+			/// <summary>Member names of the generated self-mode scope: a referenced type with one of these names would collide with the generated members inside the scope</summary>
+			private static readonly HashSet<string> SelfScopeReservedNames = new(StringComparer.Ordinal)
+			{
+				SelfScopeName, "ReadOnly", "Writable", "JsonConverter", "PropertyNames", "PropertyEncodedNames", "TypeMapper",
+				"Default", "GetResolver", "Serialize", "ToJsonText", "ToJsonBytes", "ToJsonSlice", "Deserialize", "Pack", "Unpack", "ToReadOnly", "ToMutable",
+			};
+
 			private const string RequiredMemberAttributeFullName = "System.Runtime.CompilerServices.RequiredMemberAttribute";
 
 			private const string KeyAttributeFullName = "System.ComponentModel.DataAnnotations.KeyAttribute";
@@ -291,6 +298,25 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return null;
 				}
 
+				if (symbol.GetMembers(SelfScopeName).Length > 0)
+				{
+					// the generated code would collide with the user's member, with errors pointing inside the generated file
+					ReportDiagnostic(
+						new(
+							"CJSON0006",
+							"Self-serializable type must not declare a member named '" + SelfScopeName + "'",
+							"The type {0} is marked for JSON self-serialization, but already declares a member named '" + SelfScopeName + "', which is reserved for the generated container scope. Rename the member (a [JsonProperty] attribute can keep the serialized name), or use a [CrystalJsonConverter] container class instead.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						[ symbol.ToDisplayString() ]
+					);
+					this.ContextClassLocation = null;
+					return null;
+				}
+
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
 				var mappedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default) { symbol };
 
@@ -298,6 +324,30 @@ namespace SnowBank.Serialization.Json.CodeGen
 				work.Enqueue(symbol);
 
 				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy: null);
+
+				// a referenced type named like a member of the generated scope would collide inside it: exclude it
+				// from generation (the emitted code falls back to runtime serialization for it) and warn
+				for (int i = includedTypes.Count - 1; i >= 0; i--)
+				{
+					var includedType = includedTypes[i];
+					// the self type itself never gets a holder (its members ARE the scope), so only referenced types can collide
+					if (includedType.Name != symbol.Name && SelfScopeReservedNames.Contains(includedType.Name))
+					{
+						ReportDiagnostic(
+							new(
+								"CJSON0007",
+								"Referenced type is named like a reserved member of the generated scope",
+								"The type {0}, referenced by self-serializable type {1}, is named like a reserved member of the generated '" + SelfScopeName + "' scope: no converter is source-generated for it (runtime serialization is used instead).",
+								"SnowBank.Serialization.Json.CodeGen",
+								DiagnosticSeverity.Warning,
+								isEnabledByDefault: true
+							),
+							this.ContextClassLocation,
+							[ includedType.Type.FullName.TrimEnd('?'), symbol.ToDisplayString() ]
+						);
+						includedTypes.RemoveAt(i);
+					}
+				}
 
 				Kenobi($"Found {includedTypes.Count} total types to generate for self type {symbol.Name}");
 

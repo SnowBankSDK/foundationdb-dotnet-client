@@ -52,7 +52,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		/// <summary>Specifies whether the container is the serialized type itself (self-serializable mode)</summary>
 		/// <remarks>
-		/// <para>When <c>true</c>, <see cref="Type"/> is a partial application type that acts as its own container: its generated members are nested directly under the entity (ex: <c>Widget.ReadOnly</c>), and any other included type (crawled from its members) is hosted under a reserved nested scope (ex: <c>Widget.JsonConverters.WidgetPart.ReadOnly</c>, so that the holder does not shadow the referenced type inside the entity's own source).</para>
+		/// <para>When <c>true</c>, <see cref="Type"/> is a partial application type that acts as its own container: all its generated code lives inside a single reserved nested scope (ex: <c>Widget.Json.ReadOnly</c>), and any other included type (crawled from its members) is hosted inside that scope under its own name (ex: <c>Widget.Json.WidgetPart.ReadOnly</c>; inside the scope, holders cannot shadow the referenced types in the entity's own source).</para>
 		/// <para>When <c>false</c>, the container is a static partial class decorated with <c>[CrystalJsonConverter]</c>, and every included type gets a nested static holder class (ex: <c>AcmeConverters.Widget.ReadOnly</c>).</para>
 		/// </remarks>
 		public bool IsSelfContained { get; init; }

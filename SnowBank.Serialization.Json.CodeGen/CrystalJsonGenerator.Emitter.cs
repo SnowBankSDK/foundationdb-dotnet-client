@@ -137,7 +137,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 					if (!this.Metadata.IsSelfContained)
 					{
-						// note: in self mode, no XML doc or attribute is emitted on the partial: it would apply to the whole entity type, which is user code
+						// note: in self mode, no XML doc or attribute is emitted on the entity's partial (they would apply
+						// to the whole entity type, which is user code); they go on the nested Json scope instead
 						sb.XmlComment("<summary>Generated source code for JSON operations on application types</summary>");
 						sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
 						sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
@@ -147,6 +148,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.AppendLine(GetContainerDeclaration());
 					sb.EnterBlock("container");
 					sb.NewLine();
+
+					OpenSelfScope(sb, emitAttributes: true);
 
 					sb.XmlComment($"<summary>Returns a <see cref=\"{KnownTypeSymbols.ICrystalJsonTypeResolverFullName}\">resolver</see> that exposes all the generated converters in this container</summary>");
 					sb.AppendLine($"public static {KnownTypeSymbols.ICrystalJsonTypeResolverFullName} GetResolver() => TypeMapper.Default;");
@@ -257,6 +260,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.LeaveBlock("TypeMapper");
 					sb.NewLine();
 
+					CloseSelfScope(sb);
+
 					sb.LeaveBlock("container");
 					sb.NewLine();
 
@@ -294,6 +299,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 					sb.AppendLine(GetContainerDeclaration());
 					sb.EnterBlock("Container");
+
+					OpenSelfScope(sb, emitAttributes: false);
 
 					try
 					{
@@ -333,6 +340,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 							), null, [ typeDef.Name, this.Metadata.Name, ex.GetType().Name, ex.Message ])
 						);
 					}
+
+					CloseSelfScope(sb);
 
 					sb.LeaveBlock("Container");
 					sb.NewLine();
@@ -376,15 +385,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Tests if this type is the self-serialized entity that acts as its own container</summary>
 			private bool IsSelfType(TypeMetadata type) => this.Metadata.IsSelfContained && type.Ref.Equals(this.Metadata.Type.Ref);
 
-			/// <summary>Name of the nested static class that hosts the holders of the types referenced by a self-serialized entity</summary>
-			/// <remarks>The holders cannot be nested directly in the entity: a holder named like the referenced type would shadow that type inside the entity's own source.</remarks>
-			private const string SelfReferencedTypesHolderName = "JsonConverters";
-
 			/// <summary>Returns the path of the generated members for this type, relative to the container</summary>
-			/// <remarks>Empty for a self-serialized entity (its members are nested directly in the entity), <c>"TypeName."</c> for a type hosted in a nested static holder class (<c>"JsonConverters.TypeName."</c> when the container is a self-serialized entity).</remarks>
+			/// <remarks>In self mode everything lives inside the entity's single reserved scope: <c>"Json."</c> for the entity itself, <c>"Json.TypeName."</c> for a referenced type (whose holder cannot shadow anything from inside the scope); in container mode, <c>"TypeName."</c> (the nested static holder class).</remarks>
 			private string GetSerializerScope(TypeMetadata type)
-				=> IsSelfType(type) ? ""
-					: this.Metadata.IsSelfContained ? (SelfReferencedTypesHolderName + "." + GetSerializerName(type) + ".")
+				=> IsSelfType(type) ? (SelfScopeName + ".")
+					: this.Metadata.IsSelfContained ? (SelfScopeName + "." + GetSerializerName(type) + ".")
 					: (GetSerializerName(type) + ".");
 
 			private string GetLocalSerializerRef(CrystalJsonTypeMetadata metadata) => GetLocalSerializerRef(metadata.Type);
@@ -422,6 +427,32 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Returns the base name of the generated source files for this container</summary>
 			/// <remarks>Self-serialized entities are namespace-qualified: unlike containers, distinct entities with the same name are common, and hint names must be unique.</remarks>
 			private string GetContainerHintName() => this.Metadata.IsSelfContained ? $"{this.Metadata.Type.NameSpace}.{this.Metadata.Type.Name}" : this.Metadata.Type.Name;
+
+			/// <summary>Opens the single reserved scope that hosts all the generated code in self mode (no-op in container mode)</summary>
+			/// <remarks>The scope is entirely generated, so unlike the entity's partial (which is user code) it can carry the generated-code attributes.</remarks>
+			private void OpenSelfScope(CSharpCodeBuilder sb, bool emitAttributes)
+			{
+				if (!this.Metadata.IsSelfContained) return;
+				if (emitAttributes)
+				{
+					sb.XmlComment("<summary>Source-generated JSON converters and proxies for this type</summary>");
+					sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
+					sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
+					sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");
+					sb.AppendLine($"[{ExcludeFromCodeCoverageAttributeFullName}]");
+				}
+				sb.AppendLine($"public static partial class {SelfScopeName}");
+				sb.EnterBlock("self-scope");
+				sb.NewLine();
+			}
+
+			/// <summary>Closes the scope opened by <see cref="OpenSelfScope"/> (no-op in container mode)</summary>
+			private void CloseSelfScope(CSharpCodeBuilder sb)
+			{
+				if (!this.Metadata.IsSelfContained) return;
+				sb.LeaveBlock("self-scope");
+				sb.NewLine();
+			}
 
 			/// <summary>Returns the name of the generated static singleton with the definition of this member</summary>
 			private string GetPropertyEncodedNameRef(CrystalJsonMemberMetadata member) => "PropertyEncodedNames." + member.MemberName;
@@ -466,18 +497,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				bool selfType = IsSelfType(typeDef.Type);
 				if (!selfType)
 				{
-					if (this.Metadata.IsSelfContained)
-					{
-						// the holders of referenced types cannot be nested directly in the entity: they would shadow the referenced type inside the entity's own source
-						sb.XmlComment("<summary>Hosts the JSON converters generated for the types referenced by this entity</summary>");
-						sb.AppendLine($"public static partial class {SelfReferencedTypesHolderName}");
-						sb.EnterBlock();
-					}
 					sb.XmlComment($"<summary>Set of JSON converters and other various helpers for type <see cref=\"{typeCref}\">{typeName}</see></summary>");
 					sb.AppendLine("public static class " + serializerName);
 					sb.EnterBlock();
 				}
-				// note: for the self type there is no intermediate holder class: the members below are nested directly in the entity's partial
+				// note: the self type has no holder class of its own: its members land directly in the enclosing Json scope
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>JSON converter for type <see cref=\"{typeCref}\">{typeName}</see></summary>");
@@ -1358,10 +1382,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (!selfType)
 				{
 					sb.LeaveBlock();
-					if (this.Metadata.IsSelfContained)
-					{
-						sb.LeaveBlock();
-					}
 				}
 				sb.NewLine();
 

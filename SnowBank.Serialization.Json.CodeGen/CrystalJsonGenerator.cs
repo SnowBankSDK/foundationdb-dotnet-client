@@ -46,6 +46,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		private const string CrystalJsonSelfSerializableAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSelfSerializableAttribute";
 
+		/// <summary>Name of the single nested scope that hosts ALL the code generated for a self-serializable type (ex: <c>Widget.Json.ReadOnly</c>)</summary>
+		/// <remarks>This is the only member name the generator reserves inside the entity; a future generator for another format would claim a sibling scope (ex: <c>Widget.Cbor</c>).</remarks>
+		internal const string SelfScopeName = "Json";
+
 #if FULL_DEBUG
 #pragma warning disable RS1035
 		private static readonly string ProcessIdentifier = "[" + Process.GetCurrentProcess().ProcessName + ":" + Process.GetCurrentProcess().Id.ToString() + "]";

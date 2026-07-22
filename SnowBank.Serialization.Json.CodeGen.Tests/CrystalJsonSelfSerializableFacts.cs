@@ -46,7 +46,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	}
 
-	/// <summary>Entity that self-serializes: the generated converter and proxies are nested under the entity itself</summary>
+	/// <summary>Entity that self-serializes: the generated code lives under the entity's single reserved scope (<c>Widget.Json</c>)</summary>
 	[FancyDocument("Widgets")]
 	public sealed partial record Widget
 	{
@@ -69,7 +69,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	}
 
-	/// <summary>Plain record referenced by <see cref="Widget"/>: its converters nest under the entity's reserved scope (<c>Widget.JsonConverters.WidgetPart</c>)</summary>
+	/// <summary>Plain record referenced by <see cref="Widget"/>: its converters nest inside the entity's reserved scope (<c>Widget.Json.WidgetPart</c>)</summary>
 	public sealed record WidgetPart
 	{
 
@@ -97,40 +97,40 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		};
 
 		[Test]
-		public void Test_SelfSerializable_Nests_Generated_Code_Under_The_Entity()
+		public void Test_SelfSerializable_Nests_Generated_Code_Under_The_Json_Scope()
 		{
-			// the converter, proxies and property names must be nested under the entity itself,
-			// with no intermediate holder class (Widget.ReadOnly, NOT Widget.Widget.ReadOnly)
-			Assert.That(typeof(Widget.JsonConverter).DeclaringType, Is.EqualTo(typeof(Widget)));
-			Assert.That(typeof(Widget.ReadOnly).DeclaringType, Is.EqualTo(typeof(Widget)));
-			Assert.That(typeof(Widget.Writable).DeclaringType, Is.EqualTo(typeof(Widget)));
+			// the entity reserves exactly ONE member name, 'Json': all the generated code lives inside it
+			Assert.That(typeof(Widget.Json).DeclaringType, Is.EqualTo(typeof(Widget)));
+			Assert.That(typeof(Widget.Json.JsonConverter).DeclaringType, Is.EqualTo(typeof(Widget.Json)));
+			Assert.That(typeof(Widget.Json.ReadOnly).DeclaringType, Is.EqualTo(typeof(Widget.Json)));
+			Assert.That(typeof(Widget.Json.Writable).DeclaringType, Is.EqualTo(typeof(Widget.Json)));
 
 			// the converter singleton
-			Assert.That(Widget.Default, Is.Not.Null.And.InstanceOf<IJsonConverter<Widget>>());
+			Assert.That(Widget.Json.Default, Is.Not.Null.And.InstanceOf<IJsonConverter<Widget>>());
 
 			// property names use the default (General) policy: PascalCase, as-declared
-			Assert.That(Widget.PropertyNames.Id, Is.EqualTo("Id"));
-			Assert.That(Widget.PropertyNames.Name, Is.EqualTo("Name"));
-			Assert.That(Widget.PropertyNames.Level, Is.EqualTo("Level"));
+			Assert.That(Widget.Json.PropertyNames.Id, Is.EqualTo("Id"));
+			Assert.That(Widget.Json.PropertyNames.Name, Is.EqualTo("Name"));
+			Assert.That(Widget.Json.PropertyNames.Level, Is.EqualTo("Level"));
 
-			// the referenced type is crawled into the same generated set, hosted under the entity's reserved JsonConverters scope
-			// (its holder cannot share the referenced type's name at entity scope: it would shadow that type inside the entity's own source)
-			Assert.That(Widget.JsonConverters.WidgetPart.Default, Is.Not.Null.And.InstanceOf<IJsonConverter<WidgetPart>>());
-			Assert.That(typeof(Widget.JsonConverters.WidgetPart.ReadOnly).DeclaringType?.DeclaringType?.DeclaringType, Is.EqualTo(typeof(Widget)));
+			// the referenced type is crawled into the same generated set, hosted inside the scope with its
+			// plain name (inside 'Json' it cannot shadow the referenced type in the entity's own source)
+			Assert.That(Widget.Json.WidgetPart.Default, Is.Not.Null.And.InstanceOf<IJsonConverter<WidgetPart>>());
+			Assert.That(typeof(Widget.Json.WidgetPart.ReadOnly).DeclaringType?.DeclaringType, Is.EqualTo(typeof(Widget.Json)));
 		}
 
 		[Test]
 		public void Test_SelfSerializable_Resolver()
 		{
-			// the entity exposes a resolver that bundles all the converters generated for its object graph
-			var resolver = Widget.GetResolver();
+			// the scope exposes a resolver that bundles all the converters generated for the entity's object graph
+			var resolver = Widget.Json.GetResolver();
 			Assert.That(resolver, Is.Not.Null);
 
 			Assert.That(resolver.TryGetConverterFor<Widget>(out var widgetConverter), Is.True);
-			Assert.That(widgetConverter, Is.SameAs(Widget.Default));
+			Assert.That(widgetConverter, Is.SameAs(Widget.Json.Default));
 
 			Assert.That(resolver.TryGetConverterFor<WidgetPart>(out var partConverter), Is.True);
-			Assert.That(partConverter, Is.SameAs(Widget.JsonConverters.WidgetPart.Default));
+			Assert.That(partConverter, Is.SameAs(Widget.Json.WidgetPart.Default));
 		}
 
 		[Test]
@@ -139,7 +139,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var widget = MakeSampleWidget();
 
 			Log("ToJsonText:");
-			var json = Widget.ToJsonText(widget);
+			var json = Widget.Json.ToJsonText(widget);
 			Log(json);
 
 			Log("Parse...");
@@ -158,7 +158,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			// note: Widget is a record holding an array, so record equality cannot be used (arrays compare by reference)
 			Log("Deserialize...");
-			var decoded = Widget.Deserialize(json);
+			var decoded = Widget.Json.Deserialize(json);
 			Assert.That(decoded, Is.Not.Null);
 			Assert.Multiple(() =>
 			{
@@ -170,9 +170,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			});
 
 			Log("Pack/Unpack...");
-			var packed = Widget.Default.Pack(widget);
+			var packed = Widget.Json.Default.Pack(widget);
 			Assert.That(packed, IsJson.Object);
-			var unpacked = Widget.Default.Unpack(packed);
+			var unpacked = Widget.Json.Default.Unpack(packed);
 			Assert.Multiple(() =>
 			{
 				Assert.That(unpacked.Id, Is.EqualTo(widget.Id));
@@ -188,7 +188,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			var widget = MakeSampleWidget();
 
-			var proxy = Widget.ToReadOnly(widget);
+			var proxy = Widget.Json.ToReadOnly(widget);
 			Log(proxy.ToString());
 			Assert.That(proxy.Id, Is.EqualTo(widget.Id));
 			Assert.That(proxy.Name, Is.EqualTo("Sprocket"));
@@ -217,7 +217,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			var widget = MakeSampleWidget();
 
-			var proxy = Widget.ToMutable(widget);
+			var proxy = Widget.Json.ToMutable(widget);
 			Assert.That(proxy.Name, Is.EqualTo("Sprocket"));
 
 			proxy.Name = "Doohickey";
