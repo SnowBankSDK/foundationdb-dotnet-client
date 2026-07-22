@@ -210,6 +210,27 @@ Common fluent options (chainable, e.g. `CrystalJsonSettings.Json.Compacted().Cam
   `[{"Key":k,"Value":v}]` shape; again, **reading** both shapes always works) *(7.4.3+)*
 - Read-only result: `.AsReadOnly()`
 
+**Parsing leniency** (deserialization only; none of these change what you emit). The parser is deliberately
+permissive by default, which is wrong for untrusted input:
+
+| Option | Default | Tighten with | Loosen with |
+|---|---|---|---|
+| JavaScript comments (`// ...`, `/* ... */`) | accepted | `.WithoutComments()` | `.WithComments()` |
+| trailing commas (`[1, 2, ]`) | accepted | `.WithoutTrailingCommas()` | `.WithTrailingCommas()` |
+| content after the top-level value | rejected | `.WithoutTrailingData()` | `.WithTrailingData()` |
+| duplicate field names | last one wins | `.ThrowOnDuplicateFields()` | `.FlattenDuplicateFields()` |
+
+⚠️ The **property** is `settings.AllowTrailingData`; the fluent **method** that sets it is `.WithTrailingData()`.
+There is no `.AllowTrailingData()` method. Same shape for the others: read a `bool` property, set it with a
+`With*` / `Without*` method.
+
+`CrystalJsonSettings.JsonStrict` is the shorthand for the first two rows (no comments, no trailing commas). It
+does **not** touch duplicate fields, so add `.ThrowOnDuplicateFields()` yourself if a repeated key must be an
+error rather than a silent overwrite.
+
+To read several consecutive documents out of one buffer, use `CrystalJson.ParseFragment` or the streaming
+reader instead of `.WithTrailingData()`, which parses the first value and silently drops the rest.
+
 ---
 
 ## 5. The source generator (your domain types)
@@ -237,6 +258,59 @@ public sealed record Book
 [CrystalJsonSerializable(typeof(Book))]
 public static partial class MyJson { }       // generated members land here
 ```
+
+### Self-serializable types: the entity IS its own container *(7.4.3+)*
+
+The container above (`MyJson`) is one way to enroll a type. The other is to let the type carry its own
+generated code, which is what you want when a **layer** owns a vocabulary and should not force every consuming
+application to also declare a JSON container.
+
+`[CrystalJsonSelfSerializable]` is a **meta-attribute**: you put it on one of *your own* attribute classes, and
+every type decorated with that attribute is opted into generation.
+
+```csharp
+// the layer declares its vocabulary ONCE
+[CrystalJsonSelfSerializable]
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+public sealed class MyEntityAttribute : Attribute { }
+
+// the application just declares an entity - no container, no [CrystalJsonSerializable]
+[MyEntity]
+public sealed partial record Widget
+{
+    public required string Name { get; init; }
+    public Author? Author { get; init; }      // referenced types are still crawled
+}
+```
+
+Everything nests directly under the entity partial, with no intermediate holder class:
+
+```csharp
+Widget.Default          // the converter (the container mode's MyJson.Widget)
+Widget.ReadOnly         // read-only proxy
+Widget.Writable         // writable proxy
+Widget.PropertyNames    // property-name constants
+Widget.GetResolver()    // the per-container resolver, same as the container mode
+```
+
+This is how a document-collection attribute works in a layer built on this stack: the application writes one
+attribute on the entity, and the JSON converter, both proxies and the layer's own generated schema all fall
+out of it.
+
+Things to know before you use it:
+
+- The entity must be **`partial`, non-generic, and not nested**. The generator rejects the others with
+  `CJSON0004` / `CJSON0005`.
+- Types your entity references are hosted under a reserved **`Widget.JsonConverters.<Type>`** scope, not
+  directly under the entity. A holder named like the referenced type would shadow that type inside the entity's
+  own source, so `Author` stays `Author` and its converter is `Widget.JsonConverters.Author`.
+- The generator emits **no attributes and no XML doc** on the entity partial, since they would apply to your
+  whole type.
+- Hint names are namespace-qualified in this mode, because entity names collide across namespaces far more
+  often than container names do.
+- The `[CrystalJsonConverter]` + `[CrystalJsonSerializable]` container path is untouched and still correct.
+  Prefer the container when you are enrolling third-party types you cannot annotate, or a set of unrelated
+  types; prefer self mode when the type is yours and a layer already marks it.
 
 ### csproj wiring (the part most often gotten wrong)
 
