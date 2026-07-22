@@ -283,15 +283,27 @@ public sealed partial record Widget
 }
 ```
 
-Everything nests directly under the entity partial, with no intermediate holder class:
+Everything generated lands inside **one** nested static class named `Json`, so the entity reserves exactly one
+member name:
 
 ```csharp
-Widget.Default          // the converter (the container mode's MyJson.Widget)
-Widget.ReadOnly         // read-only proxy
-Widget.Writable         // writable proxy
-Widget.PropertyNames    // property-name constants
-Widget.GetResolver()    // the per-container resolver, same as the container mode
+Widget.Json.Default          // the converter (the container mode's MyJson.Widget)
+Widget.Json.ReadOnly         // read-only proxy
+Widget.Json.Writable         // writable proxy
+Widget.Json.PropertyNames    // property-name constants
+Widget.Json.GetResolver()    // the per-container resolver, same as the container mode
+Widget.Json.ToJsonText(w)    // the static helpers live there too
 ```
+
+Referenced types nest inside that same scope under their plain names: `Author`'s converter is
+`Widget.Json.Author.Default`. Inside the scope they cannot shadow the referenced type in the entity's own
+source, which is what the single reserved name buys.
+
+The one-name rule is the design, not an implementation detail: a future generator for another format claims a
+sibling scope (`Widget.Cbor`) without renegotiating anything. It also means the `Json` scope is entirely
+generated code, so it carries the generated-code attributes (`GeneratedCode`, `DebuggerNonUserCode`,
+`ExcludeFromCodeCoverage`, `DynamicallyAccessedMembers`) that could not be put on the entity partial, since
+that partial is your source.
 
 This is how a document-collection attribute works in a layer built on this stack: the application writes one
 attribute on the entity, and the JSON converter, both proxies and the layer's own generated schema all fall
@@ -301,11 +313,12 @@ Things to know before you use it:
 
 - The entity must be **`partial`, non-generic, and not nested**. The generator rejects the others with
   `CJSON0004` / `CJSON0005`.
-- Types your entity references are hosted under a reserved **`Widget.JsonConverters.<Type>`** scope, not
-  directly under the entity. A holder named like the referenced type would shadow that type inside the entity's
-  own source, so `Author` stays `Author` and its converter is `Widget.JsonConverters.Author`.
-- The generator emits **no attributes and no XML doc** on the entity partial, since they would apply to your
-  whole type.
+- **Your entity may not declare a member named `Json`.** That is `CJSON0006`, an error, reported at the entity
+  declaration in your own source. The message carries the remedies: rename the member and keep its wire name
+  with `[JsonProperty("json")]`, or move the type to a `[CrystalJsonConverter]` container instead.
+- **A referenced type named like a scope member** (`Default`, `ReadOnly`, `Writable`, `PropertyNames`, …) is
+  `CJSON0007`, a warning. That type is excluded from generation and falls back to runtime serialization, so it
+  still works, just without a generated converter.
 - Hint names are namespace-qualified in this mode, because entity names collide across namespaces far more
   often than container names do.
 - The `[CrystalJsonConverter]` + `[CrystalJsonSerializable]` container path is untouched and still correct.
