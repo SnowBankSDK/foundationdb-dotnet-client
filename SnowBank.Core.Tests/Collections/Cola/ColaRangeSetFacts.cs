@@ -170,6 +170,34 @@ namespace SnowBank.Collections.CacheOblivious.Test
 		}
 
 		[Test]
+		public void Test_RangeSet_Mark_Degenerate_Range_Is_A_NoOp()
+		{
+			// an empty range (begin == end) contains nothing, so marking it must leave the set unchanged
+			// (FoundationDB accepts a degenerate conflict range as a no-op; only a backwards range is a caller error)
+			var cola = new ColaRangeSet<int>();
+
+			cola.Mark(0, 0);
+			DumpStore(cola);
+			Assert.That(cola.Count, Is.EqualTo(0), "Marking an empty range on an empty set should not add anything");
+
+			cola.Mark(0, 1);
+			cola.Mark(4, 5);
+			Assert.That(cola.Count, Is.EqualTo(2));
+
+			cola.Mark(0, 0); // at the begin of an existing range
+			cola.Mark(1, 1); // at the (exclusive) end of an existing range
+			cola.Mark(2, 2); // in the gap between two ranges
+			cola.Mark(7, 7); // past the current bounds
+			DumpStore(cola);
+			Assert.That(cola.Count, Is.EqualTo(2), "Marking an empty range should never change existing ranges");
+			Assert.That(cola.Bounds.Begin, Is.EqualTo(0));
+			Assert.That(cola.Bounds.End, Is.EqualTo(5), "Marking an empty range should not extend the bounds");
+
+			// a backwards range is still rejected
+			Assert.That(() => cola.Mark(2, 1), Throws.InvalidOperationException);
+		}
+
+		[Test]
 		public void Test_RangeSet_Insert_Backwards()
 		{
 			const int N = 100;

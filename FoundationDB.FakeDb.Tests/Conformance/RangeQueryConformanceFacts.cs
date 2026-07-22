@@ -875,8 +875,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Range_First_Single_And_Last()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence [FDBV-019]: recording a degenerate (begin == end) read conflict range throws instead of being a no-op");
-
 			using (var db = await OpenTestPartitionAsync())
 			{
 				// put test values in a namespace

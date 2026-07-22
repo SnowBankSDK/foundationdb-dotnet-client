@@ -220,11 +220,19 @@ namespace SnowBank.Collections.CacheOblivious
 		/// <summary>Adds a range to this set</summary>
 		/// <param name="begin">Begin key of the range (included)</param>
 		/// <param name="end">End key of the range (excluded)</param>
-		/// <exception cref="InvalidOperationException">If <paramref name="end"/> is less than or equal to <paramref name="begin"/></exception>
-		/// <remarks>If the range overlaps existing ranges, they will be merged as required.</remarks>
+		/// <exception cref="InvalidOperationException">If <paramref name="end"/> is less than <paramref name="begin"/></exception>
+		/// <remarks>
+		/// <para>If the range overlaps existing ranges, they will be merged as required.</para>
+		/// <para>A degenerate range (<paramref name="begin"/> equal to <paramref name="end"/>) is empty and contains nothing: marking it is a no-op.</para>
+		/// </remarks>
 		public void Mark(TKey begin, TKey end)
 		{
-			if (m_comparer.Compare(begin, end) >= 0) throw new InvalidOperationException($"End key `{begin}` must be greater than the Begin key `{end}`.");
+			int c = m_comparer.Compare(begin, end);
+			if (c >= 0)
+			{
+				if (c == 0) return; // the range is empty: nothing to mark
+				throw new InvalidOperationException($"End key `{end}` must be greater than the Begin key `{begin}`.");
+			}
 
 			var entry = new Entry(begin, end);
 
