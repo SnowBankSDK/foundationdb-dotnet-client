@@ -1578,9 +1578,22 @@ namespace FoundationDB.Testing
 						// conflict (unless the read returns no values, see atomicsAreLocal); a chain anchored on an
 						// own Set or Clear is fully determined locally and is subtracted like the anchor itself
 						bool anchored = mutation.Op is Operation.Set or Operation.Clear;
-						if (!anchored && !atomicsAreLocal)
+						if (!anchored)
 						{
-							continue;
+							// atomicsAreLocal subtracts an own atomic under selector resolution because the read returns
+							// KEYS and every atomic leaves the key PRESENT - EXCEPT CompareAndClear, which clears the key
+							// iff the committed value matches its operand. A CompareAndClear anywhere in the chain makes
+							// presence committed-value-dependent, so the resolution reads through to the database and the
+							// segment must stay a conflict even under a selector read (family-4 round two).
+							bool conditionalPresence = false;
+							for (var m = mutation; m != null; m = m.Next)
+							{
+								if (m.Op is Operation.CompareAndClear) { conditionalPresence = true; break; }
+							}
+							if (!atomicsAreLocal || conditionalPresence)
+							{
+								continue;
+							}
 						}
 					}
 					var segBegin = entry.Begin > cursor ? entry.Begin : cursor;

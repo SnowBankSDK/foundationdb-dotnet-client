@@ -137,7 +137,9 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
-		private static string? RenderValue(JsonValue value) => value.IsNullOrMissing() ? null : value.As<string?>();
+		// a divergence can pit a container against a scalar (e.g. a GetRange result array on one backend vs an
+		// error or missing outcome on the other): render containers as compact JSON rather than binding to string
+		private static string? RenderValue(JsonValue value) => value.IsNullOrMissing() ? null : value is JsonArray or JsonObject ? value.ToJsonText() : value.As<string?>();
 
 		private static void CompareFinalState(IReadOnlyList<KeyValuePair<string, string>> expected, IReadOnlyList<KeyValuePair<string, string>> actual, List<TraceDivergence> divergences)
 		{

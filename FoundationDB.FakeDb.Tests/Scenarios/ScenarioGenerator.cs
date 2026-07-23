@@ -804,7 +804,7 @@ namespace FoundationDB.Client.Tests
 		/// <summary>Generates a deterministic read-write-atomics fuzz scenario for the given seed: two READ-WRITE actors each mutate a pool key with an own atomic - CompareAndClear (whose effect on key PRESENCE depends on the committed value) or a plain atomic (which always leaves the key present) - then resolve a non-snapshot selector or range read THROUGH the pool, then commit; a blind peer races sets, clears and clear-ranges over the same pool so its commits can land inside a reader's conflict window.</summary>
 		/// <remarks>
 		/// <para>This is family-4 round two: round one never had an actor both read the merged view AND commit, so the merged-path read-conflict machinery for own atomics (<c>MarkMergedRangeReadConflict(atomicsAreLocal: true)</c>) was never put under a conflict outcome. Here a read-write actor's own CompareAndClear makes the resolved key set depend on the committed value, so a peer write to that key must conflict the read - the discriminator is a plain atomic (Add and friends) at the same position, whose presence is locally determined, so a peer write there must NOT conflict. The commit outcome (committed vs NotCommitted) is what the dual-live differential compares; the emulator differential is blind to it because both engines share the overlay, which is the dual-live oracle's reason to exist.</para>
-		/// <para>Containment: the sentinel runs (<c>!0..!3</c> floor, <c>~0..~3</c> ceiling, committed once and never touched) plus the begin-bound floor clamp keep every selector and range read inside the partition, the same envelope the selector family established. A low-rate branch reads back an own PENDING versionstamp key in the same transaction (unreadable on a real cluster: fdb error 1036 accessed_unreadable), the round-one deferred read-of-own-stamp semantics.</para>
+		/// <para>Containment: the sentinel runs (<c>!0..!3</c> floor, <c>~0..~3</c> ceiling, committed once and never touched) plus the begin-bound floor clamp keep every selector and range read inside the partition, the same envelope the selector family established. This family stays focused on the merged-path conflict outcome; the read-of-own-pending-stamp semantics (unreadable, fdb error 1036) are covered by a dedicated conformance fact rather than fuzzed, since an unreadable read kills the transaction and would cascade over the rest of a scenario.</para>
 		/// </remarks>
 		public static Scenario GenerateReadWriteAtomicsFuzz(int seed)
 		{
@@ -832,7 +832,6 @@ namespace FoundationDB.Client.Tests
 			var open = new bool[actors.Length];
 			var canLoseCommit = new bool[actors.Length];
 			var hasWrites = new bool[actors.Length];
-			var hasStamped = new bool[actors.Length];
 
 			int ops = rnd.Next(28, 46);
 			for (int i = 0; i < ops; i++)
@@ -845,7 +844,6 @@ namespace FoundationDB.Client.Tests
 					open[a] = true;
 					canLoseCommit[a] = false;
 					hasWrites[a] = false;
-					hasStamped[a] = false;
 					continue;
 				}
 
@@ -913,7 +911,7 @@ namespace FoundationDB.Client.Tests
 						hasWrites[a] = true;
 						break;
 					}
-					case < 66:
+					case < 68:
 					{ // selector read resolving through the pool; NON-snapshot so it can lose a conflict
 						bool snapshot = rnd.Next(5) == 0; // draw first: the RNG stream must not depend on the actor's state
 						var (pivot, offset) = PickSelectorProbe(rnd);
@@ -921,7 +919,7 @@ namespace FoundationDB.Client.Tests
 						if (!snapshot) canLoseCommit[a] = true;
 						break;
 					}
-					case < 84:
+					case < 90:
 					{ // selector-bounded range read over the pool; the returned set depends on which keys exist
 						bool snapshot = rnd.Next(5) == 0;
 						var (p1, o1) = PickSelectorProbe(rnd);
@@ -938,31 +936,12 @@ namespace FoundationDB.Client.Tests
 						if (!snapshot) canLoseCommit[a] = true;
 						break;
 					}
-					case < 88:
-					{ // read back an own PENDING versionstamp key in the same transaction (unreadable on a real cluster)
-						int uv = rnd.Next(0, 3);
-						var ph = Slice.FromStringAscii("evt-") + VersionStamp.Incomplete(uv).ToSlice();
-						b.SetVersionstampedKey(actor, ph, 4, "e" + rnd.Next(10));
-						hasStamped[a] = true;
-						hasWrites[a] = true;
-						b.Get(actor, ph, snapshot: rnd.Next(4) == 0);
-						break;
-					}
-					case < 96:
-					{ // settle: a stamped writer must observe its stamp; otherwise plain commit
-						if (hasStamped[a])
-						{
-							int vs = b.GetVersionstamp(actor);
-							b.Commit(actor);
-							b.ExpectVersionstamp(vs);
-						}
-						else
-						{
-							b.Commit(actor);
-							if (!canLoseCommit[a] && rnd.Next(2) == 0)
-							{ // a conflict-free commit always succeeds, so the transaction is still there to probe
-								b.GetCommittedVersion(actor);
-							}
+					case < 97:
+					{ // settle: plain commit (a conflict-free commit succeeds; a canLoseCommit read makes NotCommitted possible)
+						b.Commit(actor);
+						if (!canLoseCommit[a] && rnd.Next(2) == 0)
+						{ // a conflict-free commit always succeeds, so the transaction is still there to probe
+							b.GetCommittedVersion(actor);
 						}
 						open[a] = false;
 						break;
@@ -976,20 +955,10 @@ namespace FoundationDB.Client.Tests
 				}
 			}
 
-			// epilogue: settle every remaining transaction so the final state (and every pending stamp) is fully determined
+			// epilogue: settle every remaining transaction so the final state is fully determined
 			for (int a = 0; a < actors.Length; a++)
 			{
-				if (!open[a]) continue;
-				if (hasStamped[a])
-				{
-					int vs = b.GetVersionstamp(actors[a]);
-					b.Commit(actors[a]);
-					b.ExpectVersionstamp(vs);
-				}
-				else
-				{
-					b.Commit(actors[a]);
-				}
+				if (open[a]) b.Commit(actors[a]);
 			}
 
 			return b.Build($"fuzz_rwa_{seed:D4}", $"generated read-write atomics (compare-and-clear under selector reads) fuzz (seed {seed})");

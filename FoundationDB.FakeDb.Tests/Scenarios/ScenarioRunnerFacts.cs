@@ -101,6 +101,57 @@ namespace FoundationDB.Client.Tests
 			Assert.That(trace.FinalState.Select(kv => kv.Key), Is.EqualTo([ "k1" ]));
 		}
 
+		[TestCase("cac-hit", true)]   // CompareAndClear operand == committed value: it would CLEAR k3 (presence flips)
+		[TestCase("cac-miss", true)]  // CompareAndClear operand != committed value: it KEEPS k3 (presence unchanged)
+		[TestCase("add", false)]      // discriminator: Add always leaves k3 present, so its presence is locally determined
+		public async Task Test_Own_Atomic_Under_Selector_Read_Conflict(string flavor, bool expectConflict)
+		{
+			// A read-write transaction that applies an own atomic to k3 and then resolves a selector THROUGH k3
+			// must take a read conflict on k3 IFF the atomic's effect on k3's PRESENCE depends on the committed
+			// value. Only CompareAndClear is visibility-conditional (it clears k3 iff committed(k3) == operand,
+			// fdb 7.4.6 fdbclient/WriteMap.cpp coalesce -> doCompareAndClear against the existing value), so a
+			// peer write to k3 must conflict the reader for BOTH CAC outcomes; every other atomic returns a
+			// present value, so an own Add leaves k3 present regardless and its presence is locally determined -
+			// a peer write there must NOT conflict (the atomicsAreLocal discriminator, family-4 round two).
+
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "k3", "v"); // committed: k3 = "v"
+			builder.Set("A", "k5", "w"); // a neighbor, so fGE(k3) lands somewhere distinct when k3 is absent
+			builder.Commit("A");
+
+			builder.Begin("W");
+			switch (flavor)
+			{
+				case "cac-hit": builder.Atomic("W", "k3", "v", FdbMutationType.CompareAndClear); break;
+				case "cac-miss": builder.Atomic("W", "k3", "z", FdbMutationType.CompareAndClear); break;
+				default: builder.Atomic("W", "k3", Slice.FromFixed64(1), FdbMutationType.Add); break;
+			}
+			builder.GetKey("W", new ScenarioSelector(Slice.FromStringAscii("k3"), OrEqual: false, Offset: 1)); // fGE(k3): resolves through k3, whose presence W's own atomic may or may not fix locally
+
+			builder.Begin("P");
+			builder.Set("P", "k3", "peer"); // a peer writes k3...
+			builder.Commit("P");            // ...and commits first, after W's read version
+
+			builder.Commit("W"); // W commits: conflicts iff k3 stayed in its read-conflict range
+
+			var scenario = builder.Build("cac_under_selector_" + flavor);
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			var wCommit = trace.Events[^1];
+			if (expectConflict)
+			{
+				Assert.That(wCommit.Outcome.Get<string?>("error", null), Is.EqualTo("NotCommitted"), $"the {flavor} reader's selector resolution depended on k3's committed value, so a peer write to k3 must conflict it");
+			}
+			else
+			{
+				Assert.That(wCommit.Outcome.ContainsKey("error"), Is.False, "an own Add leaves k3 present regardless of the committed value, so the selector resolution is locally determined and a peer write to k3 must not conflict");
+			}
+		}
+
 		[Test]
 		public async Task Test_Runner_Settles_Watch_Observations()
 		{
