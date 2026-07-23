@@ -152,6 +152,53 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
+		[TestCase("cac", "c", false)]       // pending CompareAndClear on an absent key: the WALK counts it present (fdb is_kv), CONTENT excludes it (kv coalesces to absent) - the is_kv-vs-kv split
+		[TestCase("clear-add", "c", true)]  // Clear then Add over the cleared span: INDEPENDENT_WRITE (SetValue base) -> present in the walk; content shows the added value
+		[TestCase("add", "c", true)]        // discriminator: a plain Add is already counted by both engines (coalesces to a value)
+		[TestCase("none", "e", false)]      // control: no pending write, the slot is truly absent, the walk skips it
+		public async Task Test_Pending_Atomic_Counts_As_Present_In_Selector_Resolution(string flavor, string expectedKey, bool expectContentB)
+		{
+			// A key carrying a pending write is a PRESENT boundary key for selector / range-bound resolution
+			// (fdb 7.4.6 RYWIterator::typeMap / is_kv(): INDEPENDENT_WRITE and DEPENDENT_WRITE are KV), even when
+			// its coalesced value is absent - a CompareAndClear that clears still COUNTS in the offset walk. The
+			// coalesced value governs only read CONTENT (RYWIterator::kv(), a separate scan): the CAC'd key is
+			// present for the WALK yet absent from the CONTENT. Committed keys a < c < e; the pending write lands
+			// on the absent gap key b. fGE(a)+2 counts b iff b is a present boundary key: real resolves to c, an
+			// under-counting resolver to e (FDBV-036).
+
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "a", "va");
+			builder.Set("A", "c", "vc");
+			builder.Set("A", "e", "ve");
+			builder.Commit("A");
+
+			builder.Begin("W");
+			switch (flavor)
+			{
+				case "cac": builder.Atomic("W", "b", Slice.FromStringAscii("x"), FdbMutationType.CompareAndClear); break; // b absent -> coalesces to absent
+				case "clear-add": builder.Clear("W", "b"); builder.Atomic("W", "b", Slice.FromFixed64(1), FdbMutationType.Add); break;
+				case "add": builder.Atomic("W", "b", Slice.FromFixed64(1), FdbMutationType.Add); break;
+				default: break; // "none": no pending write on b
+			}
+			builder.GetKey("W", new ScenarioSelector(Slice.FromStringAscii("a"), OrEqual: false, Offset: 3)); // 3rd present key at/after a - counts b iff b is a boundary key
+			builder.GetRange("W", new ScenarioSelector(Slice.FromStringAscii("a"), OrEqual: false, Offset: 1), new ScenarioSelector(Slice.FromStringAscii("e"), OrEqual: true, Offset: 1)); // [a, e] content
+
+			var scenario = builder.Build("pending_atomic_selector_" + flavor);
+
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			var getKey = trace.Events.Single(e => e.Op == "GetKey");
+			Assert.That(getKey.Outcome.Get<string?>("key", null), Is.EqualTo(expectedKey), $"[{flavor}] the selector walk must count a pending-write key as a present boundary key (fdb is_kv)");
+
+			// guardrail: the fix moves ONLY the boundary walk - CONTENT is a separate scan and must be unchanged
+			var getRange = trace.Events.Single(e => e.Op == "GetRange");
+			var contentKeys = getRange.Outcome.GetArray("items").Select(item => item["key"].As<string>()).ToList();
+			Assert.That(contentKeys.Contains("b"), Is.EqualTo(expectContentB), $"[{flavor}] read CONTENT reflects the coalesced value (a CAC-to-absent key stays absent from content), independent of the boundary walk");
+		}
+
 		[Test]
 		public async Task Test_Runner_Settles_Watch_Observations()
 		{

@@ -1652,23 +1652,23 @@ namespace FoundationDB.Testing
 				return visible;
 			}
 
-			/// <summary>Checks whether a key is present in the merged view, evaluating atomic chains purely (no coalescing write-back, no conflict marking).</summary>
+			/// <summary>Checks whether a key is a PRESENT boundary key for selector / range-bound resolution (fdb 7.4.6 <c>RYWIterator::is_kv()</c>): the offset walk counts the KEY, not its coalesced value.</summary>
+			/// <remarks>This is the selector-walk present-set (used only by <see cref="GetMergedVisibleKeys"/> -> <see cref="ResolveMerged"/>), NOT read content. A key with a pending write is present unless its net effect is a pure clear (<c>CLEARED_RANGE</c>). Read CONTENT (which excludes a CompareAndClear'd key) is a separate scan.</remarks>
 			private bool IsVisibleInMergedView(Key key)
 			{
 				var mutation = FindCoveringMutation(key);
 				if (mutation != null)
 				{
-					if (mutation.IsKv()) return !mutation.Parameter.IsNull; // a single-key Clear is IsKv() with a Nil parameter
-					if (mutation.IsRange()) return false;
+					if (mutation.IsKv()) return !mutation.Parameter.IsNull; // a single-key Clear (CLEARED_RANGE) is IsKv() with a Nil parameter; a Set (INDEPENDENT_WRITE) is present
+					if (mutation.IsRange()) return false;                   // a ClearRange (CLEARED_RANGE) is EMPTY
 					if (mutation.IsAtomic())
 					{
-						// evaluate the chain over the committed value; the result decides visibility (e.g. CompareAndClear can erase the key)
-						var value = (mutation.Op is Operation.Set or Operation.Clear) ? default : this.Inner.Read(key);
-						for (var m = mutation; m != null; m = m.Next)
-						{
-							value = CoalesceAtomic(this.Arena, value, m);
-						}
-						return !value.IsNull;
+						// is_kv semantics: a pending atomic is a DEPENDENT_WRITE (or an INDEPENDENT_WRITE when it
+						// coalesces over a cleared span, fdb WriteMap.cpp), both classified KV = a PRESENT boundary key.
+						// The walk counts the KEY, not its coalesced value, so a CompareAndClear that would erase the key
+						// (its value coalesces to absent) STILL counts for resolution; only read CONTENT (a separate
+						// scan via the coalesced value) drops it. Do not coalesce here (FDBV-036).
+						return true;
 					}
 					return true;
 				}
