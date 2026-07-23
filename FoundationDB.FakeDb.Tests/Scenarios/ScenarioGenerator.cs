@@ -801,6 +801,200 @@ namespace FoundationDB.Client.Tests
 			return b.Build($"fuzz_vsa_{seed:D4}", $"generated versionstamp/atomics/clear-range fuzz (seed {seed})");
 		}
 
+		/// <summary>Generates a deterministic read-write-atomics fuzz scenario for the given seed: two READ-WRITE actors each mutate a pool key with an own atomic - CompareAndClear (whose effect on key PRESENCE depends on the committed value) or a plain atomic (which always leaves the key present) - then resolve a non-snapshot selector or range read THROUGH the pool, then commit; a blind peer races sets, clears and clear-ranges over the same pool so its commits can land inside a reader's conflict window.</summary>
+		/// <remarks>
+		/// <para>This is family-4 round two: round one never had an actor both read the merged view AND commit, so the merged-path read-conflict machinery for own atomics (<c>MarkMergedRangeReadConflict(atomicsAreLocal: true)</c>) was never put under a conflict outcome. Here a read-write actor's own CompareAndClear makes the resolved key set depend on the committed value, so a peer write to that key must conflict the read - the discriminator is a plain atomic (Add and friends) at the same position, whose presence is locally determined, so a peer write there must NOT conflict. The commit outcome (committed vs NotCommitted) is what the dual-live differential compares; the emulator differential is blind to it because both engines share the overlay, which is the dual-live oracle's reason to exist.</para>
+		/// <para>Containment: the sentinel runs (<c>!0..!3</c> floor, <c>~0..~3</c> ceiling, committed once and never touched) plus the begin-bound floor clamp keep every selector and range read inside the partition, the same envelope the selector family established. A low-rate branch reads back an own PENDING versionstamp key in the same transaction (unreadable on a real cluster: fdb error 1036 accessed_unreadable), the round-one deferred read-of-own-stamp semantics.</para>
+		/// </remarks>
+		public static Scenario GenerateReadWriteAtomicsFuzz(int seed)
+		{
+			var rnd = new Random(seed);
+			var b = new ScenarioBuilder();
+
+			// phase 1: sentinel runs (containment) plus a sparse committed middle whose values a CompareAndClear can hit or miss
+			b.Begin("A");
+			for (int i = 0; i < 4; i++)
+			{
+				b.Set("A", "!" + i, "s" + i);
+				b.Set("A", "~" + i, "s" + i);
+			}
+			for (int i = 0; i < Keys.Length; i++)
+			{
+				if (rnd.Next(2) == 0)
+				{
+					b.Set("A", Keys[i], "c" + rnd.Next(10));
+				}
+			}
+			b.Commit("A");
+
+			// phase 2: two read-write actors (W1, W2) and a blind peer (P) that races their keys
+			string[] actors = [ "W1", "W2", "P" ];
+			var open = new bool[actors.Length];
+			var canLoseCommit = new bool[actors.Length];
+			var hasWrites = new bool[actors.Length];
+			var hasStamped = new bool[actors.Length];
+
+			int ops = rnd.Next(28, 46);
+			for (int i = 0; i < ops; i++)
+			{
+				int a = rnd.Next(actors.Length);
+				string actor = actors[a];
+				if (!open[a])
+				{
+					b.Begin(actor);
+					open[a] = true;
+					canLoseCommit[a] = false;
+					hasWrites[a] = false;
+					hasStamped[a] = false;
+					continue;
+				}
+
+				if (a == 2)
+				{ // the peer: a blind writer, so its commit never loses a conflict and is a clean write-version source
+					switch (rnd.Next(100))
+					{
+						case < 42:
+						{
+							b.Set("P", PickKey(rnd), "p" + rnd.Next(10));
+							break;
+						}
+						case < 62:
+						{
+							b.Clear("P", PickKey(rnd));
+							break;
+						}
+						case < 78:
+						{
+							var (lo, hi) = PickOrderedPair(rnd);
+							b.ClearRange("P", lo, hi);
+							break;
+						}
+						default:
+						{
+							b.Commit("P");
+							open[a] = false;
+							break;
+						}
+					}
+					continue;
+				}
+
+				// a read-write actor
+				switch (rnd.Next(100))
+				{
+					case < 20:
+					{ // own compare-and-clear: the key's PRESENCE becomes committed-value-dependent (the hazard)
+						var operand = rnd.Next(3) switch
+						{
+							0 => Slice.FromStringAscii("c" + rnd.Next(10)), // plausible hit against a phase-1 value
+							1 => Slice.FromStringAscii("z" + rnd.Next(10)), // implausible miss
+							_ => Slice.Empty,                                // clear-if-empty
+						};
+						b.Atomic(actor, PickKey(rnd), operand, FdbMutationType.CompareAndClear);
+						hasWrites[a] = true;
+						break;
+					}
+					case < 32:
+					{ // own plain atomic: the discriminator - always leaves the key present, so presence is local
+						var (param, mutation) = PickAtomicOp(rnd);
+						b.Atomic(actor, PickKey(rnd), param, mutation);
+						hasWrites[a] = true;
+						break;
+					}
+					case < 40:
+					{
+						b.Set(actor, PickKey(rnd), "v" + rnd.Next(10));
+						hasWrites[a] = true;
+						break;
+					}
+					case < 46:
+					{
+						b.Clear(actor, PickKey(rnd));
+						hasWrites[a] = true;
+						break;
+					}
+					case < 66:
+					{ // selector read resolving through the pool; NON-snapshot so it can lose a conflict
+						bool snapshot = rnd.Next(5) == 0; // draw first: the RNG stream must not depend on the actor's state
+						var (pivot, offset) = PickSelectorProbe(rnd);
+						b.GetKey(actor, new ScenarioSelector(Slice.FromStringAscii(pivot), OrEqual: rnd.Next(2) == 0, Offset: offset), snapshot);
+						if (!snapshot) canLoseCommit[a] = true;
+						break;
+					}
+					case < 84:
+					{ // selector-bounded range read over the pool; the returned set depends on which keys exist
+						bool snapshot = rnd.Next(5) == 0;
+						var (p1, o1) = PickSelectorProbe(rnd);
+						var (p2, o2) = PickSelectorProbe(rnd);
+						bool swap = string.CompareOrdinal(p1, p2) > 0;
+						string lo = swap ? p2 : p1, hi = swap ? p1 : p2;
+						int lofs = Math.Max(swap ? o2 : o1, -3), hofs = swap ? o1 : o2; // the begin-bound floor clamp keeps the walk inside the partition
+						b.GetRange(actor,
+							new ScenarioSelector(Slice.FromStringAscii(lo), OrEqual: rnd.Next(2) == 0, Offset: lofs),
+							new ScenarioSelector(Slice.FromStringAscii(hi), OrEqual: rnd.Next(2) == 0, Offset: hofs),
+							limit: rnd.Next(3) == 0 ? rnd.Next(1, 4) : null,
+							reverse: rnd.Next(3) == 0,
+							snapshot: snapshot);
+						if (!snapshot) canLoseCommit[a] = true;
+						break;
+					}
+					case < 88:
+					{ // read back an own PENDING versionstamp key in the same transaction (unreadable on a real cluster)
+						int uv = rnd.Next(0, 3);
+						var ph = Slice.FromStringAscii("evt-") + VersionStamp.Incomplete(uv).ToSlice();
+						b.SetVersionstampedKey(actor, ph, 4, "e" + rnd.Next(10));
+						hasStamped[a] = true;
+						hasWrites[a] = true;
+						b.Get(actor, ph, snapshot: rnd.Next(4) == 0);
+						break;
+					}
+					case < 96:
+					{ // settle: a stamped writer must observe its stamp; otherwise plain commit
+						if (hasStamped[a])
+						{
+							int vs = b.GetVersionstamp(actor);
+							b.Commit(actor);
+							b.ExpectVersionstamp(vs);
+						}
+						else
+						{
+							b.Commit(actor);
+							if (!canLoseCommit[a] && rnd.Next(2) == 0)
+							{ // a conflict-free commit always succeeds, so the transaction is still there to probe
+								b.GetCommittedVersion(actor);
+							}
+						}
+						open[a] = false;
+						break;
+					}
+					default:
+					{
+						b.Dispose(actor);
+						open[a] = false;
+						break;
+					}
+				}
+			}
+
+			// epilogue: settle every remaining transaction so the final state (and every pending stamp) is fully determined
+			for (int a = 0; a < actors.Length; a++)
+			{
+				if (!open[a]) continue;
+				if (hasStamped[a])
+				{
+					int vs = b.GetVersionstamp(actors[a]);
+					b.Commit(actors[a]);
+					b.ExpectVersionstamp(vs);
+				}
+				else
+				{
+					b.Commit(actors[a]);
+				}
+			}
+
+			return b.Build($"fuzz_rwa_{seed:D4}", $"generated read-write atomics (compare-and-clear under selector reads) fuzz (seed {seed})");
+		}
+
 		/// <summary>Picks an atomic mutation with a per-type operand shape: mixed-width adds (the operand length defines the arithmetic width), 8-byte bit masks and numeric min/max, short byte-string min/max, and append.</summary>
 		private static (Slice Param, FdbMutationType Mutation) PickAtomicOp(Random rnd) => rnd.Next(10) switch
 		{
