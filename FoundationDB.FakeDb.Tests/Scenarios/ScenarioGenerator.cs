@@ -296,7 +296,7 @@ namespace FoundationDB.Client.Tests
 						{
 							b.Begin("W");
 							writerOpen = true;
-							Array.Clear(stagedTouched);
+							Array.Clear(stagedTouched, 0, stagedTouched.Length); // Array.Clear(array) single-arg overload is not on net472 (the lite target)
 							break;
 						}
 						switch (rnd.Next(14))

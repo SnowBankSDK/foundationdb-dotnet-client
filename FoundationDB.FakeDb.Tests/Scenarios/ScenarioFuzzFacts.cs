@@ -177,7 +177,7 @@ namespace FoundationDB.Client.Tests
 				var scenario = generate(seed);
 				await CleanLocation(realDb);
 				var trace = await ScenarioRunner.RunAsync(scenario, realDb, this.Cancellation);
-				await File.WriteAllTextAsync(Path.Combine(outDir, $"{scenario.Name}.json"), trace.ToJsonText(), this.Cancellation);
+				File.WriteAllText(Path.Combine(outDir, $"{scenario.Name}.json"), trace.ToJsonText()); // sync: File.WriteAllTextAsync is not on net472 (the lite target); this is an explicit diagnostic recorder
 			}
 
 			Log($"recorded {count} '{family}' traces to {outDir}");
