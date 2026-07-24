@@ -618,6 +618,204 @@ namespace FoundationDB.Client.Tests
 			return b.Build($"fuzz_sel_{seed:D4}", $"generated selector/boundary stress fuzz (seed {seed})");
 		}
 
+		/// <summary>Generates a deterministic versionstamp/atomics/clear-range fuzz scenario for the given seed: two BLIND writers race stamped keys/values, the full atomic vocabulary and clear-ranges over shared pools while a read-only observer samples the evolving state between commits.</summary>
+		/// <remarks>
+		/// <para>Determinism rules: writers never read and the observer never writes, so every commit deterministically succeeds (the watch-family pattern) and the interleaving is fully scripted. Absolute stamp bytes never match across backends, so comparability rides the symbolic stamp rendering: a commit that wrote stamped data ALWAYS requests its versionstamp and observes it immediately after the commit - the observation registers the stamp's byte pattern under a first-appearance symbol BEFORE any read can return those bytes, which keeps symbol assignment identical on both backends (first appearance = commit order; same-transaction stamps share the symbol and are disambiguated by their literal batch-order and user-version bytes).</para>
+		/// <para>Key pools: stamped keys live under their own prefixes ("evt-" tuple-style suffix stamps with user versions, "log-" mid-key stamps), sorting outside the plain pool on either side, so plain-pool clear-ranges never cover them; dedicated prefix wipes exercise clear-over-stamped explicitly. Atomics use per-type operand shapes (mixed-width adds, bit masks, numeric and byte-string min/max, append, compare-and-clear against plausible and impossible values) on the plain pool, where sets, clears and clear-ranges land on the same keys.</para>
+		/// </remarks>
+		public static Scenario GenerateVersionstampAtomicsFuzz(int seed)
+		{
+			var rnd = new Random(seed);
+			var b = new ScenarioBuilder();
+
+			// phase 1: seed some committed plain state (blind: cannot fail)
+			b.Begin("A");
+			int seeded = rnd.Next(0, 6);
+			for (int i = 0; i < seeded; i++)
+			{
+				b.Set("A", PickKey(rnd), "c" + rnd.Next(10));
+			}
+			b.Commit("A");
+
+			// phase 2: two blind writers and one read-only observer race over the pools
+			string[] actors = [ "A", "B", "R" ];
+			var open = new bool[actors.Length];
+			var hasStamped = new bool[actors.Length];
+
+			int ops = rnd.Next(25, 41);
+			for (int i = 0; i < ops; i++)
+			{
+				int a = rnd.Next(actors.Length);
+				string actor = actors[a];
+				if (!open[a])
+				{
+					b.Begin(actor);
+					open[a] = true;
+					hasStamped[a] = false;
+					continue;
+				}
+				if (a == 2)
+				{ // the observer: reads only, so its commit is a no-op that always succeeds
+					switch (rnd.Next(100))
+					{
+						case < 35:
+						{
+							b.Get("R", rnd.Next(4) == 0 ? "m" + rnd.Next(2) : PickKey(rnd), snapshot: rnd.Next(4) == 0);
+							break;
+						}
+						case < 60:
+						{
+							var (lo, hi) = PickOrderedPair(rnd);
+							b.GetRange("R",
+								new ScenarioSelector(Slice.FromStringAscii(lo), OrEqual: false, Offset: 1),
+								new ScenarioSelector(Slice.FromStringAscii(hi), OrEqual: rnd.Next(2) == 0, Offset: 1),
+								limit: rnd.Next(3) == 0 ? rnd.Next(1, 4) : null,
+								reverse: rnd.Next(3) == 0,
+								snapshot: rnd.Next(4) == 0);
+							break;
+						}
+						case < 90:
+						{ // sweep a stamped prefix: every returned key renders through the stamp symbol table
+							string p = rnd.Next(2) == 0 ? "evt" : "log";
+							b.GetRange("R",
+								new ScenarioSelector(Slice.FromStringAscii(p + "-"), OrEqual: false, Offset: 1),
+								new ScenarioSelector(Slice.FromStringAscii(p + "."), OrEqual: false, Offset: 1),
+								limit: rnd.Next(4) == 0 ? rnd.Next(1, 4) : null,
+								reverse: rnd.Next(3) == 0,
+								snapshot: rnd.Next(4) == 0);
+							break;
+						}
+						default:
+						{
+							b.Commit("R");
+							open[a] = false;
+							break;
+						}
+					}
+					continue;
+				}
+				switch (rnd.Next(100))
+				{
+					case < 12:
+					{
+						b.Set(actor, PickKey(rnd), "v" + rnd.Next(10));
+						break;
+					}
+					case < 19:
+					{
+						b.Clear(actor, PickKey(rnd));
+						break;
+					}
+					case < 26:
+					{
+						var (lo, hi) = PickOrderedPair(rnd);
+						b.ClearRange(actor, lo, hi);
+						break;
+					}
+					case < 32:
+					{ // wipe a stamped prefix: committed stamped keys must vanish on both backends
+						string p = rnd.Next(2) == 0 ? "evt" : "log";
+						b.ClearRange(actor, p + "-", p + ".");
+						break;
+					}
+					case < 50:
+					{
+						var (param, mutation) = PickAtomicOp(rnd);
+						b.Atomic(actor, PickKey(rnd), param, mutation);
+						break;
+					}
+					case < 56:
+					{ // compare-and-clear against a value the key may plausibly hold (hit and miss both matter)
+						var operand = rnd.Next(3) switch
+						{
+							0 => Slice.FromStringAscii("v" + rnd.Next(10)),
+							1 => Slice.FromStringAscii("c" + rnd.Next(10)),
+							_ => Slice.Empty, // clear-if-absent-or-empty
+						};
+						b.Atomic(actor, PickKey(rnd), operand, FdbMutationType.CompareAndClear);
+						break;
+					}
+					case < 66:
+					{ // tuple-style suffix stamp with a user version: the 2-byte suffix orders same-transaction keys
+						b.SetVersionstampedKey(actor, Slice.FromStringAscii("evt-") + VersionStamp.Incomplete(rnd.Next(0, 3)).ToSlice(), 4, "e" + rnd.Next(10));
+						hasStamped[a] = true;
+						break;
+					}
+					case < 72:
+					{ // mid-key stamp: the placeholder sits between prefix and tail
+						b.SetVersionstampedKey(actor, Slice.FromStringAscii("log-") + Slice.Zero(10) + Slice.FromStringAscii("-" + rnd.Next(3)), 4, "l" + rnd.Next(10));
+						hasStamped[a] = true;
+						break;
+					}
+					case < 78:
+					{
+						b.SetVersionstampedValue(actor, "m" + rnd.Next(2), Slice.FromStringAscii("ver=") + Slice.Zero(10), 4);
+						hasStamped[a] = true;
+						break;
+					}
+					case < 94:
+					{
+						bool probe = rnd.Next(2) == 0; // draw first: the RNG stream must not depend on the branch taken
+						if (hasStamped[a])
+						{ // mandatory observation: register the stamp symbol before any read can return the stamped bytes
+							int vs = b.GetVersionstamp(actor);
+							b.Commit(actor);
+							b.ExpectVersionstamp(vs);
+						}
+						else
+						{
+							b.Commit(actor);
+							if (probe)
+							{ // blind commit: always safe to probe
+								b.GetCommittedVersion(actor);
+							}
+						}
+						open[a] = false;
+						break;
+					}
+					default:
+					{
+						b.Dispose(actor);
+						open[a] = false;
+						break;
+					}
+				}
+			}
+
+			// epilogue: settle every remaining transaction so the final state (and every pending stamp) is fully determined
+			for (int a = 0; a < actors.Length; a++)
+			{
+				if (!open[a]) continue;
+				if (hasStamped[a])
+				{
+					int vs = b.GetVersionstamp(actors[a]);
+					b.Commit(actors[a]);
+					b.ExpectVersionstamp(vs);
+				}
+				else
+				{
+					b.Commit(actors[a]);
+				}
+			}
+
+			return b.Build($"fuzz_vsa_{seed:D4}", $"generated versionstamp/atomics/clear-range fuzz (seed {seed})");
+		}
+
+		/// <summary>Picks an atomic mutation with a per-type operand shape: mixed-width adds (the operand length defines the arithmetic width), 8-byte bit masks and numeric min/max, short byte-string min/max, and append.</summary>
+		private static (Slice Param, FdbMutationType Mutation) PickAtomicOp(Random rnd) => rnd.Next(10) switch
+		{
+			0 => (Slice.FromFixed64(rnd.Next(1, 100)), FdbMutationType.Add),
+			1 => (Slice.FromFixed32(rnd.Next(1, 100)), FdbMutationType.Add),
+			2 => (Slice.FromFixed64(rnd.Next(256)), FdbMutationType.BitAnd),
+			3 => (Slice.FromFixed64(rnd.Next(256)), FdbMutationType.BitOr),
+			4 => (Slice.FromFixed64(rnd.Next(256)), FdbMutationType.BitXor),
+			5 => (Slice.FromFixed64(rnd.Next(1000)), FdbMutationType.Max),
+			6 => (Slice.FromFixed64(rnd.Next(1000)), FdbMutationType.Min),
+			7 => (Slice.FromStringAscii("b" + rnd.Next(10)), FdbMutationType.ByteMin),
+			8 => (Slice.FromStringAscii("b" + rnd.Next(10)), FdbMutationType.ByteMax),
+			_ => (Slice.FromStringAscii("+" + rnd.Next(10)), FdbMutationType.AppendIfFits),
+		};
+
 		/// <summary>Picks a selector pivot and its offset together, honoring the containment invariant: pivots between the sentinel runs get the full +-4 envelope, pivots ON a sentinel run get INWARD offsets only (the floor walks up from at least +1, the ceiling walks down from at most 0), so no walk can escape the partition.</summary>
 		private static (string Pivot, int Offset) PickSelectorProbe(Random rnd) => rnd.Next(12) switch
 		{

@@ -1898,6 +1898,13 @@ namespace FoundationDB.Testing
 				var stamp = MakeVersionStamp(commitVersion, 0);
 				Kenobi($"$ #{this.Id} apply trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}");
 
+				// a versionstamped KEY whose placeholder sat inside a clear-range submitted EARLIER in this same
+				// transaction: the clear was split around the placeholder position, but completing the stamp moves
+				// the key to its final slot, which can land in a remainder of that very clear. Since the clear was
+				// submitted first, the later stamped write must survive it - so defer these completions until after
+				// every clear-range has been applied, out of reach of the remainders. (versionstamp fuzz FDBV-034)
+				List<(Key Key, Value Value)>? deferredStampedKeys = null;
+
 				foreach (var entry in this.Mutations.IterateOrdered())
 				{
 					var mutation = entry.Value!;
@@ -1951,71 +1958,105 @@ namespace FoundationDB.Testing
 
 						Kenobi($"$$ #{this.Id} atomic {mutation}");
 
-						switch (mutation.Op)
+						// apply the WHOLE chain in submission order (api 520+ stamp semantics): a stamped KEY
+						// materializes immediately against the commit stamp (identical placeholders complete to the
+						// same key, so the last submitted wins, like any other mutation), a stamped VALUE completes
+						// into the running value, and everything else coalesces on top. The overlay key of a stamped
+						// KEY (placeholder + offset suffix) is synthetic and never lands in the committed data; the
+						// only non-stamped links such a chain can carry are Clear anchors from a covering range wipe.
+						var value = kv.Value;
+						bool stampedKey = false;
+						// the head op tells us whether this chain was anchored by a clear submitted earlier (a covered
+						// wipe): only those completions need deferring past the clear-range remainders (see the preamble)
+						bool clearHeaded = mutation.Op is Operation.Clear or Operation.ClearRange;
+						Key stampedKeyDst = default;
+						Value stampedKeyVal = default;
+						do
 						{
-							case Operation.VersionStampedKey:
+							switch (mutation.Op)
 							{
-								//REVIEW: only for API version >= 520
+								case Operation.VersionStampedKey:
+								{
+									// offset in last 32 bits of the overlay key
+									int len = kv.Key.Count - 4;
+									if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedKey");
+									int offset = kv.Key.Slice.Substring(len).ToInt32();
 
-								// offset in last 32 bits
-								int len = kv.Key.Count - 4;
-								if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedKey");
-								int offset = kv.Key.Slice.Substring(len).ToInt32();
+									var tmp = arena.AllocateKey(len);
+									kv.Key.Span[..^4].CopyTo(tmp.UnsafeSpan);
+									stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
 
-								var tmp = arena.AllocateKey(len);
-								kv.Key.Span[..^4].CopyTo(tmp.UnsafeSpan);
-								stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
+									// last identical placeholder wins; the actual store happens after the walk (below)
+									stampedKeyDst = tmp;
+									stampedKeyVal = arena.InternValue(mutation.Parameter);
+									stampedKey = true;
+									break;
+								}
 
-								newData[tmp] = arena.InternValue(mutation.Parameter);
-								break;
-							}
-				
-							case Operation.VersionStampedValue:
-							{
-								//REVIEW: only for API version >= 520
+								case Operation.VersionStampedValue:
+								{
+									// offset in last 32 bits of the parameter
+									int len = mutation.Parameter.Count - 4;
+									if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedValue");
+									int offset = mutation.Parameter.Slice.Substring(len).ToInt32();
 
-								// offset in last 32 bits
-								int len = mutation.Parameter.Count - 4;
-								if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedValue");
-								int offset = mutation.Parameter.Slice.Substring(len).ToInt32();
+									var tmp = arena.AllocateValue(len);
+									mutation.Parameter.Span[..^4].CopyTo(tmp.UnsafeSpan);
+									stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
 
-								var tmp = arena.AllocateValue(len);
-								mutation.Parameter.Span[..^4].CopyTo(tmp.UnsafeSpan);
-								stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
+									value = tmp;
+									break;
+								}
 
-								// HACKHACK:
-								newData[kv.Key] = tmp;
-								break;
-							}
-
-							default:
-							{
-								var value = kv.Value;
-								do
+								default:
 								{
 									value = CoalesceAtomic(arena, value, mutation);
-									mutation = mutation.Next;
+									break;
 								}
-								while (mutation != null);
-
-								if (value.IsNull)
-								{
-									newData.Remove(kv.Key);
-								}
-								else
-								{
-									// the coalesced value can be a passthrough of a chain anchor's Parameter (backed by
-									// the transaction's recyclable arena): intern it before it becomes committed state
-									newData[kv.Key] = arena.InternValue(value);
-								}
-
-								break;
 							}
+							mutation = mutation.Next;
+						}
+						while (mutation != null);
+
+						if (stampedKey)
+						{
+							// the synthetic overlay key never lands; only the completed key does. If this chain was
+							// anchored by an earlier clear (a covered wipe), that clear was split around the placeholder
+							// and its remainders are still to be applied below - defer the completed key past them so a
+							// remainder cannot re-wipe the relocated slot (FDBV-034). Uncovered stamped keys land now.
+							if (clearHeaded)
+							{
+								(deferredStampedKeys ??= new()).Add((stampedKeyDst, stampedKeyVal));
+							}
+							else
+							{
+								newData[stampedKeyDst] = stampedKeyVal;
+							}
+						}
+						else if (value.IsNull)
+						{
+							newData.Remove(kv.Key);
+						}
+						else
+						{
+							// the coalesced value can be a passthrough of a chain anchor's Parameter (backed by
+							// the transaction's recyclable arena): intern it before it becomes committed state
+							newData[kv.Key] = arena.InternValue(value);
 						}
 					}
 					else
 					{
 						throw new NotSupportedException();
+					}
+				}
+
+				// completed stamped keys that were covered by an earlier clear land now, after every clear-range
+				// remainder has been applied - so a remainder split off the covering wipe cannot re-wipe them (FDBV-034)
+				if (deferredStampedKeys != null)
+				{
+					foreach (var (k, v) in deferredStampedKeys)
+					{
+						newData[k] = v;
 					}
 				}
 

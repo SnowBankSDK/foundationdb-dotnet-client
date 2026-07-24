@@ -5500,6 +5500,101 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
+		[TestCase("suffix")]    // 0xFF placeholder with user-version bytes after the stamp region (the evt- fuzz shape)
+		[TestCase("midkey")]    // zero placeholder with an ascii tail after it (the log- fuzz shape)
+		[TestCase("midkey-ff")] // 0xFF placeholder with the same ascii tail (separates the byte values from the layout)
+		[TestCase("end-zero")]  // zero placeholder at the very end of the key
+		public async Task Test_Stamped_Key_Into_Own_Cleared_Range_Applies_In_Order(string flavor)
+		{
+			// a transaction that wipes a range and THEN writes a versionstamped key into the wiped span must
+			// commit cleanly and land the completed key: mutations apply in submission order, so the earlier
+			// wipe never swallows (or fails) the later stamped write - for EVERY placeholder layout, including
+			// zero placeholder bytes that sort the pending entry adjacent to the wipe's begin bound
+			// (versionstamp fuzz family, seeds 16/40 for the suffix shape, seed 62 for the mid-key shape)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			Slice placeholderTail = flavor switch
+			{
+				"suffix" => VersionStamp.Incomplete(0).ToSlice(),
+				"midkey" => Slice.Zero(10) + Text("-2"),
+				"midkey-ff" => Slice.Repeat(0xFF, 10) + Text("-2"),
+				_ => Slice.Zero(10),
+			};
+
+			Slice prefix;
+			VersionStamp stamp;
+			using (var tr = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr);
+				prefix = subspace.GetPrefix().Copy(); // detach: the resolved prefix must not outlive the transaction's memory
+
+				tr.ClearRange(prefix + Text("evt-"), prefix + Text("evt."));
+				tr.SetVersionStampedKey(prefix + Text("evt-") + placeholderTail, prefix.Count + 4, Text("after"));
+
+				var stampTask = tr.GetVersionStampAsync();
+				await tr.CommitAsync();
+				stamp = await stampTask;
+			}
+
+			Slice completedTail = flavor switch
+			{
+				"suffix" => VersionStamp.Complete(stamp.TransactionVersion, stamp.TransactionOrder, 0).ToSlice(),
+				"midkey" or "midkey-ff" => stamp.ToSlice() + Text("-2"),
+				_ => stamp.ToSlice(),
+			};
+
+			await db.ReadAsync(async (tr) =>
+			{
+				var completed = prefix + Text("evt-") + completedTail;
+				var value = await tr.GetAsync(completed);
+				Assert.That(value, Is.EqualTo(Text("after")), $"the stamped key ({flavor}) written after the own wipe must land with its value");
+
+				var chunk = await tr.GetRangeAsync(
+					KeySelector.FirstGreaterOrEqual(prefix + Text("evt-")),
+					KeySelector.FirstGreaterOrEqual(prefix + Text("evt.")),
+					new FdbRangeOptions());
+				Assert.That(chunk.Count, Is.EqualTo(1), $"the wiped span must hold exactly the one stamped key ({flavor})");
+				return true;
+			}, this.Cancellation);
+		}
+
+		[Test]
+		public async Task Test_Duplicate_Stamped_Keys_Last_Write_Wins()
+		{
+			// two versionstamped-key writes with IDENTICAL placeholder bytes (same user version) complete to
+			// the SAME key: the last submitted mutation wins, like any other same-key write ordering
+			// (versionstamp fuzz family, seed 11: real keeps the later value)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			Slice prefix;
+			VersionStamp stamp;
+			using (var tr = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr);
+				prefix = subspace.GetPrefix().Copy(); // detach: the resolved prefix must not outlive the transaction's memory
+
+				var placeholder = prefix + Text("evt-") + VersionStamp.Incomplete(0).ToSlice();
+				tr.SetVersionStampedKey(placeholder, prefix.Count + 4, Text("first"));
+				tr.SetVersionStampedKey(placeholder, prefix.Count + 4, Text("second"));
+
+				var stampTask = tr.GetVersionStampAsync();
+				await tr.CommitAsync();
+				stamp = await stampTask;
+			}
+
+			await db.ReadAsync(async (tr) =>
+			{
+				var completed = prefix + Text("evt-") + VersionStamp.Complete(stamp.TransactionVersion, stamp.TransactionOrder, 0).ToSlice();
+				var value = await tr.GetAsync(completed);
+				Assert.That(value, Is.EqualTo(Text("second")), "identical placeholders complete to one key and the LAST submitted write wins");
+				return true;
+			}, this.Cancellation);
+		}
+
 		// Inlined from FoundationDB.Tests/TestHelpers.cs (not available outside that assembly) - see task-3-report.md.
 		private static async Task AssertThrowsFdbErrorAsync(Func<Task> asyncTest, FdbError expectedCode, string message)
 		{

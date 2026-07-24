@@ -1,0 +1,193 @@
+{
+	"name": "fuzz_vsa_0062",
+	"description": "generated versionstamp/atomics/clear-range fuzz (seed 62)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "R"
+		},
+		{
+			"op": "SetVersionstampedValue",
+			"actor": "A",
+			"key": "m1",
+			"value": "ver=\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"stampOffset": 4
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Clear",
+			"actor": "B",
+			"key": "k7"
+		},
+		{
+			"op": "Get",
+			"actor": "R",
+			"key": "k3"
+		},
+		{
+			"op": "GetRange",
+			"actor": "R",
+			"sel": {
+				"key": "k2",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k2z",
+				"orEqual": true,
+				"offset": 1
+			},
+			"limit": 2
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k0",
+			"endKey": "k5"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k6",
+			"value": "v2"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "evt-",
+			"endKey": "evt."
+		},
+		{
+			"op": "SetVersionstampedKey",
+			"actor": "B",
+			"key": "evt-\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\x02",
+			"value": "e1",
+			"stampOffset": 4
+		},
+		{
+			"op": "Dispose",
+			"actor": "A"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "log-",
+			"endKey": "log."
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k3",
+			"value": "4\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "BitXor"
+		},
+		{
+			"op": "SetVersionstampedKey",
+			"actor": "B",
+			"key": "log-\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00-2",
+			"value": "l1",
+			"stampOffset": 4
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k4",
+			"value": "v4"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "GetRange",
+			"actor": "R",
+			"sel": {
+				"key": "k4",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k6",
+				"orEqual": false,
+				"offset": 1
+			},
+			"limit": 1
+		},
+		{
+			"op": "GetVersionstamp",
+			"actor": "B",
+			"handle": 0
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "ExpectVersionstamp",
+			"handle": 0
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k0",
+			"value": "\\x16\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k3",
+			"value": "v9"
+		},
+		{
+			"op": "GetRange",
+			"actor": "R",
+			"sel": {
+				"key": "evt-",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "evt.",
+				"orEqual": false,
+				"offset": 1
+			},
+			"snapshot": true
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "GetCommittedVersion",
+			"actor": "A"
+		},
+		{
+			"op": "Commit",
+			"actor": "R"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		}
+	]
+}

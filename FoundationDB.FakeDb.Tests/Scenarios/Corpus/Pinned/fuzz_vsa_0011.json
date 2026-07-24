@@ -1,0 +1,239 @@
+{
+	"name": "fuzz_vsa_0011",
+	"description": "generated versionstamp/atomics/clear-range fuzz (seed 11)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k0",
+			"value": "c4"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k7",
+			"value": "c1"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "R"
+		},
+		{
+			"op": "Get",
+			"actor": "R",
+			"key": "k3",
+			"snapshot": true
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "SetVersionstampedKey",
+			"actor": "A",
+			"key": "log-\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00-2",
+			"value": "l4",
+			"stampOffset": 4
+		},
+		{
+			"op": "Commit",
+			"actor": "R"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k7",
+			"value": "",
+			"mutation": "CompareAndClear"
+		},
+		{
+			"op": "Begin",
+			"actor": "R"
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k7",
+			"value": "I\\x02\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Max"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k3",
+			"value": "b2",
+			"mutation": "ByteMin"
+		},
+		{
+			"op": "Clear",
+			"actor": "A",
+			"key": "k7"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "A",
+			"key": "k6",
+			"endKey": "k7"
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k3",
+			"value": "",
+			"mutation": "CompareAndClear"
+		},
+		{
+			"op": "SetVersionstampedKey",
+			"actor": "A",
+			"key": "evt-\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\x00",
+			"value": "e6",
+			"stampOffset": 4
+		},
+		{
+			"op": "GetRange",
+			"actor": "R",
+			"sel": {
+				"key": "log-",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "log.",
+				"orEqual": false,
+				"offset": 1
+			}
+		},
+		{
+			"op": "SetVersionstampedKey",
+			"actor": "A",
+			"key": "evt-\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\x00\\x00",
+			"value": "e5",
+			"stampOffset": 4
+		},
+		{
+			"op": "Get",
+			"actor": "R",
+			"key": "k3",
+			"snapshot": true
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k3",
+			"value": "+7",
+			"mutation": "AppendIfFits"
+		},
+		{
+			"op": "GetRange",
+			"actor": "R",
+			"sel": {
+				"key": "log-",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "log.",
+				"orEqual": false,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k4",
+			"value": "\\x1e\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Get",
+			"actor": "R",
+			"key": "k2"
+		},
+		{
+			"op": "Commit",
+			"actor": "R"
+		},
+		{
+			"op": "Begin",
+			"actor": "R"
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k4",
+			"value": "v7"
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k0",
+			"value": "\\x8c\\x01\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Min"
+		},
+		{
+			"op": "SetVersionstampedKey",
+			"actor": "B",
+			"key": "log-\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00-0",
+			"value": "l1",
+			"stampOffset": 4
+		},
+		{
+			"op": "GetRange",
+			"actor": "R",
+			"sel": {
+				"key": "log-",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "log.",
+				"orEqual": false,
+				"offset": 1
+			},
+			"limit": 1,
+			"snapshot": true
+		},
+		{
+			"op": "GetVersionstamp",
+			"actor": "A",
+			"handle": 0
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "ExpectVersionstamp",
+			"handle": 0
+		},
+		{
+			"op": "GetVersionstamp",
+			"actor": "B",
+			"handle": 1
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "ExpectVersionstamp",
+			"handle": 1
+		},
+		{
+			"op": "Commit",
+			"actor": "R"
+		}
+	]
+}
