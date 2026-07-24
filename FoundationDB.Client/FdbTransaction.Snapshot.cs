@@ -355,7 +355,7 @@ namespace FoundationDB.Client
 				if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "ValueCheckAsync", $"Checking the value for '{key.ToString()}'");
 #endif
 
-				return m_parent.PerformValueCheckOperation(key, expected, snapshot: true);
+				return m_parent.PerformValueCheckOperation(key, expected, snapshot: true).AsTask();
 			}
 
 			void IFdbReadOnlyTransaction.Cancel()

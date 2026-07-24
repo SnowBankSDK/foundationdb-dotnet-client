@@ -3444,10 +3444,10 @@ namespace FoundationDB.Testing
 				return new FdbRangeChunk(items.ToArray(), hasMore: false, iteration, options, first, last, checked((int) sum), SliceOwner.Nil);
 			}
 
-			public Task<(FdbValueCheckResult Result, Slice Actual)> CheckValueAsync(ReadOnlySpan<byte> key, Slice expected, bool snapshot, CancellationToken ct)
+			public ValueTask<(FdbValueCheckResult Result, Slice Actual)> CheckValueAsync(ReadOnlySpan<byte> key, Slice expected, bool snapshot, CancellationToken ct)
 			{
 				var k = this.Scratch.InternKeyRange(key);
-				return Deferred(this, GetSnapshot(ct), k, expected, snapshot, ct);
+				return new(Deferred(this, GetSnapshot(ct), k, expected, snapshot, ct));
 
 				static async Task<(FdbValueCheckResult Result, Slice Actual)> Deferred(TransactionHandler<TCursor> self, Task<ReadYourWritesSnapshot> st, KeyRange key, Slice expected, bool isSnapshotRead, CancellationToken ct)
 				{

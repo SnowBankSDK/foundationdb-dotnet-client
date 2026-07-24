@@ -751,13 +751,13 @@ namespace FoundationDB.Client.Native
 			);
 		}
 
-		public Task<(FdbValueCheckResult Result, Slice Actual)> CheckValueAsync(ReadOnlySpan<byte> key, Slice expected, bool snapshot, CancellationToken ct)
+		public ValueTask<(FdbValueCheckResult Result, Slice Actual)> CheckValueAsync(ReadOnlySpan<byte> key, Slice expected, bool snapshot, CancellationToken ct)
 		{
-			if (ct.IsCancellationRequested) return Task.FromCanceled<(FdbValueCheckResult Result, Slice Actual)>(ct);
+			if (ct.IsCancellationRequested) return new(Task.FromCanceled<(FdbValueCheckResult Result, Slice Actual)>(ct));
 
 			var future = FdbNative.TransactionGet(m_handle, key, snapshot);
 
-			return FdbFuture.CreateTaskFromHandle(
+			return FdbFuture.CreateValueTaskFromHandle(
 				future,
 				(Transaction: this, Expected: expected),
 				static (h, s) =>

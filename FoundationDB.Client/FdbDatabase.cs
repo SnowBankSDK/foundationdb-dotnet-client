@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -60,6 +60,24 @@ namespace FoundationDB.Client
 		/// <remarks>Transactions created via a <see cref="FdbTenant">Tenant</see> are stored in this tenant, no here</remarks>
 		private readonly ConcurrentDictionary<int, FdbTransaction> m_transactions = new ConcurrentDictionary<int, FdbTransaction>();
 
+		/// <summary>List of the watches created by this database that have not yet been disposed</summary>
+		/// <remarks>Watches deliberately outlive their transaction, and the native cascade of <c>fdb_database_destroy</c>
+		/// does NOT cancel them: without this registry, disposing the database (or <see cref="Fdb.Stop"/>) would leave
+		/// their futures armed forever on a dead network thread.</remarks>
+		private readonly ConcurrentDictionary<FdbWatch, byte> m_watches = new();
+
+		internal void RegisterWatch(FdbWatch watch)
+		{
+			m_watches.TryAdd(watch, 0);
+			if (m_disposed)
+			{ // lost the race against Dispose: make sure the watch does not survive it
+				watch.Cancel();
+				m_watches.TryRemove(watch, out _);
+			}
+		}
+
+		internal void UnregisterWatch(FdbWatch watch) => m_watches.TryRemove(watch, out _);
+
 		/// <summary>List of all opened tenants created from this database instance (and that have not yet been disposed)</summary>
 		private readonly ConcurrentDictionary<FdbTenantName, FdbTenant> m_tenants = new ConcurrentDictionary<FdbTenantName, FdbTenant>(FdbTenantName.Comparer.Default);
 
@@ -116,7 +134,10 @@ namespace FoundationDB.Client
 			Contract.NotNull(directory);
 			Contract.NotNull(root);
 
-			return new FdbDatabase(handler, directory, root, readOnly, globalToken);
+			var db = new FdbDatabase(handler, directory, root, readOnly, globalToken);
+			// the registry lets Fdb.Stop() find and drain every live database before stopping the network thread
+			Fdb.RegisterDatabase(db);
+			return db;
 		}
 
 		#endregion
@@ -732,6 +753,7 @@ namespace FoundationDB.Client
 			if (!m_disposed)
 			{
 				m_disposed = true;
+				Fdb.UnregisterDatabase(this);
 				if (disposing)
 				{
 					try
@@ -747,6 +769,13 @@ namespace FoundationDB.Client
 							}
 						}
 						m_transactions.Clear();
+
+						// cancel outstanding watches (they outlive transactions, and the native cascade does not cover them)
+						foreach (var watch in m_watches.Keys)
+						{
+							try { watch.Cancel(); } catch { /* a completed or already-disposed watch has nothing to cancel */ }
+						}
+						m_watches.Clear();
 
 						// dispose all tenants (and recursively their own transactions)
 						foreach (var tenant in m_tenants.Values)

@@ -32,13 +32,17 @@ namespace FoundationDB.Client.Native
 	/// <typeparam name="TState">Type of the state passed to the callback</typeparam>
 	/// <typeparam name="TResult">Type of the final result returned once all sub-tasks have completed</typeparam>
 	public sealed class FdbFutureArray<TState, TResult> : FdbFuture<TResult>
+#if NET8_0_OR_GREATER
+		, IFdbFuture
+#endif
 	{
 		// Wraps several FDBFuture* handles and return all the results at once
 
 		#region Private Members...
 
 		/// <summary>Value of the 'FDBFuture*'</summary>
-		private readonly FutureHandle?[]? m_handles;
+		/// <remarks>Mutable because pooled instances are re-initialized with a new batch of handles on each lifecycle</remarks>
+		private FutureHandle?[]? m_handles;
 
 		/// <summary>Counter of callbacks that still need to fire.</summary>
 		private int m_pending;
@@ -55,9 +59,34 @@ namespace FoundationDB.Client.Native
 
 		#region Constructors...
 
+		private FdbFutureArray() { }
+
 		internal FdbFutureArray(FutureHandle?[] handles, TState state, Action<FutureHandle, int, TState> completionHandler, Func<TState, TResult> resultSelector, CancellationToken ct)
 		{
+			Initialize(handles, state, completionHandler, resultSelector, ct);
+		}
+
+		/// <summary>Wraps the handles and returns the combined <see cref="Task{TResult}"/>, keeping the wrapper itself poolable</summary>
+		/// <remarks>Same hatch discipline as <see cref="FdbFutureSingle{TState,TResult}.CreateTask"/>: the Task is
+		/// materialized BEFORE any callback is armed, and the caller never sees the wrapper object.</remarks>
+		internal static Task<TResult> CreateTask(FutureHandle?[] handles, TState state, Action<FutureHandle, int, TState> completionHandler, Func<TState, TResult> resultSelector, CancellationToken ct)
+		{
+#if NET8_0_OR_GREATER
+			var future = FdbFuturePool<FdbFutureArray<TState, TResult>>.TryRent() ?? new FdbFutureArray<TState, TResult>();
+			var task = future.MaterializeTask();
+			future.Initialize(handles, state, completionHandler, resultSelector, ct);
+			return task;
+#else
+			return new FdbFutureArray<TState, TResult>(handles!, state, completionHandler, resultSelector, ct).Task;
+#endif
+		}
+
+		private void Initialize(FutureHandle?[] handles, TState state, Action<FutureHandle, int, TState> completionHandler, Func<TState, TResult> resultSelector, CancellationToken ct)
+		{
 			Contract.Debug.Requires(handles != null);
+			Contract.Debug.Requires(m_key == IntPtr.Zero, "rented instance still has an armed cookie");
+			Contract.Debug.Requires(Volatile.Read(ref m_pending) == 0, "rented instance still has armed handles");
+			Contract.Debug.Requires(!this.IsSettled, "rented instance is already settled");
 
 			m_handles = handles;
 
@@ -91,7 +120,11 @@ namespace FoundationDB.Client.Native
 					Interlocked.Increment(ref m_pending);
 
 					// register the callback handler
+#if NET8_0_OR_GREATER
+					var err = FdbNative.FutureSetCallback(handle, FdbFuture.CallbackEntryPoint, prm);
+#else
 					var err = FdbNative.FutureSetCallback(handle, CallbackHandler, prm);
+#endif
 					if (err != FdbError.Success)
 					{ // uhoh
 #if DEBUG_FUTURES
@@ -107,6 +140,12 @@ namespace FoundationDB.Client.Native
 				if (Volatile.Read(ref m_pending) == 0)
 				{ // all callbacks have already fired (or all handles were already completed)
 					UnregisterCallback(this);
+#if NET8_0_OR_GREATER
+					// inline completion: HandleCompletion below can release BOTH reuse gates synchronously, and this
+					// method still writes to the instance afterwards, so this (rare) lifecycle retires to the GC
+					// instead of getting recycled under our feet
+					SetFlag(FdbFuture.Flags.UNPOOLED);
+#endif
 					HandleCompletion();
 					m_completionHandler = null;
 					m_resultSelector = null;
@@ -125,16 +164,26 @@ namespace FoundationDB.Client.Native
 
 				UnregisterCancellationRegistration();
 
-				UnregisterCallback(this);
-
-				abortAllHandles = true;
-
 				Volatile.Write(ref m_completionHandler, null);
 				Volatile.Write(ref m_resultSelector, null);
 				m_state = default;
 
 				// this is technically not needed, but just to be safe...
 				TrySetCanceled();
+
+#if NET8_0_OR_GREATER
+				if (Volatile.Read(ref m_pending) > 0)
+				{ // some handles are already armed with the cookie: cancel them so that their fires drain;
+				  // the LAST fire releases the cookie and destroys the handles (freeing here would race the
+				  // network thread resolving the cookie)
+					CancelHandles(handles);
+					throw;
+				}
+#endif
+
+				UnregisterCallback(this);
+
+				abortAllHandles = true;
 
 				throw;
 			}
@@ -149,6 +198,25 @@ namespace FoundationDB.Client.Native
 		}
 
 		#endregion
+
+#if NET8_0_OR_GREATER
+
+		/// <summary>Scrubs and rearms this instance, then offers it back to the pool (see <see cref="FdbFutureSingle{TState,TResult}.OnReadyForReuse"/>)</summary>
+		protected override void OnReadyForReuse()
+		{
+			if (HasFlag(FdbFuture.Flags.UNPOOLED))
+			{ // the object identity escaped (or the lifecycle completed inline): retire to the GC
+				return;
+			}
+			m_handles = null;
+			m_completionHandler = null;
+			m_resultSelector = null;
+			m_state = default;
+			ResetForReuse();
+			FdbFuturePool<FdbFutureArray<TState, TResult>>.TryReturn(this);
+		}
+
+#endif
 
 		protected override void CloseHandles()
 		{
@@ -203,6 +271,35 @@ namespace FoundationDB.Client.Native
 			}
 		}
 
+#if NET8_0_OR_GREATER
+
+		/// <summary>Invoked (via the shared native callback) each time one of the watched futures becomes ready</summary>
+		void IFdbFuture.OnFutureFired()
+		{
+			if (Interlocked.Decrement(ref m_pending) == 0)
+			{ // the last armed handle has fired
+
+				if (HasFlag(FdbFuture.Flags.READY))
+				{ // we can proceed to read all the results
+					// FIRED must be visible before the cookie is released (see FdbFutureSingle.OnFutureFired)
+					TrySetFlag(FdbFuture.Flags.FIRED);
+
+					UnregisterCallback(this);
+
+					ThreadPool.UnsafeQueueUserWorkItem(static (f) => f.HandleCompletion(), this, true);
+				}
+				else if (HasFlag(FdbFuture.Flags.DISPOSED))
+				{ // the ctor failed after arming this subset: the last fire releases the cookie and the handles
+					UnregisterCallback(this);
+
+					TryCleanup();
+				}
+				// else: the ctor is still arming the other handles, and will observe m_pending == 0 itself
+			}
+		}
+
+#else
+
 		/// <summary>Cached delegate of the future completion callback handler</summary>
 		// ReSharper disable once StaticMemberInGenericType
 		private static readonly FdbNative.FdbFutureCallback CallbackHandler = FutureCompletionCallback;
@@ -225,16 +322,14 @@ namespace FoundationDB.Client.Native
 				{
 					UnregisterCallback(future);
 
-#if NETCOREAPP3_0_OR_GREATER
-					ThreadPool.UnsafeQueueUserWorkItem(static (f) => f.HandleCompletion(), future, true);
-#else
 					// the generic overload with 'preferLocal' is not available, using the legacy WaitCallback overload instead (which cannot favor the local thread's queue)
 					ThreadPool.UnsafeQueueUserWorkItem(static (f) => ((FdbFutureArray<TState, TResult>) f!).HandleCompletion(), future);
-#endif
 				}
 				// else, the ctor will handle that
 			}
 		}
+
+#endif
 
 		/// <summary>Update the Task with the state of a ready Future</summary>
 		/// <returns>True if we got a result, or false in case of error (or invalid state)</returns>
@@ -242,6 +337,9 @@ namespace FoundationDB.Client.Native
 		{
 			if (HasAnyFlags(FdbFuture.Flags.DISPOSED | FdbFuture.Flags.COMPLETED))
 			{
+				// a disposed-in-flight future hands its cleanup to this (queued) completion; TryCleanup is a no-op
+				// when the cleanup already ran
+				TryCleanup();
 				return;
 			}
 

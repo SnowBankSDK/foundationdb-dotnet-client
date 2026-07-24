@@ -721,6 +721,14 @@ namespace FoundationDB.Client
 		/// <inheritdoc />
 		public Task<(FdbValueCheckResult Result, Slice Actual)> CheckValueAsync(ReadOnlySpan<byte> key, Slice expected)
 		{
+			return CheckValueCoreAsync(key, expected, snapshot: false).AsTask();
+		}
+
+		/// <summary>Internal single-consumption variant of <see cref="CheckValueAsync"/></summary>
+		/// <remarks>Used by the deferred value-checks of the operation context, which spawn one check per cached value
+		/// and await each exactly once just before commit: no Task is allocated for these on modern targets.</remarks>
+		internal ValueTask<(FdbValueCheckResult Result, Slice Actual)> CheckValueCoreAsync(ReadOnlySpan<byte> key, Slice expected, bool snapshot)
+		{
 			FdbKey.EnsureKeyIsValid(key);
 			EnsureCanRead();
 
@@ -728,23 +736,23 @@ namespace FoundationDB.Client
 			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "ValueCheckAsync", $"Checking the value for '{key.ToString()}'");
 #endif
 
-			return PerformValueCheckOperation(key, expected, snapshot: false);
+			return PerformValueCheckOperation(key, expected, snapshot);
 		}
 
-		private Task<(FdbValueCheckResult Result, Slice Actual)> PerformValueCheckOperation(ReadOnlySpan<byte> key, Slice expected, bool snapshot)
+		private ValueTask<(FdbValueCheckResult Result, Slice Actual)> PerformValueCheckOperation(ReadOnlySpan<byte> key, Slice expected, bool snapshot)
 		{
 			FdbClientInstrumentation.ReportGet(this); //REVIEW: use a specific operation type for this?
 
 			return m_log is null
 				? m_handler.CheckValueAsync(key, expected, snapshot: snapshot, m_cancellation)
-				: ExecuteLogged(this, key, expected, snapshot);
+				: new(ExecuteLogged(this, key, expected, snapshot));
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
 			static Task<(FdbValueCheckResult Result, Slice Actual)> ExecuteLogged(FdbTransaction self, ReadOnlySpan<byte> key, Slice expected, bool snapshot)
 				=> self.m_log!.ExecuteAsync(
 					self,
 					new FdbTransactionLog.CheckValueCommand(self.m_log.Grab(key), self.m_log.Grab(expected), snapshot),
-					(tr, cmd) => tr.m_handler.CheckValueAsync(cmd.Key.Span, cmd.Expected, cmd.Snapshot, tr.m_cancellation)
+					(tr, cmd) => tr.m_handler.CheckValueAsync(cmd.Key.Span, cmd.Expected, cmd.Snapshot, tr.m_cancellation).AsTask()
 				);
 		}
 
@@ -1865,7 +1873,14 @@ namespace FoundationDB.Client
 			// Since Task<T> does not expose any cancellation mechanism by itself (and we don't want to force the caller to create a CancellationTokenSource every time),
 			// we will return the FdbWatch that wraps the FdbFuture<Slice> directly, since it knows how to cancel itself.
 
-			return PerformWatchOperation(keyCopy, ct);
+			var watch = PerformWatchOperation(keyCopy, ct);
+
+			// the watch outlives this transaction: the database must know it, so that db.Dispose()/Fdb.Stop() can drain it
+			var db = this.Database;
+			watch.OnDisposed = db.UnregisterWatch;
+			db.RegisterWatch(watch);
+
+			return watch;
 		}
 
 		private FdbWatch PerformWatchOperation(Slice key, CancellationToken ct)

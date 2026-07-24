@@ -26,21 +26,19 @@
 
 namespace SnowBank.Benchmarks
 {
-	using BenchmarkDotNet.Running;
+	using BenchmarkDotNet.Configs;
+	using BenchmarkDotNet.Jobs;
+	using BenchmarkDotNet.Toolchains.InProcess.Emit;
 
-	public static class Program
+	/// <summary>Shared config for the FDBFuture machinery benchmarks: the in-process toolchain is required because the
+	/// benchmarks touch internals via InternalsVisibleTo and (for the callback benches) function pointers into this
+	/// assembly, which the generated out-of-process partition projects cannot rebuild.</summary>
+	public sealed class FdbBenchConfig : ManualConfig
 	{
-		// Run all: `dotnet run -c Release -- --filter *`
-		// Run one: `dotnet run -c Release -- --filter *VarInt*`
-		// Real-cluster future storm: `dotnet run -c Release -- storm [grv|get|all] [--workers N] [--batch N] [--duration S]`
-		public static void Main(string[] args)
+		public FdbBenchConfig()
 		{
-			if (args.Length > 0 && string.Equals(args[0], "storm", StringComparison.OrdinalIgnoreCase))
-			{
-				Environment.ExitCode = FutureStormHarness.Run(args[1..]);
-				return;
-			}
-			BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+			AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance));
 		}
 	}
+
 }

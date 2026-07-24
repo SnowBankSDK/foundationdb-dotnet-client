@@ -10,10 +10,14 @@
 		<!-- [SkipLocalsInit] and low-level ref/pointer benchmarks require unsafe -->
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<IsPackable>false</IsPackable>
-		<!-- not a unit-test project: no MTP runner, no test SDK -->
+		<!-- not a unit-test project: no MTP runner, no test SDK (the FoundationDB.Testing reference would otherwise generate an MTP entry point) -->
 		<IsTestProject>false</IsTestProject>
+		<GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
 		<ServerGarbageCollection>true</ServerGarbageCollection>
 		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+		<!-- signed with the shared key so FoundationDB.Client can grant InternalsVisibleTo (future/callback machinery benchmarks) -->
+		<SignAssembly>true</SignAssembly>
+		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
@@ -25,6 +29,13 @@
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
 		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />
+		<!-- the "storm" saturation harness reuses the test-container provisioning (same container as FoundationDB.Tests) -->
+		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />
 	</ItemGroup>
+
+	<!-- copies the native fdb_c libraries into the output folder (source-reference equivalent of the NuGet package targets) -->
+	<Import Project="..\FoundationDB.Client.Native\build\FoundationDB.Client.Native.targets" />
 
 </Project>

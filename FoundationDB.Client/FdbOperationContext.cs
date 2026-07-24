@@ -557,7 +557,7 @@ namespace FoundationDB.Client
 		#region Value Checkers...
 
 		/// <summary>List of outstanding checks that must match in order for the transaction to commit successfully</summary>
-		private List<(Slice Key, Slice ExpectedValue, string Tag, Task<(FdbValueCheckResult Result, Slice Actual)> ActualValue)>? ValueChecks { get; set; }
+		private List<(Slice Key, Slice ExpectedValue, string Tag, ValueTask<(FdbValueCheckResult Result, Slice Actual)> ActualValue)>? ValueChecks { get; set; }
 
 		/// <summary>Return the result of all value checks performed with the specified tag in the previous attempt</summary>
 		/// <param name="tag">Tag that was passed to a call to <see cref="AddValueCheck"/> (or similar overloads) in the previous attempt of this context, that failed (meaning the expected value did not match with the database)</param>
@@ -652,7 +652,8 @@ namespace FoundationDB.Client
 
 			var tr = this.Transaction;
 			if (tr == null) throw new InvalidOperationException();
-			var task = tr.CheckValueAsync(key.Span, expectedValue);
+			// single-consumption path: the check is awaited exactly once, by ValidateValueChecks, just before commit
+			var task = tr.CheckValueCoreAsync(key.Span, expectedValue, snapshot: false);
 
 			lock (this.PadLock)
 			{
@@ -716,17 +717,17 @@ namespace FoundationDB.Client
 				return;
 			}
 
-			var taskBuffer = ArrayPool<Task<(FdbValueCheckResult, Slice)>>.Shared.Rent(items.Length);
+			var taskBuffer = ArrayPool<ValueTask<(FdbValueCheckResult, Slice)>>.Shared.Rent(items.Length);
 			try
 			{
 				for (int i = 0; i < items.Length; i++)
 				{
-					taskBuffer[i] = tr.CheckValueAsync(items[i].Key.Span, items[i].Value);
+					taskBuffer[i] = tr.CheckValueCoreAsync(items[i].Key.Span, items[i].Value, snapshot: false);
 				}
 
 				lock (this.PadLock)
 				{
-					var checks = this.ValueChecks ??= new List<(Slice, Slice, string, Task<(FdbValueCheckResult Result, Slice Actual)>)>();
+					var checks = this.ValueChecks ??= new List<(Slice, Slice, string, ValueTask<(FdbValueCheckResult Result, Slice Actual)>)>();
 					int capacity = checked(checks.Count + items.Length);
 					if (capacity > checks.Capacity) checks.Capacity = capacity;
 					for (int i = 0; i < items.Length; i++)
@@ -737,7 +738,7 @@ namespace FoundationDB.Client
 			}
 			finally
 			{
-				ArrayPool<Task<(FdbValueCheckResult, Slice)>>.Shared.Return(taskBuffer, clearArray: true);
+				ArrayPool<ValueTask<(FdbValueCheckResult, Slice)>>.Shared.Return(taskBuffer, clearArray: true);
 			}
 		}
 
@@ -770,7 +771,7 @@ namespace FoundationDB.Client
 			return pass;
 		}
 
-		private bool HasPendingValueChecks([MaybeNullWhen(false)] out List<(Slice, Slice, string, Task<(FdbValueCheckResult, Slice)>)> checks)
+		private bool HasPendingValueChecks([MaybeNullWhen(false)] out List<(Slice, Slice, string, ValueTask<(FdbValueCheckResult, Slice)>)> checks)
 		{
 			lock (this.PadLock)
 			{
@@ -790,7 +791,7 @@ namespace FoundationDB.Client
 			return ValidateValueChecksSlow(checks, ignoreFailedTasks);
 		}
 
-		private async ValueTask<bool> ValidateValueChecksSlow(List<(Slice Key, Slice ExpectedValue, string Tag, Task<(FdbValueCheckResult Result, Slice Actual)> ActualValue)> checks, bool ignoreFailedTasks)
+		private async ValueTask<bool> ValidateValueChecksSlow(List<(Slice Key, Slice ExpectedValue, string Tag, ValueTask<(FdbValueCheckResult Result, Slice Actual)> ActualValue)> checks, bool ignoreFailedTasks)
 		{
 			//note: even if it looks like we are sequentially awaiting all tasks, by the time the first one is complete,
 			// the rest of the tasks will probably be already completed as well. Anyway, we need to inspect each individual task

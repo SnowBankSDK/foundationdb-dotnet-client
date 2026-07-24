@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -32,11 +32,15 @@ namespace FoundationDB.Client.Native
 	/// <typeparam name="TState">Type of the state passed to the callback</typeparam>
 	/// <typeparam name="TResult">Type of result</typeparam>
 	public sealed class FdbFutureSingle<TState, TResult> : FdbFuture<TResult>
+#if NET8_0_OR_GREATER
+		, IFdbFuture
+#endif
 	{
 		#region Private Members...
 
 		/// <summary>Value of the 'FDBFuture*'</summary>
-		private readonly FutureHandle? m_handle;
+		/// <remarks>Mutable because pooled instances are re-initialized with a new handle on each lifecycle</remarks>
+		private FutureHandle? m_handle;
 
 		/// <summary>Lambda used to extract the result of this FDBFuture</summary>
 		private Func<FutureHandle, TState, TResult>? m_resultSelector;
@@ -47,9 +51,48 @@ namespace FoundationDB.Client.Native
 
 		#region Constructors...
 
+		private FdbFutureSingle() { }
+
 		internal FdbFutureSingle(FutureHandle handle, TState state, Func<FutureHandle, TState, TResult>? selector, CancellationToken ct)
 		{
+			Initialize(handle, state, selector, ct);
+		}
+
+		/// <summary>Returns a wrapper for the handle, reusing a pooled instance when one is available</summary>
+		internal static FdbFutureSingle<TState, TResult> Create(FutureHandle handle, TState state, Func<FutureHandle, TState, TResult>? selector, CancellationToken ct)
+		{
+#if NET8_0_OR_GREATER
+			var future = FdbFuturePool<FdbFutureSingle<TState, TResult>>.TryRent();
+			if (future is not null)
+			{
+				future.Initialize(handle, state, selector, ct);
+				return future;
+			}
+#endif
+			return new(handle, state, selector, ct);
+		}
+
+		/// <summary>Wraps the handle and returns its <see cref="Task{TResult}"/>, keeping the wrapper itself poolable</summary>
+		/// <remarks>The hatch Task is materialized BEFORE the callback is armed (see <see cref="FdbFuture{TResult}.MaterializeTask"/>);
+		/// the caller only ever sees the Task, so the wrapper recycles once the result is consumed and the native
+		/// resources are released, whichever order those happen in.</remarks>
+		internal static Task<TResult> CreateTask(FutureHandle handle, TState state, Func<FutureHandle, TState, TResult>? selector, CancellationToken ct)
+		{
+#if NET8_0_OR_GREATER
+			var future = FdbFuturePool<FdbFutureSingle<TState, TResult>>.TryRent() ?? new FdbFutureSingle<TState, TResult>();
+			var task = future.MaterializeTask();
+			future.Initialize(handle, state, selector, ct);
+			return task;
+#else
+			return new FdbFutureSingle<TState, TResult>(handle, state, selector, ct).Task;
+#endif
+		}
+
+		private void Initialize(FutureHandle handle, TState state, Func<FutureHandle, TState, TResult>? selector, CancellationToken ct)
+		{
 			Contract.Debug.Requires(handle != null);
+			Contract.Debug.Requires(m_key == IntPtr.Zero, "rented instance still has an armed cookie");
+			Contract.Debug.Requires(!this.IsSettled, "rented instance is already settled");
 
 			if (handle.IsInvalid)
 			{ // it's dead, Jim !
@@ -112,7 +155,11 @@ namespace FoundationDB.Client.Native
 				var prm = RegisterCallback(this);
 
 				// register the callback handler
+#if NET8_0_OR_GREATER
+				var err = FdbNative.FutureSetCallback(handle, FdbFuture.CallbackEntryPoint, prm);
+#else
 				var err = FdbNative.FutureSetCallback(handle, CallbackHandler, prm);
+#endif
 				if (err != FdbError.Success)
 				{ // uhoh
 #if DEBUG_FUTURES
@@ -142,7 +189,53 @@ namespace FoundationDB.Client.Native
 			GC.KeepAlive(this);
 		}
 
+#if NET8_0_OR_GREATER
+
+		/// <summary>Scrubs and rearms this instance, then offers it back to the pool</summary>
+		/// <remarks>Runs on whichever thread performed the LAST of the two releases (result consumed, cleanup done):
+		/// nothing can touch the instance anymore, and a stale ValueTask consumed after this point throws on the
+		/// version-token mismatch instead of observing the next lifecycle.</remarks>
+		protected override void OnReadyForReuse()
+		{
+			if (HasFlag(FdbFuture.Flags.UNPOOLED))
+			{ // the object identity escaped (watch, materialized Task hatch): the holder may still observe this
+			  // lifecycle, so the instance retires to the GC instead of being recycled
+				return;
+			}
+			m_handle = null;
+			m_resultSelector = null;
+			m_state = default;
+			ResetForReuse();
+			FdbFuturePool<FdbFutureSingle<TState, TResult>>.TryReturn(this);
+		}
+
+#endif
+
 		#endregion
+
+#if NET8_0_OR_GREATER
+
+		/// <summary>Invoked (via the shared native callback) when the watched future becomes ready</summary>
+		void IFdbFuture.OnFutureFired()
+		{
+			// FIRED must be visible before the cookie is released: a Dispose() that observes m_key == 0 must also
+			// observe FIRED, so that it hands the cleanup to the queued completion instead of racing it
+			TrySetFlag(FdbFuture.Flags.FIRED);
+
+			// the fire path owns the cookie: this is the only place it is released for an armed future
+			UnregisterCallback(this);
+
+			if (HasAnyFlags(FdbFuture.Flags.DISPOSED | FdbFuture.Flags.COMPLETED))
+			{ // cancelled or disposed while the fire was in flight: the task has already settled,
+			  // only the native resources remain to release (legal from within the callback)
+				TryCleanup();
+				return;
+			}
+
+			ThreadPool.UnsafeQueueUserWorkItem(s_callback, this);
+		}
+
+#else
 
 		/// <summary>Cached delegate of the future completion callback handler</summary>
 		// ReSharper disable once StaticMemberInGenericType
@@ -166,6 +259,8 @@ namespace FoundationDB.Client.Native
 			}
 		}
 
+#endif
+
 		private static readonly WaitCallback s_callback = f => ((FdbFutureSingle<TState, TResult>) f!).HandleCompletion();
 
 		/// <summary>Update the Task with the state of a ready Future</summary>
@@ -174,6 +269,9 @@ namespace FoundationDB.Client.Native
 		{
 			if (HasAnyFlags(FdbFuture.Flags.DISPOSED | FdbFuture.Flags.COMPLETED))
 			{
+				// a disposed-in-flight future hands its cleanup to this (queued) completion; TryCleanup is a no-op
+				// when the cleanup already ran
+				TryCleanup();
 				return;
 			}
 

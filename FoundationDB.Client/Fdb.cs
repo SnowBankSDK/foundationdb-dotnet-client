@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -768,6 +768,46 @@ namespace FoundationDB.Client
 			}
 		}
 
+		/// <summary>Registry of the live database instances, so that <see cref="Stop"/> can drain them before stopping the network thread</summary>
+		private static readonly global::System.Collections.Concurrent.ConcurrentDictionary<FdbDatabase, byte> s_liveDatabases = new();
+
+		internal static void RegisterDatabase(FdbDatabase db) => s_liveDatabases.TryAdd(db, 0);
+
+		internal static void UnregisterDatabase(FdbDatabase db) => s_liveDatabases.TryRemove(db, out _);
+
+		/// <summary>Maximum time <see cref="Stop"/> waits for the outstanding future callbacks to drain, before stopping the network thread anyway</summary>
+		private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(5);
+
+		/// <summary>Cancels and drains every outstanding future BEFORE the network thread goes away</summary>
+		/// <remarks>Disposing a database cancels its transactions and watches through the native cascade; the
+		/// callbacks then fire on the (still running) network thread and release their cookies. Stopping the network
+		/// under armed callbacks would instead leak their cookies and leave the awaiters hanging forever.</remarks>
+		private static void DrainOutstandingFutures()
+		{
+			foreach (var db in s_liveDatabases.Keys)
+			{
+				try
+				{
+					db.Dispose();
+				}
+				catch (Exception e)
+				{
+					if (Logging.On) Logging.Exception(typeof(Fdb), "Stop", e);
+				}
+			}
+
+			var sw = global::System.Diagnostics.Stopwatch.StartNew();
+			while (Volatile.Read(ref FoundationDB.Client.Utils.DebugCounters.CallbackHandles) != 0)
+			{
+				if (sw.Elapsed > DrainTimeout)
+				{
+					if (Logging.On) Logging.Warning(typeof(Fdb), "Stop", $"{Volatile.Read(ref FoundationDB.Client.Utils.DebugCounters.CallbackHandles):N0} future callback(s) were still armed after draining for {sw.Elapsed.TotalSeconds:N1}s; stopping the network thread anyway.");
+					return;
+				}
+				Thread.Sleep(10);
+			}
+		}
+
 		/// <summary>Stop the Network Thread</summary>
 		public static void Stop()
 		{
@@ -778,6 +818,9 @@ namespace FoundationDB.Client
 				// Un-register the event on the AppDomain
 				AppDomain.CurrentDomain.DomainUnload -= s_appDomainUnloadHandler;
 				s_appDomainUnloadHandler = null;
+
+				if (Logging.On) Logging.Verbose(typeof(Fdb), "Stop", "Draining outstanding futures...");
+				DrainOutstandingFutures();
 
 				if (Logging.On) Logging.Verbose(typeof(Fdb), "Stop", "Stopping Network Thread...");
 				StopEventLoop();

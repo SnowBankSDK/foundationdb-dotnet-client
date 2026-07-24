@@ -932,9 +932,11 @@ namespace FoundationDB.Client.Native
 			/// event loop, thread pool, etc. if your applications architecture calls for that).
 			/// </returns>
 #if NET8_0_OR_GREATER
+			// the callback is a raw unmanaged function pointer (a single [UnmanagedCallersOnly] entry point shared by
+			// all futures), not a marshaled delegate: no per-callback thunk, nothing to keep alive on the managed side
 			[LibraryImport(FDB_C_DLL, StringMarshalling = StringMarshalling.Utf8)]
 			[UnmanagedCallConv(CallConvs = [ typeof(CallConvCdecl) ])]
-			public static partial FdbError fdb_future_set_callback(FutureHandle future, FdbFutureCallback callback, IntPtr parameter);
+			public static partial FdbError fdb_future_set_callback(FutureHandle future, IntPtr callback, IntPtr parameter);
 #else
 			[DllImport(FDB_C_DLL, CallingConvention = CallingConvention.Cdecl)]
 			public static extern FdbError fdb_future_set_callback(FutureHandle future, FdbFutureCallback callback, IntPtr parameter);
@@ -1343,7 +1345,11 @@ namespace FoundationDB.Client.Native
 		}
 
 		/// <summary>fdb_future_set_callback</summary>
+#if NET8_0_OR_GREATER
+		public static FdbError FutureSetCallback(FutureHandle future, IntPtr callback, IntPtr callbackParameter)
+#else
 		public static FdbError FutureSetCallback(FutureHandle future, FdbFutureCallback callback, IntPtr callbackParameter)
+#endif
 		{
 			var err = NativeMethods.fdb_future_set_callback(future, callback, callbackParameter);
 #if DEBUG_NATIVE_CALLS

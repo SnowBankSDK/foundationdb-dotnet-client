@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -121,8 +121,12 @@ namespace FoundationDB.Client
 		}
 
 		/// <summary>Dispose the resources allocated by the watch.</summary>
+		/// <summary>Invoked when the watch is disposed, so that its owner can forget it</summary>
+		internal Action<FdbWatch>? OnDisposed;
+
 		public void Dispose()
 		{
+			Interlocked.Exchange(ref this.OnDisposed, null)?.Invoke(this);
 			this.Future.Dispose();
 		}
 
