@@ -101,18 +101,24 @@ namespace FoundationDB.Client.Tests
 			Assert.That(trace.FinalState.Select(kv => kv.Key), Is.EqualTo([ "k1" ]));
 		}
 
-		[TestCase("cac-hit", true)]   // CompareAndClear operand == committed value: it would CLEAR k3 (presence flips)
-		[TestCase("cac-miss", true)]  // CompareAndClear operand != committed value: it KEEPS k3 (presence unchanged)
-		[TestCase("add", false)]      // discriminator: Add always leaves k3 present, so its presence is locally determined
+		[TestCase("add", true)]           // dependent atomic: Add reads through to committed k3, so the read touches the DB - peer write conflicts
+		[TestCase("max", true)]           // dependent atomic
+		[TestCase("bitor", true)]         // dependent atomic
+		[TestCase("cac-hit", true)]       // dependent atomic (CompareAndClear reads committed k3 to decide the clear)
+		[TestCase("cac-miss", true)]      // dependent atomic
+		[TestCase("set", false)]          // INDEPENDENT: an own Set fully determines k3 without the DB - peer write masked, no conflict
+		[TestCase("clear-then-add", false)] // INDEPENDENT: an atomic over an own Clear has a DB-free base - no conflict
 		public async Task Test_Own_Atomic_Under_Selector_Read_Conflict(string flavor, bool expectConflict)
 		{
-			// A read-write transaction that applies an own atomic to k3 and then resolves a selector THROUGH k3
-			// must take a read conflict on k3 IFF the atomic's effect on k3's PRESENCE depends on the committed
-			// value. Only CompareAndClear is visibility-conditional (it clears k3 iff committed(k3) == operand,
-			// fdb 7.4.6 fdbclient/WriteMap.cpp coalesce -> doCompareAndClear against the existing value), so a
-			// peer write to k3 must conflict the reader for BOTH CAC outcomes; every other atomic returns a
-			// present value, so an own Add leaves k3 present regardless and its presence is locally determined -
-			// a peer write there must NOT conflict (the atomicsAreLocal discriminator, family-4 round two).
+			// A read-write transaction that writes k3 and then resolves a selector THROUGH k3 takes a read conflict
+			// on k3 IFF its own write is DEPENDENT - i.e. computing k3 reads the committed value. fdb classifies this
+			// with OperationStack::isDependent (7.4.6 fdbclient/WriteMap.cpp:49): SetValue / ClearRange / versionstamped
+			// sets are INDEPENDENT (value known locally, the segment is subtracted from the read-conflict range); every
+			// atomic (Add, Max, BitOr, ..., CompareAndClear) is DEPENDENT and reads THROUGH to the committed value, so
+			// the read still touches the DB and a peer write conflicts. This is NOT a presence question (a getKey returns
+			// keys) - fdb's read-conflict tracking is scan-based: reading over a dependent atomic reads the DB, period.
+			// The lone exception is an atomic applied over an own Clear (or Set): the clear provides a DB-free base, so
+			// the coalesced stack is independent (WriteMap.cpp:103, atomic-over-cleared-range -> SetValue base).
 
 			var builder = new ScenarioBuilder();
 			builder.Begin("A");
@@ -123,11 +129,16 @@ namespace FoundationDB.Client.Tests
 			builder.Begin("W");
 			switch (flavor)
 			{
+				case "add": builder.Atomic("W", "k3", Slice.FromFixed64(1), FdbMutationType.Add); break;
+				case "max": builder.Atomic("W", "k3", Slice.FromFixed64(1), FdbMutationType.Max); break;
+				case "bitor": builder.Atomic("W", "k3", Slice.FromFixed64(1), FdbMutationType.BitOr); break;
 				case "cac-hit": builder.Atomic("W", "k3", "v", FdbMutationType.CompareAndClear); break;
 				case "cac-miss": builder.Atomic("W", "k3", "z", FdbMutationType.CompareAndClear); break;
-				default: builder.Atomic("W", "k3", Slice.FromFixed64(1), FdbMutationType.Add); break;
+				case "set": builder.Set("W", "k3", "own"); break;
+				case "clear-then-add": builder.Clear("W", "k3"); builder.Atomic("W", "k3", Slice.FromFixed64(1), FdbMutationType.Add); break;
+				default: throw new ArgumentException(flavor);
 			}
-			builder.GetKey("W", new ScenarioSelector(Slice.FromStringAscii("k3"), OrEqual: false, Offset: 1)); // fGE(k3): resolves through k3, whose presence W's own atomic may or may not fix locally
+			builder.GetKey("W", new ScenarioSelector(Slice.FromStringAscii("k3"), OrEqual: false, Offset: 1)); // fGE(k3): resolves through k3
 
 			builder.Begin("P");
 			builder.Set("P", "k3", "peer"); // a peer writes k3...
@@ -135,7 +146,7 @@ namespace FoundationDB.Client.Tests
 
 			builder.Commit("W"); // W commits: conflicts iff k3 stayed in its read-conflict range
 
-			var scenario = builder.Build("cac_under_selector_" + flavor);
+			var scenario = builder.Build("own_write_under_selector_" + flavor);
 
 			using var db = await OpenScenarioDatabaseAsync();
 			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
@@ -144,11 +155,11 @@ namespace FoundationDB.Client.Tests
 			var wCommit = trace.Events[^1];
 			if (expectConflict)
 			{
-				Assert.That(wCommit.Outcome.Get<string?>("error", null), Is.EqualTo("NotCommitted"), $"the {flavor} reader's selector resolution depended on k3's committed value, so a peer write to k3 must conflict it");
+				Assert.That(wCommit.Outcome.Get<string?>("error", null), Is.EqualTo("NotCommitted"), $"[{flavor}] a DEPENDENT own atomic reads through to committed k3, so the selector read takes a conflict on k3 and a peer write to it must conflict");
 			}
 			else
 			{
-				Assert.That(wCommit.Outcome.ContainsKey("error"), Is.False, "an own Add leaves k3 present regardless of the committed value, so the selector resolution is locally determined and a peer write to k3 must not conflict");
+				Assert.That(wCommit.Outcome.ContainsKey("error"), Is.False, $"[{flavor}] an INDEPENDENT own write (Set, or atomic over an own Clear) determines k3 without the DB, so the read takes no conflict on k3 and a peer write must not conflict");
 			}
 		}
 

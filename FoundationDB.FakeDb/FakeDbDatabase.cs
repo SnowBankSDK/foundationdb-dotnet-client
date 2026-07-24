@@ -1510,7 +1510,7 @@ namespace FoundationDB.Testing
 				if (from >= to) return;
 				if (merged)
 				{
-					MarkMergedRangeReadConflict(from, to, atomicsAreLocal: true);
+					MarkMergedRangeReadConflict(from, to);
 				}
 				else
 				{
@@ -1586,10 +1586,9 @@ namespace FoundationDB.Testing
 				}
 			}
 
-			/// <summary>Marks the read conflict of a merged-view range read: the given extent MINUS the segments fully determined by the transaction's own writes (sets and clears; an atomic chain still depends on the database, so its segment stays).</summary>
-			/// <remarks>Oracle-pinned contract: the real client subtracts locally-written segments at segment granularity (a peer write under an own set or clear never conflicts), the same exemption the point-read path applies.</remarks>
-			/// <param name="atomicsAreLocal">Selector resolution returns keys, not values: an own atomic's presence is locally determined, so its segment is subtracted like a set or clear (oracle-pinned; revisit for visibility-conditional operations like CompareAndClear when the atomics fuzz family runs).</param>
-			private void MarkMergedRangeReadConflict(Key fromInclusive, Key toExclusive, bool atomicsAreLocal = false)
+			/// <summary>Marks the read conflict of a merged-view read (selector or range): the given extent MINUS the segments the transaction's own INDEPENDENT writes fully determine (a Set, a Clear, a versionstamped set, or an atomic over one of those); a DEPENDENT atomic chain reads through to the committed value, so its segment stays a conflict.</summary>
+			/// <remarks>fdb's read-conflict tracking is scan-based, not presence-based (7.4.6 fdbclient/WriteMap.cpp OperationStack::isDependent): reading over a dependent atomic reads the database for keys AND values alike, so the exemption is identical for selector and range reads - there is no "atomics are local under selector resolution" rule (that under-conflicted every non-CompareAndClear atomic, FDBV-039).</remarks>
+			private void MarkMergedRangeReadConflict(Key fromInclusive, Key toExclusive)
 			{
 				var cursor = fromInclusive;
 				foreach (var entry in this.Mutations.IterateOrdered())
@@ -1599,26 +1598,28 @@ namespace FoundationDB.Testing
 					var mutation = entry.Value;
 					if (!mutation.IsKv() && !mutation.IsRange())
 					{
-						// an UNANCHORED atomic chain reads through to the committed value: its segment stays in the
-						// conflict (unless the read returns no values, see atomicsAreLocal); a chain anchored on an
-						// own Set or Clear is fully determined locally and is subtracted like the anchor itself
-						bool anchored = mutation.Op is Operation.Set or Operation.Clear;
-						if (!anchored)
+						// fdb WriteMap OperationStack::isDependent (7.4.6 fdbclient/WriteMap.cpp:49): an own write is
+						// INDEPENDENT - its value is known WITHOUT the committed data, so its segment is subtracted from
+						// the read-conflict range - only when a Set, Clear, or versionstamped set gives the coalesced
+						// stack a DB-free base. A chain of pure atomics (Add/Max/Min/Bit*/Byte*/AppendIfFits/CompareAndClear)
+						// reads THROUGH to the committed value (DEPENDENT) and stays a conflict. fdb's read-conflict
+						// tracking is SCAN-based, not presence-based: reading over a dependent atomic reads the DB whether
+						// the read returns keys (getKey) or values, so an own atomic never makes a selector read local
+						// (FDBV-039 - the removed atomicsAreLocal exemption wrongly did, catching only CompareAndClear).
+						// An atomic over an own Clear/Set is independent (the clear/set is the base, WriteMap.cpp:103),
+						// found by scanning the chain for a structural op below the atomic head.
+						bool independent = false;
+						for (var m = mutation; m != null; m = m.Next)
 						{
-							// atomicsAreLocal subtracts an own atomic under selector resolution because the read returns
-							// KEYS and every atomic leaves the key PRESENT - EXCEPT CompareAndClear, which clears the key
-							// iff the committed value matches its operand. A CompareAndClear anywhere in the chain makes
-							// presence committed-value-dependent, so the resolution reads through to the database and the
-							// segment must stay a conflict even under a selector read (family-4 round two).
-							bool conditionalPresence = false;
-							for (var m = mutation; m != null; m = m.Next)
+							if (m.Op is Operation.Set or Operation.Clear or Operation.ClearRange or Operation.VersionStampedKey or Operation.VersionStampedValue)
 							{
-								if (m.Op is Operation.CompareAndClear) { conditionalPresence = true; break; }
+								independent = true;
+								break;
 							}
-							if (!atomicsAreLocal || conditionalPresence)
-							{
-								continue;
-							}
+						}
+						if (!independent)
+						{
+							continue; // dependent atomic chain: the read reads the committed value, so its segment stays a conflict
 						}
 					}
 					var segBegin = entry.Begin > cursor ? entry.Begin : cursor;
