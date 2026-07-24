@@ -798,7 +798,8 @@ namespace FoundationDB.Testing
 					}
 				}
 
-				var key = iter.Current.Key;
+				// the walk compared keys over spans (no per-step copy); retain only the resolved key
+				var key = iter.CopyKey();
 				if (key.IsNull || (selector.Offset < 0 && key > selector.Key))
 				{
 					return Key.Empty;
@@ -919,8 +920,8 @@ namespace FoundationDB.Testing
 					goto before_is_done;
 				}
 
-				curBefore = itBefore.Current;
-				curAfter = itAfter.Current;
+				curBefore = itBefore.CopyCurrent();
+				curAfter = itAfter.CopyCurrent();
 
 				while (true)
 				{
@@ -929,7 +930,7 @@ namespace FoundationDB.Testing
 						case < 0:
 						{ // key removed
 							yield return (curBefore.Key, curBefore.Value, Value.Nil);
-							if (!itBefore.Next(out curBefore))
+							if (!AdvanceCursor(itBefore, out curBefore))
 							{
 								goto before_is_done;
 							}
@@ -938,7 +939,7 @@ namespace FoundationDB.Testing
 						case > 0:
 						{ // key added
 							yield return (curAfter.Key, Value.Nil, curAfter.Value);
-							if (!itAfter.Next(out curAfter))
+							if (!AdvanceCursor(itAfter, out curAfter))
 							{
 								goto after_is_done;
 							}
@@ -952,7 +953,7 @@ namespace FoundationDB.Testing
 							}
 
 							// advance both
-							switch((itBefore.Next(out curBefore), itAfter.Next(out curAfter)))
+							switch((AdvanceCursor(itBefore, out curBefore), AdvanceCursor(itAfter, out curAfter)))
 							{
 								case (false, false): goto all_done;
 								case (false, true):  goto after_is_done;
@@ -968,7 +969,7 @@ namespace FoundationDB.Testing
 				{
 					yield return (curAfter.Key, Value.Nil, curAfter.Value);
 				}
-				while (itAfter.Next(out curAfter));
+				while (AdvanceCursor(itAfter, out curAfter));
 
 				goto all_done;
 
@@ -977,12 +978,24 @@ namespace FoundationDB.Testing
 				{
 					yield return (curBefore.Key, curBefore.Value, Value.Nil);
 				}
-				while (itBefore.Next(out curBefore));
+				while (AdvanceCursor(itBefore, out curBefore));
 
 				goto all_done;
 
 			all_done:
 				yield break;
+			}
+
+			/// <summary>Steps the cursor and materializes the new position (a diff retains both sides, so the copy is necessary).</summary>
+			private static bool AdvanceCursor(IFdbCommittedCursor it, out KeyValuePair<Key, Value> cur)
+			{
+				if (it.Next())
+				{
+					cur = it.CopyCurrent();
+					return true;
+				}
+				cur = default;
+				return false;
 			}
 
 		}
@@ -2274,12 +2287,13 @@ namespace FoundationDB.Testing
 		}
 
 		[Conditional("FULL_DEBUG")]
+		[System.Diagnostics.Conditional("FULL_DEBUG")]
 		private static void Kenobi(string msg)
 		{
-#if FULL_DEBUG
+			// [Conditional] strips the call (and its argument evaluation) outside a FULL_DEBUG build, so the
+			// merge/resolve trace strings - and any Copy* the interpolations touch - cost nothing in normal builds
 			System.Diagnostics.Debug.WriteLine(msg);
 			Console.WriteLine(msg);
-#endif
 		}
 
 		private static VersionStamp MakeVersionStamp(long version, ushort order)
@@ -3915,7 +3929,7 @@ namespace FoundationDB.Testing
 				// setup "inner"
 				if (this.Inner.Seek(selector.Key, selector.OrEqual))
 				{
-					Kenobi($"*** #{this.Id} inner: {this.Inner.Current}");
+					Kenobi($"*** #{this.Id} inner: {this.Inner.CopyCurrent()}");
 					this.InnerState = STATE_AVAILABLE;
 					for (int i = 0; i < selector.Offset; i++)
 					{
@@ -3924,7 +3938,7 @@ namespace FoundationDB.Testing
 							this.InnerState = STATE_DEAD;
 							break;
 						}
-						Kenobi($"*** #{this.Id} inner + {i+1}: {this.Inner.Current}");
+						Kenobi($"*** #{this.Id} inner + {i+1}: {this.Inner.CopyCurrent()}");
 					}
 				}
 				else
@@ -3940,7 +3954,7 @@ namespace FoundationDB.Testing
 								break;
 							}
 						}
-						Kenobi($"*** #{this.Id} inner (from first): {this.Inner.Current}");
+						Kenobi($"*** #{this.Id} inner (from first): {this.Inner.CopyCurrent()}");
 					}
 					else
 					{
@@ -3973,10 +3987,10 @@ namespace FoundationDB.Testing
 					Kenobi($"*** #{this.Id} outer (from first): {this.Outer.Current}");
 				}
 
-				Kenobi($"*** #{this.Id} seek initial of {selector}: inner={this.InnerState}:{this.Inner.Current}, outer={this.OuterState}:{this.Outer.Current}");
+				Kenobi($"*** #{this.Id} seek initial of {selector}: inner={this.InnerState}:{this.Inner.CopyCurrent()}, outer={this.OuterState}:{this.Outer.Current}");
 				// "compute" the current
 				Next();
-				Kenobi($"*** #{this.Id} seek result of {selector}: inner={this.InnerState}:{this.Inner.Current}, outer={this.OuterState}:{this.Outer.Current} : {this.Current}");
+				Kenobi($"*** #{this.Id} seek result of {selector}: inner={this.InnerState}:{this.Inner.CopyCurrent()}, outer={this.OuterState}:{this.Outer.Current} : {this.Current}");
 
 				return true;
 			}
@@ -4019,13 +4033,13 @@ namespace FoundationDB.Testing
 
 				while (true)
 				{
-					Kenobi($"**** #{this.Id} next({this.InnerState}:{this.Inner.Current.Key:K}, {this.OuterState}:{outer.Current})");
+					Kenobi($"**** #{this.Id} next({this.InnerState}:{this.Inner.CopyKey():K}, {this.OuterState}:{outer.Current})");
 
 					// advance one or the other
 					if (this.InnerState == STATE_UNKNOWN)
 					{ // get next from inner
 						this.InnerState = this.Inner.Next() ? STATE_AVAILABLE : STATE_DEAD;
-						Kenobi($"**** #{this.Id} fetched inner => {this.InnerState}:{this.Inner.Current}");
+						Kenobi($"**** #{this.Id} fetched inner => {this.InnerState}:{this.Inner.CopyCurrent()}");
 					}
 
 					if (this.OuterState == STATE_UNKNOWN)
@@ -4042,7 +4056,7 @@ namespace FoundationDB.Testing
 						}
 
 						// passthrough the inner as-is
-						this.Current = this.Inner.Current;
+						this.Current = this.Inner.CopyCurrent();
 						Kenobi($"** #{this.Id} outer done, pass-through inner {this.Current.Key:K} = {this.Current.Value:V}");
 						this.InnerState = STATE_UNKNOWN;
 						return true;
@@ -4088,17 +4102,16 @@ namespace FoundationDB.Testing
 						return true;
 					}
 
-					var innerCurrent = this.Inner.Current;
-					int cmp = innerCurrent.Key.CompareTo(outerEntry.Begin);
-					Kenobi($"** #{this.Id} ({cmp}) [{innerCurrent.Key:V} = {innerCurrent.Value:V}] vs {mutation.Op} [{outerEntry.Begin:K} ~ {outerEntry.End:K} = {mutation.Parameter:V}]");
+					int cmp = this.Inner.CurrentKey.SequenceCompareTo(outerEntry.Begin.Span);
+					Kenobi($"** #{this.Id} ({cmp}) [{this.Inner.CopyKey():V} = {this.Inner.CopyValue():V}] vs {mutation.Op} [{outerEntry.Begin:K} ~ {outerEntry.End:K} = {mutation.Parameter:V}]");
 
 					switch (cmp)
 					{
 						case < 0:
 						{ // pass through inner
-							this.Current = innerCurrent;
+							this.Current = this.Inner.CopyCurrent();
 							this.InnerState = STATE_UNKNOWN;
-							Kenobi($"*** #{this.Id} use inner, advance inner: {innerCurrent.Key:K} = {innerCurrent.Value:V}");
+							Kenobi($"*** #{this.Id} use inner, advance inner: {this.Inner.CopyKey():K} = {this.Inner.CopyValue():V}");
 							return true;
 						}
 						case 0:
@@ -4110,28 +4123,28 @@ namespace FoundationDB.Testing
 									// consume both
 									this.InnerState = STATE_UNKNOWN;
 									this.OuterState = STATE_UNKNOWN;
-									Kenobi($"*** #{this.Id} skip cleared, advance both: {innerCurrent.Key:K}");
+									Kenobi($"*** #{this.Id} skip cleared, advance both: {this.Inner.CopyKey():K}");
 									continue;
 								}
 
 								// consume both
-								this.Current = new(innerCurrent.Key, mutation.GetEffectiveValue());
+								this.Current = new(this.Inner.CopyKey(), mutation.GetEffectiveValue());
 								this.InnerState = STATE_UNKNOWN;
 								this.OuterState = STATE_UNKNOWN;
-								Kenobi($"*** #{this.Id} combine, advance both: {innerCurrent.Key:K} = {this.Current.Value:V}");
+								Kenobi($"*** #{this.Id} combine, advance both: {this.Inner.CopyKey():K} = {this.Current.Value:V}");
 								return true;
 							}
 
 							if (mutation.IsRange())
 							{ // the committed key is the first key of a cleared range: it is masked; keep the range (it may mask more keys)
 								this.InnerState = STATE_UNKNOWN;
-								Kenobi($"*** #{this.Id} inner masked by clear range, advance inner: {innerCurrent.Key:K}");
+								Kenobi($"*** #{this.Id} inner masked by clear range, advance inner: {this.Inner.CopyKey():K}");
 								continue;
 							}
 
 							if (mutation.IsAtomic())
 							{ // coalesce the whole chain over the committed value, transiently (see above)
-								var value = innerCurrent.Value;
+								var value = this.Inner.CopyValue();
 								for (var m = mutation; m != null; m = m.Next)
 								{
 									value = ReadYourWritesSnapshot.CoalesceAtomic(this.Arena, value, m);
@@ -4163,7 +4176,7 @@ namespace FoundationDB.Testing
 
 							if (mutation.IsRange())
 							{
-								if (outerEntry.End <= innerCurrent.Key)
+								if (outerEntry.End.Span.SequenceCompareTo(this.Inner.CurrentKey) <= 0)
 								{ // clear range in empty spot, skip it!
 									this.OuterState = STATE_UNKNOWN;
 									Kenobi($"*** #{this.Id} skip, advance outer");

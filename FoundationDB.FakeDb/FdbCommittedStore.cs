@@ -93,12 +93,27 @@ namespace FoundationDB.Testing
 	}
 
 	/// <summary>Ordered bidirectional cursor over the committed keyspace of a single <see cref="Snapshot"/>, seen at one version.</summary>
-	/// <remarks>The keys and values exposed through <see cref="Current"/> are only valid for the lifetime of the pinned snapshot: they are backed by the snapshot's arena today, and by memory-mapped pages under a future B-tree backend. Copy anything that must outlive the snapshot.</remarks>
+	/// <remarks>
+	/// <para>The current entry is read the same span-vs-copy way as the store's <see cref="IFdbCommittedStore.Read{TState,TResult}"/> leg: <see cref="CurrentKey"/>/<see cref="CurrentValue"/> hand out spans straight over the backend's memory for the machinery to compare and walk (the necessary-copy set is much smaller than the touched set - a selector walk compares many keys and returns one), while <see cref="CopyKey"/>/<see cref="CopyValue"/>/<see cref="CopyCurrent"/> materialize an owned copy for the entries the machinery actually retains past the pin. There is deliberately no eager owned-pair accessor: retaining is always an explicit <c>Copy*</c> at the call site.</para>
+	/// <para>Every span exposed here is only valid until the next move (or the pinned snapshot's release): backed by the snapshot's arena today, by memory-mapped pages under the persistent backend. Copy (retain) anything that must outlive the current position.</para>
+	/// </remarks>
 	public interface IFdbCommittedCursor
 	{
 
-		/// <summary>Key/value pair at the current position</summary>
-		KeyValuePair<Key, Value> Current { get; }
+		/// <summary>Key at the current position, as a span over the backend's memory (valid until the next move or the snapshot's release). For compare/walk; call <see cref="CopyKey"/> to retain it.</summary>
+		ReadOnlySpan<byte> CurrentKey { get; }
+
+		/// <summary>Value at the current position, as a span over the backend's memory (valid until the next move or the snapshot's release). Call <see cref="CopyValue"/> to retain it.</summary>
+		ReadOnlySpan<byte> CurrentValue { get; }
+
+		/// <summary>Materializes an owned copy of the current key: a page-backed backend copies off the page, a view-backed one returns its stable arena view.</summary>
+		Key CopyKey();
+
+		/// <summary>Materializes an owned copy of the current value.</summary>
+		Value CopyValue();
+
+		/// <summary>Materializes an owned copy of the current key/value pair (both retained).</summary>
+		KeyValuePair<Key, Value> CopyCurrent();
 
 		/// <summary>Seeks the largest key that is less than <paramref name="key"/> (or equal to it when <paramref name="orEqual"/> is <c>true</c>).</summary>
 		bool Seek(Key key, bool orEqual);
@@ -111,9 +126,6 @@ namespace FoundationDB.Testing
 
 		/// <summary>Moves the cursor to the smallest key that is greater than the current one</summary>
 		bool Next();
-
-		/// <summary>Moves the cursor to the smallest key that is greater than the current one, returning it</summary>
-		bool Next(out KeyValuePair<Key, Value> value);
 
 		/// <summary>Moves the cursor to the largest key that is smaller than the current one</summary>
 		bool Previous();
@@ -196,7 +208,19 @@ namespace FoundationDB.Testing
 		}
 
 		/// <inheritdoc />
-		public KeyValuePair<Key, Value> Current => this.Iter.Current;
+		public ReadOnlySpan<byte> CurrentKey => this.Iter.Current.Key.Span;
+
+		/// <inheritdoc />
+		public ReadOnlySpan<byte> CurrentValue => this.Iter.Current.Value.Span;
+
+		/// <inheritdoc />
+		public Key CopyKey() => this.Iter.Current.Key; // the arena view is stable for the snapshot's lifetime: no bytes moved
+
+		/// <inheritdoc />
+		public Value CopyValue() => this.Iter.Current.Value;
+
+		/// <inheritdoc />
+		public KeyValuePair<Key, Value> CopyCurrent() => this.Iter.Current;
 
 		/// <inheritdoc />
 		public bool Seek(Key key, bool orEqual) => this.Iter.Seek(new(key, default), orEqual);
@@ -209,9 +233,6 @@ namespace FoundationDB.Testing
 
 		/// <inheritdoc />
 		public bool Next() => this.Iter.Next();
-
-		/// <inheritdoc />
-		public bool Next(out KeyValuePair<Key, Value> value) => this.Iter.Next(out value);
 
 		/// <inheritdoc />
 		public bool Previous() => this.Iter.Previous();
