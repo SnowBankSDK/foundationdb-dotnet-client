@@ -25,7 +25,8 @@ SnowBank.Shell, SnowBank.Networking.*, SnowBank.Testing.*, SnowBank.Serializatio
 
 ```bash
 dotnet build FoundationDB.Client.slnx          # DEBUG build of everything
-dotnet test  FoundationDB.Client.slnx          # run all tests
+# NOT `dotnet test`: it fails on the .NET 10+ SDK for these projects.
+# Build, then run the test assembly directly -- see "Tests" below.
 ```
 
 - **SDK**: pinned in [`global.json`](global.json) to a **.NET 11 preview** SDK (`rollForward: latestMinor`). `LangVersion` is `preview`.
@@ -108,22 +109,6 @@ Style is enforced by [`.editorconfig`](.editorconfig) and the `.DotSettings` fil
 - **Guard clauses and assertions use the `Contract.*` family** (`SnowBank.Diagnostics.Contracts`, a global using in these projects), **not** raw `throw new ArgumentNullException(...)`, `ArgumentNullException.ThrowIfNull(...)`, `ArgumentOutOfRangeException.ThrowIf*`, or `System.Diagnostics.Debug.Assert(...)`. Always-on preconditions: `Contract.NotNull(x)`, `Contract.NotNullOrEmpty(...)`, `Contract.Positive(n)`, `Contract.Requires(cond)`. Debug-only invariants: `Contract.Debug.Requires(...)` / `Contract.Debug.Assert(...)` (and `Paranoid.*` for the hottest paths). They carry `[CallerArgumentExpression]` param names and integrate with the test harness's contract-failure interceptor.
 - Don't break public surface casually. Retire APIs with `[Obsolete]` (the codebase uses `error: true` for hard-removed ones) rather than deleting outright.
 
-## Where things live (FoundationDB.Client)
-
-| Area | Path | Notes |
-|---|---|---|
-| Entry/factory, well-known keys | [`FdbKey.cs`](FoundationDB.Client/FdbKey.cs) | `FromBytes`, `FromTuple`, `ToSystemKey`, `Increment`, `Dump` |
-| Strongly-typed keys | [`Keys/`](FoundationDB.Client/Keys/) | `FdbTupleKey<…>`, `FdbRawKey`, `FdbSuffixKey`, derivations; extensions in `FdbKeyExtensions.cs` |
-| Values | [`Values/`](FoundationDB.Client/Values/), [`FdbValue.cs`](FoundationDB.Client/FdbValue.cs) | `FdbValue.ToBytes/ToTextUtf8/FromTuple/ToFixed64LittleEndian/ToJson/…` |
-| Subspaces | [`Subspaces/`](FoundationDB.Client/Subspaces/) | `IKeySubspace`, `KeySubspace`, `ISubspaceLocation` |
-| Directory layer | [`Layers/Directories/`](FoundationDB.Client/Layers/Directories/) | `FdbDirectoryLayer`, `FdbPath`, `FdbDirectorySubspace` |
-| Transactions | [`FdbTransaction*.cs`](FoundationDB.Client/), `IFdb*Transaction.cs` | retry loops on `IFdbDatabase` (`IFdbRetryable`) |
-| Layer contract | [`IFdbLayer.cs`](FoundationDB.Client/IFdbLayer.cs) | `IFdbLayer<TState>`, `layer.ReadAsync/WriteAsync/ReadWriteAsync` |
-| Native interop | [`Native/`](FoundationDB.Client/Native/) | P/Invoke, `SafeHandle`s, `FdbFuture`→`Task` |
-| DI / Aspire | [`DependencyInjection/`](FoundationDB.Client/DependencyInjection/) | `AddFoundationDb`, `IFdbDatabaseProvider` |
-
-In `SnowBank.Core`: the Tuple encoding lives in [`Data/Tuples/`](SnowBank.Core/Data/Tuples/) (`TuPack`, `STuple<…>`, `IVarTuple`); JSON in [`Data/JSON/`](SnowBank.Core/Data/JSON/) (`CrystalJson`); `Slice` and buffers in [`Buffers/`](SnowBank.Core/Buffers/).
-
 ## Working on the key/value API or layers
 
 The single most important thing to get right (and the most common source of incorrect "vibe-coded" usage) is **how keys are encoded and how a custom Layer is structured**. The rules:
@@ -137,4 +122,4 @@ These skills are also packaged as a Claude Code **plugin** ([`plugins/foundation
 
 ## Docs
 
-Human-facing docs (docfx) live in [`Documentation/`](Documentation/) (`getting-started.md`, `Tuples.md`, `Transaction_Basics.md`). The top-level [`README.md`](README.md) is the authoritative getting-started narrative and is packed into the NuGet package.
+Human-facing docs (docfx) live in [`Documentation/`](Documentation/). The top-level [`README.md`](README.md) is the authoritative getting-started narrative, and it is packed into the NuGet package, so treat it as shipped surface.
