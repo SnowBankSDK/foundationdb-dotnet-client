@@ -171,9 +171,10 @@ namespace FoundationDB.Client.Tests
 			var divergences = TraceComparer.Compare(MakeTrace(watchOutcome: "Pending"), MakeTrace(watchOutcome: "Fired"), tolerant);
 			Assert.That(divergences, Is.Empty);
 
-			// the reverse (golden fired, live pending) is NOT covered by the tolerance
+			// the reverse too: in dual-live mode the REFERENCE side can be the spurious one (e.g. a same-key
+			// sibling's fire dragging the watch along on the real cluster), so both states are legal on each side
 			divergences = TraceComparer.Compare(MakeTrace(watchOutcome: "Fired"), MakeTrace(watchOutcome: "Pending"), tolerant);
-			Assert.That(divergences, Has.Count.EqualTo(1));
+			Assert.That(divergences, Is.Empty);
 
 			// without the annotation, the same difference is a divergence
 			var strictBuilder = new ScenarioBuilder();

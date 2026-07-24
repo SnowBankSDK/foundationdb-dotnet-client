@@ -40,11 +40,13 @@ namespace FoundationDB.Client.Tests
 		{
 			"ryw" => ScenarioGenerator.GenerateRywFuzz,
 			"mtx" => ScenarioGenerator.GenerateMultiTxnFuzz,
+			"wch" => ScenarioGenerator.GenerateWatchFuzz,
 			_ => throw new ArgumentException($"Unknown generator family '{family}'.", nameof(family)),
 		};
 
 		[TestCase("ryw")]
 		[TestCase("mtx")]
+		[TestCase("wch")]
 		public void Test_Generator_Is_Deterministic(string family)
 		{
 			// resumability depends on it: the same seed must always pin the same scenario
@@ -57,8 +59,18 @@ namespace FoundationDB.Client.Tests
 			Assert.That(other, Is.Not.EqualTo(a), "different seeds must differ");
 		}
 
+		/// <summary>Re-pins ONE generated scenario from the current generator: run when a generator-model change invalidates
+		/// the auto-pinned shape of the very seed that motivated it (add the seed as a test case, run, commit the diff).
+		/// Other pins are frozen regression artifacts and must NOT be regenerated wholesale.</summary>
+		[TestCase("wch", 240, Explicit = true, Reason = "Rewrites a pinned scenario JSON in the source tree")]
+		public void RegeneratePin(string family, int seed)
+		{
+			Log($"pinned {ScenarioCorpus.PinScenario(Family(family)(seed))}");
+		}
+
 		[TestCase("ryw")]
 		[TestCase("mtx")]
+		[TestCase("wch")]
 		public async Task Test_Generated_Scenario_Executes_On_FakeDb(string family)
 		{
 			var generate = Family(family);
@@ -87,6 +99,8 @@ namespace FoundationDB.Client.Tests
 		[TestCase("ryw", 101)]
 		[TestCase("ryw", 115)]
 		[TestCase("mtx", 0)]
+		[TestCase("wch", 82)]
+		[TestCase("wch", 240)]
 		public async Task DiagnoseSeed(string family, int seed)
 		{
 			var scenario = ScenarioGeneratorFacts.Family(family)(seed);
@@ -156,6 +170,8 @@ namespace FoundationDB.Client.Tests
 		[TestCase("mtx", 200, 800)]
 		[TestCase("mtx", 1000, 1000)]
 		[TestCase("mtx", 2000, 1000)]
+		[TestCase("wch", 0, 200)]
+		[TestCase("wch", 200, 800)]
 		public async Task FuzzDualLive(string family, int firstSeed, int count)
 		{
 			var generate = ScenarioGeneratorFacts.Family(family);

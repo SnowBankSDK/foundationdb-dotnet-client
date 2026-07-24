@@ -1,0 +1,187 @@
+{
+	"name": "fuzz_wch_0240",
+	"description": "generated watch-lifecycle fuzz (seed 240)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "W"
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k0",
+			"value": "c2"
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k4",
+			"value": "c4"
+		},
+		{
+			"op": "Commit",
+			"actor": "W"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Begin",
+			"actor": "W"
+		},
+		{
+			"op": "Watch",
+			"actor": "B",
+			"key": "k6",
+			"handle": 0
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k5",
+			"value": "v7"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k6",
+			"value": "v3"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k6",
+			"value": "v9"
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k6",
+			"value": "v3"
+		},
+		{
+			"op": "Clear",
+			"actor": "W",
+			"key": "k3"
+		},
+		{
+			"op": "Commit",
+			"actor": "W"
+		},
+		{
+			"op": "Begin",
+			"actor": "W"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k2",
+			"value": "v3"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Dispose",
+			"actor": "B"
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k7",
+			"value": "v4"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "W",
+			"key": "k6",
+			"endKey": "k7"
+		},
+		{
+			"op": "Commit",
+			"actor": "W"
+		},
+		{
+			"op": "Begin",
+			"actor": "W"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Clear",
+			"actor": "W",
+			"key": "k0"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Commit",
+			"actor": "W"
+		},
+		{
+			"op": "Watch",
+			"actor": "A",
+			"key": "k0",
+			"handle": 1
+		},
+		{
+			"op": "Watch",
+			"actor": "A",
+			"key": "k6",
+			"handle": 2
+		},
+		{
+			"op": "Begin",
+			"actor": "W"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "W",
+			"key": "k2",
+			"value": "v3"
+		},
+		{
+			"op": "Commit",
+			"actor": "W"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "ExpectPending",
+			"handle": 0,
+			"tolerance": "AllowSpuriousWatchFire"
+		}
+	]
+}

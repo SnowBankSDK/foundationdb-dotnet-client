@@ -93,10 +93,13 @@ namespace FoundationDB.Client.Tests
 			{
 				case ScenarioTolerance.AllowSpuriousWatchFire:
 				{
-					// the fdb contract permits a watch to fire spuriously: accept Fired where the reference observed Pending (never the reverse)
-					return step.Op == ScenarioOp.ExpectPending
-						&& expected.Outcome.Get<string?>("watch", null) == "Pending"
-						&& actual.Outcome.Get<string?>("watch", null) == "Fired";
+					// the fdb contract permits a watch to fire spuriously - including a same-key sibling's fire
+					// dragging it along - and in dual-live mode EITHER side of the comparison can be the spurious
+					// one: a tolerant pending observation accepts Pending and Fired as equally legal on each side
+					if (step.Op != ScenarioOp.ExpectPending) return false;
+					var e = expected.Outcome.Get<string?>("watch", null);
+					var a = actual.Outcome.Get<string?>("watch", null);
+					return e is "Pending" or "Fired" && a is "Pending" or "Fired";
 				}
 				default:
 				{

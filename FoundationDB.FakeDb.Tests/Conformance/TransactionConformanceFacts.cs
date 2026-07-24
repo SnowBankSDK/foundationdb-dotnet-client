@@ -3444,6 +3444,67 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		[CoversCells("watches/no-fire-single-commit-aba")]
+		public async Task Test_Watch_Registration_Compares_Endpoint_Values()
+		{
+			// the pre-arm window is judged by VALUES at the endpoints, not by version history: a key that changed
+			// and reverted across two commits between the watching transaction's read version and its arming
+			// commit registers as still-pending (oracle-pinned; contrast with the POST-arm two-commit case, where
+			// the armed watch sees the intermediate commit and fires)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			using var tr = db.BeginTransaction(this.Cancellation);
+			var subspace = await db.Root.Resolve(tr);
+			// the watch's expected value reads as absent at this transaction's read version
+			var watch = tr.Watch(subspace.Key("k5"), this.Cancellation);
+
+			await db.WriteAsync(async t => { var s = await db.Root.Resolve(t); t.Set(s.Key("k5"), Text("x")); }, this.Cancellation);
+			await db.WriteAsync(async t => { var s = await db.Root.Resolve(t); t.Clear(s.Key("k5")); }, this.Cancellation);
+
+			await tr.CommitAsync();
+
+			await Task.Delay(500, this.Cancellation);
+			Assert.That(watch.Task.IsCompleted, Is.False, "a change-and-revert BEFORE the arm compares equal at registration: the watch stays pending");
+			watch.Cancel();
+		}
+
+		[Test]
+		public async Task Test_Same_Key_Watches_Fire_Together()
+		{
+			// the real client stack entangles same-key watches: when one fires (here: a peer's watch arming with a
+			// stale expected value, an immediate legitimate fire), every registered watch on that key fires with it
+			// - a contract-permitted spurious fire for the dragged watch
+
+			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence: watches are independent - a same-key sibling's fire does not spuriously fire the others (the real client stack entangles same-key watches; spurious fires are permitted, not required, so deterministic independence is the emulator's deliberate behavior)");
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			using var trA = db.BeginTransaction(this.Cancellation);
+			var subspaceA = await db.Root.Resolve(trA);
+			var watchA = trA.Watch(subspaceA.Key("k5"), this.Cancellation); // expected: absent
+
+			await db.WriteAsync(async t => { var s = await db.Root.Resolve(t); t.Set(s.Key("k5"), Text("x")); }, this.Cancellation);
+
+			using var trB = db.BeginTransaction(this.Cancellation);
+			var subspaceB = await db.Root.Resolve(trB);
+			var watchB = trB.Watch(subspaceB.Key("k5"), this.Cancellation); // expected: x (the transient value)
+
+			await db.WriteAsync(async t => { var s = await db.Root.Resolve(t); t.Clear(s.Key("k5")); }, this.Cancellation);
+
+			await trA.CommitAsync(); // arms A's watch: expected absent == current absent -> registered pending
+			await trB.CommitAsync(); // arms B's watch: expected x != current absent -> immediate fire
+
+			var settledB = await Task.WhenAny(watchB.Task, Task.Delay(TimeSpan.FromSeconds(15), this.Cancellation));
+			Assert.That(settledB, Is.SameAs(watchB.Task), "the stale-expected watch must fire immediately at its arm");
+
+			var settledA = await Task.WhenAny(watchA.Task, Task.Delay(TimeSpan.FromSeconds(15), this.Cancellation));
+			Assert.That(settledA, Is.SameAs(watchA.Task), "the sibling's fire must drag the same-key pending watch with it");
+		}
+
+		[Test]
 		public async Task Test_Can_Setup_And_Cancel_Watches()
 		{
 			using var db = await OpenTestPartitionAsync();

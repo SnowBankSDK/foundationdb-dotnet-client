@@ -34,6 +34,7 @@ namespace FoundationDB.Client.Tests
 	/// <remarks>
 	/// <para>These are the phase-2 harness-validation demos, deliberately small; campaign corpora (watches, versionstamps, read-your-writes) are follow-up work.</para>
 	/// <para>Authoring notes: scenarios must be deterministic on an otherwise idle backend. Avoid <see cref="ScenarioOp.GetReadVersion"/> after commits — a real cluster's version clock advances with wall time while the emulator's only advances on commits, so those symbols can never match.</para>
+	/// <para>Watch determinism: a watch's baseline is the value at its owner's READ VERSION (not at the arm step), so a key that changes between the pin and the arm fires immediately on arm; fired-ness latches at the first committed change and survives a later restore (only a change-and-restore inside ONE commit is a no-fire); <see cref="ScenarioOp.ExpectPending"/> observations should carry <see cref="ScenarioTolerance.AllowSpuriousWatchFire"/> unless the scenario deliberately pins the strict case, and each pending costs a real-time grace delay, so budget them sparingly.</para>
 	/// </remarks>
 	public static class ScenarioCorpus
 	{
@@ -49,6 +50,7 @@ namespace FoundationDB.Client.Tests
 			.. WatchesCorpus.All(),
 			.. VersionstampsCorpus.All(),
 			.. AtomicsCorpus.All(),
+			.. ConflictsCorpus.All(),
 			.. LoadPinned(),
 		];
 
