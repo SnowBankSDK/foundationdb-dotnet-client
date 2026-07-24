@@ -1,0 +1,430 @@
+{
+	"name": "fuzz_rwa_0441",
+	"description": "generated read-write atomics (compare-and-clear under selector reads) fuzz (seed 441)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "!0",
+			"value": "s0"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "~0",
+			"value": "s0"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "!1",
+			"value": "s1"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "~1",
+			"value": "s1"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "!2",
+			"value": "s2"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "~2",
+			"value": "s2"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "!3",
+			"value": "s3"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "~3",
+			"value": "s3"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k0",
+			"value": "c2"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k1",
+			"value": "c6"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k2",
+			"value": "c9"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k3",
+			"value": "c6"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k6",
+			"value": "c7"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "P"
+		},
+		{
+			"op": "Begin",
+			"actor": "W2"
+		},
+		{
+			"op": "Begin",
+			"actor": "W1"
+		},
+		{
+			"op": "GetKey",
+			"actor": "W2",
+			"sel": {
+				"key": "k0",
+				"orEqual": true,
+				"offset": 0
+			},
+			"snapshot": true
+		},
+		{
+			"op": "Set",
+			"actor": "P",
+			"key": "k0",
+			"value": "p9"
+		},
+		{
+			"op": "Atomic",
+			"actor": "W2",
+			"key": "k5",
+			"value": "+6",
+			"mutation": "AppendIfFits"
+		},
+		{
+			"op": "GetKey",
+			"actor": "W1",
+			"sel": {
+				"key": "k7",
+				"orEqual": true,
+				"offset": 3
+			}
+		},
+		{
+			"op": "Atomic",
+			"actor": "W1",
+			"key": "k3",
+			"value": "-\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "BitXor"
+		},
+		{
+			"op": "Set",
+			"actor": "W1",
+			"key": "k2",
+			"value": "v2"
+		},
+		{
+			"op": "GetKey",
+			"actor": "W2",
+			"sel": {
+				"key": "k2",
+				"orEqual": true,
+				"offset": 0
+			}
+		},
+		{
+			"op": "Commit",
+			"actor": "P"
+		},
+		{
+			"op": "Begin",
+			"actor": "P"
+		},
+		{
+			"op": "GetRange",
+			"actor": "W1",
+			"sel": {
+				"key": "k1a",
+				"orEqual": true,
+				"offset": 2
+			},
+			"endSel": {
+				"key": "k2",
+				"orEqual": false,
+				"offset": 4
+			},
+			"limit": 1
+		},
+		{
+			"op": "Atomic",
+			"actor": "W1",
+			"key": "k2",
+			"value": "c6",
+			"mutation": "CompareAndClear"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "P",
+			"key": "k5",
+			"endKey": "k6"
+		},
+		{
+			"op": "Commit",
+			"actor": "P"
+		},
+		{
+			"op": "GetKey",
+			"actor": "W2",
+			"sel": {
+				"key": "k4",
+				"orEqual": true,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Atomic",
+			"actor": "W2",
+			"key": "k4",
+			"value": "",
+			"mutation": "CompareAndClear"
+		},
+		{
+			"op": "Commit",
+			"actor": "W2"
+		},
+		{
+			"op": "Atomic",
+			"actor": "W1",
+			"key": "k4",
+			"value": "b0",
+			"mutation": "ByteMax"
+		},
+		{
+			"op": "Clear",
+			"actor": "W1",
+			"key": "k3"
+		},
+		{
+			"op": "Commit",
+			"actor": "W1"
+		},
+		{
+			"op": "Begin",
+			"actor": "P"
+		},
+		{
+			"op": "Begin",
+			"actor": "W1"
+		},
+		{
+			"op": "GetKey",
+			"actor": "W1",
+			"sel": {
+				"key": "k0",
+				"orEqual": true,
+				"offset": -1
+			}
+		},
+		{
+			"op": "Clear",
+			"actor": "P",
+			"key": "k5"
+		},
+		{
+			"op": "Begin",
+			"actor": "W2"
+		},
+		{
+			"op": "GetRange",
+			"actor": "W1",
+			"sel": {
+				"key": "!z",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "!z",
+				"orEqual": false,
+				"offset": -3
+			},
+			"reverse": true
+		},
+		{
+			"op": "Atomic",
+			"actor": "W2",
+			"key": "k5",
+			"value": "",
+			"mutation": "CompareAndClear"
+		},
+		{
+			"op": "GetKey",
+			"actor": "W1",
+			"sel": {
+				"key": "k2",
+				"orEqual": false,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Set",
+			"actor": "P",
+			"key": "k0",
+			"value": "p8"
+		},
+		{
+			"op": "Atomic",
+			"actor": "W1",
+			"key": "k5",
+			"value": "z3",
+			"mutation": "CompareAndClear"
+		},
+		{
+			"op": "Clear",
+			"actor": "W2",
+			"key": "k7"
+		},
+		{
+			"op": "Set",
+			"actor": "P",
+			"key": "k3",
+			"value": "p3"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "P",
+			"key": "k0",
+			"endKey": "k1"
+		},
+		{
+			"op": "GetRange",
+			"actor": "W1",
+			"sel": {
+				"key": "k1",
+				"orEqual": false,
+				"offset": 0
+			},
+			"endSel": {
+				"key": "k2",
+				"orEqual": true,
+				"offset": -1
+			},
+			"snapshot": true
+		},
+		{
+			"op": "GetRange",
+			"actor": "W2",
+			"sel": {
+				"key": "k3",
+				"orEqual": false,
+				"offset": -1
+			},
+			"endSel": {
+				"key": "k6a",
+				"orEqual": false,
+				"offset": 0
+			},
+			"limit": 1,
+			"reverse": true
+		},
+		{
+			"op": "GetRange",
+			"actor": "W2",
+			"sel": {
+				"key": "k4",
+				"orEqual": true,
+				"offset": -3
+			},
+			"endSel": {
+				"key": "k6",
+				"orEqual": true,
+				"offset": -4
+			}
+		},
+		{
+			"op": "Set",
+			"actor": "P",
+			"key": "k6",
+			"value": "p0"
+		},
+		{
+			"op": "Atomic",
+			"actor": "W2",
+			"key": "k2",
+			"value": "c3",
+			"mutation": "CompareAndClear"
+		},
+		{
+			"op": "GetRange",
+			"actor": "W2",
+			"sel": {
+				"key": "!z",
+				"orEqual": true,
+				"offset": 4
+			},
+			"endSel": {
+				"key": "k1",
+				"orEqual": false,
+				"offset": 1
+			},
+			"limit": 2,
+			"snapshot": true
+		},
+		{
+			"op": "Atomic",
+			"actor": "W2",
+			"key": "k2",
+			"value": "\\x1b\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Commit",
+			"actor": "W1"
+		},
+		{
+			"op": "GetRange",
+			"actor": "W2",
+			"sel": {
+				"key": "k4",
+				"orEqual": true,
+				"offset": 3
+			},
+			"endSel": {
+				"key": "k6",
+				"orEqual": false,
+				"offset": -3
+			},
+			"limit": 3,
+			"reverse": true
+		},
+		{
+			"op": "Commit",
+			"actor": "W2"
+		},
+		{
+			"op": "Commit",
+			"actor": "P"
+		}
+	]
+}

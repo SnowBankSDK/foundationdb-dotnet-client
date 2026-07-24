@@ -202,6 +202,7 @@ namespace FoundationDB.Client.Tests
 		[TestCase("vsa", 200, 800)]
 		[TestCase("rwa", 0, 200)]
 		[TestCase("rwa", 200, 800)]
+		[TestCase("rwa", 1000, 1000)] // family-4 round-two closing round: 1000 virgin seeds, must be dry to close the family
 		public async Task FuzzDualLive(string family, int firstSeed, int count)
 		{
 			var generate = ScenarioGeneratorFacts.Family(family);
