@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -581,6 +581,47 @@ namespace SnowBank.Buffers.Tests
 				var s = Slice.FromFixed16BE(x);
 				Assert.That(s.Count, Is.EqualTo(2));
 				Assert.That(s.ToInt16BE(), Is.EqualTo(x));
+			}
+		}
+
+		[Test]
+		public void Test_Slice_FromFixedU16BE()
+		{
+			// FromFixedU16BE always produces exactly 2 bytes in Big Endian
+			// (the count was once wrong, fabricating a slice larger than its buffer that failed validation on first real use)
+
+			Assert.That(Slice.FromFixedU16BE(0).GetBytes(), Is.EqualTo(new byte[2]));
+			Assert.That(Slice.FromFixedU16BE(1).GetBytes(), Is.EqualTo(new byte[] { 0, 1 }));
+			Assert.That(Slice.FromFixedU16BE(256).GetBytes(), Is.EqualTo(new byte[] { 1, 0 }));
+			Assert.That(Slice.FromFixedU16BE(ushort.MaxValue).GetBytes(), Is.EqualTo(new byte[] { 255, 255 }));
+
+			var rnd = new Random();
+			for (int i = 0; i < 1000; i++)
+			{
+				ushort x = (ushort) rnd.Next(0, 65536);
+				var s = Slice.FromFixedU16BE(x);
+				Assert.That(s.Count, Is.EqualTo(2));
+				Assert.That(s.ToUInt16BE(), Is.EqualTo(x));
+			}
+		}
+
+		[Test]
+		public void Test_Slice_FromFixedU16()
+		{
+			// FromFixedU16 always produces exactly 2 bytes in Little Endian
+
+			Assert.That(Slice.FromFixedU16(0).GetBytes(), Is.EqualTo(new byte[2]));
+			Assert.That(Slice.FromFixedU16(1).GetBytes(), Is.EqualTo(new byte[] { 1, 0 }));
+			Assert.That(Slice.FromFixedU16(0x1122).GetBytes(), Is.EqualTo(new byte[] { 0x22, 0x11 }));
+			Assert.That(Slice.FromFixedU16(ushort.MaxValue).GetBytes(), Is.EqualTo(new byte[] { 255, 255 }));
+
+			var rnd = new Random();
+			for (int i = 0; i < 1000; i++)
+			{
+				ushort x = (ushort) rnd.Next(0, 65536);
+				var s = Slice.FromFixedU16(x);
+				Assert.That(s.Count, Is.EqualTo(2));
+				Assert.That(s.ToUInt16(), Is.EqualTo(x));
 			}
 		}
 
@@ -1293,6 +1334,131 @@ namespace SnowBank.Buffers.Tests
 		}
 
 		[Test]
+		public void Test_Slice_FromFixed128BE()
+		{
+			// FromFixed128BE always produces 16 bytes and uses Big Endian (most significant byte first)
+
+			static void Verify(Int128 value, byte[] expected)
+			{
+				var s = Slice.FromFixed128BE(value);
+				Assert.That(s.Count, Is.EqualTo(16));
+				if (!s.Equals(expected))
+				{
+					Log("Invalid encoding (actual vs expected):");
+					DumpVersus(s.Span, expected);
+					Assert.That(s.ToHexString(), Is.EqualTo(expected.AsSlice().ToHexString()), $"Invalid encoding for {value}");
+				}
+			}
+
+			Verify((Int128) 0, new byte[16]);
+			Verify((Int128) 1, [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 ]);
+			Verify((Int128) 0x1122, [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x11, 0x22 ]);
+			Verify(long.MaxValue, [ 0, 0, 0, 0, 0, 0, 0, 0, 127, 255, 255, 255, 255, 255, 255, 255 ]);
+			Verify(Int128.MinValue, [ 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]);
+			Verify(-1L, [ 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 ]);
+			Verify(new Int128(ulong.MaxValue, ulong.MaxValue), [ 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 ]);
+
+			var rnd = new Random();
+			for (int i = 0; i < 1000; i++)
+			{
+				ulong hi = NextRawBits64(rnd);
+				ulong lo = NextRawBits64(rnd);
+				var x = new Int128(hi, lo);
+
+				var be = Slice.FromFixed128BE(x);
+				Assert.That(be.Count, Is.EqualTo(16));
+				Assert.That(be.ToInt128BE(), Is.EqualTo(x));
+
+				// big-endian is the byte-reverse of little-endian
+				var leReversed = Slice.FromFixed128(x).ToArray();
+				Array.Reverse(leReversed);
+				Assert.That(be.ToArray(), Is.EqualTo(leReversed), $"BE must be the reverse of LE for {x}");
+
+				// the split overloads must match their single-value sibling
+				Assert.That(Slice.FromFixed128BE(hi, lo).ToArray(), Is.EqualTo(be.ToArray()), $"FromFixed128BE(ulong, ulong) for {x}");
+				Assert.That(Slice.FromFixed128BE((long) hi, lo).ToArray(), Is.EqualTo(Slice.FromFixed128BE(new Int128((ulong) (long) hi, lo)).ToArray()), $"FromFixed128BE(long, ulong) for {x}");
+
+				// the little-endian split overloads too (guards the netfx branch)
+				Assert.That(Slice.FromFixed128(hi, lo).ToArray(), Is.EqualTo(Slice.FromFixed128(new Int128(hi, lo)).ToArray()), $"FromFixed128(ulong, ulong) for {x}");
+				Assert.That(Slice.FromFixed128((long) hi, lo).ToArray(), Is.EqualTo(Slice.FromFixed128(new Int128((ulong) (long) hi, lo)).ToArray()), $"FromFixed128(long, ulong) for {x}");
+			}
+		}
+
+		[Test]
+		public void Test_Slice_FromFixedU128()
+		{
+			// FromFixedU128 always produces 16 bytes and uses Little Endian
+
+			static void Verify(UInt128 value, byte[] expected)
+			{
+				var s = Slice.FromFixedU128(value);
+				Assert.That(s.Count, Is.EqualTo(16));
+				if (!s.Equals(expected))
+				{
+					Log("Invalid encoding (actual vs expected):");
+					DumpVersus(s.Span, expected);
+					Assert.That(s.ToHexString(), Is.EqualTo(expected.AsSlice().ToHexString()), $"Invalid encoding for {value}");
+				}
+			}
+
+			Verify((UInt128) 0, new byte[16]);
+			Verify((UInt128) 1, [ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]);
+			Verify((UInt128) 0x1122, [ 0x22, 0x11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]);
+			Verify(UInt128.MaxValue, [ 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 ]);
+
+			var rnd = new Random();
+			for (int i = 0; i < 1000; i++)
+			{
+				ulong hi = NextRawBits64(rnd);
+				ulong lo = NextRawBits64(rnd);
+				var x = new UInt128(hi, lo);
+				var s = Slice.FromFixedU128(x);
+				Assert.That(s.Count, Is.EqualTo(16));
+				Assert.That(s.ToUInt128(), Is.EqualTo(x));
+			}
+		}
+
+		[Test]
+		public void Test_Slice_FromFixedU128BE()
+		{
+			// FromFixedU128BE always produces 16 bytes and uses Big Endian (most significant byte first)
+
+			static void Verify(UInt128 value, byte[] expected)
+			{
+				var s = Slice.FromFixedU128BE(value);
+				Assert.That(s.Count, Is.EqualTo(16));
+				if (!s.Equals(expected))
+				{
+					Log("Invalid encoding (actual vs expected):");
+					DumpVersus(s.Span, expected);
+					Assert.That(s.ToHexString(), Is.EqualTo(expected.AsSlice().ToHexString()), $"Invalid encoding for {value}");
+				}
+			}
+
+			Verify((UInt128) 0, new byte[16]);
+			Verify((UInt128) 1, [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 ]);
+			Verify((UInt128) 0x1122, [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x11, 0x22 ]);
+			Verify(UInt128.MaxValue, [ 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 ]);
+
+			var rnd = new Random();
+			for (int i = 0; i < 1000; i++)
+			{
+				ulong hi = NextRawBits64(rnd);
+				ulong lo = NextRawBits64(rnd);
+				var x = new UInt128(hi, lo);
+
+				var be = Slice.FromFixedU128BE(x);
+				Assert.That(be.Count, Is.EqualTo(16));
+				Assert.That(be.ToUInt128BE(), Is.EqualTo(x));
+
+				// big-endian is the byte-reverse of little-endian
+				var leReversed = Slice.FromFixedU128(x).ToArray();
+				Array.Reverse(leReversed);
+				Assert.That(be.ToArray(), Is.EqualTo(leReversed), $"BE must be the reverse of LE for {x}");
+			}
+		}
+
+		[Test]
 		public void Test_Slice_ToInt128()
 		{
 			Assert.That(new byte[] { 0x12 }.AsSlice().ToInt128(), Is.EqualTo((Int128) 0x12));
@@ -1333,6 +1499,50 @@ namespace SnowBank.Buffers.Tests
 		}
 
 #endif
+
+		[Test]
+		public void Test_Slice_FromFixed128_Split()
+		{
+			// the split (upper, lower) overloads take two 64-bit halves so they can be called on runtimes without Int128 (net472),
+			// and must produce byte-identical output across all target frameworks
+
+			const ulong Hi = 0x1122334455667788UL;
+			const ulong Lo = 0x99AABBCCDDEEFF00UL;
+
+			// little-endian: [lower][upper], each half in little-endian
+			Assert.That(Slice.FromFixed128(Hi, Lo).GetBytes(), Is.EqualTo(new byte[] { 0x00, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11 }));
+			Assert.That(Slice.FromFixed128((long) Hi, Lo).GetBytes(), Is.EqualTo(new byte[] { 0x00, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11 }));
+
+			// big-endian: [upper][lower], each half in big-endian
+			Assert.That(Slice.FromFixed128BE(Hi, Lo).GetBytes(), Is.EqualTo(new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00 }));
+			Assert.That(Slice.FromFixed128BE((long) Hi, Lo).GetBytes(), Is.EqualTo(new byte[] { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00 }));
+
+			var rnd = new Random();
+			for (int i = 0; i < 1000; i++)
+			{
+				ulong hi = NextRawBits64(rnd);
+				ulong lo = NextRawBits64(rnd);
+
+				// little-endian halves
+				var le = Slice.FromFixed128(hi, lo);
+				Assert.That(le.Count, Is.EqualTo(16));
+				Assert.That(le[..8].ToUInt64(), Is.EqualTo(lo));
+				Assert.That(le[8..].ToUInt64(), Is.EqualTo(hi));
+				Assert.That(Slice.FromFixed128((long) hi, lo).GetBytes(), Is.EqualTo(le.GetBytes()));
+
+				// big-endian halves
+				var be = Slice.FromFixed128BE(hi, lo);
+				Assert.That(be.Count, Is.EqualTo(16));
+				Assert.That(be[..8].ToUInt64BE(), Is.EqualTo(hi));
+				Assert.That(be[8..].ToUInt64BE(), Is.EqualTo(lo));
+				Assert.That(Slice.FromFixed128BE((long) hi, lo).GetBytes(), Is.EqualTo(be.GetBytes()));
+
+				// big-endian is the byte-reverse of little-endian
+				var leReversed = le.ToArray();
+				Array.Reverse(leReversed);
+				Assert.That(be.ToArray(), Is.EqualTo(leReversed));
+			}
+		}
 
 		#endregion
 

@@ -132,7 +132,7 @@ namespace System
 		[Pure]
 		public static Slice FromFixedU16BE(ushort value) //REVIEW: we could drop the 'U' here
 		{
-			return new Slice([ (byte) (value >> 8), (byte) (value & 0xFF) ], 0, 4);
+			return new Slice([ (byte) (value >> 8), (byte) (value & 0xFF) ], 0, 2);
 		}
 
 		/// <summary>Encode an unsigned 16-bit integer into 7-bit encoded unsigned int (aka 'Varint16')</summary>
@@ -536,8 +536,8 @@ namespace System
 #else
 			if (BitConverter.IsLittleEndian)
 			{
-				Unsafe.WriteUnaligned(ref tmp[0], upper);
-				Unsafe.WriteUnaligned(ref tmp[8], lower);
+				Unsafe.WriteUnaligned(ref tmp[0], lower);
+				Unsafe.WriteUnaligned(ref tmp[8], upper);
 			}
 			else
 			{
@@ -562,8 +562,8 @@ namespace System
 #else
 			if (BitConverter.IsLittleEndian)
 			{
-				Unsafe.WriteUnaligned(ref tmp[0], upper);
-				Unsafe.WriteUnaligned(ref tmp[8], lower);
+				Unsafe.WriteUnaligned(ref tmp[0], lower);
+				Unsafe.WriteUnaligned(ref tmp[8], upper);
 			}
 			else
 			{
@@ -581,12 +581,12 @@ namespace System
 		{
 			var tmp = new byte[16];
 #if NET8_0_OR_GREATER
-			BinaryPrimitives.WriteInt128LittleEndian(tmp, new Int128(upper, lower));
+			BinaryPrimitives.WriteInt128BigEndian(tmp, new Int128(upper, lower));
 #else
 			if (BitConverter.IsLittleEndian)
 			{
-				Unsafe.WriteUnaligned(ref tmp[0], BinaryPrimitives.ReverseEndianness(lower));
-				Unsafe.WriteUnaligned(ref tmp[8], BinaryPrimitives.ReverseEndianness(upper));
+				Unsafe.WriteUnaligned(ref tmp[0], BinaryPrimitives.ReverseEndianness(upper));
+				Unsafe.WriteUnaligned(ref tmp[8], BinaryPrimitives.ReverseEndianness(lower));
 			}
 			else
 			{
@@ -604,12 +604,12 @@ namespace System
 		{
 			var tmp = new byte[16];
 #if NET8_0_OR_GREATER
-			BinaryPrimitives.WriteInt128LittleEndian(tmp, new Int128((ulong) upper, lower));
+			BinaryPrimitives.WriteInt128BigEndian(tmp, new Int128((ulong) upper, lower));
 #else
 			if (BitConverter.IsLittleEndian)
 			{
-				Unsafe.WriteUnaligned(ref tmp[0], BinaryPrimitives.ReverseEndianness(lower));
-				Unsafe.WriteUnaligned(ref tmp[8], BinaryPrimitives.ReverseEndianness(upper));
+				Unsafe.WriteUnaligned(ref tmp[0], BinaryPrimitives.ReverseEndianness(upper));
+				Unsafe.WriteUnaligned(ref tmp[8], BinaryPrimitives.ReverseEndianness(lower));
 			}
 			else
 			{
