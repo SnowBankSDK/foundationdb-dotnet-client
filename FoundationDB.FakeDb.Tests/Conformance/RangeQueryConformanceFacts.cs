@@ -510,8 +510,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Range_Only_Keys()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence [FDBV-020]: range reads do not honor the Keys/Values fetch mode (the omitted component is returned instead of Nil)");
-
 			// test that we can get a range of with only the keys, or only the values
 
 			const int N = 10_000; // total item count
@@ -620,8 +618,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Get_Range_Only_Values()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence [FDBV-020]: range reads do not honor the Keys/Values fetch mode (the omitted component is returned instead of Nil)");
-
 			// test that we can get a range of with only the keys, or only the values
 
 			const int N = 10_000; // total item count
@@ -1126,8 +1122,6 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Skip()
 		{
-			if (!this.UseRealServer) Assert.Ignore("FakeDb divergence [FDBV-018]: a key selector resolving past the end of the user keyspace fails with KeyOutsideLegalRange instead of clamping");
-
 			using (var db = await OpenTestPartitionAsync())
 			{
 				await CleanLocation(db);

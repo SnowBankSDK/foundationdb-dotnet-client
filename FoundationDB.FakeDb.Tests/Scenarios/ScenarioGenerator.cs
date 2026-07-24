@@ -478,6 +478,157 @@ namespace FoundationDB.Client.Tests
 			return b.Build($"fuzz_wch_{seed:D4}", $"generated watch-lifecycle fuzz (seed {seed})");
 		}
 
+		/// <summary>Generates a deterministic selector/boundary stress scenario for the given seed: two actors mix wide-offset key-selector probes and selector-bounded range reads with mid-key mutations, racing commits for conflict coverage.</summary>
+		/// <remarks>
+		/// <para>Containment invariant: the scenario runs inside a shared cluster, where a selector walk that escapes the
+		/// test partition resolves into NEIGHBOR partitions' keys - comparable for a bare GetKey (the runner renders any
+		/// out-of-partition resolution as the outside marker) but fatally incomparable for a range scan (the real backend
+		/// would return neighbor data that FakeDb does not have). The generator therefore seeds an always-committed FLOOR
+		/// run (<c>!0..!3</c>) and CEILING run (<c>~0..~3</c>) that are never mutated afterwards, keeps every selector
+		/// pivot strictly between the two runs, and bounds every offset to the run length (|offset| &lt;= 4): any walk is
+		/// absorbed inside the sentinels, so resolutions and scans stay in-partition by construction. The true
+		/// end-of-keyspace clamp (FDBV-018) is pinned by the conformance facts, not fuzzed here.</para>
+		/// <para>Selector probes go snapshot in a transaction with pending writes (the merged-view conflict ranges are
+		/// client-implementation-specific, the family-1 rule), and range reads order their pivots so only the RESOLUTIONS
+		/// can invert (which legally yields an empty read on both backends).</para>
+		/// </remarks>
+		public static Scenario GenerateSelectorFuzz(int seed)
+		{
+			var rnd = new Random(seed);
+			var b = new ScenarioBuilder();
+
+			// phase 1: the sentinel runs (always, never touched again) plus a sparse middle
+			b.Begin("A");
+			for (int i = 0; i < 4; i++)
+			{
+				b.Set("A", "!" + i, "s" + i);
+				b.Set("A", "~" + i, "s" + i);
+			}
+			for (int i = 0; i < Keys.Length; i++)
+			{
+				if (rnd.Next(2) == 0)
+				{
+					b.Set("A", Keys[i], "c" + rnd.Next(10));
+				}
+			}
+			b.Commit("A");
+
+			// phase 2: two actors race probes and mid-key mutations
+			string[] actors = [ "A", "B" ];
+			var open = new bool[actors.Length];
+			var canLoseCommit = new bool[actors.Length];
+			var hasWrites = new bool[actors.Length];
+
+			int ops = rnd.Next(25, 41);
+			for (int i = 0; i < ops; i++)
+			{
+				int a = rnd.Next(actors.Length);
+				string actor = actors[a];
+				if (!open[a])
+				{
+					b.Begin(actor);
+					open[a] = true;
+					canLoseCommit[a] = false;
+					hasWrites[a] = false;
+					if (rnd.Next(10) == 0)
+					{ // must precede any read (a later opt-in poisons the transaction)
+						b.SetOption(actor, ScenarioTransactionOption.ReadYourWritesDisable);
+					}
+					continue;
+				}
+				switch (rnd.Next(100))
+				{
+					case < 10:
+					{
+						b.Set(actor, PickKey(rnd), "v" + rnd.Next(10));
+						hasWrites[a] = true;
+						break;
+					}
+					case < 16:
+					{
+						b.Clear(actor, PickKey(rnd));
+						hasWrites[a] = true;
+						break;
+					}
+					case < 22:
+					{
+						var (lo, hi) = PickOrderedPair(rnd);
+						b.ClearRange(actor, lo, hi);
+						hasWrites[a] = true;
+						break;
+					}
+					case < 60:
+					{ // wide-offset selector probe (snapshot when the merged view would resolve it: the family-1 rule)
+						bool snapshot = rnd.Next(4) == 0 || hasWrites[a]; // draw first: the RNG stream must not depend on the actor's state
+						var (pivot, offset) = PickSelectorProbe(rnd);
+						b.GetKey(actor, new ScenarioSelector(Slice.FromStringAscii(pivot), OrEqual: rnd.Next(2) == 0, Offset: offset), snapshot);
+						if (!snapshot) canLoseCommit[a] = true;
+						break;
+					}
+					case < 85:
+					{ // selector-bounded range read; ordered pivots, but offsets can still invert the resolutions (legal empty read)
+						var (p1, o1) = PickSelectorProbe(rnd);
+						var (p2, o2) = PickSelectorProbe(rnd);
+						bool swap = string.CompareOrdinal(p1, p2) > 0;
+						string lo = swap ? p2 : p1, hi = swap ? p1 : p2;
+						// the BEGIN bound clamps to -3: a backward walk starts at the base (the last key at/below the
+						// pivot, at worst the floor-run top !3), so only three absorbing keys sit below it - a fourth
+						// step exits the partition and the scan would read neighbor data on a shared cluster. An END
+						// bound below the partition only inverts the range (legal empty), and a bare GetKey renders
+						// as the outside marker, so both keep the full envelope.
+						int lofs = Math.Max(swap ? o2 : o1, -3), hofs = swap ? o1 : o2;
+						bool snapshot = rnd.Next(4) == 0 || hasWrites[a];
+						b.GetRange(actor,
+							new ScenarioSelector(Slice.FromStringAscii(lo), OrEqual: rnd.Next(2) == 0, Offset: lofs),
+							new ScenarioSelector(Slice.FromStringAscii(hi), OrEqual: rnd.Next(2) == 0, Offset: hofs),
+							limit: rnd.Next(3) == 0 ? rnd.Next(1, 4) : null,
+							reverse: rnd.Next(3) == 0,
+							snapshot: snapshot);
+						if (!snapshot) canLoseCommit[a] = true;
+						break;
+					}
+					case < 95:
+					{
+						b.Commit(actor);
+						open[a] = false;
+						if (!canLoseCommit[a] && rnd.Next(2) == 0)
+						{ // safe probe: a conflict-free commit always succeeds, so the transaction is still there
+							b.GetCommittedVersion(actor);
+						}
+						break;
+					}
+					default:
+					{
+						b.Dispose(actor);
+						open[a] = false;
+						break;
+					}
+				}
+			}
+
+			// epilogue: settle every remaining transaction so the final state is fully determined
+			for (int a = 0; a < actors.Length; a++)
+			{
+				if (open[a])
+				{
+					b.Commit(actors[a]);
+				}
+			}
+
+			return b.Build($"fuzz_sel_{seed:D4}", $"generated selector/boundary stress fuzz (seed {seed})");
+		}
+
+		/// <summary>Picks a selector pivot and its offset together, honoring the containment invariant: pivots between the sentinel runs get the full +-4 envelope, pivots ON a sentinel run get INWARD offsets only (the floor walks up from at least +1, the ceiling walks down from at most 0), so no walk can escape the partition.</summary>
+		private static (string Pivot, int Offset) PickSelectorProbe(Random rnd) => rnd.Next(12) switch
+		{
+			< 6 => (Keys[rnd.Next(Keys.Length)], rnd.Next(-4, 5)),
+			< 8 => (Keys[rnd.Next(Keys.Length)] + "a", rnd.Next(-4, 5)),
+			8 => ("!z", rnd.Next(-4, 5)),
+			9 => ("kz", rnd.Next(-4, 5)),
+			10 => ("!" + rnd.Next(4), rnd.Next(1, 5)),
+			_ => ("~" + rnd.Next(4), rnd.Next(-4, 1)),
+		};
+
 		private static (int Lo, int Hi) PickOrderedIndexPair(Random rnd)
 		{
 			int a = rnd.Next(Keys.Length), c = rnd.Next(Keys.Length);

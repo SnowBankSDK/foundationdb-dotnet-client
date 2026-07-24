@@ -1,0 +1,432 @@
+{
+	"scenario": "fuzz_mtx_0134",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "c4"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "c7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k5",
+				"value": "c9"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k5",
+				"value": "c5"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Begin",
+			"actor": "C",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "GetRange",
+			"actor": "C",
+			"args": {
+				"sel": {
+					"key": "k0",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k1",
+					"orEqual": true,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k1",
+						"value": "c7"
+					}
+				]
+			}
+		},
+		{
+			"step": 8,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 9,
+			"op": "GetRange",
+			"actor": "C",
+			"args": {
+				"sel": {
+					"key": "k1",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k5",
+					"orEqual": false,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k1",
+						"value": "c7"
+					}
+				]
+			}
+		},
+		{
+			"step": 10,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 11,
+			"op": "Get",
+			"actor": "B",
+			"args": {
+				"key": "k5",
+				"snapshot": true
+			},
+			"outcome": {
+				"value": "c5"
+			}
+		},
+		{
+			"step": 12,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "v9"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 13,
+			"op": "Get",
+			"actor": "C",
+			"args": {
+				"key": "k6"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 14,
+			"op": "Get",
+			"actor": "C",
+			"args": {
+				"key": "k7",
+				"snapshot": true
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 15,
+			"op": "Set",
+			"actor": "C",
+			"args": {
+				"key": "k0",
+				"value": "v7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 16,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "v5"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 17,
+			"op": "Dispose",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 18,
+			"op": "Clear",
+			"actor": "B",
+			"args": {
+				"key": "k0"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 19,
+			"op": "Set",
+			"actor": "B",
+			"args": {
+				"key": "k2",
+				"value": "v9"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 20,
+			"op": "GetRange",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k1",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k5",
+					"orEqual": false,
+					"offset": 1
+				},
+				"limit": 3
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k1",
+						"value": "c7"
+					},
+					{
+						"key": "k2",
+						"value": "v9"
+					}
+				]
+			}
+		},
+		{
+			"step": 21,
+			"op": "Clear",
+			"actor": "C",
+			"args": {
+				"key": "k2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 22,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 23,
+			"op": "Get",
+			"actor": "B",
+			"args": {
+				"key": "k0"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 24,
+			"op": "GetRange",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k2",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k3",
+					"orEqual": true,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k2",
+						"value": "v9"
+					}
+				]
+			}
+		},
+		{
+			"step": 25,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k6",
+				"snapshot": true
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 26,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "k2",
+				"value": "Z\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 27,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 28,
+			"op": "Clear",
+			"actor": "A",
+			"args": {
+				"key": "k3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 29,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k2",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k7",
+					"orEqual": true,
+					"offset": 1
+				},
+				"limit": 1,
+				"reverse": true,
+				"snapshot": true
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k5",
+						"value": "c5"
+					}
+				]
+			}
+		},
+		{
+			"step": 30,
+			"op": "GetRange",
+			"actor": "C",
+			"args": {
+				"sel": {
+					"key": "k3",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k4",
+					"orEqual": false,
+					"offset": 1
+				},
+				"reverse": true
+			},
+			"outcome": {
+				"items": [ ]
+			}
+		},
+		{
+			"step": 31,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "v1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 32,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 33,
+			"op": "Commit",
+			"actor": "C",
+			"args": { },
+			"outcome": {
+				"error": "NotCommitted"
+			}
+		}
+	],
+	"finalState": [
+		{
+			"key": "k1",
+			"value": "v1"
+		},
+		{
+			"key": "k2",
+			"value": "\\xd09\\x00\\x00\\x00\\x00\\x00\\x00"
+		},
+		{
+			"key": "k5",
+			"value": "c5"
+		}
+	]
+}

@@ -780,9 +780,10 @@ namespace FoundationDB.Testing
 					{
 						if (!iter.Next())
 						{
-							// we reached past the end of the system keyspace!
-							if (!accessSystemKeys) throw new FdbException(FdbError.KeyOutsideLegalRange, $"Key selector {selector} requires access to system keys.");
-							return SpecialKeys.SystemEnd;
+							// the walk exhausted the store: clamp like the real cluster does (to the end of the user
+							// keyspace without system access, to the end of the system keyspace with it) - offsets
+							// that merely LAND in the system range are clamped the same way below
+							return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
 						}
 					}
 				}
@@ -859,7 +860,27 @@ namespace FoundationDB.Testing
 				Slice first = count > 0 ? res[0].Key : default;
 				Slice last = count > 0 ? res[^1].Key : default;
 
+				ApplyFetchMode(res, options);
+
 				return new FdbRangeChunk(count > 0 ? res.ToArray() : [ ], hasMore, iteration, options, first, last, (int) bytes, SliceOwner.Nil);
+			}
+
+			/// <summary>Applies the fetch mode to the materialized items of a range read: the omitted component reads as <see cref="Slice.Nil"/>, like the real client; the chunk's First/Last keys and byte accounting keep the raw keys</summary>
+			internal static void ApplyFetchMode(List<KeyValuePair<Slice, Slice>> items, FdbRangeOptions options)
+			{
+				switch (options.Fetch)
+				{
+					case FdbFetchMode.KeysOnly:
+					{
+						for (int i = 0; i < items.Count; i++) items[i] = KeyValuePair.Create(items[i].Key, Slice.Nil);
+						break;
+					}
+					case FdbFetchMode.ValuesOnly:
+					{
+						for (int i = 0; i < items.Count; i++) items[i] = KeyValuePair.Create(Slice.Nil, items[i].Value);
+						break;
+					}
+				}
 			}
 
 			/// <summary>Exposes all the key/value pairs in this snapshot</summary>
@@ -1383,6 +1404,19 @@ namespace FoundationDB.Testing
 				}
 
 				// slow path: resolve against the merged view (committed snapshot + local uncommitted mutations)
+				var resolved = ResolveMerged(selector, accessSystemKeys);
+
+				if (!snapshotRead)
+				{
+					MarkResolveReadConflict(selector, resolved, merged: true);
+				}
+				return resolved;
+			}
+
+			/// <summary>Resolves a key selector against the merged view (committed snapshot + local uncommitted mutations), without recording any conflict range.</summary>
+			/// <remarks>This is the ONLY correct selector semantics over pending writes: the onion iterator's per-layer seek is exact just for the 0/+1 offsets the internal pager uses, so range-read bounds resolve here too.</remarks>
+			private Key ResolveMerged(Selector selector, bool accessSystemKeys)
+			{
 				if (!accessSystemKeys && selector.Key > SpecialKeys.SystemPrefix)
 				{
 					throw new FdbException(FdbError.KeyOutsideLegalRange, $"Key selector {selector} requires access to system keys");
@@ -1399,25 +1433,15 @@ namespace FoundationDB.Testing
 				}
 
 				long target = (long) baseIndex + selector.Offset;
-				Key resolved;
 				if (target < 0)
 				{ // before the first visible key
-					resolved = Key.Empty;
+					return Key.Empty;
 				}
-				else if (target >= merged.Count)
+				if (target >= merged.Count)
 				{ // past the last visible key: clamp like the real cluster does (the walk enters the system range)
-					resolved = accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
+					return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
 				}
-				else
-				{
-					resolved = merged[(int) target];
-				}
-
-				if (!snapshotRead)
-				{
-					MarkResolveReadConflict(selector, resolved, merged: true);
-				}
-				return resolved;
+				return merged[(int) target];
 			}
 
 			/// <summary>Marks the read-conflict range implied by a resolved key selector (the range of keys whose change could alter the resolution).</summary>
@@ -1471,41 +1495,69 @@ namespace FoundationDB.Testing
 
 			/// <summary>Marks the read conflict of a range read from its selector bounds and scan outcome.</summary>
 			/// <remarks>
-			/// <para>The extent the result depends on runs from the begin pivot (excluded when the walk starts strictly after it, i.e. orEqual; extended down to the begin resolution when that landed lower) up to the end pivot (included when orEqual: that key can be the last returned item). Resolution slack ABOVE the end pivot cancels out: a key appearing there moves the end resolution down in lockstep without changing the returned items. A limit clamps the truncated side to the keys actually returned.</para>
-			/// <para>An end selector with an offset other than +1 walks a window whose keys do not cancel; the extent is widened to the resolved end in that case.</para>
+			/// <para>The extent the result depends on anchors on the pivot span [begin pivot (excluded when orEqual), end pivot (included when orEqual)): a proper span records even when nothing was returned, a degenerate span records nothing, and resolution slack beyond either pivot is not a dependency. Returned keys, and the gap between each pivot and the served keys on its side, are always covered.</para>
+			/// <para>A satisfied limit clamps the truncated side: the high side under a forward-resolving end, the low side on a reverse read - unless the begin selector walks forward (offset above +1), in which case the whole span from the begin pivot bound stays a dependency.</para>
 			/// </remarks>
-			private void MarkRangeReadConflict(Selector beginSelector, Selector endSelector, Key resolvedBegin, Key lowestReturned, Key highestReturned, Key resolvedEnd, bool limitHit, bool reversed, bool merged)
+			private void MarkRangeReadConflict(Selector beginSelector, Selector endSelector, Key lowestReturned, Key highestReturned, bool limitHit, bool reversed, bool merged)
 			{
-				Key from;
-				if (limitHit && reversed)
-				{ // truncated at the low end: keys below the lowest returned key cannot change the result
-					from = lowestReturned;
-				}
-				else
-				{
-					from = beginSelector.OrEqual ? beginSelector.Key.GetSuccessor(this.Arena) : beginSelector.Key;
-					if (!resolvedBegin.IsNull && resolvedBegin < from) from = resolvedBegin;
-				}
+				// oracle-fitted against the FULL 378-shape x 12-position calibration matrix (the FDBV-029/030/031
+				// loops; zero mismatches): the extent anchors on the PIVOT SPAN [begin pivot (excl when orEqual),
+				// end pivot (incl when orEqual)) - a proper span records even when it returned nothing (the
+				// phantom rule), a degenerate pivot span records nothing, resolution slack beyond either pivot is
+				// not a dependency. On top of the span: returned keys are always covered; the GAP between a pivot
+				// and the served keys on its side is always covered (a backward begin walk below its pivot, the
+				// reversed serve gap between the end pivot and the highest returned key); a satisfied limit clamps
+				// the far scan bound (forward, under a forward-resolving end); and on a reverse-truncated read the
+				// scan span clamps to the lowest returned key ONLY under a canonical or backward begin (offset
+				// <= 1) - a forward begin walk keeps the whole span, down to its pivot bound, a dependency.
+				var beginPivotBound = beginSelector.OrEqual ? beginSelector.Key.GetSuccessor(this.Arena) : beginSelector.Key;
+				var endPivotBound = endSelector.OrEqual ? endSelector.Key.GetSuccessor(this.Arena) : endSelector.Key;
+
+				var from = beginPivotBound;
+				if (!lowestReturned.IsNull && lowestReturned < from) from = lowestReturned;
 
 				Key to;
-				if (limitHit && !reversed)
-				{ // truncated at the high end: keys above the highest returned key cannot change the result
+				if (limitHit && !reversed && endSelector.Offset >= 1)
+				{ // truncated at the high end under a forward-resolving end: keys above the highest returned key
+					// cannot change the result - the scan never reached them
 					to = highestReturned.GetSuccessor(this.Arena);
 				}
 				else
 				{
-					to = endSelector.OrEqual ? endSelector.Key.GetSuccessor(this.Arena) : endSelector.Key;
-					if (endSelector.Offset != 1 && !resolvedEnd.IsNull && resolvedEnd > to) to = resolvedEnd;
+					to = endPivotBound;
+					if (!highestReturned.IsNull)
+					{ // returned keys stay covered even above the end pivot (a negative end offset resolves below its pivot)
+						var returnedTo = highestReturned.GetSuccessor(this.Arena);
+						if (returnedTo > to) to = returnedTo;
+					}
 				}
 
-				if (from >= to) return;
+				if (!lowestReturned.IsNull)
+				{ // pivot-to-served gap zones, both sides (no-ops when the pivot sits inside the served span)
+					MarkRange(lowestReturned, beginPivotBound, merged);
+					MarkRange(endPivotBound, highestReturned, merged);
+				}
+
+				if (limitHit && reversed && beginSelector.Offset <= 1)
+				{ // truncated at the LOW end under a canonical or backward begin: the scan span clamps to the
+					// lowest returned key. A FORWARD begin walk (offset > 1) voids the clamp instead: the walked
+					// keys steer where the serve starts, so the whole span below the served keys stays a dependency.
+					from = lowestReturned;
+				}
+
+				MarkRange(from, to, merged);
+			}
+
+			private void MarkRange(Key fromInclusive, Key toExclusive, bool merged)
+			{
+				if (fromInclusive >= toExclusive) return;
 				if (merged)
 				{
-					MarkMergedRangeReadConflict(from, to);
+					MarkMergedRangeReadConflict(fromInclusive, toExclusive);
 				}
 				else
 				{
-					this.ReadConflicts.Mark(from, to);
+					this.ReadConflicts.Mark(fromInclusive, toExclusive);
 				}
 			}
 
@@ -1628,17 +1680,15 @@ namespace FoundationDB.Testing
 					var end = this.Inner.Resolve<TCursor>(endExclusive, accessSystemKeys);
 
 					var res = begin.Equals(end)
-						? new FdbRangeChunk([], false, iteration, options, default, default, 0, SliceOwner.Nil) // empty range (the read still depends on the selector zones below)
+						? new FdbRangeChunk([], false, iteration, options, default, default, 0, SliceOwner.Nil) // empty range (an empty read records no dependency: the marking below no-ops)
 						: this.Inner.GetRange<TCursor>(begin, end, options, iteration);
 
 					if (!snapshotRead)
 					{
 						// note: a reverse chunk is ordered high-to-low, so res.Last is its LOWEST key
 						MarkRangeReadConflict(beginInclusive, endExclusive,
-							resolvedBegin: begin,
 							lowestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.Last : res.First) : default,
 							highestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.First : res.Last) : default,
-							resolvedEnd: end,
 							limitHit: options.Limit is not null && res.Count == options.Limit,
 							reversed: options.IsReversed,
 							merged: false);
@@ -1664,22 +1714,24 @@ namespace FoundationDB.Testing
 					}
 #endif
 
-				// first resolve the end key!
-					iter.Seek(endExclusive);
-					var endKey = iter.Current.Key;
+				// resolve BOTH bounds on the merged view first (ResolveMerged is the only correct selector
+					// semantics over pending writes; the onion iterator's per-layer Seek is exact just for the
+					// 0/+1 offsets used below to position the scan), then scan between the resolved keys
+					var endKey = ResolveMerged(endExclusive, accessSystemKeys);
 					if (endKey.IsNull)
 					{ // the end selector resolves past the last visible key: the merged scan is only bounded by the system space
 						endKey = SpecialKeys.SystemPrefix;
 					}
-					Kenobi($"*** #{this.Id} EndKey: {endKey:K}");
+					var beginKey = ResolveMerged(beginInclusive, accessSystemKeys);
+					Kenobi($"*** #{this.Id} BeginKey: {beginKey:K}, EndKey: {endKey:K}");
 
 					var res = new List<KeyValuePair<Slice, Slice>>();
 					long sum = 0;
-					// then resolve the start key
 					bool hasMore = false;
 					int limit = options.Limit ?? 0;
 					bool reversed = options.IsReversed;
-					if (iter.Seek(beginInclusive))
+					// position at the first merged key at/after the resolved begin (the 0/+1 form the seek handles exactly)
+					if (beginKey < endKey && iter.Seek(new Selector(beginKey, orEqual: false, offset: 1)))
 					{
 						Kenobi($"*** #{this.Id} BeginKey: {iter.Current.Key:K}");
 
@@ -1727,10 +1779,8 @@ namespace FoundationDB.Testing
 						// note: res is already normalized (a reverse read is ordered high-to-low)
 						var lowest = res.Count > 0 ? new Key(res[reversed ? ^1 : 0].Key) : default;
 						MarkRangeReadConflict(beginInclusive, endExclusive,
-							resolvedBegin: lowest, // the lowest returned key IS the resolved begin when the scan returned anything
 							lowestReturned: lowest,
 							highestReturned: res.Count > 0 ? new Key(res[reversed ? 0 : ^1].Key) : default,
-							resolvedEnd: endKey,
 							limitHit: limit != 0 && res.Count == limit, // NOT hasMore: a limit satisfied exactly at the end of the data clamps the result all the same
 							reversed: reversed,
 							merged: true);
@@ -1754,6 +1804,9 @@ namespace FoundationDB.Testing
 					}
 
 					Kenobi($"**** #{this.Id} Got {res.Count} results ({sum:N0} bytes)");
+
+					// after the conflict marking and the atomic conversion above, which must see the raw keys
+					Snapshot.ApplyFetchMode(res, options);
 
 					return new FdbRangeChunk(res.ToArray(), hasMore, iteration, options, first, last, checked((int) sum), SliceOwner.Nil);
 				}

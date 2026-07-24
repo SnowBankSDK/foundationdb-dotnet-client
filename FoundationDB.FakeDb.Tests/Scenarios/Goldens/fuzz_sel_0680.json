@@ -1,0 +1,570 @@
+{
+	"scenario": "fuzz_sel_0680",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "!0",
+				"value": "s0"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "~0",
+				"value": "s0"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "!1",
+				"value": "s1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "~1",
+				"value": "s1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "!2",
+				"value": "s2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "~2",
+				"value": "s2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "!3",
+				"value": "s3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "~3",
+				"value": "s3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 9,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"value": "c0"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 10,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "c8"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 11,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k6",
+				"value": "c0"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 12,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k7",
+				"value": "c3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 13,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 14,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 15,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 16,
+			"op": "Set",
+			"actor": "B",
+			"args": {
+				"key": "k4",
+				"value": "v1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 17,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 18,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 19,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 20,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 21,
+			"op": "GetRange",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k0",
+					"orEqual": false,
+					"offset": -2
+				},
+				"endSel": {
+					"key": "k2",
+					"orEqual": false,
+					"offset": 1
+				},
+				"limit": 1
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "!1",
+						"value": "s1"
+					}
+				]
+			}
+		},
+		{
+			"step": 22,
+			"op": "GetRange",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k3",
+					"orEqual": false,
+					"offset": -2
+				},
+				"endSel": {
+					"key": "k4",
+					"orEqual": true,
+					"offset": -2
+				},
+				"snapshot": true
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "!2",
+						"value": "s2"
+					},
+					{
+						"key": "!3",
+						"value": "s3"
+					}
+				]
+			}
+		},
+		{
+			"step": 23,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k1",
+					"orEqual": true,
+					"offset": 3
+				},
+				"snapshot": true
+			},
+			"outcome": {
+				"key": "k6"
+			}
+		},
+		{
+			"step": 24,
+			"op": "GetRange",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k1",
+					"orEqual": false,
+					"offset": -2
+				},
+				"endSel": {
+					"key": "k3a",
+					"orEqual": true,
+					"offset": 0
+				}
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "!1",
+						"value": "s1"
+					},
+					{
+						"key": "!2",
+						"value": "s2"
+					},
+					{
+						"key": "!3",
+						"value": "s3"
+					},
+					{
+						"key": "k1",
+						"value": "c0"
+					}
+				]
+			}
+		},
+		{
+			"step": 25,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k2",
+					"orEqual": true,
+					"offset": 3
+				},
+				"endSel": {
+					"key": "k3",
+					"orEqual": false,
+					"offset": 2
+				}
+			},
+			"outcome": {
+				"items": [ ]
+			}
+		},
+		{
+			"step": 26,
+			"op": "GetKey",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "!z",
+					"orEqual": false,
+					"offset": -1
+				}
+			},
+			"outcome": {
+				"key": "!2"
+			}
+		},
+		{
+			"step": 27,
+			"op": "GetKey",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k4",
+					"orEqual": false,
+					"offset": 3
+				}
+			},
+			"outcome": {
+				"key": "k7"
+			}
+		},
+		{
+			"step": 28,
+			"op": "GetKey",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k7a",
+					"orEqual": false,
+					"offset": 3
+				}
+			},
+			"outcome": {
+				"key": "~2"
+			}
+		},
+		{
+			"step": 29,
+			"op": "GetKey",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k6",
+					"orEqual": true,
+					"offset": 4
+				}
+			},
+			"outcome": {
+				"key": "~2"
+			}
+		},
+		{
+			"step": 30,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "!z",
+					"orEqual": true,
+					"offset": 4
+				},
+				"endSel": {
+					"key": "kz",
+					"orEqual": false,
+					"offset": 0
+				},
+				"limit": 1,
+				"reverse": true
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k6",
+						"value": "c0"
+					}
+				]
+			}
+		},
+		{
+			"step": 31,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k3",
+					"orEqual": false,
+					"offset": 2
+				},
+				"endSel": {
+					"key": "k4a",
+					"orEqual": false,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k4",
+						"value": "v1"
+					}
+				]
+			}
+		},
+		{
+			"step": 32,
+			"op": "Dispose",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 33,
+			"op": "GetKey",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k0",
+					"orEqual": false,
+					"offset": 0
+				}
+			},
+			"outcome": {
+				"key": "!3"
+			}
+		},
+		{
+			"step": 34,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 35,
+			"op": "Clear",
+			"actor": "B",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 36,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 37,
+			"op": "GetCommittedVersion",
+			"actor": "B",
+			"args": { },
+			"outcome": {
+				"version": "v1"
+			}
+		},
+		{
+			"step": 38,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k4",
+				"value": "v8"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 39,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 40,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": {
+				"error": "NotCommitted"
+			}
+		},
+		{
+			"step": 41,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "!0",
+			"value": "s0"
+		},
+		{
+			"key": "!1",
+			"value": "s1"
+		},
+		{
+			"key": "!2",
+			"value": "s2"
+		},
+		{
+			"key": "!3",
+			"value": "s3"
+		},
+		{
+			"key": "k3",
+			"value": "c8"
+		},
+		{
+			"key": "k4",
+			"value": "v1"
+		},
+		{
+			"key": "k6",
+			"value": "c0"
+		},
+		{
+			"key": "k7",
+			"value": "c3"
+		},
+		{
+			"key": "~0",
+			"value": "s0"
+		},
+		{
+			"key": "~1",
+			"value": "s1"
+		},
+		{
+			"key": "~2",
+			"value": "s2"
+		},
+		{
+			"key": "~3",
+			"value": "s3"
+		}
+	]
+}

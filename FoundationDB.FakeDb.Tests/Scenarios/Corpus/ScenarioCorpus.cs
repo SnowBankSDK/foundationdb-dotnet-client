@@ -58,12 +58,13 @@ namespace FoundationDB.Client.Tests
 		public static Scenario Get(string name) => All.FirstOrDefault(s => s.Name == name) ?? throw new ArgumentException($"Unknown scenario '{name}'.", nameof(name));
 
 		/// <summary>The pinned-scenarios folder in the source tree (compile-time anchor).</summary>
-		private static string PinnedSourceDirectory { get; } = ComputePinnedSourceDirectory();
+		/// <remarks>Computed per access, NOT an auto-property initializer: <see cref="All"/> is declared textually above and its initializer calls <see cref="LoadPinned"/> - a stored initializer here would still be null at that point (static members initialize in declaration order), silently loading zero pins.</remarks>
+		private static string PinnedSourceDirectory => ComputePinnedSourceDirectory();
 
 		private static string ComputePinnedSourceDirectory([CallerFilePath] string sourcePath = "") => Path.Combine(Path.GetDirectoryName(sourcePath)!, "Pinned");
 
-		/// <summary>The pinned-scenarios folder copied next to the test assembly by the build.</summary>
-		private static string PinnedOutputDirectory { get; } = Path.Combine(AppContext.BaseDirectory, "Scenarios", "Corpus", "Pinned");
+		/// <summary>The pinned-scenarios folder copied next to the test assembly by the build (same per-access rule as <see cref="PinnedSourceDirectory"/>).</summary>
+		private static string PinnedOutputDirectory => Path.Combine(AppContext.BaseDirectory, "Scenarios", "Corpus", "Pinned");
 
 		/// <summary>Loads the generator finds pinned as JSON scenarios (a fresh pin in the source tree wins over a stale output copy).</summary>
 		private static IEnumerable<Scenario> LoadPinned()

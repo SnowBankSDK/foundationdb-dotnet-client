@@ -1,0 +1,465 @@
+{
+	"scenario": "fuzz_mtx_2114",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "GetCommittedVersion",
+			"actor": "A",
+			"args": { },
+			"outcome": {
+				"version": "none"
+			}
+		},
+		{
+			"step": 3,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "SetOption",
+			"actor": "A",
+			"args": {
+				"option": "ReadYourWritesDisable"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k2",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k4",
+					"orEqual": false,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"items": [ ]
+			}
+		},
+		{
+			"step": 9,
+			"op": "ClearRange",
+			"actor": "A",
+			"args": {
+				"key": "k4",
+				"endKey": "k7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 10,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k3"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 11,
+			"op": "GetKey",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k3",
+					"orEqual": false,
+					"offset": 2
+				}
+			},
+			"outcome": {
+				"key": "!outside"
+			}
+		},
+		{
+			"step": 12,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k0",
+				"value": "v3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 13,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k5",
+				"snapshot": true
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 14,
+			"op": "Get",
+			"actor": "B",
+			"args": {
+				"key": "k4"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 15,
+			"op": "GetKey",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k0",
+					"orEqual": true,
+					"offset": 2
+				}
+			},
+			"outcome": {
+				"key": "!outside"
+			}
+		},
+		{
+			"step": 16,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k6"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 17,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 18,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k4"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 19,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 20,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k3"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 21,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k3",
+				"value": "v3"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 22,
+			"op": "Get",
+			"actor": "B",
+			"args": {
+				"key": "k6"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 23,
+			"op": "Set",
+			"actor": "B",
+			"args": {
+				"key": "k3",
+				"value": "v6"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 24,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 25,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 26,
+			"op": "ClearRange",
+			"actor": "A",
+			"args": {
+				"key": "k1",
+				"endKey": "k4"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 27,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 28,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 29,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k0",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k2",
+					"orEqual": false,
+					"offset": 1
+				},
+				"limit": 1
+			},
+			"outcome": {
+				"items": [ ]
+			}
+		},
+		{
+			"step": 30,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 31,
+			"op": "GetRange",
+			"actor": "A",
+			"args": {
+				"sel": {
+					"key": "k6",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k6z",
+					"orEqual": false,
+					"offset": 1
+				},
+				"snapshot": true
+			},
+			"outcome": {
+				"items": [ ]
+			}
+		},
+		{
+			"step": 32,
+			"op": "GetRange",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k2",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k5",
+					"orEqual": true,
+					"offset": 1
+				},
+				"limit": 2,
+				"reverse": true,
+				"snapshot": true
+			},
+			"outcome": {
+				"items": [
+					{
+						"key": "k3",
+						"value": "v6"
+					}
+				]
+			}
+		},
+		{
+			"step": 33,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 34,
+			"op": "GetCommittedVersion",
+			"actor": "B",
+			"args": { },
+			"outcome": {
+				"version": "none"
+			}
+		},
+		{
+			"step": 35,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": {
+				"error": "NotCommitted"
+			}
+		},
+		{
+			"step": 36,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 37,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 38,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k6",
+				"snapshot": true
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 39,
+			"op": "ClearRange",
+			"actor": "B",
+			"args": {
+				"key": "k0",
+				"endKey": "k7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 40,
+			"op": "Get",
+			"actor": "B",
+			"args": {
+				"key": "k2"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 41,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 42,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 43,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [ ]
+}

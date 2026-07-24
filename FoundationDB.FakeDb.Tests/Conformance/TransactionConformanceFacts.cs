@@ -5428,6 +5428,78 @@ namespace FoundationDB.Client.Tests
 
 		}
 
+		[Test]
+		public async Task Test_GetRange_Merged_Begin_Bound_Honors_Negative_Offset()
+		{
+			// a range read in a transaction with pending writes resolves its BOUND selectors over the merged view
+			// with full key-selector semantics: a begin selector walking BACKWARD from its pivot must land below
+			// the keys masked by an own clear-range (selector fuzz family, seed 0 step 32)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("a"), Text("alpha"));
+				tr.Set(subspace.Key("c"), Text("charlie"));
+				tr.Set(subspace.Key("d"), Text("delta"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				// the own clear-range masks 'c' (end exclusive: 'd' survives); merged view = { a, d }
+				tr1.ClearRange(subspace.Key("c"), subspace.Key("d"));
+
+				// begin = lLT{z} - 1: last visible key < z is 'd', one step back lands on 'a' (NOT the masked 'c')
+				// end   = lLT{z}    : 'd'
+				// so [a, d) over the merged view = { a }
+				var chunk = await tr1.Snapshot.GetRangeAsync(
+					FdbKeySelector.LastLessThan(subspace.Key("z")) - 1,
+					FdbKeySelector.LastLessThan(subspace.Key("z")),
+					new FdbRangeOptions { Limit = 1 });
+				Assert.That(chunk.Count, Is.EqualTo(1), "the backward-walking begin bound must resolve below the keys masked by the own clear");
+				Assert.That(chunk[0].Key, Is.EqualTo(subspace.Key("a").ToSlice()));
+			}
+		}
+
+		[Test]
+		public async Task Test_GetRange_Merged_End_Bound_Skips_Own_Cleared_Keys()
+		{
+			// the end bound of a merged range read must resolve over the VISIBLE keys: a last-less-than selector
+			// whose pivot sits just above an own-cleared key resolves below that key, making the range empty
+			// (selector fuzz family, seed 0 step 34)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("a"), Text("alpha"));
+				tr.Set(subspace.Key("c"), Text("charlie"));
+				tr.Set(subspace.Key("d"), Text("delta"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				// merged view = { a, d }
+				tr1.ClearRange(subspace.Key("c"), subspace.Key("d"));
+
+				// begin = fGE{a} = 'a'; end = lLT{d}: last visible key < d is 'a' (NOT the masked 'c')
+				// so [a, a) is EMPTY - resolving the end onto the masked 'c' would wrongly return { a }
+				var chunk = await tr1.Snapshot.GetRangeAsync(
+					FdbKeySelector.FirstGreaterOrEqual(subspace.Key("a")),
+					FdbKeySelector.LastLessThan(subspace.Key("d")),
+					new FdbRangeOptions());
+				Assert.That(chunk.Count, Is.Zero, "the end bound must resolve below the keys masked by the own clear, yielding an empty range");
+			}
+		}
+
 		// Inlined from FoundationDB.Tests/TestHelpers.cs (not available outside that assembly) - see task-3-report.md.
 		private static async Task AssertThrowsFdbErrorAsync(Func<Task> asyncTest, FdbError expectedCode, string message)
 		{

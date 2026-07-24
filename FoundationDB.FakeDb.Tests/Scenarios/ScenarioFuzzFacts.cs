@@ -41,12 +41,14 @@ namespace FoundationDB.Client.Tests
 			"ryw" => ScenarioGenerator.GenerateRywFuzz,
 			"mtx" => ScenarioGenerator.GenerateMultiTxnFuzz,
 			"wch" => ScenarioGenerator.GenerateWatchFuzz,
+			"sel" => ScenarioGenerator.GenerateSelectorFuzz,
 			_ => throw new ArgumentException($"Unknown generator family '{family}'.", nameof(family)),
 		};
 
 		[TestCase("ryw")]
 		[TestCase("mtx")]
 		[TestCase("wch")]
+		[TestCase("sel")]
 		public void Test_Generator_Is_Deterministic(string family)
 		{
 			// resumability depends on it: the same seed must always pin the same scenario
@@ -71,6 +73,7 @@ namespace FoundationDB.Client.Tests
 		[TestCase("ryw")]
 		[TestCase("mtx")]
 		[TestCase("wch")]
+		[TestCase("sel")]
 		public async Task Test_Generated_Scenario_Executes_On_FakeDb(string family)
 		{
 			var generate = Family(family);
@@ -101,6 +104,16 @@ namespace FoundationDB.Client.Tests
 		[TestCase("mtx", 0)]
 		[TestCase("wch", 82)]
 		[TestCase("wch", 240)]
+		[TestCase("sel", 0)]
+		[TestCase("sel", 1)]
+		[TestCase("sel", 3)]
+		[TestCase("sel", 266)]
+		[TestCase("sel", 677)]
+		[TestCase("sel", 680)]
+		[TestCase("sel", 30)]
+		[TestCase("sel", 153)]
+		[TestCase("sel", 1073)]
+		[TestCase("sel", 1308)]
 		public async Task DiagnoseSeed(string family, int seed)
 		{
 			var scenario = ScenarioGeneratorFacts.Family(family)(seed);
@@ -172,6 +185,13 @@ namespace FoundationDB.Client.Tests
 		[TestCase("mtx", 2000, 1000)]
 		[TestCase("wch", 0, 200)]
 		[TestCase("wch", 200, 800)]
+		[TestCase("wch", 1000, 1000)]
+		[TestCase("sel", 0, 200)]
+		[TestCase("sel", 200, 800)]
+		[TestCase("sel", 1000, 1000)]
+		[TestCase("sel", 2000, 1000)]
+		[TestCase("sel", 3000, 1000)]
+		[TestCase("sel", 4000, 1000)]
 		public async Task FuzzDualLive(string family, int firstSeed, int count)
 		{
 			var generate = ScenarioGeneratorFacts.Family(family);

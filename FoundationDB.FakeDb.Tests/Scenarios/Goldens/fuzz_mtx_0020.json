@@ -1,0 +1,309 @@
+{
+	"scenario": "fuzz_mtx_0020",
+	"format": 1,
+	"events": [
+		{
+			"step": 0,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 1,
+			"op": "Set",
+			"actor": "A",
+			"args": {
+				"key": "k5",
+				"value": "c7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 2,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 3,
+			"op": "Begin",
+			"actor": "C",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 4,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 5,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 6,
+			"op": "SetOption",
+			"actor": "A",
+			"args": {
+				"option": "ReadYourWritesDisable"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 7,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 8,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 9,
+			"op": "Clear",
+			"actor": "B",
+			"args": {
+				"key": "k0"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 10,
+			"op": "GetRange",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k0",
+					"orEqual": false,
+					"offset": 1
+				},
+				"endSel": {
+					"key": "k2",
+					"orEqual": true,
+					"offset": 1
+				},
+				"limit": 1,
+				"reverse": true
+			},
+			"outcome": {
+				"items": [ ]
+			}
+		},
+		{
+			"step": 11,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k2"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 12,
+			"op": "GetKey",
+			"actor": "B",
+			"args": {
+				"sel": {
+					"key": "k4",
+					"orEqual": true,
+					"offset": 1
+				}
+			},
+			"outcome": {
+				"key": "k5"
+			}
+		},
+		{
+			"step": 13,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 14,
+			"op": "Begin",
+			"actor": "A",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 15,
+			"op": "Get",
+			"actor": "B",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 16,
+			"op": "Set",
+			"actor": "C",
+			"args": {
+				"key": "k6",
+				"value": "v7"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 17,
+			"op": "Set",
+			"actor": "C",
+			"args": {
+				"key": "k4",
+				"value": "v1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 18,
+			"op": "ClearRange",
+			"actor": "B",
+			"args": {
+				"key": "k1",
+				"endKey": "k5"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 19,
+			"op": "Commit",
+			"actor": "C",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 20,
+			"op": "ClearRange",
+			"actor": "B",
+			"args": {
+				"key": "k0",
+				"endKey": "k2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 21,
+			"op": "Begin",
+			"actor": "C",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 22,
+			"op": "Atomic",
+			"actor": "A",
+			"args": {
+				"key": "k7",
+				"value": "\\x1a\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+				"mutation": "Add"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 23,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 24,
+			"op": "Clear",
+			"actor": "A",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 25,
+			"op": "Get",
+			"actor": "C",
+			"args": {
+				"key": "k1"
+			},
+			"outcome": {
+				"value": null
+			}
+		},
+		{
+			"step": 26,
+			"op": "Begin",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 27,
+			"op": "Get",
+			"actor": "A",
+			"args": {
+				"key": "k4"
+			},
+			"outcome": {
+				"value": "v1"
+			}
+		},
+		{
+			"step": 28,
+			"op": "ClearRange",
+			"actor": "C",
+			"args": {
+				"key": "k1",
+				"endKey": "k2"
+			},
+			"outcome": { }
+		},
+		{
+			"step": 29,
+			"op": "Commit",
+			"actor": "A",
+			"args": { },
+			"outcome": {
+				"error": "NotCommitted"
+			}
+		},
+		{
+			"step": 30,
+			"op": "Commit",
+			"actor": "B",
+			"args": { },
+			"outcome": { }
+		},
+		{
+			"step": 31,
+			"op": "Commit",
+			"actor": "C",
+			"args": { },
+			"outcome": { }
+		}
+	],
+	"finalState": [
+		{
+			"key": "k5",
+			"value": "c7"
+		},
+		{
+			"key": "k6",
+			"value": "v7"
+		}
+	]
+}
