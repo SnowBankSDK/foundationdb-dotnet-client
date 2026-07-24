@@ -1404,7 +1404,8 @@ namespace FoundationDB.Testing
 				}
 
 				// slow path: resolve against the merged view (committed snapshot + local uncommitted mutations)
-				var resolved = ResolveMerged(selector, accessSystemKeys);
+				// getKey RESULT: skip a CompareAndClear'd is_kv anchor to the nearest content key (FDBV-037)
+				var resolved = ResolveMerged(selector, accessSystemKeys, contentSkip: true);
 
 				if (!snapshotRead)
 				{
@@ -1414,8 +1415,8 @@ namespace FoundationDB.Testing
 			}
 
 			/// <summary>Resolves a key selector against the merged view (committed snapshot + local uncommitted mutations), without recording any conflict range.</summary>
-			/// <remarks>This is the ONLY correct selector semantics over pending writes: the onion iterator's per-layer seek is exact just for the 0/+1 offsets the internal pager uses, so range-read bounds resolve here too.</remarks>
-			private Key ResolveMerged(Selector selector, bool accessSystemKeys)
+			/// <remarks>This is the ONLY correct selector semantics over pending writes: the onion iterator's per-layer seek is exact just for the 0/+1 offsets the internal pager uses, so range-read bounds resolve here too. <paramref name="contentSkip"/> selects the two fdb semantics: getKey passes <c>true</c> (its RESULT skips a CompareAndClear'd is_kv anchor forward/backward to the nearest content key, FDBV-037); a GetRange begin/end BOUND passes <c>false</c> (it stops at the raw is_kv anchor, FDBV-038 - the merged range scan excludes CAC'd keys on its own, so skipping the bound would over-shrink or over-grow the range).</remarks>
+			private Key ResolveMerged(Selector selector, bool accessSystemKeys, bool contentSkip)
 			{
 				if (!accessSystemKeys && selector.Key > SpecialKeys.SystemPrefix)
 				{
@@ -1441,7 +1442,31 @@ namespace FoundationDB.Testing
 				{ // past the last visible key: clamp like the real cluster does (the walk enters the system range)
 					return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
 				}
-				return merged[(int) target];
+
+				int index = (int) target;
+
+				// FDBV-037/038: the is_kv walk above positioned the anchor (a pending atomic counts as a present
+				// boundary key). fdb getKey is getRange with limit 1 (ReadYourWrites.actor.cpp), so its RESULT is the
+				// nearest CONTENT key from the anchor - forward for offset > 0, backward for offset <= 0 - which SKIPS
+				// a CompareAndClear'd key (content-absent though is_kv-present). This content-skip is the getKey RESULT
+				// step ONLY (contentSkip): a GetRange begin/end BOUND stops at the raw is_kv anchor - the merged range
+				// scan (OnionIterator) already excludes a CAC'd key, so skipping the bound too would drop a content key
+				// below an end bound, or add one below a begin bound (FDBV-038). merged is the is_kv set and content-
+				// present keys are a subset of it, so this is a filtered scan over merged.
+				if (contentSkip)
+				{
+					if (selector.Offset > 0)
+					{
+						while (index < merged.Count && !IsContentPresentInMergedView(merged[index])) index++;
+						if (index >= merged.Count) return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
+					}
+					else
+					{
+						while (index >= 0 && !IsContentPresentInMergedView(merged[index])) index--;
+						if (index < 0) return Key.Empty;
+					}
+				}
+				return merged[index];
 			}
 
 			/// <summary>Marks the read-conflict range implied by a resolved key selector (the range of keys whose change could alter the resolution).</summary>
@@ -1675,6 +1700,29 @@ namespace FoundationDB.Testing
 				return this.Inner.ContainsKey(key);
 			}
 
+			/// <summary>Checks whether a key is present in the merged read CONTENT: the coalesced atomic chain is non-null. A CompareAndClear'd key is absent from content even though it is a present boundary key for the is_kv walk (<see cref="IsVisibleInMergedView"/>) - this is the kv() vs is_kv() split (FDBV-037).</summary>
+			private bool IsContentPresentInMergedView(Key key)
+			{
+				var mutation = FindCoveringMutation(key);
+				if (mutation != null)
+				{
+					if (mutation.IsKv()) return !mutation.Parameter.IsNull; // a single-key Clear is IsKv() with a Nil parameter
+					if (mutation.IsRange()) return false;
+					if (mutation.IsAtomic())
+					{
+						// evaluate the chain over the committed value; the result decides content visibility (e.g. CompareAndClear can erase the key)
+						var value = (mutation.Op is Operation.Set or Operation.Clear) ? default : this.Inner.Read(key);
+						for (var m = mutation; m != null; m = m.Next)
+						{
+							value = CoalesceAtomic(this.Arena, value, m);
+						}
+						return !value.IsNull;
+					}
+					return true;
+				}
+				return this.Inner.ContainsKey(key);
+			}
+
 			public FdbRangeChunk GetRange<TCursor>(
 				Selector beginInclusive,
 				Selector endExclusive,
@@ -1730,12 +1778,14 @@ namespace FoundationDB.Testing
 				// resolve BOTH bounds on the merged view first (ResolveMerged is the only correct selector
 					// semantics over pending writes; the onion iterator's per-layer Seek is exact just for the
 					// 0/+1 offsets used below to position the scan), then scan between the resolved keys
-					var endKey = ResolveMerged(endExclusive, accessSystemKeys);
+					// a range BOUND resolves to the raw is_kv anchor (contentSkip: false, FDBV-038); the scan below
+					// excludes CAC'd keys on its own, so a content-skipped bound would over-shrink/over-grow the range
+					var endKey = ResolveMerged(endExclusive, accessSystemKeys, contentSkip: false);
 					if (endKey.IsNull)
 					{ // the end selector resolves past the last visible key: the merged scan is only bounded by the system space
 						endKey = SpecialKeys.SystemPrefix;
 					}
-					var beginKey = ResolveMerged(beginInclusive, accessSystemKeys);
+					var beginKey = ResolveMerged(beginInclusive, accessSystemKeys, contentSkip: false);
 					Kenobi($"*** #{this.Id} BeginKey: {beginKey:K}, EndKey: {endKey:K}");
 
 					var res = new List<KeyValuePair<Slice, Slice>>();

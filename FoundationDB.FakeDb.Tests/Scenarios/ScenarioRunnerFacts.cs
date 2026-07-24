@@ -199,6 +199,110 @@ namespace FoundationDB.Client.Tests
 			Assert.That(contentKeys.Contains("b"), Is.EqualTo(expectContentB), $"[{flavor}] read CONTENT reflects the coalesced value (a CAC-to-absent key stays absent from content), independent of the boundary walk");
 		}
 
+		[TestCase("fwd-skip", "a", false, 2, "e")]           // is_kv anchor lands on the CAC'd c (content-absent) -> skip FORWARD to e
+		[TestCase("fwd1-skip", "c", false, 1, "e")]          // offset == +1 (fGE, forward branch): anchor is the CAC'd c -> skip FORWARD to e
+		[TestCase("bwd-skip", "e", true, -1, "a")]           // is_kv anchor lands on the CAC'd c -> skip BACKWARD to a (offset < 0)
+		[TestCase("zero-skip", "c", true, 0, "a")]           // offset == 0 (lLE, the backward branch): anchor is the CAC'd c -> skip BACKWARD to a
+		[TestCase("zero-present", "e", true, 0, "e")]        // offset == 0 control: anchor is the content-present e, no skip
+		[TestCase("fwd-anchor-present", "a", false, 3, "e")] // FDBV-036 counting: c IS counted in the walk, anchor lands on the present e
+		[TestCase("fwd-noskip", "a", false, 1, "a")]         // anchor is the content-present a, no skip
+		public async Task Test_GetKey_Resolves_To_Content_Key_Skipping_Cleared_Anchor(string name, string pivot, bool orEqual, int offset, string expected)
+		{
+			// fdb getKey is getRange with limit 1 (ReadYourWrites.actor.cpp): the is_kv walk POSITIONS the anchor,
+			// counting a pending CompareAndClear as a present boundary key (FDBV-036); then the read returns the
+			// nearest CONTENT key via kv() - forward for offset > 0, backward for offset <= 0 - which SKIPS the
+			// CAC'd key (its coalesced value is absent). Committed a < e; a pending CAC on the absent gap key c is
+			// is_kv-present but content-absent, so it shifts the anchor yet is never itself returned (FDBV-037).
+
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "a", "va");
+			builder.Set("A", "e", "ve");
+			builder.Commit("A");
+
+			builder.Begin("W");
+			builder.Atomic("W", "c", Slice.FromStringAscii("x"), FdbMutationType.CompareAndClear); // c absent -> content-absent, is_kv-present
+			builder.GetKey("W", new ScenarioSelector(Slice.FromStringAscii(pivot), OrEqual: orEqual, Offset: offset));
+
+			var scenario = builder.Build("getkey_content_skip_" + name);
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			var getKey = trace.Events.Single(e => e.Op == "GetKey");
+			Assert.That(getKey.Outcome.Get<string?>("key", null), Is.EqualTo(expected), $"[{name}] getKey returns the nearest CONTENT key from the is_kv anchor, skipping a CompareAndClear'd boundary");
+		}
+
+		[Test]
+		public async Task Test_GetRange_Bounds_Skip_Cleared_Anchor_Like_GetKey()
+		{
+			// GetRange never returns a CompareAndClear'd key, whether or not it is a bound's is_kv anchor. Here the
+			// begin selector's is_kv anchor IS the CAC'd c: the bound resolves to the raw anchor c (FDBV-038), and the
+			// interior merged scan then excludes c (content-absent), so the range still begins at the next content key
+			// e - the same key GetKey resolves to, but via the scan rather than a bound shift. (Result-insensitive to
+			// FDBV-038 because no content key sits between the raw anchor c and e; the FDBV-038 facts cover the cases
+			// where it does.)
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "a", "va");
+			builder.Set("A", "e", "ve");
+			builder.Commit("A");
+
+			builder.Begin("W");
+			builder.Atomic("W", "c", Slice.FromStringAscii("x"), FdbMutationType.CompareAndClear); // c absent -> content-absent, is_kv-present
+			builder.GetKey("W", new ScenarioSelector(Slice.FromStringAscii("a"), OrEqual: false, Offset: 2)); // is_kv anchor c -> content-skip -> e
+			builder.GetRange("W", new ScenarioSelector(Slice.FromStringAscii("a"), OrEqual: false, Offset: 2), new ScenarioSelector(Slice.FromStringAscii("e"), OrEqual: true, Offset: 1));
+
+			var scenario = builder.Build("getrange_bound_content_skip");
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			var getKey = trace.Events.Single(e => e.Op == "GetKey");
+			var getRange = trace.Events.Single(e => e.Op == "GetRange");
+			var rangeKeys = getRange.Outcome.GetArray("items").Select(item => item["key"].As<string>()).ToList();
+
+			Assert.That(getKey.Outcome.Get<string?>("key", null), Is.EqualTo("e"), "the begin selector resolves to the content key e (the CAC'd c is skipped)");
+			Assert.That(rangeKeys, Is.EqualTo(new[] { "e" }), "GetRange begins at the same content key GetKey resolves to; the CAC'd c is never returned");
+		}
+
+		[TestCase("end-drop-fwd",  "a", true, 0, "e", true, 0,  false, "a,c")] // end is_kv anchor is the CAC'd e; the RAW anchor keeps e, so [a,e) includes c - a content-skipped end bound (e->c) drops c
+		[TestCase("end-drop-rev",  "a", true, 0, "e", true, 0,  true,  "c,a")] // same shape, reverse: the bound bug is direction-independent (reverse changes ordering only)
+		[TestCase("begin-add-fwd", "e", true, 0, "g", false, 1, false, "")]    // begin is_kv anchor is the CAC'd e; the RAW anchor keeps e, so [e,g) is empty - a content-skipped begin bound (e->c) wrongly adds c
+		[TestCase("begin-add-rev", "e", true, 0, "g", false, 1, true,  "")]    // same shape, reverse
+		public async Task Test_GetRange_Bounds_Keep_Raw_IsKv_Anchor_Not_Content_Skipped(string name, string bKey, bool bEq, int bOff, string eKey, bool eEq, int eOff, bool reverse, string expectedCsv)
+		{
+			// FDBV-038 (a correction of FDBV-037): getKey content-skips a CAC'd is_kv anchor to the nearest CONTENT
+			// key, but a GetRange BOUND selector must NOT - it resolves to the RAW is_kv anchor, and the interior
+			// merged scan (OnionIterator) already excludes a CompareAndClear'd key (its coalesced chain is null). fdb
+			// getKey = getRange limit 1 positions its RESULT via kv(); a range BOUND stops at the is_kv anchor. Real
+			// (7.4.6) traces confirm both: an end bound on a CAC'd anchor keeps content below it (else it is dropped),
+			// and a begin bound on a CAC'd anchor keeps the range empty (else a content key below it is added).
+			// Committed content a < c < g; a pending CompareAndClear on the absent gap key e is is_kv-present but
+			// content-absent, so it can be a bound's is_kv anchor while never being read content.
+
+			var builder = new ScenarioBuilder();
+			builder.Begin("A");
+			builder.Set("A", "a", "va");
+			builder.Set("A", "c", "vc");
+			builder.Set("A", "g", "vg");
+			builder.Commit("A");
+
+			builder.Begin("W");
+			builder.Atomic("W", "e", Slice.FromStringAscii("x"), FdbMutationType.CompareAndClear); // e absent -> content-absent, is_kv-present
+			builder.GetRange("W", new ScenarioSelector(Slice.FromStringAscii(bKey), OrEqual: bEq, Offset: bOff), new ScenarioSelector(Slice.FromStringAscii(eKey), OrEqual: eEq, Offset: eOff), reverse: reverse);
+
+			var scenario = builder.Build("getrange_bound_raw_anchor_" + name);
+			using var db = await OpenScenarioDatabaseAsync();
+			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+			Log(trace.ToJsonText());
+
+			var getRange = trace.Events.Single(e => e.Op == "GetRange");
+			var rangeKeys = getRange.Outcome.GetArray("items").Select(item => item["key"].As<string>()).ToList();
+			var expected = expectedCsv.Length == 0 ? [] : expectedCsv.Split(',');
+			Assert.That(rangeKeys, Is.EqualTo(expected), $"[{name}] a GetRange bound resolves to the raw is_kv anchor (a CAC'd key), not the content-skipped key; the interior scan excludes the CAC'd key");
+		}
+
 		[Test]
 		public async Task Test_Runner_Settles_Watch_Observations()
 		{
