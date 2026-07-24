@@ -2196,6 +2196,15 @@ namespace FoundationDB.Testing
 		/// simulated cluster whose retry timing advances with virtual time, instead of blocking the wall clock.</remarks>
 		internal TimeProvider Time { get; }
 
+		/// <summary>Lazily-created watch fault-injection facet, or <see langword="null"/> until <see cref="Buggify"/> is first touched (the buggify-off default costs one null check on the commit path).</summary>
+		private FakeDbBuggify? BuggifyState { get; set; }
+
+		/// <summary>Test-only fault-injection facet ("buggify") that reproduces the spurious and missed watch fires a real fdb cluster is allowed to produce; the shipped default is inert (buggify off).</summary>
+		/// <remarks>See <see cref="FakeDbBuggify"/>. Deliberately an instance facet holding per-store injection state (suppression counters,
+		/// chaos config, timers): probes observe (that is <see cref="FakeDbDebugger"/>, which stays read-only), buggify injects.</remarks>
+		[PublicAPI]
+		public FakeDbBuggify Buggify => this.BuggifyState ??= new FakeDbBuggify(this);
+
 		/// <summary>Base delay before the first retry after a retryable error (when <see cref="RetryDelayMaximum"/> enables the backoff); defaults to 1 ms</summary>
 		public TimeSpan RetryDelayInitial { get; set; } = TimeSpan.FromMilliseconds(1);
 
@@ -2494,6 +2503,9 @@ namespace FoundationDB.Testing
 					// keys for watches that have completely triggered in this commit, and should be removed from the active list
 					List<Slice>? deadWatchedKeys = null;
 
+					// buggify: keys whose watch check is deferred (skipped) this commit, so one manual suppression is consumed at most once across the arm branch and the post-commit scan
+					HashSet<Slice>? buggifyDecided = null;
+
 					if (updated != null)
 					{
 						updated = PublishSnapshot(updated, commitVersion);
@@ -2516,9 +2528,13 @@ namespace FoundationDB.Testing
 								var updatedValue = source.Read(new(w.Key));
 								if (!updatedValue.Slice.Equals(w.Value))
 								{ // it was changed in between the creation of the watch and the commit!
-									// queue the watch for triggering
-									(watchesToTrigger ??= [ ]).Add(w);
-									continue;
+									if (this.BuggifyState is null || !this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
+									{
+										// queue the watch for triggering
+										(watchesToTrigger ??= [ ]).Add(w);
+										continue;
+									}
+									// buggify: deferred check - fall through and register the node with its original baseline (a later real change self-heals it)
 								}
 								// it is still active
 							}
@@ -2569,6 +2585,12 @@ namespace FoundationDB.Testing
 									var updatedValue = updated.Read(new(w.Key));
 									if (!w.Value.Equals(updatedValue.Slice))
 									{
+										if (this.BuggifyState is not null && this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
+										{ // buggify: the deferred check leaves the node registered with its ORIGINAL baseline and read version, so a later commit still differing from the baseline fires it (self-heal), and only a net-reverted change stays pending
+											Kenobi($"WWW watch({w.Key}) check deferred by buggify at commit {commitVersion}");
+											continue;
+										}
+
 										Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) triggered by commit {commitVersion}, changed to {updatedValue} from {w.Value}");
 
 										// queue the watch for triggering
@@ -2610,6 +2632,9 @@ namespace FoundationDB.Testing
 				{
 					handler.StampSignal?.TrySetResult(stamp);
 				}
+
+				// buggify: after arming and the commit-time scan, chaos may inject a spurious fire on one armed key (no-op unless Buggify.Chaos is set)
+				this.BuggifyState?.MaybeInjectSpuriousFire(commitVersion, ref watchesToTrigger);
 
 				if (watchesToTrigger is not null)
 				{
@@ -4199,6 +4224,248 @@ namespace FoundationDB.Testing
 				Kenobi($"*** trigger watch for '{this.Key:K}'");
 				this.Future.TrySetResult(this.Key);
 			}
+
+		}
+
+		/// <summary>Test-only fault-injection facet ("buggify") for the watch machinery, reproducing the false positives and false
+		/// negatives that a real fdb cluster is contractually allowed to produce but that the deterministic emulator never emits.</summary>
+		/// <remarks>
+		/// <para>A FoundationDB watch may fire even when the watched key did not change (a permitted spurious fire), and a change
+		/// that is reverted before the watch machinery observes it may never fire at all. Correct consumers re-read the key after a
+		/// fire and never assume "fired implies changed". FakeDb keeps watches deterministic and independent, so it never exercises
+		/// those weak-contract paths; this facet injects them on demand (<see cref="FireWatches"/> / <see cref="SuppressNextWatchCheck"/> /
+		/// <see cref="FireWatchesAfter"/>) or automatically under a seed (<see cref="Chaos"/>).</para>
+		/// <para>The two modelled classes are the catalogued real-cluster findings: per-key fan-out spurious fire (a stale-armed
+		/// sibling dragging every watch on the key), and a deferred watch check (a skipped check that self-heals on a later real
+		/// change but loses a net-reverted transient forever). By construction a deferred check only loses fires the contract already
+		/// permits losing, so buggify never makes the emulator contract-illegal.</para>
+		/// <para>Every outcome is a pure function of (seed, transaction schedule, virtual clock): <see cref="Chaos"/> draws are
+		/// deterministic hashes of the commit version and key, and <see cref="FireWatchesAfter"/> schedules on <see cref="FakeDbStore.Time"/>,
+		/// so a test driving a fake clock replays exactly.</para>
+		/// <para>The facet is created lazily and stays inert until used; the shipped emulator default is buggify-off (see the store's
+		/// <see cref="FakeDbStore.Buggify"/> property).</para>
+		/// </remarks>
+		[PublicAPI]
+		public sealed class FakeDbBuggify
+		{
+
+			internal FakeDbBuggify(FakeDbStore store)
+			{
+				this.Store = store;
+			}
+
+			private FakeDbStore Store { get; }
+
+			/// <summary>Per-key count of pending deferred watch checks (see <see cref="SuppressNextWatchCheck"/>), consumed by the commit-time trigger check.</summary>
+			private Dictionary<Slice, int>? Suppressions { get; set; }
+
+			/// <summary>Live timers scheduled by <see cref="FireWatchesAfter"/>, held so they are not collected before they fire.</summary>
+			private List<ITimer>? Timers { get; set; }
+
+			/// <summary>Seeded chaos configuration, or <see langword="null"/> when automatic injection is off (the default).</summary>
+			/// <remarks>Set to a <see cref="FakeDbBuggifyChaos"/> to have every commit possibly inject a spurious fire or defer a watch
+			/// check, deterministically under the seed. Clearing it (or calling <see cref="Disable"/>) returns to clean watch semantics.</remarks>
+			public FakeDbBuggifyChaos? Chaos { get; set; }
+
+			/// <summary>Turns off all automatic injection (clears <see cref="Chaos"/>) for a test that needs clean, deterministic watches.</summary>
+			/// <remarks>Deterministic on-demand injection (<see cref="FireWatches"/> / <see cref="SuppressNextWatchCheck"/> / <see cref="FireWatchesAfter"/>)
+			/// is unaffected: it only fires when the test explicitly calls it, so there is nothing to disable.</remarks>
+			public void Disable() => this.Chaos = null;
+
+			/// <summary>Injects an immediate spurious fire of every watch registered on <paramref name="key"/>, then unregisters them (the FDBV-026 per-key fan-out shape).</summary>
+			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
+			/// <returns>The number of watches fired (0 when no watch was armed on the key: a test can assert the injection landed).</returns>
+			/// <remarks>This is exactly the real-client entanglement shape - one stale-armed sibling dragging every co-registered watch
+			/// on the key - and degenerates to a single spurious fire when one watch is registered. The watched value is NOT changed,
+			/// so a correct consumer re-reads and observes no change.</remarks>
+			public int FireWatches(Slice key)
+			{
+				List<WatchNode>? nodes;
+				using (this.Store.GlobalLock.GetWriteLock())
+				{
+					if (!this.Store.ActiveWatches.TryGetValue(key, out nodes) || nodes is null || nodes.Count == 0)
+					{
+						return 0;
+					}
+					this.Store.ActiveWatches.Remove(key);
+				}
+
+				// trigger OUTSIDE the lock, like the commit path does
+				foreach (var node in nodes)
+				{
+					node.Trigger();
+				}
+				return nodes.Count;
+			}
+
+			/// <summary>Arms a one-shot deferred watch check for <paramref name="key"/>: the next commit-time check that would fire a watch on the key is skipped, leaving the watch registered with its original baseline (the FDBV-027 missed-fire shape).</summary>
+			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
+			/// <remarks>
+			/// <para>This reproduces the real mechanism, not just the symptom. The watch stack is level-triggered against the expected
+			/// value, so a single skipped check self-heals: if a later commit still leaves the value differing from the baseline the
+			/// watch fires (late, which the contract permits), and only a net-reverted (ABA) change leaves it pending forever.</para>
+			/// <para>Because the skipped check can never fire a watch the contract guarantees (the value still differs at a later
+			/// observation would fire it), suppression is always within the contract envelope. Calls stack: N calls skip the next N checks.</para>
+			/// </remarks>
+			public void SuppressNextWatchCheck(Slice key)
+			{
+				var copy = key.Copy();
+				using (this.Store.GlobalLock.GetWriteLock())
+				{
+					var map = this.Suppressions ??= new(Slice.Comparer.Default);
+					map[copy] = (map.TryGetValue(copy, out var count) ? count : 0) + 1;
+				}
+			}
+
+			/// <summary>Schedules a spurious fire of the watches on <paramref name="key"/> after <paramref name="delay"/> elapses on the store clock (the timed variant of <see cref="FireWatches"/>, BG-5).</summary>
+			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
+			/// <param name="delay">Delay measured on <see cref="FakeDbStore.Time"/>.</param>
+			/// <remarks>Deterministic only when the store runs on an injectable clock (e.g. a <c>FakeTimeProvider</c>): the test advances
+			/// virtual time and the fire lands exactly then. Under the system clock it degrades to wall-clock timing, the same caveat as
+			/// the retry backoff - reproducible enough for a soak, not for a byte-exact replay.</remarks>
+			public void FireWatchesAfter(Slice key, TimeSpan delay)
+			{
+				var copy = key.Copy();
+				var timer = this.Store.Time.CreateTimer(
+					static state =>
+					{
+						var (facet, k) = ((FakeDbBuggify Facet, Slice Key)) state!;
+						facet.FireWatches(k);
+					},
+					(this, copy),
+					delay,
+					Timeout.InfiniteTimeSpan
+				);
+				(this.Timers ??= [ ]).Add(timer);
+			}
+
+			/// <summary>Called under the store write lock from the commit-time watch check: decides whether the check for <paramref name="key"/> is skipped this commit (a manual suppression or a chaos deferral), consuming at most one manual suppression per key per commit.</summary>
+			internal bool ShouldDeferWatchCheck(Slice key, long commitVersion, ref HashSet<Slice>? decidedThisCommit)
+			{
+				if (decidedThisCommit?.Contains(key) == true)
+				{ // already decided (and consumed) for this key at an earlier branch of the same commit
+					return true;
+				}
+
+				bool defer = TryConsumeSuppression(key) || (this.Chaos is { } chaos && chaos.ShouldDeferCheck(commitVersion, key));
+				if (defer)
+				{
+					(decidedThisCommit ??= new(Slice.Comparer.Default)).Add(key);
+				}
+				return defer;
+			}
+
+			private bool TryConsumeSuppression(Slice key)
+			{
+				if (this.Suppressions is null || !this.Suppressions.TryGetValue(key, out var count) || count <= 0)
+				{
+					return false;
+				}
+				this.Suppressions[key] = count - 1;
+				return true;
+			}
+
+			/// <summary>Called at the end of a commit (before the pending watches are triggered): if chaos rolls a spurious fire, picks one armed key deterministically and fans it out into <paramref name="watchesToTrigger"/>, unregistering it.</summary>
+			internal void MaybeInjectSpuriousFire(long commitVersion, ref List<WatchNode>? watchesToTrigger)
+			{
+				if (this.Chaos is not { } chaos || !chaos.ShouldSpuriousFire(commitVersion))
+				{
+					return;
+				}
+
+				List<WatchNode>? fired = null;
+				using (this.Store.GlobalLock.GetWriteLock())
+				{
+					if (this.Store.ActiveWatches.Count == 0)
+					{
+						return;
+					}
+
+					// deterministic pick: sort the armed keys so the choice does not depend on Dictionary iteration order
+					var keys = new List<Slice>(this.Store.ActiveWatches.Keys);
+					keys.Sort(Slice.Comparer.Default);
+					var key = keys[chaos.PickIndex(commitVersion, keys.Count)];
+
+					if (this.Store.ActiveWatches.TryGetValue(key, out var nodes) && nodes is not null)
+					{
+						this.Store.ActiveWatches.Remove(key);
+						fired = nodes;
+					}
+				}
+
+				if (fired is not null)
+				{
+					(watchesToTrigger ??= [ ]).AddRange(fired);
+				}
+			}
+
+		}
+
+		/// <summary>Seeded configuration for automatic watch buggify (see <see cref="FakeDbBuggify.Chaos"/>): every commit may inject a spurious fire or defer a watch check, deterministically under the seed.</summary>
+		/// <remarks>
+		/// <para>Decisions are pure deterministic hashes of (<see cref="Seed"/>, commit version, key), NOT draws from a stateful PRNG,
+		/// so a chaos run is a pure function of (seed, transaction schedule) and never depends on hash-table iteration order - it replays
+		/// byte-for-byte. Choose a seed derived from the test name so each test gets a stable, distinct injection profile.</para>
+		/// <para>Both modelled classes stay inside the watch contract: the spurious fire is always permitted, and the deferred check only
+		/// loses fires a real cluster may lose (reverted transients), so a chaos-on store can run under arbitrary consumer suites without
+		/// producing false bug reports.</para>
+		/// </remarks>
+		[PublicAPI]
+		public sealed class FakeDbBuggifyChaos
+		{
+
+			/// <summary>Creates a chaos profile with the given seed.</summary>
+			public FakeDbBuggifyChaos(int seed)
+			{
+				this.Seed = seed;
+			}
+
+			/// <summary>Seed that fixes the whole injection profile.</summary>
+			public int Seed { get; }
+
+			/// <summary>Probability in [0, 1] that a commit injects a per-key fan-out spurious fire on one armed key (the FDBV-026 shape).</summary>
+			public double SpuriousFireRate { get; init; } = 0.25;
+
+			/// <summary>Probability in [0, 1] that a commit-time watch check is deferred, i.e. skipped this commit (the FDBV-027 shape).</summary>
+			public double DeferredCheckRate { get; init; } = 0.25;
+
+			internal bool ShouldSpuriousFire(long commitVersion) => Fraction(Mix(this.Seed, commitVersion, default, SaltSpurious)) < this.SpuriousFireRate;
+
+			internal bool ShouldDeferCheck(long commitVersion, Slice key) => Fraction(Mix(this.Seed, commitVersion, key, SaltDefer)) < this.DeferredCheckRate;
+
+			internal int PickIndex(long commitVersion, int count) => (int) (Mix(this.Seed, commitVersion, default, SaltPick) % (ulong) count);
+
+			private const ulong SaltSpurious = 0x9E3779B97F4A7C15UL;
+			private const ulong SaltDefer = 0xC2B2AE3D27D4EB4FUL;
+			private const ulong SaltPick = 0x165667B19E3779F9UL;
+
+			// FNV-1a 64-bit over seed + commit version + salt + key bytes: a cheap, stable, iteration-order-independent hash
+			private static ulong Mix(int seed, long commitVersion, Slice key, ulong salt)
+			{
+				const ulong Prime = 1099511628211UL;
+				ulong h = 14695981039346656037UL;
+				h = Fold(h, (uint) seed);
+				h = Fold(h, (ulong) commitVersion);
+				h = Fold(h, salt);
+				foreach (var b in key.Span)
+				{
+					h = (h ^ b) * Prime;
+				}
+				return h;
+
+				static ulong Fold(ulong h, ulong value)
+				{
+					for (int i = 0; i < 8; i++)
+					{
+						h = (h ^ (byte) value) * Prime;
+						value >>= 8;
+					}
+					return h;
+				}
+			}
+
+			// top 53 bits of the hash mapped to [0, 1), the standard double construction
+			private static double Fraction(ulong h) => (h >> 11) * (1.0 / (1UL << 53));
 
 		}
 
