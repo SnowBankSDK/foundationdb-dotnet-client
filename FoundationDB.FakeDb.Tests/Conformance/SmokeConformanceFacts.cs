@@ -115,14 +115,14 @@ namespace FoundationDB.Client.Tests
 
 		protected override Task<IFdbDatabase> OpenTestDatabaseAsync(bool readOnly = false)
 		{
-			var db = (this.Store ??= new FakeDbStore()).OpenDatabase(FdbPath.Root, readOnly);
+			var db = (this.Store ??= TestBuggify.ChaosStore()).OpenDatabase(FdbPath.Root, readOnly);
 			db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
 			return Task.FromResult<IFdbDatabase>(db);
 		}
 
 		protected override Task<IFdbDatabase> OpenTestPartitionAsync(string? testMethod = null)
 		{
-			var db = (this.Store ??= new FakeDbStore()).OpenDatabase(GetTestPartitionPath(testMethod), readOnly: false);
+			var db = (this.Store ??= TestBuggify.ChaosStore()).OpenDatabase(GetTestPartitionPath(testMethod), readOnly: false);
 			db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
 			return Task.FromResult<IFdbDatabase>(db);
 		}

@@ -45,6 +45,10 @@ namespace FoundationDB.Client.Tests
 	public abstract class TransactionConformanceFacts : FdbTest
 	{
 
+		/// <summary>Opts this test out of watch buggify so it sees clean, deterministic watch semantics (no-op on a real cluster; on the
+		/// FakeDb head it disables the seeded chaos the harness turns on by default). Call at the top of a test that asserts exact watch timing.</summary>
+		protected virtual void RequireCleanWatches() { }
+
 		[Test]
 		public async Task Test_Can_Create_And_Dispose_Transactions()
 		{
@@ -3447,6 +3451,8 @@ namespace FoundationDB.Client.Tests
 		[CoversCells("watches/no-fire-single-commit-aba")]
 		public async Task Test_Watch_Registration_Compares_Endpoint_Values()
 		{
+			RequireCleanWatches(); // clean watches: this test asserts exact fire/pending semantics
+
 			// the pre-arm window is judged by VALUES at the endpoints, not by version history: a key that changed
 			// and reverted across two commits between the watching transaction's read version and its arming
 			// commit registers as still-pending (oracle-pinned; contrast with the POST-arm two-commit case, where
@@ -3507,6 +3513,7 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Can_Setup_And_Cancel_Watches()
 		{
+			RequireCleanWatches(); // clean watches: this test asserts exact fire/pending semantics
 			using var db = await OpenTestPartitionAsync();
 			await CleanLocation(db);
 
@@ -3597,6 +3604,7 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Setting_Key_To_Same_Value_Should_Not_Trigger_Watch()
 		{
+			RequireCleanWatches(); // clean watches: this test asserts exact fire/pending semantics
 			using var db = await OpenTestPartitionAsync();
 			await CleanLocation(db);
 
@@ -3658,6 +3666,8 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Watched_Key_Changed_By_Same_Transaction_Before_Commit_Should_Trigger_Watch()
 		{
+			RequireCleanWatches(); // clean watches: this test asserts exact fire/pending semantics
+
 			// Steps:
 			// - T1: set a watch on a key, but does not commit yet
 			// - T1: change the value of the watched key
@@ -3707,6 +3717,8 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Concurrent_Change_To_Watched_Key_Before_Commit_Should_Still_Trigger_Watch()
 		{
+			RequireCleanWatches(); // clean watches: this test asserts exact fire/pending semantics
+
 			// Steps:
 			// - T1: set a watch on a key, but do not commit yet
 			// - T2: update the watched key and commit before T1
@@ -3765,6 +3777,7 @@ namespace FoundationDB.Client.Tests
 		{
 			// Test that calling watch.WaitAsync(CancellationToken) will throw if the token is triggered before the watch fires
 
+			RequireCleanWatches(); // clean watches: this test asserts the watch stays pending until cancelled
 			using var db = await OpenTestPartitionAsync();
 			await CleanLocation(db);
 
@@ -3816,6 +3829,7 @@ namespace FoundationDB.Client.Tests
 		{
 			// Test that calling watch.WaitAsync(TimeSpan, CancellationToken) will throw if the timeout expires before the watch fires
 
+			RequireCleanWatches(); // clean watches: this test asserts the watch stays pending until the timeout
 			using var db = await OpenTestPartitionAsync();
 			await CleanLocation(db);
 

@@ -46,7 +46,7 @@ namespace FoundationDB.Client.Tests
 		{
 			try
 			{
-				var db = (this.Store ??= new FakeDbStore()).OpenDatabase(path, readOnly);
+				var db = (this.Store ??= NewStore()).OpenDatabase(path, readOnly);
 				db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
 				return Task.FromResult<IFdbDatabase>(db);
 			}
@@ -55,11 +55,21 @@ namespace FoundationDB.Client.Tests
 				// disposing a database opened from the store disposes the store with it: a test that opens
 				// several partitions in sequence (bench loops) gets a fresh, empty store per iteration,
 				// which matches the isolated-partition semantics the suites rely on
-				this.Store = new FakeDbStore();
+				this.Store = NewStore();
 				var db = this.Store.OpenDatabase(path, readOnly);
 				db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
 				return Task.FromResult<IFdbDatabase>(db);
 			}
+		}
+
+		/// <summary>Creates a fresh store with watch buggify enabled by default (seeded per running test): the repo's own harness is
+		/// watch-realistic so any layer suite that arms watches exercises the weak watch contract. A layer test needing clean, exact
+		/// watch semantics disables it with one line - <c>store.Buggify.Disable()</c>. Chaos is a no-op for a suite that arms no watches.</summary>
+		private static FakeDbStore NewStore()
+		{
+			var store = new FakeDbStore();
+			store.Buggify.EnableChaos(NUnit.Framework.TestContext.CurrentContext.Test.FullName);
+			return store;
 		}
 
 	}

@@ -4272,6 +4272,34 @@ namespace FoundationDB.Testing
 			/// is unaffected: it only fires when the test explicitly calls it, so there is nothing to disable.</remarks>
 			public void Disable() => this.Chaos = null;
 
+			/// <summary>Enables seeded chaos with a stable seed derived from <paramref name="name"/> - the one-line opt-in for a whole suite: buggify every watch-arming test with a profile that is distinct per name yet reproducible across runs.</summary>
+			/// <param name="name">A stable, distinct identifier (typically the test or suite name) that fixes the injection profile.</param>
+			/// <param name="spuriousFireRate">Per-commit probability of a fan-out spurious fire on one armed key.</param>
+			/// <param name="deferredCheckRate">Per-check probability that a watch check is deferred (skipped) this commit.</param>
+			/// <returns>The installed chaos profile (for further tuning, e.g. clearing one of the rates).</returns>
+			/// <remarks>Recommended for any suite whose code arms watches: it forces that code through the weak watch contract (spurious
+			/// and reverted-miss fires) without giving up reproducibility. Chaos never produces a contract-illegal outcome, so it is safe
+			/// to leave on for suites that do not assert exact watch timing.</remarks>
+			public FakeDbBuggifyChaos EnableChaos(string name, double spuriousFireRate = 0.25, double deferredCheckRate = 0.25)
+			{
+				Contract.NotNull(name);
+				var chaos = new FakeDbBuggifyChaos(StableSeed(name)) { SpuriousFireRate = spuriousFireRate, DeferredCheckRate = deferredCheckRate };
+				this.Chaos = chaos;
+				return chaos;
+
+				// FNV-1a over the name: a process-stable hash (unlike string.GetHashCode, which is randomized per run since .NET Core)
+				static int StableSeed(string s)
+				{
+					uint h = 2166136261u;
+					foreach (var c in s)
+					{
+						h = (h ^ (byte) c) * 16777619u;
+						h = (h ^ (byte) (c >> 8)) * 16777619u;
+					}
+					return unchecked((int) h);
+				}
+			}
+
 			/// <summary>Injects an immediate spurious fire of every watch registered on <paramref name="key"/>, then unregisters them (the FDBV-026 per-key fan-out shape).</summary>
 			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
 			/// <returns>The number of watches fired (0 when no watch was armed on the key: a test can assert the injection landed).</returns>

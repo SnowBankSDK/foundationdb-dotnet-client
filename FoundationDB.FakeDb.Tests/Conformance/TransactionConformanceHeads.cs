@@ -33,7 +33,7 @@ namespace FoundationDB.Client.Tests
 	public class TransactionFakeDbFacts : TransactionConformanceFacts
 	{
 
-		/// <summary>Store shared by all databases opened during a single test, reset between tests.</summary>
+		/// <summary>Store shared by all databases opened during a single test, reset between tests. Watch buggify is on by default (see <see cref="TestBuggify"/>); a test needing clean watches calls <see cref="TransactionConformanceFacts.RequireCleanWatches"/>.</summary>
 		private FakeDbStore? Store { get; set; }
 
 		protected override bool UseRealServer => false;
@@ -41,17 +41,19 @@ namespace FoundationDB.Client.Tests
 		[TearDown]
 		public void ResetFakeDbStore() => this.Store = null;
 
+		protected override void RequireCleanWatches() => (this.Store ??= TestBuggify.ChaosStore()).Buggify.Disable();
+
 		protected override Task<IFdbDatabase> OpenTestDatabaseAsync(bool readOnly = false)
 		{
 			// mirror FdbTest.OpenTestDatabaseAsync: the real-cluster head seeds a 15s default timeout via FdbConnectionOptions.DefaultTimeout
-			var db = (this.Store ??= new FakeDbStore()).OpenDatabase(FdbPath.Root, readOnly);
+			var db = (this.Store ??= TestBuggify.ChaosStore()).OpenDatabase(FdbPath.Root, readOnly);
 			db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
 			return Task.FromResult<IFdbDatabase>(db);
 		}
 
 		protected override Task<IFdbDatabase> OpenTestPartitionAsync(string? testMethod = null)
 		{
-			var db = (this.Store ??= new FakeDbStore()).OpenDatabase(GetTestPartitionPath(testMethod), readOnly: false);
+			var db = (this.Store ??= TestBuggify.ChaosStore()).OpenDatabase(GetTestPartitionPath(testMethod), readOnly: false);
 			db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
 			return Task.FromResult<IFdbDatabase>(db);
 		}
