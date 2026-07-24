@@ -884,6 +884,66 @@ namespace FoundationDB.Testing
 				}
 			}
 
+			/// <summary>Streams a resolved range to <paramref name="visitor"/> over spans, computing the SAME count / First / Last / byte total / hasMore / fetch-mode masking as <see cref="GetRange{TCursor}"/> but without materializing an items array - the span-first range read behind the zero-copy aggregate scan.</summary>
+			/// <remarks>Byte-identical to the fast-path <see cref="GetRange{TCursor}"/> (limit truncates at the high end, target-bytes stops after the pair that crosses it, First/Last/bytes use the raw keys, the omitted fetch-mode side reads as an empty span). Retains only First and Last (two keys, O(1)); everything else streams.</remarks>
+			public FdbRangeResult VisitRange<TState>(Key beginInclusive, Key endExclusive, FdbRangeOptions options, int iteration, TState state, FdbCommittedRangeVisitor<TState> visitor)
+			{
+				var acc = new VisitAccumulator<TState>(state, visitor, options.Limit ?? 0, options.TargetBytes ?? 0, options.Fetch.GetValueOrDefault());
+				this.Data.VisitRange(beginInclusive, endExclusive, options.IsReversed, acc, static (VisitAccumulator<TState> a, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value) => a.Accept(key, value));
+				return new FdbRangeResult(acc.Count, acc.HasMore, iteration, options, acc.First, acc.Last, checked((int) acc.Bytes));
+			}
+
+			/// <summary>Accumulates a streaming range read: the same limit / target-bytes / First / Last / byte accounting the chunk builder does, minus the items array. One instance per range read (O(1)).</summary>
+			private sealed class VisitAccumulator<TState>
+			{
+				public VisitAccumulator(TState state, FdbCommittedRangeVisitor<TState> visitor, int limit, long targetBytes, FdbFetchMode fetch)
+				{
+					this.State = state;
+					this.Visitor = visitor;
+					this.Limit = limit;
+					this.TargetBytes = targetBytes;
+					this.Fetch = fetch;
+				}
+
+				private TState State { get; }
+				private FdbCommittedRangeVisitor<TState> Visitor { get; }
+				private int Limit { get; }
+				private long TargetBytes { get; }
+				private FdbFetchMode Fetch { get; }
+
+				public int Count { get; private set; }
+				public long Bytes { get; private set; }
+				public bool HasMore { get; private set; }
+				public Slice First { get; private set; }
+
+				/// <summary>Last returned key, tracked in a grown-only reused buffer so the copy is O(1) allocation over the scan</summary>
+				private byte[] LastBuffer = [];
+				private int LastLength;
+				public Slice Last => this.Count > 0 ? Slice.FromBytes(this.LastBuffer.AsSpan(0, this.LastLength)) : default;
+
+				/// <summary>Returns <c>false</c> to stop the walk (limit / target-bytes reached, or the outer visitor asked to stop)</summary>
+				public bool Accept(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+				{
+					// stop checks BEFORE including this pair (identical order to the chunk builder)
+					if (this.Limit != 0 && this.Count == this.Limit) { this.HasMore = true; return false; }
+					if (this.TargetBytes != 0 && this.Bytes >= this.TargetBytes) { this.HasMore = true; return false; }
+					int delta = checked(key.Length + value.Length);
+					if (this.Bytes + delta >= int.MaxValue) { this.HasMore = true; return false; }
+
+					if (this.Count == 0) { this.First = Slice.FromBytes(key); }
+					if (this.LastBuffer.Length < key.Length) { this.LastBuffer = new byte[key.Length]; }
+					key.CopyTo(this.LastBuffer);
+					this.LastLength = key.Length;
+					this.Bytes += delta;
+					this.Count++;
+
+					// the fetch mode hides one side from the visitor (as an empty span), like ApplyFetchMode's Slice.Nil
+					var vk = this.Fetch == FdbFetchMode.ValuesOnly ? default : key;
+					var vv = this.Fetch == FdbFetchMode.KeysOnly ? default : value;
+					return this.Visitor(this.State, vk, vv);
+				}
+			}
+
 			/// <summary>Exposes all the key/value pairs in this snapshot</summary>
 			public IEnumerable<KeyValuePair<Key, Value>> ReadData() => this.Data.IterateOrdered();
 
@@ -1887,6 +1947,54 @@ namespace FoundationDB.Testing
 
 					return new FdbRangeChunk(res.ToArray(), hasMore, iteration, options, first, last, checked((int) sum), SliceOwner.Nil);
 				}
+			}
+
+			/// <summary>Streaming twin of <see cref="GetRange{TCursor}"/>: on the read-only fast path it streams the committed range straight to <paramref name="visitor"/> over spans (no items array), identical bounds/limit/First-Last/conflict semantics; on the merged (local-write) path it reuses the chunk pipeline and replays its items. This is what a zero-copy aggregate scan rides.</summary>
+			public FdbRangeResult VisitRange<TCursor, TState>(
+				Selector beginInclusive,
+				Selector endExclusive,
+				FdbRangeOptions options,
+				int iteration,
+				bool ryw,
+				bool snapshotRead,
+				bool accessSystemKeys,
+				TState state,
+				FdbCommittedRangeVisitor<TState> visitor)
+				where TCursor : struct, IFdbCommittedCursor
+			{
+				// fast path: no writes => same as a snapshot read, stream directly off the committed store
+				if (!ryw || this.WriteConflicts.Count == 0)
+				{
+					var begin = this.Inner.Resolve<TCursor>(beginInclusive, accessSystemKeys);
+					var end = this.Inner.Resolve<TCursor>(endExclusive, accessSystemKeys);
+
+					var res = begin.Equals(end)
+						? new FdbRangeResult(0, false, iteration, options, default, default, 0) // empty range records no dependency
+						: this.Inner.VisitRange<TState>(begin, end, options, iteration, state, visitor);
+
+					if (!snapshotRead)
+					{
+						// note: a reverse read reports First as its HIGHEST key, so the lowest returned is Last (same as GetRange)
+						MarkRangeReadConflict(beginInclusive, endExclusive,
+							lowestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.Last : res.First) : default,
+							highestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.First : res.Last) : default,
+							limitHit: options.Limit is not null && res.Count == options.Limit,
+							reversed: options.IsReversed,
+							merged: false);
+					}
+
+					return res;
+				}
+
+				// merged path (local writes): reuse the exact chunk pipeline - conflict marking and the RYW atomic
+				// conversion happen inside it - then replay its already fetch-masked items to the visitor. Not the
+				// O(1) path (the merge materializes), but the aggregate-scan goal targets the read-only fast path.
+				var chunk = GetRange<TCursor>(beginInclusive, endExclusive, options, iteration, ryw, snapshotRead, accessSystemKeys);
+				foreach (var kv in chunk.Items)
+				{
+					if (!visitor(state, kv.Key.Span, kv.Value.Span)) break;
+				}
+				return new FdbRangeResult(chunk.Count, chunk.HasMore, chunk.Iteration, chunk.Options, chunk.First, chunk.Last, chunk.TotalBytes);
 			}
 
 			public OnionIterator<TCursor> GetIterator<TCursor>()
@@ -3498,25 +3606,28 @@ namespace FoundationDB.Testing
 				int iteration,
 				CancellationToken ct)
 			{
-				//TODO: PERF: OPTIMIZE: implement natively instead of first allocated to KV<Slice, Slice> and then visiting!
-				//TODO: REVIEW: maybe move this into ReadYourWritesSnapshot itself?
-
-				FdbRangeChunk chunk;
+				// stream the range straight to the visitor over spans - no KeyValuePair<Slice,Slice>[] chunk, so a
+				// read-only aggregate scan is O(1) allocation in the number of pairs. The visitor runs under the
+				// transaction lock: it decodes/aggregates a transient span per pair and must not re-enter the transaction.
+				var box = new RangeVisitorBox<TState>(state, visitor, ct);
 				lock (this.Lock)
 				{
-					chunk = s.GetRange<TCursor>(beginInclusive, endExclusive, options, iteration, GetEffectiveRyw(isSnapshotRead), isSnapshotRead, this.OptionReadSystemKeys);
+					return s.VisitRange<TCursor, RangeVisitorBox<TState>>(
+						beginInclusive, endExclusive, options, iteration,
+						GetEffectiveRyw(isSnapshotRead), isSnapshotRead, this.OptionReadSystemKeys,
+						box, static (RangeVisitorBox<TState> b, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value) => b.Visit(key, value));
 				}
+			}
 
-				var items = chunk.Items;
-				for (int i = 0; i < items.Length; i++)
+			/// <summary>Adapts the transaction's void <see cref="FdbKeyValueAction{TState}"/> + cancellation to the seam's bool range visitor: check cancellation, visit, keep going.</summary>
+			private sealed class RangeVisitorBox<TState>(TState state, FdbKeyValueAction<TState> visitor, CancellationToken ct)
+			{
+				public bool Visit(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
 				{
 					ct.ThrowIfCancellationRequested();
-					visitor(state, items[i].Key.Span, items[i].Value.Span);
+					visitor(state, key, value);
+					return true;
 				}
-
-				//TODO: if chunk is pooled, we need to return the buffer to the pool, but we need to keep "First" and "Last" around?
-
-				return new(items.Length, chunk.HasMore, chunk.Iteration, chunk.Options, chunk.First, chunk.Last, chunk.TotalBytes);
 			}
 
 			/// <summary>Builds the synthesized chunk for a read of <c>\xff\xff/transaction/conflicting_keys/</c>: one boundary pair per conflicting read range collected by the failed commit (value <c>'1'</c> = begin inclusive, <c>'0'</c> = end exclusive).</summary>
