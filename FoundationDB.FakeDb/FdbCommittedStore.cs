@@ -30,6 +30,10 @@ namespace FoundationDB.Testing
 	using SnowBank.Collections.CacheOblivious;
 	using static FoundationDB.Testing.FakeDbStore;
 
+	/// <summary>Visits one committed key/value pair, over spans into the backend's memory. Returns <c>false</c> to stop the range walk early (limit / target-bytes reached).</summary>
+	/// <remarks>The spans are valid only for the duration of the call (inside the caller's snapshot pin): copy anything that must be retained. This is the range analogue of the point-read <see cref="FdbValueDecoder{TState,TResult}"/> leg.</remarks>
+	public delegate bool FdbCommittedRangeVisitor<in TState>(TState state, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
+
 	/// <summary>Committed keyspace of a single <see cref="Snapshot"/>, seen at one version.</summary>
 	/// <remarks>The keys and values returned by this store (and its cursors) are only valid for the lifetime of the pinned snapshot: they are backed by the snapshot's arena today, and by memory-mapped pages under a future B-tree backend. Copy anything that must outlive the snapshot.</remarks>
 	public interface IFdbCommittedStore
@@ -59,6 +63,10 @@ namespace FoundationDB.Testing
 
 		/// <summary>Enumerates every key/value pair, in key order</summary>
 		IEnumerable<KeyValuePair<Key, Value>> IterateOrdered();
+
+		/// <summary>Streams a range in key order (or reverse), handing the visitor spans over the backend's memory - no per-pair materialization. Stops when the visitor returns <c>false</c> or the range is exhausted.</summary>
+		/// <remarks>The span-first range read: the <see cref="Scan"/> enumerable yields owned <see cref="Key"/>/<see cref="Value"/> pairs (a copy per pair on a page-backed backend); this hands the same pairs as spans so the caller decodes/aggregates in place and copies only what it retains. Same bounds and ordering as <see cref="Scan"/> (<paramref name="begin"/> inclusive, <paramref name="end"/> exclusive).</remarks>
+		void VisitRange<TState>(Key begin, Key end, bool reversed, TState state, FdbCommittedRangeVisitor<TState> visitor);
 
 		#region Mutation / publish surface (used to build the next snapshot in ApplyMutations)...
 
@@ -176,6 +184,16 @@ namespace FoundationDB.Testing
 
 		/// <inheritdoc />
 		public IEnumerable<KeyValuePair<Key, Value>> IterateOrdered() => this.Inner.IterateOrdered();
+
+		/// <inheritdoc />
+		public void VisitRange<TState>(Key begin, Key end, bool reversed, TState state, FdbCommittedRangeVisitor<TState> visitor)
+		{
+			// arena-backed: kv.Key/kv.Value are views, so the spans cost nothing; the enumerator is the only allocation (O(1))
+			foreach (var kv in reversed ? this.Inner.ScanReverse(begin, true, end, false) : this.Inner.Scan(begin, true, end, false))
+			{
+				if (!visitor(state, kv.Key.Span, kv.Value.Span)) break;
+			}
+		}
 
 		/// <inheritdoc />
 		public IFdbCommittedStore Copy() => new ColaCommittedStore(this.Inner.Copy());
