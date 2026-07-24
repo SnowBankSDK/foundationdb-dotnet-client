@@ -26,7 +26,7 @@ git show <your-package-version>:.claude/skills/snowbank-distributed-testing/SKIL
 
 ## Running a distributed test
 
-These projects use the **NUnit Microsoft.Testing.Platform runner**, so `dotnet test` is unreliable on the .NET 10+ SDK (*"Testing with VSTest target is no longer supported"*). Build, then **run the test assembly directly**:
+These projects use the **NUnit Microsoft.Testing.Platform (MTP) runner**. The test assembly is a self-contained executable, so the most direct way to run one is to build and then launch it, which also skips a rebuild in a tight iteration loop:
 
 ```bash
 dotnet build <Solution>.slnx
@@ -36,6 +36,16 @@ dotnet artifacts/bin/<Project>/debug_net11.0/<Project>.dll \
 ```
 
 `--output Detailed` gives per-assert output; the journal is printed regardless (see below). Use `--filter "FullyQualifiedName~Foo"` (not `--treenode-filter`).
+
+`dotnet test` also works, **but only if the repository opts into the MTP mode of `dotnet test`** in its `global.json`:
+
+```json
+{ "test": { "runner": "Microsoft.Testing.Platform" } }
+```
+
+Without that entry, `dotnet test` on the .NET 10+ SDK takes the old VSTest path, which MTP v2 refuses outright with *"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform"*. The `TestingPlatformDotnetTestSupport` MSBuild property was the v1-era bridge for that path and no longer has any effect on .NET 10+. The same `--filter` syntax works through `dotnet test`, with or without a `--` separator.
+
+One caveat if your solution still has **`net472` legs**: MTP mode requires every project in the run to use the MTP runner, and a net472 leg is a VSTest project, so an unscoped `dotnet test` is rejected with *"All projects must use that test runner"* (exit code 8). Scope the run to a modern target (`-f net10.0`) and keep running the net472 leg with its own runner. Launching the assembly directly, as above, is unaffected either way.
 
 ### `SNOWBANK_TEST_LOG` — pick the output shape
 

@@ -2,5 +2,8 @@
 	"sdk": {
 		"version": "11.0.100-preview.6.26359.118",
 		"rollForward": "latestMinor"
+	},
+	"test": {
+		"runner": "Microsoft.Testing.Platform"
 	}
 }

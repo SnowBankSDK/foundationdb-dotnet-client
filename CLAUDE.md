@@ -24,9 +24,8 @@ SnowBank.Shell, SnowBank.Networking.*, SnowBank.Testing.*, SnowBank.Serializatio
 ## Build & test
 
 ```bash
-dotnet build FoundationDB.Client.slnx          # DEBUG build of everything
-# NOT `dotnet test`: it fails on the .NET 10+ SDK for these projects.
-# Build, then run the test assembly directly -- see "Tests" below.
+dotnet build FoundationDB.Client.slnx                  # DEBUG build of everything
+dotnet test <Project>.csproj -f net11.0                # ONE suite; always scope the TFM, see "Tests"
 ```
 
 - **SDK**: pinned in [`global.json`](global.json) to a **.NET 11 preview** SDK (`rollForward: latestMinor`). `LangVersion` is `preview`.
@@ -40,7 +39,9 @@ dotnet build FoundationDB.Client.slnx          # DEBUG build of everything
 ### Tests
 
 - **NUnit 4**, and the runner **must be 64-bit** (the native client is 64-bit only).
-- ⚠️ **On the .NET 10+ SDK, `dotnet test` can fail** for these NUnit/Microsoft.Testing.Platform projects with *"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform"*. Fallback: build, then **run the test assembly directly** — `dotnet artifacts/bin/<Project>/debug_net11.0/<Project>.dll`, filtering with `--filter "FullyQualifiedName~<NamePart>"` (not `--treenode-filter`) and `--output Detailed` for per-assert output.
+- ⚠️ **`global.json` opts into the MTP mode of `dotnet test`** (`"test": { "runner": "Microsoft.Testing.Platform" }`) and that opt-in is load-bearing: these projects use the NUnit MTP runner, and **MTP v2 refuses to run under the old VSTest bridge on the .NET 10+ SDK**, failing with *"Testing with VSTest target is no longer supported by Microsoft.Testing.Platform"*. The `TestingPlatformDotnetTestSupport` property in each test `.csproj` was the v1-era bridge and no longer does anything; the `global.json` entry replaced it. Do not remove it.
+- ⚠️ **Always scope `dotnet test` to a modern TFM (`-f net11.0` / `-f net10.0`).** MTP mode requires *every* project in the run to use the MTP runner, and the **net472 legs are VSTest**, so an unscoped `dotnet test <Project>.csproj` or a solution-wide `dotnet test FoundationDB.Client.slnx` is rejected ("All projects must use that test runner", exit code 8) for the four projects that have a net472 leg: `SnowBank.Core.Tests`, `FoundationDB.Tests`, `FoundationDB.FakeDb.Tests`, `FoundationDB.Layers.Tests`. net472 keeps its own runner (the NUnit console runner, below) and that has not changed.
+- **Running the assembly directly also works and skips the build**, which is faster in a tight loop: `dotnet artifacts/bin/<Project>/debug_net11.0/<Project>.dll`, filtering with `--filter "FullyQualifiedName~<NamePart>"` (not `--treenode-filter`) and `--output Detailed` for per-assert output. The same `--filter` works through `dotnet test`, with or without the `--` separator.
 - `SnowBank.*.Tests` are pure and need no database.
 - **`FoundationDB.Tests` requires a running local FoundationDB cluster** and the native `fdb_c` library (`libfdb_c.dylib` on macOS, `libfdb_c.so` on Linux, `fdb_c.dll` on Windows). `FoundationDB.Client.Native` redistributes these.
   - ⚠️ Tests write to a dedicated subspace but **can corrupt data** — only point them at a throwaway local cluster.
