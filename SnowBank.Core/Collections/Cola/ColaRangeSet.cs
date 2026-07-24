@@ -328,6 +328,10 @@ namespace SnowBank.Collections.CacheOblivious
 						{ // we haven't inserted the key yet, so in case of conflict, we will use the next segment's slot
 							if (Resolve(cursor, entry))
 							{
+								// continue the merge from the segment that now holds the union: without this, the
+								// following iterations would extend a detached copy while removing live segments,
+								// silently dropping their spans from the set
+								entry = cursor;
 								inserted = true;
 							}
 							else

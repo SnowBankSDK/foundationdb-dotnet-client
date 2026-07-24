@@ -64,6 +64,36 @@ namespace SnowBank.Collections.CacheOblivious.Test
 		}
 
 		[Test]
+		public void Test_RangeDictionary_Empty_Range_Is_A_NoOp()
+		{
+			// an empty range (begin == end) contains nothing, so marking, removing or merging it must leave the dictionary unchanged
+			// (FoundationDB accepts a degenerate clear range as a no-op; only a backwards range is a caller error)
+			using var cola = new ColaRangeDictionary<int, string>();
+
+			cola.Mark(0, 0, "nothing");
+			Assert.That(cola.Count, Is.EqualTo(0), "Marking an empty range on an empty dictionary should not add anything");
+
+			cola.Mark(0, 1, "a");
+			cola.Mark(4, 5, "b");
+			Assert.That(cola.Count, Is.EqualTo(2));
+
+			cola.Mark(0, 0, "x"); // at the begin of an existing range
+			cola.Mark(1, 1, "x"); // at the (exclusive) end of an existing range
+			cola.Mark(2, 2, "x"); // in the gap between two ranges
+			cola.Mark(7, 7, "x"); // past the current bounds
+			cola.Merge(3, 3, "x", (prev, v) => v);
+			cola.Remove(0, 0, 0, (k, _) => k);
+			Assert.That(cola.Count, Is.EqualTo(2), "An empty range should never change existing ranges");
+			Assert.That(cola.Bounds.Begin, Is.EqualTo(0));
+			Assert.That(cola.Bounds.End, Is.EqualTo(5), "An empty range should not extend the bounds");
+
+			// a backwards range is still rejected
+			Assert.That(() => cola.Mark(2, 1, "x"), Throws.InvalidOperationException);
+			Assert.That(() => cola.Merge(2, 1, "x", (prev, v) => v), Throws.InvalidOperationException);
+			Assert.That(() => cola.Remove(2, 1, 0, (k, _) => k), Throws.InvalidOperationException);
+		}
+
+		[Test]
 		public void Test_RangeDictionary_Insert_Single()
 		{
 			using var cola = new ColaRangeDictionary<int, string>();

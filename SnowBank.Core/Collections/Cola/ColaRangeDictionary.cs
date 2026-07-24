@@ -307,8 +307,10 @@ namespace SnowBank.Collections.CacheOblivious
 		[CollectionAccess(CollectionAccessType.UpdatedContent)]
 		public void Remove(TKey beginInclusive, TKey endExclusive, TKey offset, Func<TKey?, TKey, TKey> applyOffset)
 		{
-			if (m_keyComparer.Compare(beginInclusive, endExclusive) >= 0)
+			int c = m_keyComparer.Compare(beginInclusive, endExclusive);
+			if (c >= 0)
 			{
+				if (c == 0) return; // the range is empty: nothing to remove
 				throw new InvalidOperationException("End key must be greater than the Begin key.");
 			}
 
@@ -600,24 +602,29 @@ namespace SnowBank.Collections.CacheOblivious
 
 		/// <summary>Marks a range with a new value</summary>
 		/// <param name="range">Begin key (included), End key (excluded) and new Value for this range</param>
-		/// <exception cref="InvalidOperationException">If <paramref name="range"/> is empty (End key less than or equal to Begin key)</exception>
+		/// <exception cref="InvalidOperationException">If the End key is less than the Begin key (a degenerate range with End equal to Begin is empty, and marking it is a no-op)</exception>
 		public void Mark((TKey BeginInclusive, TKey EndExclusive, TValue value) range) => Mark(range.BeginInclusive, range.EndExclusive, range.value);
 
 		/// <summary>Marks a range with a new value</summary>
 		/// <param name="range">Begin key (included) and End key (excluded) of the range</param>
 		/// <param name="value">New value for this range</param>
-		/// <exception cref="InvalidOperationException">If <paramref name="range"/> is empty (End key less than or equal to Begin key)</exception>
+		/// <exception cref="InvalidOperationException">If the End key is less than the Begin key (a degenerate range with End equal to Begin is empty, and marking it is a no-op)</exception>
 		public void Mark((TKey BeginInclusive, TKey EndExclusive) range, TValue value) => Mark(range.BeginInclusive, range.EndExclusive, value);
 
 		/// <summary>Marks a range with a new value</summary>
 		/// <param name="beginInclusive">Begin key of the range (included)</param>
 		/// <param name="endExclusive">End key of the range (excluded)</param>
 		/// <param name="value">New value for this range</param>
-		/// <exception cref="InvalidOperationException">If <paramref name="endExclusive"/> is less than or equal to <paramref name="beginInclusive"/></exception>
+		/// <exception cref="InvalidOperationException">If <paramref name="endExclusive"/> is less than <paramref name="beginInclusive"/> (a degenerate range with equal bounds is empty, and marking it is a no-op)</exception>
 		[CollectionAccess(CollectionAccessType.UpdatedContent)]
 		public void Mark(TKey beginInclusive, TKey endExclusive, TValue value)
 		{
-			if (m_keyComparer.Compare(beginInclusive, endExclusive) >= 0) throw new InvalidOperationException("End key must be greater than the Begin key.");
+			int c = m_keyComparer.Compare(beginInclusive, endExclusive);
+			if (c >= 0)
+			{
+				if (c == 0) return; // the range is empty: nothing to mark
+				throw new InvalidOperationException("End key must be greater than the Begin key.");
+			}
 
 			// adds a new interval to the dictionary by overwriting or splitting any previous interval
 			// * if there are no interval, or the interval is disjoint from all other intervals, it is inserted as-is
@@ -1121,7 +1128,12 @@ namespace SnowBank.Collections.CacheOblivious
 		public void Merge<TData>(TKey beginInclusive, TKey endExclusive, TData value, Func<TValue?, TData, TValue> combinator)
 		{
 			var keyComparer = m_keyComparer;
-			if (keyComparer.Compare(beginInclusive, endExclusive) >= 0) throw new InvalidOperationException("End key must be greater than the Begin key.");
+			int c = keyComparer.Compare(beginInclusive, endExclusive);
+			if (c >= 0)
+			{
+				if (c == 0) return; // the range is empty: nothing to merge
+				throw new InvalidOperationException("End key must be greater than the Begin key.");
+			}
 
 			var cursor = beginInclusive;
 

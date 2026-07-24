@@ -1,0 +1,173 @@
+{
+	"name": "fuzz_mtx_0020",
+	"description": "generated multi-transaction interleaving fuzz (seed 20)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k5",
+			"value": "c7"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "C"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "SetOption",
+			"actor": "A",
+			"option": "ReadYourWritesDisable"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Clear",
+			"actor": "B",
+			"key": "k0"
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k0",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k2",
+				"orEqual": true,
+				"offset": 1
+			},
+			"limit": 1,
+			"reverse": true
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k2"
+		},
+		{
+			"op": "GetKey",
+			"actor": "B",
+			"sel": {
+				"key": "k4",
+				"orEqual": true,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k1"
+		},
+		{
+			"op": "Set",
+			"actor": "C",
+			"key": "k6",
+			"value": "v7"
+		},
+		{
+			"op": "Set",
+			"actor": "C",
+			"key": "k4",
+			"value": "v1"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k1",
+			"endKey": "k5"
+		},
+		{
+			"op": "Commit",
+			"actor": "C"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k0",
+			"endKey": "k2"
+		},
+		{
+			"op": "Begin",
+			"actor": "C"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k7",
+			"value": "\\x1a\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Clear",
+			"actor": "A",
+			"key": "k1"
+		},
+		{
+			"op": "Get",
+			"actor": "C",
+			"key": "k1"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k4"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "C",
+			"key": "k1",
+			"endKey": "k2"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Commit",
+			"actor": "C"
+		}
+	]
+}

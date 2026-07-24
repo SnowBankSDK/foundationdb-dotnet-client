@@ -1,0 +1,250 @@
+{
+	"name": "fuzz_mtx_0191",
+	"description": "generated multi-transaction interleaving fuzz (seed 191)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k6",
+			"value": "c2"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k2",
+			"value": "c4"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k3",
+			"value": "c4"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "GetCommittedVersion",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k1",
+			"endKey": "k3"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k1",
+			"endKey": "k5"
+		},
+		{
+			"op": "GetRange",
+			"actor": "A",
+			"sel": {
+				"key": "k2",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k3",
+				"orEqual": true,
+				"offset": 1
+			},
+			"limit": 3,
+			"snapshot": true
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k6",
+			"value": "v3"
+		},
+		{
+			"op": "Clear",
+			"actor": "A",
+			"key": "k4"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k1",
+			"value": "N\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k3",
+			"endKey": "k6"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k3"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k7"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "A",
+			"key": "k3",
+			"endKey": "k7"
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k1",
+			"value": "v4"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k0"
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k3",
+			"value": "\\x0e\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "A",
+			"key": "k1",
+			"endKey": "k3"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k5",
+			"value": "v2"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k2",
+			"endKey": "k7"
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k4",
+			"value": "-\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "GetKey",
+			"actor": "B",
+			"sel": {
+				"key": "k0",
+				"orEqual": false,
+				"offset": 2
+			}
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k7",
+			"snapshot": true
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k7",
+			"value": ",\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k2",
+			"snapshot": true
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k4",
+			"value": "v2"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k0",
+			"value": "[\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k7",
+			"value": "&\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k4"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k3"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k0"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		}
+	]
+}

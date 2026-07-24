@@ -170,6 +170,43 @@ namespace SnowBank.Collections.CacheOblivious.Test
 		}
 
 		[Test]
+		public void Test_RangeSet_Insert_Below_All_That_Joins_Following_Ranges()
+		{
+			// a range starting below every existing begin, touching the first range, with MORE ranges beyond:
+			// the merge must absorb every touched range into their full union - a lost span here silently
+			// erases previously-marked ranges (e.g. recorded read conflicts) from the set
+			var cola = new ColaRangeSet<int>();
+			cola.Mark(10, 11);
+			cola.Mark(20, 40);
+			cola.Mark(50, 60);
+			DumpStore(cola);
+			Assert.That(cola.Count, Is.EqualTo(3));
+
+			// starts below 10, touches [10,11) and reaches into [20,40): union with both, [50,60) untouched
+			cola.Mark(0, 20);
+			DumpStore(cola);
+			Log($"Result = {{ {string.Join(", ", cola)} }}");
+			Assert.That(cola.Count, Is.EqualTo(2));
+			Assert.That(cola.ContainsKey(30), Is.True, "the [20,40) span must survive the merge");
+			Assert.That(cola.ContainsKey(55), Is.True);
+			Assert.That(cola.Bounds.Begin, Is.EqualTo(0));
+			Assert.That(cola.Bounds.End, Is.EqualTo(60));
+
+			// same shape, but the new range stops exactly AT the following range's begin (adjacency, the
+			// seed-2114 signature): the union must still cover the whole absorbed span
+			cola = new ColaRangeSet<int>();
+			cola.Mark(10, 11);
+			cola.Mark(20, 40);
+			cola.Mark(0, 20);
+			DumpStore(cola);
+			Log($"Result = {{ {string.Join(", ", cola)} }}");
+			Assert.That(cola.Count, Is.EqualTo(1));
+			Assert.That(cola.ContainsKey(30), Is.True, "the [20,40) span must survive the adjacency merge");
+			Assert.That(cola.Bounds.Begin, Is.EqualTo(0));
+			Assert.That(cola.Bounds.End, Is.EqualTo(40));
+		}
+
+		[Test]
 		public void Test_RangeSet_Mark_Degenerate_Range_Is_A_NoOp()
 		{
 			// an empty range (begin == end) contains nothing, so marking it must leave the set unchanged

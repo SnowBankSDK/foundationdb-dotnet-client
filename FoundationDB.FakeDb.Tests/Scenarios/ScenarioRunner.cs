@@ -363,6 +363,10 @@ namespace FoundationDB.Client.Tests
 			if (actor.Subspace is null)
 			{
 				var tr = actor.Transaction ?? throw AuthoringError(step, $"actor '{step.Actor}' has no open transaction");
+				// pin the read version HERE, explicitly: on a long-lived real database handle the directory resolution
+				// below can be served from a warm cache without issuing any read, which would let the read version
+				// float to the actor's first actual read and desynchronize the backends' conflict windows
+				_ = await tr.GetReadVersionAsync();
 				actor.Subspace = await this.Db.Root.Resolve(tr);
 				if (this.Prefix.IsNull) this.Prefix = actor.Subspace.GetPrefix();
 			}

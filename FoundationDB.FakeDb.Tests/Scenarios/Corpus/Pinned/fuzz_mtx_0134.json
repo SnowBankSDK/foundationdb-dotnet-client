@@ -1,0 +1,239 @@
+{
+	"name": "fuzz_mtx_0134",
+	"description": "generated multi-transaction interleaving fuzz (seed 134)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k1",
+			"value": "c4"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k1",
+			"value": "c7"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k5",
+			"value": "c9"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k5",
+			"value": "c5"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "C"
+		},
+		{
+			"op": "GetRange",
+			"actor": "C",
+			"sel": {
+				"key": "k0",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k1",
+				"orEqual": true,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "GetRange",
+			"actor": "C",
+			"sel": {
+				"key": "k1",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k5",
+				"orEqual": false,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k5",
+			"snapshot": true
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k3",
+			"value": "v9"
+		},
+		{
+			"op": "Get",
+			"actor": "C",
+			"key": "k6"
+		},
+		{
+			"op": "Get",
+			"actor": "C",
+			"key": "k7",
+			"snapshot": true
+		},
+		{
+			"op": "Set",
+			"actor": "C",
+			"key": "k0",
+			"value": "v7"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k3",
+			"value": "v5"
+		},
+		{
+			"op": "Dispose",
+			"actor": "A"
+		},
+		{
+			"op": "Clear",
+			"actor": "B",
+			"key": "k0"
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k2",
+			"value": "v9"
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k1",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k5",
+				"orEqual": false,
+				"offset": 1
+			},
+			"limit": 3
+		},
+		{
+			"op": "Clear",
+			"actor": "C",
+			"key": "k2"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k0"
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k2",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k3",
+				"orEqual": true,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k6",
+			"snapshot": true
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k2",
+			"value": "Z\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Clear",
+			"actor": "A",
+			"key": "k3"
+		},
+		{
+			"op": "GetRange",
+			"actor": "A",
+			"sel": {
+				"key": "k2",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k7",
+				"orEqual": true,
+				"offset": 1
+			},
+			"limit": 1,
+			"reverse": true,
+			"snapshot": true
+		},
+		{
+			"op": "GetRange",
+			"actor": "C",
+			"sel": {
+				"key": "k3",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k4",
+				"orEqual": false,
+				"offset": 1
+			},
+			"reverse": true
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k1",
+			"value": "v1"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Commit",
+			"actor": "C"
+		}
+	]
+}

@@ -1021,9 +1021,10 @@ namespace FoundationDB.Testing
 					{
 						// replace the chain of atomics into a single Set(...) by reading the value from the snapshot, and applying each mutation on top
 
-						var prev = (mutation.Op is Operation.Set or Operation.Clear)
-							? default
-							: this.Inner.Read(key.Begin);
+						// a chain anchored on an own Set or Clear is fully determined locally; only an unanchored
+						// chain reads through to the committed value
+						bool readThrough = mutation.Op is not (Operation.Set or Operation.Clear);
+						var prev = readThrough ? this.Inner.Read(key.Begin) : default;
 
 						// flatten the chain
 						value = prev;
@@ -1034,12 +1035,18 @@ namespace FoundationDB.Testing
 						}
 						while (mutation != null);
 
-						// replace the whole chain by a single "Set" for this value
-						this.Mutations.Mark(key.Begin, key.End, Mutation.Set(value));
 						if (!snapshotRead)
 						{
-							// note that we read the value
-							this.ReadConflicts.Mark(key.Begin, key.End);
+							// the documented read-your-writes caveat: a REGULAR read converts the chain into a single
+							// Set of the read value (semantically neutral for an anchored chain: it applies to the
+							// same result at commit time), and establishes a conflict range on the key IF the value
+							// depended on the database; a SNAPSHOT read observes the value transiently and leaves the
+							// chain to apply over the committed value at commit time (oracle-pinned)
+							this.Mutations.Mark(key.Begin, key.End, Mutation.Set(value));
+							if (readThrough)
+							{
+								this.ReadConflicts.Mark(key.Begin, key.End);
+							}
 						}
 
 						return value;
@@ -1408,21 +1415,24 @@ namespace FoundationDB.Testing
 
 				if (!snapshotRead)
 				{
-					MarkResolveReadConflict(selector, resolved);
+					MarkResolveReadConflict(selector, resolved, merged: true);
 				}
 				return resolved;
 			}
 
 			/// <summary>Marks the read-conflict range implied by a resolved key selector (the range of keys whose change could alter the resolution).</summary>
-			private void MarkResolveReadConflict(Selector selector, Key key)
+			/// <remarks>In the merged path, segments fully determined by the transaction's own writes are subtracted: a key masked by an own set or clear cannot change the merged resolution, so it is not a database dependency (same exemption as the range-read path).</remarks>
+			private void MarkResolveReadConflict(Selector selector, Key key, bool merged = false)
 			{
 				// the range to mark as a conflict depends on the position of the key relative to the selector: whether it is before, equal, or after
+				Key from, to;
 				int cmp = key.CompareTo(selector.Key);
 				if (cmp == 0)
 				{
 					// only posible with (orEqual==false, offset=+1) or (orEqual==true, offset==0)
 					// => the only way for the result to change in both cases is if the pivot key is cleared
-					this.ReadConflicts.Mark(key, key.GetSuccessor(this.Arena)); //TODO: scratch!
+					from = key;
+					to = key.GetSuccessor(this.Arena); //TODO: scratch!
 				}
 				else if (cmp > 0)
 				{
@@ -1430,21 +1440,111 @@ namespace FoundationDB.Testing
 					// - when offset < 0: the result would be less than the pivot key, and in that case 'cmp' would be < 0
 					// - when offset == 0: only possible if orEqual == true and the pivot key exists in the database, but in that case 'cmp' would be == 0
 
-					// this means that only the keys between the pivot key and the result (included) can have an impact on the result
-
-					// the pivot key itself is to be included in the range if (false, 1)
-					if (selector.OrEqual)
-					{
-						this.ReadConflicts.Mark(selector.Key, key.GetSuccessor(this.Arena));
-					}
-					else
-					{
-						this.ReadConflicts.Mark(selector.Key, key);
-					}
+					// the resolved key is always included (oracle-pinned: even a pure value change of it conflicts);
+					// the pivot is included only when it can participate in the walk (orEqual == false: the pivot
+					// appearing would become the new result), never when the walk starts strictly after it
+					from = selector.OrEqual
+						? selector.Key.GetSuccessor(this.Arena) // e.g. fGT{pivot}: whether the pivot itself exists can never change the result
+						: selector.Key;                         // e.g. fGE{pivot}: the pivot appearing would become the result
+					to = key.GetSuccessor(this.Arena);
 				}
 				else
 				{
-					this.ReadConflicts.Mark(key, selector.Key);
+					// backward walk: the resolved key is always included; the pivot is included only when it can
+					// participate in the base (orEqual == true: the pivot appearing would become the result)
+					from = key;
+					to = selector.OrEqual
+						? selector.Key.GetSuccessor(this.Arena) // e.g. lLE{pivot}
+						: selector.Key;                         // e.g. lLT{pivot}: whether the pivot itself exists can never change the result
+				}
+
+				if (from >= to) return;
+				if (merged)
+				{
+					MarkMergedRangeReadConflict(from, to, atomicsAreLocal: true);
+				}
+				else
+				{
+					this.ReadConflicts.Mark(from, to);
+				}
+			}
+
+			/// <summary>Marks the read conflict of a range read from its selector bounds and scan outcome.</summary>
+			/// <remarks>
+			/// <para>The extent the result depends on runs from the begin pivot (excluded when the walk starts strictly after it, i.e. orEqual; extended down to the begin resolution when that landed lower) up to the end pivot (included when orEqual: that key can be the last returned item). Resolution slack ABOVE the end pivot cancels out: a key appearing there moves the end resolution down in lockstep without changing the returned items. A limit clamps the truncated side to the keys actually returned.</para>
+			/// <para>An end selector with an offset other than +1 walks a window whose keys do not cancel; the extent is widened to the resolved end in that case.</para>
+			/// </remarks>
+			private void MarkRangeReadConflict(Selector beginSelector, Selector endSelector, Key resolvedBegin, Key lowestReturned, Key highestReturned, Key resolvedEnd, bool limitHit, bool reversed, bool merged)
+			{
+				Key from;
+				if (limitHit && reversed)
+				{ // truncated at the low end: keys below the lowest returned key cannot change the result
+					from = lowestReturned;
+				}
+				else
+				{
+					from = beginSelector.OrEqual ? beginSelector.Key.GetSuccessor(this.Arena) : beginSelector.Key;
+					if (!resolvedBegin.IsNull && resolvedBegin < from) from = resolvedBegin;
+				}
+
+				Key to;
+				if (limitHit && !reversed)
+				{ // truncated at the high end: keys above the highest returned key cannot change the result
+					to = highestReturned.GetSuccessor(this.Arena);
+				}
+				else
+				{
+					to = endSelector.OrEqual ? endSelector.Key.GetSuccessor(this.Arena) : endSelector.Key;
+					if (endSelector.Offset != 1 && !resolvedEnd.IsNull && resolvedEnd > to) to = resolvedEnd;
+				}
+
+				if (from >= to) return;
+				if (merged)
+				{
+					MarkMergedRangeReadConflict(from, to);
+				}
+				else
+				{
+					this.ReadConflicts.Mark(from, to);
+				}
+			}
+
+			/// <summary>Marks the read conflict of a merged-view range read: the given extent MINUS the segments fully determined by the transaction's own writes (sets and clears; an atomic chain still depends on the database, so its segment stays).</summary>
+			/// <remarks>Oracle-pinned contract: the real client subtracts locally-written segments at segment granularity (a peer write under an own set or clear never conflicts), the same exemption the point-read path applies.</remarks>
+			/// <param name="atomicsAreLocal">Selector resolution returns keys, not values: an own atomic's presence is locally determined, so its segment is subtracted like a set or clear (oracle-pinned; revisit for visibility-conditional operations like CompareAndClear when the atomics fuzz family runs).</param>
+			private void MarkMergedRangeReadConflict(Key fromInclusive, Key toExclusive, bool atomicsAreLocal = false)
+			{
+				var cursor = fromInclusive;
+				foreach (var entry in this.Mutations.IterateOrdered())
+				{
+					if (entry.Begin >= toExclusive) break;
+					if (entry.End <= cursor) continue;
+					var mutation = entry.Value;
+					if (!mutation.IsKv() && !mutation.IsRange())
+					{
+						// an UNANCHORED atomic chain reads through to the committed value: its segment stays in the
+						// conflict (unless the read returns no values, see atomicsAreLocal); a chain anchored on an
+						// own Set or Clear is fully determined locally and is subtracted like the anchor itself
+						bool anchored = mutation.Op is Operation.Set or Operation.Clear;
+						if (!anchored && !atomicsAreLocal)
+						{
+							continue;
+						}
+					}
+					var segBegin = entry.Begin > cursor ? entry.Begin : cursor;
+					if (segBegin > cursor)
+					{
+						this.ReadConflicts.Mark(cursor, segBegin);
+					}
+					var segEnd = entry.End < toExclusive ? entry.End : toExclusive;
+					if (segEnd > cursor)
+					{
+						cursor = segEnd;
+					}
+				}
+				if (cursor < toExclusive)
+				{
+					this.ReadConflicts.Mark(cursor, toExclusive);
 				}
 			}
 
@@ -1527,44 +1627,21 @@ namespace FoundationDB.Testing
 					var begin = this.Inner.Resolve<TCursor>(beginInclusive, accessSystemKeys);
 					var end = this.Inner.Resolve<TCursor>(endExclusive, accessSystemKeys);
 
-					if (begin.Equals(end))
-					{ // empty range!
-						return new([], false, iteration, options, default, default, 0, SliceOwner.Nil);
-					}
+					var res = begin.Equals(end)
+						? new FdbRangeChunk([], false, iteration, options, default, default, 0, SliceOwner.Nil) // empty range (the read still depends on the selector zones below)
+						: this.Inner.GetRange<TCursor>(begin, end, options, iteration);
 
-					var res = this.Inner.GetRange<TCursor>(begin, end, options, iteration);
 					if (!snapshotRead)
 					{
-						// we have to take into account the limit, which reduces the conflict range
-						if (options.Limit is not null && res.Count == options.Limit)
-						{ // we stopped because we reached the limit
-							// => only keys that are in the result range would conflict
-							if (options.IsReversed)
-							{
-								// => keys added/updated/deleted BEFORE the last key, would NOT change the result, and so would NOT conflict
-								// note: order is reversed, so res.Last <= res.First !
-								this.ReadConflicts.Mark(
-									new Key(res.Last),
-									res.First > endExclusive.Key.Slice ? new Key(res.First) : endExclusive.Key //BUGBUG: should be use 'end' here?
-								);
-							}
-							else
-							{
-								// => keys added/updated/deleted AFTER the last key, would NOT change the result, and so would NOT conflict
-								this.ReadConflicts.Mark(
-									begin < beginInclusive.Key ? begin : beginInclusive.Key,
-									new Key(res.Last + (byte) 0)
-								);
-							}
-						}
-						else
-						{
-							//BUGBUG???
-							this.ReadConflicts.Mark(
-								begin < beginInclusive.Key ? begin : beginInclusive.Key,
-								res.Last > endExclusive.Key.Slice ? new Key(res.Last) : endExclusive.Key //BUGBUG: should be use 'end' here?
-							);
-						}
+						// note: a reverse chunk is ordered high-to-low, so res.Last is its LOWEST key
+						MarkRangeReadConflict(beginInclusive, endExclusive,
+							resolvedBegin: begin,
+							lowestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.Last : res.First) : default,
+							highestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.First : res.Last) : default,
+							resolvedEnd: end,
+							limitHit: options.Limit is not null && res.Count == options.Limit,
+							reversed: options.IsReversed,
+							merged: false);
 					}
 
 					return res;
@@ -1587,7 +1664,7 @@ namespace FoundationDB.Testing
 					}
 #endif
 
-					// first resolve the end key!
+				// first resolve the end key!
 					iter.Seek(endExclusive);
 					var endKey = iter.Current.Key;
 					if (endKey.IsNull)
@@ -1647,8 +1724,33 @@ namespace FoundationDB.Testing
 
 					if (!snapshotRead)
 					{
-						//BUGBUG?
-						//if (res.Count > 0) this.ReadConflicts.Mark(first, last);
+						// note: res is already normalized (a reverse read is ordered high-to-low)
+						var lowest = res.Count > 0 ? new Key(res[reversed ? ^1 : 0].Key) : default;
+						MarkRangeReadConflict(beginInclusive, endExclusive,
+							resolvedBegin: lowest, // the lowest returned key IS the resolved begin when the scan returned anything
+							lowestReturned: lowest,
+							highestReturned: res.Count > 0 ? new Key(res[reversed ? 0 : ^1].Key) : default,
+							resolvedEnd: endKey,
+							limitHit: limit != 0 && res.Count == limit, // NOT hasMore: a limit satisfied exactly at the end of the data clamps the result all the same
+							reversed: reversed,
+							merged: true);
+
+						// the documented read-your-writes caveat, range flavor: an atomic chain whose key the read
+						// actually RETURNED is converted into a set of the read value (keys the scan merely walked
+						// past keep their chain, and apply over the committed value at commit time); this runs AFTER
+						// the conflict marking above, which must see the chains intact
+						foreach (var kv in res)
+						{
+							if (FindCoveringMutation(new Key(kv.Key))?.IsAtomic() == true)
+							{
+								// DETACH the key and value (heap copies) before they enter the mutation log: a
+								// null-arena wrapper around arena-backed bytes would be waved through the commit-time
+								// interning boundary (null means "immutable, safe to keep"), and the committed store
+								// would end up aliasing recycled transaction-arena memory
+								var key = new Key(kv.Key.Copy());
+								this.Mutations.Mark(key, key.GetSuccessor(this.Arena), Mutation.Set(new Value(kv.Value.Copy())));
+							}
+						}
 					}
 
 					Kenobi($"**** #{this.Id} Got {res.Count} results ({sum:N0} bytes)");
@@ -1849,7 +1951,9 @@ namespace FoundationDB.Testing
 								}
 								else
 								{
-									newData[kv.Key] = value;
+									// the coalesced value can be a passthrough of a chain anchor's Parameter (backed by
+									// the transaction's recyclable arena): intern it before it becomes committed state
+									newData[kv.Key] = arena.InternValue(value);
 								}
 
 								break;
@@ -3779,6 +3883,9 @@ namespace FoundationDB.Testing
 
 						if (mutation.IsAtomic())
 						{
+							// observe the chain transiently: the mutation log is never patched by a scan (the chain
+							// must survive to apply over the committed value at commit time; the read paths convert
+							// chains for the keys they actually return)
 							var value = Value.Nil;
 							do
 							{
@@ -3787,9 +3894,10 @@ namespace FoundationDB.Testing
 							}
 							while (mutation != null);
 
-							// patch in-place, and re-examine the entry as a plain Set (returning here would leave a stale Current)
-							outerEntry.Value = Mutation.Set(value);
-							continue;
+							this.OuterState = STATE_UNKNOWN;
+							if (value.IsNull) continue;
+							this.Current = new KeyValuePair<Key, Value>(outerEntry.Begin, value);
+							return true;
 						}
 
 						this.Current = new KeyValuePair<Key, Value>(outerEntry.Begin, mutation.GetEffectiveValue());
@@ -3839,16 +3947,17 @@ namespace FoundationDB.Testing
 							}
 
 							if (mutation.IsAtomic())
-							{ // coalesce the whole chain over the committed value, and re-examine the entry as a plain Set
+							{ // coalesce the whole chain over the committed value, transiently (see above)
 								var value = innerCurrent.Value;
 								for (var m = mutation; m != null; m = m.Next)
 								{
 									value = ReadYourWritesSnapshot.CoalesceAtomic(this.Arena, value, m);
 								}
-								outerEntry.Value = Mutation.Set(value);
-								this.InnerState = STATE_UNKNOWN; // the committed key is shadowed by the coalesced local value
-								Kenobi($"*** #{this.Id} coalesce atomic chain over committed value: {outerEntry.Begin:K} = {value:V}");
-								continue;
+								this.InnerState = STATE_UNKNOWN;
+								this.OuterState = STATE_UNKNOWN;
+								if (value.IsNull) continue;
+								this.Current = new KeyValuePair<Key, Value>(outerEntry.Begin, value);
+								return true;
 							}
 							throw new NotSupportedException("Unexpected mutation type while iterating");
 						}
@@ -3886,8 +3995,8 @@ namespace FoundationDB.Testing
 
 							if (mutation.IsAtomic())
 							{
-								// if we end up here, it means the key does not exist. we can coalesce the atomic from an empty value,
-								// and re-examine the entry as a plain Set (returning here would leave a stale Current)
+								// if we end up here, it means the key does not exist: coalesce the chain from an empty
+								// value, transiently (see above)
 								var value = Value.Nil;
 								do
 								{
@@ -3896,8 +4005,10 @@ namespace FoundationDB.Testing
 								}
 								while (mutation != null);
 
-								outerEntry.Value = Mutation.Set(value);
-								continue;
+								this.OuterState = STATE_UNKNOWN;
+								if (value.IsNull) continue;
+								this.Current = new KeyValuePair<Key, Value>(outerEntry.Begin, value);
+								return true;
 							}
 
 							throw new NotSupportedException("Unexpected mutation type while iterating");

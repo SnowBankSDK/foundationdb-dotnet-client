@@ -1,0 +1,311 @@
+{
+	"name": "fuzz_mtx_0011",
+	"description": "generated multi-transaction interleaving fuzz (seed 11)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k0",
+			"value": "c4"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k7",
+			"value": "c1"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "GetCommittedVersion",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k1",
+			"value": "v1"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k4",
+			"endKey": "k6"
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k3",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k4",
+				"orEqual": false,
+				"offset": 1
+			},
+			"reverse": true
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k1",
+			"snapshot": true
+		},
+		{
+			"op": "Clear",
+			"actor": "B",
+			"key": "k1"
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k3",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k4",
+				"orEqual": true,
+				"offset": 1
+			},
+			"limit": 2,
+			"reverse": true
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k4",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k5",
+				"orEqual": true,
+				"offset": 1
+			},
+			"reverse": true
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k4",
+			"value": "v7"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k3",
+			"value": "\\x09\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k7",
+			"value": "G\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "GetRange",
+			"actor": "A",
+			"sel": {
+				"key": "k4",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k4z",
+				"orEqual": false,
+				"offset": 1
+			},
+			"reverse": true
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k2",
+			"value": "v5"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "B",
+			"key": "k2",
+			"endKey": "k7"
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k6",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k7",
+				"orEqual": true,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k3"
+		},
+		{
+			"op": "Get",
+			"actor": "A",
+			"key": "k1"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "SetOption",
+			"actor": "A",
+			"option": "ReadYourWritesDisable"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "GetCommittedVersion",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "SetOption",
+			"actor": "A",
+			"option": "ReadYourWritesDisable"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k4",
+			"value": "v3"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k1",
+			"value": "v3"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "SetOption",
+			"actor": "A",
+			"option": "ReadYourWritesDisable"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k7",
+			"value": "v5"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k6",
+			"value": "2\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k1",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k1z",
+				"orEqual": false,
+				"offset": 1
+			}
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k6",
+			"value": "v3"
+		},
+		{
+			"op": "Clear",
+			"actor": "B",
+			"key": "k1"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		}
+	]
+}

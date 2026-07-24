@@ -1,0 +1,282 @@
+{
+	"name": "fuzz_mtx_0272",
+	"description": "generated multi-transaction interleaving fuzz (seed 272)",
+	"steps": [
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k5",
+			"value": "c8"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k4",
+			"value": "c0"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k2",
+			"value": "c7"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k7",
+			"value": "c6"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "GetKey",
+			"actor": "A",
+			"sel": {
+				"key": "k5",
+				"orEqual": false,
+				"offset": 0
+			},
+			"snapshot": true
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k2",
+			"value": "v4"
+		},
+		{
+			"op": "Clear",
+			"actor": "B",
+			"key": "k5"
+		},
+		{
+			"op": "GetKey",
+			"actor": "A",
+			"sel": {
+				"key": "k5",
+				"orEqual": false,
+				"offset": 1
+			},
+			"snapshot": true
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k5",
+			"value": "\\\\\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "A",
+			"key": "k2",
+			"endKey": "k5"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "A",
+			"key": "k2",
+			"endKey": "k7"
+		},
+		{
+			"op": "GetRange",
+			"actor": "B",
+			"sel": {
+				"key": "k0",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k1",
+				"orEqual": true,
+				"offset": 1
+			}
+		},
+		{
+			"op": "GetKey",
+			"actor": "A",
+			"sel": {
+				"key": "k2",
+				"orEqual": false,
+				"offset": 0
+			}
+		},
+		{
+			"op": "Clear",
+			"actor": "B",
+			"key": "k3"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k6",
+			"snapshot": true
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k5"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "SetOption",
+			"actor": "B",
+			"option": "ReadYourWritesDisable"
+		},
+		{
+			"op": "Set",
+			"actor": "B",
+			"key": "k4",
+			"value": "v5"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "A",
+			"key": "k6",
+			"endKey": "k6z"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k7",
+			"value": "2\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Atomic",
+			"actor": "A",
+			"key": "k7",
+			"value": "L\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Clear",
+			"actor": "A",
+			"key": "k0"
+		},
+		{
+			"op": "Clear",
+			"actor": "B",
+			"key": "k0"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k4"
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k6",
+			"value": "\\x0a\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Begin",
+			"actor": "A"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k5",
+			"value": "v3"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "GetKey",
+			"actor": "A",
+			"sel": {
+				"key": "k7",
+				"orEqual": true,
+				"offset": 2
+			}
+		},
+		{
+			"op": "GetRange",
+			"actor": "A",
+			"sel": {
+				"key": "k4",
+				"orEqual": false,
+				"offset": 1
+			},
+			"endSel": {
+				"key": "k4z",
+				"orEqual": false,
+				"offset": 1
+			},
+			"limit": 3
+		},
+		{
+			"op": "Begin",
+			"actor": "B"
+		},
+		{
+			"op": "Get",
+			"actor": "B",
+			"key": "k1"
+		},
+		{
+			"op": "Set",
+			"actor": "A",
+			"key": "k7",
+			"value": "v1"
+		},
+		{
+			"op": "ClearRange",
+			"actor": "A",
+			"key": "k3",
+			"endKey": "k4"
+		},
+		{
+			"op": "Atomic",
+			"actor": "B",
+			"key": "k7",
+			"value": ")\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+			"mutation": "Add"
+		},
+		{
+			"op": "Commit",
+			"actor": "B"
+		},
+		{
+			"op": "Commit",
+			"actor": "A"
+		}
+	]
+}

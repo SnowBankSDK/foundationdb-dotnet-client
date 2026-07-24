@@ -1174,6 +1174,37 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		public async Task Test_ClearRange_Empty_Range_Is_A_NoOp()
+		{
+			// a degenerate range [k, k) is empty: the cluster accepts the clear and changes nothing
+			using var db = await OpenTestPartitionAsync();
+			var location = db.Root;
+			await CleanLocation(db, location);
+
+			await db.WriteAsync(async tr =>
+			{
+				var subspace = await location.Resolve(tr);
+				tr.Set(subspace.Key("a"), Text("A"));
+				tr.Set(subspace.Key("b"), Text("B"));
+			}, this.Cancellation);
+
+			await db.WriteAsync(async tr =>
+			{
+				var subspace = await location.Resolve(tr);
+				tr.ClearRange(subspace.Key("a"), subspace.Key("a"));
+				tr.ClearRange(subspace.Key("zzz"), subspace.Key("zzz")); // empty range over no data at all
+			}, this.Cancellation);
+
+			await db.ReadAsync(async tr =>
+			{
+				var subspace = await location.Resolve(tr);
+				Assert.That((await tr.GetAsync(subspace.Key("a"))).ToStringUtf8(), Is.EqualTo("A"), "the key at the degenerate range's boundary must survive");
+				Assert.That((await tr.GetAsync(subspace.Key("b"))).ToStringUtf8(), Is.EqualTo("B"));
+				return 0;
+			}, this.Cancellation);
+		}
+
+		[Test]
 		public async Task Test_Can_Perform_Atomic_Operations()
 		{
 			// test that we can perform atomic mutations on keys
@@ -2267,6 +2298,523 @@ namespace FoundationDB.Client.Tests
 
 				// this causes a conflict in the current version of FDB
 				await tr1.CommitAsync();
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-selector-read")]
+		public async Task Test_GetKey_FirstGreaterThan_Pivot_Change_Should_Not_Conflict()
+		{
+			// fGT{k} means "the first key strictly greater than k": whether k itself exists can never change the result,
+			// so a concurrent write to the pivot key must not conflict with the resolution
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("foo", 100), Text("one hundred"));
+			}, this.Cancellation);
+
+			// the pivot key is ABSENT and the other transaction creates it
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+				// fGT{50} => 100
+				var key = await tr1.GetKeyAsync(FdbKeySelector.FirstGreaterThan(subspace.Key("foo", 50)));
+				Assert.That(key, Is.EqualTo(subspace.Key("foo", 100)));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 50), Text("fifty"));
+					await tr2.CommitAsync();
+				}
+
+				// we need to write something to force a conflict
+				tr1.Set(subspace.Key("bar"), Slice.Empty);
+
+				// fGT{50} still resolves to 100: no conflict
+				await tr1.CommitAsync();
+			}
+
+			// the pivot key EXISTS and the other transaction overwrites its value
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.ClearRange(subspace);
+				tr.Set(subspace.Key("foo", 50), Text("fifty"));
+				tr.Set(subspace.Key("foo", 100), Text("one hundred"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+				// fGT{50} => 100
+				var key = await tr1.GetKeyAsync(FdbKeySelector.FirstGreaterThan(subspace.Key("foo", 50)));
+				Assert.That(key, Is.EqualTo(subspace.Key("foo", 100)));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 50), Text("FIFTY"));
+					await tr2.CommitAsync();
+				}
+
+				// we need to write something to force a conflict
+				tr1.Set(subspace.Key("bar"), Slice.Empty);
+
+				// the pivot's value is not part of the resolution: no conflict
+				await tr1.CommitAsync();
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-selector-read")]
+		public async Task Test_GetKey_FirstGreaterOrEqual_Resolved_Key_Change_Should_Conflict()
+		{
+			// the resolved key is always part of a selector's read range (a write to it conflicts, even a pure value
+			// change: same coarseness as fGT in Test_GetKey_With_Concurrent_Change_Should_Conflict)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("foo", 50), Text("fifty"));
+			}, this.Cancellation);
+
+			// the other transaction overwrites the resolved key's value
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+				// fGE{0} => 50
+				var key = await tr1.GetKeyAsync(FdbKeySelector.FirstGreaterOrEqual(subspace.Key("foo", 0)));
+				Assert.That(key, Is.EqualTo(subspace.Key("foo", 50)));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 50), Text("FIFTY"));
+					await tr2.CommitAsync();
+				}
+
+				// we need to write something to force a conflict
+				tr1.Set(subspace.Key("bar"), Slice.Empty);
+
+				await AssertThrowsFdbErrorAsync(() => tr1.CommitAsync(), FdbError.NotCommitted, "The Set(50) in TR2 should have conflicted with the GetKey(fGE{0}) in TR1 (the resolved key is part of the read range)");
+			}
+
+			// the other transaction CLEARS the resolved key (the resolution itself would change)
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.ClearRange(subspace);
+				tr.Set(subspace.Key("foo", 50), Text("fifty"));
+				tr.Set(subspace.Key("foo", 100), Text("one hundred"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+				// fGE{0} => 50
+				var key = await tr1.GetKeyAsync(FdbKeySelector.FirstGreaterOrEqual(subspace.Key("foo", 0)));
+				Assert.That(key, Is.EqualTo(subspace.Key("foo", 50)));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Clear(subspace2.Key("foo", 50));
+					await tr2.CommitAsync();
+				}
+
+				// we need to write something to force a conflict
+				tr1.Set(subspace.Key("bar"), Slice.Empty);
+
+				await AssertThrowsFdbErrorAsync(() => tr1.CommitAsync(), FdbError.NotCommitted, "The Clear(50) in TR2 should have conflicted with the GetKey(fGE{0}) in TR1 (clearing the resolved key changes the resolution)");
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-selector-read")]
+		public async Task Test_GetKey_LastLessOrEqual_Absent_Pivot_Appearing_Should_Conflict()
+		{
+			// lLE{k} with k absent resolves below k; if another transaction creates k, the resolution itself changes,
+			// so the pivot key must be part of the selector's read range
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("foo", 50), Text("fifty"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+				// lLE{100} => 50 (100 is absent)
+				var key = await tr1.GetKeyAsync(FdbKeySelector.LastLessOrEqual(subspace.Key("foo", 100)));
+				Assert.That(key, Is.EqualTo(subspace.Key("foo", 50)));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 100), Text("one hundred"));
+					await tr2.CommitAsync();
+				}
+
+				// we need to write something to force a conflict
+				tr1.Set(subspace.Key("bar"), Slice.Empty);
+
+				await AssertThrowsFdbErrorAsync(() => tr1.CommitAsync(), FdbError.NotCommitted, "The Set(100) in TR2 should have conflicted with the GetKey(lLE{100}) in TR1 (the pivot appearing changes the resolution)");
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-range-read")]
+		public async Task Test_GetRange_After_Local_Write_With_Concurrent_Change_Should_Conflict()
+		{
+			// same contract as Test_GetRange_With_Concurrent_Change_Should_Conflict, but the transaction writes BEFORE
+			// reading: the read then resolves over the merged view, and its conflict range must still be established
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("foo", 50), Text("fifty"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				// the local write forces every following read through the merged view
+				tr1.Set(subspace.Key("bar"), Slice.Empty);
+
+				// [0, 100) => 50
+				var kvp = await tr1
+					.GetRange(subspace.Key("foo", 0), subspace.Key("foo", 100))
+					.FirstOrDefaultAsync();
+				Assert.That(kvp.Key, Is.EqualTo(subspace.Key("foo", 50).ToSlice()));
+
+				// 42 < 50 => conflict !!!
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 42), Text("forty-two"));
+					await tr2.CommitAsync();
+				}
+
+				await AssertThrowsFdbErrorAsync(() => tr1.CommitAsync(), FdbError.NotCommitted, "The Set(42) in TR2 should have conflicted with the range read in TR1 (a local write must not erase the read's conflict range)");
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-range-read")]
+		public async Task Test_GetRange_Partially_Covered_By_Own_Clear_Should_Conflict()
+		{
+			// the range read is partially covered by an own uncommitted clear-range: the uncovered part is still read
+			// from the database, so a peer write there must conflict
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("foo", 50), Text("fifty"));
+				tr.Set(subspace.Key("foo", 80), Text("eighty"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				tr1.ClearRange(subspace.Key("foo", 0), subspace.Key("foo", 70));
+
+				// [0, 100) over the merged view => only 80 survives the local clear
+				var items = await tr1.GetRange(subspace.Key("foo", 0), subspace.Key("foo", 100)).ToListAsync();
+				Assert.That(items.Select(kv => kv.Key), Is.EqualTo((Slice[]) [ subspace.Key("foo", 80).ToSlice() ]));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 90), Text("ninety"));
+					await tr2.CommitAsync();
+				}
+
+				await AssertThrowsFdbErrorAsync(() => tr1.CommitAsync(), FdbError.NotCommitted, "The Set(90) in TR2 should have conflicted with the range read in TR1 (90 is outside the local clear, so it was read from the database)");
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-range-read")]
+		public async Task Test_GetRange_Fully_Covered_By_Own_Clear_Should_Not_Conflict()
+		{
+			// oracle-pinned: a range read fully answered by an own uncommitted clear-range never touches the database,
+			// and the real client adds NO read conflict for it (the range-level analogue of the point-get exemption)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("foo", 50), Text("fifty"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				tr1.ClearRange(subspace.Key("foo", 0), subspace.Key("foo", 100));
+
+				// [10, 90) over the merged view => empty, fully determined by the local clear
+				var items = await tr1.GetRange(subspace.Key("foo", 10), subspace.Key("foo", 90)).ToListAsync();
+				Assert.That(items, Is.Empty);
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 40), Text("forty"));
+					await tr2.CommitAsync();
+				}
+
+				// no conflict: the read never depended on the database
+				await tr1.CommitAsync();
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-range-read")]
+		public async Task Test_GetRange_Peer_Write_Under_Own_Clear_Segment_Should_Not_Conflict()
+		{
+			// oracle-pinned: the range read is PARTIALLY covered by an own clear-range and the peer writes INSIDE the
+			// covered part; the real client subtracts locally-determined segments from the read conflict range at
+			// segment granularity (not all-or-nothing per read)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			await db.WriteAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				tr.Set(subspace.Key("foo", 50), Text("fifty"));
+				tr.Set(subspace.Key("foo", 80), Text("eighty"));
+			}, this.Cancellation);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				tr1.ClearRange(subspace.Key("foo", 0), subspace.Key("foo", 70));
+
+				// [0, 100) over the merged view => only 80 survives the local clear
+				var items = await tr1.GetRange(subspace.Key("foo", 0), subspace.Key("foo", 100)).ToListAsync();
+				Assert.That(items.Select(kv => kv.Key), Is.EqualTo((Slice[]) [ subspace.Key("foo", 80).ToSlice() ]));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 30), Text("thirty"));
+					await tr2.CommitAsync();
+				}
+
+				// the write cache knows [0,70) is locally determined, so 30 is outside the read's database dependency
+				await tr1.CommitAsync();
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-range-read")]
+		public async Task Test_GetRange_Over_Own_Written_Key_Should_Not_Conflict()
+		{
+			// oracle-pinned: a peer write to a key the transaction itself SET inside the read range does not conflict;
+			// the single-key segment is subtracted from the read conflict just like a cleared segment
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				tr1.Set(subspace.Key("foo", 50), Text("mine"));
+
+				// [40, 60) over the merged view => the own write
+				var items = await tr1.GetRange(subspace.Key("foo", 40), subspace.Key("foo", 60)).ToListAsync();
+				Assert.That(items.Select(kv => kv.Key), Is.EqualTo((Slice[]) [ subspace.Key("foo", 50).ToSlice() ]));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("foo", 50), Text("theirs"));
+					await tr2.CommitAsync();
+				}
+
+				// no conflict: the own-written key's segment never depended on the database
+				await tr1.CommitAsync();
+			}
+		}
+
+		[Test]
+		[CoversCells("conflicts/own-read-own-write-no-conflict")]
+		public async Task Test_Snapshot_Read_Of_Own_Atomic_Keeps_Commit_Time_Application()
+		{
+			// an atomic mutation applies over the COMMITTED value at commit time; a SNAPSHOT read of the key must not
+			// change that (only a regular read converts the atomic into a set of the read value, per the documented
+			// read-your-writes caveat)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				// pin tr1's read version before the peer commit
+				_ = await tr1.GetAsync(subspace.Key("k0"));
+
+				// the peer gives the key a committed value AFTER tr1's read version
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("k2"), Slice.FromFixed64(1000));
+					await tr2.CommitAsync();
+				}
+
+				tr1.Atomic(subspace.Key("k2"), Slice.FromFixed64(90), FdbMutationType.Add);
+
+				// snapshot reads over the atomic (point and range): they observe the chain over tr1's own snapshot...
+				var value = await tr1.Snapshot.GetAsync(subspace.Key("k2"));
+				Assert.That(value, Is.EqualTo(Slice.FromFixed64(90)), "the snapshot read sees the atomic applied over tr1's snapshot (where the key is absent)");
+				var items = await tr1.Snapshot.GetRange(subspace.Key("k1"), subspace.Key("k3")).ToListAsync();
+				Assert.That(items.Select(kv => kv.Value), Is.EqualTo((Slice[]) [ Slice.FromFixed64(90) ]));
+
+				// ...but must not disturb the mutation itself: no conflict, and the add applies over the peer's value
+				await tr1.CommitAsync();
+			}
+
+			var final = await db.ReadAsync(async tr =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				return await tr.GetAsync(subspace.Key("k2"));
+			}, this.Cancellation);
+			Assert.That(final, Is.EqualTo(Slice.FromFixed64(1090)), "the atomic must have applied over the committed value at commit time (1000 + 90), not over tr1's snapshot");
+		}
+
+		[Test]
+		[CoversCells("conflicts/read-write-conflict-loses")]
+		public async Task Test_Regular_Read_Of_Own_Atomic_Becomes_A_Conflictable_Set()
+		{
+			// the documented caveat: a REGULAR read of a key previously modified by an atomic operation converts the
+			// operation into a set of the read value, and the read establishes a normal conflict range on the key
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				// pin tr1's read version before the peer commit
+				_ = await tr1.GetAsync(subspace.Key("k0"));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("k2"), Slice.FromFixed64(1000));
+					await tr2.CommitAsync();
+				}
+
+				tr1.Atomic(subspace.Key("k2"), Slice.FromFixed64(90), FdbMutationType.Add);
+
+				// the REGULAR read converts the atomic and reads through to the database at tr1's read version
+				var value = await tr1.GetAsync(subspace.Key("k2"));
+				Assert.That(value, Is.EqualTo(Slice.FromFixed64(90)), "the read sees the atomic applied over tr1's snapshot (where the key is absent)");
+
+				// the conversion made the read conflictable: the peer's commit is after tr1's read version
+				await AssertThrowsFdbErrorAsync(() => tr1.CommitAsync(), FdbError.NotCommitted, "Reading the atomic's key converted it into a normal read-write pattern, which conflicts with the peer's Set");
+			}
+		}
+
+		[Test]
+		public async Task Test_Unread_Atomic_Applies_Over_Committed_Value()
+		{
+			// control: an atomic the transaction never reads applies over the latest committed value, without conflict
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				var subspace = await db.Root.Resolve(tr1);
+
+				// pin tr1's read version before the peer commit
+				_ = await tr1.GetAsync(subspace.Key("k0"));
+
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("k2"), Slice.FromFixed64(1000));
+					await tr2.CommitAsync();
+				}
+
+				tr1.Atomic(subspace.Key("k2"), Slice.FromFixed64(90), FdbMutationType.Add);
+				await tr1.CommitAsync();
+			}
+
+			var final = await db.ReadAsync(async tr =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				return await tr.GetAsync(subspace.Key("k2"));
+			}, this.Cancellation);
+			Assert.That(final, Is.EqualTo(Slice.FromFixed64(1090)), "the atomic must have applied over the committed value at commit time (1000 + 90)");
+		}
+
+		[Test]
+		[CoversCells("conflicts/conflict-after-range-read")]
+		public async Task Test_Conflict_Ranges_Survive_A_Range_Read_Below_All_Data()
+		{
+			// the recorded conflict evidence must survive LATER reads whose resolution lands below every key read
+			// so far (the internal conflict-range set merges the new low range into its neighbors; a lost span
+			// here silently forgets an earlier read and misses its conflict)
+
+			using var db = await OpenTestPartitionAsync();
+			await CleanLocation(db);
+
+			using (var tr1 = db.BeginTransaction(this.Cancellation))
+			{
+				// mirrors the fuzz find: reads bypass the local writes and always establish conflict ranges
+				tr1.Options.WithReadYourWritesDisable();
+				var subspace = await db.Root.Resolve(tr1);
+
+				// the conflict evidence: a range read covering k3 (empty at this read version)
+				var items = await tr1.GetRange(subspace.Key("k2"), subspace.Key("k4")).ToListAsync();
+				Assert.That(items, Is.Empty);
+
+				// a point read below it, then a range read over the empty low end: its begin resolves below
+				// every key, and the merge of that low range absorbs the earlier marks
+				_ = await tr1.GetAsync(subspace.Key("k1"));
+				_ = await tr1.GetRange(subspace.Key("k0"), subspace.Key("k2")).ToListAsync();
+
+				// the peer commits inside the window, on the key the FIRST read covered
+				using (var tr2 = db.BeginTransaction(this.Cancellation))
+				{
+					var subspace2 = await db.Root.Resolve(tr2);
+					tr2.Set(subspace2.Key("k3"), Text("v6"));
+					await tr2.CommitAsync();
+				}
+
+				tr1.Set(subspace.Key("k5"), Text("w"));
+
+				await AssertThrowsFdbErrorAsync(() => tr1.CommitAsync(), FdbError.NotCommitted, "The Set(k3) in TR2 should have conflicted with TR1's first range read (its conflict range must survive the later low reads)");
 			}
 		}
 

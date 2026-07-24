@@ -35,27 +35,44 @@ namespace FoundationDB.Client.Tests
 	public class ScenarioGeneratorFacts : FakeDbScenarioTest
 	{
 
-		[Test]
-		public void Test_Generator_Is_Deterministic()
+		/// <summary>The generator families, one entry per method on <see cref="ScenarioGenerator"/> (also the lookup used by the dual-live fuzz fixtures).</summary>
+		public static Func<int, Scenario> Family(string family) => family switch
+		{
+			"ryw" => ScenarioGenerator.GenerateRywFuzz,
+			"mtx" => ScenarioGenerator.GenerateMultiTxnFuzz,
+			_ => throw new ArgumentException($"Unknown generator family '{family}'.", nameof(family)),
+		};
+
+		[TestCase("ryw")]
+		[TestCase("mtx")]
+		public void Test_Generator_Is_Deterministic(string family)
 		{
 			// resumability depends on it: the same seed must always pin the same scenario
-			var a = ScenarioGenerator.GenerateRywFuzz(42).ToJson();
-			var c = ScenarioGenerator.GenerateRywFuzz(42).ToJson();
+			var generate = Family(family);
+			var a = generate(42).ToJson();
+			var c = generate(42).ToJson();
 			Assert.That(c, Is.EqualTo(a));
 
-			var other = ScenarioGenerator.GenerateRywFuzz(43).ToJson();
+			var other = generate(43).ToJson();
 			Assert.That(other, Is.Not.EqualTo(a), "different seeds must differ");
 		}
 
-		[Test]
-		public async Task Test_Generated_Scenario_Executes_On_FakeDb()
+		[TestCase("ryw")]
+		[TestCase("mtx")]
+		public async Task Test_Generated_Scenario_Executes_On_FakeDb(string family)
 		{
-			var scenario = ScenarioGenerator.GenerateRywFuzz(1);
-			Assert.That(Scenario.FromJson(scenario.ToJson()).ToJson(), Is.EqualTo(scenario.ToJson()), "generated scenarios must round-trip (pinning depends on it)");
+			var generate = Family(family);
+			for (int seed = 0; seed < 25; seed++)
+			{
+				var scenario = generate(seed);
+				Assert.That(Scenario.FromJson(scenario.ToJson()).ToJson(), Is.EqualTo(scenario.ToJson()), "generated scenarios must round-trip (pinning depends on it)");
 
-			using var db = await OpenScenarioDatabaseAsync();
-			var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
-			Assert.That(trace.Events, Has.Count.EqualTo(scenario.Steps.Count));
+				// a fresh store per seed: disposing a database takes its store down with it
+				using IFdbDatabase db = new FakeDbStore().OpenDatabase(GetTestPartitionPath($"gen_{family}_{seed}"), readOnly: false);
+				await CleanLocation(db);
+				var trace = await ScenarioRunner.RunAsync(scenario, db, this.Cancellation);
+				Assert.That(trace.Events, Has.Count.EqualTo(scenario.Steps.Count), $"seed {seed} must execute every step");
+			}
 		}
 
 	}
@@ -65,20 +82,21 @@ namespace FoundationDB.Client.Tests
 	public class ScenarioFuzzFacts : FdbTest
 	{
 
-		/// <summary>Deep-dive on one seed: runs it dual-live and dumps both traces on divergence (pick the seed from a failed batch).</summary>
-		[TestCase(4)]
-		[TestCase(101)]
-		[TestCase(115)]
-		public async Task DiagnoseSeed(int seed)
+		/// <summary>Deep-dive on one seed: runs it dual-live and dumps both traces on divergence (pick the family and seed from a failed batch).</summary>
+		[TestCase("ryw", 4)]
+		[TestCase("ryw", 101)]
+		[TestCase("ryw", 115)]
+		[TestCase("mtx", 0)]
+		public async Task DiagnoseSeed(string family, int seed)
 		{
-			var scenario = ScenarioGenerator.GenerateRywFuzz(seed);
+			var scenario = ScenarioGeneratorFacts.Family(family)(seed);
 			Log(scenario.ToJson().ToJsonText(CrystalJsonSettings.JsonIndented));
 
-			using var realDb = await OpenTestPartitionAsync($"diag_{seed}");
+			using var realDb = await OpenTestPartitionAsync($"diag_{family}_{seed}");
 			await CleanLocation(realDb);
 			var real = await ScenarioRunner.RunAsync(scenario, realDb, this.Cancellation);
 
-			using IFdbDatabase fakeDb = new FakeDbStore().OpenDatabase(GetTestPartitionPath($"diag_{seed}"), readOnly: false);
+			using IFdbDatabase fakeDb = new FakeDbStore().OpenDatabase(GetTestPartitionPath($"diag_{family}_{seed}"), readOnly: false);
 			fakeDb.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
 			await CleanLocation(fakeDb);
 			var fake = await ScenarioRunner.RunAsync(scenario, fakeDb, this.Cancellation);
@@ -94,40 +112,85 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
-		[TestCase(0, 200)]
-		[TestCase(200, 800)]
-		public async Task FuzzRywDualLive(int firstSeed, int count)
+		/// <summary>Runs one scenario dual-live (cleaned real partition vs a fresh FakeDb store) and returns the trace divergences.</summary>
+		private async Task<IReadOnlyList<TraceDivergence>> RunSeedDualLive(Scenario scenario, IFdbDatabase realDb, string partition)
 		{
-			var failures = new StringBuilder();
-			int divergent = 0;
+			await CleanLocation(realDb);
+			var real = await ScenarioRunner.RunAsync(scenario, realDb, this.Cancellation);
 
-			// one partitioned real database for the whole batch, cleaned between seeds
-			using var realDb = await OpenTestPartitionAsync($"batch_{firstSeed}_{count}");
+			using IFdbDatabase fakeDb = new FakeDbStore().OpenDatabase(GetTestPartitionPath(partition), readOnly: false);
+			fakeDb.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
+			await CleanLocation(fakeDb);
+			var fake = await ScenarioRunner.RunAsync(scenario, fakeDb, this.Cancellation);
+
+			return TraceComparer.Compare(real, fake, scenario);
+		}
+
+		/// <summary>Records the real-cluster trace of every generated scenario to one JSON file per seed, WITHOUT comparing anything: the output of two runs (e.g. different native client builds against the same server) can then be diffed offline.</summary>
+		/// <remarks>Set <c>FDB_TEST_TRACE_OUT</c> to the output directory. Traces are already normalized (symbolized versions, relative keys), so a byte-level diff of the JSON files is meaningful; re-run differing seeds on both sides to separate real divergence from the known per-run noise (batched-GRV boundary effects).</remarks>
+		[TestCase("ryw", 0, 1000)]
+		[TestCase("mtx", 0, 1000)]
+		public async Task RecordFuzzTraces(string family, int firstSeed, int count)
+		{
+			var outDir = Environment.GetEnvironmentVariable("FDB_TEST_TRACE_OUT");
+			if (string.IsNullOrEmpty(outDir)) Assert.Ignore("Set FDB_TEST_TRACE_OUT to the directory that should receive the recorded traces.");
+			Directory.CreateDirectory(outDir);
+
+			var generate = ScenarioGeneratorFacts.Family(family);
+			using var realDb = await OpenTestPartitionAsync($"rec_{family}_{firstSeed}_{count}");
 
 			for (int seed = firstSeed; seed < firstSeed + count; seed++)
 			{
-				var scenario = ScenarioGenerator.GenerateRywFuzz(seed);
-
+				var scenario = generate(seed);
 				await CleanLocation(realDb);
-				var real = await ScenarioRunner.RunAsync(scenario, realDb, this.Cancellation);
+				var trace = await ScenarioRunner.RunAsync(scenario, realDb, this.Cancellation);
+				await File.WriteAllTextAsync(Path.Combine(outDir, $"{scenario.Name}.json"), trace.ToJsonText(), this.Cancellation);
+			}
 
-				using IFdbDatabase fakeDb = new FakeDbStore().OpenDatabase(GetTestPartitionPath($"batch_{firstSeed}_{count}"), readOnly: false);
-				fakeDb.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
-				await CleanLocation(fakeDb);
-				var fake = await ScenarioRunner.RunAsync(scenario, fakeDb, this.Cancellation);
+			Log($"recorded {count} '{family}' traces to {outDir}");
+		}
 
-				var divergences = TraceComparer.Compare(real, fake, scenario);
+		[TestCase("ryw", 0, 200)]
+		[TestCase("ryw", 200, 800)]
+		[TestCase("mtx", 0, 200)]
+		[TestCase("mtx", 200, 800)]
+		[TestCase("mtx", 1000, 1000)]
+		[TestCase("mtx", 2000, 1000)]
+		public async Task FuzzDualLive(string family, int firstSeed, int count)
+		{
+			var generate = ScenarioGeneratorFacts.Family(family);
+			var failures = new StringBuilder();
+			int divergent = 0, transient = 0;
+
+			// one partitioned real database for the whole batch, cleaned between seeds
+			using var realDb = await OpenTestPartitionAsync($"batch_{family}_{firstSeed}_{count}");
+
+			for (int seed = firstSeed; seed < firstSeed + count; seed++)
+			{
+				var scenario = generate(seed);
+
+				var divergences = await RunSeedDualLive(scenario, realDb, $"batch_{family}_{firstSeed}_{count}");
 				if (divergences.Count > 0)
 				{
+					// a real cluster is not perfectly deterministic (e.g. the batched GRV can land just before or
+					// after a peer's commit, moving the conflict window): only a REPRODUCED divergence is a finding
+					var second = await RunSeedDualLive(scenario, realDb, $"batch_{family}_{firstSeed}_{count}");
+					if (second.Count == 0)
+					{
+						transient++;
+						Log($"seed {seed}: divergence not reproduced on retry (real-cluster nondeterminism), ignored:");
+						Log(TraceComparer.Render("real", "fakedb", divergences));
+						continue;
+					}
 					divergent++;
 					var pinned = ScenarioCorpus.PinScenario(scenario);
-					Log($"seed {seed}: {divergences.Count} divergence(s), scenario pinned to {pinned}");
+					Log($"seed {seed}: {second.Count} divergence(s), scenario pinned to {pinned}");
 					failures.AppendLine($"--- seed {seed} ---");
-					failures.AppendLine(TraceComparer.Render("real", "fakedb", divergences));
+					failures.AppendLine(TraceComparer.Render("real", "fakedb", second));
 				}
 			}
 
-			Log($"fuzzed {count} seeds starting at {firstSeed}: {divergent} divergent");
+			Log($"fuzzed {count} '{family}' seeds starting at {firstSeed}: {divergent} divergent, {transient} transient");
 			if (divergent > 0)
 			{
 				Assert.Fail($"{divergent}/{count} generated scenarios diverged (pinned for replay):\n{failures}");
