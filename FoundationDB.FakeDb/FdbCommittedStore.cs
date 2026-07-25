@@ -24,11 +24,10 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Testing
+namespace FoundationDB.Storage
 {
 	using FoundationDB.Client;
 	using SnowBank.Collections.CacheOblivious;
-	using static FoundationDB.Testing.FakeDbStore;
 
 	/// <summary>Visits one committed key/value pair, over spans into the backend's memory. Returns <c>false</c> to stop the range walk early (limit / target-bytes reached).</summary>
 	/// <remarks>The spans are valid only for the duration of the call (inside the caller's snapshot pin): copy anything that must be retained. This is the range analogue of the point-read <see cref="FdbValueDecoder{TState,TResult}"/> leg.</remarks>

@@ -33,6 +33,7 @@ namespace FoundationDB.Testing.Tests
 	using System.Diagnostics;
 	using System.Text;
 	using FoundationDB.Client;
+	using FoundationDB.Storage;
 
 	[Category("FakeDb-Client")]
 	public abstract class FakeDbTest : SimpleTest
@@ -67,7 +68,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[DebuggerNonUserCode]
-		protected void DumpStore(FakeDbStore.Snapshot snapshot, string label)
+		protected void DumpStore(Snapshot snapshot, string label)
 		{
 			Log();
 			var sb = new StringBuilder();

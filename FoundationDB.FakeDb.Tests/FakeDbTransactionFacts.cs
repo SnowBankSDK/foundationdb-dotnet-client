@@ -28,6 +28,7 @@
 namespace FoundationDB.Testing.Tests
 {
 	using FoundationDB.Client;
+	using FoundationDB.Storage;
 	using Microsoft.Extensions.Time.Testing;
 
 	/// <summary>FakeDb-specific transaction tests that have no real-cluster equivalent (virtual clock, store internals).</summary>
