@@ -844,18 +844,59 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Writes a rebuilt cell list as one page, or as a K-way split when it does not fit (greedy: each page takes the largest prefix that fits).</summary>
 		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, CellRef[] cells)
 		{
-			// pages built here strip no prefix yet, so their slot directory starts right after the header
-			int usable = this.Pager.Geometry.PageSize - FdbLiteTreePage.SlotsOffset(isInternal, prefixRegionSize: 0);
 			var type = isInternal ? FdbLitePageType.Internal : FdbLitePageType.Leaf;
 			int pageSize = this.Pager.Geometry.PageSize;
 
+			// an internal page stores whole separators and strips nothing, so its directory starts right after the header
+			int usable = pageSize - FdbLiteTreePage.SlotsOffset(isInternal, prefixRegionSize: 0);
+
+			// a leaf's cells carry the prefix of the page they came FROM, and will be stored against the prefix of
+			// the page they land ON; the two differ, so the sizing has to name which one it means
+			int sourcePrefixLength = !isInternal && sourcePage.Length > 0 && FdbLitePageHeader.GetCellCount(sourcePage) > 0
+				? FdbLitePageHeader.GetPrefixLength(sourcePage)
+				: 0;
+
 			long totalBytes = 0;
-			foreach (var cell in cells)
+			if (isInternal)
 			{
-				totalBytes += CellFootprint(cell, isInternal);
+				foreach (var cell in cells)
+				{
+					totalBytes += CellFootprint(cell, isInternal);
+				}
+			}
+			else
+			{
+				// the whole run's shared prefix is what the first and last key share (they are in key order), which
+				// is the right basis for the BALANCE estimate; each part re-derives its own below
+				int runLcp = 0;
+				if (cells.Length > 1)
+				{
+					var estimateScratch = ArrayPool<byte>.Shared.Rent(2 * FdbLiteTreePage.MaxKeyLength);
+					try
+					{
+						var sp = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
+						var lowest = MaterializeKey(cells[0], sourcePage, sp, estimateScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
+						var highest = MaterializeKey(cells[^1], sourcePage, sp, estimateScratch.AsSpan(FdbLiteTreePage.MaxKeyLength, FdbLiteTreePage.MaxKeyLength));
+						runLcp = FdbLiteTreePage.CommonPrefixLength(lowest, highest);
+					}
+					finally
+					{
+						ArrayPool<byte>.Shared.Return(estimateScratch);
+					}
+				}
+
+				long sumWhole = 0, sumValue = 0;
+				foreach (var cell in cells)
+				{
+					sumWhole += LeafWholeKeyLength(cell, sourcePrefixLength);
+					sumValue += cell.ValueLength;
+				}
+				totalBytes = LeafRunBytes(cells.Length, sumWhole, sumValue, runLcp) - FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: 0);
+				usable = pageSize - FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: (runLcp + 1) & ~1);
 			}
 
 			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
+			var partScratch = ArrayPool<byte>.Shared.Rent(FdbLiteTreePage.MaxKeyLength);
 			byte[]? sourceCopy = null;
 			try
 			{
@@ -886,20 +927,56 @@ namespace FoundationDB.Storage.FdbLite
 					// extend the part up to the balance target, never past the page capacity
 					long bytes = 0;
 					int end = start;
-					while (end < cells.Length)
+					if (isInternal)
 					{
-						long next = bytes + CellFootprint(cells[end], isInternal);
-						if (next > usable)
+						while (end < cells.Length)
 						{
-							Contract.Debug.Assert(end > start || isInternal, "a single cell always fits a page (the page-size floor guarantees it)");
-							break;
+							long next = bytes + CellFootprint(cells[end], isInternal);
+							if (next > usable)
+							{
+								break;
+							}
+							if (end > start && next > targetBytes)
+							{ // the boundary cell rides into the next part
+								break;
+							}
+							bytes = next;
+							end++;
 						}
-						if (end > start && next > targetBytes)
-						{ // the boundary cell rides into the next part
-							break;
+					}
+					else
+					{
+						// A leaf part is measured against the prefix IT will strip, which shrinks as the part grows and
+						// makes every cell already in it a byte or more longer. So the cost of the whole part is
+						// recomputed on each candidate rather than accumulated per cell: an incremental sum cannot
+						// express "the cell I just added made all the previous ones bigger".
+						var sourcePrefix = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
+						var firstKey = MaterializeKey(cells[start], sourcePage, sourcePrefix, partScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
+						int lcp = firstKey.Length;
+						long sumWhole = 0, sumValue = 0;
+
+						while (end < cells.Length)
+						{
+							int candidateLcp = end == start ? lcp : LeafLcpWith(firstKey, cells[end], sourcePage, sourcePrefix, lcp);
+							long nextWhole = sumWhole + LeafWholeKeyLength(cells[end], sourcePrefixLength);
+							long nextValue = sumValue + cells[end].ValueLength;
+							long next = LeafRunBytes(end - start + 1, nextWhole, nextValue, candidateLcp);
+
+							if (next > pageSize)
+							{
+								Contract.Debug.Assert(end > start, "a single cell always fits a page (the page-size floor guarantees it)");
+								break;
+							}
+							if (end > start && next - FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: 0) > targetBytes)
+							{ // the boundary cell rides into the next part
+								break;
+							}
+							lcp = candidateLcp;
+							sumWhole = nextWhole;
+							sumValue = nextValue;
+							bytes = next;
+							end++;
 						}
-						bytes = next;
-						end++;
 					}
 
 					// on an internal boundary the boundary cell is PROMOTED: its child seeds the next part, its key separates
@@ -973,6 +1050,7 @@ namespace FoundationDB.Storage.FdbLite
 			finally
 			{
 				ArrayPool<byte>.Shared.Return(scratch);
+				ArrayPool<byte>.Shared.Return(partScratch);
 				if (sourceCopy != null) { ArrayPool<byte>.Shared.Return(sourceCopy); }
 			}
 		}
@@ -1013,8 +1091,45 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Bytes one cell costs in a page, its slot included: an internal cell is contiguous, a leaf cell pays the fixed overhead of its two-region entry.</summary>
+		/// <remarks>For a LEAF this is only the prefix-independent part; what the key itself costs depends on the prefix of the page it lands on, which is what <see cref="LeafRunBytes"/> accounts for.</remarks>
 		private static int CellFootprint(in CellRef cell, bool isInternal)
 			=> isInternal ? cell.KeyLength + 2 : cell.PayloadLength + FdbLiteTreePage.LeafCellOverhead;
+
+		/// <summary>Length of a leaf cell's WHOLE key, putting back the prefix of the page it was gathered from.</summary>
+		private static int LeafWholeKeyLength(in CellRef cell, int sourcePrefixLength)
+			=> cell.Buffer is not null ? cell.KeyLength : sourcePrefixLength + cell.KeyLength;
+
+		/// <summary>Bytes a run of <paramref name="count"/> leaf cells needs in a page, INCLUDING the prefix region and with every key stored relative to <paramref name="lcp"/>.</summary>
+		/// <remarks>
+		/// <para>Sizing a leaf run by the key lengths as stored in the SOURCE page is wrong whenever the destination strips a different prefix, and a carry inside a structured key forces exactly that: the shared run shortens, so every cell's stored key grows by the difference and a run planned to fit overruns the page. Everything else then behaves perfectly - each cell is written faithfully, executing a plan that was already wrong - so the damage shows up only as the two heaps crossing.</para>
+		/// <para>A single-cell page strips nothing (there is no second key to share with), so its key is stored whole.</para>
+		/// </remarks>
+		private static long LeafRunBytes(int count, long sumWholeKeyLengths, long sumValueLengths, int lcp)
+		{
+			int effective = count > 1 ? lcp : 0;
+			return FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: (effective + 1) & ~1)
+				+ sumWholeKeyLengths - ((long) count * effective)
+				+ ((long) count * FdbLiteTreePage.LeafCellOverhead)
+				+ sumValueLengths;
+		}
+
+		/// <summary>Longest prefix <paramref name="first"/> shares with a cell's whole key, without materializing that key.</summary>
+		/// <remarks>Capped at <paramref name="cap"/> because the run's shared prefix only ever SHRINKS as the run grows, so the comparison never has to look past what is still shared.</remarks>
+		private static int LeafLcpWith(ReadOnlySpan<byte> first, in CellRef cell, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<byte> sourcePrefix, int cap)
+		{
+			var stored = cell.ResolveKey(sourcePage);
+			int n = 0;
+			if (cell.Buffer is null && sourcePrefix.Length > 0)
+			{ // the key is the source page's prefix followed by the stored suffix: walk them in turn
+				int head = Math.Min(cap, sourcePrefix.Length);
+				while (n < head && first[n] == sourcePrefix[n]) { ++n; }
+				if (n < head) { return n; }
+				for (int k = 0; n < cap && k < stored.Length && first[n] == stored[k]; ++k) { ++n; }
+				return n;
+			}
+			while (n < cap && n < stored.Length && first[n] == stored[n]) { ++n; }
+			return n;
+		}
 
 		/// <summary>Appends cells [<paramref name="start"/>, <paramref name="end"/>) (already in key order) to a freshly formatted page image.</summary>
 		private static void AppendCells(Span<byte> image, bool isInternal, ReadOnlySpan<byte> sourcePage, CellRef[] cells, int start, int end)
