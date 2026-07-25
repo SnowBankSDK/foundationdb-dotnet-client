@@ -647,7 +647,7 @@ namespace FoundationDB.Testing.Tests
 						}
 
 						var writeConflicts = FakeDbDebugger.GetSnapshotWriteConflicts(s);
-						Log($"% Write Conflicts: {writeConflicts.Count}");
+						Log($"% Write Conflicts: {writeConflicts.Count:N0}");
 						foreach (var entry in writeConflicts.IterateOrdered())
 						{
 							Log($"% - {entry.Begin} ~ {entry.End}");
