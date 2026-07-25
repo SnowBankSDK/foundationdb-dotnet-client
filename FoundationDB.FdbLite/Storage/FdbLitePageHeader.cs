@@ -37,16 +37,20 @@ namespace FoundationDB.Storage.FdbLite
 		FreeList = 3,
 	}
 
-	/// <summary>Span accessors for the 24-byte universal header at the start of every formatted page.</summary>
+	/// <summary>Span accessors for the 32-byte universal header at the start of every formatted page.</summary>
 	/// <remarks>
-	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, cell-area offset u16, prefix length u16.</para>
+	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, value-area offset u16 (the down-growing heap), prefix length u16, key-area end u16 (the up-growing heap), then 6 bytes reserved and required to be zero.</para>
 	/// <para>The block-id seed makes a page written to the wrong location fail verification; the generation stamp lets a lock-free inspector detect a page reused under its feet.</para>
 	/// </remarks>
 	public static class FdbLitePageHeader
 	{
 
 		/// <summary>Size of the universal page header, in bytes</summary>
-		public const int Size = 24;
+		/// <remarks>
+		/// <para>A multiple of 8 by convention only. It does NOT align the slot directory: the variable-length page prefix sits between this header and the slots, so what keeps that u16 array 2-byte aligned is the prefix being padded to an even length, and nothing else. Removing that pad as redundant would make the alignment of the array depend on each page's prefix.</para>
+		/// <para>Bytes 26..32 are reserved and MUST be zero. Pages are zeroed on format, so this costs nothing today, and it is what makes them safe to give a meaning later.</para>
+		/// </remarks>
+		public const int Size = 32;
 
 		/// <summary>The only payload encoding defined in v1</summary>
 		public const byte EncodingPlain = 0;
@@ -58,6 +62,7 @@ namespace FoundationDB.Storage.FdbLite
 		private const int CellCountOffset = 18;
 		private const int CellAreaOffset = 20;
 		private const int PrefixLengthOffset = 22;
+		private const int KeyAreaEndOffset = 24;
 
 		public static ulong GetChecksum(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[ChecksumOffset..]);
 
@@ -82,6 +87,12 @@ namespace FoundationDB.Storage.FdbLite
 		public static ushort GetCellAreaOffset(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[CellAreaOffset..]);
 
 		public static void SetCellAreaOffset(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[CellAreaOffset..], value);
+
+		/// <summary>End of the up-growing key heap: the offset the next key-heap entry is written at.</summary>
+		/// <remarks>The leaf holds two heaps growing towards each other, so it needs two frontiers: this one and <see cref="GetCellAreaOffset"/>, which is the down-growing value heap. This one is not derivable from the slot directory, because the key heap is packed in insertion order rather than key order; keeping it in key order would cost a memmove per insert, which is the trade the layout deliberately refuses.</remarks>
+		public static ushort GetKeyAreaEnd(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[KeyAreaEndOffset..]);
+
+		public static void SetKeyAreaEnd(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[KeyAreaEndOffset..], value);
 
 		/// <summary>Length of the key prefix common to every key on this page, stored once between the header and the slot directory.</summary>
 		/// <remarks>Zero means no prefix is stripped, which is the layout's degenerate case and behaves exactly as an unstripped page. The prefix bytes themselves follow the header (and the leftmost-child field on an internal page), so the slot directory starts that much further in.</remarks>
