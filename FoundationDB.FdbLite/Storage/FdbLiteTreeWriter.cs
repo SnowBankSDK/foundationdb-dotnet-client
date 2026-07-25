@@ -214,9 +214,9 @@ namespace FoundationDB.Storage.FdbLite
 			/// <summary>A leaf cell already living in a page, whose two parts are gathered from their own regions</summary>
 			public static CellRef OfLeafPage(ReadOnlySpan<byte> page, int cellIndex)
 			{
-				var (keyAt, keyLen) = FdbLiteTreePage.LeafKeyExtent(page, cellIndex);
-				var (valueAt, valueLen) = FdbLiteTreePage.LeafValueExtent(page, cellIndex);
-				return new(null, keyAt, keyLen, valueAt, valueLen, FdbLiteTreePage.GetLeafFlags(page, cellIndex));
+				// one pass, so the key-heap base is resolved once for the whole cell rather than once per part
+				var c = FdbLiteTreePage.ReadLeafCell(page, cellIndex);
+				return new(null, c.KeyOffset, c.KeyLength, c.ValueOffset, c.ValueLength, c.Flags);
 			}
 
 			/// <summary>A leaf cell built into scratch: key at the front, stored value straight after it</summary>

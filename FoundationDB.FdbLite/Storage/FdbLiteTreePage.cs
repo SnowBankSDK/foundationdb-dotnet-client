@@ -353,14 +353,20 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Binary search of a leaf: index of the first cell whose key is &gt;= <paramref name="key"/> (= cell count when all keys are smaller); <paramref name="exact"/> reports an exact hit.</summary>
+		/// <remarks>The slot directory's position and the key heap's base are computed ONCE here rather than per probe. Both depend on page data (the prefix length and the cell count), so resolving them inside the loop would put several header reads on every step of the search this layout exists to make cheap.</remarks>
 		public static int FindLeafSlot(ReadOnlySpan<byte> page, ReadOnlySpan<byte> key, out bool exact)
 		{
-			int lo = 0, hi = FdbLitePageHeader.GetCellCount(page);
+			int count = FdbLitePageHeader.GetCellCount(page);
+			int slotsAt = SlotsOffset(page, isInternal: false);
+			int keyBase = slotsAt + (count * 2);
+
+			int lo = 0, hi = count;
 			exact = false;
 			while (lo < hi)
 			{
 				int mid = (lo + hi) >> 1;
-				int cmp = GetLeafKey(page, mid).SequenceCompareTo(key);
+				int entry = keyBase + BinaryPrimitives.ReadUInt16LittleEndian(page[(slotsAt + (mid * 2))..]);
+				int cmp = page.Slice(entry + 2, BinaryPrimitives.ReadUInt16LittleEndian(page[entry..])).SequenceCompareTo(key);
 				if (cmp < 0) { lo = mid + 1; }
 				else
 				{
@@ -369,6 +375,21 @@ namespace FoundationDB.Storage.FdbLite
 				}
 			}
 			return lo;
+		}
+
+		/// <summary>Reads every part of a leaf cell in one pass, resolving the key-heap base once instead of once per part.</summary>
+		/// <remarks>Gathering a page for a rebuild asks for the key, the value and the flags of every cell; going through the individual accessors would recompute the base three times per cell.</remarks>
+		public static (int KeyOffset, int KeyLength, int ValueOffset, int ValueLength, byte Flags) ReadLeafCell(ReadOnlySpan<byte> page, int cellIndex)
+		{
+			int entry = LeafEntry(page, cellIndex);
+			int keyLen = BinaryPrimitives.ReadUInt16LittleEndian(page[entry..]);
+			int f = entry + 2 + keyLen;
+			return (
+				entry + 2, keyLen,
+				BinaryPrimitives.ReadUInt16LittleEndian(page[f..]),
+				BinaryPrimitives.ReadUInt16LittleEndian(page[(f + 2)..]),
+				page[f + 4]
+			);
 		}
 
 		#endregion
