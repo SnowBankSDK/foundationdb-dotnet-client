@@ -384,7 +384,7 @@ namespace FoundationDB.Client.Tests
 						{
 							b.Begin(owner);
 							ownerOpen[o] = true;
-							ownerPin[o] = null;
+							ownerPin[o] = null!; // "not pinned yet" (see the declaration); flow analysis does not track array elements, so the slot type stays non-nullable
 							ownerWatchCount[o] = 0;
 							break;
 						}
