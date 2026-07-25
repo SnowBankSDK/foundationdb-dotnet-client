@@ -1811,7 +1811,25 @@ namespace FoundationDB.Testing
 
 		#endregion
 
-		public class TransactionHandler<TCursor> : IFdbTransactionHandler
+		/// <summary>Cursor-agnostic face of a transaction handler: what an inspector can reach without knowing which storage is underneath.</summary>
+		/// <remarks>The handler is generic over its backend's cursor so the read core monomorphizes per storage, which makes the closed type a storage detail. Anything that only wants the owning store or the in-flight mutation state - a test probe, a dump helper - names this instead, and keeps working when a store changes storage.</remarks>
+		public abstract class TransactionHandler
+		{
+
+			protected TransactionHandler(FakeDbStore store)
+			{
+				this.Store = store;
+			}
+
+			/// <summary>Store this transaction runs against</summary>
+			public FakeDbStore Store { get; }
+
+			/// <summary>Returns the transaction's read-your-writes snapshot, waiting for it if it has not been started yet.</summary>
+			public abstract ReadYourWritesSnapshot GetSnapshotBlocking();
+
+		}
+
+		public class TransactionHandler<TCursor> : TransactionHandler, IFdbTransactionHandler
 			where TCursor : struct, IFdbCommittedCursor
 		{
 
@@ -1824,13 +1842,11 @@ namespace FoundationDB.Testing
 #endif
 
 			public TransactionHandler(FakeDbStore store, FdbOperationContext context)
+				: base(store)
 			{
-				this.Store = store;
 				this.Context = context;
 				this.Scratch = new Arena(16 * 1024, 128 * 1024, BufferPool);
 			}
-
-			public FakeDbStore Store { get; }
 
 			public FdbOperationContext Context { get; }
 
@@ -2008,7 +2024,7 @@ namespace FoundationDB.Testing
 				return false;
 			}
 
-			public ReadYourWritesSnapshot GetSnapshotBlocking()
+			public override ReadYourWritesSnapshot GetSnapshotBlocking()
 			{
 				if (!TryGetSnapshot(out var snapshot))
 				{
