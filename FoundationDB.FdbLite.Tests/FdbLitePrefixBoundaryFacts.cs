@@ -160,6 +160,10 @@ namespace FoundationDB.Storage.FdbLite.Tests
 					}
 				}
 
+				// the cross-level audit: bounds come from each page's PARENT, so it can arbitrate a page that
+				// every page-internal check finds sound
+				foreach (var p in FdbLiteTreeAudit.Check(engine.Pager, pin.RootPageId, maxProblems: 6)) Log($"# AUDIT {p}");
+
 				foreach (var m in misses) Log($"# MISS {m}");
 				Assert.That(misses, Is.Empty, "every key must read back as itself");
 			}
