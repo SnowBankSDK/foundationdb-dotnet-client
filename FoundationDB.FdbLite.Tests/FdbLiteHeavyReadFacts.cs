@@ -135,19 +135,29 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			for (int i = 0; i < 5_000; i++) { WriteKey(key, (int) ((long) i * 1_299_709 % count)); cursor.SeekFloor(key, orEqual: true); }
 
 			long hits = 0;
+			var misses = new List<string>();
 			var sw = Stopwatch.StartNew();
 			for (int i = 0; i < probes; i++)
 			{
 				// a large prime stride, so consecutive probes land in unrelated pages rather than walking one
 				int k = (int) ((long) i * 1_299_709 % count);
 				WriteKey(key, k);
-				if (!cursor.SeekFloor(key, orEqual: true)) continue;
+				if (!cursor.SeekFloor(key, orEqual: true)) { misses.Add($"k={k} seek returned FALSE"); continue; }
 				if (expose)
 				{
 					// compare the WHOLE key: on a stripped page this forces the assembly, which is the cost the
 					// exposure mechanism adds. Checking only the length would not.
 					WriteKey(probe, k);
 					if (cursor.CurrentKey.SequenceEqual(probe)) { ++hits; }
+					else if (misses.Count < 12)
+					{
+						// a bare count says only THAT it broke. Which key came back says WHERE: a floor that fell
+						// short by one is a search that misjudged a boundary, and an unrelated key is a descent
+						// that went to the wrong page. Those are different bugs and the number cannot tell them apart.
+						var got = cursor.CurrentKey;
+						int back = got.Length == KeySize ? k - BinaryPrimitives.ReadInt32BigEndian(got[32..]) : int.MinValue;
+						misses.Add($"k={k} (0x{k:X8}) got={Convert.ToHexString(got)} len={got.Length} delta={(back == int.MinValue ? "?" : back.ToString())}");
+					}
 				}
 				else
 				{
@@ -158,6 +168,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 			// PRECONDITION: every probed key exists, so a leg that silently missed would be caught here rather
 			// than reporting a suspiciously fast number
+			foreach (var m in misses) Log($"# MISS   {m}");
 			Assert.That(hits, Is.EqualTo(probes), "every probe must land on its key");
 			return sw.Elapsed.TotalMilliseconds * 1_000_000.0 / probes;
 		}
