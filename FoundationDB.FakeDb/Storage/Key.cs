@@ -297,6 +297,9 @@ namespace FoundationDB.Storage
 
 	public static class SpecialKeys
 	{
+		/// <summary>Value stored under <see cref="SystemRoot"/> in every fresh database, whichever backend created it</summary>
+		public static readonly Slice SystemRootSentinelValue = Slice.FromString("You shall not pass!");
+
 		public static readonly Key SystemPrefix = new Key(Slice.FromByte(0xFF));
 		public static readonly Key SystemRoot = new Key(Slice.FromByteString("\xFF/"));
 		public static readonly Key SystemMetadataVersion = new Key(Slice.FromByteString("\xFF/metadataVersion"));
