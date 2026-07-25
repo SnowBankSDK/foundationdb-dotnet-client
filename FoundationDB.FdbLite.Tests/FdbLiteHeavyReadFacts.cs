@@ -111,8 +111,14 @@ namespace FoundationDB.Storage.FdbLite.Tests
 						}
 						Log($"# LAYOUT leaves={leaves:N0} strippedLeaves={stripped:N0} longestPrefix={longest}B pageSize={geometry.PageSize}");
 
-						Log($"# SEEK   {Measure(engine, pin, count, PROBES, expose: false):N0} ns/op   (compression scheme only: no key handed out)");
-						Log($"# LOOKUP {Measure(engine, pin, count, PROBES, expose: true):N0} ns/op   (adds the exposure mechanism)");
+						// The FIRST measurement over a multi-GB file pays to warm the OS page cache and the ones after
+						// it do not, which at 5 GiB is worth more than anything being compared here - it made a seek
+						// leg read SLOWER than the lookup leg that does strictly more work. So the seek is measured
+						// again AFTER the lookup: cold-vs-warm is then visible in the output instead of being an
+						// unlabelled difference between the first row and the rest.
+						Log($"# SEEK   {Measure(engine, pin, count, PROBES, expose: false):N0} ns/op   COLD (first touch: includes page-cache warming)");
+						Log($"# LOOKUP {Measure(engine, pin, count, PROBES, expose: true):N0} ns/op   warm  (adds the exposure mechanism)");
+						Log($"# SEEK2  {Measure(engine, pin, count, PROBES, expose: false):N0} ns/op   warm  (same work as SEEK; the gap to it IS the warming cost)");
 					}
 					finally
 					{
