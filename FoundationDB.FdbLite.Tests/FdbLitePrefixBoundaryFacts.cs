@@ -47,6 +47,26 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			return key;
 		}
 
+		/// <summary>Keys that do not assemble back to their full length, counted through the public reader only.</summary>
+		private static int CountShortKeys(FdbLiteEngine engine, int first)
+		{
+			var pin = engine.BeginRead();
+			try
+			{
+				var c = new FdbLiteTreeCursor(engine.Pager, pin.RootPageId);
+				int bad = 0;
+				if (c.SeekCeiling(MakeKey(first)))
+				{
+					do { if (c.CurrentKey.Length != KeySize) ++bad; } while (c.MoveNext());
+				}
+				return bad;
+			}
+			finally
+			{
+				engine.EndRead(in pin);
+			}
+		}
+
 		[Test]
 		public void Test_Every_Key_Reads_Back_Across_A_Carry_In_The_Key_Suffix()
 		{
@@ -67,6 +87,16 @@ namespace FoundationDB.Storage.FdbLite.Tests
 					w.Insert(MakeKey(i), value);
 				}
 				engine.Commit(w, version++);
+
+				// which BATCH first produces a truncated key, using only what a reader can see. A key that assembles
+				// to the wrong length is corruption no matter which internal path wrote it, and narrowing to one
+				// batch turns "somewhere in 2M inserts" into a range small enough to bisect.
+				int shortKeys = CountShortKeys(engine, FIRST);
+				if (shortKeys > 0)
+				{
+					Log($"# FIRST BAD BATCH: keys 0x{start:X8}..0x{Math.Min(start + 20_000, LAST):X8} -> {shortKeys} truncated");
+					break;
+				}
 			}
 
 			var pin = engine.BeginRead();
@@ -85,6 +115,33 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				}
 				Log($"# leaf prefix lengths present: {string.Join(", ", lengths.Order())}");
 				Assert.That(lengths.Count, Is.GreaterThan(1), "the keys must produce pages with DIFFERENT prefix lengths, otherwise the straddling case is not covered");
+
+				// walk the whole tree in order FIRST: a contiguous run of probes that all come back as the same key
+				// is what a floor seek does when a block of keys is MISSING, which is a different defect from a
+				// descent that lands wrong, and the walk tells them apart without guessing
+				var walk = new FdbLiteTreeCursor(engine.Pager, pin.RootPageId);
+				int walked = 0, oddLength = 0; string firstGap = "none", firstOdd = "none";
+				if (walk.SeekCeiling(MakeKey(FIRST)))
+				{
+					int expect = FIRST;
+					do
+					{
+						var k = walk.CurrentKey;
+						if (k.Length != KeySize)
+						{
+							if (++oddLength == 1) firstOdd = $"{Convert.ToHexString(k)} ({k.Length} B) at walk position {walked}";
+						}
+						else
+						{
+							int got = BinaryPrimitives.ReadInt32BigEndian(k[32..]);
+							if (got != expect && firstGap == "none") firstGap = $"expected 0x{expect:X8}, found 0x{got:X8} (gap of {got - expect})";
+							expect = got;
+						}
+						++walked; ++expect;
+					}
+					while (walk.MoveNext());
+				}
+				Log($"# walk: {walked:N0} keys of {LAST - FIRST:N0} expected; odd-length {oddLength}; first odd {firstOdd}; first gap {firstGap}");
 
 				var cursor = new FdbLiteTreeCursor(engine.Pager, pin.RootPageId);
 				var misses = new List<string>();
