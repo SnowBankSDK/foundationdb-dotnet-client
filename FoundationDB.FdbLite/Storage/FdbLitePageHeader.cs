@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -39,7 +39,7 @@ namespace FoundationDB.Storage.FdbLite
 
 	/// <summary>Span accessors for the 32-byte universal header at the start of every formatted page.</summary>
 	/// <remarks>
-	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, value-area offset u16 (the down-growing heap), prefix length u16, key-area end u16 (the up-growing heap), then 6 bytes reserved and required to be zero.</para>
+	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, value-area offset u16 (the down-growing heap), prefix length u16, key-area length u16 (bytes used by the up-growing heap), then 6 bytes reserved and required to be zero.</para>
 	/// <para>The block-id seed makes a page written to the wrong location fail verification; the generation stamp lets a lock-free inspector detect a page reused under its feet.</para>
 	/// </remarks>
 	public static class FdbLitePageHeader
@@ -62,7 +62,7 @@ namespace FoundationDB.Storage.FdbLite
 		private const int CellCountOffset = 18;
 		private const int CellAreaOffset = 20;
 		private const int PrefixLengthOffset = 22;
-		private const int KeyAreaEndOffset = 24;
+		private const int KeyAreaLengthOffset = 24;
 
 		public static ulong GetChecksum(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[ChecksumOffset..]);
 
@@ -88,11 +88,14 @@ namespace FoundationDB.Storage.FdbLite
 
 		public static void SetCellAreaOffset(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[CellAreaOffset..], value);
 
-		/// <summary>End of the up-growing key heap: the offset the next key-heap entry is written at.</summary>
-		/// <remarks>The leaf holds two heaps growing towards each other, so it needs two frontiers: this one and <see cref="GetCellAreaOffset"/>, which is the down-growing value heap. This one is not derivable from the slot directory, because the key heap is packed in insertion order rather than key order; keeping it in key order would cost a memmove per insert, which is the trade the layout deliberately refuses.</remarks>
-		public static ushort GetKeyAreaEnd(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[KeyAreaEndOffset..]);
+		/// <summary>Bytes of the key heap that are in use, measured from its base rather than from the page.</summary>
+		/// <remarks>
+		/// <para>A LENGTH, not an offset, and deliberately so: the key heap's base moves whenever the slot directory grows, and a length survives that move untouched while an absolute end would have to be rewritten.</para>
+		/// <para>The leaf holds two heaps growing towards each other and so needs two frontiers: this one and <see cref="GetCellAreaOffset"/>, the down-growing value heap. Neither is derivable from the slot directory, because the heaps are packed in insertion order rather than key order; keeping them in key order would cost a memmove per insert, which is the trade the layout deliberately refuses.</para>
+		/// </remarks>
+		public static ushort GetKeyAreaLength(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[KeyAreaLengthOffset..]);
 
-		public static void SetKeyAreaEnd(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[KeyAreaEndOffset..], value);
+		public static void SetKeyAreaLength(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[KeyAreaLengthOffset..], value);
 
 		/// <summary>Length of the key prefix common to every key on this page, stored once between the header and the slot directory.</summary>
 		/// <remarks>Zero means no prefix is stripped, which is the layout's degenerate case and behaves exactly as an unstripped page. The prefix bytes themselves follow the header (and the leftmost-child field on an internal page), so the slot directory starts that much further in.</remarks>

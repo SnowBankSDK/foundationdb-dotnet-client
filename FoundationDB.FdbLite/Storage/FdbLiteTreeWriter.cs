@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -185,27 +185,52 @@ namespace FoundationDB.Storage.FdbLite
 			public bool Split => this.Siblings != null;
 		}
 
-		/// <summary>Reference to one gathered cell: either a slice of the source page image, or a slice of a scratch buffer (a span-of-spans is not expressible, so gathered cell lists carry these instead)</summary>
+		/// <summary>Reference to one gathered cell, held as its key part and its value part because a leaf cell is no longer contiguous: it lives in two regions of the page. Either part may be a slice of the source page image or of a scratch buffer (a span-of-spans is not expressible, so gathered cell lists carry these instead).</summary>
+		/// <remarks>An internal cell has no value part: its whole cell is the key part, which keeps one gather-and-emit path serving both page kinds.</remarks>
 		private readonly struct CellRef
 		{
 			public readonly byte[]? Buffer;
-			public readonly int Offset;
-			public readonly int Length;
+			public readonly int KeyOffset;
+			public readonly int KeyLength;
+			public readonly int ValueOffset;
+			public readonly int ValueLength;
+			public readonly byte Flags;
 
-			public CellRef(byte[]? buffer, int offset, int length)
+			public CellRef(byte[]? buffer, int keyOffset, int keyLength, int valueOffset, int valueLength, byte flags)
 			{
 				this.Buffer = buffer;
-				this.Offset = offset;
-				this.Length = length;
+				this.KeyOffset = keyOffset;
+				this.KeyLength = keyLength;
+				this.ValueOffset = valueOffset;
+				this.ValueLength = valueLength;
+				this.Flags = flags;
 			}
 
-			public static CellRef OfPage((int Offset, int Length) extent) => new(null, extent.Offset, extent.Length);
+			/// <summary>An internal cell: contiguous, and carried entirely in the key part</summary>
+			public static CellRef OfInternalPage((int Offset, int Length) extent) => new(null, extent.Offset, extent.Length, 0, 0, 0);
 
-			public static CellRef OfBuffer(byte[] buffer, int length) => new(buffer, 0, length);
+			public static CellRef OfInternalBuffer(byte[] buffer, int length) => new(buffer, 0, length, 0, 0, 0);
 
-			/// <summary>Resolves against the source page when not buffer-backed</summary>
-			public ReadOnlySpan<byte> Resolve(ReadOnlySpan<byte> sourcePage)
-				=> this.Buffer is null ? sourcePage.Slice(this.Offset, this.Length) : this.Buffer.AsSpan(this.Offset, this.Length);
+			/// <summary>A leaf cell already living in a page, whose two parts are gathered from their own regions</summary>
+			public static CellRef OfLeafPage(ReadOnlySpan<byte> page, int cellIndex)
+			{
+				var (keyAt, keyLen) = FdbLiteTreePage.LeafKeyExtent(page, cellIndex);
+				var (valueAt, valueLen) = FdbLiteTreePage.LeafValueExtent(page, cellIndex);
+				return new(null, keyAt, keyLen, valueAt, valueLen, FdbLiteTreePage.GetLeafFlags(page, cellIndex));
+			}
+
+			/// <summary>A leaf cell built into scratch: key at the front, stored value straight after it</summary>
+			public static CellRef OfLeafBuffer(byte[] buffer, int keyLength, int valueLength, byte flags) => new(buffer, 0, keyLength, keyLength, valueLength, flags);
+
+			/// <summary>Key/value bytes only, without the fixed per-cell overhead</summary>
+			public int PayloadLength => this.KeyLength + this.ValueLength;
+
+			public ReadOnlySpan<byte> ResolveKey(ReadOnlySpan<byte> sourcePage)
+				=> this.Buffer is null ? sourcePage.Slice(this.KeyOffset, this.KeyLength) : this.Buffer.AsSpan(this.KeyOffset, this.KeyLength);
+
+			public ReadOnlySpan<byte> ResolveValue(ReadOnlySpan<byte> sourcePage)
+				=> this.ValueLength == 0 ? default
+				: this.Buffer is null ? sourcePage.Slice(this.ValueOffset, this.ValueLength) : this.Buffer.AsSpan(this.ValueOffset, this.ValueLength);
 		}
 
 		/// <summary>Inserts or replaces one key; values above the inline threshold go to a contiguous extent.</summary>
@@ -213,11 +238,10 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			Contract.Requires(key.Length <= FdbLiteTreePage.MaxKeyLength);
 
-			var cellScratch = ArrayPool<byte>.Shared.Rent(7 + key.Length + Math.Min(value.Length, this.Pager.Geometry.MaxInlineValueLength) + FdbLiteTreePage.ExtentDescriptorSize);
+			var cellScratch = ArrayPool<byte>.Shared.Rent(key.Length + Math.Max(Math.Min(value.Length, this.Pager.Geometry.MaxInlineValueLength), FdbLiteTreePage.ExtentDescriptorSize));
 			try
 			{
-				var cell = BuildValueCell(cellScratch, key, value);
-				InsertCell(key, CellRef.OfBuffer(cellScratch, cell.Length));
+				InsertCell(key, BuildValueCell(cellScratch, key, value));
 			}
 			finally
 			{
@@ -225,12 +249,14 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
-		/// <summary>Builds the leaf cell for a value: inline below the threshold, extent-backed above it.</summary>
-		private ReadOnlySpan<byte> BuildValueCell(Span<byte> scratch, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+		/// <summary>Gathers the two parts of a leaf cell into <paramref name="scratch"/>: the key, then the bytes the value heap will hold, which are the value itself below the inline threshold and an extent descriptor above it.</summary>
+		private CellRef BuildValueCell(byte[] scratch, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
 		{
+			key.CopyTo(scratch);
 			if (value.Length <= this.Pager.Geometry.MaxInlineValueLength)
 			{
-				return FdbLiteTreePage.BuildLeafCell(scratch, key, value);
+				value.CopyTo(scratch.AsSpan(key.Length));
+				return CellRef.OfLeafBuffer(scratch, key.Length, value.Length, 0);
 			}
 
 			// write the value as a headerless contiguous extent, zero-padding the last block
@@ -253,7 +279,8 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			ulong checksum = System.IO.Hashing.XxHash3.HashToUInt64(value, unchecked((long) start));
-			return FdbLiteTreePage.BuildLeafExtentCell(scratch, key, start, (ushort) blockCount, (uint) value.Length, checksum);
+			FdbLiteTreePage.BuildExtentDescriptor(scratch.AsSpan(key.Length), start, (ushort) blockCount, (uint) value.Length, checksum);
+			return CellRef.OfLeafBuffer(scratch, key.Length, FdbLiteTreePage.ExtentDescriptorSize, FdbLiteTreePage.FlagValueIsExtent);
 		}
 
 		private void InsertCell(ReadOnlySpan<byte> key, CellRef newCell)
@@ -446,7 +473,7 @@ namespace FoundationDB.Storage.FdbLite
 			for (int i = 0; i < cellCount; i++)
 			{
 				if (i >= first && i < last) { continue; }
-				cells[w++] = CellRef.OfPage(FdbLiteTreePage.GetLeafCellExtent(page, i));
+				cells[w++] = CellRef.OfLeafPage(page, i);
 			}
 			var outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
 			AscendPatch(pathPages, pathChildren, depth - 1, leafId, outcome);
@@ -493,7 +520,7 @@ namespace FoundationDB.Storage.FdbLite
 				leftmost = FdbLiteTreePage.GetChild(page, 1);
 				for (int i = 1; i < cellCount; i++)
 				{
-					cells[w++] = CellRef.OfPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+					cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
 				}
 			}
 			else
@@ -501,7 +528,7 @@ namespace FoundationDB.Storage.FdbLite
 				for (int i = 0; i < cellCount; i++)
 				{
 					if (i == childIndex - 1) { continue; }
-					cells[w++] = CellRef.OfPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+					cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
 				}
 			}
 			Contract.Debug.Assert(w == cells.Length);
@@ -560,7 +587,7 @@ namespace FoundationDB.Storage.FdbLite
 			// path is O(cells) per insert)
 			var image = buffered.AsSpan();
 			int at = FdbLiteTreePage.FindLeafSlot(image, key, out bool exists);
-			if (exists || !FdbLiteTreePage.TryInsertLeafCell(image, at, newCell.Resolve(default)))
+			if (exists || !FdbLiteTreePage.TryInsertLeafCell(image, at, newCell.ResolveKey(default), newCell.ResolveValue(default), newCell.Flags))
 			{
 				return false;
 			}
@@ -585,7 +612,7 @@ namespace FoundationDB.Storage.FdbLite
 
 			if (this.AvoidSequentialAppendSplits
 			 && rightmost && !replace && insertAt == cellCount
-			 && !FdbLiteTreePage.LeafHasRoomFor(page, newCell.Length))
+			 && !FdbLiteTreePage.LeafHasRoomFor(page, newCell.KeyLength, newCell.ValueLength))
 			{ // a key appending past the last one in the rightmost leaf: nothing will ever insert into this page
 			  // again, so splitting it in half strands half of it forever. Leave it packed and start a fresh page,
 			  // which the ascent hangs off the parent as a right sibling separated by this very key.
@@ -615,7 +642,7 @@ namespace FoundationDB.Storage.FdbLite
 					cells[w++] = newCell;
 					if (replace) { continue; }
 				}
-				cells[w++] = CellRef.OfPage(FdbLiteTreePage.GetLeafCellExtent(page, i));
+				cells[w++] = CellRef.OfLeafPage(page, i);
 			}
 			if (insertAt == cellCount)
 			{ // appending past the last key
@@ -669,7 +696,7 @@ namespace FoundationDB.Storage.FdbLite
 					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
 					original.CopyTo(patchScratch);
 					FdbLiteTreePage.PatchInternalCellChild(patchScratch, child.FirstId);
-					patchedCell = CellRef.OfBuffer(patchScratch, original.Length);
+					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
 				}
 
 				var cells = new CellRef[cellCount + inserted];
@@ -683,12 +710,12 @@ namespace FoundationDB.Storage.FdbLite
 							var (separator, siblingId) = child.Siblings![s];
 							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
 							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator).Length;
-							cells[w++] = CellRef.OfBuffer(siblingScratch[s], len);
+							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
 						}
 					}
 					if (i < cellCount)
 					{
-						cells[w++] = (i == childIndex - 1) ? patchedCell : CellRef.OfPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+						cells[w++] = (i == childIndex - 1) ? patchedCell : CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
 					}
 				}
 				Contract.Debug.Assert(w == cells.Length);
@@ -718,7 +745,7 @@ namespace FoundationDB.Storage.FdbLite
 					var (separator, id) = siblings[i];
 					scratches[i] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
 					int len = FdbLiteTreePage.BuildInternalCell(scratches[i], id, separator).Length;
-					cells[i] = CellRef.OfBuffer(scratches[i], len);
+					cells[i] = CellRef.OfInternalBuffer(scratches[i], len);
 				}
 				return WriteCells(0, isInternal: true, leftmostChild: split.FirstId, default, cells);
 			}
@@ -734,14 +761,15 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Writes a rebuilt cell list as one page, or as a K-way split when it does not fit (greedy: each page takes the largest prefix that fits).</summary>
 		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, CellRef[] cells)
 		{
-			int usable = this.Pager.Geometry.PageSize - FdbLiteTreePage.SlotsOffset(isInternal);
+			// pages built here strip no prefix yet, so their slot directory starts right after the header
+			int usable = this.Pager.Geometry.PageSize - FdbLiteTreePage.SlotsOffset(isInternal, prefixRegionSize: 0);
 			var type = isInternal ? FdbLitePageType.Internal : FdbLitePageType.Leaf;
 			int pageSize = this.Pager.Geometry.PageSize;
 
 			long totalBytes = 0;
 			foreach (var cell in cells)
 			{
-				totalBytes += cell.Length + 2;
+				totalBytes += CellFootprint(cell, isInternal);
 			}
 
 			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
@@ -777,7 +805,7 @@ namespace FoundationDB.Storage.FdbLite
 					int end = start;
 					while (end < cells.Length)
 					{
-						long next = bytes + cells[end].Length + 2;
+						long next = bytes + CellFootprint(cells[end], isInternal);
 						if (next > usable)
 						{
 							Contract.Debug.Assert(end > start || isInternal, "a single cell always fits a page (the page-size floor guarantees it)");
@@ -797,18 +825,17 @@ namespace FoundationDB.Storage.FdbLite
 					uint nextLeftmost = 0;
 					if (end < cells.Length)
 					{
-						var boundary = cells[end].Resolve(sourcePage);
 						if (isInternal)
 						{
+							var boundary = cells[end].ResolveKey(sourcePage);
 							int keyLen = BinaryPrimitives.ReadUInt16LittleEndian(boundary[4..]);
 							nextSeparator = boundary.Slice(6, keyLen).ToArray();
 							nextLeftmost = BinaryPrimitives.ReadUInt32LittleEndian(boundary);
 							nextStart = end + 1;
 						}
 						else
-						{
-							int keyLen = BinaryPrimitives.ReadUInt16LittleEndian(boundary[1..]);
-							nextSeparator = boundary.Slice(3, keyLen).ToArray();
+						{ // the key part IS the key now, so the separator needs no decoding out of a packed cell
+							nextSeparator = cells[end].ResolveKey(sourcePage).ToArray();
 							nextStart = end;
 						}
 					}
@@ -863,18 +890,35 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Bytes one cell costs in a page, its slot included: an internal cell is contiguous, a leaf cell pays the fixed overhead of its two-region entry.</summary>
+		private static int CellFootprint(in CellRef cell, bool isInternal)
+			=> isInternal ? cell.KeyLength + 2 : cell.PayloadLength + FdbLiteTreePage.LeafCellOverhead;
+
 		/// <summary>Appends cells [<paramref name="start"/>, <paramref name="end"/>) (already in key order) to a freshly formatted page image.</summary>
 		private static void AppendCells(Span<byte> image, bool isInternal, ReadOnlySpan<byte> sourcePage, CellRef[] cells, int start, int end)
 		{
+			int count = end - start;
+
+			if (!isInternal)
+			{ // three regions: the directory's size is known up front, so both heaps fill sequentially towards each other
+				var run = new FdbLiteTreePage.LeafRunWriter(image, count);
+				for (int i = start; i < end; i++)
+				{
+					run.Add(cells[i].ResolveKey(sourcePage), cells[i].ResolveValue(sourcePage), cells[i].Flags);
+				}
+				run.Complete();
+				return;
+			}
+
+			// internal cells stay contiguous, packed down from the end of the page
 			int tail = image.Length;
 			for (int i = start; i < end; i++)
 			{
-				var cell = cells[i].Resolve(sourcePage);
+				var cell = cells[i].ResolveKey(sourcePage);
 				tail -= cell.Length;
 				cell.CopyTo(image[tail..]);
 				FdbLiteTreePage.SetSlot(image, isInternal, i - start, (ushort) tail);
 			}
-			int count = end - start;
 			FdbLitePageHeader.SetCellCount(image, (ushort) count);
 			FdbLitePageHeader.SetCellAreaOffset(image, count > 0 ? (ushort) tail : (ushort) 0);
 		}
