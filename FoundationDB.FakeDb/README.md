@@ -58,7 +58,7 @@ public async Task Test_Multiple_Processes()
 }
 ```
 
-You can also introspect the content of the `FakeDbStore` by using the `FakeDbDebugger` helper type.
+You can also introspect the content of a store through the `Snapshot` it publishes.
 
 For example, here are two helper methods that format the content of a store into a textual representation:
 ```c#
@@ -67,24 +67,23 @@ public static void DumpStore(FakeDbStore store, string label)
 	DumpStore(store.CurrentSnapshotUnsafe, label);
 }
 
-public static string DumpStore(FakeDbStore.Snapshot snapshot, string label)
+public static string DumpStore(Snapshot snapshot, string label)
 {
 	var sb = new StringBuilder();
 	sb.AppendLine($"### {label}");
 	sb.AppendLine($"* Version: {snapshot.Version:X}");
 
-	var data = FakeDbDebugger.GetSnapshotData(snapshot);
-	sb.AppendLine($"* Keys: {data.Count:N0}");
-	foreach (var x in data)
+	sb.AppendLine($"* Keys: {snapshot.Count:N0}");
+	foreach (var x in snapshot.ReadData())
 	{
 		sb.AppendLine($"| - {x.Key:K} = {x.Value:P}");
 	}
 
-	var conflicts = FakeDbDebugger.GetSnapshotConflictRanges(snapshot);
+	var conflicts = snapshot.ReadConflicts().ToList();
 	sb.AppendLine($"* Ranges: {conflicts.Count:N0}");
 	foreach (var x in conflicts)
 	{
-		sb.AppendLine($"| - {x.Begin:K}..{x.End:K}: {x.Value:N0}");
+		sb.AppendLine($"| - {x.Begin:K}..{x.End:K}: {x.Version:N0}");
 	}
 	return sb.ToString();
 }
@@ -94,7 +93,7 @@ It is also possible to capture immutable "snapshots" of the store at any time, c
 
 ```c#
 // get the initial snapshot
-FakeDbStore.Snapshot before = store.CurrentSnapshotUnsafe;
+Snapshot before = store.CurrentSnapshotUnsafe;
 Assert.That(before.ContainsKey(/*...*/), Is.False);
 Assert.That(before.ContainsKey(/*...*/), Is.False);
 
@@ -102,7 +101,7 @@ Assert.That(before.ContainsKey(/*...*/), Is.False);
 await DoSomething(/*...*/);
 
 // get the updated snapshot
-FakeDbStore.Snapshot after = store.CurrentSnapshotUnsafe;
+Snapshot after = store.CurrentSnapshotUnsafe;
 
 // you can inspect the list of changes between two snapshots
 foreach(var delta in after.Diff(before))

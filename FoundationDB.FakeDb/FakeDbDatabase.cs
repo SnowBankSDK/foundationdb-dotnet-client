@@ -3842,13 +3842,12 @@ namespace FoundationDB.Testing
 	}
 
 	/// <summary>Helper method to inspect the internals of a FakeDb, for troubleshooting/testing purpose</summary>
-	/// <remarks>CAUTION: this exposes internal structure that is not guaranteed to be thread-safe, and could cause unexpected behavior or deadlocks!</remarks>
+	/// <remarks>
+	/// <para>CAUTION: this exposes internal structure that is not guaranteed to be thread-safe, and could cause unexpected behavior or deadlocks!</para>
+	/// <para>A committed <see cref="Snapshot"/> is inspected through its own members (<see cref="Snapshot.Count"/>, <see cref="Snapshot.ReadData"/>, <see cref="Snapshot.ReadConflicts"/>, <see cref="Snapshot.Diff"/>), which read through the committed-store seam and therefore work over any storage. What remains here is the in-flight transaction state, which has no storage.</para>
+	/// </remarks>
 	public static class FakeDbDebugger
 	{
-
-		public static ColaOrderedDictionary<Key, Value> GetSnapshotData(Snapshot snapshot) => ((ColaCommittedStore) snapshot.Data).Inner;
-
-		public static ColaRangeDictionary<Key, long> GetSnapshotConflictRanges(Snapshot snapshot) => snapshot.Conflicts;
 
 		public static ColaRangeDictionary<Key, Mutation> GetSnapshotMutations(FakeDbStore.ReadYourWritesSnapshot snapshot) => snapshot.Mutations;
 
