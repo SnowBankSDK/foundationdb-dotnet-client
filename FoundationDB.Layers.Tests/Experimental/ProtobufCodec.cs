@@ -24,8 +24,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-#if !NETFRAMEWORK
-
 namespace FoundationDB.Types.ProtocolBuffers
 {
 
@@ -69,4 +67,3 @@ namespace FoundationDB.Types.ProtocolBuffers
 
 }
 
-#endif

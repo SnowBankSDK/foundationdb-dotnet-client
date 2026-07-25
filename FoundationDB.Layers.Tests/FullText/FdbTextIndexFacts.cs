@@ -24,8 +24,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-#if !NETFRAMEWORK
-
 namespace FoundationDB.Layers.FullText.Tests
 {
 	using System.Collections.Generic;
@@ -528,4 +526,3 @@ namespace FoundationDB.Layers.FullText.Tests
 
 }
 
-#endif

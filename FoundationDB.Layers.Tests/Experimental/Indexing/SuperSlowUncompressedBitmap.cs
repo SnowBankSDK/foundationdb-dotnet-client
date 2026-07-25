@@ -24,8 +24,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-#if !NETFRAMEWORK
-
 namespace FoundationDB.Layers.Experimental.Indexing.Tests
 {
 	using System.Runtime.CompilerServices;
@@ -340,4 +338,3 @@ namespace FoundationDB.Layers.Experimental.Indexing.Tests
 
 }
 
-#endif

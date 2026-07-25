@@ -4,9 +4,8 @@
 		<!-- Microsoft.Testing.Platform runner (like the other test projects): the test assembly is a self-contained
 		     executable, run directly with `dotnet <dll>` (plus the usual filter options) instead of `dotnet test` -->
 		<OutputType>Exe</OutputType>
+		<!-- modern targets only: FoundationDB.FakeDb has no netstandard2.0 build for a net472 leg to consume -->
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
-		<!-- the net472 validation target consumes the netstandard2.0 builds of FoundationDB.FakeDb and its dependencies, so it follows the same switch -->
-		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<IsTestProject>true</IsTestProject>
 		<EnableNUnitRunner>true</EnableNUnitRunner>
@@ -47,25 +46,6 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-	</ItemGroup>
-
-	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
-		<!-- nullable-flow false positives: the .NET Framework BCL lacks the nullable annotations the modern BCL
-		     carries (same family as SnowBank.Core's netstandard2.0 target) -->
-		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8769;CS8777</NoWarn>
-		<!-- The CoreSDK is x64-only (the FoundationDB native client has no 32-bit build), so keep this
-		     .NET Framework test-host executable 64-bit: the .NET test SDK otherwise defaults net4x test
-		     hosts to win-x86. Only reached when CoreSdkNetStandardEnabled adds the net472 target. -->
-		<PlatformTarget>x64</PlatformTarget>
-	</PropertyGroup>
-
-	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
-		<Reference Include="System.Net.Http" />
-		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
-		<PackageReference Include="PolySharp" PrivateAssets="all" />
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
-		<!-- direct reference so that the binding redirect to 2.2.3 is auto-generated (the NUnit adapter requests 2.1.0) -->
-		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
 	</ItemGroup>
 
 	<ItemGroup>

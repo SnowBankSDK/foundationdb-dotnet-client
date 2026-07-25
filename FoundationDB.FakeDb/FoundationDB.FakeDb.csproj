@@ -2,8 +2,10 @@
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
+		<!-- modern targets only: this emulator is the in-memory configuration of the storage engine, which
+		     is net8+ (spans over pages, ref structs). The .NET Framework migration bridge is the client
+		     stack (SnowBank.Core, FoundationDB.Client, FoundationDB.Layers.Common), which keeps its lite legs. -->
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
-		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);netstandard2.0</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -28,22 +30,6 @@
 	<ItemGroup>
 		<None Include="../Common/foundationdb.png" Pack="true" Visible="false" PackagePath="\" />
 		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
-	</ItemGroup>
-
-	<PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-		<PolySharpUsePublicAccessibilityForGeneratedTypes>true</PolySharpUsePublicAccessibilityForGeneratedTypes>
-		<!-- Nullable-flow false positives: see SnowBank.Core.csproj for the rationale -->
-		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8777</NoWarn>
-	</PropertyGroup>
-	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-		<!-- Span<T> / Memory<T> / ReadOnlySpan<T> for netstandard2.0 -->
-		<PackageReference Include="System.Memory" />
-		<!-- Source-generates the compiler-required polyfill attributes/types -->
-		<PackageReference Include="PolySharp" PrivateAssets="all" />
-		<!-- ValueTask / ValueTask<T> for netstandard2.0 -->
-		<PackageReference Include="System.Threading.Tasks.Extensions" />
-		<!-- IAsyncDisposable / IAsyncEnumerable for netstandard2.0 -->
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
 	</ItemGroup>
 
 	<ItemGroup>

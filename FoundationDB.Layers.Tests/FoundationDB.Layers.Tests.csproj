@@ -4,10 +4,10 @@
 		<!-- Microsoft.Testing.Platform runner (like the other test projects): the test assembly is a self-contained
 		     executable, run directly with `dotnet <dll>` (plus the usual filter options) instead of `dotnet test` -->
 		<OutputType>Exe</OutputType>
+		<!-- modern targets only: this suite references FoundationDB.FakeDb unconditionally (every layer suite
+		     runs against the in-memory backend first), and that emulator has no netstandard2.0 build for a
+		     net472 leg to consume -->
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
-		<!-- the net472 validation target consumes the netstandard2.0 builds of the layer libraries; layers with no
-		     netstandard2.0 build (Layers.Experimental) have their test folders removed on net472 (see below) -->
-		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
@@ -54,37 +54,14 @@
 		<PackageReference Include="MathNet.Numerics.Signed" />
 	</ItemGroup>
 
-	<PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
-		<!-- nullable-flow false positives: the .NET Framework BCL lacks the nullable annotations the modern BCL carries -->
-		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8769;CS8777</NoWarn>
-		<!-- the CoreSDK is x64-only (the FoundationDB native client has no 32-bit build) -->
-		<PlatformTarget>x64</PlatformTarget>
-	</PropertyGroup>
-
-	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
-		<!-- layers with no netstandard2.0/net472 build: their test folders are removed on net472 (also guarded with #if !NETFRAMEWORK) -->
-		<Compile Remove="FullText/**/*.cs" />
-		<Compile Remove="Experimental/**/*.cs" />
-		<Reference Include="System.Net.Http" />
-		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="all" />
-		<PackageReference Include="PolySharp" PrivateAssets="all" />
-		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
-		<!-- direct reference so that the binding redirect to 2.2.3 is auto-generated (the NUnit adapter requests 2.1.0) -->
-		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
-	</ItemGroup>
-
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
 		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
 		<ProjectReference Include="..\FoundationDB.Layers.Common\FoundationDB.Layers.Common.csproj" />
+		<ProjectReference Include="..\FoundationDB.Layers.Experimental\FoundationDB.Layers.Experimental.csproj" />
 		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />
-	</ItemGroup>
-
-	<ItemGroup Condition="'$(TargetFramework)' != 'net472'">
-		<!-- Layers.Experimental has no netstandard2.0/net472 build: its test files are guarded with #if !NETFRAMEWORK -->
-		<ProjectReference Include="..\FoundationDB.Layers.Experimental\FoundationDB.Layers.Experimental.csproj" />
 	</ItemGroup>
 
 	<!-- Copies the native fdb_c client next to the test assembly so the real-cluster fixtures can locate it -->

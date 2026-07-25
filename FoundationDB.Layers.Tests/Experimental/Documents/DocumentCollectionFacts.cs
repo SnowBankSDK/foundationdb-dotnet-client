@@ -24,8 +24,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-#if !NETFRAMEWORK
-
 namespace FoundationDB.Layers.Documents.Tests
 {
 	using FoundationDB.Types.ProtocolBuffers;
@@ -185,4 +183,3 @@ namespace FoundationDB.Layers.Documents.Tests
 
 }
 
-#endif
