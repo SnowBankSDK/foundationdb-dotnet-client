@@ -39,6 +39,7 @@ namespace FoundationDB.Testing
 	using FoundationDB.Client.Core;
 	using FoundationDB.Client.Native;
 	using FoundationDB.Storage;
+	using FoundationDB.Storage.FdbLite;
 	using SnowBank.Collections.CacheOblivious;
 	using SnowBank.Threading;
 	using static FoundationDB.Testing.FakeDbStore;
@@ -1315,8 +1316,13 @@ namespace FoundationDB.Testing
 		public TimeSpan RetryDelayMaximum { get; set; } = TimeSpan.Zero;
 
 		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null)
-			: this(new ColaStorageBackend(), apiVersion, protocolVersion, initialVersion, time)
+			: this(CreateInMemoryBackend(), apiVersion, protocolVersion, initialVersion, time)
 		{ }
+
+		/// <summary>Builds the storage an emulator gets when nothing else is asked for: the engine over the heap, keeping every version.</summary>
+		/// <remarks>The in-memory emulator is a CONFIGURATION of the storage engine rather than a separate implementation of it, so the semantics a test relies on - read-your-writes, conflict detection, watches, versionstamps - are exercised over the same storage that a persistent store uses. Retaining every version is what keeps the whole published history inspectable, and costs unbounded growth, which is the right trade for a store that lives as long as a test.</remarks>
+		private static IFdbStorageBackend CreateInMemoryBackend()
+			=> new FdbLiteBackend(FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default)), disposeEngine: true, retainEveryVersion: true);
 
 		/// <summary>Opens a store over a given storage backend.</summary>
 		/// <remarks>The backend supplies the committed state, its durability and its retention window; everything else - read-your-writes, conflict detection, watches, versionstamps - is this class and is identical whichever backend is plugged in.</remarks>
