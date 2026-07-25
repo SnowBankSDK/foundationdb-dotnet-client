@@ -47,9 +47,11 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			BinaryPrimitives.WriteInt32BigEndian(key[32..], i);
 		}
 
-		private static int Count => int.TryParse(Environment.GetEnvironmentVariable("FDBLITE_HEAVY_KEYS"), out var n) ? n : 2_000_000;
+		private static int Count => int.TryParse(Environment.GetEnvironmentVariable("FDBLITE_HEAVY_KEYS"), out var n) ? n : 20_000_000;
 
-		private static int ValueSize => int.TryParse(Environment.GetEnvironmentVariable("FDBLITE_HEAVY_VALUE"), out var n) ? n : 1024;
+		/// <summary>Index-sized value, and the reason this harness is shaped the way it is.</summary>
+		/// <remarks>A first run of this harness used 1 KiB values and got 31 entries per 32 KiB leaf: the page was almost entirely payload, so stripping 32 bytes off each key could not move the fanout, and the leg would have reported "prefix compression does nothing" about a page it never had a say in. Prefix compression pays where KEY BYTES DOMINATE THE PAGE, which is an index entry: a long structured key and a tiny value. That is the case worth measuring, so it is the default here, and a large value size is available for contrast rather than as the headline.</remarks>
+		private static int ValueSize => int.TryParse(Environment.GetEnvironmentVariable("FDBLITE_HEAVY_VALUE"), out var n) ? n : 8;
 
 		[Test]
 		[Explicit("heavy: builds a multi-GB file-backed store; run only inside a granted measurement window")]
