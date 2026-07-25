@@ -57,6 +57,27 @@ namespace FoundationDB.Storage.FdbLite
 		public static ReadOnlySpan<byte> GetPagePrefix(ReadOnlySpan<byte> page, bool isInternal)
 			=> page.Slice(FdbLitePageHeader.Size + (isInternal ? 4 : 0), FdbLitePageHeader.GetPrefixLength(page));
 
+		/// <summary>Length of the longest prefix <paramref name="a"/> and <paramref name="b"/> share.</summary>
+		public static int CommonPrefixLength(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+		{
+			int n = Math.Min(a.Length, b.Length);
+			int i = 0;
+			while (i < n && a[i] == b[i]) { ++i; }
+			return i;
+		}
+
+		/// <summary>Installs a page's shared key prefix, before any cell is written to it.</summary>
+		/// <remarks>Must precede the run: the slot directory sits after the prefix, so the prefix's length decides where every later offset lands. The stored region is padded to an even length, which is what keeps the u16 slot directory aligned whatever the prefix happens to be.</remarks>
+		public static void WriteLeafPrefix(Span<byte> image, ReadOnlySpan<byte> prefix)
+		{
+			FdbLitePageHeader.SetPrefixLength(image, (ushort) prefix.Length);
+			prefix.CopyTo(image[FdbLitePageHeader.Size..]);
+			if ((prefix.Length & 1) != 0)
+			{ // the pad byte is part of the region, so leave it defined rather than whatever the page held
+				image[FdbLitePageHeader.Size + prefix.Length] = 0;
+			}
+		}
+
 		/// <summary>Offset of the slot directory, past the header and the page prefix</summary>
 		public static int SlotsOffset(ReadOnlySpan<byte> page, bool isInternal) => SlotsOffset(isInternal, PrefixRegionSize(page));
 
@@ -172,6 +193,28 @@ namespace FoundationDB.Storage.FdbLite
 			return page.Slice(entry + 2, BinaryPrimitives.ReadUInt16LittleEndian(page[entry..]));
 		}
 
+		/// <summary>Orders leaf cell <paramref name="cellIndex"/>'s WHOLE key against <paramref name="other"/>, without assembling it.</summary>
+		/// <remarks>The comparison walks the page prefix and then the stored suffix, so it stays copy-free on a prefix-stripped page. Comparing <see cref="GetLeafKey"/> directly against a bound is a BUG once a prefix is stripped: that returns the suffix, so a shorter string is compared against a whole key and the ordering is silently wrong rather than failing.</remarks>
+		public static int CompareLeafKey(ReadOnlySpan<byte> page, int cellIndex, ReadOnlySpan<byte> other)
+		{
+			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
+			var suffix = GetLeafKey(page, cellIndex);
+			if (prefixLen == 0)
+			{
+				return suffix.SequenceCompareTo(other);
+			}
+
+			var prefix = page.Slice(FdbLitePageHeader.Size, prefixLen);
+			if (other.Length < prefixLen)
+			{ // the bound ends inside the prefix: it decides, unless it is a proper prefix, in which case the key is longer and so greater
+				int head = prefix[..other.Length].SequenceCompareTo(other);
+				return head != 0 ? head : 1;
+			}
+
+			int cmp = prefix.SequenceCompareTo(other[..prefixLen]);
+			return cmp != 0 ? cmp : suffix.SequenceCompareTo(other[prefixLen..]);
+		}
+
 		/// <summary>Where this cell's stored key sits in the key heap, and how long it is</summary>
 		public static (int Offset, int Length) LeafKeyExtent(ReadOnlySpan<byte> page, int cellIndex)
 		{
@@ -272,10 +315,24 @@ namespace FoundationDB.Storage.FdbLite
 		/// <para>The entry is appended to the key heap and the payload to the value heap, and only the slot suffix after <paramref name="index"/> moves. Cost is two copies plus a slot-sized memmove, against a rebuild's re-serialization of every cell.</para>
 		/// <para>Neither heap is kept in key order: the slot directory carries the ordering, which is what lets an insert append instead of shifting a heap. Callers must not use this for a REPLACE, since it always adds a slot; replaces and deletes go through the rebuild path, which compacts, so a page mutated only through here never develops gaps.</para>
 		/// </remarks>
-		public static bool TryInsertLeafCell(Span<byte> page, int index, ReadOnlySpan<byte> keySuffix, ReadOnlySpan<byte> storedValue, byte flags)
+		public static bool TryInsertLeafCell(Span<byte> page, int index, ReadOnlySpan<byte> key, ReadOnlySpan<byte> storedValue, byte flags)
 		{
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			Contract.Debug.Requires(index >= 0 && index <= cellCount);
+
+			// every key on the page must start with the page prefix, so a key that does not cannot be spliced in:
+			// the page's shared prefix would have to shrink, which means re-expanding every stored suffix. Refusing
+			// hands that to the rebuild path, which recomputes the prefix over the old keys plus this one.
+			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
+			if (prefixLen > 0)
+			{
+				if (key.Length < prefixLen || !key[..prefixLen].SequenceEqual(GetPagePrefix(page, isInternal: false)))
+				{
+					return false;
+				}
+				key = key[prefixLen..];
+			}
+			var keySuffix = key;
 
 			if (!LeafHasRoomFor(page, keySuffix.Length, storedValue.Length))
 			{
@@ -335,11 +392,27 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			public void Add(ReadOnlySpan<byte> keySuffix, ReadOnlySpan<byte> storedValue, byte flags)
+				=> Add(default, keySuffix, storedValue, flags);
+
+			/// <summary>Adds a cell whose stored key is <paramref name="keyHead"/> followed by <paramref name="keyTail"/>.</summary>
+			/// <remarks>The two-part form exists so a rebuild never has to materialize a whole key. A cell gathered from a page that stripped a prefix holds only its suffix, and the page being built may strip a shorter prefix; the difference is then a slice of the OLD prefix followed by that suffix, which is two spans and no copy.</remarks>
+			public void Add(ReadOnlySpan<byte> keyHead, ReadOnlySpan<byte> keyTail, ReadOnlySpan<byte> storedValue, byte flags)
 			{
+				int keyLen = keyHead.Length + keyTail.Length;
 				this.ValueAt -= storedValue.Length;
-				WriteLeafEntry(this.Image, this.KeyBase + this.KeyUsed, this.ValueAt, keySuffix, storedValue, flags);
+
+				int at = this.KeyBase + this.KeyUsed;
+				BinaryPrimitives.WriteUInt16LittleEndian(this.Image[at..], (ushort) keyLen);
+				keyHead.CopyTo(this.Image[(at + 2)..]);
+				keyTail.CopyTo(this.Image[(at + 2 + keyHead.Length)..]);
+				int f = at + 2 + keyLen;
+				BinaryPrimitives.WriteUInt16LittleEndian(this.Image[f..], (ushort) this.ValueAt);
+				BinaryPrimitives.WriteUInt16LittleEndian(this.Image[(f + 2)..], (ushort) storedValue.Length);
+				this.Image[f + 4] = flags;
+				storedValue.CopyTo(this.Image[this.ValueAt..]);
+
 				BinaryPrimitives.WriteUInt16LittleEndian(this.Image[(this.SlotsAt + (this.Index * 2))..], (ushort) this.KeyUsed);
-				this.KeyUsed += 2 + keySuffix.Length + 5;
+				this.KeyUsed += 2 + keyLen + 5;
 				++this.Index;
 			}
 
@@ -359,9 +432,30 @@ namespace FoundationDB.Storage.FdbLite
 			int count = FdbLitePageHeader.GetCellCount(page);
 			int slotsAt = SlotsOffset(page, isInternal: false);
 			int keyBase = slotsAt + (count * 2);
+			exact = false;
+
+			// The probe is compared against the page prefix ONCE, not once per probe, which is what keeps the
+			// search at fixed cost per step. Every key on the page starts with this prefix, so a probe that
+			// diverges inside it sorts entirely before or entirely after the page and needs no search at all.
+			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
+			if (prefixLen > 0)
+			{
+				var prefix = page.Slice(FdbLitePageHeader.Size, prefixLen);
+				if (key.Length < prefixLen)
+				{
+					int c = key.SequenceCompareTo(prefix[..key.Length]);
+					// a proper prefix of the page prefix sorts before every extension of it, so before every key here
+					return c <= 0 ? 0 : count;
+				}
+				int cmp = key[..prefixLen].SequenceCompareTo(prefix);
+				if (cmp != 0)
+				{
+					return cmp < 0 ? 0 : count;
+				}
+				key = key[prefixLen..];
+			}
 
 			int lo = 0, hi = count;
-			exact = false;
 			while (lo < hi)
 			{
 				int mid = (lo + hi) >> 1;

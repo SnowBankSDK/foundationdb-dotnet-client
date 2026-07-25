@@ -147,6 +147,10 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Fresh pages started at the right edge instead of splitting a full leaf in half (see <see cref="AvoidSequentialAppendSplits"/>)</summary>
 		public int PagesAppended { get; private set; }
 
+		/// <summary>Full leaves rebuilt to strip the prefix their keys share, which happens at most ONCE per page per fill</summary>
+		/// <remarks>Exposed so a test can assert the rebuild does not degenerate into one per insert: it should track the number of pages that filled, never the number of keys.</remarks>
+		public int PagesStripped { get; private set; }
+
 		/// <summary>Start a fresh page when a key appends past the last key of the RIGHTMOST leaf, instead of splitting that leaf in half.</summary>
 		/// <remarks>
 		/// <para>A balanced split leaves both halves near half full; on an append-shaped load nothing ever inserts into the left half again, so the whole file settles at ~50% occupancy. Starting a fresh page instead packs the finished pages to capacity, roughly halving pages, file size and pages written for that load.</para>
@@ -431,7 +435,8 @@ namespace FoundationDB.Storage.FdbLite
 				int cellCount = FdbLitePageHeader.GetCellCount(page);
 				int first = FdbLiteTreePage.FindLeafSlot(page, begin, out _);
 				int last = first;
-				while (last < cellCount && FdbLiteTreePage.GetLeafKey(page, last).SequenceCompareTo(end) < 0)
+				// compares against the WHOLE key: the stored key is only a suffix once the page strips a prefix
+				while (last < cellCount && FdbLiteTreePage.CompareLeafKey(page, last, end) < 0)
 				{
 					last++;
 				}
@@ -606,6 +611,23 @@ namespace FoundationDB.Storage.FdbLite
 				return new(leafId, null);
 			}
 
+			// The splice failed, which is the FIRST moment this page's key set is known, and therefore the first
+			// moment its shared prefix can be computed without re-expanding suffixes. Splicing cannot do it, so a
+			// page filled entirely by splices carries no prefix at all - which is every sequentially built page.
+			// Strip it now: shorter keys may make room, in which case the key fits and no page is spilled or split.
+			// The rebuild may RELOCATE the page (copy-on-write), so the caller is told where it went. Once it has
+			// been rebuilt, everything below MUST work from the new page: rebuilding the original a second time
+			// would queue its blocks for free twice.
+			uint strippedId = TryStripAndRetry(leafId, key, newCell, out bool spliced);
+			if (strippedId != 0)
+			{
+				if (spliced)
+				{
+					return new(strippedId, null);
+				}
+				leafId = strippedId;
+			}
+
 			var page = ReadPage(leafId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			int insertAt = FdbLiteTreePage.FindLeafSlot(page, key, out bool replace);
@@ -651,6 +673,67 @@ namespace FoundationDB.Storage.FdbLite
 			Contract.Debug.Assert(w == resultCount);
 
 			return WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
+		}
+
+		/// <summary>Rebuilds a full leaf so it strips the prefix its keys share, then retries the splice into the room that frees.</summary>
+		/// <returns>The page's id after the rebuild, which may differ because rebuilding relocates a page this generation does not already own; <c>0</c> when there is nothing to gain, so the caller proceeds to spill or split.</returns>
+		/// <remarks>
+		/// <para>This CANNOT loop into a rebuild per insert, and the reason is worth stating because it is the obvious hazard. Rebuilding sets the page's prefix to exactly the longest one its keys share, so a second call computes the same value, finds no gain, and returns false. Once stripped, a page is stripped; every later splice either fits or spills. A key that does NOT share the prefix is refused by the splice itself and spills, which puts a page boundary exactly at a prefix divergence, where locality wants one anyway.</para>
+		/// <para>Cost is one rebuild per page, at the moment it fills: amortised O(1) per key, not O(cells) per insert.</para>
+		/// </remarks>
+		private uint TryStripAndRetry(uint leafId, ReadOnlySpan<byte> key, in CellRef newCell, out bool spliced)
+		{
+			spliced = false;
+			var page = ReadPage(leafId);
+			int cellCount = FdbLitePageHeader.GetCellCount(page);
+			if (cellCount < 2)
+			{
+				return 0;
+			}
+
+			int current = FdbLitePageHeader.GetPrefixLength(page);
+			var prefix = FdbLiteTreePage.GetPagePrefix(page, isInternal: false);
+
+			// the page is in key order, so what all of its keys share is what its first and last share; both are
+			// stored as suffixes of the CURRENT prefix, so the shared run is that prefix plus their common suffix
+			int shared = current + FdbLiteTreePage.CommonPrefixLength(FdbLiteTreePage.GetLeafKey(page, 0), FdbLiteTreePage.GetLeafKey(page, cellCount - 1));
+			if (shared <= current)
+			{ // already stripped as far as it goes: this is the guard that makes a second attempt a no-op
+				return 0;
+			}
+
+			// the incoming key must share the new prefix too, or the rebuild would only have to be undone
+			if (key.Length < shared || !key[..shared].SequenceEqual(WholeKeyOf(page, 0).AsSpan(0, shared)))
+			{
+				return 0;
+			}
+
+			var cells = new CellRef[cellCount];
+			for (int i = 0; i < cellCount; i++)
+			{
+				cells[i] = CellRef.OfLeafPage(page, i);
+			}
+
+			var rebuilt = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
+			if (rebuilt.Split)
+			{ // the run did not fit one page after all; the caller's split path handles it properly
+				return 0;
+			}
+
+			this.PagesStripped++;
+			spliced = TrySpliceInto(rebuilt.FirstId, key, newCell);
+			return rebuilt.FirstId;
+		}
+
+		/// <summary>Whole key of leaf cell <paramref name="cellIndex"/> on <paramref name="page"/>, prefix included.</summary>
+		private static byte[] WholeKeyOf(ReadOnlySpan<byte> page, int cellIndex)
+		{
+			var prefix = FdbLiteTreePage.GetPagePrefix(page, isInternal: false);
+			var suffix = FdbLiteTreePage.GetLeafKey(page, cellIndex);
+			var whole = new byte[prefix.Length + suffix.Length];
+			prefix.CopyTo(whole);
+			suffix.CopyTo(whole.AsSpan(prefix.Length));
+			return whole;
 		}
 
 		/// <summary>Releases the extent of a leaf cell, if it has one (immediately when this generation wrote it, else after the horizon).</summary>
@@ -834,8 +917,12 @@ namespace FoundationDB.Storage.FdbLite
 							nextStart = end + 1;
 						}
 						else
-						{ // the key part IS the key now, so the separator needs no decoding out of a packed cell
-							nextSeparator = cells[end].ResolveKey(sourcePage).ToArray();
+						{
+							// The separator is promoted to the PARENT, which shares no prefix with this leaf, so it has
+							// to be the WHOLE key. A cell gathered from a prefix-stripped page holds only its suffix,
+							// and handing that up produces a parent whose separators are shorter than the keys they
+							// route, which mis-sorts the tree rather than failing loudly.
+							nextSeparator = WholeKeyOf(cells[end], sourcePage);
 							nextStart = end;
 						}
 					}
@@ -890,6 +977,41 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>The whole key of a gathered LEAF cell as an owned array, for a separator that leaves this page.</summary>
+		private static byte[] WholeKeyOf(in CellRef cell, ReadOnlySpan<byte> sourcePage)
+		{
+			var stored = cell.ResolveKey(sourcePage);
+			if (cell.Buffer is not null)
+			{ // built here, so already whole
+				return stored.ToArray();
+			}
+
+			var prefix = FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false);
+			if (prefix.Length == 0)
+			{
+				return stored.ToArray();
+			}
+
+			var whole = new byte[prefix.Length + stored.Length];
+			prefix.CopyTo(whole);
+			stored.CopyTo(whole.AsSpan(prefix.Length));
+			return whole;
+		}
+
+		/// <summary>Assembles a gathered cell's WHOLE key, which a page-backed cell does not hold contiguously once its page strips a prefix.</summary>
+		/// <remarks>Used only to compute the prefix of a page being built, which needs two whole keys and not the run, so this stays off the per-cell path.</remarks>
+		private static ReadOnlySpan<byte> MaterializeKey(in CellRef cell, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<byte> sourcePrefix, Span<byte> scratch)
+		{
+			var stored = cell.ResolveKey(sourcePage);
+			if (cell.Buffer is not null || sourcePrefix.Length == 0)
+			{ // already whole
+				return stored;
+			}
+			sourcePrefix.CopyTo(scratch);
+			stored.CopyTo(scratch[sourcePrefix.Length..]);
+			return scratch[..(sourcePrefix.Length + stored.Length)];
+		}
+
 		/// <summary>Bytes one cell costs in a page, its slot included: an internal cell is contiguous, a leaf cell pays the fixed overhead of its two-region entry.</summary>
 		private static int CellFootprint(in CellRef cell, bool isInternal)
 			=> isInternal ? cell.KeyLength + 2 : cell.PayloadLength + FdbLiteTreePage.LeafCellOverhead;
@@ -900,11 +1022,51 @@ namespace FoundationDB.Storage.FdbLite
 			int count = end - start;
 
 			if (!isInternal)
-			{ // three regions: the directory's size is known up front, so both heaps fill sequentially towards each other
+			{
+				// A cell gathered from a page that stripped a prefix carries only its SUFFIX, while a freshly built
+				// cell carries a whole key. So a key here is conceptually (sourcePrefix if page-backed) + stored, and
+				// the prefix this page will strip is computed over those whole keys.
+				var sourcePrefix = sourcePage.Length > 0 && FdbLitePageHeader.GetCellCount(sourcePage) > 0
+					? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false)
+					: default;
+
+				// only the FIRST and LAST keys are assembled, never the whole run: the run is in key order, so the
+				// prefix shared by all of its keys is the one shared by those two, and the middle cannot diverge and
+				// then converge again
+				var keyScratch = ArrayPool<byte>.Shared.Rent(2 * FdbLiteTreePage.MaxKeyLength);
+				int prefixLen;
+				try
+				{
+					var firstKey = MaterializeKey(cells[start], sourcePage, sourcePrefix, keyScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
+					var lastKey = MaterializeKey(cells[end - 1], sourcePage, sourcePrefix, keyScratch.AsSpan(FdbLiteTreePage.MaxKeyLength, FdbLiteTreePage.MaxKeyLength));
+					prefixLen = count > 1 ? FdbLiteTreePage.CommonPrefixLength(firstKey, lastKey) : 0;
+
+					// must precede the run: the prefix sits in front of the slot directory, so it decides where every
+					// offset in this page lands
+					FdbLiteTreePage.WriteLeafPrefix(image, firstKey[..prefixLen]);
+				}
+				finally
+				{
+					ArrayPool<byte>.Shared.Return(keyScratch);
+				}
+
 				var run = new FdbLiteTreePage.LeafRunWriter(image, count);
 				for (int i = start; i < end; i++)
 				{
-					run.Add(cells[i].ResolveKey(sourcePage), cells[i].ResolveValue(sourcePage), cells[i].Flags);
+					var stored = cells[i].ResolveKey(sourcePage);
+					var value = cells[i].ResolveValue(sourcePage);
+					if (cells[i].Buffer is not null)
+					{ // a whole key: strip this page's prefix outright
+						run.Add(stored[prefixLen..], value, cells[i].Flags);
+					}
+					else if (prefixLen >= sourcePrefix.Length)
+					{ // the new prefix reaches into the stored suffix, so the remainder is one slice of it
+						run.Add(stored[(prefixLen - sourcePrefix.Length)..], value, cells[i].Flags);
+					}
+					else
+					{ // the new prefix is SHORTER, so what is stored gains back the tail of the old one: two spans, no copy
+						run.Add(sourcePrefix[prefixLen..], stored, value, cells[i].Flags);
+					}
 				}
 				run.Complete();
 				return;

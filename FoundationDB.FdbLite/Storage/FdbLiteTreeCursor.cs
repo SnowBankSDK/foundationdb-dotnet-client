@@ -110,8 +110,37 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>The cursor points at a key/value pair</summary>
 		public bool IsValid { get; private set; }
 
-		/// <summary>Key at the current position (pager memory, valid while the generation is pinned)</summary>
-		public ReadOnlySpan<byte> CurrentKey => FdbLiteTreePage.GetLeafKey(ReadLeaf(), this.LeafSlot);
+		/// <summary>Scratch that whole keys are assembled into when the page they live on strips a prefix; grown on demand and reused, so this is O(1) allocations for the cursor's lifetime rather than one per key.</summary>
+		private byte[]? KeyScratch;
+
+		/// <summary>Key at the current position.</summary>
+		/// <remarks>
+		/// <para>Points straight at pager memory (valid while the generation is pinned) for a page that strips no prefix, which is the common case and costs nothing.</para>
+		/// <para>When the page DOES strip a prefix there is no contiguous whole key anywhere in it, so one is assembled into cursor-owned scratch. That is a copy per key, and it is the reason searching should compare against the page prefix and the suffix separately rather than asking for this: a probe never needs the assembled key, only a caller that genuinely wants the whole bytes does.</para>
+		/// </remarks>
+		public ReadOnlySpan<byte> CurrentKey
+		{
+			get
+			{
+				var leaf = ReadLeaf();
+				var suffix = FdbLiteTreePage.GetLeafKey(leaf, this.LeafSlot);
+				int prefixLen = FdbLitePageHeader.GetPrefixLength(leaf);
+				if (prefixLen == 0)
+				{
+					return suffix;
+				}
+
+				int total = prefixLen + suffix.Length;
+				if (this.KeyScratch is null || this.KeyScratch.Length < total)
+				{
+					this.KeyScratch = new byte[Math.Max(total, 128)];
+				}
+				var scratch = this.KeyScratch.AsSpan(0, total);
+				FdbLiteTreePage.GetPagePrefix(leaf, isInternal: false).CopyTo(scratch);
+				suffix.CopyTo(scratch[prefixLen..]);
+				return scratch;
+			}
+		}
 
 		/// <summary>Value at the current position (pager memory, valid while the generation is pinned; extent values are one contiguous span)</summary>
 		public ReadOnlySpan<byte> CurrentValue => FdbLiteTreeReader.ResolveLeafValue(this.Pager, ReadLeaf(), this.LeafSlot);
