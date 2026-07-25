@@ -135,10 +135,10 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 				FdbLitePageHeader.SetCellCount(page, 123);
 				FdbLitePageHeader.SetCellAreaOffset(page, 65535);
-				FdbLitePageHeader.SetTypeSpecific(page, 7);
+				FdbLitePageHeader.SetPrefixLength(page, 7);
 				Assert.That(FdbLitePageHeader.GetCellCount(page), Is.EqualTo(123));
 				Assert.That(FdbLitePageHeader.GetCellAreaOffset(page), Is.EqualTo(65535));
-				Assert.That(FdbLitePageHeader.GetTypeSpecific(page), Is.EqualTo(7));
+				Assert.That(FdbLitePageHeader.GetPrefixLength(page), Is.EqualTo(7));
 			}
 		}
 

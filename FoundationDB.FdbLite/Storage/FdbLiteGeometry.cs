@@ -45,6 +45,19 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Smallest supported tree page: 16 KiB, the smallest power of two that holds one maximum-size key cell inline (keys never chain-walk)</summary>
 		public const int MinPageSizeLog2 = 14;
 
+		/// <summary>Longest inline value the leaf format can address: the key-heap entry holds the value length in a <see cref="ushort"/>.</summary>
+		public const int MaxAddressableInlineValueLength = ushort.MaxValue;
+
+		static FdbLiteGeometry()
+		{
+			// The leaf key-heap entry stores the inline value length in a u16, which is only wide enough because the
+			// largest legal page is 64 KiB and an inline value is a quarter of a page. Raising MaxPageSizeLog2 without
+			// widening that field would silently truncate a value, which reads back as corruption rather than as an
+			// error, so the two are pinned together here and the mismatch fails on first touch of the type.
+			int largestInlineValue = (1 << MaxPageSizeLog2) >> 2;
+			Contract.Requires(largestInlineValue <= MaxAddressableInlineValueLength, "The largest legal page yields an inline value longer than the leaf format can address. Widen the value-length field in the key-heap entry before raising the maximum page size.");
+		}
+
 		/// <summary>Creates a geometry from the two file-header fields.</summary>
 		/// <param name="blockSizeLog2">Allocation-block size, as log2 (12..16)</param>
 		/// <param name="pageSizeInBlocksLog2">Tree-page size in blocks, as log2 (0 = one block per page)</param>

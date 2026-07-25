@@ -39,7 +39,7 @@ namespace FoundationDB.Storage.FdbLite
 
 	/// <summary>Span accessors for the 24-byte universal header at the start of every formatted page.</summary>
 	/// <remarks>
-	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, cell-area offset u16, type-specific u16.</para>
+	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, cell-area offset u16, prefix length u16.</para>
 	/// <para>The block-id seed makes a page written to the wrong location fail verification; the generation stamp lets a lock-free inspector detect a page reused under its feet.</para>
 	/// </remarks>
 	public static class FdbLitePageHeader
@@ -57,7 +57,7 @@ namespace FoundationDB.Storage.FdbLite
 		private const int EncodingOffset = 17;
 		private const int CellCountOffset = 18;
 		private const int CellAreaOffset = 20;
-		private const int TypeSpecificOffset = 22;
+		private const int PrefixLengthOffset = 22;
 
 		public static ulong GetChecksum(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[ChecksumOffset..]);
 
@@ -83,9 +83,11 @@ namespace FoundationDB.Storage.FdbLite
 
 		public static void SetCellAreaOffset(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[CellAreaOffset..], value);
 
-		public static ushort GetTypeSpecific(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[TypeSpecificOffset..]);
+		/// <summary>Length of the key prefix common to every key on this page, stored once between the header and the slot directory.</summary>
+		/// <remarks>Zero means no prefix is stripped, which is the layout's degenerate case and behaves exactly as an unstripped page. The prefix bytes themselves follow the header (and the leftmost-child field on an internal page), so the slot directory starts that much further in.</remarks>
+		public static ushort GetPrefixLength(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[PrefixLengthOffset..]);
 
-		public static void SetTypeSpecific(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[TypeSpecificOffset..], value);
+		public static void SetPrefixLength(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[PrefixLengthOffset..], value);
 
 		/// <summary>Computes the page checksum: XxHash3-64 over the page with the checksum field zeroed, seeded by the page's first block id.</summary>
 		public static ulong ComputeChecksum(ReadOnlySpan<byte> page, uint firstBlockId)
