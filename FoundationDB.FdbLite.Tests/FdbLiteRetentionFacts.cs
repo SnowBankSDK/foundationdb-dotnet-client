@@ -106,6 +106,28 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		public async Task Test_Retaining_Store_Over_The_Engine_Serves_Every_Version_It_Published()
+		{
+			// same body as the in-memory store above, over the paged engine instead: retaining every version is a
+			// CONFIGURATION of the engine (reclamation floor dropped), not a property of a different storage
+			using var store = FdbLiteStore.CreateInMemory(FdbLiteGeometry.Hypothesis, retainEveryVersion: true);
+			using var db = store.OpenDatabase(FdbPath.Root, readOnly: false);
+
+			var versions = await CommitThreeAsync(db);
+
+			foreach (var version in versions)
+			{
+				Assert.That(await TryReadAtVersionAsync(db, version), Is.Null, $"version {version} must still be readable");
+			}
+
+			Assert.That(store.Snapshots.Count, Is.EqualTo(versions.Count + 1), "a store that never reclaims must retain every version it published");
+
+			// the same store still reports a version it never published as too old, so retaining everything must not
+			// have turned the retention check into "always yes"
+			Assert.That(await TryReadAtVersionAsync(db, versions[^1] + 1_000_000), Is.EqualTo(FdbError.TransactionTooOld), "a version this store never published must still fail as too old");
+		}
+
+		[Test]
 		public async Task Test_Reading_At_A_Version_That_Was_Never_Published_Fails_As_Too_Old()
 		{
 			using var store = new FakeDbStore();

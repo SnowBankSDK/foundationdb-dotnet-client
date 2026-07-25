@@ -39,15 +39,24 @@ namespace FoundationDB.Storage.FdbLite
 	public sealed class FdbLiteBackend : IFdbStorageBackend
 	{
 
-		public FdbLiteBackend(FdbLiteEngine engine, bool disposeEngine = true)
+		public FdbLiteBackend(FdbLiteEngine engine, bool disposeEngine = true, bool retainEveryVersion = false)
 		{
 			Contract.NotNull(engine);
 			this.Engine = engine;
 			this.DisposeEngine = disposeEngine;
+			this.RetainEveryVersion = retainEveryVersion;
+			if (retainEveryVersion)
+			{ // drop the reclamation floor so no generation is ever promoted to reusable
+				engine.RetainFloor = 0;
+			}
 		}
 
 		/// <summary>The storage engine holding the committed state</summary>
 		public FdbLiteEngine Engine { get; }
+
+		/// <summary>Whether every published version stays readable forever, instead of only the recent-version window.</summary>
+		/// <remarks>Retaining everything means nothing is ever reclaimed, so the store grows without bound and its whole history stays inspectable. That is the emulator configuration; a store that must bound its footprint leaves this off and gets a cluster-like window instead.</remarks>
+		private bool RetainEveryVersion { get; }
 
 		/// <summary>Whether disposing the store disposes the engine (false when the engine outlives the store, e.g. across benchmark iterations)</summary>
 		private bool DisposeEngine { get; }
@@ -103,12 +112,17 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <inheritdoc />
-		/// <remarks>One version behind the current one, matching a real cluster's recent-version window; older generations have had their pages reclaimed.</remarks>
-		public int RetainedVersions => 1;
+		/// <remarks>Retaining everything, every version ever published stays readable. Otherwise one version behind the current one, matching a real cluster's recent-version window; older generations have had their pages reclaimed.</remarks>
+		public int RetainedVersions => this.RetainEveryVersion ? int.MaxValue : 1;
 
 		/// <inheritdoc />
 		public void Pin(long version)
 		{
+			if (this.RetainEveryVersion)
+			{ // nothing is ever reclaimed, so every published root stays readable and there is no horizon to hold
+				return;
+			}
+
 			lock (this.PinLock)
 			{
 				if (this.PinsByVersion.TryGetValue(version, out var entry))
@@ -129,6 +143,11 @@ namespace FoundationDB.Storage.FdbLite
 		/// <inheritdoc />
 		public void Release(long version)
 		{
+			if (this.RetainEveryVersion)
+			{
+				return;
+			}
+
 			lock (this.PinLock)
 			{
 				if (!this.PinsByVersion.TryGetValue(version, out var entry))
