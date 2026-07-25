@@ -6,6 +6,7 @@
     <Project Path="FoundationDB.Client.Native/FoundationDB.Client.Native.csproj" />
     <Project Path="FoundationDB.Client/FoundationDB.Client.csproj" />
     <Project Path="FoundationDB.FakeDb/FoundationDB.FakeDb.csproj" />
+    <Project Path="FoundationDB.FdbLite/FoundationDB.FdbLite.csproj" />
     <Project Path="FoundationDB.Layers.Common/FoundationDB.Layers.Common.csproj" />
     <Project Path="FoundationDB.Layers.Experimental/FoundationDB.Layers.Experimental.csproj" />
     <Project Path="FoundationDB.Linq.Providers/FoundationDB.Linq.Providers.csproj" />
@@ -13,6 +14,7 @@
   </Folder>
   <Folder Name="/Client/Tests/">
     <Project Path="FoundationDB.FakeDb.Tests/FoundationDB.FakeDb.Tests.csproj" />
+    <Project Path="FoundationDB.FdbLite.Tests/FoundationDB.FdbLite.Tests.csproj" />
     <Project Path="FoundationDB.Layers.Tests/FoundationDB.Layers.Tests.csproj" />
     <Project Path="FoundationDB.Samples/FoundationDB.Samples.csproj" />
     <Project Path="FoundationDB.Tests.Sandbox/FoundationDB.Tests.Sandbox.csproj" />

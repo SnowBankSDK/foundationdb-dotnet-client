@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Library</OutputType>
+		<!-- follows the emulator that consumes it: a leg cannot reference a project that does not build for it,
+		     and the emulator resolves this macro to net11.0;net10.0 under a parent and adds net8.0 standalone -->
+		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<LangVersion>preview</LangVersion>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<SignAssembly>true</SignAssembly>
+		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>
+		<Deterministic>true</Deterministic>
+		<ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<PropertyGroup>
+		<AssemblyTitle>FoundationDB Persistent Emulator Store</AssemblyTitle>
+		<Description>Persistent single-process storage backend for the FoundationDB emulator: a memory-mapped copy-on-write B+tree behind the emulator's committed-store seam</Description>
+		<GenerateDocumentationFile Condition="'$(Configuration)' != 'Debug'">true</GenerateDocumentationFile>
+		<!-- not packaged: the public naming/branding pass has not happened -->
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="System.IO.Hashing" />
+	</ItemGroup>
+
+	<!-- spans over pages and pooled buffers only: this project knows nothing about the emulator that hosts it -->
+	<ItemGroup>
+		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+	</ItemGroup>
+
+</Project>
