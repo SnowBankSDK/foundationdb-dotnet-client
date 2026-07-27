@@ -634,6 +634,65 @@ namespace FoundationDB.Storage.FdbLite
 			return true;
 		}
 
+		/// <summary>Copies a page VERBATIM into this generation and overwrites one value in the copy.</summary>
+		/// <remarks>
+		/// <para>The companion to <see cref="TrySpliceInto"/>, for the case it cannot serve: the FIRST mutation
+		/// of a page in a generation. That page is still shared with the committed generation, so it must be
+		/// copied - but copying it is a block memcpy, whereas the rebuild path re-gathers and re-serialises
+		/// every cell to achieve the same thing. For a workload that replaces ONE value per transaction, every
+		/// replace is a first touch, so the rebuild is the entire cost and this is the whole fix.</para>
+		/// <para>The prototype this engine succeeds has always done it this way: duplicate the page image, then
+		/// mutate in place. This closes that gap.</para>
+		/// </remarks>
+		private bool TryCopyAndOverwrite(uint leafId, ReadOnlySpan<byte> key, in CellRef newCell, out uint newId)
+		{
+			newId = 0;
+			if (newCell.Flags != 0 || this.Dirty.ContainsKey(leafId))
+			{ // an extent is not an overwrite; an already-owned page is TrySpliceInto's job and must not be
+			  // copied a second time
+				return false;
+			}
+
+			var page = ReadPage(leafId);
+			if (FdbLitePageHeader.GetPageType(page) != FdbLitePageType.Leaf)
+			{
+				return false;
+			}
+
+			int at = FdbLiteTreePage.FindLeafSlot(page, key, out bool exists);
+			if (!exists || (FdbLiteTreePage.GetLeafFlags(page, at) & FdbLiteTreePage.FlagValueIsExtent) != 0)
+			{
+				return false;
+			}
+
+			var storedValue = newCell.ResolveValue(default);
+			if (FdbLiteTreePage.LeafValueExtent(page, at).Length != storedValue.Length)
+			{
+				return false;
+			}
+
+			// snapshot before allocating: WritePage allocates, and an allocation may grow the pager, which is
+			// exactly the source-page aliasing WriteCells already guards against. One page memcpy is still far
+			// cheaper than re-serialising every cell.
+			int pageSize = this.Pager.Geometry.PageSize;
+			var snapshot = ArrayPool<byte>.Shared.Rent(pageSize);
+			try
+			{
+				page.CopyTo(snapshot);
+				newId = WritePage(leafId, snapshot.AsSpan(0, pageSize));
+			}
+			finally
+			{
+				ArrayPool<byte>.Shared.Return(snapshot);
+			}
+
+			bool overwritten = FdbLiteTreePage.TryOverwriteLeafValue(this.Dirty[newId].AsSpan(), at, storedValue, newCell.Flags);
+			Contract.Debug.Assert(overwritten, "the overwrite was proved possible on the source image before the copy");
+			this.CellsOverwritten++;
+			// deliberately NOT KeyCountDelta: a replace introduces no key
+			return true;
+		}
+
 		/// <summary>Rebuilds a leaf with one key inserted or replaced (a replaced extent value is released).</summary>
 		/// <param name="rightmost">True when no separator bounds this leaf on the right, i.e. it holds the highest keys in the tree</param>
 		private RebuildResult RebuildLeafWithInsert(uint leafId, ReadOnlySpan<byte> key, CellRef newCell, bool rightmost)
@@ -641,6 +700,12 @@ namespace FoundationDB.Storage.FdbLite
 			if (TrySpliceInto(leafId, key, newCell))
 			{
 				return new(leafId, null);
+			}
+
+			if (TryCopyAndOverwrite(leafId, key, newCell, out uint copiedId))
+			{ // first touch of this page in this generation, and the mutation is an overwrite: the page still
+			  // has to be copied, but it does NOT have to be re-serialised
+				return new(copiedId, null);
 			}
 
 			// The splice failed, which is the FIRST moment this page's key set is known, and therefore the first
