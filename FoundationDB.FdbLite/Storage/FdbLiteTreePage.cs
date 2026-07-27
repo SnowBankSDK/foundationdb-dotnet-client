@@ -315,15 +315,17 @@ namespace FoundationDB.Storage.FdbLite
 		/// <para>The entry is appended to the key heap and the payload to the value heap, and only the slot suffix after <paramref name="index"/> moves. Cost is two copies plus a slot-sized memmove, against a rebuild's re-serialization of every cell.</para>
 		/// <para>Neither heap is kept in key order: the slot directory carries the ordering, which is what lets an insert append instead of shifting a heap. Callers must not use this for a REPLACE, since it always adds a slot; replaces and deletes go through the rebuild path, which compacts, so a page mutated only through here never develops gaps.</para>
 		/// </remarks>
-		/// <summary>Overwrites a cell's stored value where it lies, when the replacement occupies EXACTLY the same room.</summary>
-		/// <returns><c>false</c> when the stored length or the flags differ, which is the caller's signal to rebuild instead.</returns>
+		/// <summary>Overwrites a cell's stored value where it lies, when the replacement fits in the room it already has.</summary>
+		/// <returns><c>false</c> when the replacement is LONGER or the flags differ, which is the caller's signal to rebuild instead.</returns>
 		/// <remarks>
 		/// <para>Nothing moves: no cell is relocated, no offset changes, no slot is touched and the key is not
 		/// even read. That is what makes it safe to do to a live page image, and it is the whole difference
 		/// between a replace costing O(1) and costing O(cells).</para>
-		/// <para>This is the one mutation that does NOT keep the page compact by construction, which is why it
-		/// insists on an exact length match rather than accepting a shorter value and leaving a gap. Accepting
-		/// shorter values needs the wasted-byte accounting the page format does not carry yet.</para>
+		/// <para>A SHORTER replacement keeps the slot it already had. The surplus is zeroed (so no bytes of the
+		/// old value survive where a later reader could reach them) and added to
+		/// <see cref="FdbLitePageHeader.GetWastedBytes"/>, which is what lets a later probe know the page can be
+		/// repacked instead of split. Reclaiming it immediately would cost the O(cells) shuffle this exists to
+		/// avoid, so it is deferred until something actually needs the room.</para>
 		/// </remarks>
 		public static bool TryOverwriteLeafValue(Span<byte> page, int cellIndex, ReadOnlySpan<byte> storedValue, byte flags)
 		{
@@ -332,11 +334,20 @@ namespace FoundationDB.Storage.FdbLite
 				return false;
 			}
 			var (offset, length) = LeafValueExtent(page, cellIndex);
-			if (length != storedValue.Length)
+			if (storedValue.Length > length)
 			{
 				return false;
 			}
-			storedValue.CopyTo(page.Slice(offset, length));
+
+			storedValue.CopyTo(page.Slice(offset, storedValue.Length));
+			int slack = length - storedValue.Length;
+			if (slack > 0)
+			{
+				page.Slice(offset + storedValue.Length, slack).Clear();
+				int f = ValueOffsetField(page, LeafEntry(page, cellIndex));
+				BinaryPrimitives.WriteUInt16LittleEndian(page[(f + 2)..], (ushort) storedValue.Length);
+				FdbLitePageHeader.SetWastedBytes(page, checked((ushort) (FdbLitePageHeader.GetWastedBytes(page) + slack)));
+			}
 			return true;
 		}
 

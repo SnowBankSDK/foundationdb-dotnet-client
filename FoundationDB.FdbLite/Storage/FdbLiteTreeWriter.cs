@@ -666,8 +666,9 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			var storedValue = newCell.ResolveValue(default);
-			if (FdbLiteTreePage.LeafValueExtent(page, at).Length != storedValue.Length)
-			{
+			if (storedValue.Length > FdbLiteTreePage.LeafValueExtent(page, at).Length)
+			{ // only a replacement that FITS the room it already has can be written where it lies; a longer one
+			  // has to find space, which is the rebuild path's job
 				return false;
 			}
 

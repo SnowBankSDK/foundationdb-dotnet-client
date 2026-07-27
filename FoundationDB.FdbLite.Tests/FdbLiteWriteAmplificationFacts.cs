@@ -236,6 +236,58 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 		}
 
+		/// <summary>A replace by a SHORTER value keeps its slot: the surplus is zeroed and booked as wasted, not shuffled away.</summary>
+		/// <remarks>
+		/// Closing the gap immediately would cost the O(cells) shuffle the in-place path exists to avoid. Booking
+		/// it instead lets a later probe repack the page only when something actually needs the room. The zeroing
+		/// is not tidiness: without it, bytes of the OLD value survive past the new length, where a reader that
+		/// trusts a stale length would hand them back.
+		/// </remarks>
+		[Test]
+		public void Writer_Shrinks_A_Value_In_Place_And_Books_The_Slack()
+		{
+			var geometry = FdbLiteGeometry.Default;
+			using var pager = new FdbLiteHeapPager(geometry);
+			var engine = FdbLiteEngine.Create(pager);
+
+			const int N = 2_000;
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				seed.Insert(SequentialKey(i), "0123456789ABCDEF"u8); // 16 bytes
+			}
+			engine.Commit(seed, 1);
+
+			var writer = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				writer.Insert(SequentialKey(i), "0123"u8); // 4 bytes: 12 of slack per cell
+			}
+
+			Log($"{N:N0} shrinking replaces -> {writer.CellsOverwritten:N0} overwritten, {writer.ReplacesRebuilt:N0} rebuilt, {writer.LeafDescents:N0} descents");
+			Assert.That(writer.CellsOverwritten + writer.ReplacesRebuilt, Is.EqualTo(N), "every replace must be accounted for exactly once");
+			Assert.That(writer.ReplacesRebuilt, Is.LessThanOrEqualTo(writer.LeafDescents), "a shorter value fits the room it already has, so only first-touch copies may rebuild");
+
+			engine.Commit(writer, 2);
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) N), "a replace must not change the key count");
+
+			var pin = engine.BeginRead();
+			try
+			{
+				// the SHORT value must come back, at its new length, with none of the old bytes trailing it
+				for (int i = 0; i < N; i += 37)
+				{
+					Assert.That(FdbLiteTreeReader.TryGetValue(pager, pin.RootPageId, SequentialKey(i), out var value), Is.True, $"key {i} must still be present");
+					Assert.That(value.Length, Is.EqualTo(4), $"key {i} must report the SHORTER length");
+					Assert.That(value.SequenceEqual("0123"u8), Is.True, $"key {i} must hold only the replacement bytes");
+				}
+			}
+			finally
+			{
+				engine.EndRead(in pin);
+			}
+		}
+
 		/// <summary>Keys arriving out of order must land in the right leaf: a cached cursor position only applies to the key range the descent proved it covers.</summary>
 		[Test]
 		public void Writer_Cursor_Survives_Out_Of_Order_Inserts()

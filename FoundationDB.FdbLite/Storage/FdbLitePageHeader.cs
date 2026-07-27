@@ -64,6 +64,8 @@ namespace FoundationDB.Storage.FdbLite
 		private const int PrefixLengthOffset = 22;
 		private const int KeyAreaLengthOffset = 24;
 
+		private const int WastedBytesOffset = 26;
+
 		public static ulong GetChecksum(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[ChecksumOffset..]);
 
 		public static void SetChecksum(Span<byte> page, ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(page[ChecksumOffset..], value);
@@ -99,6 +101,19 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Length of the key prefix common to every key on this page, stored once between the header and the slot directory.</summary>
 		/// <remarks>Zero means no prefix is stripped, which is the layout's degenerate case and behaves exactly as an unstripped page. The prefix bytes themselves follow the header (and the leftmost-child field on an internal page), so the slot directory starts that much further in.</remarks>
+		/// <summary>Bytes inside this page that no cell points at any more, and that a repack would reclaim.</summary>
+		/// <remarks>
+		/// <para>Zero for any page written by the rebuild path, which is compact by construction. It becomes
+		/// non-zero only where a mutation deliberately leaves a gap rather than paying O(cells) to close it:
+		/// a value replaced by a SHORTER one keeps its slot and the slack is recorded here.</para>
+		/// <para>This is the counter the page format was missing, and its absence is why every replace had to
+		/// rebuild. It lives in the six bytes FL-36 reserved and required to stay zero, so it costs no format
+		/// change: an older page reads as having no waste, which is exactly true of it.</para>
+		/// </remarks>
+		public static ushort GetWastedBytes(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[WastedBytesOffset..]);
+
+		public static void SetWastedBytes(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[WastedBytesOffset..], value);
+
 		public static ushort GetPrefixLength(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[PrefixLengthOffset..]);
 
 		public static void SetPrefixLength(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[PrefixLengthOffset..], value);
