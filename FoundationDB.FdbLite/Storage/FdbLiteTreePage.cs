@@ -444,6 +444,60 @@ namespace FoundationDB.Storage.FdbLite
 			return true;
 		}
 
+		/// <summary>Removes one cell from a leaf without rewriting the others, booking the room it held as wasted.</summary>
+		/// <returns><c>false</c> when this is the page's LAST cell or the value is an extent: both need the writer, not the page.</returns>
+		/// <remarks>
+		/// <para>The exact mirror of <see cref="TryInsertLeafCell"/>. The directory loses a slot and therefore
+		/// shrinks INTO the key heap, so the key region slides DOWN by one slot's width - and because slots are
+		/// key-heap-relative, the region moves and not one slot changes. With absolute offsets this would be an
+		/// O(cells) fixup and the whole thing would be pointless.</para>
+		/// <para>The removed key entry stays where it is as a gap, and its bytes plus the value's are booked
+		/// into <see cref="FdbLitePageHeader.GetWastedBytes"/>. Both are zeroed first: a dead cell's bytes must
+		/// not remain reachable, and a delete is exactly the operation where someone expects them gone.</para>
+		/// <para>Cost is two memmoves bounded by the page, against a rebuild's re-serialisation of every cell.</para>
+		/// </remarks>
+		public static bool TryRemoveLeafCell(Span<byte> page, int cellIndex)
+		{
+			int cellCount = FdbLitePageHeader.GetCellCount(page);
+			Contract.Debug.Requires(cellIndex >= 0 && cellIndex < cellCount);
+			if (cellCount <= 1 || (GetLeafFlags(page, cellIndex) & FlagValueIsExtent) != 0)
+			{ // emptying a page means unhooking it from its parent, and an extent's blocks must be freed: both
+			  // are the writer's business, so hand them back
+				return false;
+			}
+
+			int entry = LeafEntry(page, cellIndex);
+			int keyLen = BinaryPrimitives.ReadUInt16LittleEndian(page[entry..]);
+			int entryBytes = 2 + keyLen + 5; // key length, the suffix, then value offset, value length, flags
+			var (valueOffset, valueLength) = LeafValueExtent(page, cellIndex);
+
+			// wipe both before anything moves, while their offsets still mean what they say
+			page.Slice(valueOffset, valueLength).Clear();
+			page.Slice(entry, entryBytes).Clear();
+
+			// close the hole in the sorted directory (overlapping, so the direction matters)
+			int slotsBase = SlotsOffset(page, isInternal: false);
+			int from = slotsBase + ((cellIndex + 1) * 2);
+			int tailBytes = (cellCount - cellIndex - 1) * 2;
+			if (tailBytes > 0)
+			{
+				page.Slice(from, tailBytes).CopyTo(page[(from - 2)..]);
+			}
+
+			// the directory just shrank, so the key heap's base moves down with it
+			int keyBase = LeafKeyBase(page);
+			int keyUsed = FdbLitePageHeader.GetKeyAreaLength(page);
+			if (keyUsed > 0)
+			{
+				page.Slice(keyBase, keyUsed).CopyTo(page[(keyBase - 2)..]);
+				page.Slice(keyBase + keyUsed - 2, 2).Clear(); // the two bytes the region no longer covers
+			}
+
+			FdbLitePageHeader.SetCellCount(page, (ushort) (cellCount - 1));
+			FdbLitePageHeader.SetWastedBytes(page, checked((ushort) (FdbLitePageHeader.GetWastedBytes(page) + entryBytes + valueLength)));
+			return true;
+		}
+
 		/// <summary>Lays out a run of cells, already in key order, into a freshly formatted leaf image.</summary>
 		/// <remarks>The cell count is known before the run starts, so the slot directory's size is known too and the key heap can begin immediately after it; both heaps then fill sequentially towards each other. Add every cell, then <see cref="Complete"/> to stamp the header.</remarks>
 		public ref struct LeafRunWriter

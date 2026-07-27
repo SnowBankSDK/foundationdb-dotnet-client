@@ -144,6 +144,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Values overwritten where they lay, because the replacement occupied exactly the same room (the cheap REPLACE path)</summary>
 		public int CellsOverwritten { get; private set; }
 
+		/// <summary>Cells removed by closing the directory over them, instead of rebuilding the page (the cheap DELETE path)</summary>
+		public int CellsRemovedInPlace { get; private set; }
+
 		/// <summary>Replaces that could NOT be overwritten in place and rebuilt their page instead</summary>
 		/// <remarks>
 		/// The ratio of this to <see cref="CellsOverwritten"/> is the health of the replace path, and it exists
@@ -404,6 +407,12 @@ namespace FoundationDB.Storage.FdbLite
 				return false;
 			}
 
+			if (CursorCovers(key) && TryRemoveInPlace(this.CursorLeaf, key, out bool removedInPlace))
+			{ // the last descent already proved this leaf covers this key, and the page is ours to edit: no
+			  // descent, no rebuild, and no ancestor to patch since the page neither moved nor changed range
+				return removedInPlace;
+			}
+
 			Span<uint> pathPages = stackalloc uint[MaxDepth];
 			Span<int> pathChildren = stackalloc int[MaxDepth];
 			uint leafId = DescendToLeaf(key, pathPages, pathChildren, out int depth);
@@ -415,6 +424,11 @@ namespace FoundationDB.Storage.FdbLite
 				return false;
 			}
 
+			// NOTE: a copy-verbatim-then-remove path was tried here and MEASURED WORSE - random deletes went
+			// 23,930 -> 46,225 ns because every one lands on a different page, so it paid a full page copy per
+			// delete and never got to amortise it. The rebuild re-serialises only the LIVE cells and produces a
+			// compact page, which is the better trade when the page will not be touched again. Do not
+			// reintroduce it without a measurement; the symmetry with the replace path is misleading.
 			DropLeafSlots(leafId, page, slot, slot + 1, pathPages, pathChildren, depth);
 			CollapseRoot();
 			return true;
@@ -465,8 +479,6 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Drops leaf cells [<paramref name="first"/>, <paramref name="last"/>): releases their extents, rebuilds the leaf, or unlinks it entirely when it empties.</summary>
 		private void DropLeafSlots(uint leafId, ReadOnlySpan<byte> page, int first, int last, ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int depth)
 		{
-			this.CursorLeaf = 0; // this leaf is about to be rebuilt, relocated or unlinked: no cursor survives that
-
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			for (int i = first; i < last; i++)
 			{
@@ -475,7 +487,8 @@ namespace FoundationDB.Storage.FdbLite
 			this.KeyCountDelta -= last - first;
 
 			if (last - first == cellCount)
-			{ // the leaf empties: unlink it from its ancestors
+			{ // the leaf empties: unlink it from its ancestors, and NO cursor survives that
+				this.CursorLeaf = 0;
 				FreePage(leafId);
 				if (depth == 0)
 				{
@@ -495,6 +508,12 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			var outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
 			AscendPatch(pathPages, pathChildren, depth - 1, leafId, outcome);
+
+			// The page survived: it holds the same key RANGE, its parent's separators did not move, and the
+			// descent that got us here already set the cursor's bounds. Only its id changed. Keeping the cursor
+			// is what lets the next delete in this batch take the in-place path instead of descending again -
+			// discarding it here meant the fast path could never engage twice in a row.
+			this.CursorLeaf = outcome.Split ? 0 : outcome.FirstId;
 		}
 
 		/// <summary>Removes the child at the deepest path level from its parent, cascading upward while parents empty out.</summary>
@@ -636,6 +655,42 @@ namespace FoundationDB.Storage.FdbLite
 
 			this.CellsSpliced++;
 			this.KeyCountDelta++;
+			return true;
+		}
+
+		/// <summary>Removes a key from a page this generation already owns, by closing the directory over it.</summary>
+		/// <returns><c>true</c> when the operation was HANDLED here (whether or not a key was actually removed); <c>false</c> means the caller must descend and take the rebuild path.</returns>
+		/// <remarks>
+		/// The delete counterpart of <see cref="TrySpliceInto"/>. Note the two different falses: an absent key
+		/// is handled (the cursor proved this leaf is where it would have been, so it is definitively not in
+		/// the tree) and reported through <paramref name="removed"/>, whereas a page this generation does not
+		/// own, an extent value, or a page down to its last cell are all handed back to the descent.
+		/// <para>The cursor SURVIVES this. Removing a key from inside a page changes neither the page's
+		/// identity nor the range its parent routes by, which is why no ancestor has to be patched.</para>
+		/// </remarks>
+		private bool TryRemoveInPlace(uint leafId, ReadOnlySpan<byte> key, out bool removed)
+		{
+			removed = false;
+			if (!this.Dirty.TryGetValue(leafId, out var buffered))
+			{
+				return false;
+			}
+
+			var image = buffered.AsSpan();
+			int at = FdbLiteTreePage.FindLeafSlot(image, key, out bool exists);
+			if (!exists)
+			{ // the cursor proved this leaf covers the key, so absent here means absent everywhere
+				return true;
+			}
+
+			if (!FdbLiteTreePage.TryRemoveLeafCell(image, at))
+			{
+				return false;
+			}
+
+			this.CellsRemovedInPlace++;
+			this.KeyCountDelta--;
+			removed = true;
 			return true;
 		}
 
