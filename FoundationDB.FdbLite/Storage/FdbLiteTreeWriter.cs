@@ -141,6 +141,19 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Cells spliced into an already-owned page, instead of rebuilding it (the cheap insert path)</summary>
 		public int CellsSpliced { get; private set; }
 
+		/// <summary>Values overwritten where they lay, because the replacement occupied exactly the same room (the cheap REPLACE path)</summary>
+		public int CellsOverwritten { get; private set; }
+
+		/// <summary>Replaces that could NOT be overwritten in place and rebuilt their page instead</summary>
+		/// <remarks>
+		/// The ratio of this to <see cref="CellsOverwritten"/> is the health of the replace path, and it exists
+		/// so a gate can watch it. A replace-heavy workload that rebuilds every time costs O(cells) per
+		/// mutation where the prototype this engine succeeds pays a memcpy; that gap was measured at 4x to 86x
+		/// before the in-place path existed. It went unnoticed for weeks because it is invisible to every
+		/// correctness assertion - the results stay right, they just take far longer to produce.
+		/// </remarks>
+		public int ReplacesRebuilt { get; private set; }
+
 		/// <summary>Root-to-leaf descents performed by this generation (a sorted run costs one per LEAF, not one per key)</summary>
 		public int LeafDescents { get; private set; }
 
@@ -592,7 +605,26 @@ namespace FoundationDB.Storage.FdbLite
 			// path is O(cells) per insert)
 			var image = buffered.AsSpan();
 			int at = FdbLiteTreePage.FindLeafSlot(image, key, out bool exists);
-			if (exists || !FdbLiteTreePage.TryInsertLeafCell(image, at, newCell.ResolveKey(default), newCell.ResolveValue(default), newCell.Flags))
+			if (exists)
+			{
+				// A REPLACE. When the replacement occupies exactly the same room this is a memcpy over bytes
+				// this generation already owns: nothing moves, and the cursor stays valid, so the per-key
+				// descent disappears along with the rebuild.
+				// An extent on EITHER side is deliberately excluded. Those blocks have to be freed and
+				// reallocated, which is not an overwrite - it is precisely where a leak or a double free would
+				// live - so it keeps the rebuild path.
+				if (newCell.Flags == 0
+				 && (FdbLiteTreePage.GetLeafFlags(image, at) & FdbLiteTreePage.FlagValueIsExtent) == 0
+				 && FdbLiteTreePage.TryOverwriteLeafValue(image, at, newCell.ResolveValue(default), newCell.Flags))
+				{
+					this.CellsOverwritten++;
+					// deliberately NOT KeyCountDelta: a replace introduces no key
+					return true;
+				}
+				return false;
+			}
+
+			if (!FdbLiteTreePage.TryInsertLeafCell(image, at, newCell.ResolveKey(default), newCell.ResolveValue(default), newCell.Flags))
 			{
 				return false;
 			}
@@ -647,6 +679,10 @@ namespace FoundationDB.Storage.FdbLite
 
 			if (replace)
 			{
+				// counted HERE and not at the splice attempt: this is the single point a replace actually
+				// pays for a rebuild, and it is reached once, whereas TrySpliceInto can be attempted twice for
+				// the same key (once off the cursor, once after the descent)
+				this.ReplacesRebuilt++;
 				FreeExtentOfCell(page, insertAt);
 			}
 			else

@@ -169,6 +169,73 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(ScanForward(pager, engine.Durable.RootPageId), Has.Count.EqualTo(N), "every key must be readable after commit");
 		}
 
+		/// <summary>A replace that changes no key and no length must overwrite the value where it lies, not rebuild the page.</summary>
+		/// <remarks>
+		/// <para>This is the structural guard for the REPLACE path, and the counterpart to the insert guard
+		/// above. A replacement that occupies exactly the same room needs no new space, moves no other cell and
+		/// shifts no offset: it is a memcpy over bytes this generation already owns. Rebuilding the page for it
+		/// costs O(cells) per mutation instead.</para>
+		/// <para>Measured against the prototype this engine succeeds, that difference is 4x to 86x on
+		/// replace-heavy workloads. It survived for weeks because it is invisible to every correctness
+		/// assertion in the suite: the answers stay right, they just cost far more to produce. Hence a test
+		/// that asserts the MECHANISM fired rather than that the results are still correct.</para>
+		/// </remarks>
+		[Test]
+		public void Writer_Overwrites_A_Same_Length_Value_In_Place()
+		{
+			var geometry = FdbLiteGeometry.Default;
+			using var pager = new FdbLiteHeapPager(geometry);
+			var engine = FdbLiteEngine.Create(pager);
+
+			const int N = 5_000;
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				seed.Insert(SequentialKey(i), "0123456789ABCDEF"u8);
+			}
+			engine.Commit(seed, 1);
+
+			// same keys, same value LENGTH, different bytes
+			var writer = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				writer.Insert(SequentialKey(i), "FEDCBA9876543210"u8);
+			}
+
+			Log($"{N:N0} same-length replaces -> {writer.CellsOverwritten:N0} overwritten, {writer.ReplacesRebuilt:N0} rebuilt, {writer.LeafDescents:N0} descents, {writer.PageSplits:N0} splits");
+
+			// Every replace is accounted for as exactly one of the two outcomes.
+			Assert.That(writer.CellsOverwritten + writer.ReplacesRebuilt, Is.EqualTo(N), "every replace must be either overwritten in place or rebuilt, and counted once");
+
+			// A handful of rebuilds is CORRECT and unavoidable: the first mutation of a page in a generation
+			// has to copy it, because until then it is still shared with the committed generation. So the floor
+			// is one rebuild per leaf TOUCHED, and what must not happen is one per KEY. Bounding this against
+			// the descent count rather than a constant states that directly, and keeps the test honest if the
+			// page size or the value size changes the number of leaves.
+			Assert.That(writer.ReplacesRebuilt, Is.LessThanOrEqualTo(writer.LeafDescents), "rebuilds must be bounded by the pages first touched, not by the number of keys");
+			Assert.That(writer.ReplacesRebuilt, Is.LessThan(N / 100), "a replace-heavy generation must not rebuild per key");
+			Assert.That(writer.LeafDescents, Is.LessThan(N / 10), "an in-place overwrite must not pay a fresh root-to-leaf descent per key");
+			Assert.That(writer.PageSplits, Is.Zero, "a value of identical length cannot make a page need splitting");
+
+			engine.Commit(writer, 2);
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) N), "a replace must not change the key count");
+
+			// the point of the exercise is still that it REPLACED: check the new bytes actually landed
+			var pin = engine.BeginRead();
+			try
+			{
+				for (int i = 0; i < N; i += 97)
+				{
+					Assert.That(FdbLiteTreeReader.TryGetValue(pager, pin.RootPageId, SequentialKey(i), out var value), Is.True, $"key {i} must still be present");
+					Assert.That(value.SequenceEqual("FEDCBA9876543210"u8), Is.True, $"key {i} must hold the REPLACEMENT value");
+				}
+			}
+			finally
+			{
+				engine.EndRead(in pin);
+			}
+		}
+
 		/// <summary>Keys arriving out of order must land in the right leaf: a cached cursor position only applies to the key range the descent proved it covers.</summary>
 		[Test]
 		public void Writer_Cursor_Survives_Out_Of_Order_Inserts()
