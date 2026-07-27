@@ -288,6 +288,47 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 		}
 
+		/// <summary>Diagnostic: how often does repeated growth fall back to a rebuild, and does it split?</summary>
+		/// <remarks>
+		/// Asks whether the third arm of a three-way space probe (fits / fits-after-repacking / needs-split)
+		/// would buy anything. It might already be implicit: the rebuild path re-serialises only LIVE cells, so
+		/// it reclaims wasted bytes as a side effect and hands back a compact page with its gap restored. If
+		/// that is so, a rebuild already IS the repack, and rebuilds amortise across the relocations that
+		/// follow. Reports rather than asserts, because the point is to find out.
+		/// </remarks>
+		[Test]
+		public void Diagnose_Repeated_Growth_Rebuild_Rate()
+		{
+			var geometry = FdbLiteGeometry.Default;
+			using var pager = new FdbLiteHeapPager(geometry);
+			var engine = FdbLiteEngine.Create(pager);
+
+			const int N = 20_000;
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				seed.Insert(SequentialKey(i), new byte[8]);
+			}
+			engine.Commit(seed, 1);
+
+			// grow every value a little, round after round: each growth vacates its old slot, so waste piles up
+			// and the free gap drains. This is the shape that would exercise a repack if one existed.
+			ulong version = 2;
+			for (int round = 1; round <= 6; round++)
+			{
+				var value = new byte[8 + (round * 8)];
+				var w = engine.BeginWrite();
+				for (int i = 0; i < N; i++)
+				{
+					w.Insert(SequentialKey(i), value);
+				}
+				Log($"round {round} (value {value.Length,3} B) -> {w.CellsOverwritten,6:N0} in place, {w.ReplacesRebuilt,6:N0} rebuilt, {w.PageSplits,4:N0} splits, {w.PagesWritten,5:N0} pages written");
+				engine.Commit(w, version++);
+			}
+
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) N), "growth must not change the key count");
+		}
+
 		/// <summary>Keys arriving out of order must land in the right leaf: a cached cursor position only applies to the key range the descent proved it covers.</summary>
 		[Test]
 		public void Writer_Cursor_Survives_Out_Of_Order_Inserts()
