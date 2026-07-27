@@ -614,12 +614,17 @@ namespace FoundationDB.Storage.FdbLite
 				// reallocated, which is not an overwrite - it is precisely where a leak or a double free would
 				// live - so it keeps the rebuild path.
 				if (newCell.Flags == 0
-				 && (FdbLiteTreePage.GetLeafFlags(image, at) & FdbLiteTreePage.FlagValueIsExtent) == 0
-				 && FdbLiteTreePage.TryOverwriteLeafValue(image, at, newCell.ResolveValue(default), newCell.Flags))
+				 && (FdbLiteTreePage.GetLeafFlags(image, at) & FdbLiteTreePage.FlagValueIsExtent) == 0)
 				{
-					this.CellsOverwritten++;
-					// deliberately NOT KeyCountDelta: a replace introduces no key
-					return true;
+					var storedValue = newCell.ResolveValue(default);
+					// fits where it lies, or grows into the free gap and leaves its old slot behind as waste
+					if (FdbLiteTreePage.TryOverwriteLeafValue(image, at, storedValue, newCell.Flags)
+					 || FdbLiteTreePage.TryRelocateLeafValue(image, at, storedValue, newCell.Flags))
+					{
+						this.CellsOverwritten++;
+						// deliberately NOT KeyCountDelta: a replace introduces no key
+						return true;
+					}
 				}
 				return false;
 			}
@@ -666,9 +671,10 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			var storedValue = newCell.ResolveValue(default);
-			if (storedValue.Length > FdbLiteTreePage.LeafValueExtent(page, at).Length)
-			{ // only a replacement that FITS the room it already has can be written where it lies; a longer one
-			  // has to find space, which is the rebuild path's job
+			if (storedValue.Length > FdbLiteTreePage.LeafValueExtent(page, at).Length
+			 && storedValue.Length > FdbLiteTreePage.LeafFreeGap(page))
+			{ // it neither fits the room it already has nor the free gap it could grow into, so the page has to
+			  // be reclaimed or split: that is the rebuild path's job
 				return false;
 			}
 
@@ -687,8 +693,10 @@ namespace FoundationDB.Storage.FdbLite
 				ArrayPool<byte>.Shared.Return(snapshot);
 			}
 
-			bool overwritten = FdbLiteTreePage.TryOverwriteLeafValue(this.Dirty[newId].AsSpan(), at, storedValue, newCell.Flags);
-			Contract.Debug.Assert(overwritten, "the overwrite was proved possible on the source image before the copy");
+			var copy = this.Dirty[newId].AsSpan();
+			bool overwritten = FdbLiteTreePage.TryOverwriteLeafValue(copy, at, storedValue, newCell.Flags)
+			                || FdbLiteTreePage.TryRelocateLeafValue(copy, at, storedValue, newCell.Flags);
+			Contract.Debug.Assert(overwritten, "the mutation was proved possible on the source image before the copy");
 			this.CellsOverwritten++;
 			// deliberately NOT KeyCountDelta: a replace introduces no key
 			return true;

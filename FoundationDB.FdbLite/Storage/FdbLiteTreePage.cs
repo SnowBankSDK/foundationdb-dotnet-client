@@ -292,8 +292,6 @@ namespace FoundationDB.Storage.FdbLite
 		/// <para>The cell goes into the free area between the slot array and the packed cells; only the slot suffix after <paramref name="index"/> moves. Cost is one cell copy plus a slot-sized memmove, against a rebuild's re-serialization of every cell in the page.</para>
 		/// <para>Callers must not use this for a REPLACE: it always adds a slot. Since replaces and deletes go through the rebuild path, which compacts, a page mutated only through here never develops gaps, and the free area is always the whole of its free space.</para>
 		/// </remarks>
-		/// <summary>True when the free area of a leaf can take one more cell of <paramref name="cellLength"/> bytes, slot included.</summary>
-		/// <remarks>Exact rather than conservative: pages are compact by construction (replaces and deletes rebuild), so the gap between the slot array and the cell heap IS the whole of the page's free space.</remarks>
 		/// <summary>Frontier of the down-growing value heap, which starts at the end of the page.</summary>
 		private static int LeafValueFrontier(ReadOnlySpan<byte> page)
 		{
@@ -301,20 +299,53 @@ namespace FoundationDB.Storage.FdbLite
 			return area != 0 ? area : page.Length;
 		}
 
+		/// <summary>Bytes between the two heaps that no cell occupies: the room a splice or a relocation can use without reclaiming anything.</summary>
+		/// <remarks>This is the free GAP only. It deliberately excludes <see cref="FdbLitePageHeader.GetWastedBytes"/>, which is real room but needs a repack to reach.</remarks>
+		public static int LeafFreeGap(ReadOnlySpan<byte> page)
+			=> LeafValueFrontier(page) - (LeafKeyBase(page) + FdbLitePageHeader.GetKeyAreaLength(page));
+
 		/// <summary>True when the free gap between the two heaps can take one more cell of these sizes, slot included.</summary>
-		/// <remarks>Exact rather than conservative: pages are compact by construction (replaces and deletes rebuild), so the gap between the key heap and the value heap IS the whole of the page's free space. The slot array is about to grow by one, and it grows into the key heap's end, so the entry has to clear that too.</remarks>
+		/// <remarks>Counts the free GAP only. A page can also hold reclaimable room in <see cref="FdbLitePageHeader.GetWastedBytes"/>, which this does NOT include, so a false here means "cannot take it without reclaiming", not "cannot take it at all". The slot array is about to grow by one, and it grows into the key heap's end, so the entry has to clear that too.</remarks>
 		public static bool LeafHasRoomFor(ReadOnlySpan<byte> page, int keySuffixLength, int storedValueLength)
+			=> LeafFreeGap(page) >= LeafCellOverhead + keySuffixLength + storedValueLength;
+
+		/// <summary>Moves a cell's value to the free gap so it can grow, and books the slot it vacated as wasted.</summary>
+		/// <returns><c>false</c> when the flags differ, the value would not grow, or the gap cannot take it - all of which are the caller's signal to rebuild.</returns>
+		/// <remarks>
+		/// <para>The other half of in-place mutation, and the reason a growing replace need not be O(cells)
+		/// either. Only the value moves: the key stays put, the slot array is untouched, and no other cell is
+		/// disturbed. The old bytes are zeroed and their room is recorded rather than reclaimed, because
+		/// reclaiming means shuffling every cell, which is precisely what this avoids.</para>
+		/// <para>The page therefore grows a gap on purpose. That is the trade the wasted-byte counter exists to
+		/// make safe: a later probe can see the room is there and repack once, instead of splitting a page that
+		/// was never really full.</para>
+		/// </remarks>
+		public static bool TryRelocateLeafValue(Span<byte> page, int cellIndex, ReadOnlySpan<byte> storedValue, byte flags)
 		{
-			int used = LeafKeyBase(page) + FdbLitePageHeader.GetKeyAreaLength(page);
-			return LeafValueFrontier(page) - used >= LeafCellOverhead + keySuffixLength + storedValueLength;
+			if (GetLeafFlags(page, cellIndex) != flags)
+			{
+				return false;
+			}
+			var (offset, length) = LeafValueExtent(page, cellIndex);
+			if (storedValue.Length <= length || LeafFreeGap(page) < storedValue.Length)
+			{ // not a growth, or no room to grow into without reclaiming first
+				return false;
+			}
+
+			int landing = LeafValueFrontier(page) - storedValue.Length;
+			storedValue.CopyTo(page.Slice(landing, storedValue.Length));
+			FdbLitePageHeader.SetCellAreaOffset(page, checked((ushort) landing));
+
+			int f = ValueOffsetField(page, LeafEntry(page, cellIndex));
+			BinaryPrimitives.WriteUInt16LittleEndian(page[f..], (ushort) landing);
+			BinaryPrimitives.WriteUInt16LittleEndian(page[(f + 2)..], (ushort) storedValue.Length);
+
+			// the vacated slot is dead now: clear it so none of the old value can be reached, and book it
+			page.Slice(offset, length).Clear();
+			FdbLitePageHeader.SetWastedBytes(page, checked((ushort) (FdbLitePageHeader.GetWastedBytes(page) + length)));
+			return true;
 		}
 
-		/// <summary>Splices one cell into a leaf at <paramref name="index"/>, keeping key order, without rewriting any other cell.</summary>
-		/// <returns><c>false</c> when the free gap cannot take it, which is the caller's signal to rebuild the page (compacting it) or split it.</returns>
-		/// <remarks>
-		/// <para>The entry is appended to the key heap and the payload to the value heap, and only the slot suffix after <paramref name="index"/> moves. Cost is two copies plus a slot-sized memmove, against a rebuild's re-serialization of every cell.</para>
-		/// <para>Neither heap is kept in key order: the slot directory carries the ordering, which is what lets an insert append instead of shifting a heap. Callers must not use this for a REPLACE, since it always adds a slot; replaces and deletes go through the rebuild path, which compacts, so a page mutated only through here never develops gaps.</para>
-		/// </remarks>
 		/// <summary>Overwrites a cell's stored value where it lies, when the replacement fits in the room it already has.</summary>
 		/// <returns><c>false</c> when the replacement is LONGER or the flags differ, which is the caller's signal to rebuild instead.</returns>
 		/// <remarks>
@@ -351,6 +382,16 @@ namespace FoundationDB.Storage.FdbLite
 			return true;
 		}
 
+		/// <summary>Splices one cell into a leaf at <paramref name="index"/>, keeping key order, without rewriting any other cell.</summary>
+		/// <returns><c>false</c> when the free gap cannot take it, which is the caller's signal to rebuild the page (compacting it) or split it.</returns>
+		/// <remarks>
+		/// <para>The entry is appended to the key heap and the payload to the value heap, and only the slot suffix after <paramref name="index"/> moves. Cost is two copies plus a slot-sized memmove, against a rebuild's re-serialization of every cell.</para>
+		/// <para>Neither heap is kept in key order: the slot directory carries the ordering, which is what lets an insert append instead of shifting a heap. Callers must not use this for a REPLACE, since it always adds a slot.</para>
+		/// <para>A leaf is no longer gap-free by construction: <see cref="TryOverwriteLeafValue"/> and
+		/// <see cref="TryRelocateLeafValue"/> deliberately leave slack behind rather than pay O(cells) to close
+		/// it, and record it in <see cref="FdbLitePageHeader.GetWastedBytes"/>. Anything reasoning about how
+		/// much room a page really has must consult that counter as well as the free gap.</para>
+		/// </remarks>
 		public static bool TryInsertLeafCell(Span<byte> page, int index, ReadOnlySpan<byte> key, ReadOnlySpan<byte> storedValue, byte flags)
 		{
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
