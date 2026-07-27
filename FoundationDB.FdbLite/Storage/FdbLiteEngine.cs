@@ -147,15 +147,19 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Opens (or creates) a file-backed store.</summary>
-		public static FdbLiteEngine OpenOrCreateFile(string path, FdbLiteGeometry geometry, int regionSizeInBytes = FdbLiteMemoryMappedPager.DefaultRegionSizeInBytes)
+		/// <param name="initialSizeInBytes">Reserve this much file up front rather than growing into it a region at a time. See <see cref="FdbLiteMemoryMappedPager.Open"/>; it is a hint, not a cap.</param>
+		/// <remarks><b>The <paramref name="geometry"/> argument is only honoured when the file does not exist yet.</b>
+		/// For an existing store it is read back from the file's own header and this argument is IGNORED, so
+		/// re-opening a stale file with a different geometry silently keeps the old one.</remarks>
+		public static FdbLiteEngine OpenOrCreateFile(string path, FdbLiteGeometry geometry, int regionSizeInBytes = FdbLiteMemoryMappedPager.DefaultRegionSizeInBytes, long initialSizeInBytes = 0)
 		{
 			if (File.Exists(path) && new FileInfo(path).Length > 0)
 			{
 				var existing = FdbLiteMemoryMappedPager.ReadGeometry(path);
-				var pager = FdbLiteMemoryMappedPager.Open(path, existing, regionSizeInBytes);
+				var pager = FdbLiteMemoryMappedPager.Open(path, existing, regionSizeInBytes, initialSizeInBytes);
 				return Open(pager);
 			}
-			var fresh = FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes);
+			var fresh = FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes, initialSizeInBytes);
 			return Create(fresh);
 		}
 

@@ -64,12 +64,25 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Opens (or creates a zero-length file for) a store file. The file is held with shared-READ access: a second writer cannot open it, read-only inspectors can.</summary>
-		public static FdbLiteMemoryMappedPager Open(string path, FdbLiteGeometry geometry, int regionSizeInBytes = DefaultRegionSizeInBytes)
+		/// <param name="initialSizeInBytes">Reserve this much file up front instead of growing into it one region at a time. Rounded UP to a whole number of regions; ignored when the file is already at least this long.</param>
+		/// <remarks>
+		/// <para>Pre-allocating costs nothing at rest - the file is sparse until written - but it moves every
+		/// extension out of the write path. On a bulk import that is the difference between paying a file
+		/// extension every <see cref="DefaultRegionSizeInBytes"/> of data and paying none at all.</para>
+		/// <para>It is a HINT, not a cap: the store still grows past it on demand.</para>
+		/// </remarks>
+		public static FdbLiteMemoryMappedPager Open(string path, FdbLiteGeometry geometry, int regionSizeInBytes = DefaultRegionSizeInBytes, long initialSizeInBytes = 0)
 		{
 			Contract.NotNullOrEmpty(path);
 			Contract.Requires(regionSizeInBytes >= geometry.PageSize && BitOperations.IsPow2(regionSizeInBytes));
+			Contract.Requires(initialSizeInBytes >= 0);
 			var handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, FileOptions.None);
-			return new FdbLiteMemoryMappedPager(handle, geometry, regionSizeInBytes);
+			var pager = new FdbLiteMemoryMappedPager(handle, geometry, regionSizeInBytes);
+			if (initialSizeInBytes > 0)
+			{
+				pager.Grow(checked((uint) (initialSizeInBytes >> geometry.BlockSizeLog2)));
+			}
+			return pager;
 		}
 
 		/// <summary>Reads the geometry out of an existing store file's header (needed before a pager can be constructed).</summary>
