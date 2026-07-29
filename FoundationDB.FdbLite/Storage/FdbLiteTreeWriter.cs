@@ -880,11 +880,25 @@ namespace FoundationDB.Storage.FdbLite
 				cells[i] = CellRef.OfLeafPage(page, i);
 			}
 
-			var rebuilt = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
-			if (rebuilt.Split)
-			{ // the run did not fit one page after all; the caller's split path handles it properly
+			// The rebuild is a strict shrink (same cells, strictly longer prefix), so it always fits one
+			// page - but prove it BEFORE calling WriteCells: by the time WriteCells returns, part 0 has
+			// already overwritten or relocated the leaf and any sibling is written, so there is no way to
+			// back out of an unexpected split. Returning 0 after one orphans the sibling's keys, and on the
+			// copy-on-write variant queues the old page for delayed free twice.
+			long stripSumWhole = 0, stripSumValue = 0;
+			foreach (var cell in cells)
+			{
+				stripSumWhole += LeafWholeKeyLength(cell, current);
+				stripSumValue += cell.ValueLength;
+			}
+			if (LeafRunBytes(cellCount, stripSumWhole, stripSumValue, shared) > this.Pager.Geometry.PageSize)
+			{ // cannot happen while the sizing is exact; if a future change breaks that, fail SAFELY here
+			  // (no side effects yet) and let the caller's ordinary rebuild-and-split path handle it
 				return 0;
 			}
+
+			var rebuilt = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
+			Contract.Requires(!rebuilt.Split, "a strip rebuild is a strict shrink and can never split");
 
 			this.PagesStripped++;
 			spliced = TrySpliceInto(rebuilt.FirstId, key, newCell);
