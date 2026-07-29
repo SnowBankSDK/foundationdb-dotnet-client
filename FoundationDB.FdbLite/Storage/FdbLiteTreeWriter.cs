@@ -734,25 +734,29 @@ namespace FoundationDB.Storage.FdbLite
 				return false;
 			}
 
-			// snapshot before allocating: WritePage allocates, and an allocation may grow the pager, which is
-			// exactly the source-page aliasing WriteCells already guards against. One page memcpy is still far
-			// cheaper than re-serialising every cell.
+			// Snapshot before allocating: WritePage allocates, and an allocation may grow the pager, which is
+			// exactly the source-page aliasing WriteCells already guards against. Mutating the SNAPSHOT before
+			// anything is allocated or freed also means a refused mutation (a flags byte the helpers reject -
+			// impossible today, one new flag bit away tomorrow) backs out with NO side effects and the rebuild
+			// path, correct for any flags, takes over. Mutating after WritePage had no such exit: returning
+			// true dropped the write silently in Release, and returning false would have freed the page twice.
 			int pageSize = this.Pager.Geometry.PageSize;
 			var snapshot = ArrayPool<byte>.Shared.Rent(pageSize);
 			try
 			{
 				page.CopyTo(snapshot);
-				newId = WritePage(leafId, snapshot.AsSpan(0, pageSize));
+				var copy = snapshot.AsSpan(0, pageSize);
+				if (!FdbLiteTreePage.TryOverwriteLeafValue(copy, at, storedValue, newCell.Flags)
+				 && !FdbLiteTreePage.TryRelocateLeafValue(copy, at, storedValue, newCell.Flags))
+				{
+					return false;
+				}
+				newId = WritePage(leafId, copy);
 			}
 			finally
 			{
 				ArrayPool<byte>.Shared.Return(snapshot);
 			}
-
-			var copy = this.Dirty[newId].AsSpan();
-			bool overwritten = FdbLiteTreePage.TryOverwriteLeafValue(copy, at, storedValue, newCell.Flags)
-			                || FdbLiteTreePage.TryRelocateLeafValue(copy, at, storedValue, newCell.Flags);
-			Contract.Debug.Assert(overwritten, "the mutation was proved possible on the source image before the copy");
 			this.CellsOverwritten++;
 			// deliberately NOT KeyCountDelta: a replace introduces no key
 			return true;
