@@ -288,6 +288,56 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 		}
 
+		/// <summary>The DELETE counterpart of the overwrite test: the in-place path must FIRE, not silently fall back to a rebuild per key.</summary>
+		[Test]
+		public void Writer_Removes_Cells_In_Place()
+		{
+			var geometry = FdbLiteGeometry.Default;
+			using var pager = new FdbLiteHeapPager(geometry);
+			var engine = FdbLiteEngine.Create(pager);
+
+			const int N = 5_000;
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				seed.Insert(SequentialKey(i), "0123456789ABCDEF"u8);
+			}
+			engine.Commit(seed, 1);
+
+			// ascending deletes: the FIRST delete in each leaf descends and rebuilds (the copy-on-write
+			// first touch), every further delete in that leaf must close the directory in place
+			var writer = engine.BeginWrite();
+			int removed = 0;
+			for (int i = 0; i < N; i += 2)
+			{
+				Assert.That(writer.Remove(SequentialKey(i)), Is.True, $"key {i} must be present");
+				removed++;
+			}
+
+			Log($"{removed:N0} deletes -> {writer.CellsRemovedInPlace:N0} in place, {writer.LeafDescents:N0} descents, {writer.PageSplits:N0} splits");
+
+			// the floor is one rebuild per leaf touched; what must not happen is one per KEY
+			Assert.That(writer.CellsRemovedInPlace, Is.GreaterThan(removed / 2), "most deletes must take the in-place path");
+			Assert.That(writer.LeafDescents, Is.LessThan(removed / 10), "an in-place delete must not pay a fresh descent per key");
+
+			engine.Commit(writer, 2);
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) (N - removed)), "the committed count must reflect the removals");
+
+			var pin = engine.BeginRead();
+			try
+			{
+				for (int i = 0; i < N; i++)
+				{
+					bool present = FdbLiteTreeReader.TryGetValue(pager, pin.RootPageId, SequentialKey(i), out _);
+					Assert.That(present, Is.EqualTo(i % 2 == 1), $"key {i} presence");
+				}
+			}
+			finally
+			{
+				engine.EndRead(in pin);
+			}
+		}
+
 		/// <summary>Diagnostic: how often does repeated growth fall back to a rebuild, and does it split?</summary>
 		/// <remarks>
 		/// Asks whether the third arm of a three-way space probe (fits / fits-after-repacking / needs-split)
