@@ -60,114 +60,6 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			return key;
 		}
 
-		#region Raw-layout snapshot (independent of the engine's own accessors)...
-
-		private sealed record LeafInfo(uint PageId, int CellCount, long SumWholeKeyBytes, long SumValueBytes, long LiveBytes, long FirstKey, long LastKey);
-
-		private sealed record TreeSnapshot(List<List<LeafInfo>> Groups, HashSet<uint> LeafIds);
-
-		private static long RunBytes(int count, long sumWhole, long sumValue, int lcp)
-		{
-			int effective = count > 1 ? lcp : 0;
-			return 32 + ((effective + 1) & ~1) + (sumWhole - ((long) count * effective)) + ((long) count * 9) + sumValue;
-		}
-
-		/// <summary>Longest common prefix of two keys, over their 8-byte big-endian forms (every key these workloads write).</summary>
-		private static int Lcp(long a, long b)
-		{
-			Span<byte> ka = stackalloc byte[8];
-			Span<byte> kb = stackalloc byte[8];
-			BinaryPrimitives.WriteInt64BigEndian(ka, a);
-			BinaryPrimitives.WriteInt64BigEndian(kb, b);
-			int i = 0;
-			while (i < 8 && ka[i] == kb[i]) { ++i; }
-			return i;
-		}
-
-		private static LeafInfo ParseLeaf(ReadOnlySpan<byte> page, uint pageId)
-		{
-			int count = FdbLitePageHeader.GetCellCount(page);
-			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
-			var prefix = page.Slice(32, prefixLen);
-			int slotsAt = 32 + ((prefixLen + 1) & ~1);
-			int keyBase = slotsAt + (count * 2);
-
-			long sumWhole = 0, sumValue = 0;
-			long first = 0, last = 0;
-			Span<byte> whole = stackalloc byte[8];
-			for (int i = 0; i < count; i++)
-			{
-				int entry = keyBase + BinaryPrimitives.ReadUInt16LittleEndian(page[(slotsAt + (i * 2))..]);
-				int keyLen = BinaryPrimitives.ReadUInt16LittleEndian(page[entry..]);
-				int f = entry + 2 + keyLen;
-				sumWhole += prefixLen + keyLen;
-				sumValue += BinaryPrimitives.ReadUInt16LittleEndian(page[(f + 2)..]);
-				if (i == 0 || i == count - 1)
-				{
-					Assert.That(prefixLen + keyLen, Is.EqualTo(8), "these workloads write 8-byte keys only; the numeric analysis depends on it");
-					prefix.CopyTo(whole);
-					page.Slice(entry + 2, keyLen).CopyTo(whole[prefixLen..]);
-					long k = BinaryPrimitives.ReadInt64BigEndian(whole);
-					if (i == 0) { first = k; }
-					last = k;
-				}
-			}
-			if (count == 1) { last = first; }
-			long live = RunBytes(count, sumWhole, sumValue, Lcp(first, last));
-			return new(pageId, count, sumWhole, sumValue, live, first, last);
-		}
-
-		/// <summary>Walks the committed tree: leaves in key order grouped by direct parent, plus the id set for dirty detection.</summary>
-		private static TreeSnapshot Snapshot(IFdbLitePager pager, uint root)
-		{
-			var groups = new List<List<LeafInfo>>();
-			var ids = new HashSet<uint>();
-			if (root != 0)
-			{
-				Walk(pager, root, groups, ids);
-			}
-			return new(groups, ids);
-
-			static void Walk(IFdbLitePager pager, uint pageId, List<List<LeafInfo>> groups, HashSet<uint> ids)
-			{
-				var page = pager.ReadBlocks(pageId, pager.Geometry.BlocksPerPage).ToArray();
-				if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
-				{ // a root that is itself a leaf: a degenerate single-leaf group
-					groups.Add([ ParseLeaf(page, pageId) ]);
-					ids.Add(pageId);
-					return;
-				}
-
-				int count = FdbLitePageHeader.GetCellCount(page);
-				var children = new uint[count + 1];
-				children[0] = BinaryPrimitives.ReadUInt32LittleEndian(page.AsSpan(32));
-				for (int i = 0; i < count; i++)
-				{ // internal slots start at 36 (leftmost child u32 after the header; internal pages strip no prefix)
-					int off = BinaryPrimitives.ReadUInt16LittleEndian(page.AsSpan(36 + (i * 2)));
-					children[i + 1] = BinaryPrimitives.ReadUInt32LittleEndian(page.AsSpan(off));
-				}
-
-				var firstChild = pager.ReadBlocks(children[0], pager.Geometry.BlocksPerPage);
-				if (FdbLitePageHeader.GetPageType(firstChild) == FdbLitePageType.Leaf)
-				{ // all siblings of a leaf are leaves: this internal page parents one group
-					var group = new List<LeafInfo>(children.Length);
-					foreach (var child in children)
-					{
-						group.Add(ParseLeaf(pager.ReadBlocks(child, pager.Geometry.BlocksPerPage), child));
-						ids.Add(child);
-					}
-					groups.Add(group);
-					return;
-				}
-				foreach (var child in children)
-				{
-					Walk(pager, child, groups, ids);
-				}
-			}
-		}
-
-		#endregion
-
 		#region Policy what-if...
 
 		/// <summary>One simulated merge of a run of adjacent under-full sibling leaves.</summary>
@@ -183,7 +75,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 		/// <summary>Simulates the merge pass policy (U, T) would run on this snapshot: adjacent same-parent leaves under U% full, re-emitted at T% fill.</summary>
 		/// <param name="scope">Restricts candidacy (the pre-commit pass sees only the generation's dirty leaves); null analyzes every leaf (the vacuum's view).</param>
-		private static PolicyOutcome Simulate(TreeSnapshot snap, HashSet<uint>? scope, double underflow, double target, int pageSize)
+		private static PolicyOutcome Simulate(VacuumTreeSnapshot snap, HashSet<uint>? scope, double underflow, double target, int pageSize)
 		{
 			int candidates = 0, runPages = 0, pagesFreed = 0;
 			long movedBytes = 0;
@@ -215,7 +107,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 							sumWhole += group[r].SumWholeKeyBytes;
 							sumValue += group[r].SumValueBytes;
 						}
-						long live = RunBytes(count, sumWhole, sumValue, Lcp(group[i].FirstKey, group[j].LastKey));
+						long live = FdbLiteLeafAnalysis.RunBytes(count, sumWhole, sumValue, FdbLiteLeafAnalysis.Lcp(group[i].FirstKey, group[j].LastKey));
 						int runLen = j - i + 1;
 						int pagesOut = (int) ((live + (long) (target * pageSize) - 1) / (long) (target * pageSize));
 						if (pagesOut < runLen)
@@ -231,7 +123,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 			return new(candidates, runPages, pagesFreed, movedBytes, merges);
 
-			bool IsCandidate(LeafInfo leaf)
+			bool IsCandidate(VacuumLeafInfo leaf)
 				=> leaf.LiveBytes < (long) (underflow * pageSize) && (scope == null || scope.Contains(leaf.PageId));
 		}
 
@@ -287,7 +179,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			public required int PageSize { get; init; }
 
 			/// <summary>(anchor generation, snapshot, dirty ids at that generation)</summary>
-			public List<(int Gen, TreeSnapshot Snap, HashSet<uint> Dirty)> Anchors { get; } = [ ];
+			public List<(int Gen, VacuumTreeSnapshot Snap, HashSet<uint> Dirty)> Anchors { get; } = [ ];
 
 			/// <summary>Per-generation op lists, index = generation ordinal in the workload loop</summary>
 			public required List<Op>[] OpsByGen { get; init; }
@@ -297,7 +189,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>Runs the headline pre-commit cell on this generation's dirty scope, with the fixed-K coverage ladder (best-run-first, K counts candidate pages gathered).</summary>
-		private static void BookPreCommitGeneration(Analysis a, TreeSnapshot snap, HashSet<uint> dirty, long commitBytes)
+		private static void BookPreCommitGeneration(Analysis a, VacuumTreeSnapshot snap, HashSet<uint> dirty, long commitBytes)
 		{
 			var outcome = Simulate(snap, dirty, HeadlineUnderflow, HeadlineTarget, a.PageSize);
 			var best = outcome.Merges.OrderByDescending(m => m.RunLength - m.PagesOut).ToList();
@@ -388,7 +280,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			var a = new Analysis { Workload = "task-trail", PageSize = pageSize, OpsByGen = new List<Op>[GENS] };
 
 			long expected = 0;
-			var previous = Snapshot(engine.Pager, engine.Durable.RootPageId);
+			var previous = FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId);
 			for (int g = 0; g < GENS; g++)
 			{
 				var ops = a.OpsByGen[g] = [ ];
@@ -414,7 +306,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				}
 				engine.Commit(w, (ulong) (g + 1));
 
-				var snap = Snapshot(engine.Pager, engine.Durable.RootPageId);
+				var snap = FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId);
 				var dirty = new HashSet<uint>(snap.LeafIds);
 				dirty.ExceptWith(previous.LeafIds);
 				BookPreCommitGeneration(a, snap, dirty, (long) w.PagesWritten * pageSize);
@@ -444,7 +336,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			int[] anchors = [ 8, 12, 16 ];
 			var a = new Analysis { Workload = "random-churn", PageSize = pageSize, OpsByGen = new List<Op>[GENS] };
 
-			var previous = Snapshot(engine.Pager, engine.Durable.RootPageId);
+			var previous = FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId);
 			for (int g = 0; g < GENS; g++)
 			{
 				var ops = a.OpsByGen[g] = [ ];
@@ -472,7 +364,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				}
 				engine.Commit(w, (ulong) (g + 1));
 
-				var snap = Snapshot(engine.Pager, engine.Durable.RootPageId);
+				var snap = FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId);
 				var dirty = new HashSet<uint>(snap.LeafIds);
 				dirty.ExceptWith(previous.LeafIds);
 				BookPreCommitGeneration(a, snap, dirty, (long) w.PagesWritten * pageSize);
@@ -500,7 +392,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			var a = new Analysis { Workload = "sequential", PageSize = pageSize, OpsByGen = new List<Op>[GENS] };
 
 			long next = 0;
-			var previous = Snapshot(engine.Pager, engine.Durable.RootPageId);
+			var previous = FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId);
 			for (int g = 0; g < GENS; g++)
 			{
 				a.OpsByGen[g] = [ ];
@@ -511,7 +403,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				}
 				engine.Commit(w, (ulong) (g + 1));
 
-				var snap = Snapshot(engine.Pager, engine.Durable.RootPageId);
+				var snap = FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId);
 				var dirty = new HashSet<uint>(snap.LeafIds);
 				dirty.ExceptWith(previous.LeafIds);
 				BookPreCommitGeneration(a, snap, dirty, (long) w.PagesWritten * pageSize);
