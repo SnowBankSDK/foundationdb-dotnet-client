@@ -168,6 +168,18 @@ namespace FoundationDB.Storage.FdbLite
 		/// <remarks>Exposed so a test can assert the rebuild does not degenerate into one per insert: it should track the number of pages that filled, never the number of keys.</remarks>
 		public int PagesStripped { get; private set; }
 
+		/// <summary>Leaf splits performed by the insert path (the append fast path is counted by <see cref="PagesAppended"/>, not here; internal splits by <see cref="PageSplits"/> only)</summary>
+		/// <remarks>The denominator of the spill-on-split opportunity fraction: these counters exist to MEASURE whether a spill-into-sibling arm could pay, before any such arm is built. They count; they never change what the writer does.</remarks>
+		public int LeafSplits { get; private set; }
+
+		/// <summary>Of <see cref="LeafSplits"/>, those where an adjacent same-parent sibling was already in this generation's dirty set</summary>
+		/// <remarks>A spill into a page that will be written at flush regardless adds no page write and no cold copy-on-write; a spill anywhere else pays for a page the mutation never touched. The dirty-sibling gate is therefore the precondition of a foreground spill, and this is how often it is even open.</remarks>
+		public int LeafSplitsWithDirtySibling { get; private set; }
+
+		/// <summary>Of <see cref="LeafSplitsWithDirtySibling"/>, those whose overflow that dirty sibling could actually have taken, so the split would not have happened at all</summary>
+		/// <remarks>An UPPER BOUND on purpose: the minimal boundary run is moved, both pages are sized compacted, and the recipient may fill to 100% (a real spill would keep a margin). If even this bound measures negligible on a workload, no spill arm can pay there.</remarks>
+		public int LeafSplitsAbsorbableByDirtySibling { get; private set; }
+
 		/// <summary>Start a fresh page when a key appends past the last key of the RIGHTMOST leaf, instead of splitting that leaf in half.</summary>
 		/// <remarks>
 		/// <para>A balanced split leaves both halves near half full; on an append-shaped load nothing ever inserts into the left half again, so the whole file settles at ~50% occupancy. Starting a fresh page instead packs the finished pages to capacity, roughly halving pages, file size and pages written for that load.</para>
@@ -333,7 +345,17 @@ namespace FoundationDB.Storage.FdbLite
 			Span<int> pathChildren = stackalloc int[MaxDepth];
 			uint pageId = DescendToLeaf(key, pathPages, pathChildren, out int depth);
 
+			int splitsBefore = this.PageSplits;
 			var outcome = RebuildLeafWithInsert(pageId, key, newCell, rightmost: this.CursorUpper is null);
+			if (this.PageSplits != splitsBefore)
+			{ // the ONE site where a leaf splits (delete rebuilds only shrink); the ascent has not run yet, so the
+			  // parent still lists the pre-split siblings, which is exactly what the opportunity probe needs
+				this.LeafSplits++;
+				if (depth > 0)
+				{
+					ProbeLeafSplitSpillOpportunity(pathPages[depth - 1], pathChildren[depth - 1], in outcome);
+				}
+			}
 			AscendPatch(pathPages, pathChildren, depth - 1, pageId, outcome);
 
 			// the descent set the cursor on the leaf it landed on: a rebuild may have relocated that leaf (same
@@ -1392,6 +1414,126 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			FdbLitePageHeader.SetCellCount(image, (ushort) count);
 			FdbLitePageHeader.SetCellAreaOffset(image, count > 0 ? (ushort) tail : (ushort) 0);
+		}
+
+		#endregion
+
+		#region Spill-on-split opportunity probe...
+
+		/// <summary>Measures, at a leaf split that just happened, whether an adjacent same-parent sibling already in the dirty set could have absorbed the overflow instead (see <see cref="LeafSplitsAbsorbableByDirtySibling"/>).</summary>
+		/// <remarks>Counting only: the split stands. Runs before the ascent patches the parent, which is what keeps the pre-split siblings addressable through it. Cost is bounded by the split that just paid for whole page rebuilds: this parses the freshly buffered part pages and at most two sibling images, and only at split moments.</remarks>
+		private void ProbeLeafSplitSpillOpportunity(uint parentId, int childIndex, in RebuildResult outcome)
+		{
+			var parent = ReadPage(parentId);
+			int parentCells = FdbLitePageHeader.GetCellCount(parent);
+			uint leftId = childIndex > 0 ? FdbLiteTreePage.GetChild(parent, childIndex - 1) : 0;
+			uint rightId = childIndex < parentCells ? FdbLiteTreePage.GetChild(parent, childIndex + 1) : 0;
+
+			bool leftDirty = leftId != 0 && this.Dirty.ContainsKey(leftId);
+			bool rightDirty = rightId != 0 && this.Dirty.ContainsKey(rightId);
+			if (!leftDirty && !rightDirty)
+			{
+				return;
+			}
+			this.LeafSplitsWithDirtySibling++;
+
+			// the split run, reassembled from the parts WriteCells just buffered (all of them are in the dirty set)
+			var siblings = outcome.Siblings!;
+			var parts = new byte[1 + siblings.Count][];
+			parts[0] = this.Dirty[outcome.FirstId];
+			for (int i = 0; i < siblings.Count; i++)
+			{
+				parts[i + 1] = this.Dirty[siblings[i].PageId];
+			}
+
+			if ((leftDirty && CouldSiblingAbsorbSpill(this.Dirty[leftId], parts, fromLowEdge: true))
+			 || (rightDirty && CouldSiblingAbsorbSpill(this.Dirty[rightId], parts, fromLowEdge: false)))
+			{
+				this.LeafSplitsAbsorbableByDirtySibling++;
+			}
+		}
+
+		/// <summary>True when moving the minimal run of boundary cells into <paramref name="sibling"/> would have let the rest of the split run fit ONE page, with every run sized against the prefix it would actually strip.</summary>
+		/// <param name="sibling">The dirty image of the adjacent recipient leaf</param>
+		/// <param name="parts">The split's freshly written part pages, in key order</param>
+		/// <param name="fromLowEdge">True to move the run's lowest cells into the left sibling, false to move its highest into the right one</param>
+		private bool CouldSiblingAbsorbSpill(byte[] sibling, byte[][] parts, bool fromLowEdge)
+		{
+			int pageSize = this.Pager.Geometry.PageSize;
+
+			int totalCount = 0;
+			long totalWhole = 0, totalValue = 0;
+			foreach (var part in parts)
+			{
+				AccumulateLeafCells(part, ref totalCount, ref totalWhole, ref totalValue);
+			}
+
+			var lastPart = parts[^1];
+			var runFirst = WholeKeyOf(parts[0], 0);
+			var runLast = WholeKeyOf(lastPart, FdbLitePageHeader.GetCellCount(lastPart) - 1);
+
+			// a spill moves boundary cells, so walk the move up from the edge until the remainder fits; the cap
+			// bounds the walk far beyond any minimal-plus-margin policy an actual spill arm would use
+			int movedCount = 0;
+			long movedWhole = 0, movedValue = 0;
+			int maxMove = Math.Min(totalCount - 1, 256);
+			for (int k = 1; k <= maxMove; k++)
+			{
+				var (movedPage, movedLocal) = LocateCell(parts, fromLowEdge ? k - 1 : totalCount - k);
+				movedCount++;
+				movedWhole += FdbLitePageHeader.GetPrefixLength(movedPage) + FdbLiteTreePage.LeafKeyExtent(movedPage, movedLocal).Length;
+				movedValue += FdbLiteTreePage.LeafValueExtent(movedPage, movedLocal).Length;
+
+				// the remainder's prefix is what its new boundary key shares with its far end
+				var (bPage, bLocal) = LocateCell(parts, fromLowEdge ? k : totalCount - k - 1);
+				var boundaryKey = WholeKeyOf(bPage, bLocal);
+				int remainderLcp = FdbLiteTreePage.CommonPrefixLength(boundaryKey, fromLowEdge ? runLast : runFirst);
+				if (LeafRunBytes(totalCount - k, totalWhole - movedWhole, totalValue - movedValue, remainderLcp) > pageSize)
+				{
+					continue;
+				}
+
+				// minimal move found (a larger one only loads the recipient more): does the recipient take it,
+				// sized against ITS post-move prefix, which the arriving foreign keys may shorten?
+				int sibCount = 0;
+				long sibWhole = 0, sibValue = 0;
+				AccumulateLeafCells(sibling, ref sibCount, ref sibWhole, ref sibValue);
+				var movedEdge = WholeKeyOf(movedPage, movedLocal);
+				var sibFar = fromLowEdge ? WholeKeyOf(sibling, 0) : WholeKeyOf(sibling, FdbLitePageHeader.GetCellCount(sibling) - 1);
+				int recipientLcp = FdbLiteTreePage.CommonPrefixLength(movedEdge, sibFar);
+				return LeafRunBytes(sibCount + movedCount, sibWhole + movedWhole, sibValue + movedValue, recipientLcp) <= pageSize;
+			}
+			return false;
+		}
+
+		/// <summary>Adds a leaf page's cell count, whole-key bytes (prefix put back) and stored-value bytes to the running totals.</summary>
+		private static void AccumulateLeafCells(ReadOnlySpan<byte> page, ref int count, ref long sumWhole, ref long sumValue)
+		{
+			int cells = FdbLitePageHeader.GetCellCount(page);
+			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
+			for (int i = 0; i < cells; i++)
+			{
+				sumWhole += prefixLen + FdbLiteTreePage.LeafKeyExtent(page, i).Length;
+				sumValue += FdbLiteTreePage.LeafValueExtent(page, i).Length;
+			}
+			count += cells;
+		}
+
+		/// <summary>Resolves a run-wide cell index to its part page and the index within it.</summary>
+		private static (byte[] Page, int Local) LocateCell(byte[][] parts, int globalIndex)
+		{
+			Contract.Debug.Requires(globalIndex >= 0);
+			int i = 0;
+			while (true)
+			{ // the caller keeps the index inside the run, so the walk always lands; overrunning the array is an invariant violation and faults
+				int count = FdbLitePageHeader.GetCellCount(parts[i]);
+				if (globalIndex < count)
+				{
+					return (parts[i], globalIndex);
+				}
+				globalIndex -= count;
+				i++;
+			}
 		}
 
 		#endregion
