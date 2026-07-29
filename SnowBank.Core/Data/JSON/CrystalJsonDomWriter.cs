@@ -838,7 +838,19 @@ namespace SnowBank.Data.Json
 		{
 			Contract.Debug.Requires(value != null && declaredType != null && runtimeType != null);
 
-			if (!m_resolver.TryResolveTypeDefinition(runtimeType, out var typeDef) || (typeDef.CustomBinder != null && !typeDef.IsAnonymousType))
+			if (!m_resolver.TryResolveTypeDefinition(runtimeType, out var typeDef))
+			{
+				result = null!;
+				return false;
+			}
+
+			if (typeDef.CustomConverter != null)
+			{ // a [JsonConverter(typeof(...))] on the type takes over the DOM route as well
+				result = typeDef.CustomConverter.PackBoxed(value, m_settings, m_resolver);
+				return true;
+			}
+
+			if (typeDef.CustomBinder != null && !typeDef.IsAnonymousType)
 			{
 				result = null!;
 				return false;
@@ -872,7 +884,9 @@ namespace SnowBank.Data.Json
 						if (v == null) continue;
 					}
 					// AlwaysEmit: never skipped, including an explicit null
-					obj[FormatName(member.Name)] = v == null ? JsonNull.Null : ParseObjectInternal(ref context, v, member.Type, null);
+					obj[FormatName(member.Name)] = v == null ? JsonNull.Null
+						: member.CustomConverter != null ? member.CustomConverter.PackBoxed(v, m_settings, m_resolver)
+						: ParseObjectInternal(ref context, v, member.Type, null);
 				}
 				else if (v == null)
 				{
@@ -883,7 +897,9 @@ namespace SnowBank.Data.Json
 				}
 				else
 				{
-					obj[FormatName(member.Name)] = ParseObjectInternal(ref context, v, member.Type, null);
+					obj[FormatName(member.Name)] = member.CustomConverter != null
+						? member.CustomConverter.PackBoxed(v, m_settings, m_resolver)
+						: ParseObjectInternal(ref context, v, member.Type, null);
 				}
 			}
 			Leave(ref context, value);

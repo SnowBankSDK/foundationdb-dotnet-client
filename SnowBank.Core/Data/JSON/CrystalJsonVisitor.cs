@@ -144,8 +144,15 @@ namespace SnowBank.Data.Json
 				return VisitObjectAtRuntime;
 			}
 
+			// a [JsonConverter(typeof(...))] declared on the type itself wins over duck-typed methods and interfaces (same precedence as STJ)
+			var visitor = CrystalJsonTypeResolver.TryGetAttributeConverterVisitor(type);
+			if (visitor != null)
+			{
+				return visitor;
+			}
+
 			// If the type has a static "JsonSerialize(...)", we defer to it (aka "duck typing")
-			var visitor = TryGetSerializeMethodVisitor(type);
+			visitor = TryGetSerializeMethodVisitor(type);
 			if (visitor != null)
 			{
 				return visitor;

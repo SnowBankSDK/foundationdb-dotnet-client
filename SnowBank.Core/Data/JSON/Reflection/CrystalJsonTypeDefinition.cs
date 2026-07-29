@@ -70,6 +70,10 @@ namespace SnowBank.Data.Json
 		/// <summary>Custom handler for deserializing <see cref="JsonValue"/> into instances of this type.</summary>
 		public CrystalJsonTypeBinder? CustomBinder { get; init; }
 
+		/// <summary>Custom converter attached to the type itself via <c>[JsonConverter(typeof(...))]</c>, if any</summary>
+		/// <remarks>When set, <see cref="CustomBinder"/> already routes through it; the DOM route consults it directly.</remarks>
+		internal IJsonMemberConverterBridge? CustomConverter { get; init; }
+
 		/// <summary>Definitions of the fields and properties of this type</summary>
 		public CrystalJsonMemberDefinition[] Members { get; init; }
 

@@ -1016,6 +1016,66 @@ namespace SnowBank.Data.Json
 		private static bool HasJsonIncludeAttribute(MemberInfo member)
 			=> member.TryGetCustomAttribute("JsonIncludeAttribute", true, out var attr) && attr != null;
 
+		/// <summary>Returns a visitor that routes through a <c>[JsonConverter(typeof(...))]</c> attribute declared on the type itself, if any</summary>
+		internal static CrystalJsonTypeVisitor? TryGetAttributeConverterVisitor(Type type)
+		{
+			var converter = FindCustomJsonConverter(type, type);
+			if (converter == null) return null;
+			return (v, _, _, writer) => converter.PackBoxed(v, writer.Settings, writer.Resolver).JsonSerialize(writer);
+		}
+
+		/// <summary>Looks for a <c>[JsonConverter(typeof(...))]</c> attribute (System.Text.Json or Newtonsoft spelling, matched by name+namespace) naming a converter that CrystalJson can execute</summary>
+		/// <param name="target">Member or type the attribute decorates</param>
+		/// <param name="targetType">Type of the converted values (the member's type, or the decorated type itself)</param>
+		/// <returns>A bridge over the converter instance, or <c>null</c> if there is no such attribute, or if it names a type we cannot run (e.g. a real STJ or Newtonsoft converter), which keeps the pre-existing behavior for those sites</returns>
+		private static IJsonMemberConverterBridge? FindCustomJsonConverter(MemberInfo target, Type targetType)
+		{
+			foreach (var attr in target.GetCustomAttributes(inherit: true))
+			{
+				var attrType = attr.GetType();
+				if (attrType.Name != "JsonConverterAttribute") continue;
+				if (attrType.Namespace is not ("System.Text.Json.Serialization" or "Newtonsoft.Json")) continue;
+
+				if (attrType.GetProperty("ConverterType")?.GetValue(attr) is not Type converterType) continue;
+
+				var bridge = TryCreateConverterBridge(converterType, targetType);
+				if (bridge != null)
+				{
+					return bridge;
+				}
+				// a converter type we cannot execute (a real STJ/Newtonsoft converter): ignore the attribute,
+				// which is exactly what happened before member converters existed (the site keeps its default wire)
+			}
+			return null;
+		}
+
+		/// <summary>Instantiates a converter type and wraps it in the non-generic bridge, if it implements <see cref="IJsonPacker{T}"/> + <see cref="IJsonDeserializer{T}"/> for the target type</summary>
+		/// <remarks>Accepts both a dedicated <see cref="IJsonMemberConverter{T}"/> implementation and a source-generated <see cref="IJsonConverter{T}"/> (which implements the same pair).</remarks>
+		private static IJsonMemberConverterBridge? TryCreateConverterBridge(Type converterType, Type targetType)
+		{
+			// a converter written for T also serves a T? member (the bridge lifts it)
+			var valueType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+			var packerContract = typeof(IJsonPacker<>).MakeGenericType(valueType);
+			var deserializerContract = typeof(IJsonDeserializer<>).MakeGenericType(valueType);
+			if (!packerContract.IsAssignableFrom(converterType) || !deserializerContract.IsAssignableFrom(converterType))
+			{
+				return null;
+			}
+
+			object instance;
+			try
+			{
+				instance = Activator.CreateInstance(converterType) ?? throw new InvalidOperationException("Activator returned null");
+			}
+			catch (Exception e)
+			{
+				throw new InvalidOperationException($"Cannot instantiate custom JSON converter '{converterType.GetFriendlyName()}' for type '{targetType.GetFriendlyName()}': it must expose a parameterless constructor.", e);
+			}
+
+			return (IJsonMemberConverterBridge) Activator.CreateInstance(typeof(JsonMemberConverterBridge<>).MakeGenericType(valueType), instance, instance)!;
+		}
+
 		private static bool FilterMemberByType(MemberInfo _, Type type)
 		{
 			if (typeof(Delegate).IsAssignableFrom(type))
@@ -1138,8 +1198,20 @@ namespace SnowBank.Data.Json
 					continue; // skip
 				}
 
-				var visitor = CrystalJsonVisitor.GetVisitorForType(fieldType, atRuntime: false);
-				if (visitor == null) throw new ArgumentException($"Doesn't know how to serialize field {field.Name} of type {fieldType.GetFriendlyName()}", nameof(type));
+				CrystalJsonTypeVisitor? visitor;
+				CrystalJsonTypeBinder binder;
+				var customConverter = FindCustomJsonConverter(field, fieldType);
+				if (customConverter != null)
+				{ // a [JsonConverter(typeof(...))] on the member takes over both directions
+					visitor = (v, _, _, writer) => customConverter.PackBoxed(v, writer.Settings, writer.Resolver).JsonSerialize(writer);
+					binder = (v, _, r) => v == null ? null : customConverter.UnpackBoxed(v, r);
+				}
+				else
+				{
+					visitor = CrystalJsonVisitor.GetVisitorForType(fieldType, atRuntime: false);
+					if (visitor == null) throw new ArgumentException($"Doesn't know how to serialize field {field.Name} of type {fieldType.GetFriendlyName()}", nameof(type));
+					binder = GenericJsonValueBinder;
+				}
 
 				if (IsInitOnlyMember(field)) flags |= CrystalJsonMemberFlags.InitOnly;
 				if (IsRequiredMember(field)) flags |= CrystalJsonMemberFlags.Required;
@@ -1159,8 +1231,9 @@ namespace SnowBank.Data.Json
 					DefaultValue = defaultValue,
 					Getter = field.CompileGetter(),
 					Setter = field.CompileSetter(),
+					CustomConverter = customConverter,
 					Visitor = visitor,
-					Binder = GenericJsonValueBinder,
+					Binder = binder,
 				};
 
 				members.Add(definition);
@@ -1210,8 +1283,20 @@ namespace SnowBank.Data.Json
 				var method = property.GetGetMethod(includeNonPublic);
 				if (method == null || method.GetParameters().Length > 0) continue;
 
-				var visitor = CrystalJsonVisitor.GetVisitorForType(propertyType);
-				Contract.Debug.Assert(visitor != null);
+				CrystalJsonTypeVisitor visitor;
+				CrystalJsonTypeBinder binder;
+				var customConverter = FindCustomJsonConverter(property, propertyType);
+				if (customConverter != null)
+				{ // a [JsonConverter(typeof(...))] on the member takes over both directions
+					visitor = (v, _, _, writer) => customConverter.PackBoxed(v, writer.Settings, writer.Resolver).JsonSerialize(writer);
+					binder = (v, _, r) => v == null ? null : customConverter.UnpackBoxed(v, r);
+				}
+				else
+				{
+					visitor = CrystalJsonVisitor.GetVisitorForType(propertyType);
+					Contract.Debug.Assert(visitor != null);
+					binder = GenericJsonValueBinder;
+				}
 
 				var getter = property.CompileGetter(includeNonPublic);
 
@@ -1245,8 +1330,9 @@ namespace SnowBank.Data.Json
 					DefaultValue = defaultValue,
 					Getter = getter,
 					Setter = setter,
+					CustomConverter = customConverter,
 					Visitor = visitor,
-					Binder = GenericJsonValueBinder,
+					Binder = binder,
 				};
 				members.Add(definition);
 			}
@@ -1582,6 +1668,19 @@ namespace SnowBank.Data.Json
 
 			// enumerate the members
 			var members = GetMembersFromReflection(type);
+
+			// a [JsonConverter(typeof(...))] on the type itself takes over both directions for every occurrence of the type
+			var customConverter = FindCustomJsonConverter(type, type);
+			if (customConverter != null)
+			{
+				return new CrystalJsonTypeDefinition(type, CrystalJsonTypeFlags.None, TypeConverterBinder, null, members, null, baseType, typeDiscriminatorProperty, typeDiscriminatorValue, derivedTypeMap)
+				{
+					CustomConverter = customConverter,
+				};
+
+				object? TypeConverterBinder(JsonValue? value, Type bindingType, ICrystalJsonTypeResolver resolver)
+					=> value == null ? null : customConverter.UnpackBoxed(value, resolver);
+			}
 
 			// look for any custom binders
 			var binder = FindCustomBinder(type, out var generator, members);

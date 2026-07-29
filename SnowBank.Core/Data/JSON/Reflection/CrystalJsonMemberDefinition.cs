@@ -83,6 +83,10 @@ namespace SnowBank.Data.Json
 		/// <summary>Func that can change the value of this member in an instance of the containing type</summary>
 		public Action<object, object?>? Setter { get; init; }
 
+		/// <summary>Custom converter attached to this member via <c>[JsonConverter(typeof(...))]</c>, if any</summary>
+		/// <remarks>When set, <see cref="Visitor"/> and <see cref="Binder"/> already route through it; the DOM route consults it directly.</remarks>
+		internal IJsonMemberConverterBridge? CustomConverter { get; init; }
+
 		/// <summary>Delegate that can serialize values of this member into JSON</summary>
 		public required CrystalJsonTypeVisitor Visitor { get; init; }
 
