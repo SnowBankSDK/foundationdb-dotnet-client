@@ -922,17 +922,9 @@ namespace SnowBank.Data.Json
 
 		private static bool FilterMemberByAttributes(MemberInfo member, bool hasDataContract, ref string name, ref object? defaultValue, ref CrystalJsonMemberFlags flags)
 		{
-			if (hasDataContract)
-			{ // must have an attribute "[DataMember]" to be eligible
-				var attr = member.GetCustomAttribute<System.Runtime.Serialization.DataMemberAttribute>(inherit: true);
-				if (attr == null)
-				{ // skip!
-					return false;
-				}
-				// check if a custom name is specified
-				name = attr.Name ?? name;
-				return true;
-			}
+			// note: [JsonIgnore] is checked BEFORE the [DataMember] opt-in: an "ignore this member" signal always wins over
+			// an "include this member" signal ([DataMember], [JsonProperty], [JsonInclude]), because mixing the two on one
+			// member is an application bug, and both serialization paths must resolve it the same way
 
 			{ // "[JsonIgnore]" (System.Text.Json, JSON.NET, or any attribute with that name)
 				// we cannot "say the name" of these attributes without referencing their packages,
@@ -965,6 +957,18 @@ namespace SnowBank.Data.Json
 						}
 					}
 				}
+			}
+
+			if (hasDataContract)
+			{ // must have an attribute "[DataMember]" to be eligible
+				var attr = member.GetCustomAttribute<System.Runtime.Serialization.DataMemberAttribute>(inherit: true);
+				if (attr == null)
+				{ // skip!
+					return false;
+				}
+				// check if a custom name is specified
+				name = attr.Name ?? name;
+				return true;
 			}
 
 			{ // must not have an attribute called "Ignore" in its name

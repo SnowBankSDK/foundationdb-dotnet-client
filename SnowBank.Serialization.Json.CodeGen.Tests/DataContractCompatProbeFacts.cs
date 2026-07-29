@@ -44,6 +44,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[System.Text.Json.Serialization.JsonIgnore]
 		public string? Hidden { get; set; }
 
+		// contradictory pair: include signal + ignore signal on one member (this is an application bug;
+		// [JsonIgnore] wins on both paths, and the generator emits the CJSON0008 warning for it)
+		[DataMember]
+		[System.Text.Json.Serialization.JsonIgnore]
+		public string? Both { get; set; }
+
 	}
 
 	public sealed record ProbeDictDto
@@ -71,7 +77,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Generator_Ignores_DataContract_But_Honors_JsonIgnore()
 		{
-			var dto = new ProbeLegacyDto { Id = "X1", NotAMember = "kept", Hidden = "invisible" };
+			var dto = new ProbeLegacyDto { Id = "X1", NotAMember = "kept", Hidden = "invisible", Both = "conflicted" };
 
 			var obj = JsonObject.Parse(ProbeConverters.ProbeLegacyDto.ToJsonText(dto)).AsObject();
 
@@ -86,6 +92,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 				// [JsonIgnore] IS honored by the generator (same as the reflection path on non-DataContract types)
 				Assert.That(obj.ContainsKey("Hidden"), Is.False, "the generator honors [JsonIgnore]");
+
+				// [DataMember] + [JsonIgnore] on one member: [JsonIgnore] wins, same answer as the reflection path
+				// (and the generator emits CJSON0008 at build time, which the reflection path cannot)
+				Assert.That(obj.ContainsKey("Both"), Is.False, "[JsonIgnore] wins over [DataMember] on the same member");
 			}
 		}
 

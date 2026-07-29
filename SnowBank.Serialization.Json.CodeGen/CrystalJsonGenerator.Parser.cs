@@ -60,6 +60,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string JsonIncludeAttributeFullName = "System.Text.Json.Serialization.JsonIncludeAttribute";
 
+			public const string DataMemberAttributeFullName = "System.Runtime.Serialization.DataMemberAttribute";
+
 			public const string JsonPolymorphicAttributeFullName = "System.Text.Json.Serialization.JsonPolymorphicAttribute";
 
 			public const string JsonDerivedTypeAttributeFullName = "System.Text.Json.Serialization.JsonDerivedTypeAttribute";
@@ -774,6 +776,47 @@ namespace SnowBank.Serialization.Json.CodeGen
 					// look for nullability annotations
 					//TODO: should we check if nullability annotations are enabled for ths type/assembly?
 					isNotNull = type.Nullability == NullableAnnotation.NotAnnotated;
+				}
+
+				// an "ignore this member" signal combined with an "include this member" signal is an application bug:
+				// [JsonIgnore] still wins (both paths resolve it the same way), but silently letting it win hides a real defect,
+				// so say so loudly (the reflection path has no build step and cannot warn; this diagnostic is its only surface)
+				{
+					string? includeSignal = null;
+					bool hasIgnore = false;
+					foreach (var attribute in memberAttributes)
+					{
+						switch (attribute.AttributeClass?.ToDisplayString())
+						{
+							case JsonIgnoreAttributeFullName:
+							{ // only the exclusion form contradicts an include signal; a Condition of Never/WhenWritingNull/WhenWritingDefault is a serialization rule, not an exclusion
+								int condition = 1;
+								foreach (var kv in attribute.NamedArguments)
+								{
+									if (kv.Key == "Condition" && kv.Value.Value is int n) condition = n;
+								}
+								hasIgnore |= condition == 1;
+								break;
+							}
+							case DataMemberAttributeFullName: includeSignal ??= "DataMember"; break;
+							case JsonIncludeAttributeFullName: includeSignal ??= "JsonInclude"; break;
+							case KnownTypeSymbols.JsonPropertyAttributeFullName: includeSignal ??= "JsonProperty"; break;
+						}
+					}
+					if (hasIgnore && includeSignal != null)
+					{
+						ReportDiagnostic(
+							new(
+								"CJSON0008",
+								"A member mixes [JsonIgnore] with an attribute that includes it",
+								"The member '{0}' carries both [JsonIgnore] and [{1}]: the two contradict each other. [JsonIgnore] wins (the member is excluded), but this is almost certainly a bug: keep only one of the two attributes.",
+								"SnowBank.Serialization.Json.CodeGen",
+								DiagnosticSeverity.Warning,
+								isEnabledByDefault: true
+							),
+							member.Locations.Length > 0 ? member.Locations[0] : null,
+							member.ToDisplayString(), includeSignal);
+					}
 				}
 
 				// parameters that can be modified via attributes or keywords on the member

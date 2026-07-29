@@ -172,8 +172,9 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(obj.ContainsKey("Quantity"), Is.True, "EmitDefaultValue=false is ignored: value-type default is emitted");
 				Assert.That(obj.Get<int>("Quantity"), Is.Zero);
 
-				// on a [DataContract] type, [JsonIgnore] is not consulted (the [DataMember] opt-in short-circuits)
-				Assert.That(obj.Get<string>("Both"), Is.EqualTo("b"), "[JsonIgnore] is ignored on members of a [DataContract] type");
+				// [JsonIgnore] wins over any include signal, [DataMember] included: mixing the two is an application bug,
+				// and both serialization paths resolve it the same way (the generator also emits a diagnostic)
+				Assert.That(obj.ContainsKey("Both"), Is.False, "[JsonIgnore] wins over [DataMember] on the same member");
 
 				// Order=2 does not reorder: first emitted member is still the first declared one
 				Assert.That(obj.Keys.First(), Is.EqualTo("order_id"), "DataMember.Order is ignored (declaration order wins)");
