@@ -2123,6 +2123,36 @@ namespace SnowBank.Data.Json
 			return value.Required<T>(resolver);
 		}
 
+		/// <summary>Deserializes an optional JSON value into a <see cref="Nullable{T}"/>, using a custom deserializer</summary>
+		/// <returns>Deserialized instance, or <see langword="null"/> if <paramref name="value"/> is null or missing</returns>
+		public static T? UnpackNullable<T>(this IJsonDeserializer<T> converter, JsonValue? value, ICrystalJsonTypeResolver? resolver)
+			where T : struct
+		{
+			if (value is null or JsonNull)
+			{
+				return null;
+			}
+			return converter.Unpack(value, resolver);
+		}
+
+		/// <summary>Packs an enum value into its string form, honoring any custom wire tokens declared on the enum's fields</summary>
+		/// <remarks>Used by generated converters for members carrying <c>[JsonProperty(EnumFormat = JsonEnumFormat.String)]</c>.</remarks>
+		[Pure]
+		public static JsonValue PackEnumString<TEnum>(TEnum value)
+			where TEnum : struct, Enum
+		{
+			return CrystalJsonEnumCache.GetLiteral(typeof(TEnum), value);
+		}
+
+		/// <summary>Packs an enum value into its numeric form</summary>
+		/// <remarks>Used by generated converters for members carrying <c>[JsonProperty(EnumFormat = JsonEnumFormat.Number)]</c>.</remarks>
+		[Pure]
+		public static JsonValue PackEnumNumber<TEnum>(TEnum value)
+			where TEnum : struct, Enum
+		{
+			return CrystalJsonEnumCache.GetNumber(typeof(TEnum), value);
+		}
+
 		#endregion
 
 		extension<TJsonPackable>(TJsonPackable? self)

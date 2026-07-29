@@ -71,7 +71,9 @@ namespace SnowBank.Data.Json
 	}
 
 	/// <summary>Converter installed for members carrying <see cref="JsonBooleanLiteralsAttribute"/>; feeds the same per-member converter slot as <c>[JsonConverter(typeof(...))]</c></summary>
-	internal sealed class JsonBooleanLiteralsConverter : IJsonMemberConverter<bool>
+	/// <remarks>Public because generated converters instantiate it directly; application code normally uses the attribute instead.</remarks>
+	[PublicAPI]
+	public sealed class JsonBooleanLiteralsConverter : IJsonMemberConverter<bool>
 	{
 
 		private JsonValue FalseLiteral { get; }
@@ -80,11 +82,29 @@ namespace SnowBank.Data.Json
 
 		private bool StrictLiterals { get; }
 
-		public JsonBooleanLiteralsConverter(JsonBooleanLiteralsAttribute attribute)
+		internal JsonBooleanLiteralsConverter(JsonBooleanLiteralsAttribute attribute)
 		{
 			this.FalseLiteral = attribute.FalseLiteral;
 			this.TrueLiteral = attribute.TrueLiteral;
 			this.StrictLiterals = attribute.StrictLiterals;
+		}
+
+		/// <summary>Booleans are serialized as JSON strings (ex: <c>"0"</c> / <c>"1"</c>)</summary>
+		public JsonBooleanLiteralsConverter(string falseLiteral, string trueLiteral, bool strictLiterals = false)
+		{
+			Contract.NotNullOrEmpty(falseLiteral);
+			Contract.NotNullOrEmpty(trueLiteral);
+			this.FalseLiteral = JsonString.Return(falseLiteral);
+			this.TrueLiteral = JsonString.Return(trueLiteral);
+			this.StrictLiterals = strictLiterals;
+		}
+
+		/// <summary>Booleans are serialized as JSON numbers (ex: <c>0</c> / <c>1</c>)</summary>
+		public JsonBooleanLiteralsConverter(int falseLiteral, int trueLiteral, bool strictLiterals = false)
+		{
+			this.FalseLiteral = JsonNumber.Create(falseLiteral);
+			this.TrueLiteral = JsonNumber.Create(trueLiteral);
+			this.StrictLiterals = strictLiterals;
 		}
 
 		public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)

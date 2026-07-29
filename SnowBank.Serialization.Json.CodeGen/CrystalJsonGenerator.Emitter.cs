@@ -609,7 +609,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				sb.AppendLine($"public sealed class JsonConverter : {KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>"); //TODO: implements!
 				sb.EnterBlock("JsonConverter");
-				
+
+				// custom converters attached to members ([JsonConverter(typeof(...))] or [JsonBooleanLiterals])
+				foreach (var member in typeDef.Members)
+				{
+					if (member.CustomConverterType != null)
+					{
+						sb.AppendLine($"private static readonly {member.CustomConverterType} {GetMemberConverterRef(member)} = new {member.CustomConverterType}({member.CustomConverterArgs});");
+						sb.NewLine();
+					}
+				}
+
 				#region Type Definition...
 
 				sb.BeginRegion("Conversion Helpers...");
@@ -2000,6 +2010,24 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock();
 				foreach (var member in typeDef.Members)
 				{
+					if (member.CustomConverterType != null)
+					{ // a custom converter takes over the member's wire form
+						var converterRef = GetMemberConverterRef(member);
+						if (member.IsRequired)
+						{
+							sb.AppendLine($"{member.MemberName} = /* member-converter-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)}),");
+						}
+						else if (member.Type.NullableOfType is not null)
+						{
+							sb.AppendLine($"{member.MemberName} = /* member-converter-nullable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullable({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver),");
+						}
+						else
+						{
+							sb.AppendLine($"{member.MemberName} = /* member-converter-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver)!,");
+						}
+						continue;
+					}
+
 					if (IsLocallyGeneratedType(member.Type, out var target, out var isNullableOfT))
 					{
 						if (member.IsRequired)
@@ -2408,6 +2436,25 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private string GetMemberPackerExpression(CrystalJsonMemberMetadata member, string getterExpr)
 			{
+				if (member.CustomConverterType != null)
+				{ // a custom converter takes over the member's wire form
+					if (member.Type.IsValueType() && member.Type.NullableOfType is null)
+					{
+						return $"/* member-converter */ {GetMemberConverterRef(member)}.Pack({getterExpr}, settings, resolver)";
+					}
+					return $"/* member-converter */ {getterExpr} is {{ }} v{member.MemberName} ? {GetMemberConverterRef(member)}.Pack(v{member.MemberName}, settings, resolver) : {KnownTypeSymbols.JsonNullFullName}.Null";
+				}
+
+				if (member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
+				{ // [JsonProperty(EnumFormat = ...)] forces the wire form for this member, regardless of the settings
+					var packHelper = $"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackEnum{member.EnumFormat}";
+					if (member.Type.NullableOfType is null)
+					{
+						return $"/* enum-format */ {packHelper}({getterExpr})";
+					}
+					return $"/* enum-format */ {getterExpr} is {{ }} v{member.MemberName} ? {packHelper}(v{member.MemberName}) : {KnownTypeSymbols.JsonNullFullName}.Null";
+				}
+
 				if (IsLocallyGeneratedType(member.Type, out var target, out _))
 				{
 					return $"/* local-serializer */ {GetLocalSerializerRef(target)}.Pack({getterExpr}, settings, resolver)";
@@ -2602,6 +2649,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return false;
 			}
 
+			/// <summary>Name of the static field holding the custom converter instance for a member</summary>
+			private static string GetMemberConverterRef(CrystalJsonMemberMetadata member) => $"{member.MemberName}Converter";
+
 			/// <summary>Test if a type has some locally generated serialization methods</summary>
 			private bool IsLocallyGeneratedType(TypeRef type, [MaybeNullWhen(false)] out CrystalJsonTypeMetadata metadata)
 			{
@@ -2626,6 +2676,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				switch (member.IgnoreCondition)
 				{
+					case "Never" when member.CustomConverterType != null:
+					{ // always emitted, and the member has a custom converter: pack through it, writing an explicit null
+						sb.AppendLine($"writer.WriteName({propertyName});");
+						if (member.Type.IsValueType() && member.Type.NullableOfType is null)
+						{
+							sb.AppendLine($"{GetMemberConverterRef(member)}.Pack({getterExpr}, writer.Settings, writer.Resolver).JsonSerialize(writer); // member-converter");
+						}
+						else
+						{
+							sb.AppendLine($"({getterExpr} is {{ }} v{member.MemberName} ? {GetMemberConverterRef(member)}.Pack(v{member.MemberName}, writer.Settings, writer.Resolver) : {KnownTypeSymbols.JsonNullFullName}.Null).JsonSerialize(writer); // member-converter");
+						}
+						return;
+					}
 					case "Never":
 					{ // always emitted, even null or default, bypassing the writer's settings-level discards
 						// note: goes through the runtime visitor (correctness over speed: a pinned member is rare)
@@ -2656,6 +2719,25 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private void WriteMemberSerializerCore(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member, string propertyName, string getterExpr)
 			{
+				if (member.CustomConverterType != null)
+				{ // a custom converter takes over the member's wire form
+					if (member.Type.IsValueType() && member.Type.NullableOfType is null)
+					{
+						sb.AppendLine($"writer.WriteField({propertyName}, {GetMemberConverterRef(member)}.Pack({getterExpr}, writer.Settings, writer.Resolver)); // member-converter");
+					}
+					else
+					{
+						sb.AppendLine($"writer.WriteField({propertyName}, {getterExpr} is {{ }} v{member.MemberName} ? {GetMemberConverterRef(member)}.Pack(v{member.MemberName}, writer.Settings, writer.Resolver) : null); // member-converter");
+					}
+					return;
+				}
+
+				if (member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
+				{ // [JsonProperty(EnumFormat = ...)] forces the wire form for this member, regardless of the settings
+					sb.AppendLine($"writer.WriteFieldEnum{member.EnumFormat}({propertyName}, {getterExpr}); // enum-format");
+					return;
+				}
+
 				if (IsFastPathSerializable(member.Type))
 				{
 					// there is a dedicated method for this type

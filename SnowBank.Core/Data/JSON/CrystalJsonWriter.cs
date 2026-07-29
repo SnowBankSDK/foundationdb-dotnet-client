@@ -4745,6 +4745,54 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+		/// <summary>Writes a field with an enum value forced to its string form, regardless of the settings (per-member <see cref="JsonEnumFormat.String"/>)</summary>
+		public void WriteFieldEnumString<TEnum>(JsonEncodedPropertyName name, TEnum value)
+			where TEnum : struct, System.Enum
+		{
+			WriteName(name);
+			WriteEnumString<TEnum>(value);
+		}
+
+		/// <summary>Writes a field with an enum value forced to its string form, regardless of the settings (per-member <see cref="JsonEnumFormat.String"/>)</summary>
+		public void WriteFieldEnumString<TEnum>(JsonEncodedPropertyName name, TEnum? value)
+			where TEnum : struct, System.Enum
+		{
+			if (value.HasValue)
+			{
+				WriteName(name);
+				WriteEnumString<TEnum>(value.Value);
+			}
+			else if (!m_discardNulls)
+			{
+				WriteName(name);
+				WriteNull();
+			}
+		}
+
+		/// <summary>Writes a field with an enum value forced to its numeric form, regardless of the settings (per-member <see cref="JsonEnumFormat.Number"/>)</summary>
+		public void WriteFieldEnumNumber<TEnum>(JsonEncodedPropertyName name, TEnum value)
+			where TEnum : struct, System.Enum
+		{
+			WriteName(name);
+			WriteEnumInteger<TEnum>(value);
+		}
+
+		/// <summary>Writes a field with an enum value forced to its numeric form, regardless of the settings (per-member <see cref="JsonEnumFormat.Number"/>)</summary>
+		public void WriteFieldEnumNumber<TEnum>(JsonEncodedPropertyName name, TEnum? value)
+			where TEnum : struct, System.Enum
+		{
+			if (value.HasValue)
+			{
+				WriteName(name);
+				WriteEnumInteger<TEnum>(value.Value);
+			}
+			else if (!m_discardNulls)
+			{
+				WriteName(name);
+				WriteNull();
+			}
+		}
+
 		public void WriteFieldJsonSerializable<TSerializable>(string name, TSerializable? value)
 			where TSerializable : IJsonSerializable
 		{

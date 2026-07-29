@@ -166,6 +166,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks>A member ignored with <c>JsonIgnoreCondition.Always</c> is not part of the member list at all.</remarks>
 		public string? IgnoreCondition { get; init; }
 
+		/// <summary>Per-member enum format from <c>[JsonProperty(EnumFormat = ...)]</c>: <c>"String"</c>, <c>"Number"</c>, or <see langword="null"/> when inherited from the settings</summary>
+		public string? EnumFormat { get; init; }
+
+		/// <summary>Fully qualified name of a custom converter attached to this member (<c>[JsonConverter(typeof(...))]</c> naming a type with the Pack/Unpack pair, or the built-in converter for <c>[JsonBooleanLiterals]</c>), or <see langword="null"/></summary>
+		public string? CustomConverterType { get; init; }
+
+		/// <summary>C# argument list for the custom converter's constructor (empty for a parameterless converter)</summary>
+		public string? CustomConverterArgs { get; init; }
+
 		/// <summary>C# literal for the expression that represents the default value for this member, when it is missing</summary>
 		/// <remarks>This should be a valid C# constant expression, like <c>123</c>, <c>"hello"</c>, <c>true</c>, <c>global::System.Guid.Empty</c>, ...</remarks>
 		public required string DefaultLiteral { get; init; }

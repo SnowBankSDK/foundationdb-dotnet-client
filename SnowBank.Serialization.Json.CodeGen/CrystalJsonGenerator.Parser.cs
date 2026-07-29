@@ -62,6 +62,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string DataMemberAttributeFullName = "System.Runtime.Serialization.DataMemberAttribute";
 
+			public const string JsonConverterAttributeFullName = "System.Text.Json.Serialization.JsonConverterAttribute";
+
+			public const string NewtonsoftJsonConverterAttributeFullName = "Newtonsoft.Json.JsonConverterAttribute";
+
+			public const string JsonBooleanLiteralsAttributeFullName = "SnowBank.Data.Json.JsonBooleanLiteralsAttribute";
+
 			public const string JsonPolymorphicAttributeFullName = "System.Text.Json.Serialization.JsonPolymorphicAttribute";
 
 			public const string JsonDerivedTypeAttributeFullName = "System.Text.Json.Serialization.JsonDerivedTypeAttribute";
@@ -823,6 +829,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				string? name = null;
 				bool isKey = false;
 				string? ignoreCondition = null;
+				string? enumFormat = null;
+				string? customConverterType = null;
+				string? customConverterArgs = null;
 
 				string defaultLiteral = GetDefaultLiteral(type);
 				bool hasNonZeroDefault = false;
@@ -876,6 +885,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 										defaultLiteral = $"({type.FullyQualifiedName}) {kv.Value.ToCSharpString()}";
 									}
 								}
+								else if (kv.Key == "EnumFormat" && kv.Value.Value is int ef)
+								{ // JsonEnumFormat: 0 = Inherits, 1 = Number, 2 = String
+									enumFormat = ef switch { 1 => "Number", 2 => "String", _ => null };
+								}
 							}
 							//TODO: check if a default value was provided!
 							break;
@@ -891,6 +904,49 @@ namespace SnowBank.Serialization.Json.CodeGen
 						case KeyAttributeFullName:
 						{
 							isKey = true;
+							break;
+						}
+						case JsonConverterAttributeFullName:
+						case NewtonsoftJsonConverterAttributeFullName:
+						{ // [JsonConverter(typeof(...))], either spelling
+							// only honored when the named type has the Pack/Unpack pair for the member's type;
+							// anything else (e.g. a real STJ or Newtonsoft converter) is ignored, same as the reflection path
+							if (attribute.ConstructorArguments.Length > 0
+								&& attribute.ConstructorArguments[0].Value is INamedTypeSymbol converterSymbol
+								&& ImplementsPackerAndDeserializerFor(converterSymbol, typeSymbol))
+							{
+								customConverterType = converterSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+								customConverterArgs = "";
+							}
+							break;
+						}
+						case JsonBooleanLiteralsAttributeFullName:
+						{ // [JsonBooleanLiterals("0", "1")] or [JsonBooleanLiterals(0, 1)], with optional StrictLiterals
+							if (GetUnderlyingValueType(typeSymbol) is not { SpecialType: SpecialType.System_Boolean })
+							{
+								ReportDiagnostic(
+									new(
+										"CJSON0009",
+										"[JsonBooleanLiterals] can only be applied to boolean members",
+										"The member '{0}' carries [JsonBooleanLiterals] but is not of type bool or bool?: the attribute is ignored.",
+										"SnowBank.Serialization.Json.CodeGen",
+										DiagnosticSeverity.Error,
+										isEnabledByDefault: true
+									),
+									member.Locations.Length > 0 ? member.Locations[0] : null,
+									member.ToDisplayString());
+								break;
+							}
+							if (attribute.ConstructorArguments.Length == 2)
+							{
+								bool strict = false;
+								foreach (var kv in attribute.NamedArguments)
+								{
+									if (kv.Key == "StrictLiterals" && kv.Value.Value is bool b) strict = b;
+								}
+								customConverterType = "global::SnowBank.Data.Json.JsonBooleanLiteralsConverter";
+								customConverterArgs = $"{attribute.ConstructorArguments[0].ToCSharpString()}, {attribute.ConstructorArguments[1].ToCSharpString()}{(strict ? ", strictLiterals: true" : "")}";
+							}
 							break;
 						}
 						//TODO: any other argument for setting a default value?
@@ -920,6 +976,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 						HasNonZeroDefault = hasNonZeroDefault,
 						DefaultLiteral = defaultLiteral,
 						IgnoreCondition = ignoreCondition,
+						EnumFormat = enumFormat,
+						CustomConverterType = customConverterType,
+						CustomConverterArgs = customConverterArgs,
 					},
 					typeSymbol
 				);
@@ -947,6 +1006,33 @@ namespace SnowBank.Serialization.Json.CodeGen
 				SpecialType.System_Enum => "0",
 				_ => !type.IsValueType() || type.IsNullableOfT() ? "null" : "default"
 			};
+
+			/// <summary>Unwraps <c>Nullable&lt;T&gt;</c>: returns <c>T</c> for a <c>T?</c> member, the type itself otherwise</summary>
+			private static ITypeSymbol GetUnderlyingValueType(ITypeSymbol type)
+			{
+				return type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T, TypeArguments.Length: 1 } named
+					? named.TypeArguments[0]
+					: type;
+			}
+
+			/// <summary>Tests if a converter type implements both <c>IJsonPacker&lt;T&gt;</c> and <c>IJsonDeserializer&lt;T&gt;</c> for the member's (nullable-unwrapped) type</summary>
+			private static bool ImplementsPackerAndDeserializerFor(INamedTypeSymbol converterType, ITypeSymbol memberType)
+			{
+				var valueType = GetUnderlyingValueType(memberType);
+				bool packer = false, deserializer = false;
+				foreach (var iface in converterType.AllInterfaces)
+				{
+					if (iface.TypeArguments.Length != 1 || !SymbolEqualityComparer.Default.Equals(iface.TypeArguments[0], valueType)) continue;
+					if (iface.ContainingNamespace?.ToDisplayString() != "SnowBank.Data.Json") continue;
+					switch (iface.Name)
+					{
+						case "IJsonPacker": packer = true; break;
+						case "IJsonDeserializer": deserializer = true; break;
+					}
+					if (packer && deserializer) return true;
+				}
+				return false;
+			}
 
 			private static INamedTypeSymbol[] GetTypeHierarchy(ITypeSymbol type)
 			{
