@@ -27,13 +27,13 @@
 namespace SnowBank.Data.Json
 {
 
-	/// <summary>Custom converter that can be attached to a member (or a type) via <c>[JsonConverter(typeof(...))]</c></summary>
+	/// <summary>Convenience bundle for a symmetric custom converter attached to a member (or a type) via <see cref="JsonConvertWithAttribute"/> or <c>[JsonConverter(typeof(...))]</c></summary>
 	/// <typeparam name="T">Type of the converted values</typeparam>
 	/// <remarks>
-	/// <para>This is the smallest contract a custom converter has to fulfill: <see cref="IJsonPacker{T}.Pack"/> (value to JSON)
-	/// and <see cref="IJsonDeserializer{T}.Unpack"/> (JSON to value). Both the System.Text.Json and the Newtonsoft spellings of
-	/// <c>[JsonConverter(typeof(...))]</c> are recognized, on a member or on a type, matched by attribute name so that no
-	/// package reference is required.</para>
+	/// <para>Converter recognition is per facet: a named converter is honored for whichever of <see cref="IJsonPacker{T}"/> (value to JSON)
+	/// and <see cref="IJsonDeserializer{T}"/> (JSON to value) it implements. A type that is only ever written (or only ever read) can
+	/// implement a single facet; any attempt to use the missing direction fails with an exception naming the facet to implement.
+	/// This interface is the convenience bundle for the common symmetric case, never a requirement.</para>
 	/// <para>Implementations never see <c>null</c>: the serialization pipeline handles null and missing values (and the lifting
 	/// of a converter written for <c>T</c> over a <c>T?</c> member) before invoking the converter.</para>
 	/// <para>A source-generated <see cref="IJsonConverter{T}"/> also satisfies this contract (it implements both parents), so a
@@ -60,18 +60,22 @@ namespace SnowBank.Data.Json
 
 	}
 
-	/// <summary>Bridges a typed packer/deserializer pair to the boxed calls of the reflection path, centralizing the null handling</summary>
+	/// <summary>Bridges a typed converter's facet(s) to the boxed calls of the reflection path, centralizing the null handling</summary>
+	/// <remarks>Recognition is per facet: either side may be absent, in which case any attempt to use that direction fails with an exception naming the facet to implement.</remarks>
 	internal sealed class JsonMemberConverterBridge<T> : IJsonMemberConverterBridge
 	{
 
-		private IJsonPacker<T> Packer { get; }
+		private Type ConverterType { get; }
 
-		private IJsonDeserializer<T> Deserializer { get; }
+		private IJsonPacker<T>? Packer { get; }
 
-		public JsonMemberConverterBridge(IJsonPacker<T> packer, IJsonDeserializer<T> deserializer)
+		private IJsonDeserializer<T>? Deserializer { get; }
+
+		public JsonMemberConverterBridge(Type converterType, IJsonPacker<T>? packer, IJsonDeserializer<T>? deserializer)
 		{
-			Contract.NotNull(packer);
-			Contract.NotNull(deserializer);
+			Contract.NotNull(converterType);
+			Contract.Requires(packer != null || deserializer != null);
+			this.ConverterType = converterType;
 			this.Packer = packer;
 			this.Deserializer = deserializer;
 		}
@@ -80,13 +84,28 @@ namespace SnowBank.Data.Json
 
 		public JsonValue PackBoxed(object? value, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver)
 		{
-			// note: a boxed T? is either null or a boxed T, so this also lifts a converter for T over a T? member
-			return value is null ? JsonNull.Null : this.Packer.Pack((T) value, settings, resolver);
+			if (value is null)
+			{ // never invokes the converter (this also lifts a converter for T over a T? member: a boxed T? is either null or a boxed T)
+				return JsonNull.Null;
+			}
+			if (this.Packer == null)
+			{
+				return JsonSerializerExtensions.FailConverterMissingPackerFacet(this.ConverterType, typeof(T));
+			}
+			return this.Packer.Pack((T) value, settings, resolver);
 		}
 
 		public object? UnpackBoxed(JsonValue value, ICrystalJsonTypeResolver? resolver)
 		{
-			return value.IsNullOrMissing() ? null : this.Deserializer.Unpack(value, resolver);
+			if (value.IsNullOrMissing())
+			{ // never invokes the converter
+				return null;
+			}
+			if (this.Deserializer == null)
+			{
+				return JsonSerializerExtensions.FailConverterMissingDeserializerFacet<T>(this.ConverterType);
+			}
+			return this.Deserializer.Unpack(value, resolver);
 		}
 
 	}

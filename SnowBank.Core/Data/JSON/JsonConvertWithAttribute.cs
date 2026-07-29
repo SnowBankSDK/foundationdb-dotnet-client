@@ -29,9 +29,12 @@ namespace SnowBank.Data.Json
 
 	/// <summary>Attaches a CrystalJson custom converter to a member or a type</summary>
 	/// <remarks>
-	/// <para>The named type must implement <see cref="IJsonPacker{T}"/> and <see cref="IJsonDeserializer{T}"/> (i.e. <see cref="IJsonMemberConverter{T}"/>,
-	/// or a source-generated <see cref="IJsonConverter{T}"/>) for the decorated member's type (or the decorated type itself); anything else fails loudly,
-	/// at metadata construction on the reflection path and as a build error through the source generator.</para>
+	/// <para>The named type is honored for whichever of <see cref="IJsonPacker{T}"/> (packing) and <see cref="IJsonDeserializer{T}"/> (deserializing) it
+	/// implements for the decorated member's type (or the decorated type itself) - a type that is only ever written or only ever read may implement a
+	/// single facet, and any attempt to use the missing direction fails with an exception naming the facet to implement. The common symmetric case
+	/// implements both, e.g. via the <see cref="IJsonMemberConverter{T}"/> bundle or a source-generated <see cref="IJsonConverter{T}"/>. A type
+	/// implementing neither facet fails loudly: at metadata construction on the reflection path, and as build error CJSON0010 through the source
+	/// generator.</para>
 	/// <para>When to use which attribute: the System.Text.Json spelling <c>[JsonConverter(typeof(...))]</c> is also recognized, but it is only legitimate
 	/// when the named converter is valid for System.Text.Json as well (both serializers then do the same thing). A CrystalJson-only converter behind the
 	/// STJ attribute poisons the type for STJ (runtime <c>InvalidOperationException</c>, or a build error from the STJ source generator); such converters

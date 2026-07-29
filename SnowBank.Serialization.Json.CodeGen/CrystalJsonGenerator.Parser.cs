@@ -834,7 +834,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				string? enumFormat = null;
 				string? customConverterType = null;
 				string? customConverterArgs = null;
+				bool customConverterHasPacker = true;
+				bool customConverterHasDeserializer = true;
 				string? nativeConverterType = null;
+				bool nativeConverterHasPacker = true;
+				bool nativeConverterHasDeserializer = true;
 
 				string defaultLiteral = GetDefaultLiteral(type);
 				bool hasNonZeroDefault = false;
@@ -915,9 +919,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 							if (attribute.ConstructorArguments.Length > 0
 								&& attribute.ConstructorArguments[0].Value is INamedTypeSymbol nativeSymbol)
 							{
-								if (ImplementsPackerAndDeserializerFor(nativeSymbol, typeSymbol))
+								var facets = GetConverterFacets(nativeSymbol, typeSymbol);
+								if (facets.Packer || facets.Deserializer)
 								{
 									nativeConverterType = nativeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+									nativeConverterHasPacker = facets.Packer;
+									nativeConverterHasDeserializer = facets.Deserializer;
 								}
 								else
 								{
@@ -925,7 +932,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 										new(
 											"CJSON0010",
 											"[JsonConvertWith] names a type that is not a valid CrystalJson converter",
-											"The member '{0}' carries [JsonConvertWith(typeof({1}))], but '{1}' does not implement IJsonPacker<T> and IJsonDeserializer<T> for the member's type.",
+											"The member '{0}' carries [JsonConvertWith(typeof({1}))], but '{1}' implements neither IJsonPacker<T> nor IJsonDeserializer<T> for the member's type.",
 											"SnowBank.Serialization.Json.CodeGen",
 											DiagnosticSeverity.Error,
 											isEnabledByDefault: true
@@ -939,14 +946,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 						case JsonConverterAttributeFullName:
 						case NewtonsoftJsonConverterAttributeFullName:
 						{ // [JsonConverter(typeof(...))], either spelling
-							// only honored when the named type has the Pack/Unpack pair for the member's type;
-							// anything else (e.g. a real STJ or Newtonsoft converter) is ignored, same as the reflection path
+							// honored for whichever facet(s) the named type implements for the member's type;
+							// a type with neither facet (e.g. a real STJ or Newtonsoft converter) is ignored, same as the reflection path
 							if (attribute.ConstructorArguments.Length > 0
-								&& attribute.ConstructorArguments[0].Value is INamedTypeSymbol converterSymbol
-								&& ImplementsPackerAndDeserializerFor(converterSymbol, typeSymbol))
+								&& attribute.ConstructorArguments[0].Value is INamedTypeSymbol converterSymbol)
 							{
-								customConverterType = converterSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-								customConverterArgs = "";
+								var facets = GetConverterFacets(converterSymbol, typeSymbol);
+								if (facets.Packer || facets.Deserializer)
+								{
+									customConverterType = converterSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+									customConverterArgs = "";
+									customConverterHasPacker = facets.Packer;
+									customConverterHasDeserializer = facets.Deserializer;
+								}
 							}
 							break;
 						}
@@ -987,6 +999,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{ // the native attribute wins over [JsonBooleanLiterals] and the foreign [JsonConverter] spellings
 					customConverterType = nativeConverterType;
 					customConverterArgs = "";
+					customConverterHasPacker = nativeConverterHasPacker;
+					customConverterHasDeserializer = nativeConverterHasDeserializer;
 				}
 
 				if (string.IsNullOrEmpty(name))
@@ -1015,6 +1029,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 						EnumFormat = enumFormat,
 						CustomConverterType = customConverterType,
 						CustomConverterArgs = customConverterArgs,
+						CustomConverterHasPacker = customConverterHasPacker,
+						CustomConverterHasDeserializer = customConverterHasDeserializer,
 					},
 					typeSymbol
 				);
@@ -1051,8 +1067,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 					: type;
 			}
 
-			/// <summary>Tests if a converter type implements both <c>IJsonPacker&lt;T&gt;</c> and <c>IJsonDeserializer&lt;T&gt;</c> for the member's (nullable-unwrapped) type</summary>
-			private static bool ImplementsPackerAndDeserializerFor(INamedTypeSymbol converterType, ITypeSymbol memberType)
+			/// <summary>Returns which of <c>IJsonPacker&lt;T&gt;</c> / <c>IJsonDeserializer&lt;T&gt;</c> a converter type implements for the member's (nullable-unwrapped) type</summary>
+			/// <remarks>Recognition is per facet: a converter for a type that is only ever written (or only ever read) may implement a single facet.</remarks>
+			private static (bool Packer, bool Deserializer) GetConverterFacets(INamedTypeSymbol converterType, ITypeSymbol memberType)
 			{
 				var valueType = GetUnderlyingValueType(memberType);
 				bool packer = false, deserializer = false;
@@ -1065,9 +1082,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 						case "IJsonPacker": packer = true; break;
 						case "IJsonDeserializer": deserializer = true; break;
 					}
-					if (packer && deserializer) return true;
+					if (packer && deserializer) break;
 				}
-				return false;
+				return (packer, deserializer);
 			}
 
 			private static INamedTypeSymbol[] GetTypeHierarchy(ITypeSymbol type)

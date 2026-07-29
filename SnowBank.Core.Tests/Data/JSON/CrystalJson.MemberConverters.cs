@@ -258,6 +258,68 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Serialize(new[] { new NativeTemperature(1) }), Is.EqualTo("[ \"1C\" ]"));
 		}
 
+		/// <summary>Asymmetric converter: this type is only ever written, so the converter only implements the packing facet</summary>
+		public sealed class BitStringPackOnlyConverter : IJsonPacker<bool>
+		{
+			public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+				=> JsonString.Return(instance ? "1" : "0");
+		}
+
+		/// <summary>Asymmetric converter: this type is only ever read, so the converter only implements the deserializing facet</summary>
+		public sealed class BitStringUnpackOnlyConverter : IJsonDeserializer<bool>
+		{
+			public bool Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
+				=> value switch
+				{
+					JsonString s => s.Value is "1",
+					JsonBoolean b => b.ToBoolean(),
+					_ => throw new JsonBindingException($"Cannot convert {value.Type} into a bit-string boolean")
+				};
+		}
+
+		public sealed class PackOnlyDto
+		{
+			[JsonConvertWith(typeof(BitStringPackOnlyConverter))]
+			public bool Flag { get; set; }
+		}
+
+		public sealed class UnpackOnlyDto
+		{
+			[JsonConvertWith(typeof(BitStringUnpackOnlyConverter))]
+			public bool Flag { get; set; }
+		}
+
+		[Test]
+		public void Test_Asymmetric_Converter_PackOnly()
+		{
+			// the present facet works normally...
+			Assert.That(CrystalJson.Serialize(new PackOnlyDto { Flag = true }), Does.Contain("\"1\""));
+
+			// ... a member that never reaches the converter is unaffected ...
+			Assert.That(CrystalJson.Deserialize<PackOnlyDto>("{ }").Flag, Is.False, "an absent member never invokes the converter");
+
+			// ... and any attempt to USE the missing facet fails loudly, with a message that teaches
+			Assert.That(
+				() => CrystalJson.Deserialize<PackOnlyDto>("""{ "Flag": "1" }"""),
+				Throws.Exception.With.Message.Contain(nameof(BitStringPackOnlyConverter))
+					.And.Message.Contain("IJsonDeserializer").And.Message.Contain("Unpack"),
+				"the missing deserializing facet must fail loudly and name what to implement");
+		}
+
+		[Test]
+		public void Test_Asymmetric_Converter_UnpackOnly()
+		{
+			// the present facet works normally...
+			Assert.That(CrystalJson.Deserialize<UnpackOnlyDto>("""{ "Flag": "1" }""").Flag, Is.True);
+
+			// ... and any attempt to USE the missing facet fails loudly, with a message that teaches
+			Assert.That(
+				() => CrystalJson.Serialize(new UnpackOnlyDto { Flag = true }),
+				Throws.Exception.With.Message.Contain(nameof(BitStringUnpackOnlyConverter))
+					.And.Message.Contain("IJsonPacker").And.Message.Contain("Pack"),
+				"the missing packing facet must fail loudly and name what to implement");
+		}
+
 		[Test]
 		public void Test_Native_Attribute_Fails_Loudly_On_Invalid_Converter()
 		{

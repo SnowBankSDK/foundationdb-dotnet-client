@@ -175,6 +175,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>C# argument list for the custom converter's constructor (empty for a parameterless converter)</summary>
 		public string? CustomConverterArgs { get; init; }
 
+		/// <summary>The custom converter implements the packing facet (<c>IJsonPacker&lt;T&gt;</c>); when <see langword="false"/>, any attempt to serialize the member fails loudly</summary>
+		public bool CustomConverterHasPacker { get; init; } = true;
+
+		/// <summary>The custom converter implements the deserializing facet (<c>IJsonDeserializer&lt;T&gt;</c>); when <see langword="false"/>, any attempt to deserialize a present value for the member fails loudly</summary>
+		public bool CustomConverterHasDeserializer { get; init; } = true;
+
 		/// <summary>C# literal for the expression that represents the default value for this member, when it is missing</summary>
 		/// <remarks>This should be a valid C# constant expression, like <c>123</c>, <c>"hello"</c>, <c>true</c>, <c>global::System.Guid.Empty</c>, ...</remarks>
 		public required string DefaultLiteral { get; init; }

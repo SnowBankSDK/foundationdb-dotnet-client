@@ -33,6 +33,7 @@ namespace SnowBank.Data.Json
 #if NETSTANDARD2_0
 	using CollectionsMarshal = SnowBank.Compat.CollectionsMarshalCompat; // shim: CollectionsMarshal does not exist on netstandard2.0
 #endif
+	using SnowBank.Runtime;
 	using SnowBank.Runtime.Converters;
 	using SnowBank.Buffers;
 
@@ -2133,6 +2134,30 @@ namespace SnowBank.Data.Json
 				return null;
 			}
 			return converter.Unpack(value, resolver);
+		}
+
+		/// <summary>Fails because an asymmetric converter was asked to pack, but only implements the deserializing facet</summary>
+		/// <remarks>Declared as returning a value so that call sites (including generated code) can use it in expression position without unreachable-code warnings; it always throws.</remarks>
+		public static JsonValue FailConverterMissingPackerFacet(Type converterType, Type valueType)
+		{
+			throw new JsonSerializationException($"Converter '{converterType.GetFriendlyName()}' only implements deserializing (IJsonDeserializer<{valueType.GetFriendlyName()}>); packing this value requires it to also implement IJsonPacker<{valueType.GetFriendlyName()}>.Pack({valueType.GetFriendlyName()} instance, CrystalJsonSettings?, ICrystalJsonTypeResolver?).");
+		}
+
+		/// <summary>Fails because an asymmetric converter was asked to deserialize, but only implements the packing facet</summary>
+		/// <remarks>Declared as returning a value so that call sites (including generated code) can use it in expression position without unreachable-code warnings; it always throws.</remarks>
+		public static T FailConverterMissingDeserializerFacet<T>(Type converterType)
+		{
+			throw new JsonBindingException($"Converter '{converterType.GetFriendlyName()}' only implements packing (IJsonPacker<{typeof(T).GetFriendlyName()}>); deserializing this value requires it to also implement IJsonDeserializer<{typeof(T).GetFriendlyName()}>.Unpack(JsonValue, ICrystalJsonTypeResolver?).");
+		}
+
+		/// <summary>Deserializes an optional JSON value through an asymmetric converter that lacks the deserializing facet: an absent or null value binds to the default (the converter never runs), anything else fails loudly</summary>
+		public static T? FailConverterMissingDeserializerFacet<T>(JsonValue? value, Type converterType, T? defaultValue)
+		{
+			if (value is null or JsonNull)
+			{
+				return defaultValue;
+			}
+			return FailConverterMissingDeserializerFacet<T>(converterType);
 		}
 
 		/// <summary>Packs an enum value into its string form, honoring any custom wire tokens declared on the enum's fields</summary>

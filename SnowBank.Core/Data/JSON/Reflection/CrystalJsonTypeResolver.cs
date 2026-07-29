@@ -1035,7 +1035,7 @@ namespace SnowBank.Data.Json
 			if (target.GetCustomAttribute<JsonConvertWithAttribute>(inherit: true) is { } native)
 			{
 				return TryCreateConverterBridge(native.ConverterType, targetType)
-					?? throw new InvalidOperationException($"[JsonConvertWith] on '{target.Name}' names '{native.ConverterType.GetFriendlyName()}', which does not implement IJsonPacker<T> + IJsonDeserializer<T> for type '{targetType.GetFriendlyName()}'.");
+					?? throw new InvalidOperationException($"[JsonConvertWith] on '{target.Name}' names '{native.ConverterType.GetFriendlyName()}', which implements neither IJsonPacker<T> nor IJsonDeserializer<T> for type '{targetType.GetFriendlyName()}'.");
 			}
 
 			// [JsonBooleanLiterals(...)] installs a built-in converter, feeding the same per-member slot as [JsonConverter(typeof(...))]
@@ -1046,7 +1046,7 @@ namespace SnowBank.Data.Json
 					throw new InvalidOperationException($"[JsonBooleanLiterals] can only be applied to bool or bool? members, but '{target.Name}' is of type {targetType.GetFriendlyName()}.");
 				}
 				var converter = new JsonBooleanLiteralsConverter(boolLiterals);
-				return new JsonMemberConverterBridge<bool>(converter, converter);
+				return new JsonMemberConverterBridge<bool>(typeof(JsonBooleanLiteralsConverter), converter, converter);
 			}
 
 			foreach (var attr in target.GetCustomAttributes(inherit: true))
@@ -1068,16 +1068,20 @@ namespace SnowBank.Data.Json
 			return null;
 		}
 
-		/// <summary>Instantiates a converter type and wraps it in the non-generic bridge, if it implements <see cref="IJsonPacker{T}"/> + <see cref="IJsonDeserializer{T}"/> for the target type</summary>
-		/// <remarks>Accepts both a dedicated <see cref="IJsonMemberConverter{T}"/> implementation and a source-generated <see cref="IJsonConverter{T}"/> (which implements the same pair).</remarks>
+		/// <summary>Instantiates a converter type and wraps it in the non-generic bridge, if it implements <see cref="IJsonPacker{T}"/> and/or <see cref="IJsonDeserializer{T}"/> for the target type</summary>
+		/// <remarks>
+		/// <para>Recognition is per facet: a converter for a type that is only ever written (or only ever read) may implement a single facet;
+		/// the bridge fails loudly on any attempt to use the missing direction.</para>
+		/// <para>Accepts a dedicated <see cref="IJsonMemberConverter{T}"/> implementation and a source-generated <see cref="IJsonConverter{T}"/> alike.</para>
+		/// </remarks>
 		private static IJsonMemberConverterBridge? TryCreateConverterBridge(Type converterType, Type targetType)
 		{
 			// a converter written for T also serves a T? member (the bridge lifts it)
 			var valueType = Nullable.GetUnderlyingType(targetType) ?? targetType;
 
-			var packerContract = typeof(IJsonPacker<>).MakeGenericType(valueType);
-			var deserializerContract = typeof(IJsonDeserializer<>).MakeGenericType(valueType);
-			if (!packerContract.IsAssignableFrom(converterType) || !deserializerContract.IsAssignableFrom(converterType))
+			bool isPacker = typeof(IJsonPacker<>).MakeGenericType(valueType).IsAssignableFrom(converterType);
+			bool isDeserializer = typeof(IJsonDeserializer<>).MakeGenericType(valueType).IsAssignableFrom(converterType);
+			if (!isPacker && !isDeserializer)
 			{
 				return null;
 			}
@@ -1092,7 +1096,11 @@ namespace SnowBank.Data.Json
 				throw new InvalidOperationException($"Cannot instantiate custom JSON converter '{converterType.GetFriendlyName()}' for type '{targetType.GetFriendlyName()}': it must expose a parameterless constructor.", e);
 			}
 
-			return (IJsonMemberConverterBridge) Activator.CreateInstance(typeof(JsonMemberConverterBridge<>).MakeGenericType(valueType), instance, instance)!;
+			return (IJsonMemberConverterBridge) Activator.CreateInstance(
+				typeof(JsonMemberConverterBridge<>).MakeGenericType(valueType),
+				converterType,
+				isPacker ? instance : null,
+				isDeserializer ? instance : null)!;
 		}
 
 		private static bool FilterMemberByType(MemberInfo _, Type type)

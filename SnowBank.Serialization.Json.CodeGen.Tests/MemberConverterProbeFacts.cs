@@ -82,8 +82,41 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	}
 
+	/// <summary>Asymmetric converter: packing facet only</summary>
+	public sealed class ProbePackOnlyConverter : IJsonPacker<bool>
+	{
+		public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			=> JsonString.Return(instance ? "1" : "0");
+	}
+
+	/// <summary>Asymmetric converter: deserializing facet only</summary>
+	public sealed class ProbeUnpackOnlyConverter : IJsonDeserializer<bool>
+	{
+		public bool Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
+			=> value switch
+			{
+				JsonString s => s.Value is "1",
+				JsonBoolean b => b.ToBoolean(),
+				_ => throw new JsonBindingException($"Cannot convert {value.Type} into a bit-string boolean")
+			};
+	}
+
+	public sealed record ProbePackOnlyDto
+	{
+		[JsonConvertWith(typeof(ProbePackOnlyConverter))]
+		public bool Flag { get; set; }
+	}
+
+	public sealed record ProbeUnpackOnlyDto
+	{
+		[JsonConvertWith(typeof(ProbeUnpackOnlyConverter))]
+		public bool Flag { get; set; }
+	}
+
 	[CrystalJsonConverter]
 	[CrystalJsonSerializable(typeof(ProbeConvertedDto))]
+	[CrystalJsonSerializable(typeof(ProbePackOnlyDto))]
+	[CrystalJsonSerializable(typeof(ProbeUnpackOnlyDto))]
 	public static partial class ProbeConverterHost
 	{
 		// generated code goes here!
@@ -201,6 +234,28 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(back.Day, Is.EqualTo(DayOfWeek.Monday));
 				Assert.That(back.Kind, Is.EqualTo(ProbeCourierKind.Electronic));
 			}
+		}
+
+		[Test]
+		public void Test_Generated_Asymmetric_Converter_Facets()
+		{
+			// pack-only: serializing works, deserializing a PRESENT value fails loudly with a teaching message
+			Assert.That(ProbeConverterHost.ProbePackOnlyDto.ToJsonText(new ProbePackOnlyDto { Flag = true }), Does.Contain("\"1\""));
+			Assert.That(ProbeConverterHost.ProbePackOnlyDto.Deserialize("{ }").Flag, Is.False, "an absent member never invokes the converter");
+			Assert.That(
+				() => ProbeConverterHost.ProbePackOnlyDto.Deserialize("""{ "Flag": "1" }"""),
+				Throws.Exception.With.Message.Contain(nameof(ProbePackOnlyConverter))
+					.And.Message.Contain("IJsonDeserializer").And.Message.Contain("Unpack"));
+
+			// unpack-only: deserializing works, any serialize attempt fails loudly with a teaching message
+			Assert.That(ProbeConverterHost.ProbeUnpackOnlyDto.Deserialize("""{ "Flag": "1" }""").Flag, Is.True);
+			Assert.That(
+				() => ProbeConverterHost.ProbeUnpackOnlyDto.ToJsonText(new ProbeUnpackOnlyDto { Flag = true }),
+				Throws.Exception.With.Message.Contain(nameof(ProbeUnpackOnlyConverter))
+					.And.Message.Contain("IJsonPacker").And.Message.Contain("Pack"));
+			Assert.That(
+				() => ProbeConverterHost.ProbeUnpackOnlyDto.Pack(new ProbeUnpackOnlyDto { Flag = true }),
+				Throws.Exception.With.Message.Contain("IJsonPacker"), "the Pack route fails the same way");
 		}
 
 		[Test]
