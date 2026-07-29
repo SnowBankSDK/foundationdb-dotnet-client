@@ -884,9 +884,7 @@ namespace SnowBank.Data.Json
 						if (v == null) continue;
 					}
 					// AlwaysEmit: never skipped, including an explicit null
-					obj[FormatName(member.Name)] = v == null ? JsonNull.Null
-						: member.CustomConverter != null ? member.CustomConverter.PackBoxed(v, m_settings, m_resolver)
-						: ParseObjectInternal(ref context, v, member.Type, null);
+					obj[FormatName(member.Name)] = v == null ? JsonNull.Null : PackMemberValue(ref context, member, v);
 				}
 				else if (v == null)
 				{
@@ -897,9 +895,7 @@ namespace SnowBank.Data.Json
 				}
 				else
 				{
-					obj[FormatName(member.Name)] = member.CustomConverter != null
-						? member.CustomConverter.PackBoxed(v, m_settings, m_resolver)
-						: ParseObjectInternal(ref context, v, member.Type, null);
+					obj[FormatName(member.Name)] = PackMemberValue(ref context, member, v);
 				}
 			}
 			Leave(ref context, value);
@@ -911,6 +907,24 @@ namespace SnowBank.Data.Json
 
 			result = obj;
 			return true;
+		}
+
+		/// <summary>Converts a member's (non-null) value, applying the per-member overrides that the generic conversion cannot see (custom converter, forced enum format)</summary>
+		private JsonValue PackMemberValue(ref VisitingContext context, CrystalJsonMemberDefinition member, object value)
+		{
+			if (member.CustomConverter != null)
+			{ // a [JsonConverter]/[JsonConvertWith]/[JsonBooleanLiterals] on the member takes over
+				return member.CustomConverter.PackBoxed(value, m_settings, m_resolver);
+			}
+
+			if (member.Attributes?.EnumFormat is JsonEnumFormat.String or JsonEnumFormat.Number && value is Enum enumValue)
+			{ // [JsonProperty(EnumFormat = ...)] forces the wire form for this member, same as on the text route
+				return member.Attributes.EnumFormat == JsonEnumFormat.String
+					? CrystalJsonEnumCache.GetLiteral(enumValue.GetType(), enumValue, m_enumCamelCased)
+					: CrystalJsonEnumCache.GetNumber(enumValue.GetType(), enumValue);
+			}
+
+			return ParseObjectInternal(ref context, value, member.Type, null);
 		}
 
 		#endregion
