@@ -62,6 +62,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string DataMemberAttributeFullName = "System.Runtime.Serialization.DataMemberAttribute";
 
+			public const string IgnoreDataMemberAttributeFullName = "System.Runtime.Serialization.IgnoreDataMemberAttribute";
+
 			public const string JsonConverterAttributeFullName = "System.Text.Json.Serialization.JsonConverterAttribute";
 
 			public const string NewtonsoftJsonConverterAttributeFullName = "Newtonsoft.Json.JsonConverterAttribute";
@@ -806,6 +808,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 								hasIgnore |= condition == 1;
 								break;
 							}
+							case IgnoreDataMemberAttributeFullName: hasIgnore = true; break;
 							case DataMemberAttributeFullName: includeSignal ??= "DataMember"; break;
 							case JsonIncludeAttributeFullName: includeSignal ??= "JsonInclude"; break;
 							case KnownTypeSymbols.JsonPropertyAttributeFullName: includeSignal ??= "JsonProperty"; break;
@@ -850,6 +853,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 					switch (attributeType.ToDisplayString())
 					{
+						case IgnoreDataMemberAttributeFullName:
+						{ // [IgnoreDataMember]: the DataContract opt-out; the generator treats it like an unconditional [JsonIgnore]
+							return default;
+						}
 						case JsonIgnoreAttributeFullName:
 						{ // [JsonIgnore] or [JsonIgnore(Condition = ...)]
 							// JsonIgnoreCondition values: 0 = Never, 1 = Always, 2 = WhenWritingDefault, 3 = WhenWritingNull

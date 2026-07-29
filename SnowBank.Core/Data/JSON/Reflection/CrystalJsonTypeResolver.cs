@@ -971,6 +971,15 @@ namespace SnowBank.Data.Json
 				return true;
 			}
 
+			{ // [IgnoreDataMember]: the DataContract opt-out for types WITHOUT [DataContract]
+				// (on a [DataContract] type the [DataMember] opt-in governs and DCJS itself ignores this attribute,
+				// which is why this check sits after the opt-in gate above)
+				if (member.GetCustomAttribute<System.Runtime.Serialization.IgnoreDataMemberAttribute>(inherit: true) != null)
+				{ // skip!
+					return false;
+				}
+			}
+
 			{ // must not have an attribute called "Ignore" in its name
 				// we cannot "say the name" of this attribute without a ref to the Json.NET package,
 				// so we have to search using the name. This could break when using code trimming!

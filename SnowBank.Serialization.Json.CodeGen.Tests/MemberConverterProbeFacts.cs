@@ -80,6 +80,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		public ProbeCourierKind Kind { get; set; }
 
+		// the DataContract opt-out: excluded by the generator like an unconditional [JsonIgnore]
+		[IgnoreDataMember]
+		public string? Ghost { get; set; }
+
 	}
 
 	/// <summary>Asymmetric converter: packing facet only</summary>
@@ -134,7 +138,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Generated_Serialize_Honors_Member_Converters()
 		{
-			var dto = new ProbeConvertedDto { Enabled = true, Native = true, Mixed = true, Maybe = false, Day = DayOfWeek.Friday, Kind = ProbeCourierKind.Electronic };
+			var dto = new ProbeConvertedDto { Enabled = true, Native = true, Mixed = true, Maybe = false, Day = DayOfWeek.Friday, Kind = ProbeCourierKind.Electronic, Ghost = "boo" };
 
 			var obj = JsonObject.Parse(ProbeConverterHost.ProbeConvertedDto.ToJsonText(dto)).AsObject();
 			using (Assert.EnterMultipleScope())
@@ -145,6 +149,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(obj.Get<string>("Maybe"), Is.EqualTo("N"), "[JsonBooleanLiterals] must shape the wire through the generated Serialize");
 				Assert.That(obj.Get<string>("day"), Is.EqualTo("Friday"), "[JsonProperty(EnumFormat = String)] forces the string form regardless of the settings");
 				Assert.That(obj.Get<string>("Kind"), Is.EqualTo("E"), "an enum member without EnumFormat follows the settings default (strings), with its token");
+				Assert.That(obj.ContainsKey("Ghost"), Is.False, "[IgnoreDataMember] excludes the member from the generated converter");
 			}
 
 			// the numeric opt-in still applies to members without a per-member override
