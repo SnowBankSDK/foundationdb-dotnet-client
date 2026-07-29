@@ -30,7 +30,7 @@ namespace FoundationDB.Storage.FdbLite
 	/// <summary>Builds the writable copy-on-write generation of a tree: inserts and updates, page splits, shadow-set page reuse.</summary>
 	/// <remarks>
 	/// <para>Single-writer machinery (one instance per writable generation, used under the engine's commit lock).</para>
-	/// <para>Mutations REBUILD the touched page image (never in-place cell surgery): every written page is compact by construction, sealed and generation-stamped on the way to the pager. A page first allocated by THIS generation is rebuilt in place (shadow set); any other page is copied to a fresh location and its old blocks are queued for delayed free.</para>
+	/// <para>Small mutations edit an OWNED page image in place (splice, overwrite, relocate, remove - each books any dead bytes it leaves into the page's wasted-bytes counter); everything else REBUILDS the touched page, and a rebuilt page is compact by construction. Either way the image is sealed and generation-stamped on the way to the pager. A page first allocated by THIS generation is rebuilt in place (shadow set); any other page is copied to a fresh location and its old blocks are queued for delayed free.</para>
 	/// <para>Splits are K-way (greedy, largest prefix that fits per page): with maximum-size cells a two-way split can have NO legal cut point (the unimplemented "three-way split" hole of the legacy prototype), so the general form is the correctness fix, and K stays 2 for every realistic cell size.</para>
 	/// </remarks>
 	public sealed class FdbLiteTreeWriter
@@ -107,6 +107,7 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			/// <inheritdoc />
+			/// <remarks>Pass-through ON PURPOSE, asymmetric with <see cref="ReadBlocks"/>: tree pages never come through here (they are buffered in <see cref="FdbLiteTreeWriter.Dirty"/> by <see cref="WritePage"/> and flushed at commit), only extent data, which is written once and read back through the inner pager. Do not "fix" this by adding a dirty-buffer check on the write side.</remarks>
 			public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data) => this.Inner.WriteBlocks(firstBlock, data);
 
 			/// <inheritdoc />
@@ -141,7 +142,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Cells spliced into an already-owned page, instead of rebuilding it (the cheap insert path)</summary>
 		public int CellsSpliced { get; private set; }
 
-		/// <summary>Values overwritten where they lay, because the replacement occupied exactly the same room (the cheap REPLACE path)</summary>
+		/// <summary>Values replaced without a rebuild (the cheap REPLACE path): overwritten where they lay, or relocated into the free gap when they grew</summary>
 		public int CellsOverwritten { get; private set; }
 
 		/// <summary>Cells removed by closing the directory over them, instead of rebuilding the page (the cheap DELETE path)</summary>

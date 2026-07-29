@@ -39,7 +39,7 @@ namespace FoundationDB.Storage.FdbLite
 
 	/// <summary>Span accessors for the 32-byte universal header at the start of every formatted page.</summary>
 	/// <remarks>
-	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, value-area offset u16 (the down-growing heap), prefix length u16, key-area length u16 (bytes used by the up-growing heap), then 6 bytes reserved and required to be zero.</para>
+	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, value-area offset u16 (the down-growing heap), prefix length u16, key-area length u16 (bytes occupied by the up-growing heap), wasted-bytes u16 (dead room booked by in-place mutations), then 4 bytes reserved and required to be zero.</para>
 	/// <para>The block-id seed makes a page written to the wrong location fail verification; the generation stamp lets a lock-free inspector detect a page reused under its feet.</para>
 	/// </remarks>
 	public static class FdbLitePageHeader
@@ -48,7 +48,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Size of the universal page header, in bytes</summary>
 		/// <remarks>
 		/// <para>A multiple of 8 by convention only. It does NOT align the slot directory: the variable-length page prefix sits between this header and the slots, so what keeps that u16 array 2-byte aligned is the prefix being padded to an even length, and nothing else. Removing that pad as redundant would make the alignment of the array depend on each page's prefix.</para>
-		/// <para>Bytes 26..32 are reserved and MUST be zero. Pages are zeroed on format, so this costs nothing today, and it is what makes them safe to give a meaning later.</para>
+		/// <para>Bytes 26..28 carry the wasted-bytes counter (see <see cref="GetWastedBytes"/>); bytes 28..32 are reserved and MUST be zero. Pages are zeroed on format, so the reserve costs nothing today, and it is what makes those bytes safe to give a meaning later.</para>
 		/// </remarks>
 		public const int Size = 32;
 
@@ -90,7 +90,7 @@ namespace FoundationDB.Storage.FdbLite
 
 		public static void SetCellAreaOffset(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[CellAreaOffset..], value);
 
-		/// <summary>Bytes of the key heap that are in use, measured from its base rather than from the page.</summary>
+		/// <summary>Bytes of the key heap that are occupied - including dead entries booked in <see cref="GetWastedBytes"/> - measured from its base rather than from the page.</summary>
 		/// <remarks>
 		/// <para>A LENGTH, not an offset, and deliberately so: the key heap's base moves whenever the slot directory grows, and a length survives that move untouched while an absolute end would have to be rewritten.</para>
 		/// <para>The leaf holds two heaps growing towards each other and so needs two frontiers: this one and <see cref="GetCellAreaOffset"/>, the down-growing value heap. Neither is derivable from the slot directory, because the heaps are packed in insertion order rather than key order; keeping them in key order would cost a memmove per insert, which is the trade the layout deliberately refuses.</para>
@@ -99,21 +99,23 @@ namespace FoundationDB.Storage.FdbLite
 
 		public static void SetKeyAreaLength(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[KeyAreaLengthOffset..], value);
 
-		/// <summary>Length of the key prefix common to every key on this page, stored once between the header and the slot directory.</summary>
-		/// <remarks>Zero means no prefix is stripped, which is the layout's degenerate case and behaves exactly as an unstripped page. The prefix bytes themselves follow the header (and the leftmost-child field on an internal page), so the slot directory starts that much further in.</remarks>
 		/// <summary>Bytes inside this page that no cell points at any more, and that a repack would reclaim.</summary>
 		/// <remarks>
 		/// <para>Zero for any page written by the rebuild path, which is compact by construction. It becomes
 		/// non-zero only where a mutation deliberately leaves a gap rather than paying O(cells) to close it:
-		/// a value replaced by a SHORTER one keeps its slot and the slack is recorded here.</para>
-		/// <para>This is the counter the page format was missing, and its absence is why every replace had to
-		/// rebuild. It lives in the six bytes FL-36 reserved and required to stay zero, so it costs no format
-		/// change: an older page reads as having no waste, which is exactly true of it.</para>
+		/// a value replaced by a SHORTER one keeps its slot and the slack is recorded here, a relocated value
+		/// leaves its old slot behind, and an in-place delete leaves its entry and value as booked holes.</para>
+		/// <para>The counter is booked by those paths but consumed by nothing yet: the rebuild path reclaims
+		/// waste as a side effect without reading it. It occupies two of the six header bytes FL-36 reserved
+		/// as zero - backward-compatible for readers (an older page reads as having no waste, which is exactly
+		/// true of it), but a format commitment all the same.</para>
 		/// </remarks>
 		public static ushort GetWastedBytes(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[WastedBytesOffset..]);
 
 		public static void SetWastedBytes(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[WastedBytesOffset..], value);
 
+		/// <summary>Length of the key prefix common to every key on this page, stored once between the header and the slot directory.</summary>
+		/// <remarks>Zero means no prefix is stripped, which is the layout's degenerate case and behaves exactly as an unstripped page. The prefix bytes themselves follow the header (and the leftmost-child field on an internal page), so the slot directory starts that much further in.</remarks>
 		public static ushort GetPrefixLength(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[PrefixLengthOffset..]);
 
 		public static void SetPrefixLength(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[PrefixLengthOffset..], value);
@@ -143,10 +145,10 @@ namespace FoundationDB.Storage.FdbLite
 			SetPageType(page, type);
 			SetEncoding(page, EncodingPlain);
 			SetGeneration(page, generation);
-			// the cell heap is empty: it starts at the end of the page (cells will grow down from there);
-			// a full 64 KiB page's end offset (65536) does not fit a u16, so the stored value is (offset - 1)
-			// of the last byte... instead the cell-area offset stores the offset of the LOWEST allocated cell
-			// byte, and an empty page stores 0 meaning "no cell allocated yet".
+			// the cell heap is empty: it starts at the end of the page (cells will grow down from there).
+			// The cell-area offset stores the offset of the LOWEST allocated cell byte, and an empty page
+			// stores 0 meaning "no cell allocated yet" - a full 64 KiB page's end offset (65536) does not
+			// fit a u16, so "empty" cannot be encoded as the page length itself.
 			SetCellAreaOffset(page, 0);
 		}
 

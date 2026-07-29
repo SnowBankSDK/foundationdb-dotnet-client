@@ -34,9 +34,8 @@ namespace FoundationDB.Storage.FdbLite
 	/// <para><b>Leaf key-heap entry</b>: keyLen u16, key suffix bytes, value offset u16, value length u16, flags u8 (bit 0 = the value is an extent reference). <b>Value heap</b>: payload bytes only, or the extent descriptor. Per cell that is 9 bytes of overhead including the slot, against the 9 of the interleaved layout it replaces, so the locality is bought for nothing.</para>
 	/// <para><b>Slots are key-heap-relative.</b> The directory and the key heap grow towards the same end, so the heap's base moves whenever a slot is added; relative slots make that a memmove that invalidates nothing. Key-only pages (an index, whose values are empty) are all key heap, which is optimal for space and the worst case for that shift.</para>
 	/// <para>Internal pages keep one contiguous cell heap growing down from the page end, since a separator has no value to separate out.</para>
-	/// <para><b>Internal cell</b>: child page id u32, keyLen u16, separator key bytes.</para>
 	/// <para><b>Internal cell</b>: child page id u32, keyLen u16, separator key bytes. A page with N cells has N separators and N+1 children; child i (i &gt;= 1) covers keys &gt;= separator i-1, child 0 covers everything below separator 0.</para>
-	/// <para>Every page image is written compact (mutations rebuild the page), so there is no dead-cell bookkeeping anywhere.</para>
+	/// <para>A page is compact after a REBUILD; the in-place mutation paths (<see cref="TryOverwriteLeafValue"/>, <see cref="TryRelocateLeafValue"/>, <see cref="TryRemoveLeafCell"/>) deliberately leave dead bytes behind and book them in <see cref="FdbLitePageHeader.GetWastedBytes"/>, which only a rebuild reclaims. The free GAP is therefore not all of a page's free space.</para>
 	/// </remarks>
 	internal static class FdbLiteTreePage
 	{
@@ -286,12 +285,6 @@ namespace FoundationDB.Storage.FdbLite
 			storedValue.CopyTo(page[valueAt..]);
 		}
 
-		/// <summary>Splices one already-built cell into a leaf page at <paramref name="index"/>, keeping key order, without touching any other cell.</summary>
-		/// <returns><c>false</c> when the contiguous free area cannot take the cell, which is the caller's signal to rebuild the page (compacting it) or split it.</returns>
-		/// <remarks>
-		/// <para>The cell goes into the free area between the slot array and the packed cells; only the slot suffix after <paramref name="index"/> moves. Cost is one cell copy plus a slot-sized memmove, against a rebuild's re-serialization of every cell in the page.</para>
-		/// <para>Callers must not use this for a REPLACE: it always adds a slot. Since replaces and deletes go through the rebuild path, which compacts, a page mutated only through here never develops gaps, and the free area is always the whole of its free space.</para>
-		/// </remarks>
 		/// <summary>Frontier of the down-growing value heap, which starts at the end of the page.</summary>
 		private static int LeafValueFrontier(ReadOnlySpan<byte> page)
 		{
@@ -439,8 +432,8 @@ namespace FoundationDB.Storage.FdbLite
 			FdbLitePageHeader.SetCellCount(page, (ushort) (cellCount + 1));
 			SetSlot(page, isInternal: false, index, (ushort) keyUsed);
 			WriteLeafEntry(page, keyBase + 2 + keyUsed, valueAt, keySuffix, storedValue, flags);
-			FdbLitePageHeader.SetKeyAreaLength(page, (ushort) (keyUsed + 2 + keySuffix.Length + 5));
-			FdbLitePageHeader.SetCellAreaOffset(page, (ushort) valueAt);
+			FdbLitePageHeader.SetKeyAreaLength(page, checked((ushort) (keyUsed + 2 + keySuffix.Length + 5)));
+			FdbLitePageHeader.SetCellAreaOffset(page, checked((ushort) valueAt));
 			return true;
 		}
 
@@ -533,6 +526,10 @@ namespace FoundationDB.Storage.FdbLite
 				this.ValueAt -= storedValue.Length;
 
 				int at = this.KeyBase + this.KeyUsed;
+				// the caller's size plan is the only thing standing between the two heaps: a wrong plan writes
+				// keys over values SILENTLY (that was the shape of the prefix-boundary defect), so catch it at
+				// the first offending cell instead of at the next audit
+				Contract.Debug.Assert(at + 2 + keyLen + 5 <= this.ValueAt, "key heap and value heap crossed: the caller's size plan was wrong");
 				BinaryPrimitives.WriteUInt16LittleEndian(this.Image[at..], (ushort) keyLen);
 				keyHead.CopyTo(this.Image[(at + 2)..]);
 				keyTail.CopyTo(this.Image[(at + 2 + keyHead.Length)..]);
