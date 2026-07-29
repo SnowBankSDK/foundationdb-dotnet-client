@@ -2140,9 +2140,8 @@ namespace SnowBank.Data.Json
 		public void WriteEnumString<TEnum>(TEnum value)
 			where TEnum: struct, System.Enum
 		{
-			string str = value.ToString("G");
-			if (m_enumCamelCased) str = CamelCase(str);
-			WriteValue(str);
+			// the cache renders exactly like ToString("G"), plus any custom wire tokens declared on the enum's fields
+			WriteValue(CrystalJsonEnumCache.GetLiteral(typeof(TEnum), value, m_enumCamelCased).Value);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -2154,9 +2153,8 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
-			string str = value.ToString("G");
-			if (m_enumCamelCased) str = CamelCase(str);
-			WriteValue(str);
+			// the cache renders exactly like ToString("G"), plus any custom wire tokens declared on the enum's fields
+			WriteValue(CrystalJsonEnumCache.GetLiteral(value.GetType(), value, m_enumCamelCased).Value);
 		}
 
 		public void WriteEnum<TEnum>(TEnum value)

@@ -964,7 +964,8 @@ namespace SnowBank.Data.Json
 				}
 				else if (type.IsEnum)
 				{
-					return Enum.Parse(type, m_value, true);
+					// honors custom wire tokens ([JsonStringEnumMemberName], [EnumMember(Value=...)]); plain Enum.Parse otherwise
+					return CrystalJsonEnumCache.ParseBoxed(type, m_value);
 				}
 				else if (typeof(decimal) == type)
 				{
@@ -2324,20 +2325,10 @@ namespace SnowBank.Data.Json
 		#region Enums
 
 		/// <inheritdoc />
-#if NET5_0_OR_GREATER
-		public override TEnum ToEnum<TEnum>(TEnum defaultValue = default) => string.IsNullOrEmpty(m_value) ? defaultValue : Enum.Parse<TEnum>(m_value, ignoreCase: true);
-#else
-		// generic Enum.Parse<TEnum> is not on netstandard2.0
-		public override TEnum ToEnum<TEnum>(TEnum defaultValue = default) => string.IsNullOrEmpty(m_value) ? defaultValue : (TEnum) Enum.Parse(typeof(TEnum), m_value, ignoreCase: true);
-#endif
+		public override TEnum ToEnum<TEnum>(TEnum defaultValue = default) => string.IsNullOrEmpty(m_value) ? defaultValue : CrystalJsonEnumCache.Parse<TEnum>(m_value);
 
 		/// <inheritdoc />
-#if NET5_0_OR_GREATER
-		public override TEnum? ToEnumOrDefault<TEnum>(TEnum? defaultValue = null) => string.IsNullOrEmpty(m_value) ? defaultValue : Enum.Parse<TEnum>(m_value, ignoreCase: true);
-#else
-		// generic Enum.Parse<TEnum> is not on netstandard2.0
-		public override TEnum? ToEnumOrDefault<TEnum>(TEnum? defaultValue = null) => string.IsNullOrEmpty(m_value) ? defaultValue : (TEnum) Enum.Parse(typeof(TEnum), m_value, ignoreCase: true);
-#endif
+		public override TEnum? ToEnumOrDefault<TEnum>(TEnum? defaultValue = null) => string.IsNullOrEmpty(m_value) ? defaultValue : CrystalJsonEnumCache.Parse<TEnum>(m_value);
 
 		#endregion
 

@@ -514,9 +514,10 @@ namespace SnowBank.Data.Json
 			}
 
 			if (type.IsEnum)
-			{ // enums are converted into their string literal representation
-				result = CrystalJsonEnumCache.GetName(type, (Enum) value);
-				//BUGBUG: check m_enumAsString / m_enumCamelCased ?
+			{ // same rules as the text writer: numbers by default, strings (with tokens, flags composition and optional camelCasing) when EnumsAsString is set
+				result = m_enumAsString
+					? CrystalJsonEnumCache.GetLiteral(type, (Enum) value, m_enumCamelCased)
+					: CrystalJsonEnumCache.GetNumber(type, (Enum) value);
 				return true;
 			}
 
