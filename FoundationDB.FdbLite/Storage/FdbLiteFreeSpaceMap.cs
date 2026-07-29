@@ -176,8 +176,11 @@ namespace FoundationDB.Storage.FdbLite
 				if (this.Reusable[mid].Start < start) { lo = mid + 1; } else { hi = mid; }
 			}
 
-			Contract.Debug.Requires(lo == this.Reusable.Count || start + count <= this.Reusable[lo].Start, "freed range overlaps a free range (double free)");
-			Contract.Debug.Requires(lo == 0 || this.Reusable[lo - 1].Start + this.Reusable[lo - 1].Count <= start, "freed range overlaps a free range (double free)");
+			// always-on, deliberately: a double free is the free-map signature of the worst corruption class
+			// this engine can have (one block handed to two owners), and Release-only silence here converts
+			// "loud failure at the offending commit" into "cross-page corruption discovered days later"
+			Contract.Requires(lo == this.Reusable.Count || start + count <= this.Reusable[lo].Start, "freed range overlaps a free range (double free)");
+			Contract.Requires(lo == 0 || this.Reusable[lo - 1].Start + this.Reusable[lo - 1].Count <= start, "freed range overlaps a free range (double free)");
 
 			// coalesce with the previous and/or next range when adjacent
 			bool mergePrev = lo > 0 && this.Reusable[lo - 1].Start + this.Reusable[lo - 1].Count == start;
