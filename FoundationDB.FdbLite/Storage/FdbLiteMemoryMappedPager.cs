@@ -100,7 +100,10 @@ namespace FoundationDB.Storage.FdbLite
 
 		private SafeFileHandle Handle { get; }
 
-		private List<Region?> Regions { get; } = [ ];
+		/// <summary>Mapped regions, as an IMMUTABLE snapshot: a published array is never mutated again, which is what lets <see cref="ReadBlocks"/> stay lock-free on any thread; only the COLD first touch of a region takes <see cref="RegionsLock"/>. A volatile FIELD rather than a property, because volatile is the publish barrier.</summary>
+		private volatile Region?[] Regions = [ ];
+
+		private readonly object RegionsLock = new();
 
 		private int RegionSizeInBytes { get; }
 
@@ -178,7 +181,7 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				region?.Dispose();
 			}
-			this.Regions.Clear();
+			this.Regions = [ ];
 			uint regionsKept = (newBlockCount + this.RegionSizeInBlocks - 1) / this.RegionSizeInBlocks;
 			RandomAccess.SetLength(this.Handle, (long) regionsKept * this.RegionSizeInBytes);
 			this.BlockCount = regionsKept * this.RegionSizeInBlocks;
@@ -186,13 +189,18 @@ namespace FoundationDB.Storage.FdbLite
 
 		private Region GetOrMapRegion(int index)
 		{
-			while (this.Regions.Count <= index)
+			var regions = this.Regions;
+			if ((uint) index < (uint) regions.Length && regions[index] is { } mapped)
 			{
-				this.Regions.Add(null);
+				return mapped;
 			}
-			var region = this.Regions[index];
-			if (region == null)
-			{
+			lock (this.RegionsLock)
+			{ // cold first touch: re-check under the lock (another reader may have mapped it first)
+				regions = this.Regions;
+				if ((uint) index < (uint) regions.Length && regions[index] is { } raced)
+				{
+					return raced;
+				}
 				Contract.Requires((long) (index + 1) * this.RegionSizeInBytes <= RandomAccess.GetLength(this.Handle), "region beyond the end of file");
 				var file = MemoryMappedFile.CreateFromFile(this.Handle, mapName: null, capacity: 0, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
 				var view = file.CreateViewAccessor((long) index * this.RegionSizeInBytes, this.RegionSizeInBytes, MemoryMappedFileAccess.Read);
@@ -200,10 +208,13 @@ namespace FoundationDB.Storage.FdbLite
 				view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
 				// the accessor's pointer is to the start of the OS allocation granule: apply its own offset
 				pointer += view.PointerOffset;
-				region = new Region { File = file, View = view, Pointer = pointer };
-				this.Regions[index] = region;
+				var region = new Region { File = file, View = view, Pointer = pointer };
+				var grown = new Region?[Math.Max(regions.Length, index + 1)];
+				regions.AsSpan().CopyTo(grown);
+				grown[index] = region;
+				this.Regions = grown;
+				return region;
 			}
-			return region;
 		}
 
 		/// <inheritdoc />
@@ -216,7 +227,7 @@ namespace FoundationDB.Storage.FdbLite
 				{
 					region?.Dispose();
 				}
-				this.Regions.Clear();
+				this.Regions = [ ];
 				this.Handle.Dispose();
 			}
 		}

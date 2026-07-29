@@ -222,9 +222,14 @@ namespace FoundationDB.Storage.FdbLite
 			// barrier 2: the header (and with it the generation) becomes the durable truth
 			this.Pager.Flush();
 
-			this.PreviousDurable = this.Durable;
-			this.Durable = header;
-			this.DurableSlot = slot;
+			lock (this.PinLock)
+			{ // BeginRead/TryBeginReadAtVersion read these under the same lock; the snapshot header is a
+			  // multi-field struct, so an unlocked assignment can tear against a concurrent pin and pin the
+			  // WRONG generation - which un-fences the reclaimer from blocks that root still references
+				this.PreviousDurable = this.Durable;
+				this.Durable = header;
+				this.DurableSlot = slot;
+			}
 
 			// blocks freed by generations nothing can see anymore become reusable
 			this.FreeSpace.Promote(ComputePromoteLimit(this.Durable.Generation + 1));

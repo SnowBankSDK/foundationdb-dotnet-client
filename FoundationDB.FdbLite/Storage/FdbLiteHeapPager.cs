@@ -35,7 +35,8 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Default region size for heap stores: small (1 MiB), so region-boundary handling is exercised constantly by ordinary tests</summary>
 		public const int DefaultRegionSizeInBytes = 1 << 20;
 
-		private List<byte[]> Regions { get; } = [ ];
+		/// <summary>Backing regions, as an IMMUTABLE snapshot: a published array is never mutated again, which is what lets reads stay lock-free while <see cref="Grow"/> races them (single writer, any readers - the same contract as the file pager). A volatile FIELD rather than a property, because volatile is the publish barrier.</summary>
+		private volatile byte[][] Regions = [ ];
 
 		public FdbLiteHeapPager(FdbLiteGeometry geometry, int regionSizeInBytes = DefaultRegionSizeInBytes)
 		{
@@ -76,7 +77,8 @@ namespace FoundationDB.Storage.FdbLite
 			uint last = (firstBlock + (uint) count - 1) / this.RegionSizeInBlocks;
 			Contract.Requires(region == last, "block run straddles a region boundary");
 			int offset = (int) (firstBlock % this.RegionSizeInBlocks) << this.Geometry.BlockSizeLog2;
-			return this.Regions[(int) region].AsSpan(offset, count << this.Geometry.BlockSizeLog2);
+			var regions = this.Regions; // one snapshot read: the array is immutable once published
+			return regions[(int) region].AsSpan(offset, count << this.Geometry.BlockSizeLog2);
 		}
 
 		/// <inheritdoc />
@@ -94,9 +96,18 @@ namespace FoundationDB.Storage.FdbLite
 				return;
 			}
 			uint regionsNeeded = (minimumBlockCount + this.RegionSizeInBlocks - 1) / this.RegionSizeInBlocks;
-			while ((uint) this.Regions.Count < regionsNeeded)
+			var regions = this.Regions;
+			if ((uint) regions.Length < regionsNeeded)
 			{
-				this.Regions.Add(new byte[this.RegionSizeInBytes]);
+				var grown = new byte[regionsNeeded][];
+				regions.AsSpan().CopyTo(grown);
+				for (int i = regions.Length; i < grown.Length; i++)
+				{
+					grown[i] = new byte[this.RegionSizeInBytes];
+				}
+				// publish the regions BEFORE the block count: a reader that passes the bounds check must find
+				// its region present
+				this.Regions = grown;
 			}
 			this.BlockCount = regionsNeeded * this.RegionSizeInBlocks;
 		}
@@ -109,9 +120,10 @@ namespace FoundationDB.Storage.FdbLite
 			// whole trailing regions are released; the store shrinks in region granularity (same as the file
 			// pager, whose mapped regions are the unmapping unit)
 			uint regionsKept = (newBlockCount + this.RegionSizeInBlocks - 1) / this.RegionSizeInBlocks;
-			while ((uint) this.Regions.Count > regionsKept)
+			var regions = this.Regions;
+			if ((uint) regions.Length > regionsKept)
 			{
-				this.Regions.RemoveAt(this.Regions.Count - 1);
+				this.Regions = regions.AsSpan(0, (int) regionsKept).ToArray();
 			}
 			this.BlockCount = regionsKept * this.RegionSizeInBlocks;
 		}
@@ -120,7 +132,7 @@ namespace FoundationDB.Storage.FdbLite
 		public void Dispose()
 		{
 			this.Disposed = true;
-			this.Regions.Clear();
+			this.Regions = [ ];
 		}
 
 	}
