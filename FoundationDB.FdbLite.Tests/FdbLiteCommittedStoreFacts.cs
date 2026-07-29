@@ -159,6 +159,9 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 					AssertSameState(reference, persistent, $"[{geometry}] cycle {cycle} (committed)");
 					Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) reference.Count), $"[{geometry}] header key count");
+					// the cross-level audit catches keys a page cannot self-report (mis-routed, truncated), which a
+					// state comparison reading through the same page accessors is structurally blind to
+					Assert.That(FdbLiteTreeAudit.Check(engine.Pager, engine.Durable.RootPageId), Is.Empty, $"[{geometry}] cycle {cycle}: structural audit");
 				}
 			}
 		}
@@ -224,6 +227,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				immutable = immNext;
 
 				AssertSameState(immutable, persistent, $"cycle {cycle} (fdblite vs immutable, committed)");
+				Assert.That(FdbLiteTreeAudit.Check(engine.Pager, engine.Durable.RootPageId), Is.Empty, $"cycle {cycle}: structural audit");
 			}
 		}
 

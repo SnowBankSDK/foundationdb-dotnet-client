@@ -92,6 +92,10 @@ namespace FoundationDB.Storage.FdbLite.Tests
 						while (cursor.MoveNext());
 					}
 					Assert.That(seen, Is.EqualTo(KEYS), $"round {round}: every key must still be present");
+					// the count identity betrays ORPHANED pages (unreachable, so no scan or audit can visit them),
+					// and the cross-level audit betrays mis-routed or truncated keys the scan reads back happily
+					Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) KEYS), $"round {round}: committed KeyCount vs actual tree");
+					Assert.That(FdbLiteTreeAudit.Check(engine.Pager, pin.RootPageId), Is.Empty, $"round {round}: structural audit");
 				}
 				finally
 				{
