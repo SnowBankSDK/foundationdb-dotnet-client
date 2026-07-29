@@ -68,6 +68,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string JsonBooleanLiteralsAttributeFullName = "SnowBank.Data.Json.JsonBooleanLiteralsAttribute";
 
+			public const string JsonConvertWithAttributeFullName = "SnowBank.Data.Json.JsonConvertWithAttribute";
+
 			public const string JsonPolymorphicAttributeFullName = "System.Text.Json.Serialization.JsonPolymorphicAttribute";
 
 			public const string JsonDerivedTypeAttributeFullName = "System.Text.Json.Serialization.JsonDerivedTypeAttribute";
@@ -832,6 +834,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				string? enumFormat = null;
 				string? customConverterType = null;
 				string? customConverterArgs = null;
+				string? nativeConverterType = null;
 
 				string defaultLiteral = GetDefaultLiteral(type);
 				bool hasNonZeroDefault = false;
@@ -906,6 +909,33 @@ namespace SnowBank.Serialization.Json.CodeGen
 							isKey = true;
 							break;
 						}
+						case JsonConvertWithAttributeFullName:
+						{ // the native [JsonConvertWith(typeof(...))]: wins over every other converter signal, and an
+							// invalid converter type is a build ERROR (our own attribute has no legacy meaning to preserve)
+							if (attribute.ConstructorArguments.Length > 0
+								&& attribute.ConstructorArguments[0].Value is INamedTypeSymbol nativeSymbol)
+							{
+								if (ImplementsPackerAndDeserializerFor(nativeSymbol, typeSymbol))
+								{
+									nativeConverterType = nativeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+								}
+								else
+								{
+									ReportDiagnostic(
+										new(
+											"CJSON0010",
+											"[JsonConvertWith] names a type that is not a valid CrystalJson converter",
+											"The member '{0}' carries [JsonConvertWith(typeof({1}))], but '{1}' does not implement IJsonPacker<T> and IJsonDeserializer<T> for the member's type.",
+											"SnowBank.Serialization.Json.CodeGen",
+											DiagnosticSeverity.Error,
+											isEnabledByDefault: true
+										),
+										member.Locations.Length > 0 ? member.Locations[0] : null,
+										member.ToDisplayString(), nativeSymbol.Name);
+								}
+							}
+							break;
+						}
 						case JsonConverterAttributeFullName:
 						case NewtonsoftJsonConverterAttributeFullName:
 						{ // [JsonConverter(typeof(...))], either spelling
@@ -951,6 +981,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 						//TODO: any other argument for setting a default value?
 					}
+				}
+
+				if (nativeConverterType != null)
+				{ // the native attribute wins over [JsonBooleanLiterals] and the foreign [JsonConverter] spellings
+					customConverterType = nativeConverterType;
+					customConverterArgs = "";
 				}
 
 				if (string.IsNullOrEmpty(name))

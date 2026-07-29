@@ -189,6 +189,85 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Serialize(new[] { new Temperature(1), new Temperature(2) }), Is.EqualTo("[ \"1C\", \"2C\" ]"));
 		}
 
+		/// <summary>CrystalJson-only converter attached with the NATIVE attribute (the STJ spelling would poison the type for STJ)</summary>
+		public sealed class NativeFlagsDto
+		{
+
+			[JsonConvertWith(typeof(BoolAsBitStringConverter))]
+			public bool Enabled { get; set; }
+
+			// both spellings, naming DIFFERENT converters: the native attribute must win
+			[JsonConvertWith(typeof(BoolAsBitStringConverter))]
+			[STJ.JsonConverter(typeof(STJ.JsonStringEnumConverter))]
+			public bool Mixed { get; set; }
+
+			[JsonConvertWith(typeof(BoolAsBitStringConverter))]
+			public bool? Optional { get; set; }
+
+		}
+
+		[JsonConvertWith(typeof(NativeTemperatureConverter))]
+		public readonly record struct NativeTemperature(double Celsius);
+
+		public sealed class NativeTemperatureConverter : IJsonMemberConverter<NativeTemperature>
+		{
+			public JsonValue Pack(NativeTemperature instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+				=> JsonString.Return(instance.Celsius.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "C");
+
+			public NativeTemperature Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
+				=> value switch
+				{
+					JsonString s when s.Value.EndsWith("C") => new(double.Parse(s.Value.Substring(0, s.Value.Length - 1), System.Globalization.CultureInfo.InvariantCulture)),
+					JsonNumber n => new(n.ToDouble()),
+					_ => throw new JsonBindingException($"Cannot convert {value.Type} into a NativeTemperature")
+				};
+		}
+
+		public sealed class BrokenConverterDto
+		{
+			// names a type that does NOT have the Pack/Unpack pair: the native attribute fails loudly (no legacy meaning to preserve)
+			[JsonConvertWith(typeof(string))]
+			public bool Broken { get; set; }
+		}
+
+		[Test]
+		public void Test_Native_Attribute_On_Members_And_Types()
+		{
+			// member-level, both directions and both output routes
+			var dto = new NativeFlagsDto { Enabled = true, Mixed = true, Optional = false };
+			var obj = CrystalJson.Parse(CrystalJson.Serialize(dto)).AsObject();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(obj.Get<string>("Enabled"), Is.EqualTo("1"), "[JsonConvertWith] must shape the wire");
+				Assert.That(obj.Get<string>("Mixed"), Is.EqualTo("1"), "the native attribute must win over a foreign spelling on the same member");
+				Assert.That(obj.Get<string>("Optional"), Is.EqualTo("0"), "a converter for T lifts over a T? member");
+			}
+			Assert.That(JsonValue.FromValue(dto).AsObject().Get<string>("Enabled"), Is.EqualTo("1"), "the DOM route applies it as well");
+
+			var back = CrystalJson.Deserialize<NativeFlagsDto>("""{ "Enabled": "1", "Mixed": false, "Optional": "0" }""");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(back.Enabled, Is.True);
+				Assert.That(back.Mixed, Is.False);
+				Assert.That(back.Optional, Is.False);
+			}
+
+			// type-level: standalone value, and hosted in a collection
+			Assert.That(CrystalJson.Serialize(new NativeTemperature(23.5)), Is.EqualTo("\"23.5C\""));
+			Assert.That(CrystalJson.Deserialize<NativeTemperature>("\"23.5C\"").Celsius, Is.EqualTo(23.5));
+			Assert.That(CrystalJson.Serialize(new[] { new NativeTemperature(1) }), Is.EqualTo("[ \"1C\" ]"));
+		}
+
+		[Test]
+		public void Test_Native_Attribute_Fails_Loudly_On_Invalid_Converter()
+		{
+			// unlike the foreign spellings (ignored for compat), our own attribute naming a type without the
+			// Pack/Unpack pair is a configuration bug and must not be silently dropped
+			Assert.That(
+				() => CrystalJson.Serialize(new BrokenConverterDto { Broken = true }),
+				Throws.InstanceOf<InvalidOperationException>().With.Message.Contain("JsonConvertWith"));
+		}
+
 		[Test]
 		public void Test_Foreign_Converter_Type_Is_Ignored()
 		{

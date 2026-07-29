@@ -1030,6 +1030,14 @@ namespace SnowBank.Data.Json
 		/// <returns>A bridge over the converter instance, or <c>null</c> if there is no such attribute, or if it names a type we cannot run (e.g. a real STJ or Newtonsoft converter), which keeps the pre-existing behavior for those sites</returns>
 		private static IJsonMemberConverterBridge? FindCustomJsonConverter(MemberInfo target, Type targetType)
 		{
+			// the native [JsonConvertWith(typeof(...))] wins over every other converter signal, and fails loudly when
+			// the named type lacks the Pack/Unpack pair: it is our own attribute, there is no legacy meaning to preserve
+			if (target.GetCustomAttribute<JsonConvertWithAttribute>(inherit: true) is { } native)
+			{
+				return TryCreateConverterBridge(native.ConverterType, targetType)
+					?? throw new InvalidOperationException($"[JsonConvertWith] on '{target.Name}' names '{native.ConverterType.GetFriendlyName()}', which does not implement IJsonPacker<T> + IJsonDeserializer<T> for type '{targetType.GetFriendlyName()}'.");
+			}
+
 			// [JsonBooleanLiterals(...)] installs a built-in converter, feeding the same per-member slot as [JsonConverter(typeof(...))]
 			if (target.GetCustomAttribute<JsonBooleanLiteralsAttribute>(inherit: true) is { } boolLiterals)
 			{

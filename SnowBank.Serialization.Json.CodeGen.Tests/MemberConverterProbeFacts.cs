@@ -63,6 +63,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[System.Text.Json.Serialization.JsonConverter(typeof(ProbeBitStringConverter))]
 		public bool Enabled { get; set; }
 
+		// the native attribute, for CrystalJson-only converters (STJ never inspects it)
+		[JsonConvertWith(typeof(ProbeBitStringConverter))]
+		public bool Native { get; set; }
+
+		// both spellings on one member: the native attribute must win
+		[JsonConvertWith(typeof(ProbeBitStringConverter))]
+		[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
+		public bool Mixed { get; set; }
+
 		[JsonBooleanLiterals("N", "Y")]
 		public bool? Maybe { get; set; }
 
@@ -92,12 +101,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Generated_Serialize_Honors_Member_Converters()
 		{
-			var dto = new ProbeConvertedDto { Enabled = true, Maybe = false, Day = DayOfWeek.Friday, Kind = ProbeCourierKind.Electronic };
+			var dto = new ProbeConvertedDto { Enabled = true, Native = true, Mixed = true, Maybe = false, Day = DayOfWeek.Friday, Kind = ProbeCourierKind.Electronic };
 
 			var obj = JsonObject.Parse(ProbeConverterHost.ProbeConvertedDto.ToJsonText(dto)).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(obj.Get<string>("Enabled"), Is.EqualTo("1"), "[JsonConverter] must shape the wire through the generated Serialize");
+				Assert.That(obj.Get<string>("Native"), Is.EqualTo("1"), "[JsonConvertWith] must shape the wire through the generated Serialize");
+				Assert.That(obj.Get<string>("Mixed"), Is.EqualTo("1"), "the native attribute must win over a foreign spelling on the same member");
 				Assert.That(obj.Get<string>("Maybe"), Is.EqualTo("N"), "[JsonBooleanLiterals] must shape the wire through the generated Serialize");
 				Assert.That(obj.Get<string>("day"), Is.EqualTo("Friday"), "[JsonProperty(EnumFormat = String)] forces the string form regardless of the settings");
 				Assert.That(obj.Get<string>("Kind"), Is.EqualTo("E"), "an enum member without EnumFormat follows the settings default (strings), with its token");
