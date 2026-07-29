@@ -1030,6 +1030,17 @@ namespace SnowBank.Data.Json
 		/// <returns>A bridge over the converter instance, or <c>null</c> if there is no such attribute, or if it names a type we cannot run (e.g. a real STJ or Newtonsoft converter), which keeps the pre-existing behavior for those sites</returns>
 		private static IJsonMemberConverterBridge? FindCustomJsonConverter(MemberInfo target, Type targetType)
 		{
+			// [JsonBooleanLiterals(...)] installs a built-in converter, feeding the same per-member slot as [JsonConverter(typeof(...))]
+			if (target.GetCustomAttribute<JsonBooleanLiteralsAttribute>(inherit: true) is { } boolLiterals)
+			{
+				if (targetType != typeof(bool) && Nullable.GetUnderlyingType(targetType) != typeof(bool))
+				{
+					throw new InvalidOperationException($"[JsonBooleanLiterals] can only be applied to bool or bool? members, but '{target.Name}' is of type {targetType.GetFriendlyName()}.");
+				}
+				var converter = new JsonBooleanLiteralsConverter(boolLiterals);
+				return new JsonMemberConverterBridge<bool>(converter, converter);
+			}
+
 			foreach (var attr in target.GetCustomAttributes(inherit: true))
 			{
 				var attrType = attr.GetType();
