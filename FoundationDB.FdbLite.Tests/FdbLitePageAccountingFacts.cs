@@ -233,6 +233,50 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 		}
 
+		/// <summary>The statistics walk exposes the per-page waste counters as an exact per-generation total.</summary>
+		[Test]
+		public void Measure_Tree_Statistics_Exposes_The_Booked_Waste()
+		{
+			var geometry = FdbLiteGeometry.Uniform(14);
+			using var pager = new FdbLiteHeapPager(geometry);
+			var engine = FdbLiteEngine.Create(pager);
+
+			const int N = 10_000;
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				var v = new byte[16];
+				BinaryPrimitives.WriteInt32BigEndian(v, i);
+				seed.Insert(Key(i), v);
+			}
+			engine.Commit(seed, 1);
+
+			var fresh = engine.MeasureTreeStatistics();
+			Log($"# fresh: {fresh}");
+			Assert.That(fresh.LeafPages, Is.GreaterThan(0));
+			Assert.That(fresh.CellCount, Is.EqualTo(N));
+			Assert.That(fresh.WastedBytes, Is.Zero, "a tree of freshly built pages is compact");
+
+			// shrink every fourth value 16 -> 4 bytes: each shrink stays in its slot and books EXACTLY its
+			// 12 bytes of slack, whether it went through copy-and-overwrite (first touch) or the splice path
+			var w = engine.BeginWrite();
+			int shrunk = 0;
+			for (int i = 0; i < N; i += 4)
+			{
+				var v = new byte[4];
+				BinaryPrimitives.WriteInt32BigEndian(v, i);
+				w.Insert(Key(i), v);
+				shrunk++;
+			}
+			engine.Commit(w, 2);
+
+			var after = engine.MeasureTreeStatistics();
+			Log($"# after {shrunk:N0} shrinks: {after}");
+			Assert.That(after.CellCount, Is.EqualTo(N), "a replace changes no count");
+			Assert.That(after.WastedBytes, Is.EqualTo(12L * shrunk), "every shrink books exactly its slack, nothing more");
+			Assert.That(after.MaxWastedBytesPerPage, Is.GreaterThan(0));
+		}
+
 		/// <summary>The same, with random keys and a random op mix, run against a model - the shape the existing fuzz has but with the two oracles wired in.</summary>
 		[Test]
 		public void Probe_Random_Churn_Against_Both_Oracles()

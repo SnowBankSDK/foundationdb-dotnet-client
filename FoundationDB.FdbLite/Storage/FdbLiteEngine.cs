@@ -306,6 +306,21 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Walks the current durable generation (under its own read pin) and returns its aggregate tree statistics, wasted bytes included.</summary>
+		/// <remarks>O(pages): an inspection call for probes, tests and space diagnostics, never a hot-path one.</remarks>
+		public FdbLiteTreeStatistics MeasureTreeStatistics()
+		{
+			var pin = BeginRead();
+			try
+			{
+				return FdbLiteTreeStatistics.Measure(this.Pager, pin.RootPageId);
+			}
+			finally
+			{
+				EndRead(in pin);
+			}
+		}
+
 		/// <summary>Slow-reader observability: pin count, the oldest pinned generation, and the blocks retained only by unpromoted frees.</summary>
 		public (int PinCount, ulong? OldestPinnedGeneration, long PendingReclaimBlocks) GetStats()
 		{
