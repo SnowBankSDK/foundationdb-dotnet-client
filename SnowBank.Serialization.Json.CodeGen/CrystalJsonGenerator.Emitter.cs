@@ -611,11 +611,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock("JsonConverter");
 
 				// custom converters attached to members ([JsonConverter(typeof(...))] or [JsonBooleanLiterals])
+				// note: internal so that the sibling ReadOnly/Writable proxy records can route through them as well
 				foreach (var member in typeDef.Members)
 				{
 					if (member.CustomConverterType != null)
 					{
-						sb.AppendLine($"private static readonly {member.CustomConverterType} {GetMemberConverterRef(member)} = new {member.CustomConverterType}({member.CustomConverterArgs});");
+						sb.AppendLine($"internal static readonly {member.CustomConverterType} {GetMemberConverterRef(member)} = new {member.CustomConverterType}({member.CustomConverterArgs});");
 						sb.NewLine();
 					}
 				}
@@ -936,7 +937,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 							string? getterExpr = null;
 							string proxyType = member.Type.FullyQualifiedNameAnnotated;
 
-							if (IsLocallyGeneratedType(member.Type, out var target, out _))
+							if (member.CustomConverterType != null)
+							{ // a custom converter takes over the member's wire form; the proxy must decode through it
+								var converterRef = $"JsonConverter.{GetMemberConverterRef(member)}";
+								if (member.IsRequired)
+								{
+									getterExpr = $"/* member-converter-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null, null, {CSharpCodeBuilder.Constant(member.MemberName)})";
+								}
+								else if (member.Type.NullableOfType is not null)
+								{
+									getterExpr = $"/* member-converter-nullable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullable({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null)";
+								}
+								else
+								{
+									getterExpr = $"/* member-converter */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {member.DefaultLiteral}, null)!";
+								}
+							}
+							else if (IsLocallyGeneratedType(member.Type, out var target, out _))
 							{
 								getterExpr = $"/* local-deserializer */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
 								proxyType = GetLocalReadOnlyProxyRef(target);
@@ -1197,7 +1214,31 @@ namespace SnowBank.Serialization.Json.CodeGen
 							string? getterExpr = null;
 							string? attributeExpr = null;
 
-							if (IsLocallyGeneratedType(member.Type, out var target, out _))
+							if (member.CustomConverterType != null)
+							{ // a custom converter takes over the member's wire form; the proxy must encode and decode through it
+								var converterRef = $"JsonConverter.{GetMemberConverterRef(member)}";
+								if (member.IsRequired)
+								{
+									getterExpr = $"/* member-converter-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null, null, {CSharpCodeBuilder.Constant(member.MemberName)})";
+								}
+								else if (member.Type.NullableOfType is not null)
+								{
+									getterExpr = $"/* member-converter-nullable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullable({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null)";
+								}
+								else
+								{
+									getterExpr = $"/* member-converter */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), {defaultValue}, null)!";
+								}
+								if (member.Type.IsValueType() && member.Type.NullableOfType is null)
+								{
+									setterExpr = $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, {converterRef}.Pack(value, null, null))";
+								}
+								else
+								{
+									setterExpr = $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value is {{ }} v{member.MemberName} ? {converterRef}.Pack(v{member.MemberName}, null, null) : {KnownTypeSymbols.JsonNullFullName}.Null)";
+								}
+							}
+							else if (IsLocallyGeneratedType(member.Type, out var target, out _))
 							{
 								proxyType = GetLocalWritableProxyRef(target);
 								getterExpr = $"/* proxy */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
@@ -1355,6 +1396,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 								{
 									getterExpr = $"/* fallback-else */ m_value.Get<{member.Type.FullyQualifiedName}>({GetTargetPropertyNameRef(typeDef, member)}, {defaultValue})";
 								}
+							}
+
+							if (setterExpr == null && member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
+							{ // [JsonProperty(EnumFormat = ...)] forces the wire form written by the proxy setter as well
+								var packHelper = $"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackEnum{member.EnumFormat}";
+								setterExpr = member.Type.NullableOfType is null
+									? $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, {packHelper}(value))"
+									: $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value is {{ }} v{member.MemberName} ? {packHelper}(v{member.MemberName}) : {KnownTypeSymbols.JsonNullFullName}.Null)";
 							}
 
 							if (setterExpr == null)

@@ -149,6 +149,46 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
+		public void Test_Proxies_Honor_Member_Converters()
+		{
+			// using a proxy must behave identically to serializing/deserializing the concrete entity type
+			var dto = new ProbeConvertedDto { Enabled = true, Maybe = true, Day = DayOfWeek.Friday, Kind = ProbeCourierKind.Electronic };
+
+			// read-only proxy: typed reads must return CLR values, decoded through the member converters
+			var ro = ProbeConverterHost.ProbeConvertedDto.ToReadOnly(dto);
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(ro.Enabled, Is.True, "reads back through the [JsonConverter] member converter");
+				Assert.That(ro.Maybe, Is.True, "reads back through the [JsonBooleanLiterals] converter");
+				Assert.That(ro.Day, Is.EqualTo(DayOfWeek.Friday), "reads back an EnumFormat=String member");
+				Assert.That(ro.Kind, Is.EqualTo(ProbeCourierKind.Electronic), "reads back a token-carrying enum");
+			}
+
+			// writable proxy: setting a member must produce the same wire as packing the entity
+			var w = ProbeConverterHost.ProbeConvertedDto.ToMutable(dto);
+			w.Enabled = false;
+			w.Maybe = false;
+			w.Day = DayOfWeek.Monday;
+			var json = w.ToJsonValue().AsObject();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(json.Get<string>("Enabled"), Is.EqualTo("0"), "the setter must write the converter's wire form");
+				Assert.That(json.Get<string>("Maybe"), Is.EqualTo("N"), "the setter must write the configured boolean literal");
+				Assert.That(json.Get<string>("day"), Is.EqualTo("Monday"), "the setter must honor EnumFormat=String");
+			}
+
+			// and the proxy round-trips back to the same entity values
+			var back = w.ToValue();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(back.Enabled, Is.False);
+				Assert.That(back.Maybe, Is.False);
+				Assert.That(back.Day, Is.EqualTo(DayOfWeek.Monday));
+				Assert.That(back.Kind, Is.EqualTo(ProbeCourierKind.Electronic));
+			}
+		}
+
+		[Test]
 		public void Test_Generated_Round_Trip()
 		{
 			var dto = new ProbeConvertedDto { Enabled = true, Maybe = true, Day = DayOfWeek.Sunday, Kind = ProbeCourierKind.Electronic };
