@@ -1057,8 +1057,14 @@ namespace FoundationDB.Storage.FdbLite
 					sumWhole += LeafWholeKeyLength(cell, sourcePrefixLength);
 					sumValue += cell.ValueLength;
 				}
-				totalBytes = LeafRunBytes(cells.Length, sumWhole, sumValue, runLcp) - FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: 0);
-				usable = pageSize - FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: (runLcp + 1) & ~1);
+				// Demand and capacity on the SAME basis: LeafRunBytes is the FULL page footprint (header and
+				// prefix region included), so the capacity it is tested against is the full page size.
+				// Subtracting the prefix region from the capacity while the demand still contained it opened
+				// a false-positive band exactly one prefix-region wide, where a run that FITS one page was
+				// planned - and then genuinely executed, via the balance target - as a two-way split.
+				// TryStripAndRetry then discarded the split it never expected, orphaning half the leaf.
+				totalBytes = LeafRunBytes(cells.Length, sumWhole, sumValue, runLcp);
+				usable = pageSize;
 			}
 
 			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
@@ -1133,7 +1139,7 @@ namespace FoundationDB.Storage.FdbLite
 								Contract.Debug.Assert(end > start, "a single cell always fits a page (the page-size floor guarantees it)");
 								break;
 							}
-							if (end > start && next - FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: 0) > targetBytes)
+							if (end > start && next > targetBytes)
 							{ // the boundary cell rides into the next part
 								break;
 							}
