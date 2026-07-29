@@ -73,7 +73,7 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			// tail allocation: align the frontier, then make sure the run does not straddle a region boundary
-			start = (this.Frontier + alignment - 1) & ~(alignment - 1);
+			start = checked(this.Frontier + alignment - 1) & ~(alignment - 1);
 			if ((start + count - 1) / regionBlocks != start / regionBlocks)
 			{ // would straddle: skip to the next region boundary (which satisfies any legal alignment)
 				start = (start / regionBlocks + 1) * regionBlocks;

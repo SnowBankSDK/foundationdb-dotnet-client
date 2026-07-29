@@ -258,6 +258,10 @@ namespace FoundationDB.Storage.FdbLite
 		public void Insert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
 		{
 			Contract.Requires(key.Length <= FdbLiteTreePage.MaxKeyLength);
+			// an out-of-line value is ONE contiguous block run, and a run cannot straddle a mapping region:
+			// that is the value ceiling, surfaced here with its name instead of as an internal allocator
+			// contract failure several frames deep
+			Contract.Requires(value.Length <= (long) this.Pager.RegionSizeInBlocks << this.Pager.Geometry.BlockSizeLog2, "value exceeds the store's region size (the maximum length of one contiguous extent)");
 
 			var cellScratch = ArrayPool<byte>.Shared.Rent(key.Length + Math.Max(Math.Min(value.Length, this.Pager.Geometry.MaxInlineValueLength), FdbLiteTreePage.ExtentDescriptorSize));
 			try

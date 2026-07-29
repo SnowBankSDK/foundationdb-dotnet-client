@@ -96,6 +96,17 @@ namespace FoundationDB.Storage.FdbLite
 						problems.Add($"leaf {pageId} cells {i - 1},{i} are out of order: {Describe(previous)} then {Describe(key)}");
 					}
 					previous = key;
+
+					if ((FdbLiteTreePage.GetLeafFlags(page, i) & FdbLiteTreePage.FlagValueIsExtent) != 0)
+					{ // the read path never verifies extent payloads (tree pages are checksummed on first touch,
+					  // extents are raw blocks), so the audit is where payload bit-rot gets caught
+						var (start, blockCount, totalLength, checksum) = FdbLiteTreePage.GetLeafExtentDescriptor(page, i);
+						var payload = pager.ReadBlocks(start, blockCount)[..(int) totalLength];
+						if (System.IO.Hashing.XxHash3.HashToUInt64(payload, unchecked((long) start)) != checksum)
+						{
+							problems.Add($"leaf {pageId} cell {i}: extent at block {start} ({totalLength} bytes) fails its checksum");
+						}
+					}
 				}
 				return;
 			}
