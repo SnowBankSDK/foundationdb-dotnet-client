@@ -196,7 +196,7 @@ namespace SnowBank.Data.Json.Tests
 			// cannot be executed: the attribute is ignored and the member serializes under the default rules,
 			// which is what already happened before member converters existed (no behavior change for those sites)
 			var obj = CrystalJson.Parse(CrystalJson.Serialize(new ForeignConverterDto { Day = DayOfWeek.Friday })).AsObject();
-			Assert.That(obj.Get<int>("Day"), Is.EqualTo(5), "the foreign converter is ignored, the enum keeps the default numeric form");
+			Assert.That(obj.Get<string>("Day"), Is.EqualTo("Friday"), "the foreign converter is ignored, the enum keeps the default form");
 		}
 
 	}

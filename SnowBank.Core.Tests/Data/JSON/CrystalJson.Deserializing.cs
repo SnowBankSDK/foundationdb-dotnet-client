@@ -711,7 +711,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonDeserialize_CustomClass()
 		{
-			string jsonText = """{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "DateOfBirth": "1920-11-11", "State": 42, "RatioOfStuff": 8641975.23 }""";
+			string jsonText = """{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "DateOfBirth": "1920-11-11", "State": "Bar", "RatioOfStuff": 8641975.23 }""";
 			Log(jsonText);
 			var x = CrystalJson.Deserialize<DummyJsonClass>(jsonText);
 			Assert.That(x, Is.Not.Null, jsonText);
@@ -744,7 +744,7 @@ namespace SnowBank.Data.Json.Tests
 		{
 			using (Assert.EnterMultipleScope())
 			{ // without any "$type" field, we will bind using the type specified in the parent container, if it is constructible (not abstract, not an interface)
-				string jsonText = """{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "DateOfBirth": "1920-11-11", "State": 42, "RatioOfStuff": 8641975.23 }""";
+				string jsonText = """{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "DateOfBirth": "1920-11-11", "State": "Bar", "RatioOfStuff": 8641975.23 }""";
 				Log(jsonText);
 				var x = CrystalJson.Deserialize<DummyJsonBaseClass>(jsonText);
 				Assert.That(x, Is.Not.Null);
@@ -768,7 +768,7 @@ namespace SnowBank.Data.Json.Tests
 
 			using (Assert.EnterMultipleScope())
 			{ // with a "$type" field, we should construct the exact type
-				string jsonText = """{ "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "DateOfBirth": "1920-11-11", "State": 42, "RatioOfStuff": 8641975.23 }""";
+				string jsonText = """{ "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "DateOfBirth": "1920-11-11", "State": "Bar", "RatioOfStuff": 8641975.23 }""";
 				Log(jsonText);
 				var x = CrystalJson.Deserialize<DummyJsonBaseClass>(jsonText);
 				Assert.That(x, Is.Not.Null);
@@ -797,7 +797,7 @@ namespace SnowBank.Data.Json.Tests
 			}
 
 			{ // with a "$type" field, we should construct the exact type (again, with a more derived type)
-				string jsonText = """{ "$type": "spy", "DoubleAgentName": "Janov Bondovicz", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "DateOfBirth": "1920-11-11", "State": 42, "RatioOfStuff": 8641975.23 }""";
+				string jsonText = """{ "$type": "spy", "DoubleAgentName": "Janov Bondovicz", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "DateOfBirth": "1920-11-11", "State": "Bar", "RatioOfStuff": 8641975.23 }""";
 				Log(jsonText);
 				var x = CrystalJson.Deserialize<DummyDerivedJsonClass>(jsonText);
 				Assert.That(x, Is.Not.Null);
@@ -831,7 +831,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonDeserialize_CustomStruct()
 		{
-			string jsonText = "{ \"Valid\": true, \"Name\": \"James Bond\", \"Index\": 7, \"Size\": 123456789, \"Height\": 1.8, \"Amount\": 0.07, \"Created\": \"1968-05-08T00:00:00Z\", \"Modified\": \"2010-10-28T15:39:00Z\", \"DateOfBirth\": \"1920-11-11\", \"State\": 42, \"RatioOfStuff\": 8641975.23 }";
+			string jsonText = "{ \"Valid\": true, \"Name\": \"James Bond\", \"Index\": 7, \"Size\": 123456789, \"Height\": 1.8, \"Amount\": 0.07, \"Created\": \"1968-05-08T00:00:00Z\", \"Modified\": \"2010-10-28T15:39:00Z\", \"DateOfBirth\": \"1920-11-11\", \"State\": \"Bar\", \"RatioOfStuff\": 8641975.23 }";
 			Log(jsonText);
 			var x = CrystalJson.Deserialize<DummyJsonStruct>(jsonText);
 			Assert.That(x, Is.InstanceOf<DummyJsonStruct>());

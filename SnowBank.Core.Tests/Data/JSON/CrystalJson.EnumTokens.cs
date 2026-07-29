@@ -115,11 +115,33 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
+		public void Test_Enums_Serialize_As_Strings_By_Default()
+		{
+			// enums default to their string form on ALL routes (a deliberate divergence from STJ, for javascript-client compat);
+			// WithEnumAsNumbers() is the opt-in for the numeric wire
+			Assert.That(CrystalJson.Serialize(DayOfWeek.Friday), Is.EqualTo("\"Friday\""), "text route defaults to the string form");
+			Assert.That(JsonValue.FromValue(DayOfWeek.Friday), Is.InstanceOf<JsonString>(), "DOM route defaults to the string form");
+			Assert.That(CrystalJson.Serialize(CourierKind.Paper), Is.EqualTo("\"C\""), "custom tokens shape the default form");
+			Assert.That(CrystalJson.Serialize(Access.ReadWrite | Access.Delete), Is.EqualTo("\"ReadWrite, Delete\""), "flags compose in the default form");
+
+			var numbers = CrystalJsonSettings.Json.WithEnumAsNumbers();
+			Assert.That(CrystalJson.Serialize(DayOfWeek.Friday, numbers), Is.EqualTo("5"), "WithEnumAsNumbers() restores the numeric wire");
+			Assert.That(JsonValue.FromValue(DayOfWeek.Friday, numbers), Is.InstanceOf<JsonNumber>(), "on the DOM route as well");
+
+			// reads stay tolerant regardless of the write default: names and tokens any-case, numbers, numeric strings
+			Assert.That(CrystalJson.Deserialize<DayOfWeek>("\"friday\""), Is.EqualTo(DayOfWeek.Friday));
+			Assert.That(CrystalJson.Deserialize<DayOfWeek>("\"FRIDAY\""), Is.EqualTo(DayOfWeek.Friday));
+			Assert.That(CrystalJson.Deserialize<DayOfWeek>("5"), Is.EqualTo(DayOfWeek.Friday));
+			Assert.That(CrystalJson.Deserialize<DayOfWeek>("\"5\""), Is.EqualTo(DayOfWeek.Friday));
+		}
+
+		[Test]
 		public void Test_Dom_Route_Honors_Enum_Settings()
 		{
-			// default settings emit enums as NUMBERS on the text route; the DOM route must agree
-			Assert.That(JsonValue.FromValue(DayOfWeek.Friday), Is.InstanceOf<JsonNumber>(), "DOM route must honor the default enums-as-numbers setting");
-			Assert.That(JsonValue.FromValue(DayOfWeek.Friday).ToInt32(), Is.EqualTo(5));
+			// with WithEnumAsNumbers(), the DOM route must emit numbers, agreeing with the text route
+			var numbers = CrystalJsonSettings.Json.WithEnumAsNumbers();
+			Assert.That(JsonValue.FromValue(DayOfWeek.Friday, numbers), Is.InstanceOf<JsonNumber>(), "DOM route must honor WithEnumAsNumbers()");
+			Assert.That(JsonValue.FromValue(DayOfWeek.Friday, numbers).ToInt32(), Is.EqualTo(5));
 
 			var strings = CrystalJsonSettings.Json.WithEnumAsStrings();
 			Assert.That(JsonValue.FromValue(DayOfWeek.Friday, strings), Is.InstanceOf<JsonString>());
@@ -193,8 +215,9 @@ namespace SnowBank.Data.Json.Tests
 			// DOM route
 			Assert.That(JsonValue.FromValue(CourierKind.Paper, strings).ToStringOrDefault(), Is.EqualTo("C"));
 
-			// default settings still emit numbers: tokens only shape the string form
-			Assert.That(CrystalJson.Serialize(CourierKind.Electronic), Is.EqualTo("1"));
+			// the string form is the default, so tokens shape the default wire; the numeric opt-out still works
+			Assert.That(CrystalJson.Serialize(CourierKind.Electronic), Is.EqualTo("\"E\""));
+			Assert.That(CrystalJson.Serialize(CourierKind.Electronic, CrystalJsonSettings.Json.WithEnumAsNumbers()), Is.EqualTo("1"));
 
 			// end to end through a DTO member
 			Assert.That(CrystalJson.Serialize(new Parcel { Kind = CourierKind.Electronic }, strings), Does.Contain("\"E\""));

@@ -234,19 +234,23 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Enums_Default_Numeric_With_PerMember_Override()
+		public void Test_Enums_Default_String_With_PerMember_Override()
 		{
 			var obj = CrystalJson.Parse(CrystalJson.Serialize(new EnumDto { Plain = DayOfWeek.Friday, Stringy = DayOfWeek.Friday })).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(obj["Plain"], Is.InstanceOf<JsonNumber>(), "enums are numeric by default (same as DCJS)");
-				Assert.That(obj.Get<int>("Plain"), Is.EqualTo((int) DayOfWeek.Friday));
-				Assert.That(obj["Stringy"], Is.InstanceOf<JsonString>(), "[JsonProperty(EnumFormat=String)] must override per member");
+				Assert.That(obj["Plain"], Is.InstanceOf<JsonString>(), "enums are string literals by default");
+				Assert.That(obj.Get<string>("Plain"), Is.EqualTo("Friday"));
+				Assert.That(obj["Stringy"], Is.InstanceOf<JsonString>(), "[JsonProperty(EnumFormat=String)] forces the string form per member");
 			}
 
-			// global override
-			var obj2 = CrystalJson.Parse(CrystalJson.Serialize(new EnumDto { Plain = DayOfWeek.Friday }, CrystalJsonSettings.Json.WithEnumAsStrings())).AsObject();
-			Assert.That(obj2["Plain"], Is.InstanceOf<JsonString>());
+			// DCJS emitted numbers: byte-parity with a DCJS producer now requires the numeric opt-in
+			var obj2 = CrystalJson.Parse(CrystalJson.Serialize(new EnumDto { Plain = DayOfWeek.Friday, Stringy = DayOfWeek.Friday }, CrystalJsonSettings.Json.WithEnumAsNumbers())).AsObject();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(obj2["Plain"], Is.InstanceOf<JsonNumber>(), "WithEnumAsNumbers() restores the DCJS wire");
+				Assert.That(obj2["Stringy"], Is.InstanceOf<JsonString>(), "the per-member EnumFormat=String override wins over the numeric setting");
+			}
 
 			// both representations bind on the way in
 			var back = CrystalJson.Deserialize<EnumDto>("""{ "Plain": 5, "Stringy": "Friday" }""");

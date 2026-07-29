@@ -327,15 +327,20 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(a, Is.Not.Null);
 			Assert.That(a.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.None));
 
+			// strings is the default form for enums, so asking for it again is a no-op
 			var b = a.WithEnumAsStrings();
-			Assert.That(b, Is.Not.Null.And.Not.SameAs(a));
-			Assert.That(b.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.EnumsAsString));
-			Assert.That(a.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.None));
+			Assert.That(b, Is.SameAs(a));
+			Assert.That(b.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.None));
 
 			var c = a.WithEnumAsNumbers();
-			Assert.That(c, Is.SameAs(a));
-			Assert.That(c.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.None));
-			Assert.That(b.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.EnumsAsString));
+			Assert.That(c, Is.Not.Null.And.Not.SameAs(a));
+			Assert.That(c.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.EnumsAsNumbers));
+			Assert.That(a.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.None));
+
+			// and back to the default form returns the canonical cached instance
+			var d = c.WithEnumAsStrings();
+			Assert.That(d, Is.SameAs(a));
+			Assert.That(c.Flags, Is.EqualTo(CrystalJsonSettings.OptionFlags.EnumsAsNumbers));
 		}
 
 	}

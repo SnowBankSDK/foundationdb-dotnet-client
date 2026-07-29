@@ -99,13 +99,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			{
 				Assert.That(obj.Get<string>("Enabled"), Is.EqualTo("1"), "[JsonConverter] must shape the wire through the generated Serialize");
 				Assert.That(obj.Get<string>("Maybe"), Is.EqualTo("N"), "[JsonBooleanLiterals] must shape the wire through the generated Serialize");
-				Assert.That(obj.Get<string>("day"), Is.EqualTo("Friday"), "[JsonProperty(EnumFormat = String)] must force the string form, even though the settings default to numbers");
-				Assert.That(obj.Get<int>("Kind"), Is.EqualTo(1), "an enum member without EnumFormat keeps the settings default (numbers)");
+				Assert.That(obj.Get<string>("day"), Is.EqualTo("Friday"), "[JsonProperty(EnumFormat = String)] forces the string form regardless of the settings");
+				Assert.That(obj.Get<string>("Kind"), Is.EqualTo("E"), "an enum member without EnumFormat follows the settings default (strings), with its token");
 			}
 
-			// with EnumsAsString, the token declared on the enum's own field must be used
-			var objStr = JsonObject.Parse(ProbeConverterHost.ProbeConvertedDto.ToJsonText(dto, CrystalJsonSettings.Json.WithEnumAsStrings())).AsObject();
-			Assert.That(objStr.Get<string>("Kind"), Is.EqualTo("E"), "enum tokens must flow through the generated Serialize");
+			// the numeric opt-in still applies to members without a per-member override
+			var objNum = JsonObject.Parse(ProbeConverterHost.ProbeConvertedDto.ToJsonText(dto, CrystalJsonSettings.Json.WithEnumAsNumbers())).AsObject();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(objNum.Get<int>("Kind"), Is.EqualTo(1), "WithEnumAsNumbers() restores the numeric wire through the generated Serialize");
+				Assert.That(objNum.Get<string>("day"), Is.EqualTo("Friday"), "the per-member EnumFormat=String override wins over the numeric setting");
+			}
 		}
 
 		[Test]

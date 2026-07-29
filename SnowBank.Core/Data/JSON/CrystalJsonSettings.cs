@@ -112,7 +112,10 @@ namespace SnowBank.Data.Json
 			UseCamelCasingForName = 0x1,
 			ShowNullMembers = 0x2,
 			HideDefaultValues = 0x4,
-			EnumsAsString = 0x8,
+			/// <summary>Serialize enums as their numeric value, instead of their string literal (which is the default)</summary>
+			EnumsAsNumbers = 0x8,
+			[Obsolete("Enums serialize as strings by default since 7.4.3: this bit now selects the NUMERIC form, under its new name EnumsAsNumbers. Use EnumsAsNumbers, or the WithEnumAsStrings()/WithEnumAsNumbers() fluent methods.", error: true)]
+			EnumsAsString = EnumsAsNumbers,
 
 			OptimizeForLargeData = 0x10,
 			HideClassId = 0x20,
@@ -324,17 +327,20 @@ namespace SnowBank.Data.Json
 		private static OptionFlags SetHideDefaultValues(OptionFlags flags, bool value)
 			=> value ? flags | OptionFlags.HideDefaultValues : flags & ~OptionFlags.HideDefaultValues;
 
-		/// <summary>If <see langword="true"/>, serialize all <see cref="System.Enum">enum types</see> as a string. If <see langword="false"/> serialize them as a number</summary>
-		/// <remarks>Will use the result of calling <see cref="Enum.ToString()"/> on the enum to produce the string literal. The casing will be controlled by <see cref="UseCamelCasingForEnums"/>.</remarks>
+		/// <summary>If <see langword="true"/> (the default), serialize all <see cref="System.Enum">enum types</see> as a string. If <see langword="false"/> serialize them as a number</summary>
+		/// <remarks>
+		/// <para>The string form uses the custom wire tokens declared on the enum's fields when present, otherwise the equivalent of <see cref="Enum.ToString()"/>; the casing is controlled by <see cref="UseCamelCasingForEnums"/>.</para>
+		/// <para>Reading is always tolerant of both forms (names and tokens case-insensitively, numbers, and numeric strings), so this setting only affects what is written.</para>
+		/// </remarks>
 		public bool EnumsAsString
 		{
 			[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-			get => (m_flags & OptionFlags.EnumsAsString) != 0;
+			get => (m_flags & OptionFlags.EnumsAsNumbers) == 0;
 		}
 
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static OptionFlags SetEnumsAsString(OptionFlags flags, bool value)
-			=> value ? flags | OptionFlags.EnumsAsString : flags & ~OptionFlags.EnumsAsString;
+			=> value ? flags & ~OptionFlags.EnumsAsNumbers : flags | OptionFlags.EnumsAsNumbers;
 
 		/// <summary>If <see langword="true"/>, convert all enum string literal to camelCasing (ex: "someValue"). If <see langword="false"/>, use the same casing as used in the C# source code.</summary>
 		public bool UseCamelCasingForEnums
@@ -592,11 +598,11 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public CrystalJsonSettings CamelCased() => Update(SetUseCamelCasingForNames(m_flags, true));
 
-		/// <summary>Serialize all enums as numbers</summary>
+		/// <summary>Serialize all enums as numbers (the default is their string literal)</summary>
 		[Pure]
 		public CrystalJsonSettings WithEnumAsNumbers() => Update(SetEnumsAsString(m_flags, false));
 
-		/// <summary>Serialize all enums as string literals</summary>
+		/// <summary>Serialize all enums as string literals (the default)</summary>
 		[Pure]
 		public CrystalJsonSettings WithEnumAsStrings() => Update(SetEnumsAsString(m_flags, true));
 
@@ -812,8 +818,8 @@ namespace SnowBank.Data.Json
 			foreach (var s in new[] { Json, JsonCompact, JsonIndented, JsonStrict, JsonIgnoreCase, JsonReadOnly, JsonReadOnlyIgnoreCase, JavaScript, JavaScriptCompact, JavaScriptIndented, JavaScriptIgnoreCase, JavaScriptReadOnly, JavaScriptReadOnlyIgnoreCase })
 			{
 				defaults[(int) s.Flags] = s;
-				// also cache the versions with enum as strings
-				var s2 = new CrystalJsonSettings(s.Flags | OptionFlags.EnumsAsString);
+				// also cache the versions with enums as numbers
+				var s2 = new CrystalJsonSettings(s.Flags | OptionFlags.EnumsAsNumbers);
 				defaults[(int) s2.Flags] = s2;
 			}
 			Cached = new(defaults.ToFrozenDictionary(), valueFactory: (v) => new((OptionFlags) v));

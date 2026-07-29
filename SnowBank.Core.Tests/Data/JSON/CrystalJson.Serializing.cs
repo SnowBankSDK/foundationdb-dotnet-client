@@ -1378,24 +1378,26 @@ namespace SnowBank.Data.Json.Tests
 			Assume.That(typeof(DummyJsonEnum).IsPrimitive, Is.False);
 			Assume.That(typeof(DummyJsonEnum).IsEnum, Is.True);
 
-			// As Integers
+			// As Integers (the numeric wire is now the opt-in; strings are the default)
+
+			var numbers = CrystalJsonSettings.Json.WithEnumAsNumbers();
 
 			// enum
-			CheckSerialize(MidpointRounding.AwayFromZero, default, "1");
-			CheckSerialize(DayOfWeek.Friday, default, "5");
+			CheckSerialize(MidpointRounding.AwayFromZero, numbers, "1");
+			CheckSerialize(DayOfWeek.Friday, numbers, "5");
 			// custom enum
-			CheckSerialize(DummyJsonEnum.None, default, "0");
-			CheckSerialize(DummyJsonEnum.Foo, default, "1");
-			CheckSerialize(DummyJsonEnum.Bar, default, "42");
-			CheckSerialize((DummyJsonEnum)123, default, "123");
+			CheckSerialize(DummyJsonEnum.None, numbers, "0");
+			CheckSerialize(DummyJsonEnum.Foo, numbers, "1");
+			CheckSerialize(DummyJsonEnum.Bar, numbers, "42");
+			CheckSerialize((DummyJsonEnum)123, numbers, "123");
 			// custom [Flags] enum
-			CheckSerialize(DummyJsonEnumFlags.None, default, "0");
-			CheckSerialize(DummyJsonEnumFlags.Foo, default, "1");
-			CheckSerialize(DummyJsonEnumFlags.Bar, default, "2");
-			CheckSerialize(DummyJsonEnumFlags.Narf, default, "4");
-			CheckSerialize(DummyJsonEnumFlags.Foo | DummyJsonEnumFlags.Bar, default, "3");
-			CheckSerialize(DummyJsonEnumFlags.Bar | DummyJsonEnumFlags.Narf, default, "6");
-			CheckSerialize((DummyJsonEnumFlags)255, default, "255");
+			CheckSerialize(DummyJsonEnumFlags.None, numbers, "0");
+			CheckSerialize(DummyJsonEnumFlags.Foo, numbers, "1");
+			CheckSerialize(DummyJsonEnumFlags.Bar, numbers, "2");
+			CheckSerialize(DummyJsonEnumFlags.Narf, numbers, "4");
+			CheckSerialize(DummyJsonEnumFlags.Foo | DummyJsonEnumFlags.Bar, numbers, "3");
+			CheckSerialize(DummyJsonEnumFlags.Bar | DummyJsonEnumFlags.Narf, numbers, "6");
+			CheckSerialize((DummyJsonEnumFlags)255, numbers, "255");
 
 			// As Strings
 
@@ -1438,13 +1440,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Valid": false, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "State": 0, "RatioOfStuff": 0 }""",
+				"""{ "Valid": false, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "State": "None", "RatioOfStuff": 0 }""",
 				"Serialize(EMPTY, JSON)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript,
-				"{ Valid: false, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), State: 0, RatioOfStuff: 0 }",
+				"{ Valid: false, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), State: 'None', RatioOfStuff: 0 }",
 				"Serialize(EMPTY, JS)"
 			);
 
@@ -1452,13 +1454,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.Json.WithNullMembers(),
-				"""{ "Valid": false, "Name": null, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "Modified": null, "DateOfBirth": null, "State": 0, "RatioOfStuff": 0 }""",
+				"""{ "Valid": false, "Name": null, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "Modified": null, "DateOfBirth": null, "State": "None", "RatioOfStuff": 0 }""",
 				"Serialize(EMPTY, JSON+ShowNull)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript.WithNullMembers(),
-				"{ Valid: false, Name: null, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), Modified: null, DateOfBirth: null, State: 0, RatioOfStuff: 0 }",
+				"{ Valid: false, Name: null, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), Modified: null, DateOfBirth: null, State: 'None', RatioOfStuff: 0 }",
 				"Serialize(EMPTY, JS+ShowNull)"
 			);
 
@@ -1480,13 +1482,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JsonCompact,
-				"""{"Valid":false,"Index":0,"Size":0,"Height":0,"Amount":0,"Created":"","State":0,"RatioOfStuff":0}""",
+				"""{"Valid":false,"Index":0,"Size":0,"Height":0,"Amount":0,"Created":"","State":"None","RatioOfStuff":0}""",
 				"Serialize(EMPTY, JSON+Compact)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript.Compacted(),
-				"{Valid:false,Index:0,Size:0,Height:0,Amount:0,Created:new Date(-62135596800000),State:0,RatioOfStuff:0}",
+				"{Valid:false,Index:0,Size:0,Height:0,Amount:0,Created:new Date(-62135596800000),State:'None',RatioOfStuff:0}",
 				"Serialize(EMPTY, JS+Compact)"
 			);
 
@@ -1502,7 +1504,7 @@ namespace SnowBank.Data.Json.Tests
 					"Height": 0,
 					"Amount": 0,
 					"Created": "",
-					"State": 0,
+					"State": "None",
 					"RatioOfStuff": 0
 				}
 				""",
@@ -1519,7 +1521,7 @@ namespace SnowBank.Data.Json.Tests
 					Height: 0,
 					Amount: 0,
 					Created: new Date(-62135596800000),
-					State: 0,
+					State: 'None',
 					RatioOfStuff: 0
 				}
 				""",
@@ -1539,13 +1541,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08", "State": 1, "RatioOfStuff": 8641975.23 }""",
+				"""{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08", "State": "Foo", "RatioOfStuff": 8641975.23 }""",
 				"Serialize(BOND, JSON)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript,
-				"{ Valid: true, Name: 'James Bond', Index: 7, Size: 123456789, Height: 1.8, Amount: 0.07, Created: new Date(-52106400000), State: 1, RatioOfStuff: 8641975.23 }",
+				"{ Valid: true, Name: 'James Bond', Index: 7, Size: 123456789, Height: 1.8, Amount: 0.07, Created: new Date(-52106400000), State: 'Foo', RatioOfStuff: 8641975.23 }",
 				"Serialize(BOND, JS)"
 			);
 
@@ -1553,13 +1555,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.Json.Compacted(),
-				"""{"Valid":true,"Name":"James Bond","Index":7,"Size":123456789,"Height":1.8,"Amount":0.07,"Created":"1968-05-08","State":1,"RatioOfStuff":8641975.23}""",
+				"""{"Valid":true,"Name":"James Bond","Index":7,"Size":123456789,"Height":1.8,"Amount":0.07,"Created":"1968-05-08","State":"Foo","RatioOfStuff":8641975.23}""",
 				"Serialize(BOND, JSON+Compact)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript.Compacted(),
-				"{Valid:true,Name:'James Bond',Index:7,Size:123456789,Height:1.8,Amount:0.07,Created:new Date(-52106400000),State:1,RatioOfStuff:8641975.23}",
+				"{Valid:true,Name:'James Bond',Index:7,Size:123456789,Height:1.8,Amount:0.07,Created:new Date(-52106400000),State:'Foo',RatioOfStuff:8641975.23}",
 				"Serialize(BOND, JS+Compact)"
 			);
 		}
@@ -1625,13 +1627,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Bool": true, "Int32": 123, "Int64": 123, "Single": 1.23, "Double": 1.23, "DateTime": "2000-01-01T00:00:00Z", "TimeSpan": 60, "Guid": "98bd4ed7-7337-4018-9551-ee0825ada7ba", "Enum": 42, "Struct": { "Valid": false, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "State": 0, "RatioOfStuff": 0 } }""",
+				"""{ "Bool": true, "Int32": 123, "Int64": 123, "Single": 1.23, "Double": 1.23, "DateTime": "2000-01-01T00:00:00Z", "TimeSpan": 60, "Guid": "98bd4ed7-7337-4018-9551-ee0825ada7ba", "Enum": "Bar", "Struct": { "Valid": false, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "State": "None", "RatioOfStuff": 0 } }""",
 				"Serialize(FILLED, JSON)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript,
-				"{ Bool: true, Int32: 123, Int64: 123, Single: 1.23, Double: 1.23, DateTime: new Date(946684800000), TimeSpan: 60, Guid: '98bd4ed7-7337-4018-9551-ee0825ada7ba', Enum: 42, Struct: { Valid: false, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), State: 0, RatioOfStuff: 0 } }",
+				"{ Bool: true, Int32: 123, Int64: 123, Single: 1.23, Double: 1.23, DateTime: new Date(946684800000), TimeSpan: 60, Guid: '98bd4ed7-7337-4018-9551-ee0825ada7ba', Enum: 'Bar', Struct: { Valid: false, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), State: 'None', RatioOfStuff: 0 } }",
 				"Serialize(FILLED, JS)"
 			);
 		}
@@ -1647,13 +1649,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Valid": false, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "State": 0, "RatioOfStuff": 0 }""",
+				"""{ "Valid": false, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "State": "None", "RatioOfStuff": 0 }""",
 				"Serialize(EMPTY, JSON)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript,
-				"""{ Valid: false, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), State: 0, RatioOfStuff: 0 }""",
+				"""{ Valid: false, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), State: 'None', RatioOfStuff: 0 }""",
 				"Serialize(EMPTY, JS)"
 			);
 
@@ -1674,13 +1676,13 @@ namespace SnowBank.Data.Json.Tests
 			// with explicit nulls
 			CheckSerialize(
 				x, CrystalJsonSettings.Json.WithNullMembers(),
-				"""{ "Valid": false, "Name": null, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "Modified": null, "DateOfBirth": null, "State": 0, "RatioOfStuff": 0 }""",
+				"""{ "Valid": false, "Name": null, "Index": 0, "Size": 0, "Height": 0, "Amount": 0, "Created": "", "Modified": null, "DateOfBirth": null, "State": "None", "RatioOfStuff": 0 }""",
 				"Serialize(EMPTY, JSON+ShowNullMembers)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript.WithNullMembers(),
-				"""{ Valid: false, Name: null, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), Modified: null, DateOfBirth: null, State: 0, RatioOfStuff: 0 }""",
+				"""{ Valid: false, Name: null, Index: 0, Size: 0, Height: 0, Amount: 0, Created: new Date(-62135596800000), Modified: null, DateOfBirth: null, State: 'None', RatioOfStuff: 0 }""",
 				"Serialize(EMPTY, JS+ShowNullMembers)"
 			);
 
@@ -1698,13 +1700,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": 42, "RatioOfStuff": 8641975.23 }""",
+				"""{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": "Bar", "RatioOfStuff": 8641975.23 }""",
 				"Serialize(class, JSON)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript,
-				"""{ Valid: true, Name: 'James Bond', Index: 7, Size: 123456789, Height: 1.8, Amount: 0.07, Created: new Date(-52099200000), Modified: new Date(1288280340000), State: 42, RatioOfStuff: 8641975.23 }""",
+				"""{ Valid: true, Name: 'James Bond', Index: 7, Size: 123456789, Height: 1.8, Amount: 0.07, Created: new Date(-52099200000), Modified: new Date(1288280340000), State: 'Bar', RatioOfStuff: 8641975.23 }""",
 				"Serialize(class, JS)"
 			);
 
@@ -1712,13 +1714,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JsonCompact,
-				"""{"Valid":true,"Name":"James Bond","Index":7,"Size":123456789,"Height":1.8,"Amount":0.07,"Created":"1968-05-08T00:00:00Z","Modified":"2010-10-28T15:39:00Z","State":42,"RatioOfStuff":8641975.23}""",
+				"""{"Valid":true,"Name":"James Bond","Index":7,"Size":123456789,"Height":1.8,"Amount":0.07,"Created":"1968-05-08T00:00:00Z","Modified":"2010-10-28T15:39:00Z","State":"Bar","RatioOfStuff":8641975.23}""",
 				"Serialize(class, JSON+Compact)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript.Compacted(),
-				"""{Valid:true,Name:'James Bond',Index:7,Size:123456789,Height:1.8,Amount:0.07,Created:new Date(-52099200000),Modified:new Date(1288280340000),State:42,RatioOfStuff:8641975.23}""",
+				"""{Valid:true,Name:'James Bond',Index:7,Size:123456789,Height:1.8,Amount:0.07,Created:new Date(-52099200000),Modified:new Date(1288280340000),State:'Bar',RatioOfStuff:8641975.23}""",
 				"Serialize(class, JS+Compact)"
 			);
 
@@ -1736,7 +1738,7 @@ namespace SnowBank.Data.Json.Tests
 					"Amount": 0.07,
 					"Created": "1968-05-08T00:00:00Z",
 					"Modified": "2010-10-28T15:39:00Z",
-					"State": 42,
+					"State": "Bar",
 					"RatioOfStuff": 8641975.23
 				}
 				""",
@@ -1756,7 +1758,7 @@ namespace SnowBank.Data.Json.Tests
 					Amount: 0.07,
 					Created: new Date(-52099200000),
 					Modified: new Date(1288280340000),
-					State: 42,
+					State: 'Bar',
 					RatioOfStuff: 8641975.23
 				}
 				""",
@@ -1767,13 +1769,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.Json.CamelCased(),
-				"""{ "valid": true, "name": "James Bond", "index": 7, "size": 123456789, "height": 1.8, "amount": 0.07, "created": "1968-05-08T00:00:00Z", "modified": "2010-10-28T15:39:00Z", "state": 42, "ratioOfStuff": 8641975.23 }""",
+				"""{ "valid": true, "name": "James Bond", "index": 7, "size": 123456789, "height": 1.8, "amount": 0.07, "created": "1968-05-08T00:00:00Z", "modified": "2010-10-28T15:39:00Z", "state": "Bar", "ratioOfStuff": 8641975.23 }""",
 				"Serialize(class, JSON+CamelCasing)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript.CamelCased(),
-				"{ valid: true, name: 'James Bond', index: 7, size: 123456789, height: 1.8, amount: 0.07, created: new Date(-52099200000), modified: new Date(1288280340000), state: 42, ratioOfStuff: 8641975.23 }",
+				"{ valid: true, name: 'James Bond', index: 7, size: 123456789, height: 1.8, amount: 0.07, created: new Date(-52099200000), modified: new Date(1288280340000), state: 'Bar', ratioOfStuff: 8641975.23 }",
 				"Serialize(class, JS+CamelCasing)"
 			);
 		}
@@ -1808,7 +1810,7 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				agent,
 				default,
-				"""{ "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": 42, "RatioOfStuff": 8641975.23 }""",
+				"""{ "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": "Bar", "RatioOfStuff": 8641975.23 }""",
 				"Serialize(INNER, JSON)"
 			);
 
@@ -1822,7 +1824,7 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Id": 7, "Agent": { "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": 42, "RatioOfStuff": 8641975.23 } }""",
+				"""{ "Id": 7, "Agent": { "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": "Bar", "RatioOfStuff": 8641975.23 } }""",
 				"Serialize(OUTER, JSON)"
 			);
 
@@ -1869,14 +1871,14 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x.Agent,
 				default,
-				"""{ "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": 42, "RatioOfStuff": 8641975.23 }""",
+				"""{ "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": "Bar", "RatioOfStuff": 8641975.23 }""",
 				"Serialize(INNER, JSON)"
 			);
 
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Id": 7, "Agent": { "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": 42, "RatioOfStuff": 8641975.23 } }""",
+				"""{ "Id": 7, "Agent": { "$type": "agent", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": "Bar", "RatioOfStuff": 8641975.23 } }""",
 				"Serialize(OUTER, JSON)"
 			);
 
@@ -1897,7 +1899,7 @@ namespace SnowBank.Data.Json.Tests
 						"Amount": 0.07,
 						"Created": "1968-05-08T00:00:00Z",
 						"Modified": "2010-10-28T15:39:00Z",
-						"State": 42,
+						"State": "Bar",
 						"RatioOfStuff": 8641975.23
 					}
 				}
@@ -1961,7 +1963,7 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				agent,
 				default,
-				"""{ "$type": "spy", "DoubleAgentName": "Janov Bondovicz", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": 42, "RatioOfStuff": 8641975.23 }""",
+				"""{ "$type": "spy", "DoubleAgentName": "Janov Bondovicz", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": "Bar", "RatioOfStuff": 8641975.23 }""",
 				"Serialize(INNER, JSON)"
 			);
 
@@ -1970,7 +1972,7 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Id": 7, "Agent": { "$type": "spy", "DoubleAgentName": "Janov Bondovicz", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": 42, "RatioOfStuff": 8641975.23 } }""",
+				"""{ "Id": 7, "Agent": { "$type": "spy", "DoubleAgentName": "Janov Bondovicz", "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "Modified": "2010-10-28T15:39:00Z", "State": "Bar", "RatioOfStuff": 8641975.23 } }""",
 				"Serialize(OUTER, JSON)"
 			);
 
@@ -2160,8 +2162,8 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(listOfStrings, CrystalJsonSettings.JavaScript, "[ 'foo', 'bar', 'baz' ]");
 
 			var listOfObjects = new List<object?>() { 123, "Narf", true, DummyJsonEnum.Bar };
-			CheckSerialize(listOfObjects, default, """[ 123, "Narf", true, 42 ]""");
-			CheckSerialize(listOfObjects, CrystalJsonSettings.JavaScript, "[ 123, 'Narf', true, 42 ]");
+			CheckSerialize(listOfObjects, default, """[ 123, "Narf", true, "Bar" ]""");
+			CheckSerialize(listOfObjects, CrystalJsonSettings.JavaScript, "[ 123, 'Narf', true, 'Bar' ]");
 
 
 			// List<int>
@@ -2202,8 +2204,8 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(listOfStrings, CrystalJsonSettings.JavaScript, "[ 'foo', 'bar', 'baz' ]");
 
 			var listOfObjects = ImmutableList.CreateRange<object?>([ 123, "Narf", true, DummyJsonEnum.Bar ]);
-			CheckSerialize(listOfObjects, default, """[ 123, "Narf", true, 42 ]""");
-			CheckSerialize(listOfObjects, CrystalJsonSettings.JavaScript, "[ 123, 'Narf', true, 42 ]");
+			CheckSerialize(listOfObjects, default, """[ 123, "Narf", true, "Bar" ]""");
+			CheckSerialize(listOfObjects, CrystalJsonSettings.JavaScript, "[ 123, 'Narf', true, 'Bar' ]");
 
 			// ImmutableList<int>
 			CheckSerialize(ImmutableList<int>.Empty, default, "[ ]");

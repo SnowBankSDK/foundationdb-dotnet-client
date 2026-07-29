@@ -409,7 +409,8 @@ namespace SnowBank.Data.Json.Tests
 			var media = MediaContent.GetMedia1();
 
 			#region Warmup
-			string jsonText = CrystalJson.Serialize(media, CrystalJsonSettings.JsonCompact);
+			// the same payload feeds several deserializers: numeric enums are the wire that all of them read without extra configuration
+			string jsonText = CrystalJson.Serialize(media, CrystalJsonSettings.JsonCompact.WithEnumAsNumbers());
 			{ // first run to check that everything is ok
 				Assert.That(CrystalJson.Deserialize<MediaContent>(jsonText), Is.EqualTo(media), "clone != media ??");
 #if ENABLE_NEWTONSOFT

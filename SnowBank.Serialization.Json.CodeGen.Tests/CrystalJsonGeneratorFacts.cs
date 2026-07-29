@@ -556,7 +556,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(parsed["id"], IsJson.EqualTo(user.Id));
 				Assert.That(parsed["displayName"], IsJson.EqualTo(user.DisplayName));
 				Assert.That(parsed["email"], IsJson.EqualTo(user.Email));
-				Assert.That(parsed["type"], IsJson.EqualTo((int) user.Type)); //REVIEW: enum default as numbers or string ?
+				Assert.That(parsed["type"], IsJson.EqualTo(nameof(MyAwesomeEnumType.SecretAgent)));
 				Assert.That(parsed["metadata"], IsJson.Object);
 				Assert.That(parsed["metadata"]["accountCreated"], IsJson.EqualTo(user.Metadata.AccountCreated));
 				Assert.That(parsed["metadata"]["accountModified"], IsJson.EqualTo(user.Metadata.AccountModified));
@@ -1343,7 +1343,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			var stjOps = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
 
-			var json = CrystalJson.Serialize(user, GeneratedConverters.MyAwesomeUser.Default);
+			// the same payload feeds several deserializers: numeric enums are the wire that all of them read without extra configuration
+			var json = CrystalJson.Serialize(user, GeneratedConverters.MyAwesomeUser.Default, CrystalJsonSettings.Json.WithEnumAsNumbers());
 			var parsed = JsonObject.Parse(json);
 
 			// warmup

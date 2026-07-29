@@ -5942,15 +5942,15 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_JsonValue_FromObject_Enums()
 		{
-			// enums follow the same rules as the text writer: numbers by default...
+			// enums follow the same rules as the text writer: string literals by default...
 			var result = JsonValue.FromValue(DateTimeKind.Utc);
-			Assert.That(result, Is.InstanceOf<JsonNumber>());
-			Assert.That(result.ToInt32(), Is.EqualTo((int) DateTimeKind.Utc));
-
-			// ... and strings when EnumsAsString is set
-			result = JsonValue.FromValue(DateTimeKind.Utc, CrystalJsonSettings.Json.WithEnumAsStrings());
 			Assert.That(result, Is.InstanceOf<JsonString>());
 			Assert.That(result.ToStringOrDefault(), Is.EqualTo("Utc"));
+
+			// ... and numbers with the WithEnumAsNumbers() opt-in
+			result = JsonValue.FromValue(DateTimeKind.Utc, CrystalJsonSettings.Json.WithEnumAsNumbers());
+			Assert.That(result, Is.InstanceOf<JsonNumber>());
+			Assert.That(result.ToInt32(), Is.EqualTo((int) DateTimeKind.Utc));
 		}
 
 		[Test]
@@ -5973,7 +5973,7 @@ namespace SnowBank.Data.Json.Tests
 
 			Assert.That(JsonValue.FromValue(null, typeof(DateTimeKind?)), Is.InstanceOf<JsonNull>());
 			DateTimeKind? k = DateTimeKind.Utc;
-			Assert.That(JsonValue.FromValue(k, typeof(DateTimeKind?)), Is.InstanceOf<JsonNumber>(), "enums are numbers by default, like on the text route");
+			Assert.That(JsonValue.FromValue(k, typeof(DateTimeKind?)), Is.InstanceOf<JsonString>(), "enums are string literals by default, like on the text route");
 		}
 
 		[Test]
@@ -6190,7 +6190,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(j["Created"], Is.Not.Null.And.Property("Type").EqualTo(JsonType.DateTime));
 			Assert.That(j["Modified"], Is.Not.Null.And.Property("Type").EqualTo(JsonType.DateTime));
 			Assert.That(j["DateOfBirth"], Is.Not.Null.And.Property("Type").EqualTo(JsonType.DateTime));
-			Assert.That(j["State"], Is.Not.Null.And.Property("Type").EqualTo(JsonType.Number), "enums are numbers by default, like on the text route");
+			Assert.That(j["State"], Is.Not.Null.And.Property("Type").EqualTo(JsonType.String), "enums are string literals by default, like on the text route");
 			//TODO: ignore defaults?
 			//Assert.That(j, Has.Count.EqualTo(8));
 
