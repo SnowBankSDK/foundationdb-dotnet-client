@@ -40,6 +40,89 @@ namespace SnowBank.Data.Json.Binary.Tests
 	public class JsonPackFacts : SimpleTest
 	{
 
+		[Test]
+		[Category("LongRunning")] // GC-class detector (~15s of forced churn): runs in the unfiltered acceptance legs, not in the fast default suite
+		public void Test_Decode_Survives_Gc_Compaction()
+		{
+			// Regression for the untracked-pointer span of the netstandard2.0 build: the multi-byte read spans of
+			// SliceReader must stay valid when a GC moves the buffer array between the span capture and the read.
+			// This test makes that window observable: each decode runs over a FRESH gen0 buffer (so a collection
+			// promotes = copies it) while another thread continuously forces gen0 collections. On a broken build a
+			// span captured before the copy reads the OLD location, and a value decodes as garbage (typically 0).
+			// The plain fixtures cannot catch this: they only fail when an unrelated workload supplies the
+			// allocation volume, which is exactly how the defect stayed invisible.
+
+			// many multi-byte read windows per decode: an array of FixedInt4 values (four-byte reads)
+			var value = new JsonArray();
+			for (int i = 0; i < 512; i++)
+			{
+				value.Add(int.MaxValue);
+			}
+			value.Freeze();
+			var encoded = JsonPack.Encode(value);
+			var template = encoded.ToArray();
+
+			using var done = new CancellationTokenSource();
+			var churn = Task.Run(() =>
+			{
+				// small gen0 allocations plus forced non-blocking collections keep the heap moving, while the
+				// yield leaves the decoding thread enough cycles to keep opening read windows; every few rounds a
+				// BLOCKING compacting collection guarantees the survivors actually move, so the trigger does not
+				// depend on gen0 timing luck
+				int round = 0;
+				while (!done.IsCancellationRequested)
+				{
+					for (int i = 0; i < 64; i++)
+					{
+						_ = new byte[1024];
+					}
+					if ((++round & 7) == 0)
+					{
+						System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+						GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+					}
+					else
+					{
+						GC.Collect(0, GCCollectionMode.Forced, blocking: false);
+					}
+					Thread.Yield();
+				}
+			});
+
+			try
+			{
+				var sw = System.Diagnostics.Stopwatch.StartNew();
+				int iterations = 0;
+				while (sw.Elapsed < TimeSpan.FromSeconds(15))
+				{
+					// a fresh copy every time, so the buffer sits in gen0 and MOVES when promoted
+					var copy = template.ToArray();
+					var decoded = JsonPack.Decode(copy.AsSlice());
+					if (!value.Equals(decoded))
+					{
+						Assert.Fail($"iteration {iterations}: a decoded value does not match the original: a span read stale memory after the GC moved the buffer (decoded {((JsonArray) decoded).Count} items, first mismatch: {FindFirstMismatch(value, (JsonArray) decoded)})");
+					}
+					++iterations;
+				}
+				Log($"survived {iterations:N0} decodes ({iterations * 512L:N0} four-byte read windows) under forced GC churn");
+			}
+			finally
+			{
+				done.Cancel();
+				churn.Wait(TimeSpan.FromSeconds(5));
+			}
+		}
+
+		private static string FindFirstMismatch(JsonArray expected, JsonArray actual)
+		{
+			if (expected.Count != actual.Count) return $"count {actual.Count} != {expected.Count}";
+			for (int i = 0; i < expected.Count; i++)
+			{
+				if (!expected[i].Equals(actual[i])) return $"[{i}] = {actual[i]} != {expected[i]}";
+			}
+			return "<none>";
+		}
+
 		private void VerifyRoundtrip(JsonValue value)
 		{
 			Log("-----------------");

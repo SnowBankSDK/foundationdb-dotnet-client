@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -346,6 +346,21 @@ namespace SnowBank.Buffers
 			return true;
 		}
 
+		/// <summary>Returns a span over <paramref name="count"/> bytes of the buffer at <paramref name="position"/>, without re-validating the arguments</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private ReadOnlySpan<byte> UnsafeSpanAt(int position, int count)
+		{
+#if NETSTANDARD2_0
+			// the compat CreateReadOnlySpan shim wraps an UNTRACKED raw pointer: a ref into the (movable) buffer
+			// array dangles as soon as a GC compaction moves it, and the span then reads the array's OLD location
+			// (silent data corruption under memory pressure); the array-based constructor is GC-tracked
+			return new ReadOnlySpan<byte>(this.Buffer.Array, this.Buffer.Offset + position, count);
+#else
+			// the BCL version carries a managed interior pointer, which the GC keeps tracking
+			return MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + position], count);
+#endif
+		}
+
 		/// <summary>Read the next 2 bytes from the buffer</summary>
 		private ReadOnlySpan<byte> ReadTwoBytesSpan()
 		{
@@ -353,7 +368,7 @@ namespace SnowBank.Buffers
 			if ((uint) (p + 2) > (uint) this.Buffer.Count) throw NotEnoughBytes(2);
 			this.Position = p + 2;
 			// this way will not re-validate the arguments a second time
-			return MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 2);
+			return UnsafeSpanAt(p, 2);
 		}
 
 		/// <summary>Read the next 2 bytes from the buffer</summary>
@@ -367,7 +382,7 @@ namespace SnowBank.Buffers
 			}
 			this.Position = p + 2;
 			// this way will not re-validate the arguments a second time
-			span = MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 2);
+			span = UnsafeSpanAt(p, 2);
 			return true;
 		}
 
@@ -378,7 +393,7 @@ namespace SnowBank.Buffers
 			if ((uint) (p + 3) > (uint) this.Buffer.Count) throw NotEnoughBytes(3);
 			this.Position = p + 3;
 			// this way will not re-validate the arguments a second time
-			return MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 3);
+			return UnsafeSpanAt(p, 3);
 		}
 
 		/// <summary>Read the next 3 bytes from the buffer</summary>
@@ -392,7 +407,7 @@ namespace SnowBank.Buffers
 			}
 			this.Position = p + 3;
 			// this way will not re-validate the arguments a second time
-			span = MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 3);
+			span = UnsafeSpanAt(p, 3);
 			return true;
 		}
 
@@ -403,7 +418,7 @@ namespace SnowBank.Buffers
 			if ((uint) (p + 4) > (uint) this.Buffer.Count) throw NotEnoughBytes(4);
 			this.Position = p + 4;
 			// this way will not re-validate the arguments a second time
-			return MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 4);
+			return UnsafeSpanAt(p, 4);
 		}
 
 		/// <summary>Read the next 4 bytes from the buffer</summary>
@@ -417,7 +432,7 @@ namespace SnowBank.Buffers
 			}
 			this.Position = p + 4;
 			// this way will not re-validate the arguments a second time
-			span = MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 4);
+			span = UnsafeSpanAt(p, 4);
 			return true;
 		}
 
@@ -428,7 +443,7 @@ namespace SnowBank.Buffers
 			if ((uint) (p + 8) > (uint) this.Buffer.Count) throw NotEnoughBytes(8);
 			this.Position = p + 8;
 			// this way will not re-validate the arguments a second time
-			return MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 8);
+			return UnsafeSpanAt(p, 8);
 		}
 
 		/// <summary>Read the next 8 bytes from the buffer</summary>
@@ -442,7 +457,7 @@ namespace SnowBank.Buffers
 			}
 			this.Position = p + 8;
 			// this way will not re-validate the arguments a second time
-			span = MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 8);
+			span = UnsafeSpanAt(p, 8);
 			return true;
 		}
 
@@ -453,7 +468,7 @@ namespace SnowBank.Buffers
 			if (checked(p + 16) > this.Buffer.Count) throw NotEnoughBytes(16);
 			this.Position = p + 16;
 			// this way will not re-validate the arguments a second time
-			return MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 16);
+			return UnsafeSpanAt(p, 16);
 		}
 
 		/// <summary>Read the next 16 bytes from the buffer</summary>
@@ -467,7 +482,7 @@ namespace SnowBank.Buffers
 			}
 			this.Position = p + 16;
 			// this way will not re-validate the arguments a second time
-			span = MemoryMarshal.CreateReadOnlySpan(ref this.Buffer.Array[this.Buffer.Offset + p], 16);
+			span = UnsafeSpanAt(p, 16);
 			return true;
 		}
 
