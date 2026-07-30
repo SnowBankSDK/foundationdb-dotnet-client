@@ -49,6 +49,130 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		private static ReadOnlySpan<byte> ReadPage(FdbLiteEngine engine, uint pageId)
 			=> engine.Pager.ReadBlocks(pageId, engine.Pager.Geometry.BlocksPerPage);
 
+		private static byte[] Key64(long i)
+		{
+			var key = new byte[8];
+			System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(key, i);
+			return key;
+		}
+
+		/// <summary>Leaves of the current durable generation in key order: page id, numeric key range, and the volatility episode count.</summary>
+		private static List<(uint Id, long FirstKey, long LastKey, byte Episodes)> ScanLeafEpisodes(FdbLiteEngine engine)
+		{
+			var result = new List<(uint, long, long, byte)>();
+			foreach (var group in FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId).Groups)
+			{
+				foreach (var leaf in group)
+				{
+					result.Add((leaf.PageId, leaf.FirstKey, leaf.LastKey, FdbLitePageHeader.GetVolatilityEpisodes(ReadPage(engine, leaf.PageId))));
+				}
+			}
+			return result;
+		}
+
+		private static long TotalEpisodes(FdbLiteEngine engine) => ScanLeafEpisodes(engine).Sum(l => (long) l.Episodes);
+
+		private static byte EpisodesOfLeafCovering(FdbLiteEngine engine, long key)
+			=> ScanLeafEpisodes(engine).Single(l => l.FirstKey <= key && key <= l.LastKey).Episodes;
+
+		[Test]
+		public void Test_Volatility_Episodes_Follow_The_Ratified_Event_Set()
+		{
+			using var engine = CreateHeapEngine();
+			ulong version = 1;
+
+			// sequential fill: a log page being built is FILLING, not mutating, and must reach its packed
+			// state at count zero - this is the write-once shape the whole posture exists to protect
+			const long Stride = 16;
+			const int N = 3_000;
+			var writer = engine.BeginWrite();
+			for (long i = 0; i < N; i++)
+			{
+				writer.Insert(Key64(i * Stride), Value((int) i, 16));
+			}
+			engine.Commit(writer, version++);
+
+			var leaves = ScanLeafEpisodes(engine);
+			Assert.That(leaves.Count, Is.GreaterThanOrEqualTo(3), "the seed must span several leaves or the local/global distinction below is untestable");
+			Assert.That(leaves.All(l => l.Episodes == 0), Is.True, "an append-built tree reads zero episodes everywhere");
+
+			// deletes count, once per generation however many land on the page
+			writer = engine.BeginWrite();
+			Assert.That(writer.Remove(Key64(10 * Stride)), Is.True);
+			Assert.That(writer.Remove(Key64(11 * Stride)), Is.True);
+			Assert.That(writer.Remove(Key64(12 * Stride)), Is.True);
+			engine.Commit(writer, version++);
+			Assert.That(EpisodesOfLeafCovering(engine, 0), Is.EqualTo(1), "three deletes in one generation are ONE episode");
+
+			// a second mutating generation is a second episode
+			writer = engine.BeginWrite();
+			Assert.That(writer.Remove(Key64(13 * Stride)), Is.True);
+			engine.Commit(writer, version++);
+			Assert.That(EpisodesOfLeafCovering(engine, 0), Is.EqualTo(2));
+
+			// an in-place value mutation counts (same-length replace, the copy-verbatim first-touch path)
+			writer = engine.BeginWrite();
+			writer.Insert(Key64(20 * Stride), Value(9999, 16));
+			engine.Commit(writer, version++);
+			Assert.That(EpisodesOfLeafCovering(engine, 0), Is.EqualTo(3), "a replace is a mutation episode");
+
+			// an interior insert counts: the key lands strictly below the receiving leaf's maximum
+			writer = engine.BeginWrite();
+			writer.Insert(Key64((100 * Stride) + 1), Value(7, 16));
+			engine.Commit(writer, version++);
+			Assert.That(EpisodesOfLeafCovering(engine, 0), Is.EqualTo(4), "an interior insert is a mutation episode");
+
+			// append-edge growth at the TREE's right edge does not count
+			long before = TotalEpisodes(engine);
+			writer = engine.BeginWrite();
+			writer.Insert(Key64(N * Stride), Value(8, 16));
+			engine.Commit(writer, version++);
+			Assert.That(TotalEpisodes(engine), Is.EqualTo(before), "growing the rightmost leaf is filling, not mutating");
+
+			// THE LOAD-BEARING LOCAL TEST: a key at the right edge of an INTERIOR leaf is that leaf's own
+			// append edge, even though it sits far below the tree's global maximum. A store with many
+			// append-shaped subspaces has many such edges at once, and a global running-max test would
+			// brand every one of them volatile.
+			var leftmost = ScanLeafEpisodes(engine)[0];
+			long edgeKey = leftmost.LastKey + 1; // above everything in the leaf, below the next leaf's first key
+			before = TotalEpisodes(engine);
+			writer = engine.BeginWrite();
+			writer.Insert(Key64(edgeKey), Value(9, 16));
+			engine.Commit(writer, version++);
+			Assert.That(TotalEpisodes(engine), Is.EqualTo(before), "a leaf-local append edge does not count, wherever the leaf sits in the tree");
+
+			// the counter saturates instead of wrapping
+			for (int g = 0; g < 260; g++)
+			{
+				writer = engine.BeginWrite();
+				if ((g & 1) == 0)
+				{
+					Assert.That(writer.Remove(Key64(30 * Stride)), Is.True);
+				}
+				else
+				{
+					writer.Insert(Key64(30 * Stride), Value(g, 16)); // re-inserting interior: an episode either way
+				}
+				engine.Commit(writer, version++);
+			}
+			Assert.That(EpisodesOfLeafCovering(engine, 0), Is.EqualTo(255), "the u8 saturates, never wraps");
+
+			// split parts inherit the source page's history: a rebuild of ONE page is that page's own
+			// continued life, not a repack into a new one
+			writer = engine.BeginWrite();
+			for (long j = 40; j < 140; j++)
+			{
+				for (long s = 1; s < 16; s += 2)
+				{
+					writer.Insert(Key64((j * Stride) + s), Value((int) (j * 100 + s), 16));
+				}
+			}
+			engine.Commit(writer, version++);
+			var saturatedRegion = ScanLeafEpisodes(engine).Where(l => l.FirstKey < 140 * Stride).ToList();
+			Assert.That(saturatedRegion.Count, Is.GreaterThanOrEqualTo(2), "the pumped region must have split");
+			Assert.That(saturatedRegion.All(l => l.Episodes == 255), Is.True, "every part of a split volatile page carries its history");
+		}
+
 		[Test]
 		public void Test_Root_Aggregates_Are_Exact_Against_The_Model()
 		{

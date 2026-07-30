@@ -94,7 +94,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>Walks the committed tree: leaves in key order grouped by direct parent, plus the id set for dirty detection.</summary>
-		/// <remarks>Dirty leaves of a generation are the ids ABSENT from the previous generation's snapshot: any cross-generation touch relocates the page (copy-on-write), so the id delta is exact. The header's generation stamp is deliberately not used - a copy-and-overwrite carries the source page's stamp verbatim, so stamps under-report the dirty set.</remarks>
+		/// <remarks>Dirty leaves of a generation are the ids ABSENT from the previous generation's snapshot: any cross-generation touch relocates the page (copy-on-write), so the id delta is exact and needs no generation bookkeeping (the header stamp, re-stamped at seal, now also identifies the publishing generation, but the delta predates that and stands on its own).</remarks>
 		public static VacuumTreeSnapshot Snapshot(IFdbLitePager pager, uint root)
 		{
 			var groups = new List<List<VacuumLeafInfo>>();

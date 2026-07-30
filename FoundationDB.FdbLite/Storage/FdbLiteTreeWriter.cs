@@ -537,7 +537,11 @@ namespace FoundationDB.Storage.FdbLite
 				if (i >= first && i < last) { continue; }
 				cells[w++] = CellRef.OfLeafPage(page, i);
 			}
+			// a delete the page SURVIVES is an episode (whole-page death, the branch above, never is); the
+			// dedup reads the pre-rebuild stamp, as everywhere the mutation rebuilds its page
+			bool firstMutationThisGeneration = FdbLitePageHeader.GetGeneration(page) != this.Generation;
 			var outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
+			BumpVolatilityEpisodeAfterRebuild(in outcome, episode: true, firstMutationThisGeneration);
 			AscendPatch(pathPages, pathChildren, depth - 1, leafId, outcome);
 
 			// The page survived: it holds the same key RANGE, its parent's separators did not move, and the
@@ -642,6 +646,52 @@ namespace FoundationDB.Storage.FdbLite
 
 		#region Page rebuilding...
 
+		/// <summary>Saturating increment of a leaf image's volatility episode count (the caller decided the dedup).</summary>
+		private static void BumpVolatilityEpisodeRaw(Span<byte> image)
+		{
+			byte episodes = FdbLitePageHeader.GetVolatilityEpisodes(image);
+			if (episodes != byte.MaxValue)
+			{
+				FdbLitePageHeader.SetVolatilityEpisodes(image, (byte) (episodes + 1));
+			}
+		}
+
+		/// <summary>Records one post-fill mutation episode on an owned leaf image, at most once per generation.</summary>
+		/// <remarks>The generation stamp IS the dedup: a stamp equal to this writer's generation means the page was already created, rebuilt, or episode-counted in this generation, and one generation is one episode however many mutations it lands. Advancing the stamp here also makes it truthful mid-generation on a verbatim-copied image (the seal re-stamp remains the backstop for images no episode touches).</remarks>
+		private void BumpVolatilityEpisode(Span<byte> image)
+		{
+			if (FdbLitePageHeader.GetGeneration(image) == this.Generation)
+			{
+				return;
+			}
+			BumpVolatilityEpisodeRaw(image);
+			FdbLitePageHeader.SetGeneration(image, this.Generation);
+		}
+
+		/// <summary>Records one mutation episode on every part of a rebuild outcome, when the caller's pre-rebuild capture says the episode counts and the page had not been touched this generation yet.</summary>
+		/// <remarks>Rebuild outputs are freshly formatted and so already carry this generation's stamp: the dedup had to be decided against the SOURCE page's stamp, before the rebuild, which is why this cannot reuse the stamp-checking bump. Every part inherits the bump - a split of one volatile page is that page's history continuing in all of its parts.</remarks>
+		private void BumpVolatilityEpisodeAfterRebuild(in RebuildResult outcome, bool episode, bool firstMutationThisGeneration)
+		{
+			if (!episode || !firstMutationThisGeneration)
+			{
+				return;
+			}
+			if (this.Dirty.TryGetValue(outcome.FirstId, out var image))
+			{
+				BumpVolatilityEpisodeRaw(image);
+			}
+			if (outcome.Siblings is { } siblings)
+			{
+				foreach (var (_, siblingId) in siblings)
+				{
+					if (this.Dirty.TryGetValue(siblingId, out var sibling))
+					{
+						BumpVolatilityEpisodeRaw(sibling);
+					}
+				}
+			}
+		}
+
 		/// <summary>Splices a new key into a page image this generation already owns, when its free area can take the cell.</summary>
 		/// <returns><c>false</c> when the page is not owned yet, the key is a REPLACE, or the cell does not fit: all three are the caller's signal to take the rebuild path, which compacts and splits.</returns>
 		private bool TrySpliceInto(uint leafId, ReadOnlySpan<byte> key, CellRef newCell)
@@ -672,6 +722,7 @@ namespace FoundationDB.Storage.FdbLite
 					 || FdbLiteTreePage.TryRelocateLeafValue(image, at, storedValue, newCell.Flags))
 					{
 						this.CellsOverwritten++;
+						BumpVolatilityEpisode(image); // an in-place value mutation is an episode
 						// deliberately NOT KeyCountDelta: a replace introduces no key
 						return true;
 					}
@@ -679,6 +730,9 @@ namespace FoundationDB.Storage.FdbLite
 				return false;
 			}
 
+			// interior iff strictly below this leaf's own maximum: the leaf's right edge is its append edge,
+			// which holds for any number of append-shaped subspaces at once (a global maximum would not)
+			bool interior = at < FdbLitePageHeader.GetCellCount(image);
 			if (!FdbLiteTreePage.TryInsertLeafCell(image, at, newCell.ResolveKey(default), newCell.ResolveValue(default), newCell.Flags))
 			{
 				return false;
@@ -686,6 +740,10 @@ namespace FoundationDB.Storage.FdbLite
 
 			this.CellsSpliced++;
 			this.KeyCountDelta++;
+			if (interior)
+			{
+				BumpVolatilityEpisode(image);
+			}
 			return true;
 		}
 
@@ -721,6 +779,7 @@ namespace FoundationDB.Storage.FdbLite
 
 			this.CellsRemovedInPlace++;
 			this.KeyCountDelta--;
+			BumpVolatilityEpisode(image); // a delete is an episode
 			removed = true;
 			return true;
 		}
@@ -781,6 +840,7 @@ namespace FoundationDB.Storage.FdbLite
 				{
 					return false;
 				}
+				BumpVolatilityEpisode(copy); // an in-place value mutation is an episode (this is its first-touch form)
 				newId = WritePage(leafId, copy);
 			}
 			finally
@@ -807,6 +867,19 @@ namespace FoundationDB.Storage.FdbLite
 				return new(copiedId, null);
 			}
 
+			// The episode decision is taken HERE, against the page as it stands before any rebuild below: a
+			// rebuild output carries this generation's stamp, so the once-per-generation dedup has to read the
+			// SOURCE's. A replace or an interior insert (strictly below this leaf's own maximum) is an episode;
+			// landing at or past the maximum is the leaf's append edge filling, which never counts.
+			bool firstMutationThisGeneration;
+			bool episode;
+			{
+				var current = ReadPage(leafId);
+				firstMutationThisGeneration = FdbLitePageHeader.GetGeneration(current) != this.Generation;
+				int at = FdbLiteTreePage.FindLeafSlot(current, key, out bool exact);
+				episode = exact || at < FdbLitePageHeader.GetCellCount(current);
+			}
+
 			// The splice failed, which is the FIRST moment this page's key set is known, and therefore the first
 			// moment its shared prefix can be computed without re-expanding suffixes. Splicing cannot do it, so a
 			// page filled entirely by splices carries no prefix at all - which is every sequentially built page.
@@ -819,7 +892,9 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				if (spliced)
 				{
-					return new(strippedId, null);
+					var stripped = new RebuildResult(strippedId, null);
+					BumpVolatilityEpisodeAfterRebuild(in stripped, episode, firstMutationThisGeneration);
+					return stripped;
 				}
 				leafId = strippedId;
 			}
@@ -872,7 +947,9 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			Contract.Debug.Assert(w == resultCount);
 
-			return WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
+			var outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
+			BumpVolatilityEpisodeAfterRebuild(in outcome, episode, firstMutationThisGeneration);
+			return outcome;
 		}
 
 		/// <summary>Rebuilds a full leaf so it strips the prefix its keys share, then retries the splice into the room that frees.</summary>
@@ -1115,6 +1192,13 @@ namespace FoundationDB.Storage.FdbLite
 				usable = pageSize;
 			}
 
+			// A single source page's rebuild is that page's life continuing (all split parts inherit its
+			// episode count); a page built from anywhere else - fresh, or a MERGE gathered from several
+			// pages into buffers - restarts at zero. Reset-on-repack is part of the counter's definition:
+			// counted since birth, a one-time bulk load brands its leaves volatile forever and the
+			// write-once shape the count exists to identify could never be packed full again.
+			byte carriedEpisodes = !isInternal && sourcePage.Length > 0 ? FdbLitePageHeader.GetVolatilityEpisodes(sourcePage) : (byte) 0;
+
 			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
 			var partScratch = ArrayPool<byte>.Shared.Rent(FdbLiteTreePage.MaxKeyLength);
 			byte[]? sourceCopy = null;
@@ -1230,6 +1314,7 @@ namespace FoundationDB.Storage.FdbLite
 
 					// write this part: the first one lands on the original page (copy-on-write applies), the rest are fresh
 					FdbLitePageHeader.Format(image, type, this.Generation);
+					if (carriedEpisodes != 0) { FdbLitePageHeader.SetVolatilityEpisodes(image, carriedEpisodes); }
 					if (isInternal) { FdbLiteTreePage.SetLeftmostChild(image, partLeftmost); }
 					AppendCells(image, isInternal, sourcePage, cells, start, end);
 					uint id = WritePage(partSeparator == null ? oldPageId : 0, image);
