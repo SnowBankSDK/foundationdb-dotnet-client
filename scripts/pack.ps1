@@ -9,12 +9,16 @@
 #
 # It does NOT push to any feed - publishing the .nupkg files is a deliberate, manual step.
 #
-# Usage:  ./scripts/pack.ps1 [-Output <dir>] [-Configuration Release]
+# Usage:  ./scripts/pack.ps1 [-Output <dir>] [-Configuration Release] [-VersionSuffix <suffix>]
+#
+# -VersionSuffix appends a pre-release suffix to the version from VersionInfo.props (e.g. `rc.1`
+# gives 7.4.3-rc.1), and the default output folder is named after the full version.
 #
 [CmdletBinding()]
 param(
     [string] $Output,
-    [string] $Configuration = 'Release'
+    [string] $Configuration = 'Release',
+    [string] $VersionSuffix
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +26,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 $solution = Join-Path $repo 'FoundationDB.Client.slnx'
 
 $version = "$(([xml](Get-Content (Join-Path $repo 'Common/VersionInfo.props'))).Project.PropertyGroup.VersionPrefix)".Trim()
+if ($VersionSuffix) { $version = "$version-$VersionSuffix" }
 if (-not $Output) { $Output = Join-Path $repo "artifacts/packages/$version" }
 
 Write-Host "Packing $solution  (version $version, $Configuration)" -ForegroundColor Cyan
@@ -37,7 +42,10 @@ New-Item -ItemType Directory -Force -Path $Output | Out-Null
 # `.\pack.ps1` runs in the caller's own PowerShell process, so a `$env:` assignment would persist
 # after the script exits and silently force every later `dotnet` command in that window into a
 # standalone (net472 + netstandard2.0) build. A -p: property is scoped to this one invocation.
-dotnet pack $solution '-p:CORESDK_STANDALONE_BUILD=true' -c $Configuration '-p:ContinuousIntegrationBuild=true' '-nowarn:CS1591,NU5104' -o $Output
+# [string[]] is load-bearing: PowerShell unwraps a single-element array coming out of an `if`,
+# and splatting the resulting STRING passes it one character at a time (MSBuild: error MSB1001).
+[string[]] $suffixArg = if ($VersionSuffix) { @("-p:VersionSuffix=$VersionSuffix") } else { @() }
+dotnet pack $solution '-p:CORESDK_STANDALONE_BUILD=true' -c $Configuration '-p:ContinuousIntegrationBuild=true' '-nowarn:CS1591,NU5104' -o $Output @suffixArg
 if ($LASTEXITCODE -ne 0) { throw "dotnet pack failed ($LASTEXITCODE)" }
 
 # --- validate the produced packages ---
