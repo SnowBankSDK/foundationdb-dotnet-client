@@ -550,6 +550,42 @@ namespace SnowBank.Data.Json
 			return result;
 		}
 
+		/// <summary>Deserializes a <see cref="JsonArray"/> into a custom collection (<see cref="System.Collections.ObjectModel.Collection{T}"/>, a <c>KeyedCollection&lt;TKey, TItem&gt;</c> subclass, ...), stored into an optional field of a parent object</summary>
+		[Pure]
+		[return: NotNullIfNotNull(nameof(defaultValue))]
+		public static TCollection? UnpackCollection<TCollection, T>(this IJsonDeserializer<T> serializer, JsonValue? value, TCollection? defaultValue = null, ICrystalJsonTypeResolver? resolver = null, string? fieldName = null)
+			where TCollection : class, ICollection<T>, new()
+			=> value switch
+			{
+				JsonArray arr => UnpackCollection<TCollection, T>(serializer, arr, resolver),
+				null or JsonNull => defaultValue,
+				_ => throw (fieldName != null ? CrystalJson.Errors.Parsing_CannotCastFieldToJsonArray(value, fieldName) : CrystalJson.Errors.Parsing_CannotCastToJsonArray(value))
+			};
+
+		/// <summary>Deserializes a <see cref="JsonArray"/> into a custom collection (<see cref="System.Collections.ObjectModel.Collection{T}"/>, a <c>KeyedCollection&lt;TKey, TItem&gt;</c> subclass, ...), stored into a <b>required</b> field of a parent object</summary>
+		[Pure]
+		public static TCollection UnpackRequiredCollection<TCollection, T>(this IJsonDeserializer<T> serializer, JsonValue? value, ICrystalJsonTypeResolver? resolver = null, JsonValue? parent = null, string? fieldName = null)
+			where TCollection : class, ICollection<T>, new()
+			=> value switch
+			{
+				JsonArray arr => UnpackCollection<TCollection, T>(serializer, arr, resolver),
+				null or JsonNull => throw (fieldName != null ? CrystalJson.Errors.Parsing_FieldIsNullOrMissing(parent, fieldName, null) : CrystalJson.Errors.Parsing_ValueIsNullOrMissing()),
+				_ => throw (fieldName != null ? CrystalJson.Errors.Parsing_CannotCastFieldToJsonArray(value, fieldName) : CrystalJson.Errors.Parsing_CannotCastToJsonArray(value))
+			};
+
+		/// <summary>Deserializes a <see cref="JsonArray"/> into a custom collection, constructed and populated via <see cref="ICollection{T}.Add"/> like a collection initializer</summary>
+		[Pure]
+		public static TCollection UnpackCollection<TCollection, T>(this IJsonDeserializer<T> serializer, JsonArray array, ICrystalJsonTypeResolver? resolver = null)
+			where TCollection : class, ICollection<T>, new()
+		{
+			var result = new TCollection();
+			foreach (var item in array)
+			{
+				result.Add(serializer.Unpack(item, resolver));
+			}
+			return result;
+		}
+
 		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="ImmutableArray{T}"/>, stored into an optional field of a parent object</summary>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]

@@ -2203,6 +2203,22 @@ namespace SnowBank.Serialization.Json.CodeGen
 							}
 							continue;
 						}
+
+						if (member.Type is { TypeKind: TypeKind.Class, IsAbstract: false, HasDefaultConstructor: true, ImplementsGenericICollection: true }
+						 && IsLocallyGeneratedType(elemType, out target, out _))
+						{ // custom addable collection (Collection<T>, ObservableCollection<T>, a KeyedCollection<,> subclass, ...) of a generated
+						  // type: construct the declared collection type and Add() each element decoded by the local element serializer, so that
+						  // the container's naming policy applies to the elements (the runtime As<> fallback would not know it)
+							if (member.IsRequired)
+							{
+								sb.AppendLine($"{member.MemberName} = /* local-required-Collection */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredCollection<{member.Type.FullyQualifiedName}, {elemType.FullyQualifiedName}>({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})!,");
+							}
+							else
+							{
+								sb.AppendLine($"{member.MemberName} = /* local-optional-Collection */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackCollection<{member.Type.FullyQualifiedName}, {elemType.FullyQualifiedName}>({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver)!,");
+							}
+							continue;
+						}
 					}
 
 					string jsonExpr;

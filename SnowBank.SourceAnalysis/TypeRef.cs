@@ -171,6 +171,7 @@ namespace SnowBank.SourceAnalysis
 			this.SpecialType = type.OriginalDefinition?.SpecialType ?? default;
 			this.Nullability = type.NullableAnnotation;
 			this.IsRecord = type.IsRecord;
+			this.HasDefaultConstructor = type is INamedTypeSymbol { InstanceConstructors: var ctors } && ctors.Any(c => c.Parameters.IsEmpty && c.DeclaredAccessibility == Accessibility.Public);
 			if (this.SpecialType == SpecialType.System_Nullable_T)
 			{
 				var underlyingType = (type as INamedTypeSymbol)?.TypeArguments.FirstOrDefault();
@@ -240,18 +241,25 @@ namespace SnowBank.SourceAnalysis
 					this.KeyType = Create(named.TypeArguments[0]);
 					this.ValueType = Create(named.TypeArguments[1]);
 				}
-				else if (this.Interfaces.Count > 0)
+				else
 				{
-					for (int i = 0; i < this.Interfaces.Count; i++)
+					// note: inspect ALL interfaces, including inherited ones: a user subclass of Collection<T> or
+					// KeyedCollection<TKey, TItem> declares no interface directly, they all come from its base type
+					foreach (var iface in named.AllInterfaces)
 					{
-						if (this.Interfaces[i].IsIEnumerableOf())
+						var ifaceRef = TypeRef.Create(iface);
+						if (ifaceRef.IsIEnumerableOf())
 						{
-							this.ElementType = Create(ifaces[i].TypeArguments[0]);
+							this.ElementType = Create(iface.TypeArguments[0]);
 						}
-						else if (this.Interfaces[i].IsIDictionaryOf())
+						else if (ifaceRef.IsIDictionaryOf())
 						{
-							this.KeyType = Create(ifaces[i].TypeArguments[0]);
-							this.ValueType = Create(ifaces[i].TypeArguments[1]);
+							this.KeyType = Create(iface.TypeArguments[0]);
+							this.ValueType = Create(iface.TypeArguments[1]);
+						}
+						else if (ifaceRef.Name == "ICollection" && ifaceRef.NameSpace == "System.Collections.Generic")
+						{
+							this.ImplementsGenericICollection = true;
 						}
 					}
 				}
@@ -286,6 +294,12 @@ namespace SnowBank.SourceAnalysis
 		public bool IsAbstract { get; }
 
 		public bool IsSealed { get; }
+
+		/// <summary>The type has a public parameterless constructor</summary>
+		public bool HasDefaultConstructor { get; }
+
+		/// <summary>The type implements <see cref="System.Collections.Generic.ICollection{T}"/> (directly or through a base type), so an instance can be filled via <c>Add(..)</c></summary>
+		public bool ImplementsGenericICollection { get; }
 
 		/// <summary>If this is a struct, whether it is declared <c>readonly</c></summary>
 		public bool IsReadOnly { get; }

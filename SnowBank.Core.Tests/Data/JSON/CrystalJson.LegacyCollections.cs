@@ -72,6 +72,24 @@ namespace SnowBank.Data.Json.Tests
 			public Collection<int> Items { get; } = [ ];
 		}
 
+		/// <summary>User subclass of <see cref="ObservableCollection{T}"/></summary>
+		public sealed class WatchList : ObservableCollection<int>
+		{
+		}
+
+		public sealed class Device
+		{
+			public string? Serial { get; set; }
+
+			public string? Model { get; set; }
+		}
+
+		/// <summary>User subclass of <see cref="KeyedCollection{TKey,TItem}"/>: the by-key index is derived from the items themselves</summary>
+		public sealed class DeviceIndex : KeyedCollection<string, Device>
+		{
+			protected override string GetKeyForItem(Device item) => item.Serial!;
+		}
+
 		private static StoreDto MakeStore() => new()
 		{
 			Name = "store-01",
@@ -208,6 +226,62 @@ namespace SnowBank.Data.Json.Tests
 			var roundtrip = CrystalJson.Deserialize<ProductList>(CrystalJson.Serialize(new ProductList { new() { Id = 8, Total = 1 } }));
 			Assert.That(roundtrip, Is.InstanceOf<ProductList>());
 			Assert.That(roundtrip[0].Id, Is.EqualTo(8));
+		}
+
+		[Test]
+		public void Test_ObservableCollection_All_Routes()
+		{
+			// serialize + DOM pack, declared type and user subclass
+			Assert.That(CrystalJson.Serialize(new ObservableCollection<int> { 1, 2, 3 }), Is.EqualTo("[ 1, 2, 3 ]"));
+			Assert.That(JsonValue.FromValue(new WatchList { 4, 5 }), IsJson.Array.And.EqualTo((int[]) [ 4, 5 ]));
+
+			// top-level deserialize
+			var obs = CrystalJson.Deserialize<ObservableCollection<int>>("[ 1, 2, 3 ]");
+			Assert.That(obs, Is.InstanceOf<ObservableCollection<int>>().And.EqualTo((int[]) [ 1, 2, 3 ]));
+
+			// user subclass must receive an instance of the subclass
+			var watch = CrystalJson.Deserialize<WatchList>("[ 4, 5 ]");
+			Assert.That(watch, Is.InstanceOf<WatchList>().And.EqualTo((int[]) [ 4, 5 ]));
+
+			// the deserialized instance is a real live ObservableCollection: change notifications still fire
+			int events = 0;
+			obs.CollectionChanged += (_, _) => events++;
+			obs.Add(4);
+			Assert.That(events, Is.EqualTo(1));
+		}
+
+		[Test]
+		public void Test_KeyedCollection_All_Routes()
+		{
+			var devices = new DeviceIndex
+			{
+				new() { Serial = "X1", Model = "laser" },
+				new() { Serial = "X2", Model = "inkjet" },
+			};
+
+			// serialize: an array of the items (never a dictionary), like the legacy serializer
+			var json = CrystalJson.Serialize(devices);
+			var arr = CrystalJson.Parse(json).AsArray();
+			Assert.That(arr, Has.Count.EqualTo(2));
+			Assert.That(arr[0]["Serial"], IsJson.EqualTo("X1"));
+			Assert.That(arr[1]["Model"], IsJson.EqualTo("inkjet"));
+
+			// DOM pack
+			Assert.That(JsonValue.FromValue(devices), IsJson.Array.And.OfSize(2));
+
+			// deserialize: rebuilt through Add(), so GetKeyForItem ran and the by-key indexer works again
+			var decoded = CrystalJson.Deserialize<DeviceIndex>(json);
+			Assert.That(decoded, Is.InstanceOf<DeviceIndex>());
+			Assert.That(decoded, Has.Count.EqualTo(2));
+			Assert.That(decoded["X2"].Model, Is.EqualTo("inkjet"));
+
+			// DOM bind
+			var bound = arr.As<DeviceIndex>();
+			Assert.That(bound, Is.Not.Null);
+			Assert.That(bound!["X1"].Model, Is.EqualTo("laser"));
+
+			// duplicate keys in the wire must fail loudly, never silently drop an item
+			Assert.That(() => CrystalJson.Deserialize<DeviceIndex>("""[ { "Serial": "X1" }, { "Serial": "X1" } ]"""), Throws.Exception);
 		}
 
 		[Test]
