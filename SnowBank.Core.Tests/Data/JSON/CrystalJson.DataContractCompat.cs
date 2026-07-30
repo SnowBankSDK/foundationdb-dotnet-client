@@ -437,6 +437,82 @@ namespace SnowBank.Data.Json.Tests
 			}
 		}
 
+		#region Double contract (conflicting wire names)...
+
+		/// <summary>One member, two serializers, two different wire names: the "double contract" defect</summary>
+		[DataContract]
+		public sealed class DoubleContractDto
+		{
+			[DataMember(Name = "code")]
+			[Newtonsoft.Json.JsonProperty("ACTIF")]
+			public string? Code { get; set; }
+		}
+
+		[DataContract]
+		public sealed class DoubleContractStjDto
+		{
+			[DataMember(Name = "code")]
+			[System.Text.Json.Serialization.JsonPropertyName("CODE_X")]
+			public string? Code { get; set; }
+		}
+
+		/// <summary>Both attributes agree on the wire name: a common belt-and-suspenders migration state, and legal</summary>
+		[DataContract]
+		public sealed class AgreeingNamesDto
+		{
+			[DataMember(Name = "code")]
+			[System.Text.Json.Serialization.JsonPropertyName("code")]
+			public string? Code { get; set; }
+		}
+
+		public sealed class NewtonsoftOnlyDto
+		{
+			[Newtonsoft.Json.JsonProperty("renamed")]
+			public string? Value { get; set; }
+		}
+
+		[Test]
+		public void Test_Conflicting_Wire_Names_Are_Refused_Loudly()
+		{
+			// a member carrying [DataMember(Name=x)] plus a foreign naming attribute with a DIFFERENT name is one
+			// type trying to serve two wire contracts: refuse with an error naming the member, both attributes and
+			// both names, instead of silently picking one (the fix on the application side is to split the DTO)
+
+			Assert.That(
+				() => CrystalJson.Serialize(new DoubleContractDto { Code = "c-1" }),
+				Throws.Exception.With.Message.Contains("Code").And.Message.Contains("code").And.Message.Contains("ACTIF").And.Message.Contains("split"));
+
+			Assert.That(
+				() => CrystalJson.Deserialize<DoubleContractDto>("""{ "code": "c-1" }"""),
+				Throws.Exception.With.Message.Contains("ACTIF"),
+				"the same contract defect must also refuse the read direction");
+
+			Assert.That(
+				() => CrystalJson.Serialize(new DoubleContractStjDto { Code = "c-1" }),
+				Throws.Exception.With.Message.Contains("CODE_X"),
+				"a conflicting [JsonPropertyName] is the same defect with another serializer");
+		}
+
+		[Test]
+		public void Test_Agreeing_Wire_Names_Are_Legal()
+		{
+			// both attributes giving the SAME name is reinforcement, not a conflict
+			var json = CrystalJson.Serialize(new AgreeingNamesDto { Code = "c-1" });
+			Assert.That(json, Is.EqualTo("""{ "code": "c-1" }"""));
+			Assert.That(CrystalJson.Deserialize<AgreeingNamesDto>(json).Code, Is.EqualTo("c-1"));
+		}
+
+		[Test]
+		public void Test_Foreign_Rename_Without_DataContract_Still_Works()
+		{
+			// a lone Newtonsoft [JsonProperty] rename (no [DataContract] in sight) keeps its recognized behavior
+			var json = CrystalJson.Serialize(new NewtonsoftOnlyDto { Value = "v" });
+			Assert.That(json, Is.EqualTo("""{ "renamed": "v" }"""));
+			Assert.That(CrystalJson.Deserialize<NewtonsoftOnlyDto>(json).Value, Is.EqualTo("v"));
+		}
+
+		#endregion
+
 	}
 
 }

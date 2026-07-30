@@ -1311,6 +1311,13 @@ namespace SnowBank.Data.Json
 				{ // skip!
 					return false;
 				}
+				if (attr.Name != null)
+				{
+					// one member giving DIFFERENT wire names to different serializers is two contracts on one type
+					// (ex: [DataMember(Name="code")] for the legacy DCJS wire plus a Newtonsoft [JsonProperty("ACTIF")]
+					// for another consumer): refuse loudly instead of silently picking one of the two
+					ThrowIfConflictingForeignWireName(member, attr.Name);
+				}
 				// check if a custom name is specified
 				name = attr.Name ?? name;
 				return true;
@@ -1526,6 +1533,40 @@ namespace SnowBank.Data.Json
 
 			// no valid candidate found
 			return null;
+		}
+
+		/// <summary>Throws if the member also carries a name-giving attribute of ANOTHER serializer family with a different wire name</summary>
+		/// <remarks>Such a member is one type trying to serve two different wire contracts at once. Whichever name a serializer
+		/// silently picks, one of the two consumers gets the wrong document; the only correct fix is to split the type into one
+		/// DTO per contract. (Attributes are matched by name+namespace, without referencing their packages; same caveat about
+		/// code trimming as the recognition in <see cref="FindPropertyAttribute"/>.)</remarks>
+		private static void ThrowIfConflictingForeignWireName(MemberInfo member, string dataMemberName)
+		{
+			foreach (var attr in member.GetCustomAttributes(true))
+			{
+				var attrType = attr.GetType();
+				string? otherName;
+				string family;
+				if (attrType.Name == "JsonPropertyNameAttribute" && attrType.Namespace == "System.Text.Json.Serialization")
+				{
+					otherName = (string?) attrType.GetProperty("Name")?.GetValue(attr);
+					family = "JsonPropertyName";
+				}
+				else if (attrType.Name == "JsonPropertyAttribute" && attrType.Namespace == "Newtonsoft.Json")
+				{
+					otherName = (string?) attrType.GetProperty("PropertyName")?.GetValue(attr);
+					family = "JsonProperty";
+				}
+				else
+				{
+					continue;
+				}
+
+				if (!string.IsNullOrEmpty(otherName) && !string.Equals(otherName, dataMemberName, StringComparison.Ordinal))
+				{
+					throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' declares two different wire names: [DataMember(Name=\"{dataMemberName}\")] and [{family}(\"{otherName}\")]. One type cannot serve two wire contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.");
+				}
+			}
 		}
 
 		private static CrystalJsonMemberDefinition[] GetMembersFromReflection(Type type)

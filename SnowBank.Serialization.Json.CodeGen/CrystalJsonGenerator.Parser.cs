@@ -68,6 +68,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string NewtonsoftJsonConverterAttributeFullName = "Newtonsoft.Json.JsonConverterAttribute";
 
+			public const string NewtonsoftJsonPropertyAttributeFullName = "Newtonsoft.Json.JsonPropertyAttribute";
+
 			public const string JsonBooleanLiteralsAttributeFullName = "SnowBank.Data.Json.JsonBooleanLiteralsAttribute";
 
 			public const string JsonConvertWithAttributeFullName = "SnowBank.Data.Json.JsonConvertWithAttribute";
@@ -832,6 +834,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// parameters that can be modified via attributes or keywords on the member
 				string? name = null;
+				string? dataMemberName = null;
+				string? stjPropertyName = null;
+				string? newtonsoftPropertyName = null;
 				bool isKey = false;
 				string? ignoreCondition = null;
 				string? enumFormat = null;
@@ -912,6 +917,33 @@ namespace SnowBank.Serialization.Json.CodeGen
 							if (attribute.ConstructorArguments.Length > 0)
 							{
 								name = (string) attribute.ConstructorArguments[0].Value!;
+								stjPropertyName = name;
+							}
+							break;
+						}
+						case DataMemberAttributeFullName:
+						{ // [DataMember(Name = "fooBar")]: only observed for conflict detection (the generator does not honour the rename)
+							foreach (var kv in attribute.NamedArguments)
+							{
+								if (kv.Key == "Name" && kv.Value.Value is string dmName)
+								{
+									dataMemberName = dmName;
+								}
+							}
+							break;
+						}
+						case NewtonsoftJsonPropertyAttributeFullName:
+						{ // Newtonsoft [JsonProperty("fooBar")]: not honoured, only observed for conflict detection
+							if (attribute.ConstructorArguments.Length > 0 && attribute.ConstructorArguments[0].Value is string njName)
+							{
+								newtonsoftPropertyName = njName;
+							}
+							foreach (var kv in attribute.NamedArguments)
+							{
+								if (kv.Key == "PropertyName" && kv.Value.Value is string njName2)
+								{
+									newtonsoftPropertyName = njName2;
+								}
 							}
 							break;
 						}
@@ -999,6 +1031,30 @@ namespace SnowBank.Serialization.Json.CodeGen
 							break;
 						}
 						//TODO: any other argument for setting a default value?
+					}
+				}
+
+				if (dataMemberName is not null)
+				{
+					// one member giving DIFFERENT wire names to different serializers is two contracts on one type
+					// (ex: [DataMember(Name="code")] for the legacy wire plus [JsonProperty("ACTIF")] for another
+					// consumer): report a build error instead of silently picking one; the fix is to split the DTO
+					foreach (var (foreignName, foreignFamily) in new[] { (stjPropertyName, "JsonPropertyName"), (newtonsoftPropertyName, "JsonProperty") })
+					{
+						if (foreignName is not null && foreignName != dataMemberName)
+						{
+							ReportDiagnostic(
+								new(
+									"CJSON0011",
+									"A member declares two different wire names for two different serializers",
+									"The member '{0}' declares two different wire names: [DataMember(Name=\"{1}\")] and [{2}(\"{3}\")]. One type cannot serve two wire contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.",
+									"SnowBank.Serialization.Json.CodeGen",
+									DiagnosticSeverity.Error,
+									isEnabledByDefault: true
+								),
+								member.Locations.Length > 0 ? member.Locations[0] : null,
+								member.ToDisplayString(), dataMemberName, foreignFamily, foreignName);
+						}
 					}
 				}
 
