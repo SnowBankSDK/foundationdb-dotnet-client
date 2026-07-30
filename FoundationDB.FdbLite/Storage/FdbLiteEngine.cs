@@ -455,6 +455,21 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Sums the free-space map: bytes already reusable, and bytes awaiting their promotion generation.</summary>
+		/// <remarks>An inspection call for space diagnostics: together with <see cref="FdbLiteSnapshotHeader.AllocationFrontier"/> and the tree aggregates it decomposes the file into live tree, circulating free space, and allocation headroom. Serialized under the single-writer model: call it between write generations.</remarks>
+		public (long ReusableBytes, long PendingBytes) MeasureFreeSpace()
+		{
+			int blockSizeLog2 = this.Pager.Geometry.BlockSizeLog2;
+			long reusable = 0;
+			long pending = 0;
+			foreach (var (generation, _, count) in this.FreeSpace.Enumerate())
+			{
+				if (generation == 0) { reusable += (long) count << blockSizeLog2; }
+				else { pending += (long) count << blockSizeLog2; }
+			}
+			return (reusable, pending);
+		}
+
 		/// <summary>Vacuum steps that merged something over this engine's lifetime</summary>
 		public long VacuumStepsExecuted { get; private set; }
 
