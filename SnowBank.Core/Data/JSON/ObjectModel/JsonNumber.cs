@@ -2425,7 +2425,18 @@ namespace SnowBank.Data.Json
 #endif
 
 		/// <inheritdoc />
-		public override decimal ToDecimal(decimal _ = 0) => m_value.ToDecimal(m_kind);
+		public override decimal ToDecimal(decimal _ = 0)
+		{
+			// a decimal literal carries its SCALE ("1.100" and "1.1" are different displayed texts, which matters for
+			// money): when the number was parsed into a double, recover the value from the original literal instead of
+			// converting the double, which cannot know how many trailing zeros the document had
+			if (m_kind == Kind.Double && m_literal is not null
+			 && decimal.TryParse(m_literal, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fromLiteral))
+			{
+				return fromLiteral;
+			}
+			return m_value.ToDecimal(m_kind);
+		}
 
 		/// <inheritdoc />
 		public override Uuid48 ToUuid48(Uuid48 _ = default) => !IsNaN(this) ? Uuid48.FromUInt64(m_value.ToUInt64(m_kind)) : Uuid48.MaxValue;

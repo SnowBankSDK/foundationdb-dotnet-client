@@ -2117,7 +2117,12 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override TimeSpan ToTimeSpan(TimeSpan defaultValue = default)
 		{
-			return string.IsNullOrEmpty(m_value) ? defaultValue : TimeSpan.Parse(m_value, CultureInfo.InvariantCulture);
+			if (string.IsNullOrEmpty(m_value)) return defaultValue;
+			if (IsIso8601Duration(m_value))
+			{ // "P1DT2H3M4.005S": the ISO 8601 duration form that the DataContract serializers (XmlConvert) write for TimeSpan
+				return System.Xml.XmlConvert.ToTimeSpan(m_value);
+			}
+			return TimeSpan.Parse(m_value, CultureInfo.InvariantCulture);
 		}
 
 		/// <inheritdoc />
@@ -2125,12 +2130,30 @@ namespace SnowBank.Data.Json
 
 		public bool TryConvertToTimeSpan(out TimeSpan result) => TryConvertToTimeSpan(m_value, out result);
 
+		/// <summary>Tests if a literal looks like an ISO 8601 duration (<c>"P..."</c> or <c>"-P..."</c>)</summary>
+		private static bool IsIso8601Duration(ReadOnlySpan<char> literal)
+			=> literal.Length > 1 && (literal[0] == 'P' || (literal[0] == '-' && literal[1] == 'P'));
+
 		internal static bool TryConvertToTimeSpan(ReadOnlySpan<char> literal, out TimeSpan result)
 		{
 			if (literal.Length == 0)
 			{
 				result = TimeSpan.Zero;
 				return true;
+			}
+
+			if (IsIso8601Duration(literal))
+			{ // the ISO 8601 duration form written by the DataContract serializers
+				try
+				{
+					result = System.Xml.XmlConvert.ToTimeSpan(literal.ToString());
+					return true;
+				}
+				catch (FormatException)
+				{
+					result = default;
+					return false;
+				}
 			}
 
 #if NET5_0_OR_GREATER

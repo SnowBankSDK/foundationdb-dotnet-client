@@ -43,6 +43,29 @@ namespace SnowBank.Data.Json.Tests
 	{
 
 		[Test]
+		public void Test_Decimal_Scale_Survives_Parse_And_Bind()
+		{
+			// a decimal literal carries its scale: "1.100" must bind to the decimal 1.100m (scale 3), not 1.1m, so
+			// that a money value renders with the same digits after a round-trip through the DOM
+
+			var value = CrystalJson.Parse("1.100").As<decimal>();
+			Assert.That(value, Is.EqualTo(1.100m));
+			Assert.That(value.ToString(System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo("1.100"), "the scale of the literal must be preserved");
+
+			Assert.That(CrystalJson.Serialize(CrystalJson.Parse("""{ "price": 1.100 }""").Bind(typeof(PriceDto))), Is.EqualTo("""{ "price": 1.100 }"""));
+
+			// exponent literals stay convertible, and integers keep scale 0
+			Assert.That(CrystalJson.Parse("1E-07").As<decimal>(), Is.EqualTo(0.0000001m));
+			Assert.That(CrystalJson.Parse("5").As<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo("5"));
+		}
+
+		public sealed class PriceDto
+		{
+			[JsonProperty("price")]
+			public decimal Price { get; set; }
+		}
+
+		[Test]
 		public void Test_JsonNumber_INumber_Additions()
 		{
 			// Validate the INumber<T> arithmetic for addition
