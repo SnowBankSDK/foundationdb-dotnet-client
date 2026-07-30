@@ -14,13 +14,6 @@
 
 	<Import Project="..\Common\VersionInfo.props" />
 
-	<PropertyGroup>
-		<IsTestProject>true</IsTestProject>
-		<EnableNUnitRunner>true</EnableNUnitRunner>
-		<IsPackable>false</IsPackable>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
-	</PropertyGroup>
-
 	<ItemGroup>
 		<Compile Include="..\SnowBank.Core\NetFxShim.cs" Link="NetFxShim.cs" />
 	</ItemGroup>

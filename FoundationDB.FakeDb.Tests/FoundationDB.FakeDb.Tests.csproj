@@ -7,11 +7,6 @@
 		<!-- modern targets only: FoundationDB.FakeDb has no netstandard2.0 build for a net472 leg to consume -->
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
-		<IsTestProject>true</IsTestProject>
-		<EnableNUnitRunner>true</EnableNUnitRunner>
-		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
-		<IsPackable>false</IsPackable>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
@@ -22,10 +17,6 @@
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
-
-	<PropertyGroup>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
-	</PropertyGroup>
 
 	<PropertyGroup>
 		<ServerGarbageCollection>true</ServerGarbageCollection>

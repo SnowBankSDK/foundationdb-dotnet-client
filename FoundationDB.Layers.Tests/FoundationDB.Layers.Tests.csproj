@@ -21,13 +21,6 @@
 	<Import Project="..\Common\VersionInfo.props" />
 
 	<PropertyGroup>
-		<IsTestProject>true</IsTestProject>
-		<EnableNUnitRunner>true</EnableNUnitRunner>
-		<IsPackable>false</IsPackable>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
-	</PropertyGroup>
-
-	<PropertyGroup>
 		<ServerGarbageCollection>true</ServerGarbageCollection>
 		<ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
 		<DisableImplicitFrameworkReferences>false</DisableImplicitFrameworkReferences>
