@@ -218,6 +218,11 @@ namespace SnowBank.Data.Json
 			}
 			else if (runtimeType.IsArray)
 			{ // T[]
+				if (runtimeType.GetArrayRank() != 1)
+				{ // multi-dimensional arrays (T[,]) have no JSON representation (same rule as System.Text.Json): refuse
+				  // instead of silently flattening the shape; jagged arrays (T[][]) are fine
+					throw new JsonSerializationException($"Cannot serialize multi-dimensional array of type '{runtimeType.GetFriendlyName()}': arrays with more than one dimension have no JSON representation, convert to a jagged array (T[][]) instead.");
+				}
 				if (TryConvertListObject(ref context, (IList) value, runtimeType, out result))
 				{
 					return result;
@@ -235,6 +240,11 @@ namespace SnowBank.Data.Json
 				{
 					return result;
 				}
+			}
+
+			if (value is System.Collections.Specialized.NameObjectCollectionBase)
+			{ // NameValueCollection and friends enumerate their KEYS only: converting through IEnumerable would silently drop every value
+				throw new JsonSerializationException($"Cannot serialize name/value collection of type '{runtimeType.GetFriendlyName()}': enumerating it drops the values, convert it to a Dictionary<string, string[]> first.");
 			}
 
 			if (value is IEnumerable enmr)

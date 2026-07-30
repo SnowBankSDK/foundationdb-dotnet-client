@@ -26,6 +26,7 @@
 
 namespace SnowBank.Data.Json.Tests
 {
+	using System.Collections.Concurrent;
 	using System.Collections.ObjectModel;
 
 	/// <summary>Pins support for the legacy <see cref="Collection{T}"/> family (<c>Collection&lt;T&gt;</c>, <c>ObservableCollection&lt;T&gt;</c>,
@@ -291,6 +292,180 @@ namespace SnowBank.Data.Json.Tests
 
 			var dto = CrystalJson.Deserialize<AppendOnlyDto>("""{ "Items": [ 10, 20, 30 ] }""");
 			Assert.That(dto.Items, Is.EqualTo((int[]) [ 10, 20, 30 ]));
+		}
+
+		[Test]
+		public void Test_Queues_And_Stacks_Roundtrip()
+		{
+			// queues serialize front-first, and round-trip in the same order
+			var queue = CrystalJson.Deserialize<Queue<int>>("[ 1, 2, 3 ]");
+			Assert.That(queue, Is.InstanceOf<Queue<int>>().And.EqualTo((int[]) [ 1, 2, 3 ]));
+			Assert.That(queue.Dequeue(), Is.EqualTo(1), "the wire order is the dequeue order");
+			Assert.That(CrystalJson.Serialize(new Queue<int>([ 1, 2, 3 ])), Is.EqualTo("[ 1, 2, 3 ]"));
+
+			// stacks serialize top-first, and the round-trip PRESERVES the wire (unlike legacy serializers that reversed it)
+			var stack = new Stack<int>();
+			stack.Push(1); stack.Push(2); stack.Push(3);
+			var json = CrystalJson.Serialize(stack);
+			Assert.That(json, Is.EqualTo("[ 3, 2, 1 ]"), "top of the stack comes first on the wire");
+			var stack2 = CrystalJson.Deserialize<Stack<int>>(json);
+			Assert.That(stack2.Peek(), Is.EqualTo(3), "the first wire element is the top of the stack");
+			Assert.That(CrystalJson.Serialize(stack2), Is.EqualTo(json), "round-trip preserves the order");
+
+			// concurrent variants follow the same rules; a bag preserves the CONTENT (it is unordered by contract)
+			Assert.That(CrystalJson.Serialize(CrystalJson.Deserialize<ConcurrentQueue<int>>("[ 1, 2, 3 ]")), Is.EqualTo("[ 1, 2, 3 ]"));
+			Assert.That(CrystalJson.Serialize(CrystalJson.Deserialize<ConcurrentStack<int>>("[ 3, 2, 1 ]")), Is.EqualTo("[ 3, 2, 1 ]"));
+			Assert.That(CrystalJson.Deserialize<ConcurrentBag<int>>("[ 1, 2, 3 ]"), Is.EquivalentTo((int[]) [ 1, 2, 3 ]));
+		}
+
+		[Test]
+		public void Test_Linked_And_Sorted_Collections_Roundtrip()
+		{
+			var linked = CrystalJson.Deserialize<LinkedList<int>>("[ 1, 2, 3 ]");
+			Assert.That(linked, Is.InstanceOf<LinkedList<int>>().And.EqualTo((int[]) [ 1, 2, 3 ]));
+
+			var sorted = CrystalJson.Deserialize<SortedSet<int>>("[ 3, 1, 2 ]");
+			Assert.That(sorted, Is.InstanceOf<SortedSet<int>>().And.EqualTo((int[]) [ 1, 2, 3 ]));
+
+			var immutableSorted = CrystalJson.Deserialize<System.Collections.Immutable.ImmutableSortedSet<int>>("[ 3, 1, 2 ]");
+			Assert.That(immutableSorted, Is.InstanceOf<System.Collections.Immutable.ImmutableSortedSet<int>>().And.EqualTo((int[]) [ 1, 2, 3 ]));
+		}
+
+		public sealed class MyStringIntDict : Dictionary<string, int>
+		{
+		}
+
+		[Test]
+		public void Test_Dictionary_Family_Roundtrip()
+		{
+			var sorted = CrystalJson.Deserialize<SortedDictionary<string, int>>("""{ "b": 2, "a": 1 }""");
+			Assert.That(sorted, Is.InstanceOf<SortedDictionary<string, int>>());
+			Assert.That(sorted["a"], Is.EqualTo(1));
+
+			var concurrent = CrystalJson.Deserialize<ConcurrentDictionary<string, int>>("""{ "a": 1 }""");
+			Assert.That(concurrent, Is.InstanceOf<ConcurrentDictionary<string, int>>());
+			Assert.That(concurrent["a"], Is.EqualTo(1));
+
+			// no parameterless ctor: bound through an inner Dictionary<K,V> then wrapped
+			var ro = CrystalJson.Deserialize<ReadOnlyDictionary<string, int>>("""{ "a": 1 }""");
+			Assert.That(ro, Is.InstanceOf<ReadOnlyDictionary<string, int>>());
+			Assert.That(ro["a"], Is.EqualTo(1));
+
+			// a user subclass must receive an instance of the subclass
+			var custom = CrystalJson.Deserialize<MyStringIntDict>("""{ "a": 1, "b": 2 }""");
+			Assert.That(custom, Is.InstanceOf<MyStringIntDict>());
+			Assert.That(custom["b"], Is.EqualTo(2));
+		}
+
+		[Test]
+		public void Test_NonGeneric_Collections_Roundtrip()
+		{
+			// Hashtable binds from a JSON object (keys are the member names, values are CLR objects)...
+			var table = CrystalJson.Deserialize<System.Collections.Hashtable>("""{ "a": 1, "b": "two" }""");
+			Assert.That(table.Count, Is.EqualTo(2));
+			Assert.That(table["a"], Is.EqualTo(1));
+			Assert.That(table["b"], Is.EqualTo("two"));
+			Assert.That(CrystalJson.Serialize(table), Is.EqualTo("""{ "a": 1, "b": "two" }""").Or.EqualTo("""{ "b": "two", "a": 1 }"""));
+
+			// ... and also accepts the legacy DCJS wire shape [ { "Key": .., "Value": .. } ]
+			var fromPairs = CrystalJson.Deserialize<System.Collections.Hashtable>("""[ { "Key": "a", "Value": 1 } ]""");
+			Assert.That(fromPairs["a"], Is.EqualTo(1));
+
+			// ArrayList: elements are bound as CLR objects
+			var list = CrystalJson.Deserialize<System.Collections.ArrayList>("""[ 1, "two", 3 ]""");
+			Assert.That(list, Is.InstanceOf<System.Collections.ArrayList>());
+			Assert.That(list.Count, Is.EqualTo(3));
+			Assert.That(list[1], Is.EqualTo("two"));
+
+			// StringCollection: pre-generics collection, recognized through its public Add(string)
+			var strings = CrystalJson.Deserialize<System.Collections.Specialized.StringCollection>("""[ "a", "b" ]""");
+			Assert.That(strings, Is.InstanceOf<System.Collections.Specialized.StringCollection>());
+			Assert.That(strings.Count, Is.EqualTo(2));
+			Assert.That(strings[0], Is.EqualTo("a"));
+		}
+
+		/// <summary>Collection-initializer duck typing: IEnumerable&lt;T&gt; + public Add(T), but NOT ICollection&lt;T&gt;</summary>
+		public sealed class DuckBag : System.Collections.IEnumerable, IEnumerable<int>
+		{
+			private List<int> Store { get; } = [ ];
+
+			public void Add(int item) => this.Store.Add(item);
+
+			public IEnumerator<int> GetEnumerator() => this.Store.GetEnumerator();
+
+			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => this.Store.GetEnumerator();
+		}
+
+		[Test]
+		public void Test_DuckTyped_Add_Collection_Roundtrip()
+		{
+			// the same duck-typing rule the C# compiler uses for collection initializers (and DataContractSerializer honors)
+			var bag = CrystalJson.Deserialize<DuckBag>("[ 1, 2, 3 ]");
+			Assert.That(bag, Is.InstanceOf<DuckBag>().And.EqualTo((int[]) [ 1, 2, 3 ]));
+		}
+
+		public sealed class InterfaceMembersDto
+		{
+			public ISet<int>? Set { get; set; }
+
+#if NET5_0_OR_GREATER
+			// IReadOnlySet<T> does not exist on net472/netstandard2.0
+			public IReadOnlySet<int>? RoSet { get; set; }
+#endif
+
+			public IReadOnlyList<int>? RoList { get; set; }
+
+			public IDictionary<string, int>? Dict { get; set; }
+
+			public IReadOnlyDictionary<string, int>? RoDict { get; set; }
+		}
+
+		[Test]
+		public void Test_Interface_Declared_Members_Roundtrip()
+		{
+			var dto = new InterfaceMembersDto
+			{
+				Set = new HashSet<int> { 1, 2 },
+#if NET5_0_OR_GREATER
+				RoSet = new HashSet<int> { 3, 4 },
+#endif
+				RoList = [ 5, 6 ],
+				Dict = new Dictionary<string, int> { ["a"] = 1 },
+				RoDict = new Dictionary<string, int> { ["b"] = 2 },
+			};
+
+			var back = CrystalJson.Deserialize<InterfaceMembersDto>(CrystalJson.Serialize(dto));
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(back.Set, Is.EquivalentTo((int[]) [ 1, 2 ]));
+#if NET5_0_OR_GREATER
+				Assert.That(back.RoSet, Is.EquivalentTo((int[]) [ 3, 4 ]), "must bind to a type that implements IReadOnlySet<T>");
+#endif
+				Assert.That(back.RoList, Is.EqualTo((int[]) [ 5, 6 ]));
+				Assert.That(back.Dict, Is.Not.Null);
+				Assert.That(back.Dict!["a"], Is.EqualTo(1));
+				Assert.That(back.RoDict, Is.Not.Null);
+				Assert.That(back.RoDict!["b"], Is.EqualTo(2));
+			}
+		}
+
+		[Test]
+		public void Test_Unsupported_Shapes_Fail_Loudly()
+		{
+			// multi-dimensional arrays have no JSON representation: refuse on every route, never flatten or null out
+			var grid = new int[,] { { 1, 2 }, { 3, 4 } };
+			Assert.That(() => CrystalJson.Serialize(grid), Throws.InstanceOf<JsonSerializationException>());
+			Assert.That(() => JsonValue.FromValue(grid), Throws.InstanceOf<JsonSerializationException>());
+			Assert.That(() => CrystalJson.Deserialize<int[,]>("[ 1, 2, 3, 4 ]"), Throws.InstanceOf<JsonBindingException>());
+
+			// jagged arrays are the supported spelling
+			Assert.That(CrystalJson.Serialize(new int[][] { [ 1, 2 ], [ 3, 4 ] }), Is.EqualTo("[ [ 1, 2 ], [ 3, 4 ] ]"));
+			Assert.That(CrystalJson.Deserialize<int[][]>("[ [ 1, 2 ], [ 3, 4 ] ]")[1][0], Is.EqualTo(3));
+
+			// NameValueCollection enumerates its keys only: serializing it would silently drop the values, so it is refused
+			var nvc = new System.Collections.Specialized.NameValueCollection { ["k"] = "v" };
+			Assert.That(() => CrystalJson.Serialize(nvc), Throws.InstanceOf<JsonSerializationException>());
+			Assert.That(() => JsonValue.FromValue(nvc), Throws.InstanceOf<JsonSerializationException>());
 		}
 
 	}

@@ -805,6 +805,11 @@ namespace SnowBank.Data.Json
 		/// <param name="type">Type that implements IEnumerable</param>
 		private static CrystalJsonTypeVisitor CreateVisitorForEnumerableType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type type)
 		{
+			if (type.IsAssignableTo<System.Collections.Specialized.NameObjectCollectionBase>())
+			{ // NameValueCollection and friends enumerate their KEYS only: serializing through IEnumerable would silently drop every value
+				return (_, _, rt, _) => throw new JsonSerializationException($"Cannot serialize name/value collection of type '{(rt ?? type).GetFriendlyName()}': enumerating it drops the values, convert it to a Dictionary<string, string[]> first.");
+			}
+
 			if (type.IsAssignableTo<ICollection<KeyValuePair<string, string?>>>())
 			{ // Key/Value store
 				return (v, _, _, writer) => VisitStringDictionary(v as ICollection<KeyValuePair<string, string?>>, writer);
@@ -851,6 +856,11 @@ namespace SnowBank.Data.Json
 
 			if (type.IsArray)
 			{ // generic array: T[]
+
+				if (type.GetArrayRank() != 1)
+				{ // multi-dimensional arrays (T[,]) have no JSON representation (same rule as System.Text.Json); jagged arrays (T[][]) are fine
+					return (_, _, rt, _) => throw new JsonSerializationException($"Cannot serialize multi-dimensional array of type '{(rt ?? type).GetFriendlyName()}': arrays with more than one dimension have no JSON representation, convert to a jagged array (T[][]) instead.");
+				}
 
 				if (type == typeof(string[]))
 				{

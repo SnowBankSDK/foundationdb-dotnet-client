@@ -39,6 +39,7 @@
 namespace SnowBank.Data.Json
 {
 	using System.Collections;
+	using System.Collections.Concurrent;
 	using System.Collections.Immutable;
 	using System.Collections.ObjectModel;
 	using System.Linq.Expressions;
@@ -403,6 +404,11 @@ namespace SnowBank.Data.Json
 			if (type.IsArray)
 			{ // return type is an array (T[])
 
+				if (type.GetArrayRank() != 1)
+				{ // multi-dimensional arrays (T[,]) have no JSON representation (same rule as System.Text.Json); jagged arrays (T[][]) are fine
+					return CreateDefaultJsonArrayBinder_Invalid(type);
+				}
+
 				// ex:
 				// if we are called with type == typeof(int), we must output an int[]
 				// if we are called with type == typeof(int[]), we must output a 2-dimensional array of type 'int[][]'
@@ -454,6 +460,13 @@ namespace SnowBank.Data.Json
 							{ // => ImmutableHashSet<T>
 								filler = nameof(FillImmutableHashSet);
 							}
+#if NET5_0_OR_GREATER
+							// IReadOnlySet<T> does not exist on netstandard2.0/net472
+							else if (type.IsGenericInstanceOf(typeof(IReadOnlySet<>)))
+							{ // => HashSet<T> (a ReadOnlyCollection<T> would not implement the interface)
+								filler = nameof(FillHashSet);
+							}
+#endif
 							else
 							{ // => ReadOnlyCollection<T>
 								filler = nameof(FillReadOnlyCollection);
@@ -506,9 +519,33 @@ namespace SnowBank.Data.Json
 						{
 							filler = nameof(FillImmutableArray);
 						}
-						else if (type.IsGenericInstanceOf(typeof(IImmutableSet<>)))
-						{ // => ImmutableHashSet<T>
+						else if (type.IsSameGenericType(typeof(ImmutableHashSet<>)))
+						{
 							filler = nameof(FillImmutableHashSet);
+						}
+						else if (type.IsSameGenericType(typeof(ImmutableSortedSet<>)))
+						{ // note: must NOT receive an ImmutableHashSet<T>, which would not be assignable
+							filler = nameof(FillImmutableSortedSet);
+						}
+						else if (type.IsSameGenericType(typeof(Queue<>)))
+						{
+							filler = nameof(FillQueue);
+						}
+						else if (type.IsSameGenericType(typeof(Stack<>)))
+						{
+							filler = nameof(FillStack);
+						}
+						else if (type.IsSameGenericType(typeof(ConcurrentQueue<>)))
+						{
+							filler = nameof(FillConcurrentQueue);
+						}
+						else if (type.IsSameGenericType(typeof(ConcurrentStack<>)))
+						{
+							filler = nameof(FillConcurrentStack);
+						}
+						else if (type.IsSameGenericType(typeof(ConcurrentBag<>)))
+						{
+							filler = nameof(FillConcurrentBag);
 						}
 						else if (type.IsGenericInstanceOf(typeof(Dictionary<,>)) || type.IsGenericInstanceOf(typeof(ImmutableDictionary<,>)))
 						{
@@ -605,10 +642,53 @@ namespace SnowBank.Data.Json
 				return CreateDefaultJsonArrayBinder_Binder(type, binder);
 			}
 
-			if (type.IsConcrete() && type.IsGenericInstanceOf(typeof(ICollection<>), out var collectionType) && type.GetConstructor(Type.EmptyTypes) != null)
-			{ // Collection<T>, ObservableCollection<T>, user subclasses of Collection<T>/List<T>, ... : construct an
-			  // instance of the declared type and call Add() for each element, like a collection initializer would
-				return CreateDefaultJsonArrayBinder_AddableCollection(type, collectionType.GetGenericArguments()[0]);
+			if (type == typeof(ArrayList))
+			{ // legacy untyped list: elements are bound as CLR objects
+				return static (resolver, array) => array is null ? null : FillArrayList(resolver, array);
+			}
+
+			if (type.IsConcrete() && type.GetConstructor(Type.EmptyTypes) != null)
+			{
+				if (type.IsAssignableTo<IDictionary>())
+				{ // non-generic dictionary (Hashtable, ...) read from the legacy DCJS wire shape [ { "Key": .., "Value": .. } ]:
+				  // defer to the object-route binder, which tolerates that wire
+					return (resolver, array) =>
+					{
+						if (array is null) return null;
+						if (resolver.TryResolveTypeDefinition(type, out var typeDef) && typeDef.CustomBinder is not null)
+						{
+							return typeDef.CustomBinder(array, type, resolver);
+						}
+						throw JsonBindingException.CannotBindJsonArrayToThisType(array, type);
+					};
+				}
+
+				var collectionType = type.FindGenericType(typeof(ICollection<>));
+				if (collectionType != null)
+				{ // Collection<T>, ObservableCollection<T>, user subclasses of Collection<T>/List<T>, ... : construct an
+				  // instance of the declared type and call Add() for each element, like a collection initializer would
+					return CreateDefaultJsonArrayBinder_AddableCollection(type, collectionType.GetGenericArguments()[0]);
+				}
+
+				var enumerableType = type.FindGenericType(typeof(IEnumerable<>));
+				if (enumerableType != null)
+				{ // duck-typed collection: IEnumerable<T> plus a public Add(T) method without ICollection<T>, the same
+				  // pattern the C# compiler accepts for collection initializers (and that DataContractSerializer supports)
+					var elementType = enumerableType.GetGenericArguments()[0];
+					if (type.GetMethod("Add", BindingFlags.Instance | BindingFlags.Public, null, [ elementType ], null) != null)
+					{
+						return CreateDefaultJsonArrayBinder_DuckAddCollection(type, elementType);
+					}
+				}
+				else if (type.IsAssignableTo<IEnumerable>())
+				{ // pre-generics duck-typed collection (StringCollection, CollectionBase subclasses, ...): a public Add
+				  // method with a single parameter defines the element type
+					var adder = FindSingleParameterAddMethod(type);
+					if (adder != null)
+					{
+						return CreateDefaultJsonArrayBinder_DuckAddCollection(type, adder.GetParameters()[0].ParameterType);
+					}
+				}
 			}
 
 			if (type.IsAssignableTo<IEnumerable>())
@@ -719,6 +799,69 @@ namespace SnowBank.Data.Json
 				}
 			}
 			return collection;
+		}
+
+		private static MethodInfo? FindSingleParameterAddMethod(Type type)
+		{
+			// prefer a typed overload (Add(string), Add(Foo)) over the untyped Add(object)
+			MethodInfo? fallback = null;
+			foreach (var m in type.GetMethods(BindingFlags.Instance | BindingFlags.Public))
+			{
+				if (m.Name != "Add") continue;
+				var prms = m.GetParameters();
+				if (prms.Length != 1) continue;
+				if (prms[0].ParameterType != typeof(object)) return m;
+				fallback = m;
+			}
+			return fallback;
+		}
+
+		private static ArrayList FillArrayList(CrystalJsonTypeResolver resolver, JsonArray array)
+		{
+			var res = new ArrayList(array.Count);
+			foreach (var item in array)
+			{
+				res.Add(resolver.BindJsonValue(typeof(object), item));
+			}
+			return res;
+		}
+
+		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder_DuckAddCollection(Type type, Type elementType)
+		{
+			// compile: (collection, item) => ((TCollection) collection).Add((TElement) item)
+			var method = type.GetMethod("Add", BindingFlags.Instance | BindingFlags.Public, null, [ elementType ], null)!;
+			var prmCollection = Expression.Parameter(typeof(object), "collection");
+			var prmItem = Expression.Parameter(typeof(object), "item");
+			var call = (Expression) Expression.Call(prmCollection.CastFromObject(type), method, prmItem.CastFromObject(elementType));
+			if (call.Type != typeof(void))
+			{ // some Add methods return a value (ex: the ArrayList style "public int Add(..)"), which an Action<> body cannot carry
+				call = Expression.Block(typeof(void), call);
+			}
+			var adder = Expression.Lambda<Action<object, object?>>(call, "<>_" + type.GetFriendlyName() + "_Add", true, [ prmCollection, prmItem ]).Compile();
+
+			return (resolver, array) =>
+			{
+				if (array == null) return null;
+				var instance = Activator.CreateInstance(type)!;
+				int index = 0;
+				foreach (var item in array)
+				{
+					try
+					{
+						adder(instance, resolver.BindJsonValue(elementType, item));
+					}
+					catch (Exception ex)
+					{
+						if (TryMapException(ex, index, elementType, item, out var mapped))
+						{
+							throw mapped;
+						}
+						throw;
+					}
+					++index;
+				}
+				return instance;
+			};
 		}
 
 		private static object? ConvertToBoxedEnumerable(Type type, JsonArray? array, Func<Type, JsonValue?, object?> convert)
@@ -959,6 +1102,152 @@ namespace SnowBank.Data.Json
 		public static ReadOnlyCollection<TOutput> FillReadOnlyCollection<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
 		{
 			return new ReadOnlyCollection<TOutput>(FillList<TInput, TOutput>(array, convert));
+		}
+
+		[UsedImplicitly]
+		public static ImmutableSortedSet<TOutput> FillImmutableSortedSet<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
+		{
+			var type = typeof(TOutput);
+			var set = ImmutableSortedSet.CreateBuilder<TOutput>();
+			foreach (var item in array)
+			{
+				try
+				{
+					set.Add((TOutput) convert(type, item));
+				}
+				catch (Exception ex)
+				{
+					if (TryMapException(ex, set.Count, type, item as JsonValue, out var mapped))
+					{
+						throw mapped;
+					}
+					throw;
+				}
+			}
+			return set.ToImmutable();
+		}
+
+		[UsedImplicitly]
+		public static Queue<TOutput> FillQueue<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
+		{
+			var type = typeof(TOutput);
+			var queue = new Queue<TOutput>(array.Count);
+			foreach (var item in array)
+			{
+				try
+				{
+					queue.Enqueue((TOutput) convert(type, item));
+				}
+				catch (Exception ex)
+				{
+					if (TryMapException(ex, queue.Count, type, item as JsonValue, out var mapped))
+					{
+						throw mapped;
+					}
+					throw;
+				}
+			}
+			return queue;
+		}
+
+		[UsedImplicitly]
+		public static Stack<TOutput> FillStack<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
+		{
+			// the wire holds the enumeration order (top of the stack first): push in reverse so that
+			// serializing the result again produces the same wire (round-trip preserves the order)
+			var type = typeof(TOutput);
+			var stack = new Stack<TOutput>(array.Count);
+			for (int i = array.Count - 1; i >= 0; i--)
+			{
+				try
+				{
+					stack.Push((TOutput) convert(type, array[i]));
+				}
+				catch (Exception ex)
+				{
+					if (TryMapException(ex, i, type, array[i] as JsonValue, out var mapped))
+					{
+						throw mapped;
+					}
+					throw;
+				}
+			}
+			return stack;
+		}
+
+		[UsedImplicitly]
+		public static ConcurrentQueue<TOutput> FillConcurrentQueue<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
+		{
+			var type = typeof(TOutput);
+			var queue = new ConcurrentQueue<TOutput>();
+			int index = 0;
+			foreach (var item in array)
+			{
+				try
+				{
+					queue.Enqueue((TOutput) convert(type, item));
+				}
+				catch (Exception ex)
+				{
+					if (TryMapException(ex, index, type, item as JsonValue, out var mapped))
+					{
+						throw mapped;
+					}
+					throw;
+				}
+				++index;
+			}
+			return queue;
+		}
+
+		[UsedImplicitly]
+		public static ConcurrentStack<TOutput> FillConcurrentStack<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
+		{
+			// same round-trip-preserving rule as FillStack: the wire holds the top of the stack first
+			var type = typeof(TOutput);
+			var stack = new ConcurrentStack<TOutput>();
+			for (int i = array.Count - 1; i >= 0; i--)
+			{
+				try
+				{
+					stack.Push((TOutput) convert(type, array[i]));
+				}
+				catch (Exception ex)
+				{
+					if (TryMapException(ex, i, type, array[i] as JsonValue, out var mapped))
+					{
+						throw mapped;
+					}
+					throw;
+				}
+			}
+			return stack;
+		}
+
+		[UsedImplicitly]
+		public static ConcurrentBag<TOutput> FillConcurrentBag<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
+		{
+			// note: a bag is unordered by contract, so round-trip preserves the CONTENT, not the order
+			var type = typeof(TOutput);
+			var bag = new ConcurrentBag<TOutput>();
+			int index = 0;
+			foreach (var item in array)
+			{
+				try
+				{
+					bag.Add((TOutput) convert(type, item));
+				}
+				catch (Exception ex)
+				{
+					if (TryMapException(ex, index, type, item as JsonValue, out var mapped))
+					{
+						throw mapped;
+					}
+					throw;
+				}
+				++index;
+			}
+			return bag;
 		}
 
 		[UsedImplicitly]
@@ -1868,16 +2157,37 @@ namespace SnowBank.Data.Json
 			}
 
 			// Dictionary?
-			if (type.IsGenericInstanceOf(typeof(IDictionary<,>)))
+			if (type.IsSameGenericType(typeof(ReadOnlyDictionary<,>)))
+			{ // no parameterless ctor: bind a Dictionary<K,V> first, then wrap it in the read-only facade
+				return CreateBinderForReadOnlyDictionary(type);
+			}
+			if (type.IsGenericInstanceOf(typeof(IDictionary<,>), out var dictionaryType))
 			{
 				if (type.Name == "ImmutableDictionary`2" && type.IsGenericInstanceOf(typeof(ImmutableDictionary<,>)))
 				{
 					return CreateBinderForImmutableDictionary(type);
 				}
 
+				if (type.IsInterface)
+				{ // IDictionary<K,V> and derived interfaces: use Dictionary<K,V> as the implementation
+					var implType = typeof(Dictionary<,>).MakeGenericType(dictionaryType.GetGenericArguments());
+					return CreateBinderForDictionary(implType, () => Activator.CreateInstance(implType)!)!;
+				}
+
 				generator = RequireGeneratorForType(type);
 				binder = CreateBinderForDictionary(type, generator);
 				if (binder != null) return binder;
+			}
+			if (type.IsInterface && type.IsGenericInstanceOf(typeof(IReadOnlyDictionary<,>), out var roDictionaryType))
+			{ // IReadOnlyDictionary<K,V>: Dictionary<K,V> implements it
+				var implType = typeof(Dictionary<,>).MakeGenericType(roDictionaryType.GetGenericArguments());
+				return CreateBinderForDictionary(implType, () => Activator.CreateInstance(implType)!)!;
+			}
+			if (type.IsAssignableTo<IDictionary>() && type.GetConstructor(Type.EmptyTypes) != null)
+			{ // non-generic dictionary (Hashtable, HybridDictionary, ListDictionary, ...):
+			  // keys are the JSON member names, values bind as CLR objects
+				generator = RequireGeneratorForType(type);
+				return CreateBinderForDictionary_StringKey(generator, typeof(object));
 			}
 
 			if (type.IsAnonymousType())
@@ -2242,6 +2552,21 @@ namespace SnowBank.Data.Json
 			// unsupported key type
 			//REVIEW: throw an exception instead?
 			return null;
+		}
+
+		private static CrystalJsonTypeBinder CreateBinderForReadOnlyDictionary(Type type)
+		{
+			var args = type.GetGenericArguments();
+			var innerType = typeof(Dictionary<,>).MakeGenericType(args);
+			var innerBinder = CreateBinderForDictionary(innerType, () => Activator.CreateInstance(innerType)!)!;
+			Contract.Debug.Assert(innerBinder != null);
+			var ctor = type.GetConstructor([ typeof(IDictionary<,>).MakeGenericType(args) ])!;
+			Contract.Debug.Assert(ctor != null);
+			return (v, _, r) =>
+			{
+				var inner = innerBinder(v, innerType, r);
+				return inner == null ? null : ctor.Invoke([ inner ]);
+			};
 		}
 
 		private static CrystalJsonTypeBinder CreateBinderForDictionary_StringKey(Func<object> generator, Type valueType)
