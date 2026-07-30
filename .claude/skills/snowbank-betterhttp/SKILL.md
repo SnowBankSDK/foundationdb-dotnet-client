@@ -36,6 +36,8 @@ Two properties fall out of this design:
 - **Late binding**: the target host is resolved per request against the live `INetworkMap`, not captured when the handler is built. A long-lived client keeps working across topology changes (a restarted backend, a re-pointed VIP).
 - **No default chain rotation**: bundles are registered with an infinite handler lifetime, because the transport already bounds DNS staleness itself (`PooledConnectionLifetime` on the shared `SocketsHttpHandler`). A bundle that wants periodic chain rebuild opts back in AFTER registration: `services.AddHttpClient(name).SetHandlerLifetime(...)`.
 
+**Why the URI belongs at the call site, not in the registration.** Not just convenience: `HttpClient.BaseAddress` is immutable after the first request, so an address baked in at registration time *cannot* follow a configuration change an admin makes at run time. The pooled transport, by contrast, is origin-agnostic (`SocketsHttpHandler` pools per-origin internally), so a call site passing an absolute URI re-targets for free - the same client starts hitting the new origin's pool and the old connections idle out. Build the absolute URI from live configuration at the moment of the call.
+
 ## 2. Startup wiring (both registrations are required)
 
 ```csharp
@@ -105,6 +107,8 @@ var result = await client.SendAsync(
 `BetterHttpClientContext` carries `Request`, `Response`, the DI `Services`, the injected `Clock`, a per-request `State` bag (how filters coordinate their stages), and helpers: `EnsureSuccessStatusCode()`, `ReadAsJsonAsync()` / `ReadAsJsonObjectAsync()` / `ReadAsJsonArrayAsync()` / `ReadAsJsonAsync<TResult>()`.
 
 Cancellation tokens are required across this stack, never optional: pass the caller's real token (`HttpContext.RequestAborted`, a `BackgroundService`'s `stoppingToken`, ...).
+
+> **Parity note:** the stage hooks belong to `SendAsync(request, handler, ct)`. Talking to the transport directly - a bare `HttpClient.GetAsync(...)` on the shell - bypasses them; only in-chain handlers fire. The stack also owns disposal of the request/response around your callback, which is why the callback processes the response *while it is still open* rather than returning it.
 
 ## 5. Options: three scopes, one rule
 
@@ -219,7 +223,7 @@ Remember the scope rule from section 5: the per-call `configure` on `factory.Cre
 When application code runs on a simulated host of a `DistributedTest` (see the **snowbank-distributed-testing** skill), the SAME registrations acquire test behavior automatically - do not add any test-specific wiring to application code:
 
 - **The virtual network replaces the transport.** The framework registers the virtual network map as the host's `INetworkMap`, so every bundle's chain bottoms out in the simulated network. In-test web hosts are reachable by their simulated names; TestServer-style in-memory handlers, simulated latency and faults all live below the same seam.
-- **Packet capture rides every chain.** The capture handler is inserted as the outermost handler of every pooled bundle (bare handlers included): every test journal carries one `H` line per request, with bodies dumped on failure. No registration needed.
+- **Packet capture rides every chain.** The capture handler is inserted as the outermost handler of every pooled bundle (bare handlers included, so gRPC and SignalR traffic shows up like any other request): every test journal carries one `H` line per request, with bodies dumped on failure. No registration needed. Only the deliberately-raw transport (`INetworkMap.CreateTransportHandler`) stays uncaptured. A **long-lived streaming response** - `application/grpc*` or `text/event-stream` - is captured at **headers only** (metadata plus a `Streaming` flag; the body is never mirrored, so the stream is never torn); finite bodies capture exactly.
 - **Failures keep their historical shapes.** An unresolvable name surfaces as `HttpRequestException` wrapping a `WebException` with `WebExceptionStatus.NameResolutionFailure`; a stopped host fails like a connect failure. Ported legacy code that matches on these shapes keeps working.
 - **Late binding is observable.** Stopping, restarting or re-aliasing a host reroutes the SAME live client on its next request - tests can exercise reconnect logic without recreating clients.
 

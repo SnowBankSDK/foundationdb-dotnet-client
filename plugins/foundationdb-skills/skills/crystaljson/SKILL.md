@@ -203,7 +203,8 @@ Common fluent options (chainable, e.g. `CrystalJsonSettings.Json.Compacted().Cam
 - Layout: `.Compacted()`, `.Indented()`, `.Formatted()`
 - Naming: `.CamelCased()`, `.PascalCased()`
 - Nulls/defaults: `.WithoutNullMembers()` (default), `.WithNullMembers()`, `.WithoutDefaultValues()`
-- Enums: `.WithEnumAsStrings()` (default is numbers), `.WithEnumAsNumbers()`
+- Enums: `.WithEnumAsStrings()` (**the default since 7.4.3**), `.WithEnumAsNumbers()` - see *Enums in the output* in section 9 for
+  what changed and the recipes that restore numbers
 - Dates: `.WithIso8601Dates()` (default), `.WithMicrosoftDates()` (emits `"\/Date(ms)\/"`; **reading** that legacy
   format always works, with or without this setting)
 - Dictionaries: `.WithDictionariesAsMaps()` (default, `{"k":v}`), `.WithDictionariesAsPairArrays()` (emits the legacy
@@ -314,7 +315,7 @@ Things to know before you use it:
 - The entity must be **`partial`, non-generic, and not nested**. The generator rejects the others with
   `CJSON0004` / `CJSON0005`.
 - **Your entity may not declare a member named `Json`.** That is `CJSON0006`, an error, reported at the entity
-  declaration in your own source. The message carries the remedies: rename the member and keep its wire name
+  declaration in your own source. The message carries the remedies: rename the member and keep its serialized name
   with `[JsonProperty("json")]`, or move the type to a `[CrystalJsonConverter]` container instead.
 - **A referenced type named like a scope member** (`Default`, `ReadOnly`, `Writable`, `PropertyNames`, …) is
   `CJSON0007`, a warning. That type is excluded from generation and falls back to runtime serialization, so it
@@ -429,6 +430,77 @@ so callers can omit it; that still satisfies the interface. `JsonPack` (to DOM) 
 `JsonString.Return(...)`, `JsonNumber.Return(...)`, `JsonArray.ReadOnly.Create(...)`. Handle null/missing defensively in
 `JsonDeserialize`. (Example in the wild: a compact id type packed as a `JsonArray` of its parts.)
 
+### Member converters: converting ONE member, not the whole type *(7.4.3+)*
+
+The interfaces above take over an entire type. When you only need to change how **one member** is written, attach the
+behaviour to that member instead - and **reach for a built-in attribute before writing any code.**
+
+### Start here: the built-in, `[JsonBooleanLiterals]`
+
+Booleans written as `"0"`/`"1"` (or `0`/`1`) are the common legacy case, and there is nothing to implement:
+
+```csharp
+[JsonBooleanLiterals("0", "1")]                          // strings; tolerant read
+[JsonBooleanLiterals("0", "1", StrictLiterals = true)]   // rejects genuine true/false
+[JsonBooleanLiterals(0, 1)]                              // int flavour; emits JSON numbers
+public bool Enabled { get; set; }
+```
+
+Reads are tolerant by default (the configured literals, case-insensitively, **and** genuine `true`/`false`), so a
+modernized producer needs no redeploy; an unknown literal is a `JsonBindingException`, never a silent `false`. Applying
+it to a non-boolean member fails loudly (reflection: at metadata build; generator: error `CJSON0009`).
+
+### When no built-in covers it: a member converter
+
+For anything else (a domain scalar as a string, a packed identifier), write a converter. Recognition is **per facet**: a
+converter is honored for whichever of `IJsonPacker<T>` (writing) and `IJsonDeserializer<T>` (reading) it implements, so
+a write-only or read-only type implements one side. `IJsonMemberConverter<T>` is the convenience bundle for the
+symmetric case, never a requirement:
+
+```csharp
+public interface IJsonMemberConverter<T> : IJsonPacker<T>, IJsonDeserializer<T> { }   // zero new members
+
+// shown on a bool purely because it is the shortest possible body -
+// for THIS behaviour use [JsonBooleanLiterals] above and write no converter at all
+public sealed class BoolAsBitStringConverter : IJsonMemberConverter<bool>
+{
+    public JsonValue Pack(bool v, CrystalJsonSettings? s = null, ICrystalJsonTypeResolver? r = null) => JsonString.Return(v ? "1" : "0");
+    public bool Unpack(JsonValue v, ICrystalJsonTypeResolver? r) => /* tolerant read */;
+}
+
+[JsonConvertWith(typeof(BoolAsBitStringConverter))]   // CrystalJson's own attribute - preferred
+public bool Enabled { get; set; }                     // output: "1" / "0", both paths, both directions
+```
+
+Converters never see `null`: null and missing are handled before the converter runs (and a converter written for `T`
+lifts over a `T?` member for free). Using the **missing** direction fails loudly, naming the facet to add - there is no
+silent fallback to the default path. A source-generated `IJsonConverter<T>` implements both parents, so a generated
+whole-type converter can be named on a member with no adapter.
+
+**Three spellings, in precedence order** - all feed the same per-member slot, honored by the reflection path *and* the
+generator (including the generated proxies). Precedence is the order the runtime resolves them, not a recommendation:
+prefer a built-in when one fits, then `[JsonConvertWith]`.
+
+| Spelling | When to use it | Names a type with neither facet |
+|---|---|---|
+| `[JsonConvertWith(typeof(X))]` | your own converter; CrystalJson's own attribute, which System.Text.Json never inspects | **fails loudly** (reflection: on metadata build; generator: error `CJSON0010`) |
+| `[JsonBooleanLiterals("0", "1")]` | **prefer this for booleans** - built in, no converter to write | n/a |
+| STJ / Newtonsoft `[JsonConverter(typeof(X))]` | only when the named type is a **real dual-shape converter** both serializers can execute | **silently ignored** (keeps a half-migrated DTO serializable; starts working once `X` gains a facet) |
+
+Both spellings also work **on a type**, covering standalone values, DTO members and collection elements on all paths; a
+type-level converter wins over the duck-typed `JsonSerialize`/`JsonPack` methods and the `IJson*` interfaces.
+
+### Generator diagnostics
+
+| Id | Level | Meaning |
+|---|---|---|
+| `CJSON0004` / `CJSON0005` | error | self-serializable entity is generic, nested, or not `partial` (section 5) |
+| `CJSON0006` | error | the entity declares a member named `Json`, colliding with the generated scope (section 5) |
+| `CJSON0007` | warning | a referenced type is named like a scope member; excluded from generation, falls back to runtime |
+| `CJSON0008` | warning | an unconditional `[JsonIgnore]`/`[IgnoreDataMember]` on a member that also carries `[DataMember]`, `[JsonInclude]` or `[JsonProperty]` - contradictory intent |
+| `CJSON0009` | error | `[JsonBooleanLiterals]` on a non-boolean member |
+| `CJSON0010` | error | `[JsonConvertWith]` names a type implementing neither converter facet |
+
 ---
 
 ## 8. JsonPath
@@ -449,7 +521,7 @@ root.Set(p, "new value");           // on a MutableJsonValue
 ## 9. Attributes: what each path honors (and legacy interop)
 
 There are **two independent (de)serialization paths, with different attribute vocabularies**. Getting this wrong
-silently changes the wire, so check the matrix before annotating a DTO:
+silently changes the output, so check the matrix before annotating a DTO:
 
 - **Reflection** (`CrystalJsonTypeResolver`) - what `CrystalJson.Serialize` / `Deserialize<T>` / `JsonValue.FromValue`
   use for a type with no generated converter.
@@ -457,21 +529,26 @@ silently changes the wire, so check the matrix before annotating a DTO:
 
 | Attribute | Reflection | Source generator |
 |---|---|---|
-| `[JsonProperty("x")]` (SnowBank; also `DefaultValue`, `EnumFormat`) | YES (all three) | YES, except `EnumFormat` |
+| `[JsonProperty("x")]` (SnowBank; also `DefaultValue`, `EnumFormat`) | YES (all three) | YES (all three) *(`EnumFormat` since 7.4.3, proxy setters included)* |
 | STJ `[JsonPropertyName("x")]` | YES | YES |
 | STJ `[JsonIgnore]` / `[JsonIgnore(Condition = ...)]` | YES, full STJ semantics *(7.4.3+)* | YES, full STJ semantics *(7.4.3+)* |
+| `[IgnoreDataMember]` | YES *(7.4.3+)* - excludes the member on a non-`[DataContract]` type; on a `[DataContract]` type the `[DataMember]` opt-in still governs (DCJS's own precedence) | counts as an ignore signal *(7.4.3+)* |
 | STJ `[JsonInclude]` (non-public members/accessors) | YES *(7.4.3+)*, a superset of STJ | **no** - emits a `SYSLIB1038` warning and omits the member |
 | STJ `[JsonPolymorphic]` + `[JsonDerivedType]` | YES (discriminator name **and** values are free-form) | YES |
+| `[JsonConvertWith(typeof(X))]` (SnowBank), members **and** types | YES *(7.4.3+)* | YES *(7.4.3+)* |
+| `[JsonBooleanLiterals]` (SnowBank) | YES *(7.4.3+)* | YES *(7.4.3+)* |
+| STJ / Newtonsoft `[JsonConverter(typeof(X))]`, members **and** types | YES *(7.4.3+)* when `X` implements a converter facet; **silently ignored** otherwise (see section 7) | YES *(7.4.3+)*, same posture, facet checked at compile time |
+| Enum custom literals: `[JsonStringEnumMemberName]` (STJ 9+) / `[EnumMember(Value=...)]` on enum fields | YES *(7.4.3+)*, both directions | YES *(7.4.3+)*, both directions |
 | `[Key]` (DataAnnotations) | flag only | YES (drives the proxy Id) |
 | C# `required` | detected, **not enforced** on read | **enforced** (throws on a missing member) |
 | `[DataContract]` + `[DataMember]` (opt-in + `Name=`) | YES | **no** (all public members, C# names) |
 | `[DataMember]`'s `Order` / `IsRequired` / `EmitDefaultValue` | no | no |
 | Newtonsoft `[JsonProperty]` (name only) | YES | no |
 | `[XmlIgnore]` / `[XmlElement]` / `[XmlAttribute]` | YES (non-`[DataContract]` types) | no |
-| STJ `[JsonConverter]`, `[JsonPropertyOrder]`, `[JsonNumberHandling]`, `[JsonExtensionData]`, `[JsonConstructor]` | no | no |
+| STJ `[JsonPropertyOrder]`, `[JsonNumberHandling]`, `[JsonExtensionData]`, `[JsonConstructor]` | no | no |
 
-`[JsonIgnore(Condition = ...)]` follows System.Text.Json *(7.4.3+, both paths, and both the text-writer and DOM/Pack
-routes)*:
+`[JsonIgnore(Condition = ...)]` follows System.Text.Json *(7.4.3+, both paths, and both the text writer and
+`JsonValue.FromValue`/`Pack`)*:
 
 | Condition | Effect on serialization |
 |---|---|
@@ -484,8 +561,45 @@ Two intentional deviations from STJ: `WhenWritingDefault` compares against the m
 `[JsonProperty(DefaultValue = 7)]` composes with it), and `WhenWritingNull` on a non-nullable value type is inert
 instead of throwing.
 
+### Enums in the output *(the 7.4.2 -> 7.4.3 format change)*
+
+**Enums serialize as their string literal by default, in every form** - the text writer, the DOM
+(`JsonValue.FromValue`, reflection `Pack`) and generated converters, which now agree byte-for-byte. This is a
+deliberate divergence from System.Text.Json (whose default is numeric), chosen so payloads are self-describing and
+friendly to JavaScript clients. **Reading is unchanged and tolerant in both directions**: names and custom tokens bind
+case-insensitively (`"fooBar"` == `"FooBar"` == `"FOOBAR"`), and numbers and numeric strings are still accepted - so
+every pre-7.4.3 payload still deserializes, and mixed fleets can roll forward incrementally.
+
+| Value | 7.4.2 output | 7.4.3 output |
+|---|---|---|
+| `DayOfWeek.Friday` through `CrystalJson.Serialize` | `5` | `"Friday"` |
+| `DayOfWeek.Friday` through `JsonValue.FromValue` | `"Friday"` (it always stringified, ignoring the settings) | `"Friday"` (settings now honored) |
+| Undeclared flags combination through `JsonValue.FromValue` | `"7"` (the number, in a string) | `"ReadWrite, Delete"` (composed) |
+| Enum field carrying `[EnumMember(Value="C")]` | `0` (the attribute was ignored) | `"C"` |
+
+Flags compose exactly like `Enum.ToString("G")`. Custom literals are read off the enum's own fields, by attribute
+name (no STJ package reference or version floor): `[JsonStringEnumMemberName("C")]` (STJ 9+) and `[EnumMember(Value="C")]`
+(the DataContract spelling Newtonsoft also honors). When both are present STJ wins for **writing**; every spelling is
+accepted on **read**. Attribute-set tokens are never camelCased.
+
+**To get numbers back**, pick the narrowest scope that fixes the break:
+
+- **Per call / per endpoint:** `CrystalJsonSettings.Json.WithEnumAsNumbers()` (composes with every other option, e.g.
+  `CrystalJsonSettings.JsonCompact.WithEnumAsNumbers()`).
+- **Per member:** `[JsonProperty(EnumFormat = JsonEnumFormat.Number)]`.
+- **System.Text.Json consumers of your payloads:** STJ's default reader rejects enum *names*. Either add
+  `new JsonStringEnumConverter()` to their `JsonSerializerOptions`, or keep those endpoints on `WithEnumAsNumbers()`.
+- **Frozen `DataContractJsonSerializer` clients:** DCJS emits numbers and ignores `[EnumMember]` in JSON, so endpoints
+  that must stay byte-compatible with a DCJS producer use `WithEnumAsNumbers()`.
+- **Stored documents** written before 7.4.3 (numeric) read back unchanged; new writes carry names. If byte-stable
+  output matters (hashing, dedup), pin the settings explicitly on that path.
+
+⚠️ The raw flag `CrystalJsonSettings.OptionFlags.EnumsAsString` is retired with an **error-level** `[Obsolete]`: the bit
+is now `EnumsAsNumbers`, with inverted meaning. The `EnumsAsString` *property* and the `WithEnumAsStrings()` /
+`WithEnumAsNumbers()` methods keep their names and meanings - only the default flipped.
+
 **Migrating a legacy `[DataContract]` DTO** (e.g. from `DataContractJsonSerializer`): the reflection path already
-reproduces its member selection and `Name=` renames, so an un-touched DTO keeps its wire - **but only on that path**
+reproduces its member selection and `Name=` renames, so an un-touched DTO keeps its output - **but only on that path**
 (the generator is DataContract-blind, see the gotcha above). Useful equivalences:
 
 - `EmitDefaultValue = false` -> `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]`
@@ -493,10 +607,41 @@ reproduces its member selection and `Name=` renames, so an un-touched DTO keeps 
 - `[KnownType]` -> `[JsonPolymorphic(TypeDiscriminatorPropertyName = "__type")]` + `[JsonDerivedType(typeof(X), "Name:Ns")]`
 - `Order` -> nothing (member order is not part of the contract); `IsRequired` -> C# `required` (enforced by the
   generator only), or validate at the boundary with `obj.Get<T>("field")`, which throws on null/missing.
-- Never put `[DataMember]` and `[JsonIgnore]` on the same member: reflection lets `[DataMember]` win, the generator
-  lets `[JsonIgnore]` win.
+- Never put `[DataMember]` and `[JsonIgnore]` on the same member. An ignore signal now wins on **both** paths
+  *(7.4.3+)*, and the generator flags the contradiction as warning `CJSON0008` - so the member disappears; if you meant
+  to keep it, drop the ignore.
 
-**Legacy wire tolerance (read side, always on, no setting needed):** `"\/Date(ms)\/"` and `"\/Date(ms+HHMM)\/"` dates
+**Settings that restore legacy-reader compatibility** (the recipe column, per construct):
+
+| Legacy expectation | Setting |
+|---|---|
+| `"member": null` emitted rather than omitted | `WithNullMembers()` |
+| `"\/Date(ms)\/"` dates emitted | `WithMicrosoftDates()` |
+| numeric enums | `WithEnumAsNumbers()` |
+| `[{"Key":k,"Value":v}]` dictionaries emitted | `WithDictionariesAsPairArrays()` |
+
+⚠️ The one genuine hazard when a **frozen** legacy client reads your output: a **null `[DataMember(IsRequired = true)]`
+member**. CrystalJson omits nulls by default and the legacy reader **throws** on the missing member. Put
+`WithNullMembers()` on those endpoints.
+
+### One type serialized by BOTH CrystalJson and System.Text.Json
+
+Climb this ladder, stop at the first rung that holds:
+
+1. **The attributes coexist** - each serializer ignores the other's - so keep **one type**. `[JsonConvertWith]`,
+   `[JsonBooleanLiterals]`, `[JsonProperty]` and `[EnumMember]` are all invisible to STJ. The two outputs may *differ*
+   per serializer; that is fine.
+2. **A conflict a dual-shape converter resolves** - keep **one type** and write ONE converter class valid for both:
+   derive STJ's `JsonConverter<T>` *and* implement `IJsonMemberConverter<T>`. Recognition is structural, each
+   serializer uses its own facet.
+3. **The attributes genuinely conflict** - **duplicate the type**, one DTO per serializer; never contort one type to
+   serve both. The canonical case: the STJ-spelled `[JsonConverter(typeof(X))]` where `X` is a CrystalJson-only
+   converter. CrystalJson tolerates it, but **STJ does not reciprocate** - it inspects that attribute, sees a type that
+   does not derive its own `JsonConverter`, and throws `InvalidOperationException` while building the type's metadata.
+
+That asymmetry is why `[JsonConvertWith]` is the right attribute for a CrystalJson-only converter: STJ never looks at it.
+
+**Legacy format tolerance (read side, always on, no setting needed):** `"\/Date(ms)\/"` and `"\/Date(ms+HHMM)\/"` dates
 bind to `DateTime`/`DateTimeOffset` (the ms are always UTC; the suffix only carries the producer's offset), and the
 `[{"Key":k,"Value":v}]` dictionary shape binds to `Dictionary<K,V>` *(7.4.3+, strict: every element must be an object
 with exactly `Key` and `Value`)*. To **emit** either legacy shape, opt in with `WithMicrosoftDates()` /
@@ -509,7 +654,51 @@ the type with `IJsonPackable` / `IJsonDeserializable<T>` (section 7) or a `ctor(
 
 ---
 
-## 10. Golden rules & gotchas
+## 10. Collections *(7.4.3+)*
+
+One contract governs every collection: **you get an instance of the declared member type, or a
+`JsonBindingException` / `JsonSerializationException` naming the type and the reason.** A wrong-shaped value is never
+returned, because the compiled member setter uses a lenient cast that would turn it into a silent `null`.
+
+So declare the collection type you actually want and let it bind:
+
+```csharp
+public sealed class StoreDto { public Collection<int>? Codes { get; set; } }
+CrystalJson.Deserialize<StoreDto>("""{ "Codes": [ 1, 2, 3 ] }""").Codes   // Collection<int> { 1, 2, 3 }
+```
+
+**What binds.** Anything concrete implementing `ICollection<T>` with a public parameterless constructor is constructed
+and filled through `Add()`, like a collection initializer - which covers `Collection<T>`,
+`ObservableCollection<T>`, `KeyedCollection<K,V>`, `LinkedList<T>`, `SortedSet<T>`, the `Queue`/`Stack`/`Concurrent*`
+family, and **your own subclasses** of any of them (`ProductList : List<Product>` receives a `ProductList`). Immutables,
+dictionaries (including `ReadOnlyDictionary<K,V>` and subclasses), the non-generic legacy types (`Hashtable`,
+`ArrayList`, `StringCollection`), and duck-typed `IEnumerable<T>` + public `Add(T)` types all round-trip too. Interface
+members bind to a sensible concrete type (`IDictionary<K,V>` -> `Dictionary<K,V>`, `IReadOnlySet<T>` -> `HashSet<T>`).
+
+Getter-only properties (`public Collection<int> Items { get; }`) are populated through the adder rather than assigned.
+A `KeyedCollection<K,V>` rebuilds its by-key index as it fills (`GetKeyForItem` runs on every `Add`), and duplicate
+duplicate keys in the document fail loudly instead of dropping an item.
+
+**Format and round-trip semantics** (pinned by tests):
+
+```
+Queue<T>          [ 1, 2, 3 ]   front first; round-trip preserves order
+Stack<T>          [ 3, 2, 1 ]   top first; round-trip PRESERVES the order (legacy serializers reversed stacks)
+ConcurrentBag<T>  [ .. ]        unordered by contract: round-trip preserves CONTENT, not order
+Hashtable         { "a": 1 }    a JSON object; ALSO reads the legacy [ { "Key": "a", "Value": 1 } ] format
+ArrayList         [ 1, "two" ]  elements bind as CLR objects
+```
+
+⚠️ **Refused, loudly and everywhere** - these have no correct behavior, so they throw rather than guess:
+
+| Shape | Why, and what to write instead |
+|---|---|
+| `int[,]` and other multi-dimensional arrays | no JSON spelling; use jagged `T[][]` |
+| `NameValueCollection` (serializing) | one key maps to many values; project it yourself |
+| `ReadOnlyObservableCollection<T>` | no sane construction path; bind the inner collection |
+| `StringDictionary` (deserializing) | serializes as a KVP array but cannot be rebuilt; use `Dictionary<string,string>` |
+
+## 11. Golden rules & gotchas
 
 ✅ **DO**
 - Use the **source generator** for domain POCOs; use the **DOM** for dynamic/schemaless JSON.
@@ -521,11 +710,14 @@ the type with `IJsonPackable` / `IJsonDeserializable<T>` (section 7) or a `ctor(
 
 ⚠️ **GOTCHAS**
 - **Not System.Text.Json / Newtonsoft.** `JsonObject`/`JsonArray` here are `SnowBank.Data.Json`, and the *APIs* are not
-  interchangeable with the other libraries. Several of their **attributes** are honored though - see section 10 for the
+  interchangeable with the other libraries. Several of their **attributes** are honored though - see section 9 for the
   exact per-path matrix, and mind that the two paths do not honor the same set.
+- **Enums serialize as STRINGS by default since 7.4.3** (they were numbers), everywhere. Reading stays tolerant
+  both ways, so old payloads are fine - but anything comparing bytes, or any frozen STJ/DCJS reader, sees the change.
+  `WithEnumAsNumbers()` restores it (section 9).
 - **The two paths do not agree on legacy `[DataContract]` types** (see section 9): the reflection path honors the
   `[DataMember]` opt-in and renames, the generator ignores them entirely. Never point `[CrystalJsonSerializable]` at a
-  DTO whose wire contract comes from DataContract attributes.
+  DTO whose output contract comes from DataContract attributes.
 - **`JsonNull.Missing` ≠ `JsonNull.Null` ≠ `JsonNull.Error`.** All are "null", but distinct; use `IsNullOrMissing()` /
   `IsMissing()` to tell them apart. Empty/whitespace input parses to `Missing`; literal `"null"` parses to `Null`.
 - **Mutating a read-only `JsonObject`/`JsonArray` throws.** `ToMutable()` first, or build mutable.
@@ -534,6 +726,11 @@ the type with `IJsonPackable` / `IJsonDeserializable<T>` (section 7) or a `ctor(
 - **`Add("field", x)` vs `["field"].Add(x)`** - field-set (throws on existing) vs array-append. Pick the right one.
 - **Don't retain a `MutableJsonValue` child across a parent mutation** - it goes stale.
 - **`Deserialize<T>` of `null` throws** for a non-nullable `T` unless you pass a `defaultValue`.
+- **A custom converter is honored per FACET.** A type implementing only `IJsonPacker<T>` writes but does not read;
+  using the missing direction throws (naming the facet to add) rather than silently falling back. Prefer
+  `[JsonConvertWith]` over the STJ-spelled `[JsonConverter]`, which is *silently ignored* when it names a type
+  CrystalJson cannot execute (section 7).
+- **Multi-dimensional arrays are refused**, not flattened; `NameValueCollection` will not serialize (section 10).
 - **`[JsonIgnore]` means "exclude"; `[JsonIgnore(Condition = ...)]` does NOT** - it is a per-member serialization rule
   (section 9). Reading is unaffected in both cases except for `Always`.
 - Numbers/dates are **InvariantCulture**; dates default to ISO 8601.
