@@ -482,23 +482,27 @@ namespace SnowBank.Data.Json
 					else
 					{ // is this something we know about ?
 
-						if (type.IsGenericInstanceOf(typeof(List<>)))
+						// note: exact matches only! a user subclass (ex: ProductList : List<Product>) must NOT receive a plain
+						// List<Product>, which would not be assignable to the declared member; it falls through to the
+						// "construct and Add()" case below, which instantiates the actual declared type.
+
+						if (type.IsSameGenericType(typeof(List<>)))
 						{
 							filler = nameof(FillList);
 						}
-						else if (type.IsGenericInstanceOf(typeof(HashSet<>)))
+						else if (type.IsSameGenericType(typeof(HashSet<>)))
 						{
 							filler = nameof(FillHashSet);
 						}
-						else if (type.IsGenericInstanceOf(typeof(ReadOnlyCollection<>)))
+						else if (type.IsSameGenericType(typeof(ReadOnlyCollection<>)))
 						{
 							filler = nameof(FillReadOnlyCollection);
 						}
-						else if (type.IsGenericInstanceOf(typeof(ImmutableList<>)))
+						else if (type.IsSameGenericType(typeof(ImmutableList<>)))
 						{
 							filler = nameof(FillImmutableList);
 						}
-						else if (type.IsGenericInstanceOf(typeof(ImmutableArray<>)))
+						else if (type.IsSameGenericType(typeof(ImmutableArray<>)))
 						{
 							filler = nameof(FillImmutableArray);
 						}
@@ -601,8 +605,22 @@ namespace SnowBank.Data.Json
 				return CreateDefaultJsonArrayBinder_Binder(type, binder);
 			}
 
+			if (type.IsConcrete() && type.IsGenericInstanceOf(typeof(ICollection<>), out var collectionType) && type.GetConstructor(Type.EmptyTypes) != null)
+			{ // Collection<T>, ObservableCollection<T>, user subclasses of Collection<T>/List<T>, ... : construct an
+			  // instance of the declared type and call Add() for each element, like a collection initializer would
+				return CreateDefaultJsonArrayBinder_AddableCollection(type, collectionType.GetGenericArguments()[0]);
+			}
+
 			if (type.IsAssignableTo<IEnumerable>())
 			{
+				// the boxed fallback produces a List<object?> (or ReadOnlyCollection<object?>): if the declared type
+				// cannot accept that instance, fail now with a binding error instead of handing back a value that a
+				// lenient setter downstream would silently degrade to null
+				var boxedType = type.IsAssignableTo<ICollection>() ? typeof(List<object?>) : typeof(ReadOnlyCollection<object?>);
+				if (!type.IsAssignableFrom(boxedType))
+				{
+					return CreateDefaultJsonArrayBinder_Invalid(type);
+				}
 				return CreateDefaultJsonArrayBinder_Boxed(type);
 			}
 
@@ -663,6 +681,44 @@ namespace SnowBank.Data.Json
 		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder_Invalid(Type type)
 		{
 			return (_, array) => throw JsonBindingException.CannotBindJsonArrayToThisType(array, type);
+		}
+
+		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder_AddableCollection(Type type, Type elementType)
+		{
+			var m = typeof(CrystalJsonTypeResolver)
+				.GetMethod(nameof(FillAddableCollection), BindingFlags.Static | BindingFlags.NonPublic)!
+				.MakeGenericMethod(type, elementType);
+#if NET5_0_OR_GREATER
+			return m.CreateDelegate<Func<CrystalJsonTypeResolver, JsonArray?, object?>>();
+#else
+			return (Func<CrystalJsonTypeResolver, JsonArray?, object?>) m.CreateDelegate(typeof(Func<CrystalJsonTypeResolver, JsonArray?, object?>)); // the generic CreateDelegate<T>() overload is .NET 5+
+#endif
+		}
+
+		[UsedImplicitly]
+		private static object? FillAddableCollection<TCollection, TElement>(CrystalJsonTypeResolver resolver, JsonArray? array)
+			where TCollection : ICollection<TElement>, new()
+		{
+			if (array == null) return null;
+
+			var elementType = typeof(TElement);
+			var collection = new TCollection();
+			foreach (var item in array)
+			{
+				try
+				{
+					collection.Add((TElement) resolver.BindJsonValue(elementType, item)!);
+				}
+				catch (Exception ex)
+				{
+					if (TryMapException(ex, collection.Count, elementType, item, out var mapped))
+					{
+						throw mapped;
+					}
+					throw;
+				}
+			}
+			return collection;
 		}
 
 		private static object? ConvertToBoxedEnumerable(Type type, JsonArray? array, Func<Type, JsonValue?, object?> convert)

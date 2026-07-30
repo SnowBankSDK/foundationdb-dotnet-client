@@ -27,6 +27,7 @@
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
 	using System.Buffers;
+	using System.Collections.ObjectModel;
 	using System.ComponentModel.DataAnnotations;
 	using System.Net;
 	using System.Text.Json.Serialization;
@@ -40,6 +41,16 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public string? FirstName { get; set; }
 
 		public string? FamilyName { get; set; }
+
+	}
+
+	/// <summary>DCJS-era shape: legacy <see cref="Collection{T}"/> members instead of <see cref="List{T}"/></summary>
+	public sealed record LegacyBag
+	{
+
+		public Collection<int>? Codes { get; init; }
+
+		public ObservableCollection<string>? Tags { get; init; }
 
 	}
 
@@ -182,6 +193,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	[CrystalJsonSerializable(typeof(Person))]
 	[CrystalJsonSerializable(typeof(MyAwesomeUser))]
 	[CrystalJsonSerializable(typeof(Animal))]
+	[CrystalJsonSerializable(typeof(LegacyBag))]
 	public static partial class GeneratedConverters
 	{
 		// generated code goes here!
@@ -236,6 +248,36 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(cat2, Is.InstanceOf<Cat>().And.EqualTo(cat));
 			var trex2 = GeneratedConverters.Animal.Deserialize("{ \"$type\": \"trex\", \"id\": \"5697637d-cf3a-45a2-b052-a45ce7915e8c\", \"name\": \"Marty\", }");
 			Assert.That(trex2, Is.InstanceOf<TRex>().And.EqualTo(trex));
+		}
+
+		[Test]
+		public void Test_Generated_Converter_With_Legacy_Collection_Members()
+		{
+			// Collection<T>/ObservableCollection<T> members have no dedicated sequence shape in the generator:
+			// the emitted code falls back to the runtime binder, which must produce the declared collection type
+
+			var bag = new LegacyBag { Codes = [ 1, 2, 3 ], Tags = [ "red", "blue" ] };
+
+			var json = GeneratedConverters.LegacyBag.ToJsonText(bag);
+			var obj = CrystalJson.Parse(json).AsObject();
+			Assert.That(obj.Get<int[]>("codes"), Is.EqualTo((int[]) [ 1, 2, 3 ]));
+			Assert.That(obj.Get<string[]>("tags"), Is.EqualTo((string[]) [ "red", "blue" ]));
+
+			var decoded = GeneratedConverters.LegacyBag.Deserialize(json);
+			Assert.That(decoded, Is.Not.Null);
+			Assert.That(decoded.Codes, Is.Not.Null.And.InstanceOf<Collection<int>>());
+			Assert.That(decoded.Codes, Is.EqualTo((int[]) [ 1, 2, 3 ]));
+			Assert.That(decoded.Tags, Is.Not.Null.And.InstanceOf<ObservableCollection<string>>());
+			Assert.That(decoded.Tags, Is.EqualTo((string[]) [ "red", "blue" ]));
+
+			// the DOM pack route of the generated converter must produce arrays as well
+			var packed = GeneratedConverters.LegacyBag.Pack(bag).AsObject();
+			Assert.That(packed.Get<int[]>("codes"), Is.EqualTo((int[]) [ 1, 2, 3 ]));
+
+			// and unpacking that DOM must round-trip
+			var unpacked = GeneratedConverters.LegacyBag.Unpack(packed);
+			Assert.That(unpacked.Codes, Is.EqualTo((int[]) [ 1, 2, 3 ]));
+			Assert.That(unpacked.Tags, Is.EqualTo((string[]) [ "red", "blue" ]));
 		}
 
 		[Test]

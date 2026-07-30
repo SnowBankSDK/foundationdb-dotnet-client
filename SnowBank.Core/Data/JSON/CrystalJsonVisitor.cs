@@ -876,7 +876,8 @@ namespace SnowBank.Data.Json
 					return VisitInt32ListInternal;
 				}
 
-				var elemType = type.GetGenericArguments()[0];
+				// note: read the element type from the closed List<> base: 'type' itself may be a non-generic user subclass (ex: ProductList : List<Product>)
+				var elemType = listType.GetGenericArguments()[0];
 				return CompileGenericVisitorMethod(nameof(VisitListInternal), nameof(VisitList), elemType);
 			}
 
