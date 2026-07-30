@@ -68,6 +68,38 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_Older_Format_Store_Is_Rejected_Loudly()
+		{
+			// the format is Experimental: an older file has no migration path, and it must fail the
+			// file-header version check with a clear message, never reach the page-level accessors
+			var path = NewStorePath();
+			try
+			{
+				using (var engine = FdbLiteEngine.OpenOrCreateFile(path, FdbLiteGeometry.Default, regionSizeInBytes: 1 << 20))
+				{
+					var writer = engine.BeginWrite();
+					writer.Insert("hello"u8, "world"u8);
+					engine.Commit(writer, databaseVersion: 1);
+				}
+
+				// stamp the file as written at format 1 (readable by format-1 readers): offsets 8 and 10 of block 0
+				using (var fs = new FileStream(path, FileMode.Open, FileAccess.ReadWrite))
+				{
+					fs.Position = 8;
+					fs.Write([ 1, 0, 1, 0 ]);
+				}
+
+				Assert.That(
+					() => FdbLiteEngine.OpenOrCreateFile(path, FdbLiteGeometry.Default, regionSizeInBytes: 1 << 20),
+					Throws.InstanceOf<InvalidDataException>().With.Message.Contains("format"));
+			}
+			finally
+			{
+				DeleteQuietly(path);
+			}
+		}
+
+		[Test]
 		public void Test_Memory_Mapped_Pager_Roundtrip_And_Reopen()
 		{
 			var path = NewStorePath();

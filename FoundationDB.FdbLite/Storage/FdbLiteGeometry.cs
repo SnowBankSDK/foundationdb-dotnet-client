@@ -56,6 +56,14 @@ namespace FoundationDB.Storage.FdbLite
 			// error, so the two are pinned together here and the mismatch fails on first touch of the type.
 			int largestInlineValue = (1 << MaxPageSizeLog2) >> 2;
 			Contract.Requires(largestInlineValue <= MaxAddressableInlineValueLength, "The largest legal page yields an inline value longer than the leaf format can address. Widen the value-length field in the key-heap entry before raising the maximum page size.");
+
+			// The page floor guarantees one maximum-size key cell always fits inline (keys never chain-walk).
+			// A page's prefix region and a stored key suffix together never exceed one whole key plus the pad
+			// byte, so the worst single-cell demand is header + whole key + pad + cell overhead + the largest
+			// inline value at the floor. A future header or page-floor change that breaks this must fail on
+			// first touch of the type rather than corrupt the first boundary case it meets.
+			int minPageSize = 1 << MinPageSizeLog2;
+			Contract.Requires(FdbLitePageHeader.Size + FdbLiteTreePage.MaxKeyLength + 1 + FdbLiteTreePage.LeafCellOverhead + (minPageSize >> 2) <= minPageSize, "The minimum page no longer holds one maximum-size key cell inline. Raise the page floor or shrink the header before shipping this geometry.");
 		}
 
 		/// <summary>Creates a geometry from the two file-header fields.</summary>

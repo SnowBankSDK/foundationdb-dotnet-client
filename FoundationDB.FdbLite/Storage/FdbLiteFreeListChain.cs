@@ -28,7 +28,7 @@ namespace FoundationDB.Storage.FdbLite
 {
 
 	/// <summary>Serializes the free-space map as a fresh chain of free-list blocks on each commit (the ruled v1 representation; a paged FIFO with amortized cost is the planned post-v1 upgrade behind a format-version bump).</summary>
-	/// <remarks>Block layout: universal 24-byte header (type FreeList, cell count = entries in this block), next block id u32 (0 = end of chain), then 16-byte entries (start u32, count u32, freed-at generation u64; generation 0 = immediately reusable).</remarks>
+	/// <remarks>Block layout: the universal page header (type FreeList, cell count = entries in this block), next block id u32 (0 = end of chain), then 16-byte entries (start u32, count u32, freed-at generation u64; generation 0 = immediately reusable).</remarks>
 	public static class FdbLiteFreeListChain
 	{
 

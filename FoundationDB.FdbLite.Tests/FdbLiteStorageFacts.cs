@@ -143,6 +143,61 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_Aggregate_Fields_Roundtrip_And_Format_Zeroes_Them()
+		{
+			var page = new byte[FdbLiteGeometry.Default.PageSize];
+			page.AsSpan().Fill(0xEE);
+
+			FdbLitePageHeader.Format(page, FdbLitePageType.Leaf, generation: 5);
+			Assert.That(FdbLitePageHeader.GetEntryCount(page), Is.Zero);
+			Assert.That(FdbLitePageHeader.GetLogicalKeyBytes(page), Is.Zero);
+			Assert.That(FdbLitePageHeader.GetLogicalValueBytes(page), Is.Zero);
+			Assert.That(FdbLitePageHeader.GetSubtreeLiveBytes(page), Is.Zero);
+			Assert.That(FdbLitePageHeader.GetLeafCount(page), Is.Zero);
+			Assert.That(FdbLitePageHeader.GetVolatilityEpisodes(page), Is.Zero);
+
+			FdbLitePageHeader.SetEntryCount(page, 0x1_0000_0001UL);
+			FdbLitePageHeader.SetLogicalKeyBytes(page, 0x2_0000_0002UL);
+			FdbLitePageHeader.SetLogicalValueBytes(page, 0x3_0000_0003UL);
+			FdbLitePageHeader.SetSubtreeLiveBytes(page, 0x4_0000_0004UL);
+			FdbLitePageHeader.SetLeafCount(page, 0xABCD_1234U);
+			FdbLitePageHeader.SetVolatilityEpisodes(page, 200);
+			Assert.That(FdbLitePageHeader.GetEntryCount(page), Is.EqualTo(0x1_0000_0001UL));
+			Assert.That(FdbLitePageHeader.GetLogicalKeyBytes(page), Is.EqualTo(0x2_0000_0002UL));
+			Assert.That(FdbLitePageHeader.GetLogicalValueBytes(page), Is.EqualTo(0x3_0000_0003UL));
+			Assert.That(FdbLitePageHeader.GetSubtreeLiveBytes(page), Is.EqualTo(0x4_0000_0004UL));
+			Assert.That(FdbLitePageHeader.GetLeafCount(page), Is.EqualTo(0xABCD_1234U));
+			Assert.That(FdbLitePageHeader.GetVolatilityEpisodes(page), Is.EqualTo(200));
+
+			// the v1 block is untouched by the aggregate fields
+			Assert.That(FdbLitePageHeader.GetPageType(page), Is.EqualTo(FdbLitePageType.Leaf));
+			Assert.That(FdbLitePageHeader.GetGeneration(page), Is.EqualTo(5));
+			Assert.That(FdbLitePageHeader.GetCellCount(page), Is.Zero);
+		}
+
+		[Test]
+		public void Test_Reserved_Bytes_Must_Stay_Zero()
+		{
+			// the reserve (bytes 69..128) is a format commitment: a writer scribbling there must be caught by the
+			// explicit reserve check even when its checksum is formally valid, i.e. it sealed AFTER the scribble
+			var page = new byte[FdbLiteGeometry.Default.PageSize];
+			FdbLitePageHeader.Format(page, FdbLitePageType.Leaf, generation: 1);
+			FdbLitePageHeader.Seal(page, firstBlockId: 4);
+			Assert.That(FdbLitePageHeader.Verify(page, 4), Is.True);
+
+			foreach (int offset in new[] { 69, FdbLitePageHeader.Size - 1 })
+			{
+				page[offset] = 0x01;
+				FdbLitePageHeader.Seal(page, firstBlockId: 4);
+				Assert.That(FdbLitePageHeader.Verify(page, 4), Is.False, $"a non-zero reserved byte at offset {offset} must fail verification even under a valid checksum");
+				page[offset] = 0;
+			}
+
+			FdbLitePageHeader.Seal(page, firstBlockId: 4);
+			Assert.That(FdbLitePageHeader.Verify(page, 4), Is.True);
+		}
+
+		[Test]
 		public void Test_Checksum_Seal_And_Verify()
 		{
 			var geometry = FdbLiteGeometry.Hypothesis;

@@ -45,7 +45,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		public static long RunBytes(int count, long sumWhole, long sumValue, int lcp)
 		{
 			int effective = count > 1 ? lcp : 0;
-			return 32 + ((effective + 1) & ~1) + (sumWhole - ((long) count * effective)) + ((long) count * 9) + sumValue;
+			return 128 + ((effective + 1) & ~1) + (sumWhole - ((long) count * effective)) + ((long) count * 9) + sumValue;
 		}
 
 		/// <summary>Longest common prefix of two keys, over their 8-byte big-endian forms.</summary>
@@ -64,8 +64,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		{
 			int count = FdbLitePageHeader.GetCellCount(page);
 			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
-			var prefix = page.Slice(32, prefixLen);
-			int slotsAt = 32 + ((prefixLen + 1) & ~1);
+			var prefix = page.Slice(128, prefixLen);
+			int slotsAt = 128 + ((prefixLen + 1) & ~1);
 			int keyBase = slotsAt + (count * 2);
 
 			long sumWhole = 0, sumValue = 0;
@@ -117,10 +117,10 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 				int count = FdbLitePageHeader.GetCellCount(page);
 				var children = new uint[count + 1];
-				children[0] = BinaryPrimitives.ReadUInt32LittleEndian(page.AsSpan(32));
+				children[0] = BinaryPrimitives.ReadUInt32LittleEndian(page.AsSpan(128));
 				for (int i = 0; i < count; i++)
-				{ // internal slots start at 36 (leftmost child u32 after the header; internal pages strip no prefix)
-					int off = BinaryPrimitives.ReadUInt16LittleEndian(page.AsSpan(36 + (i * 2)));
+				{ // internal slots start at 132 (leftmost child u32 after the header; internal pages strip no prefix)
+					int off = BinaryPrimitives.ReadUInt16LittleEndian(page.AsSpan(132 + (i * 2)));
 					children[i + 1] = BinaryPrimitives.ReadUInt32LittleEndian(page.AsSpan(off));
 				}
 

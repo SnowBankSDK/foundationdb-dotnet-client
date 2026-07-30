@@ -37,9 +37,11 @@ namespace FoundationDB.Storage.FdbLite
 		FreeList = 3,
 	}
 
-	/// <summary>Span accessors for the 32-byte universal header at the start of every formatted page.</summary>
+	/// <summary>Span accessors for the 128-byte universal header at the start of every formatted page.</summary>
 	/// <remarks>
-	/// <para>Layout (little-endian): checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, value-area offset u16 (the down-growing heap), prefix length u16, key-area length u16 (bytes occupied by the up-growing heap), wasted-bytes u16 (dead room booked by in-place mutations), then 4 bytes reserved and required to be zero.</para>
+	/// <para>Layout (little-endian). The v1 block, bytes 0..32: checksum u64 (XxHash3-64 over the page with this field zeroed, seeded by the page's first block id), generation u64 (commit generation the page was written at), type u8, encoding u8 (payload-transform door, Plain=0 in v1), cell count u16, value-area offset u16 (the down-growing heap), prefix length u16, key-area length u16 (bytes occupied by the up-growing heap), wasted-bytes u16 (dead room booked by in-place mutations), then 4 bytes zero.</para>
+	/// <para>The aggregate block, bytes 32..69: entry count u64, logical key bytes u64, logical value bytes u64, subtree live bytes u64, leaf count u32, volatility episodes u8. A LEAF stores its own exact totals (entry count = its live cells, logical key bytes = whole key lengths with the page prefix re-expanded, logical value bytes = full value lengths where an extent cell contributes its total extent length rather than its descriptor, leaf count = 1, subtree live bytes = 0 since its own fill derives from the v1 fields); an INTERNAL page stores its subtree's sums, maintained for free by the dirty-chain invariant (anything that changes a leaf dirties its whole ancestor chain, so a stamp pass at flush time reaches every stale sum without one extra page write). Aggregates live in pages and pages are copy-on-write versioned, so every retained generation carries its own consistent totals. An <i>entry</i> is a cell visible in the generation whose root the descent started from; the v1 tree stores no tombstones, and if a future layer introduces them they count in fill-oriented live bytes (they occupy page room) and NOT in the entry/logical aggregates.</para>
+	/// <para>Bytes 69..128 are reserved and MUST be zero: asserted at <see cref="Format"/>, checked at <see cref="Verify"/>, so a stale writer scribbling there is caught by an explicit check rather than discovered by a future feature reading garbage.</para>
 	/// <para>The block-id seed makes a page written to the wrong location fail verification; the generation stamp lets a lock-free inspector detect a page reused under its feet.</para>
 	/// </remarks>
 	public static class FdbLitePageHeader
@@ -47,10 +49,10 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Size of the universal page header, in bytes</summary>
 		/// <remarks>
-		/// <para>A multiple of 8 by convention only. It does NOT align the slot directory: the variable-length page prefix sits between this header and the slots, so what keeps that u16 array 2-byte aligned is the prefix being padded to an even length, and nothing else. Removing that pad as redundant would make the alignment of the array depend on each page's prefix.</para>
-		/// <para>Bytes 26..28 carry the wasted-bytes counter (see <see cref="GetWastedBytes"/>); bytes 28..32 are reserved and MUST be zero. Pages are zeroed on format, so the reserve costs nothing today, and it is what makes those bytes safe to give a meaning later.</para>
+		/// <para>Two cache lines: the search-hot v1 fields and the aggregate block sit in the first. It does NOT align the slot directory: the variable-length page prefix sits between this header and the slots, so what keeps that u16 array 2-byte aligned is the prefix being padded to an even length, and nothing else. Removing that pad as redundant would make the alignment of the array depend on each page's prefix.</para>
+		/// <para>The 59-byte reserve exists for named future occupants (feature flags, encryption-at-rest nonce/tag material: an AES-GCM nonce plus tag alone is 28 bytes) and MUST stay zero until one claims its bytes. Pages are zeroed on format, so the reserve costs nothing today, and that is what makes its bytes safe to give a meaning later.</para>
 		/// </remarks>
-		public const int Size = 32;
+		public const int Size = 128;
 
 		/// <summary>The only payload encoding defined in v1</summary>
 		public const byte EncodingPlain = 0;
@@ -65,6 +67,23 @@ namespace FoundationDB.Storage.FdbLite
 		private const int KeyAreaLengthOffset = 24;
 
 		private const int WastedBytesOffset = 26;
+
+		private const int EntryCountOffset = 32;
+		private const int LogicalKeyBytesOffset = 40;
+		private const int LogicalValueBytesOffset = 48;
+		private const int SubtreeLiveBytesOffset = 56;
+		private const int LeafCountOffset = 64;
+		private const int VolatilityEpisodesOffset = 68;
+
+		private const int ReservedOffset = 69;
+		private const int ReservedLength = Size - ReservedOffset;
+
+		static FdbLitePageHeader()
+		{
+			// a rearrangement that pushes a field past the header-size constant must fail on first touch of the
+			// type, not compile-and-truncate into the prefix region that follows the header
+			Contract.Requires(VolatilityEpisodesOffset + 1 <= Size && ReservedOffset + ReservedLength == Size, "aggregate fields overflow the page-header size constant");
+		}
 
 		public static ulong GetChecksum(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[ChecksumOffset..]);
 
@@ -120,6 +139,42 @@ namespace FoundationDB.Storage.FdbLite
 
 		public static void SetPrefixLength(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[PrefixLengthOffset..], value);
 
+		/// <summary>Entries in this page's subtree: a leaf's own live cell count, an internal page's subtree sum.</summary>
+		public static ulong GetEntryCount(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[EntryCountOffset..]);
+
+		public static void SetEntryCount(Span<byte> page, ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(page[EntryCountOffset..], value);
+
+		/// <summary>Sum of WHOLE key lengths (the page prefix re-expanded) in this page's subtree: a leaf's own total, an internal page's subtree sum.</summary>
+		public static ulong GetLogicalKeyBytes(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[LogicalKeyBytesOffset..]);
+
+		public static void SetLogicalKeyBytes(Span<byte> page, ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(page[LogicalKeyBytesOffset..], value);
+
+		/// <summary>Sum of FULL value lengths in this page's subtree (an extent cell contributes its total extent length, not its descriptor): a leaf's own total, an internal page's subtree sum.</summary>
+		/// <remarks>u64 on purpose: this counts extent contents, so a subtree's total is bounded by nothing smaller than the file's data plus extents, and a u32 saturates at 4 GiB, which is a realistic single subtree.</remarks>
+		public static ulong GetLogicalValueBytes(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[LogicalValueBytesOffset..]);
+
+		public static void SetLogicalValueBytes(Span<byte> page, ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(page[LogicalValueBytesOffset..], value);
+
+		/// <summary>Sum of the fill-oriented live bytes of the LEAVES in this page's subtree (internal pages only; a leaf stores 0, since its own live bytes derive from its v1 fields).</summary>
+		public static ulong GetSubtreeLiveBytes(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt64LittleEndian(page[SubtreeLiveBytesOffset..]);
+
+		public static void SetSubtreeLiveBytes(Span<byte> page, ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(page[SubtreeLiveBytesOffset..], value);
+
+		/// <summary>Leaves in this page's subtree: 1 for a leaf, the subtree sum for an internal page.</summary>
+		public static uint GetLeafCount(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt32LittleEndian(page[LeafCountOffset..]);
+
+		public static void SetLeafCount(Span<byte> page, uint value) => BinaryPrimitives.WriteUInt32LittleEndian(page[LeafCountOffset..], value);
+
+		/// <summary>Saturating count of POST-FILL mutation episodes of this page: bumped at most once per generation that mutates it, reset when its cells are repacked into a merged output.</summary>
+		/// <remarks>
+		/// <para>The signal is HOW OFTEN, never WHEN: a write-once page from yesterday equals one from last month. Deletes, in-place value mutations and interior inserts (a key strictly below the receiving leaf's own maximum: the leaf's right edge is its append edge, which holds for any number of append-shaped subspaces at once) are episodes; append-edge growth is a page FILLING rather than mutating and must reach its packed state at count zero; whole-page death counts nothing.</para>
+		/// <para>Reset-on-repack is part of the definition, not an optimization: counted since birth, a one-time bulk load brands its leaves volatile forever (its own interior inserts are episodes) and the write-once shape the count exists to identify can never be packed full.</para>
+		/// <para>Consumers quantize at read (0 = never changed since filled, 1 = changed rarely, 2+ = volatile); storing the byte rather than the class keeps re-bucketing free of a format change.</para>
+		/// </remarks>
+		public static byte GetVolatilityEpisodes(ReadOnlySpan<byte> page) => page[VolatilityEpisodesOffset];
+
+		public static void SetVolatilityEpisodes(Span<byte> page, byte value) => page[VolatilityEpisodesOffset] = value;
+
 		/// <summary>Computes the page checksum: XxHash3-64 over the page with the checksum field zeroed, seeded by the page's first block id.</summary>
 		public static ulong ComputeChecksum(ReadOnlySpan<byte> page, uint firstBlockId)
 		{
@@ -134,8 +189,10 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Writes the checksum of a fully-built page into its header (the last step before the page goes to the pager).</summary>
 		public static void Seal(Span<byte> page, uint firstBlockId) => SetChecksum(page, ComputeChecksum(page, firstBlockId));
 
-		/// <summary>Verifies a page's checksum against its location.</summary>
-		public static bool Verify(ReadOnlySpan<byte> page, uint firstBlockId) => GetChecksum(page) == ComputeChecksum(page, firstBlockId);
+		/// <summary>Verifies a page's checksum against its location, and that its reserved bytes are still zero.</summary>
+		public static bool Verify(ReadOnlySpan<byte> page, uint firstBlockId)
+			=> GetChecksum(page) == ComputeChecksum(page, firstBlockId)
+			&& page.Slice(ReservedOffset, ReservedLength).IndexOfAnyExcept((byte) 0) < 0;
 
 		/// <summary>Initializes a fresh page: zeroes the span, stamps type, encoding, generation, and an empty cell area at the page end.</summary>
 		public static void Format(Span<byte> page, FdbLitePageType type, ulong generation)
@@ -150,6 +207,7 @@ namespace FoundationDB.Storage.FdbLite
 			// stores 0 meaning "no cell allocated yet" - a full 64 KiB page's end offset (65536) does not
 			// fit a u16, so "empty" cannot be encoded as the page length itself.
 			SetCellAreaOffset(page, 0);
+			Contract.Debug.Assert(page.Slice(ReservedOffset, ReservedLength).IndexOfAnyExcept((byte) 0) < 0, "a freshly formatted page must leave its reserved bytes zero");
 		}
 
 	}

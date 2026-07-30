@@ -49,7 +49,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			int count = FdbLitePageHeader.GetCellCount(page);
 			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
 			int prefixRegion = (prefixLen + 1) & ~1;
-			int slotsAt = 32 + prefixRegion;
+			int slotsAt = 128 + prefixRegion; // the 128-byte universal header, spelled as this oracle's own constant
 			int keyBase = slotsAt + (count * 2);
 			int keyUsed = FdbLitePageHeader.GetKeyAreaLength(page);
 			int area = FdbLitePageHeader.GetCellAreaOffset(page);

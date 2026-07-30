@@ -1602,6 +1602,9 @@ namespace FoundationDB.Storage.FdbLite
 			foreach (var id in ids)
 			{
 				var image = this.Dirty[id];
+				// the stamp says which generation PUBLISHED the page, and a verbatim-copied image still carries
+				// its source's; every dirty image passes through here exactly once, so this is where it is true
+				FdbLitePageHeader.SetGeneration(image, this.Generation);
 				FdbLitePageHeader.Seal(image, id);
 				this.Pager.WriteBlocks(id, image);
 				this.PagesWritten++;

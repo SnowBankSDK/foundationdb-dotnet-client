@@ -35,9 +35,10 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>ASCII <c>SBKV01\r\n</c>: the newline canary catches ASCII-mode mangling (no working-name bake-in, per the format ruling)</summary>
 		public static ReadOnlySpan<byte> Magic => "SBKV01\r\n"u8;
 
-		public const ushort FormatVersion = 1;
+		/// <summary>Format 2 widened the universal page header to 128 bytes (the aggregate block plus its reserve); the format is Experimental, so there is no migration path from format 1.</summary>
+		public const ushort FormatVersion = 2;
 
-		public const ushort MinReaderVersion = 1;
+		public const ushort MinReaderVersion = 2;
 
 		/// <summary>Bytes actually used at the head of block 0 (the rest is reserved, zero)</summary>
 		public const int Size = 48;
@@ -62,10 +63,16 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				throw new InvalidDataException("Not a store file (bad magic)");
 			}
+			ushort version = BinaryPrimitives.ReadUInt16LittleEndian(block[8..]);
 			ushort minReader = BinaryPrimitives.ReadUInt16LittleEndian(block[10..]);
 			if (minReader > FormatVersion)
 			{
 				throw new InvalidDataException($"Store file requires a newer reader (format {minReader})");
+			}
+			if (version < FormatVersion)
+			{ // the format is Experimental: an older file has no migration path and must fail here, loudly,
+			  // rather than have format-2 accessors read garbage out of its narrower page headers
+				throw new InvalidDataException($"Store file was written at format {version}; this reader supports format {FormatVersion} and the Experimental format has no migration path");
 			}
 			var geometry = new FdbLiteGeometry(block[12], block[13]);
 			var fileId = new Guid(block[16..32]);
