@@ -677,7 +677,21 @@ members bind to a sensible concrete type (`IDictionary<K,V>` -> `Dictionary<K,V>
 
 Getter-only properties (`public Collection<int> Items { get; }`) are populated through the adder rather than assigned.
 A `KeyedCollection<K,V>` rebuilds its by-key index as it fills (`GetKeyForItem` runs on every `Add`), and duplicate
-duplicate keys in the document fail loudly instead of dropping an item.
+keys in the document fail loudly instead of dropping an item.
+
+**In generated code you will see `UnpackCollection`.** You do not call it yourself - it is what a generated converter
+emits for a collection member whose element type is also generated, so the element decoding (and therefore the
+container's naming policy, e.g. camelCase under the Web defaults) is applied by *your* generated element converter
+rather than by the runtime fallback. Recognising the name in generated source or a stack trace is the point:
+
+```csharp
+// SnowBank.Data.Json, extension methods on IJsonDeserializer<T>
+TCollection? UnpackCollection<TCollection, T>(this IJsonDeserializer<T> serializer, JsonValue? value, TCollection? defaultValue = null, ...)
+TCollection  UnpackRequiredCollection<TCollection, T>(this IJsonDeserializer<T> serializer, JsonValue? value, ...)
+```
+
+`UnpackRequiredCollection` is the flavour behind a `required` member: absent or null throws rather than yielding the
+default. Both construct the declared collection type and fill it with `Add`, which is why a subclass arrives as itself.
 
 **Format and round-trip semantics** (pinned by tests):
 
