@@ -297,6 +297,29 @@ namespace FoundationDB.Storage.FdbLite
 		public static int LeafFreeGap(ReadOnlySpan<byte> page)
 			=> LeafValueFrontier(page) - (LeafKeyBase(page) + FdbLitePageHeader.GetKeyAreaLength(page));
 
+		/// <summary>Fill-oriented live bytes of a leaf, derived from its v1 header fields: everything but the free gap and the booked waste.</summary>
+		/// <remarks>A leaf does not STORE this number, because its own fields already carry it: header + prefix region + slots + occupied key heap + occupied value heap, minus the dead bytes the in-place mutations booked. This is the per-leaf term of the subtree occupancy aggregates, so the derivation must stay in one place.</remarks>
+		public static long LeafLiveBytes(ReadOnlySpan<byte> page)
+			=> LeafKeyBase(page) + FdbLitePageHeader.GetKeyAreaLength(page)
+			+ (page.Length - LeafValueFrontier(page))
+			- FdbLitePageHeader.GetWastedBytes(page);
+
+		/// <summary>Logical length of a stored value: the full extent length for an extent cell (read from its descriptor), the payload length itself otherwise.</summary>
+		public static long LeafLogicalValueLength(ReadOnlySpan<byte> storedValue, byte flags)
+			=> (flags & FlagValueIsExtent) != 0 ? BinaryPrimitives.ReadUInt32LittleEndian(storedValue[6..]) : storedValue.Length;
+
+		/// <summary>Logical value length of an existing leaf cell, extent-aware.</summary>
+		private static long LeafLogicalValueLengthOf(ReadOnlySpan<byte> page, int cellIndex)
+			=> LeafLogicalValueLength(GetLeafStoredValue(page, cellIndex), GetLeafFlags(page, cellIndex));
+
+		/// <summary>Applies a leaf mutation's deltas to the aggregate block (entry count, whole-key bytes, logical value bytes).</summary>
+		private static void AdjustLeafAggregates(Span<byte> page, int entryDelta, long keyBytesDelta, long valueBytesDelta)
+		{
+			FdbLitePageHeader.SetEntryCount(page, (ulong) ((long) FdbLitePageHeader.GetEntryCount(page) + entryDelta));
+			FdbLitePageHeader.SetLogicalKeyBytes(page, (ulong) ((long) FdbLitePageHeader.GetLogicalKeyBytes(page) + keyBytesDelta));
+			FdbLitePageHeader.SetLogicalValueBytes(page, (ulong) ((long) FdbLitePageHeader.GetLogicalValueBytes(page) + valueBytesDelta));
+		}
+
 		/// <summary>True when the free gap between the two heaps can take one more cell of these sizes, slot included.</summary>
 		/// <remarks>Counts the free GAP only. A page can also hold reclaimable room in <see cref="FdbLitePageHeader.GetWastedBytes"/>, which this does NOT include, so a false here means "cannot take it without reclaiming", not "cannot take it at all". The slot array is about to grow by one, and it grows into the key heap's end, so the entry has to clear that too.</remarks>
 		public static bool LeafHasRoomFor(ReadOnlySpan<byte> page, int keySuffixLength, int storedValueLength)
@@ -324,6 +347,7 @@ namespace FoundationDB.Storage.FdbLite
 			{ // not a growth, or no room to grow into without reclaiming first
 				return false;
 			}
+			AdjustLeafAggregates(page, 0, 0, LeafLogicalValueLength(storedValue, flags) - LeafLogicalValueLengthOf(page, cellIndex));
 
 			int landing = LeafValueFrontier(page) - storedValue.Length;
 			storedValue.CopyTo(page.Slice(landing, storedValue.Length));
@@ -362,6 +386,7 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				return false;
 			}
+			AdjustLeafAggregates(page, 0, 0, LeafLogicalValueLength(storedValue, flags) - LeafLogicalValueLengthOf(page, cellIndex));
 
 			storedValue.CopyTo(page.Slice(offset, storedValue.Length));
 			int slack = length - storedValue.Length;
@@ -389,6 +414,7 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			Contract.Debug.Requires(index >= 0 && index <= cellCount);
+			int wholeKeyLength = key.Length; // captured before the prefix strip below: the aggregates count WHOLE keys
 
 			// every key on the page must start with the page prefix, so a key that does not cannot be spliced in:
 			// the page's shared prefix would have to shrink, which means re-expanding every stored suffix. Refusing
@@ -434,6 +460,7 @@ namespace FoundationDB.Storage.FdbLite
 			WriteLeafEntry(page, keyBase + 2 + keyUsed, valueAt, keySuffix, storedValue, flags);
 			FdbLitePageHeader.SetKeyAreaLength(page, checked((ushort) (keyUsed + 2 + keySuffix.Length + 5)));
 			FdbLitePageHeader.SetCellAreaOffset(page, checked((ushort) valueAt));
+			AdjustLeafAggregates(page, +1, wholeKeyLength, LeafLogicalValueLength(storedValue, flags));
 			return true;
 		}
 
@@ -488,6 +515,8 @@ namespace FoundationDB.Storage.FdbLite
 
 			FdbLitePageHeader.SetCellCount(page, (ushort) (cellCount - 1));
 			FdbLitePageHeader.SetWastedBytes(page, checked((ushort) (FdbLitePageHeader.GetWastedBytes(page) + entryBytes + valueLength)));
+			// extents are refused above, so the stored value length IS the logical one
+			AdjustLeafAggregates(page, -1, -(FdbLitePageHeader.GetPrefixLength(page) + keyLen), -valueLength);
 			return true;
 		}
 
@@ -502,6 +531,7 @@ namespace FoundationDB.Storage.FdbLite
 			private int KeyUsed;
 			private int ValueAt;
 			private int Index;
+			private long LogicalValueBytes;
 
 			public LeafRunWriter(Span<byte> image, int count)
 			{
@@ -513,6 +543,7 @@ namespace FoundationDB.Storage.FdbLite
 				this.KeyUsed = 0;
 				this.ValueAt = image.Length;
 				this.Index = 0;
+				this.LogicalValueBytes = 0;
 			}
 
 			public void Add(ReadOnlySpan<byte> keySuffix, ReadOnlySpan<byte> storedValue, byte flags)
@@ -541,6 +572,7 @@ namespace FoundationDB.Storage.FdbLite
 
 				BinaryPrimitives.WriteUInt16LittleEndian(this.Image[(this.SlotsAt + (this.Index * 2))..], (ushort) this.KeyUsed);
 				this.KeyUsed += 2 + keyLen + 5;
+				this.LogicalValueBytes += LeafLogicalValueLength(storedValue, flags);
 				++this.Index;
 			}
 
@@ -549,6 +581,16 @@ namespace FoundationDB.Storage.FdbLite
 				FdbLitePageHeader.SetCellCount(this.Image, (ushort) this.Index);
 				FdbLitePageHeader.SetKeyAreaLength(this.Image, (ushort) this.KeyUsed);
 				FdbLitePageHeader.SetCellAreaOffset(this.Image, this.Index > 0 ? (ushort) this.ValueAt : (ushort) 0);
+
+				// the leaf's own aggregate block: entry count, whole-key bytes (each stored suffix re-expanded by
+				// the page prefix), logical value bytes accumulated extent-aware by Add, and itself as one leaf
+				int prefixLength = FdbLitePageHeader.GetPrefixLength(this.Image);
+				long storedKeyBytes = this.KeyUsed - (7L * this.Index); // each entry carries 7 bytes outside its key
+				FdbLitePageHeader.SetEntryCount(this.Image, (ulong) this.Index);
+				FdbLitePageHeader.SetLogicalKeyBytes(this.Image, (ulong) (storedKeyBytes + ((long) this.Index * prefixLength)));
+				FdbLitePageHeader.SetLogicalValueBytes(this.Image, (ulong) this.LogicalValueBytes);
+				FdbLitePageHeader.SetSubtreeLiveBytes(this.Image, 0);
+				FdbLitePageHeader.SetLeafCount(this.Image, 1);
 			}
 
 		}

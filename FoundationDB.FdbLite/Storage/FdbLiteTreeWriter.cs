@@ -407,8 +407,12 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			for (int level = fromLevel; level >= 0; level--)
 			{
-				if (!outcome.Split && outcome.FirstId == originalChildId)
-				{ // the child was rebuilt in place: the parent (and every ancestor) already points at it
+				if (!outcome.Split && outcome.FirstId == originalChildId && this.Dirty.ContainsKey(pathPages[level]))
+				{ // the child was rebuilt in place and its parent is in the dirty set: every ancestor already
+				  // points at it and is itself dirty, so the aggregate stamp pass will re-sum the whole chain.
+				  // The dirty-parent condition is load-bearing: after a mid-generation flush a shadow page
+				  // rebuilds in place under CLEAN ancestors, and returning here would leave their stored
+				  // aggregates stale forever - the chain must be re-dirtied all the way up instead.
 					return;
 				}
 				originalChildId = pathPages[level];
@@ -1585,6 +1589,61 @@ namespace FoundationDB.Storage.FdbLite
 			return id;
 		}
 
+		/// <summary>Sums of one subtree's aggregate block, as carried up the stamp pass.</summary>
+		private readonly record struct SubtreeAggregates(ulong Entries, ulong KeyBytes, ulong ValueBytes, ulong LeafLiveBytes, uint Leaves)
+		{
+			public static SubtreeAggregates operator +(SubtreeAggregates a, SubtreeAggregates b)
+				=> new(a.Entries + b.Entries, a.KeyBytes + b.KeyBytes, a.ValueBytes + b.ValueBytes, a.LeafLiveBytes + b.LeafLiveBytes, a.Leaves + b.Leaves);
+		}
+
+		/// <summary>Stamps the subtree aggregates into every dirty INTERNAL page, bottom-up, before the images are sealed.</summary>
+		/// <remarks>
+		/// <para>This is free of extra page writes by the dirty-chain invariant: every page whose numbers changed has its whole ancestor chain in this generation's dirty set, so the pass recurses over dirty pages only and reads ONE header per clean child (a clean leaf's live bytes derive from its v1 fields, a clean internal page carries its stored sums, and both are exact because the same pass stamped them when THEY were last dirty).</para>
+		/// <para>Dirty leaves are already exact: the run writer and the in-place mutation paths maintain their aggregate block as they go.</para>
+		/// </remarks>
+		private void StampAggregates()
+		{
+			Contract.Debug.Assert(this.Root != 0 && this.Dirty.ContainsKey(this.Root), "a non-empty dirty set without a dirty root breaks the dirty-chain invariant");
+			int visited = 0;
+			StampSubtree(this.Root, ref visited);
+			Contract.Debug.Assert(visited == this.Dirty.Count, "a dirty page is not reachable through dirty ancestors: the dirty-chain invariant is broken and its aggregates would go stale");
+		}
+
+		private SubtreeAggregates StampSubtree(uint pageId, ref int visited)
+		{
+			if (this.Dirty.TryGetValue(pageId, out var buffered))
+			{
+				visited++;
+				var image = buffered.AsSpan();
+				if (FdbLitePageHeader.GetPageType(image) == FdbLitePageType.Leaf)
+				{
+					return new(FdbLitePageHeader.GetEntryCount(image), FdbLitePageHeader.GetLogicalKeyBytes(image), FdbLitePageHeader.GetLogicalValueBytes(image), (ulong) FdbLiteTreePage.LeafLiveBytes(image), 1);
+				}
+
+				var sum = default(SubtreeAggregates);
+				int children = FdbLiteTreePage.GetChildCount(image);
+				for (int i = 0; i < children; i++)
+				{
+					sum += StampSubtree(FdbLiteTreePage.GetChild(image, i), ref visited);
+				}
+				FdbLitePageHeader.SetEntryCount(image, sum.Entries);
+				FdbLitePageHeader.SetLogicalKeyBytes(image, sum.KeyBytes);
+				FdbLitePageHeader.SetLogicalValueBytes(image, sum.ValueBytes);
+				FdbLitePageHeader.SetSubtreeLiveBytes(image, sum.LeafLiveBytes);
+				FdbLitePageHeader.SetLeafCount(image, sum.Leaves);
+				return sum;
+			}
+
+			// a clean child: one header read of its stored aggregates, no verify (this is the hot part of the
+			// pass, and the page's own first-touch verification already guards the paths that mutate it)
+			var page = this.Pager.ReadBlocks(pageId, this.Pager.Geometry.BlocksPerPage);
+			if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
+			{
+				return new(FdbLitePageHeader.GetEntryCount(page), FdbLitePageHeader.GetLogicalKeyBytes(page), FdbLitePageHeader.GetLogicalValueBytes(page), (ulong) FdbLiteTreePage.LeafLiveBytes(page), 1);
+			}
+			return new(FdbLitePageHeader.GetEntryCount(page), FdbLitePageHeader.GetLogicalKeyBytes(page), FdbLitePageHeader.GetLogicalValueBytes(page), FdbLitePageHeader.GetSubtreeLiveBytes(page), FdbLitePageHeader.GetLeafCount(page));
+		}
+
 		/// <summary>Seals and writes every page image this generation is holding, then releases them.</summary>
 		/// <remarks>Called by the engine before the commit protocol's first flush barrier, and wherever the writer must let a raw pager read observe its work. Ordering of the two commit barriers is unaffected: this only decides WHEN the data blocks are handed over, never that they are handed over after the header.</remarks>
 		public void FlushDirtyPages()
@@ -1593,6 +1652,10 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				return;
 			}
+
+			// subtree aggregates go into the dirty internal pages now, while every page whose numbers changed
+			// is still in hand: after this, the images are final and can be sealed
+			StampAggregates();
 
 			// ascending page order turns the dirty set into as few forward runs as the allocation pattern allows
 			var ids = new uint[this.Dirty.Count];

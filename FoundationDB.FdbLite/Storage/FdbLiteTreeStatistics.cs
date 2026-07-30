@@ -46,7 +46,8 @@ namespace FoundationDB.Storage.FdbLite
 		long CellCount,
 		long WastedBytes,
 		int MaxWastedBytesPerPage,
-		long FreeGapBytes)
+		long FreeGapBytes,
+		long LeafLiveBytes)
 	{
 
 		private struct Accumulator
@@ -57,6 +58,7 @@ namespace FoundationDB.Storage.FdbLite
 			public long CellCount;
 			public long WastedBytes;
 			public long FreeGapBytes;
+			public long LeafLiveBytes;
 		}
 
 		/// <summary>Walks the generation rooted at <paramref name="root"/> and aggregates its statistics (all zeroes for an empty tree).</summary>
@@ -68,7 +70,7 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				Walk(pager, root, 0, ref acc);
 			}
-			return new(acc.InternalPages, acc.LeafPages, acc.CellCount, acc.WastedBytes, acc.MaxWastedBytesPerPage, acc.FreeGapBytes);
+			return new(acc.InternalPages, acc.LeafPages, acc.CellCount, acc.WastedBytes, acc.MaxWastedBytesPerPage, acc.FreeGapBytes, acc.LeafLiveBytes);
 		}
 
 		private static void Walk(IFdbLitePager pager, uint pageId, int depth, ref Accumulator acc)
@@ -85,6 +87,7 @@ namespace FoundationDB.Storage.FdbLite
 				acc.WastedBytes += pageWaste;
 				if (pageWaste > acc.MaxWastedBytesPerPage) { acc.MaxWastedBytesPerPage = pageWaste; }
 				acc.FreeGapBytes += FdbLiteTreePage.LeafFreeGap(page);
+				acc.LeafLiveBytes += FdbLiteTreePage.LeafLiveBytes(page);
 				return;
 			}
 
@@ -94,6 +97,45 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				Walk(pager, FdbLiteTreePage.GetChild(page, i), depth + 1, ref acc);
 			}
+		}
+
+	}
+
+	/// <summary>Tree-wide totals of one committed generation, read from its ROOT page's aggregate block in O(1).</summary>
+	/// <remarks>
+	/// <para>Maintained exactly by the dirty-chain invariant (see <see cref="FdbLitePageHeader"/>): no walk, no sampling, no estimation machinery. <see cref="LeafLiveBytes"/> counts the LEAVES' fill-oriented live bytes only (internal pages are ~1 in fanout and are not occupancy the vacuum can reclaim).</para>
+	/// <para><c>idealLeaves = ceil(LeafLiveBytes / (fillTarget * pageSize))</c> against <see cref="LeafCount"/> is a subtree's reclaim opportunity, which is what makes a threshold-guided vacuum descent cost O(hot paths). The logical byte totals are the exact FDB-cluster-style storage numbers (logical k/v bytes against file size).</para>
+	/// </remarks>
+	public readonly record struct FdbLiteTreeAggregates(
+		ulong EntryCount,
+		ulong LogicalKeyBytes,
+		ulong LogicalValueBytes,
+		ulong LeafLiveBytes,
+		uint LeafCount)
+	{
+
+		/// <summary>Reads the aggregates of the generation rooted at <paramref name="root"/> from its root page's header (0 = empty tree, all zeroes).</summary>
+		public static FdbLiteTreeAggregates Read(IFdbLitePager pager, uint root)
+		{
+			Contract.NotNull(pager);
+			if (root == 0)
+			{
+				return default;
+			}
+			var page = pager.ReadBlocks(root, pager.Geometry.BlocksPerPage);
+			return ReadFrom(page);
+		}
+
+		/// <summary>Decodes the aggregate block of one page (a leaf derives its own live bytes from its v1 fields).</summary>
+		internal static FdbLiteTreeAggregates ReadFrom(ReadOnlySpan<byte> page)
+		{
+			bool leaf = FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf;
+			return new(
+				EntryCount: FdbLitePageHeader.GetEntryCount(page),
+				LogicalKeyBytes: FdbLitePageHeader.GetLogicalKeyBytes(page),
+				LogicalValueBytes: FdbLitePageHeader.GetLogicalValueBytes(page),
+				LeafLiveBytes: leaf ? (ulong) FdbLiteTreePage.LeafLiveBytes(page) : FdbLitePageHeader.GetSubtreeLiveBytes(page),
+				LeafCount: leaf ? 1u : FdbLitePageHeader.GetLeafCount(page));
 		}
 
 	}

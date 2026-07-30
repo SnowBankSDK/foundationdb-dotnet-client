@@ -75,6 +75,23 @@ namespace FoundationDB.Storage.FdbLite
 					problems.Add($"leaf {pageId} OVERFLOWS: {count} cells, key heap ends at {keyEnd} but the value heap starts at {valueFloor} ({keyEnd - valueFloor} bytes too many) with prefixLen={FdbLitePageHeader.GetPrefixLength(page)} in a {pager.Geometry.PageSize} byte page");
 				}
 
+				// the stored aggregate block against a recount from the cells: the aggregates are maintained
+				// incrementally by every mutation path, so a drift here names the path that miscounted
+				long keyBytes = 0, valueBytes = 0;
+				for (int i = 0; i < count; i++)
+				{
+					keyBytes += FdbLitePageHeader.GetPrefixLength(page) + FdbLiteTreePage.LeafKeyExtent(page, i).Length;
+					valueBytes += FdbLiteTreePage.LeafLogicalValueLength(FdbLiteTreePage.GetLeafStoredValue(page, i), FdbLiteTreePage.GetLeafFlags(page, i));
+				}
+				if (FdbLitePageHeader.GetEntryCount(page) != (ulong) count
+				 || FdbLitePageHeader.GetLogicalKeyBytes(page) != (ulong) keyBytes
+				 || FdbLitePageHeader.GetLogicalValueBytes(page) != (ulong) valueBytes
+				 || FdbLitePageHeader.GetLeafCount(page) != 1
+				 || FdbLitePageHeader.GetSubtreeLiveBytes(page) != 0)
+				{
+					problems.Add($"leaf {pageId} AGGREGATES DRIFTED: stored entries={FdbLitePageHeader.GetEntryCount(page)} keyBytes={FdbLitePageHeader.GetLogicalKeyBytes(page)} valueBytes={FdbLitePageHeader.GetLogicalValueBytes(page)} leafCount={FdbLitePageHeader.GetLeafCount(page)} subtreeLive={FdbLitePageHeader.GetSubtreeLiveBytes(page)}, recounted entries={count} keyBytes={keyBytes} valueBytes={valueBytes}");
+				}
+
 				byte[]? previous = null;
 				for (int i = 0; i < count && problems.Count < maxProblems; i++)
 				{
@@ -109,6 +126,31 @@ namespace FoundationDB.Storage.FdbLite
 					}
 				}
 				return;
+			}
+
+			// the stored subtree sums against the children's own headers: exactness across generations rests on
+			// the dirty-chain invariant, so a drift here means a path changed a child without dirtying its chain
+			{
+				ulong entries = 0, keyBytes = 0, valueBytes = 0, liveBytes = 0;
+				uint leaves = 0;
+				int childCount = FdbLiteTreePage.GetChildCount(page);
+				for (int i = 0; i < childCount; i++)
+				{
+					var agg = FdbLiteTreeAggregates.ReadFrom(pager.ReadBlocks(FdbLiteTreePage.GetChild(page, i), pager.Geometry.BlocksPerPage));
+					entries += agg.EntryCount;
+					keyBytes += agg.LogicalKeyBytes;
+					valueBytes += agg.LogicalValueBytes;
+					liveBytes += agg.LeafLiveBytes;
+					leaves += agg.LeafCount;
+				}
+				if (FdbLitePageHeader.GetEntryCount(page) != entries
+				 || FdbLitePageHeader.GetLogicalKeyBytes(page) != keyBytes
+				 || FdbLitePageHeader.GetLogicalValueBytes(page) != valueBytes
+				 || FdbLitePageHeader.GetSubtreeLiveBytes(page) != liveBytes
+				 || FdbLitePageHeader.GetLeafCount(page) != leaves)
+				{
+					problems.Add($"internal {pageId} AGGREGATES DRIFTED: stored entries={FdbLitePageHeader.GetEntryCount(page)} keyBytes={FdbLitePageHeader.GetLogicalKeyBytes(page)} valueBytes={FdbLitePageHeader.GetLogicalValueBytes(page)} subtreeLive={FdbLitePageHeader.GetSubtreeLiveBytes(page)} leafCount={FdbLitePageHeader.GetLeafCount(page)}, children sum to entries={entries} keyBytes={keyBytes} valueBytes={valueBytes} subtreeLive={liveBytes} leafCount={leaves}");
+				}
 			}
 
 			// separators must ascend, and each child inherits the pair around it as its own bounds

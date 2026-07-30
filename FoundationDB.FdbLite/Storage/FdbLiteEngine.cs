@@ -326,6 +326,20 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Tree-wide totals of the current durable generation, from its root page's aggregate block: O(1), exact, and safe on any thread.</summary>
+		public FdbLiteTreeAggregates GetTreeAggregates()
+		{
+			var pin = BeginRead();
+			try
+			{
+				return FdbLiteTreeAggregates.Read(this.Pager, pin.RootPageId);
+			}
+			finally
+			{
+				EndRead(in pin);
+			}
+		}
+
 		/// <summary>Slow-reader observability: pin count, the oldest pinned generation, and the blocks retained only by unpromoted frees.</summary>
 		public (int PinCount, ulong? OldestPinnedGeneration, long PendingReclaimBlocks) GetStats()
 		{
