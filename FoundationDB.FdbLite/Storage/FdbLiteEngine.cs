@@ -452,6 +452,33 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Vacuum steps that merged something over this engine's lifetime</summary>
+		public long VacuumStepsExecuted { get; private set; }
+
+		/// <summary>Net pages freed by the background vacuum over this engine's lifetime</summary>
+		public long VacuumPagesFreed { get; private set; }
+
+		/// <summary>Runs one background-vacuum step: a maintenance generation with NO logical changes that merges the worst region's adjacent sparse leaves at the volatility-adaptive fill target.</summary>
+		/// <param name="maxInputPages">Bound on leaves one step may consume (the wall-clock bound of a step)</param>
+		/// <returns>What the step did; <c>PagesFreed == 0</c> means no viable run exists and nothing was written - the caller's signal to stop its trigger loop</returns>
+		/// <remarks>
+		/// <para>Serialized under the single-writer model like any write generation: never call it while another writer is open. The step commits at the CURRENT database version (readers observe no logical change), the trigger belongs to the caller: <see cref="GetTreeAggregates"/> is the O(1) signal (<c>LeafCount</c> against <c>ceil(LeafLiveBytes / (0.90 x pageSize))</c> is the tree's reclaim opportunity).</para>
+		/// <para>Whatever the pre-commit arm skips on budget falls to this arm by construction: its candidacy is OCCUPANCY, not the commit-time notes, so any leaf that sits sparse - noted or never noted - is found here. Cross-parent runs (out of the pre-commit arm's scope) are in scope here and only here.</para>
+		/// </remarks>
+		public FdbLiteTreeWriter.VacuumOutcome VacuumStep(int maxInputPages = 16)
+		{
+			var writer = BeginWrite();
+			var outcome = writer.VacuumWorstRegion(maxInputPages);
+			if (outcome.InputPages == 0)
+			{ // nothing viable: the writer allocated and wrote nothing, so abandoning it leaves no trace
+				return outcome;
+			}
+			Commit(writer, this.Durable.DatabaseVersion);
+			this.VacuumStepsExecuted++;
+			this.VacuumPagesFreed += outcome.PagesFreed;
+			return outcome;
+		}
+
 		/// <summary>Tree-wide totals of the current durable generation, from its root page's aggregate block: O(1), exact, and safe on any thread.</summary>
 		public FdbLiteTreeAggregates GetTreeAggregates()
 		{

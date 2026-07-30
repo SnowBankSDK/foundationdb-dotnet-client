@@ -413,6 +413,205 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_Vacuum_Reclaims_The_Trail_Shape()
+		{
+			// the whole point of the arm: sparse COMMITTED leaves (the trail's cold holes), never noted by
+			// anyone, found by occupancy alone - including everything a pre-commit budget would have skipped
+			static (FdbLiteEngine Engine, SortedDictionary<long, byte[]> Model, List<FdbLiteTreeWriter.VacuumOutcome> Steps) Run()
+			{
+				var engine = CreateHeapEngine(); // Off: nothing consolidates at commit
+				var model = new SortedDictionary<long, byte[]>();
+				var writer = engine.BeginWrite();
+				for (long i = 0; i < 8_000; i++)
+				{
+					var v = Value((int) i, 24);
+					writer.Insert(Key64(i), v);
+					model[i] = v;
+				}
+				engine.Commit(writer, 1);
+
+				writer = engine.BeginWrite();
+				for (long i = 1_000; i < 6_000; i++)
+				{
+					if (i % 5 == 0) { continue; }
+					writer.Remove(Key64(i));
+					model.Remove(i);
+				}
+				engine.Commit(writer, 2);
+
+				var steps = new List<FdbLiteTreeWriter.VacuumOutcome>();
+				for (int s = 0; s < 50; s++)
+				{
+					var outcome = engine.VacuumStep(16);
+					if (outcome.PagesFreed == 0) { break; }
+					steps.Add(outcome);
+				}
+				return (engine, model, steps);
+			}
+
+			var (engine, model, steps) = Run();
+			using var _e = engine;
+
+			Assert.That(steps.Count, Is.GreaterThan(0), "the vacuum must have found the sparse region");
+			Assert.That(steps.Count, Is.LessThan(50), "the vacuum must CONVERGE: repacked output is not a candidate again");
+			Assert.That(engine.VacuumPagesFreed, Is.GreaterThan(0), "the engine counter records the executed steps");
+			Log($"# vacuum: {steps.Count} steps, {engine.VacuumPagesFreed} pages freed");
+
+			Assert.That(engine.Durable.DatabaseVersion, Is.EqualTo(2), "a maintenance generation publishes NO new database version");
+			AssertTreeMatchesModel(engine, model, "after vacuum");
+
+			// a maintenance generation is deterministic: the identical scenario lands byte-identical
+			var (second, _, steps2) = Run();
+			using var _s = second;
+			Assert.That(steps2.Count, Is.EqualTo(steps.Count), "step count is deterministic");
+			Assert.That(second.Durable.RootPageId, Is.EqualTo(engine.Durable.RootPageId), "identical scenarios produce identical trees");
+			Assert.That(second.MeasureTreeStatistics(), Is.EqualTo(engine.MeasureTreeStatistics()));
+		}
+
+		[Test]
+		public void Test_Vacuum_Consolidates_Across_A_Parent_Boundary()
+		{
+			// long keys shrink the fanout (~16 children per internal page at 16 KiB), so a 400-key store
+			// already spans several leaf-parents - the shape the cross-parent scope exists for
+			static byte[] LongKey(long i)
+			{
+				var key = new byte[1_000];
+				System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(key, i);
+				new Random((int) i).NextBytes(key.AsSpan(8));
+				return key;
+			}
+
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Uniform(14)));
+			var model = new SortedDictionary<long, byte[]>();
+			const int N = 400;
+			var writer = engine.BeginWrite();
+			for (long i = 0; i < N; i++)
+			{
+				var v = Value((int) i, 8);
+				writer.Insert(LongKey(i), v);
+				model[i] = v;
+			}
+			engine.Commit(writer, 1);
+			var stats = engine.MeasureTreeStatistics();
+			Assert.That(stats.InternalPages, Is.GreaterThanOrEqualTo(3), "the seed must span several leaf-parents (root + at least two), or this test proves nothing");
+
+			// find where the FIRST leaf-parent ends (raw parse, first 8 key bytes carry the ordinal): the
+			// band must hollow out exactly its tail plus the next parent's head, so the first parent is the
+			// worst region AND its trailing sparse stretch meets a sparse neighbor head across the boundary
+			long boundaryOrdinal;
+			{
+				var root = engine.Pager.ReadBlocks(engine.Durable.RootPageId, engine.Pager.Geometry.BlocksPerPage);
+				uint p1 = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(root[128..]);
+				var parent1 = engine.Pager.ReadBlocks(p1, engine.Pager.Geometry.BlocksPerPage);
+				int cells = FdbLitePageHeader.GetCellCount(parent1);
+				int lastOff = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(parent1[(132 + ((cells - 1) * 2))..]);
+				uint lastLeaf = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(parent1[lastOff..]);
+				var leaf = engine.Pager.ReadBlocks(lastLeaf, engine.Pager.Geometry.BlocksPerPage);
+				int prefixLen = FdbLitePageHeader.GetPrefixLength(leaf);
+				int leafCells = FdbLitePageHeader.GetCellCount(leaf);
+				int slotsAt = 128 + ((prefixLen + 1) & ~1);
+				int keyBase = slotsAt + (leafCells * 2);
+				Span<byte> first8 = stackalloc byte[8];
+				leaf.Slice(128, Math.Min(prefixLen, 8)).CopyTo(first8);
+				int entry = keyBase + System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(leaf[(slotsAt + ((leafCells - 1) * 2))..]);
+				if (prefixLen < 8)
+				{
+					leaf.Slice(entry + 2, 8 - prefixLen).CopyTo(first8[prefixLen..]);
+				}
+				boundaryOrdinal = System.Buffers.Binary.BinaryPrimitives.ReadInt64BigEndian(first8);
+			}
+			Log($"# first leaf-parent ends at ordinal {boundaryOrdinal}");
+			Assert.That(boundaryOrdinal, Is.GreaterThan(30).And.LessThan(N - 30), "the derived boundary must leave dense flanks on both sides");
+
+			// hollow out the first parent's tail and the neighbor's head, keeping the outermost leaves dense
+			writer = engine.BeginWrite();
+			for (long i = 20; i < boundaryOrdinal + 25; i++)
+			{
+				if (i % 5 == 0) { continue; }
+				Assert.That(writer.Remove(LongKey(i)), Is.True);
+				model.Remove(i);
+			}
+			engine.Commit(writer, 2);
+
+			bool crossed = false;
+			int freed = 0;
+			for (int s = 0; s < 50; s++)
+			{
+				var outcome = engine.VacuumStep(16);
+				if (outcome.PagesFreed == 0) { break; }
+				crossed |= outcome.CrossedParentBoundary;
+				freed += outcome.PagesFreed;
+				Log($"# step {s}: in={outcome.InputPages} out={outcome.OutputPages} crossed={outcome.CrossedParentBoundary}");
+			}
+			Assert.That(freed, Is.GreaterThan(0), "the vacuum must reclaim the hollow band");
+			Assert.That(crossed, Is.True, "at least one step must consolidate across a leaf-parent boundary");
+
+			// every key reads back through the moved separators, and the audit (bounds, order, aggregates) is silent
+			var pin = engine.BeginRead();
+			try
+			{
+				Assert.That(FdbLiteTreeAudit.Check(engine.Pager, pin.RootPageId), Is.Empty, "audit after cross-parent surgery");
+				Assert.That(pin.KeyCount, Is.EqualTo((ulong) model.Count));
+				foreach (var kv in model)
+				{
+					Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, pin.RootPageId, LongKey(kv.Key), out var v), Is.True, $"key {kv.Key} missing after the boundary moved");
+					Assert.That(v.SequenceEqual(kv.Value), Is.True, $"key {kv.Key} value");
+				}
+			}
+			finally
+			{
+				engine.EndRead(in pin);
+			}
+		}
+
+		[Test]
+		public void Test_Vacuum_Packs_WriteOnce_Data_Full()
+		{
+			// the population-asymmetry posture's payoff: a single-generation random load builds its pages and
+			// mutates them in the SAME generation, so every page reads class 0 (write-once) while balanced
+			// splits leave them ~half full - and the vacuum must dare pack that to 1.00, not to 0.90
+			using var engine = CreateHeapEngine();
+			var model = new SortedDictionary<long, byte[]>();
+			var order = Enumerable.Range(0, 8_000).Select(i => (long) i).ToArray();
+			var rnd = new Random(99);
+			for (int i = order.Length - 1; i > 0; i--)
+			{
+				int j = rnd.Next(i + 1);
+				(order[i], order[j]) = (order[j], order[i]);
+			}
+			var writer = engine.BeginWrite();
+			foreach (long i in order)
+			{
+				var v = Value((int) i, 24);
+				writer.Insert(Key64(i), v);
+				model[i] = v;
+			}
+			engine.Commit(writer, 1);
+
+			var leaves = ScanLeafEpisodes(engine);
+			Assert.That(leaves.All(l => l.Episodes == 0), Is.True, "a one-generation load reads class 0 everywhere (its own interior inserts dedup against the creating generation)");
+			var before = engine.MeasureTreeStatistics();
+			Assert.That(before.FreeGapBytes, Is.GreaterThan(0), "balanced splits must have left gap, or there is nothing to reclaim");
+
+			int freed = 0;
+			for (int s = 0; s < 60; s++)
+			{
+				var outcome = engine.VacuumStep(16);
+				if (outcome.PagesFreed == 0) { break; }
+				freed += outcome.PagesFreed;
+			}
+			Assert.That(freed, Is.GreaterThan(0), "the load's half-full pages are reclaimable");
+
+			// the discriminator: at least one repacked leaf sits ABOVE the 0.90 ceiling, which only the
+			// class-0 pack-to-1.00 target can produce
+			int pageSize = engine.Pager.Geometry.PageSize;
+			var after = FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId).Groups.SelectMany(g => g).ToList();
+			Assert.That(after.Any(l => l.LiveBytes > (pageSize * 95L) / 100), Is.True, "write-once data must pack past the volatile ceiling");
+
+			AssertTreeMatchesModel(engine, model, "after packing the write-once load");
+		}
+
+		[Test]
 		public void Test_Root_Aggregates_Are_Exact_Against_The_Model()
 		{
 			// The root page's aggregate block claims the tree-wide totals in O(1); the MODEL is the oracle

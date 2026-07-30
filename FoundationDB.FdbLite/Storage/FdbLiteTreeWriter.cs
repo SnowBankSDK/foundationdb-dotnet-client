@@ -1919,6 +1919,435 @@ namespace FoundationDB.Storage.FdbLite
 
 		#endregion
 
+		#region Background vacuum...
+
+		// A vacuum step is an ordinary writer generation with NO logical changes: descend by the occupancy
+		// aggregates to the worst leaf-parent, gather the live cells of a run of adjacent sparse leaves, and
+		// re-emit them at the volatility-adaptive fill target. Same primitives as everything else; candidacy
+		// is OCCUPANCY here (not the delete-site notes), which is what lets whatever the pre-commit arm
+		// skipped on budget fall to this arm by construction. Cross-parent consolidation is in scope HERE and
+		// only here: a run may extend across ONE leaf-parent boundary into the forward neighbor's leading
+		// sparse leaves (ponytail: one boundary per step, and the neighbor keeps its last leaf so the join
+		// separator always exists one level down; longer chains take one extra step each).
+
+		/// <summary>What one vacuum pass over the worst region did.</summary>
+		public readonly record struct VacuumOutcome(int InputPages, int OutputPages, bool CrossedParentBoundary)
+		{
+			public int PagesFreed => this.InputPages - this.OutputPages;
+		}
+
+		/// <summary>Descends to the worst-occupancy leaf-parent and merges its best run of adjacent sparse leaves (possibly extending over one boundary); all-zero when nothing viable exists, in which case NOTHING was allocated or written and the generation can be abandoned.</summary>
+		public VacuumOutcome VacuumWorstRegion(int maxInputPages)
+		{
+			Contract.Requires(maxInputPages >= 2);
+			if (this.Root == 0)
+			{
+				return default;
+			}
+
+			// descend by the stored aggregates: expand only the guiltiest subtree, so the plan costs O(hot
+			// path) header peeks (raw reads on purpose: a peek is not a touch, and the pages a merge actually
+			// consumes are read verified below)
+			Span<uint> pathPages = stackalloc uint[MaxDepth];
+			Span<int> pathChildren = stackalloc int[MaxDepth];
+			int depth = 0;
+			uint pageId = this.Root;
+			int pageSize = this.Pager.Geometry.PageSize;
+			long idealPageBytes = (pageSize * 9L) / 10;
+			while (true)
+			{
+				var page = this.Pager.ReadBlocks(pageId, this.Pager.Geometry.BlocksPerPage);
+				if (FdbLitePageHeader.GetPageType(page) != FdbLitePageType.Internal)
+				{ // a root that is itself a leaf has no siblings to merge
+					return default;
+				}
+				var firstChild = this.Pager.ReadBlocks(FdbLiteTreePage.GetChild(page, 0), this.Pager.Geometry.BlocksPerPage);
+				if (FdbLitePageHeader.GetPageType(firstChild) == FdbLitePageType.Leaf)
+				{
+					break; // pageId is the target leaf-parent
+				}
+
+				int bestIndex = 0;
+				long bestOpportunity = long.MinValue;
+				int childCount = FdbLiteTreePage.GetChildCount(page);
+				for (int i = 0; i < childCount; i++)
+				{
+					var child = this.Pager.ReadBlocks(FdbLiteTreePage.GetChild(page, i), this.Pager.Geometry.BlocksPerPage);
+					long live = (long) FdbLitePageHeader.GetSubtreeLiveBytes(child);
+					long leaves = FdbLitePageHeader.GetLeafCount(child);
+					long opportunity = leaves - ((live + idealPageBytes - 1) / idealPageBytes);
+					if (opportunity > bestOpportunity)
+					{ // strictly greater: ties resolve to the leftmost child, deterministically
+						bestOpportunity = opportunity;
+						bestIndex = i;
+					}
+				}
+				Contract.Debug.Assert(depth < MaxDepth);
+				pathPages[depth] = pageId;
+				pathChildren[depth] = bestIndex;
+				depth++;
+				pageId = FdbLiteTreePage.GetChild(page, bestIndex);
+			}
+
+			return VacuumLeafParent(pageId, pathPages, pathChildren, depth, maxInputPages);
+		}
+
+		/// <summary>Finds and merges the best sparse run under one leaf-parent, extending across its forward boundary when that frees more.</summary>
+		private VacuumOutcome VacuumLeafParent(uint parentId, Span<uint> pathPages, Span<int> pathChildren, int depth, int maxInputPages)
+		{
+			var parent = ReadPage(parentId);
+			int childCount = FdbLiteTreePage.GetChildCount(parent);
+			int blocksPerPage = this.Pager.Geometry.BlocksPerPage;
+
+			// maximal stretches of sparse children (header peeks, raw on purpose: a leaf-parent can have
+			// hundreds of children and the merge verifies the pages it actually consumes), then the best
+			// same-parent run among them; the sizing is EvaluateRun's, shared with the pre-commit arm
+			ConsolidationRun? best = null;
+			int stretchStart = -1;
+			int edgeStretchStart = -1;
+			for (int i = 0; i <= childCount; i++)
+			{
+				bool sparse = i < childCount && IsUnderflowLeaf(this.Pager.ReadBlocks(FdbLiteTreePage.GetChild(parent, i), blocksPerPage));
+				if (sparse)
+				{
+					if (stretchStart < 0) { stretchStart = i; }
+					continue;
+				}
+				if (stretchStart >= 0)
+				{
+					if (i == childCount) { edgeStretchStart = stretchStart; }
+					int last = Math.Min(i - 1, stretchStart + maxInputPages - 1);
+					var run = EvaluateRun(parent, pathPages[..depth], pathChildren[..depth], depth, parentId, stretchStart, last);
+					if (run is not null && (best is null || run.PagesFreed > best.PagesFreed))
+					{
+						best = run;
+					}
+					stretchStart = -1;
+				}
+			}
+
+			// the cross-parent option: the trailing sparse stretch (if any) extended into the forward
+			// neighbor's leading sparse leaves
+			if (edgeStretchStart >= 0 && depth > 0)
+			{
+				var cross = EvaluateCrossParentRun(parent, pathPages, pathChildren, depth, parentId, edgeStretchStart, maxInputPages);
+				if (cross is not null && (best is null || cross.Value.Freed > best.PagesFreed))
+				{
+					return ExecuteCrossParentRun(cross.Value);
+				}
+			}
+
+			if (best is null)
+			{
+				return default;
+			}
+			int freed = MergeConsolidationRun(best);
+			return new(best.InputIds.Length, best.InputIds.Length - freed, CrossedParentBoundary: false);
+		}
+
+		/// <summary>Everything a cross-parent merge needs, captured against the ORIGINAL tree before any surgery.</summary>
+		private readonly record struct CrossParentRun(
+			uint[] Path1Pages, int[] Path1Children, int Depth1, uint Parent1Id, int FirstChildIndex,
+			uint[] Path2Pages, int[] Path2Children, int Depth2, uint Parent2Id, int ConsumedFromParent2,
+			int JoinLevel, byte[] JoinSeparator, uint[] InputIds, int FillCeiling, int Freed);
+
+		/// <summary>Sizes the trailing sparse stretch of one leaf-parent together with the forward neighbor's leading sparse leaves; null when no boundary, no sparse head, or nothing freed.</summary>
+		private CrossParentRun? EvaluateCrossParentRun(ReadOnlySpan<byte> parent, Span<uint> pathPages, Span<int> pathChildren, int depth, uint parentId, int firstChild, int maxInputPages)
+		{
+			// the join: the deepest ancestor where the descent did not take the last child - its next child
+			// leads to the forward neighbor, and its separator between the two is the one the merge moves
+			int joinLevel = -1;
+			for (int level = depth - 1; level >= 0; level--)
+			{
+				var ancestor = ReadPage(pathPages[level]);
+				if (pathChildren[level] < FdbLitePageHeader.GetCellCount(ancestor))
+				{
+					joinLevel = level;
+					break;
+				}
+			}
+			if (joinLevel < 0)
+			{ // this leaf-parent holds the tree's highest keys: no forward neighbor
+				return null;
+			}
+
+			// path to the neighbor: shared up to the join, its NEXT child there, then leftmost all the way down
+			var path2Pages = new uint[MaxDepth];
+			var path2Children = new int[MaxDepth];
+			pathPages[..depth].CopyTo(path2Pages);
+			pathChildren[..depth].CopyTo(path2Children);
+			path2Children[joinLevel] = pathChildren[joinLevel] + 1;
+			int depth2 = joinLevel + 1;
+			uint neighborId = FdbLiteTreePage.GetChild(ReadPage(pathPages[joinLevel]), path2Children[joinLevel]);
+			while (true)
+			{
+				var page = ReadPage(neighborId);
+				var firstChildPage = ReadPage(FdbLiteTreePage.GetChild(page, 0));
+				if (FdbLitePageHeader.GetPageType(firstChildPage) == FdbLitePageType.Leaf)
+				{
+					break;
+				}
+				Contract.Debug.Assert(depth2 < MaxDepth);
+				path2Pages[depth2] = neighborId;
+				path2Children[depth2] = 0;
+				depth2++;
+				neighborId = FdbLiteTreePage.GetChild(page, 0);
+			}
+
+			var neighbor = ReadPage(neighborId);
+			int neighborChildren = FdbLiteTreePage.GetChildCount(neighbor);
+			int p1ChildCount = FdbLiteTreePage.GetChildCount(parent);
+			int p1RunLength = p1ChildCount - firstChild;
+
+			// the neighbor's leading sparse leaves, keeping its LAST leaf whatever happens: the join separator
+			// must exist one level down (its cell b), and a fully consumed neighbor would push the surgery
+			// into an unbounded ancestor cascade
+			int consumable = 0;
+			while (consumable < neighborChildren - 1
+				&& p1RunLength + consumable < maxInputPages
+				&& IsUnderflowLeaf(ReadPage(FdbLiteTreePage.GetChild(neighbor, consumable))))
+			{
+				consumable++;
+			}
+			if (consumable == 0)
+			{
+				return null;
+			}
+
+			// combined prefix-adjusted sizing at the run's volatility ceiling
+			var inputIds = new uint[p1RunLength + consumable];
+			for (int i = 0; i < p1RunLength; i++)
+			{
+				inputIds[i] = FdbLiteTreePage.GetChild(parent, firstChild + i);
+			}
+			for (int i = 0; i < consumable; i++)
+			{
+				inputIds[p1RunLength + i] = FdbLiteTreePage.GetChild(neighbor, i);
+			}
+			long sumWhole = 0, sumValue = 0;
+			int cellTotal = 0;
+			byte maxEpisodes = 0;
+			foreach (var id in inputIds)
+			{
+				var page = ReadPage(id);
+				int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
+				int cells = FdbLitePageHeader.GetCellCount(page);
+				for (int i = 0; i < cells; i++)
+				{
+					var cell = FdbLiteTreePage.ReadLeafCell(page, i);
+					sumWhole += prefixLen + cell.KeyLength;
+					sumValue += cell.ValueLength;
+				}
+				cellTotal += cells;
+				byte episodes = FdbLitePageHeader.GetVolatilityEpisodes(page);
+				if (episodes > maxEpisodes) { maxEpisodes = episodes; }
+			}
+			if (cellTotal == 0)
+			{
+				return null;
+			}
+			var firstPage = ReadPage(inputIds[0]);
+			var lastPage = ReadPage(inputIds[^1]);
+			int lcp = FdbLiteTreePage.CommonPrefixLength(WholeKeyOf(firstPage, 0), WholeKeyOf(lastPage, FdbLitePageHeader.GetCellCount(lastPage) - 1));
+			int fillCeiling = MergedFillCeiling(maxEpisodes, this.Pager.Geometry.PageSize);
+			int outputParts = (int) ((LeafRunBytes(cellTotal, sumWhole, sumValue, lcp) + fillCeiling - 1) / fillCeiling);
+			if (outputParts >= inputIds.Length)
+			{
+				return null;
+			}
+
+			// the new lower bound of the neighbor's surviving subtree: its separator before the first
+			// surviving leaf, captured as an owned copy before any surgery rewrites the page it lives in
+			var joinSeparator = FdbLiteTreePage.GetSeparator(neighbor, consumable - 1).ToArray();
+
+			return new(
+				pathPages[..depth].ToArray(), pathChildren[..depth].ToArray(), depth, parentId, firstChild,
+				path2Pages[..depth2].ToArray(), path2Children[..depth2].ToArray(), depth2, neighborId, consumable,
+				joinLevel, joinSeparator, inputIds, fillCeiling, inputIds.Length - outputParts);
+		}
+
+		/// <summary>Executes a cross-parent merge: one emission, both leaf-parents rebuilt, and ONE combined bottom-up ascent that rebuilds every ancestor at most once and moves the join separator where the cells went.</summary>
+		private VacuumOutcome ExecuteCrossParentRun(in CrossParentRun run)
+		{
+			// gather exactly like a same-parent merge (owned buffers: part 0 rewrites the first input)
+			var buffers = new byte[run.InputIds.Length][];
+			RebuildResult merged;
+			try
+			{
+				int cellTotal = 0;
+				foreach (var id in run.InputIds)
+				{
+					cellTotal += FdbLitePageHeader.GetCellCount(ReadPage(id));
+				}
+				var cells = new CellRef[cellTotal];
+				int w = 0;
+				for (int p = 0; p < run.InputIds.Length; p++)
+				{
+					var page = ReadPage(run.InputIds[p]);
+					var prefix = FdbLiteTreePage.GetPagePrefix(page, isInternal: false);
+					int cellCount = FdbLitePageHeader.GetCellCount(page);
+					long need = 0;
+					for (int i = 0; i < cellCount; i++)
+					{
+						var c = FdbLiteTreePage.ReadLeafCell(page, i);
+						need += prefix.Length + c.KeyLength + c.ValueLength;
+					}
+					var buffer = buffers[p] = ArrayPool<byte>.Shared.Rent(checked((int) need));
+					int at = 0;
+					for (int i = 0; i < cellCount; i++)
+					{
+						var c = FdbLiteTreePage.ReadLeafCell(page, i);
+						int keyAt = at;
+						prefix.CopyTo(buffer.AsSpan(at));
+						page.Slice(c.KeyOffset, c.KeyLength).CopyTo(buffer.AsSpan(at + prefix.Length));
+						at += prefix.Length + c.KeyLength;
+						int valueAt = at;
+						page.Slice(c.ValueOffset, c.ValueLength).CopyTo(buffer.AsSpan(at));
+						at += c.ValueLength;
+						cells[w++] = new CellRef(buffer, keyAt, prefix.Length + c.KeyLength, valueAt, c.ValueLength, c.Flags);
+					}
+				}
+				Contract.Debug.Assert(w == cellTotal);
+
+				merged = WriteCells(run.InputIds[0], isInternal: false, leftmostChild: 0, default, cells, run.FillCeiling);
+				for (int p = 1; p < run.InputIds.Length; p++)
+				{
+					FreePage(run.InputIds[p]);
+				}
+			}
+			finally
+			{
+				foreach (var buffer in buffers)
+				{
+					if (buffer is not null) { ArrayPool<byte>.Shared.Return(buffer); }
+				}
+			}
+
+			// both leaf-parents rebuilt against their ORIGINAL images, then one combined ascent
+			int p1LastChild = FdbLiteTreePage.GetChildCount(ReadPage(run.Parent1Id)) - 1;
+			var outcome1 = RebuildInternalReplaceRun(run.Parent1Id, run.FirstChildIndex, p1LastChild, merged);
+			var outcome2 = RebuildInternalDropLeadingChildren(run.Parent2Id, run.ConsumedFromParent2);
+
+			AscendPatchPair(
+				run.Path1Pages, run.Path1Children, run.Depth1, outcome1,
+				run.Path2Pages, run.Path2Children, run.Depth2, outcome2,
+				run.JoinLevel, run.JoinSeparator);
+
+			this.CursorLeaf = 0;
+			int outputs = 1 + (merged.Siblings?.Count ?? 0);
+			return new(run.InputIds.Length, outputs, CrossedParentBoundary: true);
+		}
+
+		/// <summary>Rebuilds an internal page without its first <paramref name="dropCount"/> children (their separator cells drop with them; never splits, it only shrinks).</summary>
+		private RebuildResult RebuildInternalDropLeadingChildren(uint pageId, int dropCount)
+		{
+			var page = ReadPage(pageId);
+			int cellCount = FdbLitePageHeader.GetCellCount(page);
+			Contract.Debug.Requires(dropCount >= 1 && dropCount <= cellCount, "the page must keep at least one child");
+
+			// children 0..dropCount-1 die: cell dropCount-1's child becomes the new leftmost, and cells
+			// 0..dropCount-1 (the separators of the dropped range) disappear
+			uint leftmost = FdbLiteTreePage.GetChild(page, dropCount);
+			var cells = new CellRef[cellCount - dropCount];
+			for (int i = dropCount; i < cellCount; i++)
+			{
+				cells[i - dropCount] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+			}
+			var outcome = WriteCells(pageId, isInternal: true, leftmost, page, cells);
+			Contract.Debug.Assert(!outcome.Split);
+			return outcome;
+		}
+
+		/// <summary>Rebuilds the JOIN ancestor: the left-path child carries the merge's parts, the right-path child is the neighbor's rebuilt remainder, and the separator between them moves to <paramref name="joinSeparator"/> - the bound of the cells that stayed behind.</summary>
+		private RebuildResult RebuildInternalJoin(uint pageId, int leftChildIndex, in RebuildResult left, in RebuildResult right, byte[] joinSeparator)
+		{
+			Contract.Debug.Requires(right.Siblings is null, "the right side only shrinks");
+			var page = ReadPage(pageId);
+			int cellCount = FdbLitePageHeader.GetCellCount(page);
+			int inserted = left.Siblings?.Count ?? 0;
+
+			byte[]? patchScratch = null;
+			byte[]? joinScratch = null;
+			var siblingScratch = new byte[inserted][];
+			try
+			{
+				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
+				var patchedCell = default(CellRef);
+				if (leftChildIndex == 0)
+				{
+					leftmost = left.FirstId;
+				}
+				else
+				{
+					var original = FdbLiteTreePage.GetInternalCell(page, leftChildIndex - 1);
+					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
+					original.CopyTo(patchScratch);
+					FdbLiteTreePage.PatchInternalCellChild(patchScratch, left.FirstId);
+					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
+				}
+
+				// cell leftChildIndex (the separator between the two paths) is rebuilt outright: new key, new child
+				joinScratch = ArrayPool<byte>.Shared.Rent(6 + joinSeparator.Length);
+				int joinLen = FdbLiteTreePage.BuildInternalCell(joinScratch, right.FirstId, joinSeparator).Length;
+
+				var cells = new CellRef[cellCount + inserted];
+				int w = 0;
+				for (int i = 0; i < cellCount; i++)
+				{
+					if (i == leftChildIndex)
+					{ // the merge's extra parts sit between the left child and the moved separator
+						for (int s = 0; s < inserted; s++)
+						{
+							var (separator, siblingId) = left.Siblings![s];
+							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
+							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator).Length;
+							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
+						}
+						cells[w++] = CellRef.OfInternalBuffer(joinScratch, joinLen);
+						continue;
+					}
+					cells[w++] = (i == leftChildIndex - 1) ? patchedCell : CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+				}
+				Contract.Debug.Assert(w == cells.Length);
+
+				return WriteCells(pageId, isInternal: true, leftmost, page, cells);
+			}
+			finally
+			{
+				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
+				if (joinScratch != null) { ArrayPool<byte>.Shared.Return(joinScratch); }
+				foreach (var s in siblingScratch)
+				{
+					if (s != null) { ArrayPool<byte>.Shared.Return(s); }
+				}
+			}
+		}
+
+		/// <summary>The two-path ascent of a cross-parent merge: each side climbs to (not including) the join level, the join ancestor is rebuilt ONCE with both sides and the moved separator, and one ordinary ascent continues above it.</summary>
+		/// <remarks>Every page along both paths is rebuilt at most once, strictly bottom-up, each read against its pre-surgery image - which is what makes the recorded paths safe to use without re-descending between the surgeries.</remarks>
+		private void AscendPatchPair(
+			uint[] path1Pages, int[] path1Children, int depth1, RebuildResult outcome1,
+			uint[] path2Pages, int[] path2Children, int depth2, RebuildResult outcome2,
+			int joinLevel, byte[] joinSeparator)
+		{
+			// no in-place early-out on either side: the join rebuild must observe both sides' final ids, so
+			// every level below it rebuilds even when a child kept its id
+			for (int level = depth1 - 1; level > joinLevel; level--)
+			{
+				outcome1 = RebuildInternal(path1Pages[level], path1Children[level], outcome1);
+			}
+			for (int level = depth2 - 1; level > joinLevel; level--)
+			{
+				outcome2 = RebuildInternal(path2Pages[level], path2Children[level], outcome2);
+			}
+			Contract.Debug.Assert(!outcome2.Split, "the right side of a cross-parent merge only shrinks");
+
+			var joined = RebuildInternalJoin(path1Pages[joinLevel], path1Children[joinLevel], in outcome1, in outcome2, joinSeparator);
+			AscendPatch(path1Pages.AsSpan(0, joinLevel), path1Children.AsSpan(0, joinLevel), joinLevel - 1, path1Pages[joinLevel], joined);
+		}
+
+		#endregion
+
 		#region Spill-on-split opportunity probe...
 
 		/// <summary>Measures, at a leaf split that just happened, whether an adjacent same-parent sibling already in the dirty set could have absorbed the overflow instead (see <see cref="LeafSplitsAbsorbableByDirtySibling"/>).</summary>
