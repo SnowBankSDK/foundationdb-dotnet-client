@@ -173,6 +173,245 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(saturatedRegion.All(l => l.Episodes == 255), Is.True, "every part of a split volatile page carries its history");
 		}
 
+		/// <summary>Audits structure + aggregates and verifies every model key reads back exactly.</summary>
+		private static void AssertTreeMatchesModel(FdbLiteEngine engine, SortedDictionary<long, byte[]> model, string phase)
+		{
+			var pin = engine.BeginRead();
+			try
+			{
+				Assert.That(FdbLiteTreeAudit.Check(engine.Pager, pin.RootPageId), Is.Empty, $"{phase}: audit");
+				Assert.That(pin.KeyCount, Is.EqualTo((ulong) model.Count), $"{phase}: key count");
+				foreach (var kv in model)
+				{
+					Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, pin.RootPageId, Key64(kv.Key), out var v), Is.True, $"{phase}: key {kv.Key} missing");
+					if (!v.SequenceEqual(kv.Value))
+					{
+						Assert.Fail($"{phase}: key {kv.Key} value mismatch ({v.Length} vs {kv.Value.Length} B)");
+					}
+				}
+			}
+			finally
+			{
+				engine.EndRead(in pin);
+			}
+		}
+
+		[Test]
+		public void Test_PreCommit_Consolidation_Merges_Underflow_Runs()
+		{
+			// the trail shape: a packed store whose region [1000, 5000) loses 80% of its keys, leaving a run
+			// of adjacent under-full leaves that the pre-commit arm must merge - correctly, measurably, and
+			// with reset-on-repack semantics on the outputs
+			const int N = 8_000;
+			var deleted = new List<long>();
+
+			(FdbLiteEngine Engine, SortedDictionary<long, byte[]> Model, FdbLiteTreeWriter LastWriter) Run(FdbLitePreCommitConsolidation policy)
+			{
+				var engine = CreateHeapEngine();
+				engine.PreCommitConsolidation = policy;
+				var model = new SortedDictionary<long, byte[]>();
+
+				var writer = engine.BeginWrite();
+				for (long i = 0; i < N; i++)
+				{
+					var v = Value((int) i, 24);
+					writer.Insert(Key64(i), v);
+					model[i] = v;
+				}
+				var big1 = Value(70001, 60_000); // extent values inside the churned range: they must ride the merge untouched
+				var big2 = Value(70002, 60_000);
+				writer.Insert(Key64(2_000), big1);
+				model[2_000] = big1;
+				writer.Insert(Key64(3_000), big2);
+				model[3_000] = big2;
+				engine.Commit(writer, 1);
+
+				writer = engine.BeginWrite();
+				deleted.Clear();
+				for (long i = 1_000; i < 5_000; i++)
+				{
+					if (i % 5 == 0 || i is 2_000 or 3_000) { continue; } // keep every 5th, and the extents
+					Assert.That(writer.Remove(Key64(i)), Is.True);
+					model.Remove(i);
+					deleted.Add(i);
+				}
+				engine.Commit(writer, 2);
+				return (engine, model, writer);
+			}
+
+			var (control, controlModel, controlWriter) = Run(FdbLitePreCommitConsolidation.Off);
+			using var _c = control;
+			Assert.That(controlWriter.ConsolidationRunsMerged, Is.Zero, "Off must not merge");
+
+			var (engine, model, writer) = Run(FdbLitePreCommitConsolidation.FixedBudget(16));
+			using var _e = engine;
+
+			// the mechanism fired - a merge that silently never engages is indistinguishable from a correct
+			// one by content alone, so the counters are load-bearing assertions, not diagnostics
+			Log($"# merged runs={writer.ConsolidationRunsMerged} pagesFreed={writer.ConsolidationPagesFreed} coldPulled={writer.ConsolidationColdPagesPulled}");
+			Assert.That(writer.ConsolidationRunsMerged, Is.GreaterThan(0), "the arm must have merged at least one run");
+			Assert.That(writer.ConsolidationPagesFreed, Is.GreaterThan(0), "merging must have freed pages");
+
+			// keys and values are intact, structure and aggregates audit clean
+			AssertTreeMatchesModel(engine, model, "after consolidation");
+			Assert.That(model.Keys.ToList(), Is.EqualTo(controlModel.Keys.ToList()).AsCollection, "both arms saw identical operations");
+
+			// fewer leaves than the identical workload without the arm
+			var mergedStats = engine.MeasureTreeStatistics();
+			var controlStats = control.MeasureTreeStatistics();
+			Log($"# leaves: consolidated={mergedStats.LeafPages} control={controlStats.LeafPages}");
+			Assert.That(mergedStats.LeafPages, Is.LessThan(controlStats.LeafPages), "consolidation must reduce the leaf population");
+
+			// reset-on-repack, both ways: a merged output restarts at zero episodes, while the same shape
+			// left unmerged keeps the delete episode it was branded with
+			var mergedRegion = ScanLeafEpisodes(engine).Where(l => l.LastKey >= 1_000 && l.FirstKey < 5_000).ToList();
+			var controlRegion = ScanLeafEpisodes(control).Where(l => l.LastKey >= 1_000 && l.FirstKey < 5_000).ToList();
+			Assert.That(mergedRegion.Count(l => l.Episodes == 0), Is.GreaterThan(0), "merged outputs restart at zero (reset-on-repack)");
+			Assert.That(controlRegion.All(l => l.Episodes >= 1), Is.True, "without a repack the delete episode stays");
+
+			// the hysteresis MECHANISM: a class-1 run (its inputs carry the delete episode) packs to 0.90,
+			// never to capacity, so every merged output must sit at or under the ceiling with real headroom
+			int pageSize = engine.Pager.Geometry.PageSize;
+			long ceiling = (pageSize * 9L) / 10;
+			foreach (var group in FdbLiteLeafAnalysis.Snapshot(engine.Pager, engine.Durable.RootPageId).Groups)
+			{
+				foreach (var leaf in group.Where(l => l.LastKey >= 1_000 && l.FirstKey < 5_000 && l.FirstKey > 0 && FdbLitePageHeader.GetVolatilityEpisodes(ReadPage(engine, l.PageId)) == 0))
+				{
+					Log($"# merged output {leaf.PageId}: [{leaf.FirstKey}..{leaf.LastKey}] cells={leaf.CellCount} live={leaf.LiveBytes}");
+					Assert.That(leaf.LiveBytes, Is.LessThanOrEqualTo(ceiling), $"a merged class-1 output must honor the 0.90 fill target (page {leaf.PageId})");
+				}
+			}
+
+			// hysteresis: the workload continues with mutations inside the headroom the fill target promised
+			// (up to ~10% of each merged page), and the merged run must not immediately re-split - the
+			// measured bar is 0%; a refill LARGER than the promised headroom is regrowth, and regrowth
+			// splitting is the tree working as designed, not oscillation
+			var reinsert = deleted.Where((_, i) => i % 40 == 0).ToList();
+			var w2 = engine.BeginWrite();
+			foreach (var i in reinsert)
+			{
+				var v = Value((int) i, 24);
+				w2.Insert(Key64(i), v);
+				model[i] = v;
+			}
+			engine.Commit(w2, 3);
+			Assert.That(w2.LeafSplits, Is.Zero, $"re-inserting {reinsert.Count} keys into the merged region must not re-split it");
+			AssertTreeMatchesModel(engine, model, "after hysteresis reinserts");
+
+			// the extents rode the merge: still readable (checked above), and still deletable exactly once
+			var w3 = engine.BeginWrite();
+			Assert.That(w3.Remove(Key64(2_000)), Is.True);
+			model.Remove(2_000);
+			engine.Commit(w3, 4);
+			AssertTreeMatchesModel(engine, model, "after removing a merged extent");
+		}
+
+		[Test]
+		public void Test_Consolidation_Pulls_A_Cold_Sparse_Neighbor()
+		{
+			// commit 2 leaves a sparse COMMITTED (cold) region behind with consolidation off; commit 3 then
+			// shrinks the adjacent region with the arm on, and the merge may pull at most one cold leaf per
+			// run edge - as measured, the write count DROPS while an extra page frees per ~one cold read
+			using var engine = CreateHeapEngine();
+			var model = new SortedDictionary<long, byte[]>();
+
+			const int N = 6_000;
+			var writer = engine.BeginWrite();
+			for (long i = 0; i < N; i++)
+			{
+				var v = Value((int) i, 24);
+				writer.Insert(Key64(i), v);
+				model[i] = v;
+			}
+			engine.Commit(writer, 1);
+
+			// make [2000, 3000) sparse while the arm is off: these leaves commit cold and sparse
+			writer = engine.BeginWrite();
+			for (long i = 2_000; i < 3_000; i++)
+			{
+				if (i % 5 == 0) { continue; }
+				Assert.That(writer.Remove(Key64(i)), Is.True);
+				model.Remove(i);
+			}
+			engine.Commit(writer, 2);
+			Assert.That(writer.ConsolidationRunsMerged, Is.Zero);
+
+			// now shrink the adjacent region with the arm on: runs ending at the cold boundary can extend
+			engine.PreCommitConsolidation = FdbLitePreCommitConsolidation.FixedBudget(16);
+			writer = engine.BeginWrite();
+			for (long i = 3_000; i < 4_000; i++)
+			{
+				if (i % 5 == 0) { continue; }
+				Assert.That(writer.Remove(Key64(i)), Is.True);
+				model.Remove(i);
+			}
+			engine.Commit(writer, 3);
+
+			Log($"# merged runs={writer.ConsolidationRunsMerged} pagesFreed={writer.ConsolidationPagesFreed} coldPulled={writer.ConsolidationColdPagesPulled}");
+			Assert.That(writer.ConsolidationRunsMerged, Is.GreaterThan(0), "the arm must have merged");
+			Assert.That(writer.ConsolidationColdPagesPulled, Is.GreaterThan(0), "a cold sparse neighbor must have been pulled into a merge");
+			AssertTreeMatchesModel(engine, model, "after cold-neighbor consolidation");
+		}
+
+		[Test]
+		public void Test_Consolidation_Is_Deterministic_Run_To_Run()
+		{
+			// the emulator posture: Off produces identical trees trivially, and FixedBudget must too - the
+			// candidate order is deterministic and no wall clock is consulted anywhere on that path
+			static (FdbLiteEngine Engine, long Merged) Run(FdbLitePreCommitConsolidation policy)
+			{
+				var engine = CreateHeapEngine();
+				engine.PreCommitConsolidation = policy;
+				var rnd = new Random(555);
+				long merged = 0;
+				ulong version = 1;
+				for (int round = 0; round < 6; round++)
+				{
+					var w = engine.BeginWrite();
+					for (int op = 0; op < 3_000; op++)
+					{
+						long i = rnd.Next(10_000);
+						if (rnd.Next(10) < 6)
+						{
+							w.Insert(Key64(i), Value((int) i ^ round, rnd.Next(0, 80)));
+						}
+						else
+						{
+							w.Remove(Key64(i));
+						}
+					}
+					engine.Commit(w, version++);
+					merged += w.ConsolidationRunsMerged;
+				}
+				return (engine, merged);
+			}
+
+			foreach (var policy in new[] { FdbLitePreCommitConsolidation.Off, FdbLitePreCommitConsolidation.FixedBudget(4) })
+			{
+				var (a, mergedA) = Run(policy);
+				var (b, mergedB) = Run(policy);
+				using var _a = a;
+				using var _b = b;
+
+				Assert.That(mergedA, Is.EqualTo(mergedB), $"[{policy}] merge counts must match run to run");
+				Assert.That(b.Durable.RootPageId, Is.EqualTo(a.Durable.RootPageId), $"[{policy}] root page id");
+				Assert.That(b.Durable.KeyCount, Is.EqualTo(a.Durable.KeyCount), $"[{policy}] key count");
+				Assert.That(b.MeasureTreeStatistics(), Is.EqualTo(a.MeasureTreeStatistics()), $"[{policy}] statistics");
+
+				// byte-for-byte: every reachable page of the final generation is identical
+				var leavesA = FdbLiteLeafAnalysis.Snapshot(a.Pager, a.Durable.RootPageId).LeafIds.OrderBy(x => x).ToList();
+				var leavesB = FdbLiteLeafAnalysis.Snapshot(b.Pager, b.Durable.RootPageId).LeafIds.OrderBy(x => x).ToList();
+				Assert.That(leavesB, Is.EqualTo(leavesA).AsCollection, $"[{policy}] leaf id sets");
+				foreach (var id in leavesA)
+				{
+					if (!a.Pager.ReadBlocks(id, a.Pager.Geometry.BlocksPerPage).SequenceEqual(b.Pager.ReadBlocks(id, b.Pager.Geometry.BlocksPerPage)))
+					{
+						Assert.Fail($"[{policy}] leaf {id} differs between two identical runs");
+					}
+				}
+			}
+		}
+
 		[Test]
 		public void Test_Root_Aggregates_Are_Exact_Against_The_Model()
 		{

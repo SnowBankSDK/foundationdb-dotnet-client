@@ -27,6 +27,43 @@
 namespace FoundationDB.Storage.FdbLite
 {
 
+	/// <summary>Policy for merging under-full dirty leaves at commit, before the flush (the pre-commit consolidation arm).</summary>
+	/// <remarks>
+	/// <para><see cref="Off"/> is the deterministic default and the EMULATOR posture: wall-clock heuristics are nondeterministic, and a determinism-sensitive configuration must never inherit one silently. <see cref="FixedBudget"/> merges up to K runs per commit, deterministically, which is also what lets a test exercise the merge machinery byte-for-byte reproducibly. <see cref="Adaptive"/> spends a fraction of the recent commit cost (an EMA the engine maintains) and is the file store's shipped default; whatever it skips falls to the background vacuum by construction.</para>
+	/// </remarks>
+	public readonly struct FdbLitePreCommitConsolidation
+	{
+
+		private FdbLitePreCommitConsolidation(int maxRuns, bool adaptive)
+		{
+			this.MaxRuns = maxRuns;
+			this.IsAdaptive = adaptive;
+		}
+
+		/// <summary>No consolidation: every commit flushes exactly what the transaction dirtied.</summary>
+		public static FdbLitePreCommitConsolidation Off => default;
+
+		/// <summary>Merge up to <paramref name="maxRuns"/> candidate runs per commit, best run first, deterministically.</summary>
+		public static FdbLitePreCommitConsolidation FixedBudget(int maxRuns)
+		{
+			Contract.Positive(maxRuns);
+			return new(maxRuns, adaptive: false);
+		}
+
+		/// <summary>Spend up to a fraction of the recent commit wall time per commit (see <see cref="FdbLiteEngine.ConsolidationBudgetFraction"/>), under a hard page cap; candidate order stays deterministic, the clock decides only where the loop stops.</summary>
+		public static FdbLitePreCommitConsolidation Adaptive => new(0, adaptive: true);
+
+		internal int MaxRuns { get; }
+
+		internal bool IsAdaptive { get; }
+
+		internal bool IsOff => !this.IsAdaptive && this.MaxRuns == 0;
+
+		/// <inheritdoc />
+		public override string ToString() => this.IsAdaptive ? "Adaptive" : this.MaxRuns > 0 ? $"FixedBudget({this.MaxRuns})" : "Off";
+
+	}
+
 	/// <summary>The engine facade: opens or creates a store, runs the two-fsync commit protocol, and manages read-snapshot pins.</summary>
 	/// <remarks>
 	/// <para>Commit protocol: COW data blocks and the fresh free-list chain are written and flushed FIRST; only then is the alternate snapshot-header slot written and flushed. A crash before the second flush leaves the previous header valid, and because the free-list chain is rewritten fresh each commit, reopening at the previous generation automatically forgets every allocation the torn generation made: crash recovery needs no sweep at all.</para>
@@ -153,20 +190,57 @@ namespace FoundationDB.Storage.FdbLite
 		/// re-opening a stale file with a different geometry silently keeps the old one.</remarks>
 		public static FdbLiteEngine OpenOrCreateFile(string path, FdbLiteGeometry geometry, int regionSizeInBytes = FdbLiteMemoryMappedPager.DefaultRegionSizeInBytes, long initialSizeInBytes = 0)
 		{
+			FdbLiteEngine engine;
 			if (File.Exists(path) && new FileInfo(path).Length > 0)
 			{
 				var existing = FdbLiteMemoryMappedPager.ReadGeometry(path);
 				var pager = FdbLiteMemoryMappedPager.Open(path, existing, regionSizeInBytes, initialSizeInBytes);
-				return Open(pager);
+				engine = Open(pager);
 			}
-			var fresh = FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes, initialSizeInBytes);
-			return Create(fresh);
+			else
+			{
+				var fresh = FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes, initialSizeInBytes);
+				engine = Create(fresh);
+			}
+			// the file store's shipped default (a caller that needs determinism sets Off explicitly); engines
+			// built over a raw pager - the emulator among them - keep the deterministic Off default
+			engine.PreCommitConsolidation = FdbLitePreCommitConsolidation.Adaptive;
+			return engine;
 		}
 
 		#region Writing...
 
 		/// <summary>Append policy handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.AvoidSequentialAppendSplits"/>).</summary>
 		public bool AvoidSequentialAppendSplits { get; set; } = true;
+
+		/// <summary>Pre-commit consolidation policy (see <see cref="FdbLitePreCommitConsolidation"/>): <see cref="FdbLitePreCommitConsolidation.Off"/> by default, so the emulator and every determinism-sensitive configuration stays deterministic unless explicitly asked otherwise. <see cref="OpenOrCreateFile"/> ships file-backed stores with <see cref="FdbLitePreCommitConsolidation.Adaptive"/>.</summary>
+		public FdbLitePreCommitConsolidation PreCommitConsolidation { get; set; } = FdbLitePreCommitConsolidation.Off;
+
+		/// <summary>Hard cap on input pages one commit's consolidation may consume, whatever the budget says (safety against a pathological budget estimate).</summary>
+		public const int ConsolidationHardPageCap = 48;
+
+		/// <summary>Fraction of the recent commit cost the adaptive policy may spend per commit: the measured consolidation work runs mean 1-10% (max 13%) of a commit's own page-write bytes, so a tenth of the EMA already covers the median generation on every measured shape.</summary>
+		public const double ConsolidationBudgetFraction = 0.10;
+
+		/// <summary>Commits observed before the adaptive policy engages (the EMA seeds on commits that ran without consolidation).</summary>
+		private const int AdaptiveSeedCommits = 4;
+
+		/// <summary>EMA of total commit wall time (fsyncs included), in <see cref="Stopwatch"/> ticks</summary>
+		private double CommitEmaStopwatchTicks { get; set; }
+
+		private int CommitSamples { get; set; }
+
+		/// <summary>Runs merged by pre-commit consolidation over this engine's lifetime</summary>
+		public long ConsolidationRunsMerged { get; private set; }
+
+		/// <summary>Viable runs left unmerged when a commit's consolidation stopped on its budget or caps: the number that distinguishes a heuristic that silently never fires from one that fires and does nothing</summary>
+		public long ConsolidationRunsSkipped { get; private set; }
+
+		/// <summary>Net pages freed by pre-commit consolidation over this engine's lifetime</summary>
+		public long ConsolidationPagesFreed { get; private set; }
+
+		/// <summary>The current commit-cost EMA the adaptive budget is a fraction of (zero until the first commit)</summary>
+		public TimeSpan CommitDurationEma => Stopwatch.GetElapsedTime(0, (long) this.CommitEmaStopwatchTicks);
 
 		/// <summary>Starts the writable generation (exactly one at a time; commit or abandon it before starting another).</summary>
 		public FdbLiteTreeWriter BeginWrite() => new(this.Pager, this.Allocator, this.Durable.Generation + 1, this.Durable.RootPageId) { AvoidSequentialAppendSplits = this.AvoidSequentialAppendSplits };
@@ -176,6 +250,14 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			Contract.NotNull(writer);
 			Contract.Requires(writer.Generation == this.Durable.Generation + 1, "commit out of order");
+
+			// the EMA measures the TOTAL commit wall time, fsyncs and consolidation included: it is the cost
+			// baseline the adaptive budget takes its fraction of
+			long commitStart = Stopwatch.GetTimestamp();
+
+			// consolidation runs BEFORE the flush, while under-full dirty pages are still in-process buffers:
+			// merging them here removes page writes from the flush instead of adding any
+			RunPreCommitConsolidation(writer);
 
 			// the writer holds its modified page images until now, so they must reach the pager before anything
 			// else this commit writes, and well before the first flush barrier below
@@ -233,6 +315,50 @@ namespace FoundationDB.Storage.FdbLite
 
 			// blocks freed by generations nothing can see anymore become reusable
 			this.FreeSpace.Promote(ComputePromoteLimit(this.Durable.Generation + 1));
+
+			UpdateCommitEma(commitStart);
+		}
+
+		/// <summary>Runs the configured pre-commit consolidation on the writer, before its dirty set flushes.</summary>
+		private void RunPreCommitConsolidation(FdbLiteTreeWriter writer)
+		{
+			var policy = this.PreCommitConsolidation;
+			if (policy.IsOff)
+			{
+				return;
+			}
+
+			(int Merged, int Freed) result;
+			if (!policy.IsAdaptive)
+			{
+				result = writer.ConsolidateUnderflow(policy.MaxRuns, ConsolidationHardPageCap);
+			}
+			else if (this.CommitSamples < AdaptiveSeedCommits)
+			{ // the EMA seeds on the first commits running WITHOUT consolidation, so the very first budget is
+			  // derived from this store's real commit cost rather than from a guess
+				return;
+			}
+			else
+			{
+				// the stopwatch decides only WHERE THE LOOP STOPS, never the order: two runs of the same
+				// commit differ at most in a suffix of the merge list, and that suffix falls to the
+				// background vacuum by construction - which is what makes a wall-clock heuristic tolerable
+				double budgetTicks = this.CommitEmaStopwatchTicks * ConsolidationBudgetFraction;
+				long start = Stopwatch.GetTimestamp();
+				result = writer.ConsolidateUnderflow(int.MaxValue, ConsolidationHardPageCap, () => Stopwatch.GetTimestamp() - start > budgetTicks);
+			}
+
+			this.ConsolidationRunsMerged += result.Merged;
+			this.ConsolidationPagesFreed += result.Freed;
+			this.ConsolidationRunsSkipped += writer.ConsolidationRunsSkipped;
+		}
+
+		private void UpdateCommitEma(long startTimestamp)
+		{
+			long elapsed = Stopwatch.GetTimestamp() - startTimestamp;
+			// alpha 0.2: a few commits of history, quick to follow a workload change, immune to one outlier
+			this.CommitEmaStopwatchTicks = this.CommitSamples == 0 ? elapsed : (this.CommitEmaStopwatchTicks * 0.8) + (elapsed * 0.2);
+			this.CommitSamples++;
 		}
 
 		/// <summary>Highest freed-at generation that is reusable while building <paramref name="buildingGeneration"/>: below the previous durable root, and at or below the oldest pin.</summary>

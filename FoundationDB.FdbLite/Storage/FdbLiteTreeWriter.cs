@@ -542,6 +542,10 @@ namespace FoundationDB.Storage.FdbLite
 			bool firstMutationThisGeneration = FdbLitePageHeader.GetGeneration(page) != this.Generation;
 			var outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
 			BumpVolatilityEpisodeAfterRebuild(in outcome, episode: true, firstMutationThisGeneration);
+			if (!outcome.Split && this.Dirty.TryGetValue(outcome.FirstId, out var shrunk))
+			{ // delete-driven underflow is exactly what the pre-commit consolidation arm feeds on
+				NoteUnderflowCandidate(outcome.FirstId, shrunk);
+			}
 			AscendPatch(pathPages, pathChildren, depth - 1, leafId, outcome);
 
 			// The page survived: it holds the same key RANGE, its parent's separators did not move, and the
@@ -723,6 +727,7 @@ namespace FoundationDB.Storage.FdbLite
 					{
 						this.CellsOverwritten++;
 						BumpVolatilityEpisode(image); // an in-place value mutation is an episode
+						NoteUnderflowCandidate(leafId, image); // a shrink can leave the page under the threshold
 						// deliberately NOT KeyCountDelta: a replace introduces no key
 						return true;
 					}
@@ -780,6 +785,7 @@ namespace FoundationDB.Storage.FdbLite
 			this.CellsRemovedInPlace++;
 			this.KeyCountDelta--;
 			BumpVolatilityEpisode(image); // a delete is an episode
+			NoteUnderflowCandidate(leafId, image);
 			removed = true;
 			return true;
 		}
@@ -842,6 +848,7 @@ namespace FoundationDB.Storage.FdbLite
 				}
 				BumpVolatilityEpisode(copy); // an in-place value mutation is an episode (this is its first-touch form)
 				newId = WritePage(leafId, copy);
+				NoteUnderflowCandidate(newId, copy); // after WritePage: a first touch relocates, and the note must name the page that exists
 			}
 			finally
 			{
@@ -949,6 +956,11 @@ namespace FoundationDB.Storage.FdbLite
 
 			var outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
 			BumpVolatilityEpisodeAfterRebuild(in outcome, episode, firstMutationThisGeneration);
+			if (replace && !outcome.Split && this.Dirty.TryGetValue(outcome.FirstId, out var replaced))
+			{ // a shrinking replace is a shrink site like any other (an insert or a split is growth, and growth
+			  // must never seed a consolidation candidate: repacking a growing region invites split/merge cycles)
+				NoteUnderflowCandidate(outcome.FirstId, replaced);
+			}
 			return outcome;
 		}
 
@@ -1133,7 +1145,8 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Writes a rebuilt cell list as one page, or as a K-way split when it does not fit (greedy: each page takes the largest prefix that fits).</summary>
-		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, CellRef[] cells)
+		/// <param name="maxLeafFillBytes">Fill ceiling per emitted LEAF page (0 = the page size): a consolidation merge aims each part at its volatility-adaptive target instead of packing to capacity, which is the hysteresis that keeps a merged run from re-splitting under the workload that produced it</param>
+		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, CellRef[] cells, int maxLeafFillBytes = 0)
 		{
 			var type = isInternal ? FdbLitePageType.Internal : FdbLitePageType.Leaf;
 			int pageSize = this.Pager.Geometry.PageSize;
@@ -1220,8 +1233,11 @@ namespace FoundationDB.Storage.FdbLite
 				// siblings that collapse occupancy to ~20% under random inserts (a full left page re-splits on
 				// its very next insert); aiming each part at total/K keeps post-split occupancy near half, and
 				// the hard per-page limit still absorbs the adversarial giant-cell cases
-				int partCount = (int) ((totalBytes + usable - 1) / usable);
-				long targetBytes = partCount > 1 ? (totalBytes + partCount - 1) / partCount : long.MaxValue;
+				long fillCeiling = !isInternal && maxLeafFillBytes > 0 ? Math.Min(maxLeafFillBytes, usable) : usable;
+				int partCount = (int) ((totalBytes + fillCeiling - 1) / fillCeiling);
+				long targetBytes = partCount > 1 ? (totalBytes + partCount - 1) / partCount
+					: maxLeafFillBytes > 0 ? fillCeiling
+					: long.MaxValue;
 
 				int start = 0;
 				uint partLeftmost = leftmostChild;
@@ -1503,6 +1519,402 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			FdbLitePageHeader.SetCellCount(image, (ushort) count);
 			FdbLitePageHeader.SetCellAreaOffset(image, count > 0 ? (ushort) tail : (ushort) 0);
+		}
+
+		#endregion
+
+		#region Pre-commit consolidation...
+
+		// The pre-commit consolidation arm: dirty pages have not been written yet, so merging N of them into
+		// fewer REMOVES page writes from the flush and frees their pages immediately. The trigger is
+		// delete/shrink-driven underflow ONLY: a page that is under-full because its region is GROWING (a fresh
+		// append page, a freshly split half) must never be repacked, or the next insert re-splits it - which is
+		// why candidacy comes from the mutation sites' notes and never from occupancy alone.
+
+		/// <summary>Leaves this generation noted as consolidation candidates at a delete or shrink site (advisory: each is re-validated at consume time).</summary>
+		private HashSet<uint> UnderflowCandidates { get; } = [ ];
+
+		/// <summary>Candidate runs merged by this writer's pre-commit consolidation</summary>
+		public int ConsolidationRunsMerged { get; private set; }
+
+		/// <summary>Net pages freed by consolidation (inputs minus merged outputs)</summary>
+		public int ConsolidationPagesFreed { get; private set; }
+
+		/// <summary>Cold (clean, committed) sparse neighbors pulled into a merge at a run edge</summary>
+		public int ConsolidationColdPagesPulled { get; private set; }
+
+		/// <summary>Viable runs left unmerged when the consolidation loop stopped on its budget or caps</summary>
+		public int ConsolidationRunsSkipped { get; private set; }
+
+		/// <summary>Underflow: live bytes strictly below U = 0.60 of the page (the ruled threshold; it moves far more space than the fill target, and 0.60 sits a comfortable margin from the measured U=0.70 oscillation cliff).</summary>
+		private static bool IsUnderflowLeaf(ReadOnlySpan<byte> page)
+			=> FdbLiteTreePage.LeafLiveBytes(page) * 10 < (long) page.Length * 6;
+
+		/// <summary>Fill ceiling of a merged run, from the run's volatility class: pack-full is the default posture, headroom the lavish exception for the small volatile population (class 0 packs to 1.00, class 1 to 0.90, class 2+ to 0.85 - the measured target that re-split nowhere).</summary>
+		private static int MergedFillCeiling(byte maxEpisodes, int pageSize)
+			=> maxEpisodes == 0 ? pageSize
+			 : maxEpisodes == 1 ? (pageSize * 9) / 10
+			 : (pageSize * 85) / 100;
+
+		/// <summary>Notes a leaf as a consolidation candidate when the mutation that just shrank it left it under the underflow threshold.</summary>
+		private void NoteUnderflowCandidate(uint leafId, ReadOnlySpan<byte> image)
+		{
+			if (IsUnderflowLeaf(image))
+			{
+				this.UnderflowCandidates.Add(leafId);
+			}
+		}
+
+		/// <summary>One mergeable run: adjacent under-same-parent leaves (noted candidates, optionally extended by one cold sparse neighbor per edge) whose combined prefix-adjusted live bytes fit fewer pages at the volatility-adaptive fill target.</summary>
+		private sealed record ConsolidationRun(uint[] PathPages, int[] PathChildren, int Depth, uint ParentId, int FirstChildIndex, int LastChildIndex, uint[] InputIds, int OutputParts, int FillCeiling, int ColdPulls)
+		{
+			public int PagesFreed => this.InputIds.Length - this.OutputParts;
+		}
+
+		/// <summary>Merges under-full dirty leaf runs, best run first, until the caps (or the caller's budget) stop the loop.</summary>
+		/// <param name="maxRuns">Maximum candidate runs to merge</param>
+		/// <param name="maxInputPages">Hard cap on total input pages consumed (the adaptive budget's safety net)</param>
+		/// <param name="outOfBudget">Polled before each merge; <c>true</c> stops the loop THERE - the candidate order itself stays deterministic, so two runs of the same commit differ at most in a suffix of the merge list</param>
+		/// <returns>Runs merged and net pages freed</returns>
+		public (int RunsMerged, int PagesFreed) ConsolidateUnderflow(int maxRuns, int maxInputPages = int.MaxValue, Func<bool>? outOfBudget = null)
+		{
+			Contract.Positive(maxRuns);
+			int runsMerged = 0, pagesFreed = 0, inputPages = 0;
+			if (this.UnderflowCandidates.Count == 0 || this.Root == 0)
+			{ // the common no-delete commit pays exactly this check
+				return (0, 0);
+			}
+
+			while (true)
+			{
+				// re-collect after every merge: a merge rewrites the parent (and can split it), so ranked
+				// runs collected before it would point at stale pages; the walk is O(dirty internal pages)
+				var runs = CollectConsolidationRuns();
+				if (runs.Count == 0)
+				{
+					break;
+				}
+				if (runsMerged >= maxRuns || inputPages >= maxInputPages || outOfBudget?.Invoke() == true)
+				{
+					this.ConsolidationRunsSkipped += runs.Count;
+					break;
+				}
+
+				var best = runs[0];
+				pagesFreed += MergeConsolidationRun(best);
+				runsMerged++;
+				inputPages += best.InputIds.Length;
+				this.ConsolidationColdPagesPulled += best.ColdPulls;
+			}
+
+			this.ConsolidationRunsMerged += runsMerged;
+			this.ConsolidationPagesFreed += pagesFreed;
+			return (runsMerged, pagesFreed);
+		}
+
+		/// <summary>Walks the dirty internal pages and returns every viable run, best first (most pages freed, then fewest cold pulls, then tree order - fully deterministic).</summary>
+		private List<ConsolidationRun> CollectConsolidationRuns()
+		{
+			var runs = new List<ConsolidationRun>();
+			Span<uint> pathPages = stackalloc uint[MaxDepth];
+			Span<int> pathChildren = stackalloc int[MaxDepth];
+			Collect(this.Root, pathPages, pathChildren, 0, runs);
+			// List.Sort is unstable, so the tree-order tiebreak is explicit: FirstChildIndex then ParentId
+			runs.Sort(static (a, b) =>
+			{
+				int c = b.PagesFreed.CompareTo(a.PagesFreed);
+				if (c != 0) { return c; }
+				c = a.ColdPulls.CompareTo(b.ColdPulls);
+				if (c != 0) { return c; }
+				c = a.ParentId.CompareTo(b.ParentId);
+				return c != 0 ? c : a.FirstChildIndex.CompareTo(b.FirstChildIndex);
+			});
+			return runs;
+
+			void Collect(uint pageId, Span<uint> pathPages, Span<int> pathChildren, int depth, List<ConsolidationRun> runs)
+			{
+				if (!this.Dirty.TryGetValue(pageId, out var buffered))
+				{ // candidates are dirty, and their ancestor chain is dirty: a clean subtree cannot hold one
+					return;
+				}
+				var image = buffered.AsSpan();
+				if (FdbLitePageHeader.GetPageType(image) != FdbLitePageType.Internal)
+				{
+					return;
+				}
+
+				int childCount = FdbLiteTreePage.GetChildCount(image);
+				uint firstChildId = FdbLiteTreePage.GetChild(image, 0);
+				bool childrenAreLeaves = FdbLitePageHeader.GetPageType(
+					this.Dirty.TryGetValue(firstChildId, out var childImage) ? childImage : this.Pager.ReadBlocks(firstChildId, this.Pager.Geometry.BlocksPerPage)) == FdbLitePageType.Leaf;
+
+				if (!childrenAreLeaves)
+				{
+					Contract.Debug.Assert(depth + 1 < MaxDepth);
+					pathPages[depth] = pageId;
+					for (int i = 0; i < childCount; i++)
+					{
+						pathChildren[depth] = i;
+						Collect(FdbLiteTreePage.GetChild(image, i), pathPages, pathChildren, depth + 1, runs);
+					}
+					return;
+				}
+
+				// maximal stretches of candidate children (noted at a delete/shrink site AND still under U)
+				int stretchStart = -1;
+				for (int i = 0; i <= childCount; i++)
+				{
+					bool candidate = false;
+					if (i < childCount)
+					{
+						uint childId = FdbLiteTreePage.GetChild(image, i);
+						candidate = this.UnderflowCandidates.Contains(childId)
+							&& this.Dirty.TryGetValue(childId, out var leafImage)
+							&& FdbLitePageHeader.GetPageType(leafImage) == FdbLitePageType.Leaf
+							&& IsUnderflowLeaf(leafImage);
+					}
+					if (candidate)
+					{
+						if (stretchStart < 0) { stretchStart = i; }
+						continue;
+					}
+					if (stretchStart >= 0)
+					{
+						var run = EvaluateRun(image, pathPages, pathChildren, depth, pageId, stretchStart, i - 1);
+						if (run is not null) { runs.Add(run); }
+						stretchStart = -1;
+					}
+				}
+			}
+		}
+
+		/// <summary>True when the child at <paramref name="childIndex"/> is a COLD sparse leaf: clean (a page dirtied this generation is not cold, which is also what keeps a freshly split half out) and itself under the underflow threshold. Reading it is the writer's ordinary verified first touch, the cost the ruling priced at ~one cold read per extra page freed.</summary>
+		private bool IsColdSparseChild(ReadOnlySpan<byte> parent, int childIndex, int childCount)
+		{
+			if (childIndex < 0 || childIndex >= childCount)
+			{
+				return false;
+			}
+			uint id = FdbLiteTreePage.GetChild(parent, childIndex);
+			if (this.Dirty.ContainsKey(id))
+			{
+				return false;
+			}
+			var page = ReadPage(id);
+			return FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf && IsUnderflowLeaf(page);
+		}
+
+		/// <summary>Sizes one candidate stretch and its cold-neighbor extensions, and returns the best viable variant (null when no variant frees a page).</summary>
+		private ConsolidationRun? EvaluateRun(ReadOnlySpan<byte> parent, ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int depth, uint parentId, int firstChild, int lastChild)
+		{
+			int childCount = FdbLiteTreePage.GetChildCount(parent);
+
+			bool leftCold = IsColdSparseChild(parent, firstChild - 1, childCount);
+			bool rightCold = IsColdSparseChild(parent, lastChild + 1, childCount);
+
+			ConsolidationRun? best = null;
+			foreach (var (extendLeft, extendRight) in new[] { (false, false), (true, false), (false, true), (true, true) })
+			{
+				if ((extendLeft && !leftCold) || (extendRight && !rightCold))
+				{
+					continue;
+				}
+				int a = firstChild - (extendLeft ? 1 : 0);
+				int b = lastChild + (extendRight ? 1 : 0);
+				int inputCount = b - a + 1;
+				if (inputCount < 2)
+				{ // a lone candidate merges with nothing
+					continue;
+				}
+
+				// prefix-adjusted sizing over the whole variant, and its volatility class from the worst member
+				long sumWhole = 0, sumValue = 0;
+				int cellTotal = 0;
+				byte maxEpisodes = 0;
+				for (int c = a; c <= b; c++)
+				{
+					var page = ReadPage(FdbLiteTreePage.GetChild(parent, c));
+					int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
+					int cells = FdbLitePageHeader.GetCellCount(page);
+					for (int i = 0; i < cells; i++)
+					{
+						var cell = FdbLiteTreePage.ReadLeafCell(page, i);
+						sumWhole += prefixLen + cell.KeyLength;
+						sumValue += cell.ValueLength;
+					}
+					cellTotal += cells;
+					byte episodes = FdbLitePageHeader.GetVolatilityEpisodes(page);
+					if (episodes > maxEpisodes) { maxEpisodes = episodes; }
+				}
+				if (cellTotal == 0)
+				{
+					continue;
+				}
+
+				var firstPage = ReadPage(FdbLiteTreePage.GetChild(parent, a));
+				var lastPage = ReadPage(FdbLiteTreePage.GetChild(parent, b));
+				int lcp = FdbLiteTreePage.CommonPrefixLength(WholeKeyOf(firstPage, 0), WholeKeyOf(lastPage, FdbLitePageHeader.GetCellCount(lastPage) - 1));
+
+				int fillCeiling = MergedFillCeiling(maxEpisodes, this.Pager.Geometry.PageSize);
+				long runBytes = LeafRunBytes(cellTotal, sumWhole, sumValue, lcp);
+				int outputParts = (int) ((runBytes + fillCeiling - 1) / fillCeiling);
+				if (outputParts >= inputCount)
+				{ // no page freed: leave it to the background vacuum's longer cross-parent runs
+					continue;
+				}
+
+				var inputIds = new uint[inputCount];
+				for (int c = a; c <= b; c++)
+				{
+					inputIds[c - a] = FdbLiteTreePage.GetChild(parent, c);
+				}
+				var candidate = new ConsolidationRun(
+					pathPages[..depth].ToArray(), pathChildren[..depth].ToArray(), depth,
+					parentId, a, b, inputIds, outputParts, fillCeiling,
+					ColdPulls: (extendLeft ? 1 : 0) + (extendRight ? 1 : 0));
+
+				if (best is null
+				 || candidate.PagesFreed > best.PagesFreed
+				 || (candidate.PagesFreed == best.PagesFreed && candidate.ColdPulls < best.ColdPulls))
+				{
+					best = candidate;
+				}
+			}
+			return best;
+		}
+
+		/// <summary>Executes one merge: gathers the run's live cells (whole keys re-expanded), emits them at the run's fill ceiling, frees the emptied inputs, and rewrites the parent over the new child list.</summary>
+		/// <returns>Pages actually freed (the emission's real part count can differ from the sizing estimate by a page)</returns>
+		private int MergeConsolidationRun(ConsolidationRun run)
+		{
+			// gather into owned buffers: inputs mix dirty images and cold pager spans, and part 0 of the
+			// emission rewrites the first input, so nothing may keep pointing into any of them
+			var buffers = new byte[run.InputIds.Length][];
+			try
+			{
+				int cellTotal = 0;
+				foreach (var id in run.InputIds)
+				{
+					cellTotal += FdbLitePageHeader.GetCellCount(ReadPage(id));
+				}
+				var cells = new CellRef[cellTotal];
+				int w = 0;
+				for (int p = 0; p < run.InputIds.Length; p++)
+				{
+					var page = ReadPage(run.InputIds[p]);
+					var prefix = FdbLiteTreePage.GetPagePrefix(page, isInternal: false);
+					int cellCount = FdbLitePageHeader.GetCellCount(page);
+					long need = 0;
+					for (int i = 0; i < cellCount; i++)
+					{
+						var c = FdbLiteTreePage.ReadLeafCell(page, i);
+						need += prefix.Length + c.KeyLength + c.ValueLength;
+					}
+					var buffer = buffers[p] = ArrayPool<byte>.Shared.Rent(checked((int) need));
+					int at = 0;
+					for (int i = 0; i < cellCount; i++)
+					{
+						var c = FdbLiteTreePage.ReadLeafCell(page, i);
+						int keyAt = at;
+						prefix.CopyTo(buffer.AsSpan(at));
+						page.Slice(c.KeyOffset, c.KeyLength).CopyTo(buffer.AsSpan(at + prefix.Length));
+						at += prefix.Length + c.KeyLength;
+						int valueAt = at;
+						page.Slice(c.ValueOffset, c.ValueLength).CopyTo(buffer.AsSpan(at));
+						at += c.ValueLength;
+						cells[w++] = new CellRef(buffer, keyAt, prefix.Length + c.KeyLength, valueAt, c.ValueLength, c.Flags);
+					}
+				}
+				Contract.Debug.Assert(w == cellTotal);
+
+				// extent cells travel as their descriptors: the extents themselves do not move and must NOT be
+				// freed - only the emptied leaf pages are
+				var merged = WriteCells(run.InputIds[0], isInternal: false, leftmostChild: 0, default, cells, run.FillCeiling);
+				for (int p = 1; p < run.InputIds.Length; p++)
+				{ // WriteCells already handled input 0 (rebuilt in place when dirty, queued for delayed free when cold)
+					FreePage(run.InputIds[p]);
+				}
+
+				var parentOutcome = RebuildInternalReplaceRun(run.ParentId, run.FirstChildIndex, run.LastChildIndex, merged);
+				AscendPatch(run.PathPages, run.PathChildren, run.Depth - 1, run.ParentId, parentOutcome);
+
+				// leaf identities and ranges under this parent changed; the cursor must not survive that
+				this.CursorLeaf = 0;
+
+				return run.InputIds.Length - 1 - (merged.Siblings?.Count ?? 0);
+			}
+			finally
+			{
+				foreach (var buffer in buffers)
+				{
+					if (buffer is not null) { ArrayPool<byte>.Shared.Return(buffer); }
+				}
+			}
+		}
+
+		/// <summary>Rebuilds an internal page with children [<paramref name="firstChildIndex"/>, <paramref name="lastChildIndex"/>] replaced by a merge outcome's parts.</summary>
+		private RebuildResult RebuildInternalReplaceRun(uint pageId, int firstChildIndex, int lastChildIndex, RebuildResult merged)
+		{
+			var page = ReadPage(pageId);
+			int cellCount = FdbLitePageHeader.GetCellCount(page);
+			int dropped = lastChildIndex - firstChildIndex; // the run's internal separators: cells first..last-1
+			int inserted = merged.Siblings?.Count ?? 0;
+
+			byte[]? patchScratch = null;
+			var siblingScratch = new byte[inserted][];
+			try
+			{
+				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
+				var patchedCell = default(CellRef);
+				if (firstChildIndex == 0)
+				{
+					leftmost = merged.FirstId;
+				}
+				else
+				{ // cell firstChildIndex-1 keeps its separator and carries the merged first part
+					var original = FdbLiteTreePage.GetInternalCell(page, firstChildIndex - 1);
+					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
+					original.CopyTo(patchScratch);
+					FdbLiteTreePage.PatchInternalCellChild(patchScratch, merged.FirstId);
+					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
+				}
+
+				var cells = new CellRef[cellCount - dropped + inserted];
+				int w = 0;
+				for (int i = 0; i <= cellCount; i++)
+				{
+					if (i == firstChildIndex)
+					{ // the merge's extra parts slot in right after the first (patched) child
+						for (int s = 0; s < inserted; s++)
+						{
+							var (separator, siblingId) = merged.Siblings![s];
+							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
+							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator).Length;
+							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
+						}
+					}
+					if (i == cellCount)
+					{
+						break;
+					}
+					if (i >= firstChildIndex && i < lastChildIndex)
+					{ // a separator internal to the run: its child was merged away
+						continue;
+					}
+					cells[w++] = (i == firstChildIndex - 1) ? patchedCell : CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+				}
+				Contract.Debug.Assert(w == cells.Length);
+
+				return WriteCells(pageId, isInternal: true, leftmost, page, cells);
+			}
+			finally
+			{
+				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
+				foreach (var s in siblingScratch)
+				{
+					if (s != null) { ArrayPool<byte>.Shared.Return(s); }
+				}
+			}
 		}
 
 		#endregion
