@@ -310,6 +310,17 @@ namespace SnowBank.Data.Json
 		{
 			get
 			{
+				// the extremes are sentinels ("no value" / "the end of time"): applying an offset to them would
+				// throw east of Greenwich for MinValue, west of Greenwich for MaxValue (the UTC equivalent falls
+				// outside year 1..9999), so they map to the canonical extremes instead
+				if (m_value == DateTime.MinValue)
+				{
+					return DateTimeOffset.MinValue;
+				}
+				if (m_value == DateTime.MaxValue)
+				{
+					return DateTimeOffset.MaxValue;
+				}
 				if (m_offset == NO_TIMEZONE)
 				{ // convert to DTO using local timezone
 					return new DateTimeOffset(m_value);
