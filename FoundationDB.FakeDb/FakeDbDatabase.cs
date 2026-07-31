@@ -662,7 +662,8 @@ namespace FoundationDB.Testing
 					if (entry.Begin >= toExclusive) break;
 					if (entry.End <= cursor) continue;
 					var mutation = entry.Value;
-					if (!mutation.IsKv() && !mutation.IsRange())
+					Contract.Debug.Assert(mutation != null); // the write map only stores real mutation stacks
+					if (!mutation!.IsKv() && !mutation.IsRange())
 					{
 						// fdb WriteMap OperationStack::isDependent (7.4.6 fdbclient/WriteMap.cpp:49): an own write is
 						// INDEPENDENT - its value is known WITHOUT the committed data, so its segment is subtracted from
