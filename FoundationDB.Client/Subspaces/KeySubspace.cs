@@ -285,7 +285,7 @@ namespace FoundationDB.Client
 
 		/// <summary>Throw an exception for a key that is out of the bounds of this subspace</summary>
 		/// <param name="key"></param>
-		[ContractAnnotation("=> halt")]
+		[DoesNotReturn]
 		protected void FailKeyOutOfBound(Slice key)
 		{
 #if DEBUG

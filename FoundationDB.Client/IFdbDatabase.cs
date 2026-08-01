@@ -73,7 +73,7 @@ namespace FoundationDB.Client
 		///		await tr.CommitAsync();
 		/// }
 		/// </code></example>
-		[Obsolete("Use BeginTransaction() instead")]
+		[Obsolete("Use BeginTransaction(...) instead", error: true)]
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		ValueTask<IFdbTransaction> BeginTransactionAsync(FdbTransactionMode mode, CancellationToken ct, FdbOperationContext? context = null);
 

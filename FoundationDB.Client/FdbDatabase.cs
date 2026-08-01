@@ -1,4 +1,4 @@
-﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -173,7 +173,7 @@ namespace FoundationDB.Client
 		#region Transaction Management...
 
 		/// <inheritdoc />
-		[Obsolete("Use BeginTransaction() instead")]
+		[Obsolete("Use BeginTransaction(...) instead", error: true)]
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public ValueTask<IFdbTransaction> BeginTransactionAsync(FdbTransactionMode mode, CancellationToken ct, FdbOperationContext? context = null)
 		{

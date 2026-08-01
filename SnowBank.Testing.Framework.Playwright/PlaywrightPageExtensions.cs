@@ -119,6 +119,7 @@ namespace SnowBank.Testing.Framework.Playwright
 		/// <param name="timeoutMs">Maximum duration of phase 1 (DOM + framework).</param>
 		/// <param name="quietMs">Duration of network inactivity required to consider the page stable (debounce).</param>
 		/// <param name="networkTimeoutMs">Maximum duration of phase 2 (network quiet), deliberately short.</param>
+		/// <param name="readyPredicate">Optional application-level readiness probe, polled after the generic phases: the wait only reports <c>"ready"</c> once it returns <see langword="true"/> (within the deadline); <see langword="null"/> skips the application phase.</param>
 		public static async Task<PageReadyResult> WaitForPageReadyAsync(this IPage page, CancellationToken ct, int timeoutMs = 10_000, int quietMs = 400, int networkTimeoutMs = 3_000, Func<IPage, CancellationToken, Task<bool>>? readyPredicate = null)
 		{
 			Contract.NotNull(page);

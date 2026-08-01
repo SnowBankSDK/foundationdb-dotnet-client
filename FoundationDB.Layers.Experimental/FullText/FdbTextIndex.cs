@@ -271,7 +271,11 @@ namespace FoundationDB.Layers.FullText
 
 			/// <summary>Convenience phrase search: analyzes <paramref name="phrase"/> with the index analyzer (so stop-words and casing are
 			/// handled the same way as at index time), then runs it as an <see cref="FtsPhrase"/> with the given <paramref name="slop"/>.</summary>
+			/// <param name="trans">The read-only transaction to use for the search.</param>
+			/// <param name="phrase">The phrase to search for.</param>
 			/// <param name="field">Field to match the phrase in, or <see langword="null"/> to match it across every configured field (weighted).</param>
+			/// <param name="slop">The maximum number of positions to consider for phrase matching.</param>
+			/// <param name="limit">The maximum number of results to return.</param>
 			public Task<List<FtsHit<TId>>> SearchPhraseAsync(IFdbReadOnlyTransaction trans, string phrase, JsonPath? field, int slop, int limit)
 			{
 				Contract.NotNull(trans);
