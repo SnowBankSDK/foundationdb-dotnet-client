@@ -207,6 +207,8 @@ Common fluent options (chainable, e.g. `CrystalJsonSettings.Json.Compacted().Cam
   what changed and the recipes that restore numbers
 - Dates: `.WithIso8601Dates()` (default), `.WithMicrosoftDates()` (emits `"\/Date(ms)\/"`; **reading** that legacy
   format always works, with or without this setting)
+- Durations: `.WithNumericDurations()` (default: `TimeSpan` as a number of seconds), `.WithIso8601Durations()`
+  (emits the legacy `"P1DT2H3M4.005S"` duration string; **reading** both forms always works) *(7.4.3+)*
 - Dictionaries: `.WithDictionariesAsMaps()` (default, `{"k":v}`), `.WithDictionariesAsPairArrays()` (emits the legacy
   `[{"Key":k,"Value":v}]` shape; again, **reading** both shapes always works) *(7.4.3+)*
 - Read-only result: `.AsReadOnly()`
@@ -340,8 +342,14 @@ Reference the generator project/package **as an analyzer**, and ensure C# 9+:
 </ItemGroup>
 ```
 
-(If consuming via NuGet, the analyzer ships with `SnowBank.Core` / its codegen package.) Symptom of a missing
-`LangVersion`: `SYSLIB1221` ("language version not supported by the source generator").
+(If consuming via NuGet, the analyzer ships with `SnowBank.Core` / its codegen package.)
+
+**The language floor is C# 9, and the generator checks it explicitly**: below C# 9 it reports `SYSLIB1221`
+("language version not supported by the source generator") and generates nothing. `latest` clears the gate with
+margin, but the actual requirement is only `>= 9` — the classic trigger is a ported legacy project still pinning
+a netfx-era `<LangVersion>7.3</LangVersion>`. No other project setting is required: the generated files fully
+qualify every name (they work without `ImplicitUsings`) and are warning-free under `#nullable enable`, including
+for members declared in nullable-oblivious code.
 
 ### Use
 
@@ -442,9 +450,36 @@ Booleans written as `"0"`/`"1"` (or `0`/`1`) are the common legacy case, and the
 ```csharp
 [JsonBooleanLiterals("0", "1")]                          // strings; tolerant read
 [JsonBooleanLiterals("0", "1", StrictLiterals = true)]   // rejects genuine true/false
-[JsonBooleanLiterals(0, 1)]                              // int flavour; emits JSON numbers
+[JsonBooleanLiterals(0, 1)]                              // numbers
+[JsonBooleanLiterals(null, "1")]                         // true -> "1", false -> member ABSENT
+[JsonBooleanLiterals(null, true)]                        // true -> true, false -> member ABSENT
 public bool Enabled { get; set; }
 ```
+
+A **null** first argument means the member is **not emitted at all** when the value is false, for a consumer that
+expects either the member absent or the true literal. `[JsonBooleanLiterals(null, true)]` is the idiom for
+"emit true, or emit nothing": the wire stays ordinary JSON booleans and the only thing the attribute changes is
+the omission, which says the intent in C# better than a condition whose "default" the reader has to decode as
+false. It is exactly equivalent to `[JsonBooleanLiterals("0","1")]` plus
+`[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]` (pinned byte-identical by a test), and
+`[JsonIgnore(Condition = ...)]` remains the general mechanism for every other member type. `[JsonBooleanLiterals(false, true)]`
+is legal and does nothing: both literals are what a `bool` serializes to anyway.
+
+Arguments accept a **string, a bool, or a numeric value**, and the two do not have to match
+(`[JsonBooleanLiterals("0", 1)]` is legal, because legacy wires are not always consistent). Anything else is
+refused: the reflection path throws when the contract is built, the generator reports **`CJSON0017`**, same
+message. The parameters are typed `object` so that `null` can carry the omit meaning, which is why that check
+exists at all: it replaces the compiler check the old typed constructors gave you.
+
+With no false literal, a present JSON `false` reads as **false even under `StrictLiterals`**: absence already
+means false in that shape, so an explicit `false` is the same state spelled out. Strict still rejects anything
+that is not a configured literal. That combination is incoherent though, so the generator warns (`CJSON0018`).
+
+**Why that one is generator-only, when the other diagnostics exist on both paths:** `CJSON0015` and `CJSON0016`
+refuse constructs that would otherwise **behave differently** on the two paths, so they have to exist on both, and
+the reflection path throws the identical message at contract build. `CJSON0018` changes no behaviour at all: it is
+advice about a pointless combination, and a compile-time nudge is the whole feature. There is no sensible moment
+to emit a warning during contract build, and throwing would be wildly out of proportion.
 
 Reads are tolerant by default (the configured literals, case-insensitively, **and** genuine `true`/`false`), so a
 modernized producer needs no redeploy; an unknown literal is a `JsonBindingException`, never a silent `false`. Applying
@@ -477,6 +512,16 @@ lifts over a `T?` member for free). Using the **missing** direction fails loudly
 silent fallback to the default path. A source-generated `IJsonConverter<T>` implements both parents, so a generated
 whole-type converter can be named on a member with no adapter.
 
+**Nullable members** *(7.4.3+)*: a converter may be declared for the nullable form itself
+(`IJsonMemberConverter<DateTime?>` on a `DateTime?` member). The probe order is **exact form first, then the lift**, on
+both paths, so a `T?` declaration takes over every **present** value and can answer "no value" for a
+present-but-unreadable input (`""`, an unparseable token) - distinctly from `default(T)`, which stays a real value, and
+from JSON null/missing, which stay the pipeline's on both sides. The `T?` declaration transfers the **read side only**:
+`Pack` still never sees null, and the null-member wire follows the settings (`WithNullMembers()` etc.), so *a member
+converter cannot represent absence for a nullable member whose absent form is not JSON null, unless it is declared for
+the nullable type itself - and even then only when reading*. A `T?` converter named on a NON-nullable member is refused
+loudly (reflection: at metadata build; generator: `CJSON0010`).
+
 **Three spellings, in precedence order** - all feed the same per-member slot, honored by the reflection path *and* the
 generator (including the generated proxies). Precedence is the order the runtime resolves them, not a recommendation:
 prefer a built-in when one fits, then `[JsonConvertWith]`.
@@ -497,9 +542,15 @@ type-level converter wins over the duck-typed `JsonSerialize`/`JsonPack` methods
 | `CJSON0004` / `CJSON0005` | error | self-serializable entity is generic, nested, or not `partial` (section 5) |
 | `CJSON0006` | error | the entity declares a member named `Json`, colliding with the generated scope (section 5) |
 | `CJSON0007` | warning | a referenced type is named like a scope member; excluded from generation, falls back to runtime |
-| `CJSON0008` | warning | an unconditional `[JsonIgnore]`/`[IgnoreDataMember]` on a member that also carries `[DataMember]`, `[JsonInclude]` or `[JsonProperty]` - contradictory intent |
+| `CJSON0008` | **error** | an unconditional `[JsonIgnore]` on a member that also carries `[DataMember]`, `[JsonInclude]` or `[JsonProperty]`: a dual-output DTO is not supported - split it, one DTO per serializer (the reflection path throws the same refusal at contract build). The `[IgnoreDataMember]` sibling shape stays a warning |
 | `CJSON0009` | error | `[JsonBooleanLiterals]` on a non-boolean member |
 | `CJSON0010` | error | `[JsonConvertWith]` names a type implementing neither converter facet |
+| `CJSON0012` | warning (suppressible) | an `internal` member with no include/exclude signal: serialized by generated converters, invisible to reflection; pin the intent with `[JsonInclude]` or `[JsonIgnore]` |
+| `CJSON0015` | error | a serialization callback (`[OnSerializing]` and friends) declares the legacy `StreamingContext` parameter; drop it, or replace it with `JsonValue`/`JsonObject`/`JsonArray`. The reflection path throws the same message at contract build |
+| `CJSON0016` | error | a type declares `[OnDeserializing]` alongside a `required` or `init`-only member. The pre-populate callback must observe an unpopulated instance, so members are assigned after construction, which neither of those allows; the message names the member and the remedy for its specific construct |
+| `CJSON0017` | error | a `[JsonBooleanLiterals]` argument has a type with no JSON wire form; use a string, a bool, or a numeric value. The reflection path throws the same message when the contract is built |
+| `CJSON0018` | warning (suppressible) | `StrictLiterals` combined with a null false literal: strict mode enforces the configured literals, and with no false literal there is nothing on the false side to enforce. Generator-only on purpose, because it changes no behaviour (see below) |
+| `CJSON0013` | error | a wire profile (`DataContractCompat`) combined with a camelCase/case-insensitive naming option; use the dual-container pattern instead |
 
 ---
 
@@ -533,16 +584,20 @@ silently changes the output, so check the matrix before annotating a DTO:
 | STJ `[JsonPropertyName("x")]` | YES | YES |
 | STJ `[JsonIgnore]` / `[JsonIgnore(Condition = ...)]` | YES, full STJ semantics *(7.4.3+)* | YES, full STJ semantics *(7.4.3+)* |
 | `[IgnoreDataMember]` | YES *(7.4.3+)* - excludes the member on a non-`[DataContract]` type; on a `[DataContract]` type the `[DataMember]` opt-in still governs (DCJS's own precedence) | counts as an ignore signal *(7.4.3+)* |
-| STJ `[JsonInclude]` (non-public members/accessors) | YES *(7.4.3+)*, a superset of STJ | **no** - emits a `SYSLIB1038` warning and omits the member |
+| STJ `[JsonInclude]` (non-public members/accessors) | YES *(7.4.3+)*, a superset of STJ | YES *(7.4.3+)* - reached through accessor thunks (`[UnsafeAccessor]` where the TFM has it, reflection accessors downlevel); `SYSLIB1038` is retired. An `internal` member with NO include/exclude signal still diverges (generated-only inclusion, kept for wire compatibility) and gets the suppressible warning `CJSON0012` nudging an explicit `[JsonInclude]` or `[JsonIgnore]` |
 | STJ `[JsonPolymorphic]` + `[JsonDerivedType]` | YES (discriminator name **and** values are free-form) | YES |
 | `[JsonConvertWith(typeof(X))]` (SnowBank), members **and** types | YES *(7.4.3+)* | YES *(7.4.3+)* |
 | `[JsonBooleanLiterals]` (SnowBank) | YES *(7.4.3+)* | YES *(7.4.3+)* |
 | STJ / Newtonsoft `[JsonConverter(typeof(X))]`, members **and** types | YES *(7.4.3+)* when `X` implements a converter facet; **silently ignored** otherwise (see section 7) | YES *(7.4.3+)*, same posture, facet checked at compile time |
 | Enum custom literals: `[JsonStringEnumMemberName]` (STJ 9+) / `[EnumMember(Value=...)]` on enum fields | YES *(7.4.3+)*, both directions | YES *(7.4.3+)*, both directions |
 | `[Key]` (DataAnnotations) | flag only | YES (drives the proxy Id) |
-| C# `required` | detected, **not enforced** on read | **enforced** (throws on a missing member) |
-| `[DataContract]` + `[DataMember]` (opt-in + `Name=`) | YES | **no** (all public members, C# names) |
-| `[DataMember]`'s `Order` / `IsRequired` / `EmitDefaultValue` | no | no |
+| C# `required` | **enforced** on read *(7.4.3+)*: null-or-missing throws `JsonBindingException` | **enforced** (throws on a missing member) |
+| `[DataContract]` + `[DataMember]` (opt-in + `Name=`) | YES, **including non-public members and accessors** *(7.4.3+, the hybrid rule: the attribute pair is the explicit opt-in and accessibility does not filter it, matching DCJS; `[JsonInclude]` alone still grants nothing there)* | YES *(7.4.3+)*, the same model: `[DataMember]` is the sole membership opt-in, accessibility does not filter (non-public members are reached through accessor thunks), and `Name=` renames are honoured |
+| `[DataMember]`'s `IsRequired = true` | **read side enforced** *(7.4.3+)*, DCJS-faithful: an ABSENT member throws, an explicit `null` satisfies (deliberately distinct from C# `required`, where null also throws). Write side unchanged (`WithNullMembers()` stays the frozen-reader recipe) | YES *(7.4.3+)*, same semantics, emitted as one presence guard per member |
+| `[DataMember]`'s `Order` / `EmitDefaultValue` | no | no |
+| `[OnSerializing]` / `[OnSerialized]` / `[OnDeserializing]` / `[OnDeserialized]` | YES *(7.4.3+)*, `void M()` on all four and `void M(JsonValue\|JsonObject\|JsonArray)` on the deserialize pair; the legacy `void M(StreamingContext)` throws at contract build | same shapes accepted; the legacy `StreamingContext` form is build error `CJSON0015` at the callsite |
+| STJ `IJsonOnSerializing` / `IJsonOnSerialized` / `IJsonOnDeserializing` / `IJsonOnDeserialized` interfaces | no, deliberately (see *Lifecycle* below) | no, deliberately |
+| `[CollectionDataContract]`'s `Name` / `ItemName` / `KeyName` / `ValueName` | no, and **neither does DCJS**: those four names shape the XML wire only, so there is nothing to reproduce (see below) | no |
 | Newtonsoft `[JsonProperty]` (name only) | YES | no |
 | `[XmlIgnore]` / `[XmlElement]` / `[XmlAttribute]` | YES (non-`[DataContract]` types) | no |
 | STJ `[JsonPropertyOrder]`, `[JsonNumberHandling]`, `[JsonExtensionData]`, `[JsonConstructor]` | no | no |
@@ -600,16 +655,29 @@ is now `EnumsAsNumbers`, with inverted meaning. The `EnumsAsString` *property* a
 
 **Migrating a legacy `[DataContract]` DTO** (e.g. from `DataContractJsonSerializer`): the reflection path already
 reproduces its member selection and `Name=` renames, so an un-touched DTO keeps its output - **but only on that path**
-(the generator is DataContract-blind, see the gotcha above). Useful equivalences:
+(a generated container applies the same model, so enrolling one is supported and produces the same wire). Useful equivalences:
 
 - `EmitDefaultValue = false` -> `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]`
-- a non-public `[DataMember]` -> add `[JsonInclude]` (reflection path only, for now)
+- a non-public `[DataMember]` -> nothing *(7.4.3+)*: on a `[DataContract]` type it serializes and binds
+  automatically on the reflection path (the interim `[JsonInclude]` opt-in keeps working, now redundant)
+- `[CollectionDataContract(ItemName = "entry", KeyName = "code", ValueName = "label")]` -> **nothing to do**: those
+  names exist in the XML wire only. DCJS itself writes a `List<string>` subclass as `["x","y"]` and a
+  `Dictionary<string,string>` subclass as `[{"Key":"c1","Value":"L1"}]`, with the literal `Key`/`Value` and the
+  configured names nowhere on the wire. The attribute's only JSON-visible meaning is "this type is a collection",
+  which section 10 already covers for subclasses of `List<T>` / `Collection<T>` / `Dictionary<K,V>`: they bind back
+  as themselves. Do not go looking for a naming knob to port.
 - `[KnownType]` -> `[JsonPolymorphic(TypeDiscriminatorPropertyName = "__type")]` + `[JsonDerivedType(typeof(X), "Name:Ns")]`
-- `Order` -> nothing (member order is not part of the contract); `IsRequired` -> C# `required` (enforced by the
-  generator only), or validate at the boundary with `obj.Get<T>("field")`, which throws on null/missing.
-- Never put `[DataMember]` and `[JsonIgnore]` on the same member. An ignore signal now wins on **both** paths
-  *(7.4.3+)*, and the generator flags the contradiction as warning `CJSON0008` - so the member disappears; if you meant
-  to keep it, drop the ignore.
+- `Order` -> nothing (member order is not part of the contract); `IsRequired = true` -> nothing *(7.4.3+)*: the
+  reflection path enforces it on read with DCJS semantics (absent throws, explicit null satisfies). For a
+  stricter contract use C# `required` (null-or-missing throws, both paths).
+- Never put `[DataMember]` (or `[JsonInclude]`, or a `[JsonProperty]`-style rename) and an unconditional
+  `[JsonIgnore]` on the same member: the combination is **refused loudly** on both paths *(7.4.3+)* - the
+  reflection path throws when the type's contract is built, and the generator fails the build with error
+  `CJSON0008`. This is the dual-output DTO (one wire carried the member, the other did not), which is not
+  supported: split the type, one DTO per serializer; if the pair is a slip, remove one of the two attributes.
+  Do NOT resolve it by adding a `Condition` - that flips the member to included-with-a-write-rule and ships it
+  onto the second wire. A conditional `[JsonIgnore(Condition = ...)]` next to `[DataMember]` stays legal (it is
+  the `EmitDefaultValue` recipe).
 
 **Settings that restore legacy-reader compatibility** (the recipe column, per construct):
 
@@ -619,6 +687,27 @@ reproduces its member selection and `Name=` renames, so an un-touched DTO keeps 
 | `"\/Date(ms)\/"` dates emitted | `WithMicrosoftDates()` |
 | numeric enums | `WithEnumAsNumbers()` |
 | `[{"Key":k,"Value":v}]` dictionaries emitted | `WithDictionariesAsPairArrays()` |
+| `"P1DT2H3M4.005S"` ISO 8601 duration strings for `TimeSpan` *(7.4.3+; default is a number of seconds)* | `WithIso8601Durations()` |
+
+**`CrystalJsonSettings.DataContractCompat`** *(7.4.3+)* is the named, cached preset composing all five: an
+endpoint using it reproduces the COMPLETE `DataContractJsonSerializer` wire with one settings reference.
+Scope it per endpoint (`WithNullMembers()` is pure verbosity for any consumer that is not a frozen legacy
+reader); reading never needs it, every legacy shape is accepted on read by default.
+
+**For teams coming from DCJS: the container-level profile** *(7.4.3+)*. A source-generated container can bake
+the preset as its default wire: `[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]`.
+Its generated entry points then emit the legacy wire when the caller passes no settings; explicitly passed
+settings always replace the profile ENTIRELY (no merging). The profile governs value formats only and is
+independent of membership: it serves **plain DTOs** (the DCJS POCO opt-out rules) and **`[DataContract]`
+types** (the DataContract model) alike, exactly as an unprofiled container does. For the types it serves, **a DataContractCompat
+container produces what DCJS would have produced, with the documented differences** - member order
+(declaration order here; DCJS wrote POCO members alphabetically and honored `Order=`), no `\/` escaping
+outside `\/Date()\/` literals, `-0.0` serialized as `0`, and the dual-output /
+double-contract shapes DCJS resolved silently are refused loudly. Combining the profile with a camelCase or
+case-insensitive naming option is a build error (`CJSON0013`): the DCJS wire has no naming policy. **The dual-container pattern is the intended
+shape for a progressive WCF portage**: not-yet-ported services serialize through the compat container,
+modernized services through a default or `Web` container over the SAME types; when the portage completes,
+delete the legacy container.
 
 ⚠️ The one genuine hazard when a **frozen** legacy client reads your output: a **null `[DataMember(IsRequired = true)]`
 member**. CrystalJson omits nulls by default and the legacy reader **throws** on the missing member. Put
@@ -648,9 +737,54 @@ with exactly `Key` and `Value`)*. To **emit** either legacy shape, opt in with `
 `WithDictionariesAsPairArrays()` (section 4).
 
 **Lifecycle:** deserialization runs the **parameterless constructor** (public or not), then assigns members; missing
-and explicit-null fields are skipped, so ctor-initialised state survives. The `[OnSerializing]` / `[OnSerialized]` /
-`[OnDeserializing]` / `[OnDeserialized]` callbacks are **never invoked** - move that logic to the ctor, or take over
-the type with `IJsonPackable` / `IJsonDeserializable<T>` (section 7) or a `ctor(JsonValue[, ICrystalJsonTypeResolver])`.
+and explicit-null fields are skipped, so ctor-initialised state survives.
+
+The four `[OnSerializing]` / `[OnSerialized]` / `[OnDeserializing]` / `[OnDeserialized]` callbacks **are invoked**
+*(7.4.3+)*, on both write routes (text and DOM) and on read, so a `DataContractJsonSerializer` estate keeps the
+behaviour it had. **Only the modern signatures are accepted:**
+
+| Signature | Accepted on |
+|---|---|
+| `void M()` | all four |
+| `void M(JsonValue)` / `void M(JsonObject)` / `void M(JsonArray)` | `[OnDeserializing]` / `[OnDeserialized]`, receives the document being bound |
+| `void M(StreamingContext)` | **refused**, both paths (see below) |
+
+The document-taking form is a capability `DataContractJsonSerializer` never had, and neither does System.Text.Json:
+their reader is forward-only with no document materialized, so by the time a callback runs there is nothing to hand
+it. Prefer the parameterless form; take the document only when the callback genuinely needs to inspect the payload.
+
+⚠️ **`void M(StreamingContext)` is refused**, which is a deliberate breaking change for ported DCJS code: the generator
+reports **`CJSON0015`** at the callsite, and the reflection path throws the same message when it builds the type's
+contract (once per type, never per call). The fix is mechanical, and it has one precondition: **DCJS *requires* that
+parameter**, so converting a callback costs the type its DCJS compatibility. A type still serialized by DCJS anywhere
+cannot be converted on its own. See the migration guide for the sweep recipe.
+
+**Where they fire, exactly** (pinned by tests on both paths, not by assertion here):
+
+| | |
+|---|---|
+| Write | `[OnSerializing]` strictly before the first member is written, `[OnSerialized]` strictly after the last, on the text route AND the DOM route |
+| Read | `[OnDeserializing]` on a constructed but **unpopulated** instance, `[OnDeserialized]` on the fully populated one |
+| Member converters | run **inside** the bracket, since they are part of writing/reading a member |
+| **Proxies** | **no lifecycle at all.** A proxy is a lazy typed *view* over the DOM: nothing is constructed and nothing is populated, so there is no interval to bracket. The callbacks run at **materialisation** (`ToValue()`, `Deserialize`, `Unpack`) |
+
+⚠️ That last row matters if you have adopted "stay on the proxy" as a principle: a callback will not run for
+you until something calls `ToValue()`. If a type's invariants depend on a callback, read it as a value.
+
+The strictness of the write bracket is the point for the one workload callbacks genuinely serve: a **latch**
+that suppresses cache invalidation while two views of the same data are populated. Without an exact bracket the
+second member to arrive clobbers the first, and which one that is depends on member order.
+
+Note that lifecycle callbacks are a pattern to move away from rather than toward. A DTO should be a dumb type with
+its preparation already done before it reaches the serializer; a callback bolts serialization onto a type that was
+never designed for it, which is why such types end up needing cleanup halves and locks. The supported remedy is to
+adapt the not-meant-for-serialization type into a plain DTO, at which point the callbacks are not needed at all.
+The attribute support exists to make a large legacy estate portable, not to encourage the pattern. (This is also why
+the four System.Text.Json callback *interfaces* - `IJsonOnSerializing` and friends - are deliberately **not**
+honoured: adding a second, cleaner-looking spelling would advertise the pattern rather than retire it.)
+
+Alternatively, take over the type entirely with `IJsonPackable` / `IJsonDeserializable<T>` (section 7) or a
+`ctor(JsonValue[, ICrystalJsonTypeResolver])`.
 
 ---
 
@@ -729,9 +863,9 @@ ArrayList         [ 1, "two" ]  elements bind as CLR objects
 - **Enums serialize as STRINGS by default since 7.4.3** (they were numbers), everywhere. Reading stays tolerant
   both ways, so old payloads are fine - but anything comparing bytes, or any frozen STJ/DCJS reader, sees the change.
   `WithEnumAsNumbers()` restores it (section 9).
-- **The two paths do not agree on legacy `[DataContract]` types** (see section 9): the reflection path honors the
-  `[DataMember]` opt-in and renames, the generator ignores them entirely. Never point `[CrystalJsonSerializable]` at a
-  DTO whose output contract comes from DataContract attributes.
+- **Legacy `[DataContract]` types belong to the reflection path** (see section 9): it honors the `[DataMember]` opt-in
+  and renames in full, and *(7.4.3+)* a generated container applies the same model, so the two paths agree on
+  membership, names, non-public members and `IsRequired`.
 - **`JsonNull.Missing` ≠ `JsonNull.Null` ≠ `JsonNull.Error`.** All are "null", but distinct; use `IsNullOrMissing()` /
   `IsMissing()` to tell them apart. Empty/whitespace input parses to `Missing`; literal `"null"` parses to `Null`.
 - **Mutating a read-only `JsonObject`/`JsonArray` throws.** `ToMutable()` first, or build mutable.
