@@ -15,6 +15,13 @@
 
 	<Import Project="..\Common\VersionInfo.props" />
 
+	<PropertyGroup>
+		<IsTestProject>true</IsTestProject>
+		<EnableNUnitRunner>true</EnableNUnitRunner>
+		<IsPackable>false</IsPackable>
+		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
