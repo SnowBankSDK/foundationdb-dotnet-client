@@ -24,24 +24,6 @@
 		<Features>$(Features);runtime-async=on</Features>
 	</PropertyGroup>
 
-	<!-- Shared testing properties, so a test project gets the correct runner by existing rather than by remembering
-	     to copy a block. EnableNUnitRunner selects the NUnit Microsoft.Testing.Platform runner; a test project that
-	     misses it falls back to VSTest, which on this SDK does not run MTP suites at all - it exits 0 immediately,
-	     having run NOTHING, which is indistinguishable from a passing suite.
-
-	     Conditioned on the project NAME, deliberately, and NOT on $(IsTestProject): this file is imported BEFORE the
-	     project body, so $(IsTestProject) is not yet defined when this evaluates and a condition on it would silently
-	     never fire - the same invisible-misconfiguration failure this block exists to prevent.
-
-	     Every test project here is named *.Tests. A project that is not a test project must not take that suffix.
-	     Any project can still override these locally. -->
-	<PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
-		<IsTestProject>true</IsTestProject>
-		<EnableNUnitRunner>true</EnableNUnitRunner>
-		<IsPackable>false</IsPackable>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
-	</PropertyGroup>
-
 	<!--
 		These settings are used by all other projects to define the build target.
 		When this repository is included as a submodule, the parent folder can override these values
