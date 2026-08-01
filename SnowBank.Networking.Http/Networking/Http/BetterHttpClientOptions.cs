@@ -425,7 +425,7 @@ namespace SnowBank.Networking.Http
 		/// <param name="handler">Transport handler that will be configured (the socket-backed handler in production, or an in-memory test handler).</param>
 		/// <returns>Configured handler. This could be a different instance that wraps the original handler (e.g. when cookies wrap a foreign handler type).</returns>
 		/// <remarks>
-		/// <para>This is the socket-configuration half of <see cref="Configure"/>: it deliberately does NOT apply the filters (they wrap ABOVE the transport, as pipeline handlers rebuilt with each rotation, exactly once) nor the per-request hooks.</para>
+		/// <para>This is the socket-configuration half of the pooled path: it deliberately does NOT apply the filters (they wrap ABOVE the transport, as pipeline handlers rebuilt with each rotation, exactly once) nor the per-request hooks. The two concerns used to run in a single pass, in the one-shot creation bridges that were retired.</para>
 		/// <para>Credentials are applied in the pipeline-build step (<see cref="BuildTransportPipeline"/>), where the DI container needed to resolve them is available; because cookies are set as a <em>property</em> on the pooled <see cref="BetterHttpClientHandler"/> (they only wrap for foreign handler types), the credentials-then-cookies ordering stays safe on the production transport.</para>
 		/// <para>The <see cref="BetterHttpClientHandler"/>-specific bits (the racing/heatmap connect callback and <see cref="BetterHttpDefaults.PooledConnectionLifetime"/>) are wired by the map's <see cref="INetworkMap.CreateTransportHandler"/>, not here.</para>
 		/// </remarks>
