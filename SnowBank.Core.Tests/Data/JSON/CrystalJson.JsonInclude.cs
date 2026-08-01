@@ -75,17 +75,23 @@ namespace SnowBank.Data.Json.Tests
 			[STJ.JsonInclude]
 			private string? Secret { get; set; }
 
-			// private [DataMember] WITHOUT [JsonInclude]: stays excluded (no silent wire change for existing consumers)
+			// private [DataMember] WITHOUT [JsonInclude]: serialized anyway (hybrid rule, the DataContract
+			// model is accessibility-blind and the attribute pair is the explicit declaration of intent)
 			[DataMember]
-			private string? StillHidden { get; set; }
+			private string? AlsoSerialized { get; set; }
+
+			// [JsonInclude] WITHOUT [DataMember]: no membership on a [DataContract] type (the opt-in is [DataMember])
+			[STJ.JsonInclude]
+			private string? IncludeOnly { get; set; }
 
 			[DataMember]
 			public string? Name { get; set; }
 
-			public void Init(string secret, string hidden)
+			public void Init(string secret, string also, string includeOnly)
 			{
 				this.Secret = secret;
-				this.StillHidden = hidden;
+				this.AlsoSerialized = also;
+				this.IncludeOnly = includeOnly;
 			}
 
 			public string? ExposeSecret() => this.Secret;
@@ -125,16 +131,17 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_JsonInclude_On_DataContract_Types_Still_Requires_DataMember()
+		public void Test_JsonInclude_On_DataContract_Types_Membership_Comes_From_DataMember()
 		{
 			var dto = new LegacyIncludeDto { Name = "n" };
-			dto.Init("s3cr3t", "invisible");
+			dto.Init("s3cr3t", "also", "io");
 
 			var obj = CrystalJson.Parse(CrystalJson.Serialize(dto)).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(obj.Get<string>("secret"), Is.EqualTo("s3cr3t"), "private [DataMember] + [JsonInclude] must serialize under the DataMember name");
-				Assert.That(obj.ContainsKey("StillHidden"), Is.False, "private [DataMember] without [JsonInclude] stays excluded (unchanged compat behavior)");
+				Assert.That(obj.Get<string>("secret"), Is.EqualTo("s3cr3t"), "private [DataMember] + [JsonInclude] serializes under the DataMember name ([JsonInclude] is now redundant there)");
+				Assert.That(obj.Get<string>("AlsoSerialized"), Is.EqualTo("also"), "hybrid rule: a private [DataMember] serializes automatically on a [DataContract] type");
+				Assert.That(obj.ContainsKey("IncludeOnly"), Is.False, "[JsonInclude] without [DataMember] grants no membership on a [DataContract] type");
 				Assert.That(obj.Get<string>("Name"), Is.EqualTo("n"));
 			}
 

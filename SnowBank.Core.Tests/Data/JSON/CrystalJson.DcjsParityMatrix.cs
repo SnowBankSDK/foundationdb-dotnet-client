@@ -178,6 +178,76 @@ namespace SnowBank.Data.Json.Tests
 			public string? Path { get; set; }
 		}
 
+		/// <summary>POCO (no [DataContract]) with one member per legacy value format; members are declared in alphabetical order because DCJS orders POCO members alphabetically</summary>
+		public sealed class DxPocoFormatsDto
+		{
+			public Dictionary<string, int>? Counts { get; set; }
+
+			public TimeSpan Elapsed { get; set; }
+
+			public DayOfWeek Kind { get; set; }
+
+			public DateTime When { get; set; }
+		}
+
+		/// <summary>Single DateTime member, for the per-Kind oracle probes (the wire depends on the machine timezone, so it is pinned against the live oracle, not inline)</summary>
+		public sealed class DxDateKindDto
+		{
+			public DateTime When { get; set; }
+		}
+
+		/// <summary>The four lifecycle callbacks, in the modern signatures: parameterless everywhere, and the deserialize pair may take the document</summary>
+		[DataContract]
+		public sealed class DxCallbackDto
+		{
+			[DataMember(Name = "id")]
+			public string? Id { get; set; }
+
+			[IgnoreDataMember]
+			public List<string> Trace { get; } = [];
+
+			[IgnoreDataMember]
+			public string? SawDocument { get; set; }
+
+			[OnSerializing]
+			private void BeforeWrite() => this.Trace.Add("OnSerializing");
+
+			[OnSerialized]
+			private void AfterWrite() => this.Trace.Add("OnSerialized");
+
+			[OnDeserializing]
+			private void BeforeRead() => this.Trace.Add("OnDeserializing");
+
+			[OnDeserialized]
+			private void AfterRead(JsonObject document)
+			{
+				this.Trace.Add("OnDeserialized");
+				this.SawDocument = document.ToJsonText(CrystalJsonSettings.JsonCompact);
+			}
+		}
+
+		/// <summary>The legacy DCJS callback signature, which is refused on both paths</summary>
+		[DataContract]
+		public sealed class DxLegacyCallbackDto
+		{
+			[DataMember(Name = "id")]
+			public string? Id { get; set; }
+
+			[OnDeserialized]
+			private void AfterRead(StreamingContext context) { }
+		}
+
+		/// <summary>Standalone KeyValuePair members: DCJS serializes the pair's own contract, which uses LOWERCASE "key"/"value" (unlike the dictionary pair-array form, which uses "Key"/"Value")</summary>
+		[DataContract]
+		public sealed record DxKvpDto
+		{
+			[DataMember(Name = "pair")]
+			public KeyValuePair<string, int> Pair { get; set; }
+
+			[DataMember(Name = "pairs")]
+			public List<KeyValuePair<string, int>>? Pairs { get; set; }
+		}
+
 		[DataContract]
 		public sealed record DxPrivateDto
 		{
@@ -390,20 +460,194 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
+		public void Test_Poco_Gets_The_Same_Value_Formats_As_DataContract_Types()
+		{
+			// DCJS's value-format layer is membership-model-independent: a POCO without [DataContract] still gets
+			// the Microsoft date, the ISO 8601 duration, the pair-array dictionary and the numeric enum. Proven
+			// against the live oracle rather than believed, because the DataContractCompat profile builds on it:
+			// a DataContractCompat endpoint produces what DCJS would have produced for the same type, POCO or
+			// [DataContract] alike.
+			var dto = new DxPocoFormatsDto
+			{
+				Counts = new() { ["a"] = 1 },
+				Elapsed = new TimeSpan(1, 2, 3, 4, 5),
+				Kind = DayOfWeek.Friday,
+				When = new DateTime(2009, 2, 13, 23, 31, 30, DateTimeKind.Utc),
+			};
+
+			var dcjs = DcjsSerialize(dto);
+			Log($"dcj: {dcjs}");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(dcjs, Does.Contain(@"\/Date(1234567890000)\/"), "DCJS emits the Microsoft date on a POCO too");
+				Assert.That(dcjs, Does.Contain("P1DT2H3M4.005S"), "DCJS emits the ISO 8601 duration on a POCO too");
+				Assert.That(dcjs, Does.Contain("\"Key\":\"a\""), "DCJS emits the pair-array dictionary on a POCO too");
+				Assert.That(dcjs, Does.Contain("\"Kind\":5"), "DCJS emits the numeric enum on a POCO too");
+			}
+
+			var cj = CrystalJson.Serialize(dto, CrystalJsonSettings.DataContractCompat.Compacted());
+			Log($"cj : {cj}");
+			// NOTE, before you reuse this assertion elsewhere: BYTE equality holds here only because this DTO's
+			// declaration order happens to match DCJS's, which sorts members alphabetically by wire name (and, when
+			// Order= is present, unordered members first then by Order with alphabetical ties). Both of our paths
+			// emit declaration order. Reorder these members and this assertion fails without anything being wrong,
+			// so a new case with a different declaration order must compare membership and values, not bytes.
+			Assert.That(cj, Is.EqualTo(dcjs), "a DataContractCompat endpoint produces what DCJS would have produced for the same type");
+		}
+
+		[Test]
+		public void Test_Standalone_KeyValuePair_Binds_The_Dcjs_Wire()
+		{
+			// DCJS serializes a KeyValuePair member through the pair's own generic contract: lowercase "key"/"value"
+			var dto = new DxKvpDto { Pair = new("k", 7), Pairs = [ new("a", 1), new("b", 2) ] };
+			var oracle = DcjsSerialize(dto);
+			Assert.That(oracle, Is.EqualTo("""{"pair":{"key":"k","value":7},"pairs":[{"key":"a","value":1},{"key":"b","value":2}]}"""), "the DCJS oracle wire drifted");
+
+			// the lowercase legacy wire must BIND, not silently produce default-filled pairs
+			var back = CrystalJson.Deserialize<DxKvpDto>(oracle)!;
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(back.Pair.Key, Is.EqualTo("k"), "the lowercase key field binds");
+				Assert.That(back.Pair.Value, Is.EqualTo(7), "the lowercase value field binds");
+				Assert.That(back.Pairs, Is.EqualTo(new List<KeyValuePair<string, int>> { new("a", 1), new("b", 2) }), "list elements bind through the same shape");
+			}
+
+			// the uppercase (STJ-shaped) object and our own 2-element array form keep binding
+			Assert.That(CrystalJson.Deserialize<DxKvpDto>("""{"pair":{"Key":"k","Value":7}}""")!.Pair, Is.EqualTo(new KeyValuePair<string, int>("k", 7)));
+			Assert.That(CrystalJson.Deserialize<DxKvpDto>("""{"pair":["k",7]}""")!.Pair, Is.EqualTo(new KeyValuePair<string, int>("k", 7)));
+
+			// an object that is not a KVP shape at all refuses loudly, same posture as the pair-array strictness
+			Assert.That(() => CrystalJson.Deserialize<DxKvpDto>("""{"pair":{"foo":1}}"""), Throws.InstanceOf<JsonBindingException>(), "an unrecognizable object refuses instead of defaulting silently");
+
+			// write side is UNCHANGED in this fix (held for the sample numbers): our wire stays the 2-element array
+			var ourWire = CrystalJson.Parse(CrystalJson.Serialize(dto, Compact)).AsObject();
+			Assert.That(ourWire["pair"], Is.InstanceOf<JsonArray>().With.Count.EqualTo(2), "the write side keeps the documented 2-element-array form");
+		}
+
+		[Test]
+		public void Test_Date_Writes_Match_The_Oracle_For_Every_DateTimeKind()
+		{
+			// DCJS appends the machine's UTC offset for non-Utc kinds ("\/Date(ms+HHMM)\/"), so those bytes depend
+			// on the machine timezone: the pin is EQUALITY WITH THE LIVE ORACLE, never an inline literal. This
+			// closes the byte-fidelity claim for the one axis the fixed-literal pins cannot cover.
+			var compat = CrystalJsonSettings.DataContractCompat.Compacted();
+
+			// Utc: no offset suffix, on either serializer
+			var utc = new DxDateKindDto { When = new DateTime(2024, 9, 20, 12, 34, 56, DateTimeKind.Utc) };
+			var oracleUtc = DcjsSerialize(utc);
+			Log($"utc  : {oracleUtc}");
+			Assert.That(oracleUtc, Does.Not.Match(@"[+-]\d{4}"), "probe sanity: DCJS writes no offset for a Utc value");
+			Assert.That(CrystalJson.Serialize(utc, compat), Is.EqualTo(oracleUtc), "byte fidelity, Utc kind");
+
+			// Local: DCJS converts to UTC epoch ms and appends the offset at that date
+			var local = new DxDateKindDto { When = new DateTime(2024, 9, 20, 12, 34, 56, DateTimeKind.Local) };
+			var oracleLocal = DcjsSerialize(local);
+			Log($"local: {oracleLocal}");
+			Assert.That(oracleLocal, Does.Match(@"[+-]\d{4}\)"), "probe sanity: DCJS did emit an offset suffix for a Local value");
+			Assert.That(CrystalJson.Serialize(local, compat), Is.EqualTo(oracleLocal), "byte fidelity, Local kind");
+			Assert.That(JsonValue.FromValue(local, compat).ToJsonText(compat), Is.EqualTo(oracleLocal), "the DOM route agrees on the Local wire");
+
+			// Unspecified: whatever the oracle does (offset or not) is the contract; pin agreement, log the shape
+			var unspecified = new DxDateKindDto { When = new DateTime(2024, 9, 20, 12, 34, 56, DateTimeKind.Unspecified) };
+			var oracleUnspecified = DcjsSerialize(unspecified);
+			Log($"unsp : {oracleUnspecified}");
+			Assert.That(CrystalJson.Serialize(unspecified, compat), Is.EqualTo(oracleUnspecified), "byte fidelity, Unspecified kind");
+
+			// and a winter date, so a DST-dependent offset bug cannot hide behind the season of the test run
+			var winter = new DxDateKindDto { When = new DateTime(2024, 1, 15, 8, 0, 0, DateTimeKind.Local) };
+			Assert.That(CrystalJson.Serialize(winter, compat), Is.EqualTo(DcjsSerialize(winter)), "byte fidelity, Local kind, non-DST date");
+		}
+
+		[Test]
 		public void Test_NonPublic_DataMember()
 		{
-			// DCJS serializes a private [DataMember]; CrystalJson requires the explicit [JsonInclude] opt-in
-			// (deliberate: no silent wire change). The rewrite is mechanical: keep [DataMember], add [JsonInclude].
+			// DCJS serializes a private [DataMember], and so does CrystalJson (hybrid rule: the DataContract model
+			// is accessibility-blind, and the attribute pair is already the explicit declaration of intent)
 			var dto = new DxPrivateDto { Kept = 1 };
 			dto.SetSecret("s");
 			Assert.That(DcjsSerialize(dto), Is.EqualTo("""{"Kept":1,"Secret":"s"}"""), "the legacy serializer includes the private member");
-			Assert.That(CrystalJson.Serialize(dto, Compact), Is.EqualTo("""{"Kept":1}"""), "without [JsonInclude], CrystalJson omits it");
+			Assert.That(CrystalJson.Serialize(dto, Compact), Is.EqualTo("""{"Kept":1,"Secret":"s"}"""), "hybrid rule: a non-public [DataMember] on a [DataContract] type serializes automatically, matching DCJS");
+			var back = CrystalJson.Deserialize<DxPrivateDto>("""{"Kept":1,"Secret":"s"}""")!;
+			Assert.That(back.GetSecret(), Is.EqualTo("s"), "and the private member binds on read");
 
+			// the [JsonInclude] interim opt-in stays legal; on a [DataContract] type it is now simply redundant
 			var included = new DxPrivateIncludedDto { Kept = 1 };
 			included.SetSecret("s");
-			Assert.That(CrystalJson.Serialize(included, Compact), Is.EqualTo("""{"Kept":1,"Secret":"s"}"""), "[JsonInclude] restores the legacy membership");
-			var back = CrystalJson.Deserialize<DxPrivateIncludedDto>("""{"Kept":1,"Secret":"s"}""")!;
-			Assert.That(back.GetSecret(), Is.EqualTo("s"), "and the private member binds on read");
+			Assert.That(CrystalJson.Serialize(included, Compact), Is.EqualTo("""{"Kept":1,"Secret":"s"}"""), "[DataMember] + [JsonInclude] keeps the same wire");
+		}
+
+		[Test]
+		public void Test_Lifecycle_Callbacks_Fire_On_Both_Write_Routes_And_On_Read()
+		{
+			// the four DCJS callbacks are honoured, so a ported estate keeps the behaviour it had, but only in the
+			// modern signatures: the legacy StreamingContext parameter is refused (see the next test)
+			var dto = new DxCallbackDto { Id = "X" };
+
+			Assert.That(CrystalJson.Serialize(dto, Compact), Is.EqualTo("""{"id":"X"}"""));
+			Assert.That(dto.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }), "text route");
+
+			dto.Trace.Clear();
+			Assert.That(JsonValue.FromValue(dto, Compact).ToJsonText(Compact), Is.EqualTo("""{"id":"X"}"""));
+			Assert.That(dto.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }), "DOM route must fire them too, or the two routes disagree");
+
+			var back = CrystalJson.Deserialize<DxCallbackDto>("""{"id":"X"}""")!;
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(back.Trace, Is.EqualTo(new[] { "OnDeserializing", "OnDeserialized" }), "read fires both, in order");
+				Assert.That(back.Id, Is.EqualTo("X"), "OnDeserializing runs BEFORE members are populated, so it cannot clobber them");
+				// the capability the legacy serializer never had: the callback can see the document it was bound from
+				Assert.That(back.SawDocument, Is.EqualTo("""{"id":"X"}"""), "a callback declared with a JsonObject parameter receives the incoming document");
+			}
+		}
+
+		[Test]
+		public void Test_Legacy_StreamingContext_Callback_Is_Refused_With_The_Shared_Message()
+		{
+			// DCJS REQUIRES this parameter, so refusing it is a deliberate breaking change: the callsite is a
+			// search-and-replace, and the type stops being serializable by DCJS once converted. Refused at
+			// contract-build time, once per type, never per invocation.
+			var ex = Assert.Throws<JsonBindingException>(() => CrystalJson.Serialize(new DxLegacyCallbackDto { Id = "X" }, Compact));
+			Assert.That(ex!.Message, Is.EqualTo(string.Format(CrystalJson.Errors.CallbackStreamingContextNotSupported, "AfterRead")));
+			Assert.That(ex.Message, Does.StartWith("Remove the StreamingContext parameter"), "the message leads with the fix");
+
+			// and the same refusal on the read side, from the same contract build
+			Assert.That(() => CrystalJson.Deserialize<DxLegacyCallbackDto>("""{"id":"X"}"""), Throws.InstanceOf<JsonBindingException>());
+		}
+
+		[Test]
+		public void Test_CollectionDataContract_Naming_Is_Absent_From_Json()
+		{
+			// [CollectionDataContract]'s Name / ItemName / KeyName / ValueName shape the XML wire only. In JSON the
+			// attribute carries exactly one visible meaning, "this type is a collection", which the collection binders
+			// already provide for subclasses of List<T> / Collection<T> / Dictionary<K,V>. Pinned against the live
+			// oracle rather than reasoned about, because the four names look load-bearing and a migration that
+			// believes they are will go hunting for machinery that does not need to exist.
+			var dto = new Acme.Zoo.Cases.CollectionDataContractNaming.NamedCollectionDto
+			{
+				Bag = [ "x", "y" ],
+				Labels = new() { ["c1"] = "Label one" },
+			};
+
+			Check(
+				dto,
+				dcjsWire: """{"bag":["x","y"],"labels":[{"Key":"c1","Value":"Label one"}]}""",
+				cjWire: """{"bag":["x","y"],"labels":{"c1":"Label one"}}""",
+				cjLegacyWire: """{"bag":["x","y"],"labels":[{"Key":"c1","Value":"Label one"}]}""",
+				cjLegacySettings: CrystalJsonSettings.DataContractCompat.Compacted(),
+				verifyCjRead: VerifyBoundShape,
+				verifyDcjsRead: VerifyBoundShape);
+
+			// the knobs that look most load-bearing: a pair's members are the literal "Key"/"Value" on the wire,
+			// never the configured KeyName="code" / ValueName="label"
+			var pair = CrystalJson.Parse(CrystalJson.Serialize(dto, CrystalJsonSettings.DataContractCompat.Compacted())).AsObject().GetArray("labels")[0].AsObject();
+			Assert.That(pair.Keys, Is.EquivalentTo(new[] { "Key", "Value" }), "KeyName/ValueName have no JSON existence");
+
+			static void VerifyBoundShape(Acme.Zoo.Cases.CollectionDataContractNaming.NamedCollectionDto v)
+			{
+				// the DERIVED types must come back, not the List<T> / Dictionary<K,V> they extend
+				Assert.That(v.Bag, Is.InstanceOf<Acme.Zoo.Cases.CollectionDataContractNaming.ItemBag>().And.EqualTo(new[] { "x", "y" }));
+				Assert.That(v.Labels, Is.InstanceOf<Acme.Zoo.Cases.CollectionDataContractNaming.LabelMap>().And.EqualTo(new Dictionary<string, string> { ["c1"] = "Label one" }));
+			}
 		}
 
 	}

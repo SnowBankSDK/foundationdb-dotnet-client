@@ -55,6 +55,114 @@ namespace SnowBank.Data.Json.Tests
 
 		}
 
+		/// <summary>The omit-when-false form: one attribute carrying the intent</summary>
+		public sealed class OmitWhenFalseDto
+		{
+			[JsonBooleanLiterals(null, "1")]
+			public bool Flag { get; set; }
+		}
+
+		/// <summary>The idiom for "emit true, or emit nothing": ordinary JSON booleans, the attribute changing only the omission</summary>
+		public sealed class OmitWhenFalseBoolDto
+		{
+			[JsonBooleanLiterals(null, true)]
+			public bool Flag { get; set; }
+
+			[JsonBooleanLiterals(null, true, StrictLiterals = true)]
+			public bool Strict { get; set; }
+		}
+
+		/// <summary>The same wire expressed the long way, as two attributes describing a mechanism</summary>
+		public sealed class CompositionDto
+		{
+			[JsonBooleanLiterals("0", "1")]
+			[System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+			public bool Flag { get; set; }
+		}
+
+		[Test]
+		public void Test_Null_False_Literal_Omits_The_Member()
+		{
+			Assert.That(CrystalJson.Serialize(new OmitWhenFalseDto { Flag = true }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"Flag":"1"}"""));
+			Assert.That(CrystalJson.Serialize(new OmitWhenFalseDto { Flag = false }, CrystalJsonSettings.JsonCompact), Is.EqualTo("{}"), "false emits nothing at all");
+
+			// the DOM route must agree, or the two write routes disagree about the member's very presence
+			Assert.That(JsonValue.FromValue(new OmitWhenFalseDto { Flag = false }, CrystalJsonSettings.JsonCompact).ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("{}"), "DOM route");
+		}
+
+		[Test]
+		public void Test_One_Attribute_And_Two_Attributes_Produce_The_Same_Wire()
+		{
+			// the most valuable pin in this fixture: a consumer composing [JsonBooleanLiterals] with
+			// [JsonIgnore(WhenWritingDefault)] must get BYTE-IDENTICAL output to the single-attribute form, because
+			// the short form is only sugar over exactly that composition. If these ever diverge, migrating from one
+			// spelling to the other silently changes a wire.
+			foreach (var value in new[] { true, false })
+			{
+				var one = CrystalJson.Serialize(new OmitWhenFalseDto { Flag = value }, CrystalJsonSettings.JsonCompact);
+				var two = CrystalJson.Serialize(new CompositionDto { Flag = value }, CrystalJsonSettings.JsonCompact);
+				Assert.That(one, Is.EqualTo(two), $"the two spellings must agree byte for byte (Flag = {value})");
+			}
+		}
+
+		[Test]
+		public void Test_Omit_When_False_Read_Matrix()
+		{
+			// absent and an explicit null both read false: absent because there is nothing to bind, null because the
+			// pipeline owns null before any member converter sees it. Both land on default(bool), which IS false,
+			// and that is the whole point of the shape (the producer emits the member only when it is true).
+			Assert.That(CrystalJson.Deserialize<OmitWhenFalseDto>("{}")!.Flag, Is.False, "absent reads false");
+			Assert.That(CrystalJson.Deserialize<OmitWhenFalseDto>("""{"Flag":null}""")!.Flag, Is.False, "an explicit null reads false");
+			Assert.That(CrystalJson.Deserialize<OmitWhenFalseDto>("""{"Flag":"1"}""")!.Flag, Is.True, "the true literal reads true");
+
+			// reading stays tolerant of a modernized producer, exactly as with a non-null false literal
+			Assert.That(CrystalJson.Deserialize<OmitWhenFalseDto>("""{"Flag":true}""")!.Flag, Is.True, "a genuine boolean is still accepted");
+
+			// and an unknown literal still refuses rather than silently reading false
+			Assert.That(() => CrystalJson.Deserialize<OmitWhenFalseDto>("""{"Flag":"maybe"}"""), Throws.InstanceOf<JsonBindingException>());
+		}
+
+		[Test]
+		public void Test_Emit_True_Or_Nothing_Is_Ordinary_Booleans_Plus_Omission()
+		{
+			// the idiom: no custom literal at all, the wire stays ordinary JSON booleans, and the ONLY thing the
+			// attribute changes is that false is not emitted
+			Assert.That(CrystalJson.Serialize(new OmitWhenFalseBoolDto { Flag = true }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"Flag":true}"""));
+			Assert.That(CrystalJson.Serialize(new OmitWhenFalseBoolDto { Flag = false }, CrystalJsonSettings.JsonCompact), Is.EqualTo("{}"));
+
+			// [JsonBooleanLiterals(false, true)] is an identity: both literals are what a bool serializes to anyway.
+			// Legal, and it does nothing, which is worth pinning because someone will write it.
+			Assert.That(new JsonBooleanLiteralsAttribute(false, true).FalseLiteral, Is.EqualTo(JsonBoolean.False));
+			Assert.That(new JsonBooleanLiteralsAttribute(false, true).TrueLiteral, Is.EqualTo(JsonBoolean.True));
+		}
+
+		[Test]
+		public void Test_StrictLiterals_With_No_False_Literal()
+		{
+			// RULED HERE, since the combination has no obvious prior answer: with whenFalse null there is no configured
+			// false literal, so a present `false` reads as FALSE even under StrictLiterals. Absence already means
+			// false in this shape, and an explicit false is that same state spelled out, so refusing it would reject a
+			// value the shape considers legal. Strict still does its job on anything that is not a configured literal.
+			Assert.That(CrystalJson.Deserialize<OmitWhenFalseBoolDto>("""{"Strict":false}""")!.Strict, Is.False, "an explicit false reads false, even under StrictLiterals");
+			Assert.That(CrystalJson.Deserialize<OmitWhenFalseBoolDto>("""{"Strict":true}""")!.Strict, Is.True, "and the configured literal IS a genuine boolean here, so strict must not reject it");
+			Assert.That(CrystalJson.Deserialize<OmitWhenFalseBoolDto>("{}")!.Strict, Is.False, "absent reads false");
+			Assert.That(CrystalJson.Deserialize<OmitWhenFalseBoolDto>("""{"Strict":null}""")!.Strict, Is.False, "an explicit null reads false");
+			Assert.That(() => CrystalJson.Deserialize<OmitWhenFalseBoolDto>("""{"Strict":"1"}"""), Throws.InstanceOf<JsonBindingException>(), "strict still rejects a value that is not a configured literal");
+		}
+
+		[Test]
+		public void Test_Literal_Type_Guard()
+		{
+			// the arguments are `object`, so the compiler no longer rejects a bad literal type: this guard replaces it
+			var ex = Assert.Throws<ArgumentException>(() => _ = new JsonBooleanLiteralsAttribute(System.DayOfWeek.Friday, "1"));
+			Assert.That(ex!.Message, Does.StartWith(string.Format(CrystalJson.Errors.BooleanLiteralTypeNotSupported, "whenFalse", "DayOfWeek")));
+
+			Assert.Throws<ArgumentNullException>(() => _ = new JsonBooleanLiteralsAttribute("0", null!), "a true literal is required");
+
+			// a mixed pair is deliberately legal: legacy wires are not always internally consistent
+			Assert.That(new JsonBooleanLiteralsAttribute("0", 1).TrueLiteral, Is.EqualTo(JsonNumber.Return(1)));
+		}
+
 		[Test]
 		public void Test_Literals_On_Write()
 		{

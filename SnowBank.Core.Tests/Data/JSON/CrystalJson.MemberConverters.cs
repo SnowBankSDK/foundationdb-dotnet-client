@@ -84,6 +84,45 @@ namespace SnowBank.Data.Json.Tests
 
 		}
 
+		/// <summary>Converter declared for the NULLABLE form itself: takes responsibility for the "present but unreadable" states ("" and garbage both mean "no value" in the legacy protocol)</summary>
+		public sealed class LegacyOptionalDateConverter : IJsonMemberConverter<DateTime?>
+		{
+
+			public static int UnpackCalls;
+
+			public JsonValue Pack(DateTime? instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+				// the legacy body wrote "" for a null member; that form must stay unreachable, the pipeline owns the null-member wire
+				=> instance is { } value ? JsonString.Return(value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)) : throw new InvalidOperationException("Pack must never see a null member");
+
+			public DateTime? Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
+			{
+				UnpackCalls++;
+				return value is JsonString s && DateTime.TryParseExact(s.Value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsed)
+					? parsed
+					: null; // "" and unparseable are both "no value" (the legacy contract consults HasValue)
+			}
+
+		}
+
+		public sealed class LegacyOptionalDateDto
+		{
+
+			[JsonConvertWith(typeof(LegacyOptionalDateConverter))]
+			public DateTime? When { get; set; }
+
+			public int Plain { get; set; }
+
+		}
+
+		public sealed class WrongArityDto
+		{
+
+			// a converter declared for DateTime? on a NON-nullable member: refused loudly on the native path
+			[JsonConvertWith(typeof(LegacyOptionalDateConverter))]
+			public DateTime When { get; set; }
+
+		}
+
 		/// <summary>Type-level converter target: the whole struct has a custom scalar wire form</summary>
 		[STJ.JsonConverter(typeof(TemperatureConverter))]
 		public readonly record struct Temperature(double Celsius);
@@ -116,6 +155,59 @@ namespace SnowBank.Data.Json.Tests
 			[STJ.JsonConverter(typeof(STJ.JsonStringEnumConverter))]
 			public DayOfWeek Day { get; set; }
 
+		}
+
+		[Test]
+		public void Test_Nullable_Form_Converter_Is_Honored_On_Nullable_Member()
+		{
+			// JC8 ruling (a): IJsonMemberConverter<T?> is honoured when the member is nullable, with precedence
+			// over the lift, so a converter can answer "no value" for a PRESENT but unreadable input
+
+			// write: a value packs through the converter; a null member packs without it (pipeline invariant)
+			var json = CrystalJson.Serialize(new LegacyOptionalDateDto { When = new DateTime(2024, 9, 20), Plain = 1 });
+			Assert.That(CrystalJson.Parse(json).AsObject().Get<string>("When"), Is.EqualTo("2024-09-20"));
+
+			// read: a readable value binds; "" and garbage are PRESENT values that reach the converter and mean "no value"
+			Assert.That(CrystalJson.Deserialize<LegacyOptionalDateDto>("""{ "When": "2024-09-20", "Plain": 1 }""").When, Is.EqualTo(new DateTime(2024, 9, 20)));
+			Assert.That(CrystalJson.Deserialize<LegacyOptionalDateDto>("""{ "When": "", "Plain": 1 }""").When, Is.Null, "the empty string is present, reaches the converter, and means no value");
+			Assert.That(CrystalJson.Deserialize<LegacyOptionalDateDto>("""{ "When": "not a date", "Plain": 1 }""").When, Is.Null, "an unreadable value is present, reaches the converter, and means no value");
+
+			// default(T) is itself a legitimate domain value (MinValue renders as year 1): it must bind as a VALUE, distinctly from "no value"
+			Assert.That(CrystalJson.Deserialize<LegacyOptionalDateDto>("""{ "When": "0001-01-01", "Plain": 1 }""").When, Is.EqualTo(DateTime.MinValue), "default(T) is a real value, distinct from no-value and from null");
+
+			// pipeline invariant: JSON null and missing are handled BEFORE the converter, even in the T? form
+			int callsBefore = LegacyOptionalDateConverter.UnpackCalls;
+			Assert.That(CrystalJson.Deserialize<LegacyOptionalDateDto>("""{ "When": null, "Plain": 1 }""").When, Is.Null);
+			Assert.That(CrystalJson.Deserialize<LegacyOptionalDateDto>("""{ "Plain": 1 }""").When, Is.Null);
+			Assert.That(LegacyOptionalDateConverter.UnpackCalls, Is.EqualTo(callsBefore), "null and missing never reach the converter");
+		}
+
+		[Test]
+		public void Test_Nullable_Form_Converter_Write_Of_Null_Stays_Pipeline_Controlled()
+		{
+			// the T? declaration transfers the READ side only: Pack never sees null (the converter throws if it ever
+			// does), so its legacy null-write form is unreachable by design, and the null-member wire follows the settings
+			var dto = new LegacyOptionalDateDto { When = null, Plain = 1 };
+
+			var obj = CrystalJson.Parse(CrystalJson.Serialize(dto)).AsObject();
+			Assert.That(obj.ContainsKey("When"), Is.False, "a null member is omitted by default, never written as the converter's \"\" form");
+
+			var objNulls = CrystalJson.Parse(CrystalJson.Serialize(dto, CrystalJsonSettings.Json.WithNullMembers())).AsObject();
+			Assert.That(objNulls.ContainsKey("When"), Is.True, "WithNullMembers() governs the null-member wire");
+			Assert.That(objNulls["When"].IsNull, Is.True, "the pipeline writes JSON null, not the converter's \"\" form");
+
+			// a PRESENT value still routes through the converter
+			Assert.That(CrystalJson.Parse(CrystalJson.Serialize(new LegacyOptionalDateDto { When = new DateTime(2024, 9, 20) })).AsObject().Get<string>("When"), Is.EqualTo("2024-09-20"));
+		}
+
+		[Test]
+		public void Test_Nullable_Form_Converter_On_NonNullable_Member_Is_Refused_Loudly()
+		{
+			// the sharp edge: a T?-shaped converter on a non-nullable member fails loudly on the native path
+			Assert.That(
+				() => CrystalJson.Serialize(new WrongArityDto { When = new DateTime(2024, 9, 20) }),
+				Throws.Exception.With.Message.Contains("When").And.Message.Contains(nameof(LegacyOptionalDateConverter)).And.Message.Contains("DateTime"),
+				"the refusal names the member, the converter and the types");
 		}
 
 		[Test]
