@@ -2105,6 +2105,22 @@ namespace SnowBank.Data.Json
 			return converter.Unpack(value, resolver);
 		}
 
+		/// <summary>Verifies that a member declared <c>[DataMember(IsRequired = true)]</c> is PRESENT in the document</summary>
+		/// <param name="obj">Object being bound</param>
+		/// <param name="fieldName">Name of the field on the wire</param>
+		/// <exception cref="JsonBindingException"> if <paramref name="fieldName"/> is absent from <paramref name="obj"/>.</exception>
+		/// <remarks>
+		/// <para>An explicit <c>null</c> SATISFIES this contract, which is what <c>DataContractJsonSerializer</c> does; only absence is refused. The C# <c>required</c> keyword is stricter and refuses null as well.</para>
+		/// <para>Presence is independent of how the member's value is decoded, so generated converters emit this as a single guard per member rather than threading the condition through every decoding shape.</para>
+		/// </remarks>
+		public static void VerifyRequiredPresence(JsonObject obj, string fieldName)
+		{
+			if (!obj.ContainsKey(fieldName))
+			{
+				throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(obj, fieldName, null);
+			}
+		}
+
 		/// <summary>Deserializes a required JSON value into an instance of <typeparamref name="T"/></summary>
 		/// <typeparam name="T">Type that implements <see cref="IJsonDeserializable{T}"/></typeparam>
 		/// <param name="value">JSON value to deserialize</param>
@@ -2168,6 +2184,31 @@ namespace SnowBank.Data.Json
 			if (value is null or JsonNull)
 			{
 				return null;
+			}
+			return converter.Unpack(value, resolver);
+		}
+
+		/// <summary>Deserializes an optional JSON value into a <see cref="Nullable{T}"/>, using a custom deserializer declared for the nullable form itself (<c>IJsonDeserializer&lt;T?&gt;</c>)</summary>
+		/// <returns>Whatever the converter answers for a present value (which may be <see langword="null"/>, e.g. for a present-but-unreadable value), or <see langword="null"/> if <paramref name="value"/> is null or missing (the converter never runs)</returns>
+		public static T? UnpackNullableForm<T>(this IJsonDeserializer<T?> converter, JsonValue? value, ICrystalJsonTypeResolver? resolver)
+			where T : struct
+		{
+			if (value is null or JsonNull)
+			{
+				return null;
+			}
+			return converter.Unpack(value, resolver);
+		}
+
+		/// <summary>Deserializes a required JSON value into a <see cref="Nullable{T}"/>, using a custom deserializer declared for the nullable form itself (<c>IJsonDeserializer&lt;T?&gt;</c>)</summary>
+		/// <returns>Whatever the converter answers for a present value (which may be <see langword="null"/>, e.g. for a present-but-unreadable value)</returns>
+		/// <exception cref="JsonBindingException"> if <paramref name="value"/> is null or missing.</exception>
+		public static T? UnpackRequiredNullableForm<T>(this IJsonDeserializer<T?> converter, JsonValue? value, ICrystalJsonTypeResolver? resolver, JsonValue? parent = null, string? fieldName = null)
+			where T : struct
+		{
+			if (value is null or JsonNull)
+			{
+				throw (fieldName != null ? CrystalJson.Errors.Parsing_FieldIsNullOrMissing(parent, fieldName, null) : CrystalJson.Errors.Parsing_ValueIsNullOrMissing());
 			}
 			return converter.Unpack(value, resolver);
 		}

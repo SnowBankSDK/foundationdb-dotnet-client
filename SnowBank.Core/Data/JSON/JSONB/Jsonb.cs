@@ -396,7 +396,7 @@ namespace SnowBank.Data.Json.Binary
 					: ThrowInvalidJsonbContainer();
 			}
 
-			[ContractAnnotation("=> halt")]
+			[DoesNotReturn]
 			private static JsonValue ThrowInvalidJsonbContainer()
 			{
 				throw new InvalidOperationException("Invalid jsonb container");

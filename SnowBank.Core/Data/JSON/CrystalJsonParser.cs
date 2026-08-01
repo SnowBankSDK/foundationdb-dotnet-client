@@ -870,19 +870,31 @@ namespace SnowBank.Data.Json
 				throw JsonBindingException.FailedToConstructTypeInstanceReturnedNull(data, type);
 			}
 
+			typeDef.OnDeserializing?.Invoke(instance, data);
+
 			// populate the instance members one by one
-			
+
 			foreach (var member in typeDef.Members)
 			{
 				// skip readonly members
 				if (member.IsReadOnly) continue;
 
 				// do we have a value for this field?
-				if (!data.TryGetValue(member.Name, out var child) 
-				  || child.IsNull
-				)
-				{ // not found, or explicit null
+				if (!data.TryGetValue(member.Name, out var child))
+				{ // absent from the document
+					if (member.IsRequired || member.IsRequiredPresence)
+					{ // C# `required` and [DataMember(IsRequired=true)] both refuse an absent member
+						throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(data, member.Name, null);
+					}
 					//TODO: should we assign a default value if one is specified via [JsonProperty] ?
+					continue;
+				}
+				if (child.IsNull)
+				{ // explicit null: refuses the C# `required` contract, but SATISFIES [DataMember(IsRequired=true)] (DCJS semantics)
+					if (member.IsRequired)
+					{
+						throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(data, member.Name, null);
+					}
 					continue;
 				}
 
@@ -936,6 +948,8 @@ namespace SnowBank.Data.Json
 					throw new JsonBindingException($"Cannot assign member '{instance.GetType().GetFriendlyName()}.{member.Name}' of type '{member.Type.GetFriendlyName()}' with value of type '{(value?.GetType().GetFriendlyName() ?? "<null>")}': [{e.GetType().GetFriendlyName()}] {e.Message}", path, child, member.Type, e);
 				}
 			}
+
+			typeDef.OnDeserialized?.Invoke(instance, data);
 
 			return instance;
 		}

@@ -2647,15 +2647,19 @@ namespace SnowBank.Data.Json
 			}
 		}
 
-		/// <summary>Writes a <see cref="TimeSpan"/>, as a number of seconds</summary>
+		/// <summary>Writes a <see cref="TimeSpan"/>, as a number of seconds (or an ISO 8601 duration string when <see cref="CrystalJsonSettings.Iso8601Durations"/> is set)</summary>
 		/// <param name="value">Value to write</param>
 		/// <example><code>
 		/// writer.WriteValue(TimeSpan.Zero); // => `0`
-		/// writer.WriteValue(TimeSpan.FromHours(1)); // => `3600`
+		/// writer.WriteValue(TimeSpan.FromHours(1)); // => `3600`, or `"PT1H"` under WithIso8601Durations()
 		/// </code></example>
 		public void WriteValue(TimeSpan value)
 		{
-			if (value == TimeSpan.Zero)
+			if (m_settings.Iso8601Durations)
+			{ // the legacy DataContractJsonSerializer wire form ("P1DT2H3M4.005S"), which XmlConvert produces
+				WriteValue(System.Xml.XmlConvert.ToString(value));
+			}
+			else if (value == TimeSpan.Zero)
 			{
 				m_buffer.Write('0');
 			}

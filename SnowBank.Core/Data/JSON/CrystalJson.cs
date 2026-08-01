@@ -1946,6 +1946,21 @@ namespace SnowBank.Data.Json
 		{
 			// note: this type is used by source-generated converters
 
+			/// <summary>Message used when a serialization callback declares the legacy <c>StreamingContext</c> parameter</summary>
+			/// <remarks>
+			/// <para>Format placeholder <c>{0}</c> is the offending method's name.</para>
+			/// <para>The source generator reports the same text as a build error. The two copies live in different assemblies (an analyzer cannot reference this one), so a test asserts they are identical rather than trusting them to stay in sync.</para>
+			/// </remarks>
+			public const string CallbackStreamingContextNotSupported = "Remove the StreamingContext parameter from serialization callback '{0}', or replace it with JsonValue, JsonObject or JsonArray. The legacy DataContractJsonSerializer callback signature is not supported.";
+
+			/// <summary>Message used when a serialization callback has any other signature this serializer cannot invoke</summary>
+			/// <remarks>Format placeholder <c>{0}</c> is the offending method's name. Duplicated in the source generator, and pinned equal by a test, for the same reason as <see cref="CallbackStreamingContextNotSupported"/>.</remarks>
+			public const string CallbackSignatureNotSupported = "Serialization callback '{0}' must be parameterless, or take a single JsonValue, JsonObject or JsonArray parameter.";
+
+			/// <summary>Message used when a <c>[JsonBooleanLiterals]</c> argument has a type with no JSON wire form</summary>
+			/// <remarks>Format placeholders: <c>{0}</c> the parameter name, <c>{1}</c> the offending type. The source generator reports the same text at compile time, and a test pins the two copies equal: moving these arguments to <c>object</c> moved type checking off the compiler and onto us, so the two checks have to say the same thing.</remarks>
+			public const string BooleanLiteralTypeNotSupported = "The [JsonBooleanLiterals] argument '{0}' is of type {1}, which has no JSON wire form: use a string, a bool, or a numeric value.";
+
 			#region Serialization Errors...
 
 			[Pure, MethodImpl(MethodImplOptions.NoInlining)]

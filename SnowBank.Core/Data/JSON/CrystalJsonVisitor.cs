@@ -2673,6 +2673,8 @@ namespace SnowBank.Data.Json
 				throw CrystalJson.Errors.Serialization_CouldNotResolveTypeDefinition(runtimeType);
 			}
 
+			typeDef.OnSerializing?.Invoke(value);
+
 			// process the members (properties and fields)
 			bool discardDefaults = writer.DiscardDefaults;
 			bool discardNulls = writer.DiscardNulls;
@@ -2723,6 +2725,8 @@ namespace SnowBank.Data.Json
 					member.Visitor(child, member.Type, null, writer);
 				}
 			}
+
+			typeDef.OnSerialized?.Invoke(value);
 
 			writer.EndObject(state); // "}"
 			writer.Leave(value);

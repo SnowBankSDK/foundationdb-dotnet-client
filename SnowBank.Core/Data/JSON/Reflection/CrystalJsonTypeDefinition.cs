@@ -80,6 +80,23 @@ namespace SnowBank.Data.Json
 		/// <summary>Custom visitor for serializing instances of this type</summary>
 		public CrystalJsonTypeVisitor? Visitor { get; init; }
 
+		/// <summary><c>[OnSerializing]</c> callback, invoked before this type's members are written</summary>
+		public Action<object>? OnSerializing { get; init; }
+
+		/// <summary><c>[OnSerialized]</c> callback, invoked after this type's members are written</summary>
+		public Action<object>? OnSerialized { get; init; }
+
+		/// <summary><c>[OnDeserializing]</c> callback, invoked on a freshly constructed instance before its members are populated</summary>
+		/// <remarks>The second argument is the document being bound, for callbacks declared as <c>void M(JsonValue|JsonObject|JsonArray)</c>; a parameterless callback ignores it.</remarks>
+		public Action<object, JsonValue?>? OnDeserializing { get; init; }
+
+		/// <summary><c>[OnDeserialized]</c> callback, invoked after this type's members have been populated</summary>
+		/// <inheritdoc cref="OnDeserializing"/>
+		public Action<object, JsonValue?>? OnDeserialized { get; init; }
+
+		/// <summary>Specifies if this type declares at least one serialization lifecycle callback</summary>
+		public bool HasSerializationCallbacks => this.OnSerializing != null || this.OnSerialized != null || this.OnDeserializing != null || this.OnDeserialized != null;
+
 		public CrystalJsonTypeDefinition(Type type, CrystalJsonTypeFlags flags, CrystalJsonTypeBinder? customBinder, Func<object>? generator, CrystalJsonMemberDefinition[] members, CrystalJsonTypeVisitor? visitor, Type? baseType, JsonEncodedPropertyName? typeDiscriminatorProperty, JsonValue? typeDiscriminatorValue, IReadOnlyDictionary<JsonValue, Type>? derivedTypeMap)
 		{
 			Contract.NotNull(type);

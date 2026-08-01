@@ -231,46 +231,45 @@ namespace SnowBank.Data.Json
 		{
 			// We have an input that looks like "{ Key: ..., Value: ... }", and we want to convert it into the corresponding KeyValuePair<TKey, TValue>
 
-			// (value, _, resolver) =>
-			// {
-			//    var obj = value.AsObjectOrDefault();
-			//    return obj == null
-			//      ? default(KeyValuePair<TKey, TValue>)
-			//      : new KeyValuePair<TKey, TValue>(
-			//          obj.Get<TKey>("Key", default(TKey), resolver),
-			//          obj.Get<TValue>("Value", default(TValue), resolver)
-			//    );
-			// }
-
 			var args = type.GetGenericArguments();
 			var keyType = args[0];
 			var valueType = args[1];
 
-			var prmValue = Expression.Parameter(typeof(JsonValue), "value");
-			var prmType = Expression.Parameter(typeof(Type), "_"); // ignored
-			var prmResolver = Expression.Parameter(typeof(ICrystalJsonTypeResolver), "resolver");
+			var prmKey = Expression.Parameter(typeof(object), "key");
+			var prmValue = Expression.Parameter(typeof(object), "value");
 
-			var varObj = Expression.Variable(typeof(JsonObject), "obj");
+			// (object key, object value) => (object) new KeyValuePair<TKey, TValue>((TKey) key, (TValue) value)
+			var construct = Expression.Lambda<Func<object?, object?, object>>(
+				Expression
+					.New(type.GetConstructors().Single(), prmKey.CastFromObject(keyType), prmValue.CastFromObject(valueType))
+					.BoxToObject(),
+				$"<>_KV_{keyType.Name}_{valueType.Name}_Unpack",
+				true,
+				[ prmKey, prmValue ]
+			).Compile();
 
-			var body = Expression.Block(
-				[ varObj ],
-				[
-					Expression.Assign(varObj, Expression.Call(typeof(JsonValueExtensions), nameof(JsonValueExtensions.AsObjectOrDefault), null, prmValue)),
-					Expression.Convert(
-						Expression.Condition(
-							Expression.ReferenceEqual(varObj, Expression.Default(typeof(JsonObject))),
-							Expression.Default(type),
-							Expression.New(
-								type.GetConstructors().Single(),
-								Expression.Call(varObj, nameof(JsonObject.Get), [ keyType ], Expression.Constant("Key"), Expression.Default(keyType), prmResolver), // Get<TKey>("Key", default, resolver)
-								Expression.Call(varObj, nameof(JsonObject.Get), [ valueType ], Expression.Constant("Value"), Expression.Default(valueType), prmResolver) // Get<TValue>("Value", default, resolver)
-							)
-						),
-						typeof(object)
-					)
-				]
-			);
-			var binder = Expression.Lambda<CrystalJsonTypeBinder>(body, $"<>_KV_{keyType.Name}_{valueType.Name}_Unpack", true, [ prmValue, prmType, prmResolver ]).Compile();
+			var keyConverter = GetConverterFor(keyType);
+			var valueConverter = GetConverterFor(valueType);
+			var empty = type.GetDefaultValue();
+
+			CrystalJsonTypeBinder binder = (v, t, r) =>
+			{
+				var obj = v.AsObjectOrDefault();
+				if (obj is null || obj.Count == 0) return empty; // an empty object is the empty pair, as an empty array is on the other shape
+
+				// a standalone pair is spelled "key"/"value" by the legacy DataContractJsonSerializer, and "Key"/"Value" by our own writer (and by the pair-array shape of a dictionary): accept both
+				bool hasKey = obj.TryGetValue("Key", out var key) || obj.TryGetValue("key", out key);
+				bool hasValue = obj.TryGetValue("Value", out var value) || obj.TryGetValue("value", out value);
+				if (!hasKey && !hasValue)
+				{ // neither spelling is present: refuse instead of silently returning a default-filled pair
+					throw new JsonBindingException($"Cannot bind a JSON Object to {t.GetFriendlyName()}: expected an object carrying 'Key'/'Value' or 'key'/'value' members.", null, obj, t);
+				}
+
+				return construct(
+					keyConverter.BindJsonValue(key ?? JsonNull.Missing, r),
+					valueConverter.BindJsonValue(value ?? JsonNull.Missing, r)
+				);
+			};
 
 			var keyProperty = type.GetProperty("Key")!;
 			var valueProperty = type.GetProperty("Value")!;
@@ -1267,6 +1266,15 @@ namespace SnowBank.Data.Json
 
 		private static bool FilterMemberByAttributes(MemberInfo member, bool hasDataContract, ref string name, ref object? defaultValue, ref CrystalJsonMemberFlags flags)
 		{
+			// [JsonBooleanLiterals(null, ...)] means "do not emit for false", which is the SAME rule as
+			// [JsonIgnore(Condition = WhenWritingDefault)] on a bool. Resolving it into the flag here, once at
+			// contract build, is what keeps omission a writer-level decision and leaves the converter to answer
+			// only "what does true look like".
+			if (member.GetCustomAttribute<JsonBooleanLiteralsAttribute>(inherit: true) is { FalseLiteral: null })
+			{
+				flags |= CrystalJsonMemberFlags.OmitDefaultValues;
+			}
+
 			// note: [JsonIgnore] is checked BEFORE the [DataMember] opt-in: an "ignore this member" signal always wins over
 			// an "include this member" signal ([DataMember], [JsonProperty], [JsonInclude]), because mixing the two on one
 			// member is an application bug, and both serialization paths must resolve it the same way
@@ -1297,7 +1305,10 @@ namespace SnowBank.Data.Json
 							break;
 						}
 						default:
-						{ // "Always", or an attribute without a Condition: excluded from both directions
+						{ // "Always", or an attribute without a Condition: this is the exclusion form, and next to an
+							// include signal it is two wire contracts on one member: refuse loudly (the dual-output
+							// DTO is not supported; same family as the conflicting-wire-names guard)
+							ThrowIfIgnoreConflictsWithIncludeSignal(member);
 							return false;
 						}
 					}
@@ -1310,6 +1321,10 @@ namespace SnowBank.Data.Json
 				if (attr == null)
 				{ // skip!
 					return false;
+				}
+				if (attr.IsRequired)
+				{ // DCJS semantics on read: the member must be PRESENT in the document (an explicit null satisfies)
+					flags |= CrystalJsonMemberFlags.RequiredPresence;
 				}
 				if (attr.Name != null)
 				{
@@ -1377,6 +1392,30 @@ namespace SnowBank.Data.Json
 		private static bool HasJsonIncludeAttribute(MemberInfo member)
 			=> member.TryGetCustomAttribute("JsonIncludeAttribute", true, out var attr) && attr != null;
 
+		/// <summary>Tests if a member carries <c>[DataMember]</c> (the DataContract opt-in, which is accessibility-blind by definition)</summary>
+		private static bool HasDataMemberAttribute(MemberInfo member)
+			=> member.GetCustomAttribute<System.Runtime.Serialization.DataMemberAttribute>(inherit: true) != null;
+
+		/// <summary>Throws when a member excluded by an unconditional <c>[JsonIgnore]</c> also carries an include signal (<c>[DataMember]</c>, <c>[JsonInclude]</c>, or a <c>[JsonProperty]</c>-style naming attribute)</summary>
+		/// <remarks>
+		/// <para>The population that writes both attributes is the dual-output DTO (one wire carried the member, the other did not), and a dual-output DTO is not supported: the remedy is the split, one DTO per serializer.</para>
+		/// <para>The message must never suggest adding a <c>Condition</c>: a Condition turns the member into an INCLUDED member with a write rule, so it would resolve the error while shipping the member onto the second wire for the first time. The source generator reports the same conflict as error <c>CJSON0008</c>.</para>
+		/// </remarks>
+		private static void ThrowIfIgnoreConflictsWithIncludeSignal(MemberInfo member)
+		{
+			string? includeSignal =
+				HasDataMemberAttribute(member) ? "DataMember"
+				: HasJsonIncludeAttribute(member) ? "JsonInclude"
+				: member.TryGetCustomAttribute("JsonPropertyAttribute", true, out var jp) && jp != null ? "JsonProperty"
+				: null;
+			if (includeSignal != null)
+			{
+				// compat-surface wording: a DCJS veteran must recognize the two-serializer setup this pattern
+				// comes from, instead of concluding the library is broken; a modern developer just follows the fix
+				throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' carries an unconditional [JsonIgnore] next to [{includeSignal}]. In a DCJS-era two-serializer setup this pair put the member on one wire and kept it off the other; that dual-output pattern is not supported here, because one type cannot serve two wire contracts at once: split it into one DTO per serializer, each with a single coherent set of attributes. If one of the two attributes is simply a mistake, remove it.");
+			}
+		}
+
 		/// <summary>Returns a visitor that routes through a <c>[JsonConverter(typeof(...))]</c> attribute declared on the type itself, if any</summary>
 		internal static CrystalJsonTypeVisitor? TryGetAttributeConverterVisitor(Type type)
 		{
@@ -1396,7 +1435,7 @@ namespace SnowBank.Data.Json
 			if (target.GetCustomAttribute<JsonConvertWithAttribute>(inherit: true) is { } native)
 			{
 				return TryCreateConverterBridge(native.ConverterType, targetType)
-					?? throw new InvalidOperationException($"[JsonConvertWith] on '{target.Name}' names '{native.ConverterType.GetFriendlyName()}', which implements neither IJsonPacker<T> nor IJsonDeserializer<T> for type '{targetType.GetFriendlyName()}'.");
+					?? throw new InvalidOperationException(BuildConvertWithMismatchMessage(target, native.ConverterType, targetType));
 			}
 
 			// [JsonBooleanLiterals(...)] installs a built-in converter, feeding the same per-member slot as [JsonConverter(typeof(...))]
@@ -1437,11 +1476,19 @@ namespace SnowBank.Data.Json
 		/// </remarks>
 		private static IJsonMemberConverterBridge? TryCreateConverterBridge(Type converterType, Type targetType)
 		{
-			// a converter written for T also serves a T? member (the bridge lifts it)
-			var valueType = Nullable.GetUnderlyingType(targetType) ?? targetType;
-
+			// the EXACT form wins: a converter declared for T? takes responsibility for the nullable case itself
+			// (a PRESENT but unreadable value may map to "no value"), with precedence over the lift; a converter
+			// written for T still serves a T? member (the bridge lifts it), which keeps every existing converter
+			// working unchanged
+			var valueType = targetType;
 			bool isPacker = typeof(IJsonPacker<>).MakeGenericType(valueType).IsAssignableFrom(converterType);
 			bool isDeserializer = typeof(IJsonDeserializer<>).MakeGenericType(valueType).IsAssignableFrom(converterType);
+			if (!isPacker && !isDeserializer && Nullable.GetUnderlyingType(targetType) is { } underlying)
+			{
+				valueType = underlying;
+				isPacker = typeof(IJsonPacker<>).MakeGenericType(valueType).IsAssignableFrom(converterType);
+				isDeserializer = typeof(IJsonDeserializer<>).MakeGenericType(valueType).IsAssignableFrom(converterType);
+			}
 			if (!isPacker && !isDeserializer)
 			{
 				return null;
@@ -1462,6 +1509,20 @@ namespace SnowBank.Data.Json
 				converterType,
 				isPacker ? instance : null,
 				isDeserializer ? instance : null)!;
+		}
+
+		/// <summary>Builds the refusal message for a <c>[JsonConvertWith]</c> naming a type with no usable facet, with a tailored clause for the T?-converter-on-a-non-nullable-member arity mismatch</summary>
+		private static string BuildConvertWithMismatchMessage(MemberInfo target, Type converterType, Type targetType)
+		{
+			if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) is null)
+			{
+				var nullableForm = typeof(Nullable<>).MakeGenericType(targetType);
+				if (typeof(IJsonPacker<>).MakeGenericType(nullableForm).IsAssignableFrom(converterType) || typeof(IJsonDeserializer<>).MakeGenericType(nullableForm).IsAssignableFrom(converterType))
+				{
+					return $"[JsonConvertWith] on '{target.DeclaringType?.GetFriendlyName()}.{target.Name}' names '{converterType.GetFriendlyName()}', which implements the converter facets for '{nullableForm.GetFriendlyName()}' while the member is of the non-nullable type '{targetType.GetFriendlyName()}': a converter declared for the nullable form only serves nullable members (it may answer \"no value\", which a non-nullable member cannot hold).";
+				}
+			}
+			return $"[JsonConvertWith] on '{target.Name}' names '{converterType.GetFriendlyName()}', which implements neither IJsonPacker<T> nor IJsonDeserializer<T> for type '{targetType.GetFriendlyName()}'.";
 		}
 
 		private static bool FilterMemberByType(MemberInfo _, Type type)
@@ -1569,6 +1630,111 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+		/// <summary>Builds the four <c>[OnSerializing]</c> / <c>[OnSerialized]</c> / <c>[OnDeserializing]</c> / <c>[OnDeserialized]</c> callbacks declared by a type</summary>
+		/// <remarks>
+		/// <para>Supported signatures: <c>void M()</c> on all four, and <c>void M(JsonValue|JsonObject|JsonArray)</c> on the deserialize pair, which receives the document being bound.</para>
+		/// <para>The legacy <c>void M(StreamingContext)</c> shape is REFUSED here, at contract-build time, so the check is paid once per type and never per invocation. Generated converters refuse the same shape at compile time, with the same message.</para>
+		/// </remarks>
+		private static (Action<object>? OnSerializing, Action<object>? OnSerialized, Action<object, JsonValue?>? OnDeserializing, Action<object, JsonValue?>? OnDeserialized) GetSerializationCallbacks(Type type)
+		{
+			Action<object>? onSerializing = null, onSerialized = null;
+			Action<object, JsonValue?>? onDeserializing = null, onDeserialized = null;
+
+			// Framework types carry these attributes themselves, with the legacy signature: on .NET Framework
+			// Dictionary<K,V> and friends declare [OnSerializing] void M(StreamingContext) for the runtime's own
+			// serialization stack. Those callbacks are not ours to run, and refusing them would make a BCL
+			// collection unserializable on that TFM, so system types are skipped entirely rather than inspected.
+			if (IsSystemAssembly(type.Assembly))
+			{
+				return (null, null, null, null);
+			}
+
+			for (var current = type; current != null && current != typeof(object) && !IsSystemAssembly(current.Assembly); current = current.BaseType)
+			{
+				foreach (var method in current.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+				{
+					foreach (var attr in method.GetCustomAttributes(inherit: false))
+					{
+						// matched by name so this assembly does not have to reference the attribute's own
+						switch (attr.GetType().Name)
+						{
+							case "OnSerializingAttribute": onSerializing ??= BuildVoidCallback(method); break;
+							case "OnSerializedAttribute": onSerialized ??= BuildVoidCallback(method); break;
+							case "OnDeserializingAttribute": onDeserializing ??= BuildDocumentCallback(method); break;
+							case "OnDeserializedAttribute": onDeserialized ??= BuildDocumentCallback(method); break;
+						}
+					}
+				}
+			}
+
+			return (onSerializing, onSerialized, onDeserializing, onDeserialized);
+		}
+
+		/// <summary>Tests if a type comes from the runtime rather than from application code</summary>
+		private static bool IsSystemAssembly(Assembly assembly)
+		{
+			var name = assembly.GetName().Name;
+			return name is "mscorlib" or "System" or "System.Private.CoreLib" or "netstandard"
+			    || (name != null && name.StartsWith("System.", StringComparison.Ordinal));
+		}
+
+		private static JsonBindingException FailCallbackSignature(MethodInfo method)
+			=> new(string.Format(System.Globalization.CultureInfo.InvariantCulture, CrystalJson.Errors.CallbackSignatureNotSupported, method.Name));
+
+		private static JsonBindingException FailCallbackTakesStreamingContext(MethodInfo method)
+			=> new(string.Format(System.Globalization.CultureInfo.InvariantCulture, CrystalJson.Errors.CallbackStreamingContextNotSupported, method.Name));
+
+		private static bool TakesStreamingContext(ParameterInfo[] prms)
+			=> prms.Length == 1 && prms[0].ParameterType.Name == "StreamingContext";
+
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		private static Action<object> BuildVoidCallback(MethodInfo method)
+		{
+			var prms = method.GetParameters();
+			if (TakesStreamingContext(prms)) throw FailCallbackTakesStreamingContext(method);
+			if (prms.Length != 0)
+			{
+				throw FailCallbackSignature(method);
+			}
+
+			var prmInstance = Expression.Parameter(typeof(object), "instance");
+			var body = Expression.Call(Expression.Convert(prmInstance, method.DeclaringType!), method);
+			return Expression.Lambda<Action<object>>(body, true, [ prmInstance ]).Compile();
+		}
+
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		private static Action<object, JsonValue?> BuildDocumentCallback(MethodInfo method)
+		{
+			var prms = method.GetParameters();
+			if (TakesStreamingContext(prms)) throw FailCallbackTakesStreamingContext(method);
+
+			var prmInstance = Expression.Parameter(typeof(object), "instance");
+			var prmDocument = Expression.Parameter(typeof(JsonValue), "document");
+			var target = Expression.Convert(prmInstance, method.DeclaringType!);
+
+			Expression body;
+			if (prms.Length == 0)
+			{
+				body = Expression.Call(target, method);
+			}
+			else if (prms.Length == 1 && typeof(JsonValue).IsAssignableFrom(prms[0].ParameterType))
+			{ // JsonValue takes the document as-is; JsonObject/JsonArray narrow it (a mismatched document fails loudly, as everywhere else)
+				var argType = prms[0].ParameterType;
+				Expression arg = argType == typeof(JsonValue)
+					? prmDocument
+					: Expression.Convert(
+						Expression.Call(typeof(JsonValueExtensions), argType == typeof(JsonObject) ? nameof(JsonValueExtensions.AsObject) : nameof(JsonValueExtensions.AsArray), null, prmDocument),
+						argType);
+				body = Expression.Call(target, method, arg);
+			}
+			else
+			{
+				throw FailCallbackSignature(method);
+			}
+
+			return Expression.Lambda<Action<object, JsonValue?>>(body, true, [ prmInstance, prmDocument ]).Compile();
+		}
+
 		private static CrystalJsonMemberDefinition[] GetMembersFromReflection(Type type)
 		{
 			Contract.NotNull(type);
@@ -1579,12 +1745,14 @@ namespace SnowBank.Data.Json
 
 			var members = new List<CrystalJsonMemberDefinition>();
 
-			// non-public members are invisible by default, but [JsonInclude] (System.Text.Json) opts them in
-			// explicitly (note: this is a superset of STJ, whose reflection serializer rejects non-public members)
+			// non-public members are invisible by default; two explicit signals opt them in:
+			// - [JsonInclude] (System.Text.Json), on any type (a superset of STJ, whose reflection serializer rejects non-public members)
+			// - [DataMember] on a [DataContract] type: the DataContract model is accessibility-blind by definition,
+			//   and the attribute pair is already the explicit declaration of intent (DCJS fidelity)
 			var fields = new List<FieldInfo>(type.GetFields(BindingFlags.Instance | BindingFlags.Public));
 			foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
 			{
-				if (HasJsonIncludeAttribute(field))
+				if (HasJsonIncludeAttribute(field) || (hasDataContract && HasDataMemberAttribute(field)))
 				{
 					fields.Add(field);
 				}
@@ -1664,7 +1832,7 @@ namespace SnowBank.Data.Json
 			var properties = new List<PropertyInfo>(type.GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.Public));
 			foreach (var property in type.GetProperties(BindingFlags.GetProperty | BindingFlags.Instance | BindingFlags.NonPublic))
 			{
-				if (HasJsonIncludeAttribute(property))
+				if (HasJsonIncludeAttribute(property) || (hasDataContract && HasDataMemberAttribute(property)))
 				{
 					properties.Add(property);
 				}
@@ -1698,8 +1866,9 @@ namespace SnowBank.Data.Json
 					continue; // skip
 				}
 
-				// [JsonInclude] also unlocks the non-public accessors of the property
-				bool includeNonPublic = HasJsonIncludeAttribute(property);
+				// [JsonInclude] unlocks the non-public accessors of the property; so does [DataMember] on a
+				// [DataContract] type (a public property with a private setter must bind, as it did under DCJS)
+				bool includeNonPublic = HasJsonIncludeAttribute(property) || (hasDataContract && HasDataMemberAttribute(property));
 
 				// skip properties that take parameters (possible in VB.NET)
 				var method = property.GetGetMethod(includeNonPublic);
@@ -1799,7 +1968,17 @@ namespace SnowBank.Data.Json
 		/// <summary>Tests if a member of a type is decorated with the <see langword="required"/> keyword</summary>
 		public static bool IsRequiredMember(MemberInfo member)
 		{
-			return member.GetCustomAttribute<System.Runtime.CompilerServices.RequiredMemberAttribute>() != null;
+			// NOT the typed GetCustomAttribute<RequiredMemberAttribute>(): on netfx the BCL has no such type, so the
+			// compiler embeds an internal copy into EVERY assembly that uses the keyword - the instance on the member
+			// has the declaring assembly's type identity, never the one this assembly references. Match by name.
+			foreach (var attribute in member.GetCustomAttributes(inherit: false))
+			{
+				if (attribute.GetType() is { Name: "RequiredMemberAttribute", Namespace: "System.Runtime.CompilerServices" })
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 #if NET5_0_OR_GREATER
@@ -2124,7 +2303,15 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			return new CrystalJsonTypeDefinition(type, CrystalJsonTypeFlags.None, binder, generator, members, null, baseType, typeDiscriminatorProperty, typeDiscriminatorValue, derivedTypeMap);
+			var callbacks = GetSerializationCallbacks(type);
+
+			return new CrystalJsonTypeDefinition(type, CrystalJsonTypeFlags.None, binder, generator, members, null, baseType, typeDiscriminatorProperty, typeDiscriminatorValue, derivedTypeMap)
+			{
+				OnSerializing = callbacks.OnSerializing,
+				OnSerialized = callbacks.OnSerialized,
+				OnDeserializing = callbacks.OnDeserializing,
+				OnDeserialized = callbacks.OnDeserialized,
+			};
 		}
 
 		/// <summary>Extracts the type definition for the Nullable&lt;T&gt; version of a struct</summary>

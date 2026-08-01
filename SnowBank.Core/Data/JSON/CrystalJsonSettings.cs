@@ -156,6 +156,9 @@ namespace SnowBank.Data.Json
 			Target_Reserved2 = 0x30000,
 			Target_Mask = 0x30000,
 
+			/// <summary>Serialize <c>TimeSpan</c> values as ISO 8601 duration strings (<c>"P1DT2H3M4.005S"</c>, the legacy DataContractJsonSerializer wire form) instead of a number of seconds</summary>
+			Iso8601Durations = 0x40000,
+
 			// Misc
 			UseCamelCasingForEnums = 0x100000,
 			DenyTrailingComma = 0x200000,
@@ -568,6 +571,16 @@ namespace SnowBank.Data.Json
 		private static OptionFlags SetDictionariesAsPairArrays(OptionFlags flags, bool value)
 			=> value ? flags | OptionFlags.DictionariesAsPairArrays : flags & ~OptionFlags.DictionariesAsPairArrays;
 
+		/// <summary>Serialize <see cref="TimeSpan"/> values as ISO 8601 duration strings (<c>"P1DT2H3M4.005S"</c>) instead of a number of seconds</summary>
+		public bool Iso8601Durations
+		{
+			[Pure]
+			get => (m_flags & OptionFlags.Iso8601Durations) != 0;
+		}
+
+		private static OptionFlags SetIso8601Durations(OptionFlags flags, bool value)
+			=> value ? flags | OptionFlags.Iso8601Durations : flags & ~OptionFlags.Iso8601Durations;
+
 		/// <summary>Serialize dictionaries as an array of <c>{ "Key": ..., "Value": ... }</c> objects, the wire shape produced by the legacy DataContractJsonSerializer</summary>
 		/// <remarks>Only for interoperability with clients that cannot read a JSON object map; the shape is also always accepted on read, without this setting.</remarks>
 		[Pure]
@@ -580,6 +593,15 @@ namespace SnowBank.Data.Json
 		/// <summary>Serialize dates using the Microsoft notation: <c>"\/Date(xxxxx)\/"</c></summary>
 		[Pure]
 		public CrystalJsonSettings WithMicrosoftDates() => Update(SetDateFormatting(m_flags, DateFormat.Microsoft));
+
+		/// <summary>Serialize <see cref="TimeSpan"/> values as ISO 8601 duration strings (<c>"P1DT2H3M4.005S"</c>), the wire form produced by the legacy DataContractJsonSerializer</summary>
+		/// <remarks>Only for interoperability with legacy readers; the form is also always accepted on read, without this setting.</remarks>
+		[Pure]
+		public CrystalJsonSettings WithIso8601Durations() => Update(SetIso8601Durations(m_flags, true));
+
+		/// <summary>Serialize <see cref="TimeSpan"/> values as a number of seconds (the default)</summary>
+		[Pure]
+		public CrystalJsonSettings WithNumericDurations() => Update(SetIso8601Durations(m_flags, false));
 
 		/// <summary>Serialize dates using the Javascript notation: <c>new Date(xxxx)</c></summary>
 		[Pure]
@@ -754,6 +776,15 @@ namespace SnowBank.Data.Json
 		/// </remarks>
 		public static CrystalJsonSettings JsonReadOnlyIgnoreCase { get; } = new CrystalJsonSettings(OptionFlags.Mutability_ReadOnly | OptionFlags.FieldsIgnoreCase);
 
+		/// <summary>Serialize the COMPLETE legacy wire of <c>DataContractJsonSerializer</c>: numeric enums, <c>\/Date(...)\/</c> dates, ISO 8601 duration strings for <see cref="TimeSpan"/>, dictionaries as <c>[{"Key":..,"Value":..}]</c> pair arrays, and explicit <c>null</c> members</summary>
+		/// <remarks>
+		/// <para>Equivalent to <c>CrystalJsonSettings.Json.WithEnumAsNumbers().WithMicrosoftDates().WithIso8601Durations().WithDictionariesAsPairArrays().WithNullMembers()</c>, as one named, cached preset.</para>
+		/// <para>This preset reproduces every DCJS wire construct that has a settings-level recipe, so an endpoint using it feeds an unchanged legacy reader without any per-construct configuration.</para>
+		/// <para>Scope it to the endpoints that feed an unchanged legacy reader: <see cref="CrystalJsonSettings.WithNullMembers"/> in particular is pure verbosity for every consumer that is not a frozen legacy reader.</para>
+		/// <para>Reading never needs this preset: the legacy date, duration and dictionary shapes, and numbers or numeric strings for enums, are all accepted on read by default.</para>
+		/// </remarks>
+		public static CrystalJsonSettings DataContractCompat { get; } = new CrystalJsonSettings(OptionFlags.Target_Json | OptionFlags.EnumsAsNumbers | OptionFlags.DateFormat_Microsoft | OptionFlags.Iso8601Durations | OptionFlags.DictionariesAsPairArrays | OptionFlags.ShowNullMembers);
+
 		#endregion
 
 		#region JavaScript...
@@ -822,6 +853,8 @@ namespace SnowBank.Data.Json
 				var s2 = new CrystalJsonSettings(s.Flags | OptionFlags.EnumsAsNumbers);
 				defaults[(int) s2.Flags] = s2;
 			}
+			// composed presets register last, so the preset property and the equivalent fluent composition share one instance
+			defaults[(int) DataContractCompat.Flags] = DataContractCompat;
 			Cached = new(defaults.ToFrozenDictionary(), valueFactory: (v) => new((OptionFlags) v));
 		}
 

@@ -34,8 +34,14 @@ namespace SnowBank.Data.Json
 	/// and <see cref="IJsonDeserializer{T}"/> (JSON to value) it implements. A type that is only ever written (or only ever read) can
 	/// implement a single facet; any attempt to use the missing direction fails with an exception naming the facet to implement.
 	/// This interface is the convenience bundle for the common symmetric case, never a requirement.</para>
-	/// <para>Implementations never see <c>null</c>: the serialization pipeline handles null and missing values (and the lifting
-	/// of a converter written for <c>T</c> over a <c>T?</c> member) before invoking the converter.</para>
+	/// <para>Implementations never see <c>null</c> or missing values: the serialization pipeline handles them (and the lifting
+	/// of a converter written for <c>T</c> over a <c>T?</c> member) before invoking the converter, on both sides. A converter may
+	/// also be declared for the nullable form itself (<c>IJsonMemberConverter&lt;DateTime?&gt;</c> on a <c>DateTime?</c> member):
+	/// the exact form wins over the lift, and the converter then owns every PRESENT value, so it can answer "no value" for a
+	/// present-but-unreadable input (an empty string, an unparseable token) - distinctly from <c>default(T)</c>, which stays a real
+	/// value, and from JSON null, which stays the pipeline's. The <c>T?</c> declaration transfers the READ side only: <c>Pack</c>
+	/// still never sees null, so a member converter cannot represent absence for a nullable member whose absent form is not JSON
+	/// null, unless that absent form only matters when reading.</para>
 	/// <para>A source-generated <see cref="IJsonConverter{T}"/> also satisfies this contract (it implements both parents), so a
 	/// generated whole-type converter can be named on a member without any adapter.</para>
 	/// </remarks>

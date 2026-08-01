@@ -478,8 +478,10 @@ namespace SnowBank.Data.Json
 				return true;
 			}
 			if (typeof(TimeSpan) == type)
-			{
-				result = JsonNumber.Return(((TimeSpan)value).TotalSeconds);
+			{ // same rule as the text writer: a number of seconds by default, an ISO 8601 duration string when Iso8601Durations is set
+				result = m_settings.Iso8601Durations
+					? JsonString.Return(System.Xml.XmlConvert.ToString((TimeSpan) value))
+					: JsonNumber.Return(((TimeSpan)value).TotalSeconds);
 				return true;
 			}
 			if (typeof(Guid) == type)
@@ -866,6 +868,8 @@ namespace SnowBank.Data.Json
 				return false;
 			}
 
+			typeDef.OnSerializing?.Invoke(value);
+
 			MarkVisited(ref context, value, runtimeType);
 			var obj = BeginObject(typeDef.Members.Length);
 
@@ -909,6 +913,8 @@ namespace SnowBank.Data.Json
 				}
 			}
 			Leave(ref context, value);
+
+			typeDef.OnSerialized?.Invoke(value);
 
 			if (m_readOnly)
 			{ //PERF: find a more efficient way?

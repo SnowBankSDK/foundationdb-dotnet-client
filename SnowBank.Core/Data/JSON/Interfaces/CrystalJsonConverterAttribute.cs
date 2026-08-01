@@ -59,10 +59,12 @@ namespace SnowBank.Data.Json
 				this.PropertyNamingPolicy = CrystalJsonKnownNamingPolicy.CamelCase;
 				//this.NumberHandling = JsonNumberHandling.AllowReadingFromString;
 			}
-			else if (defaults != CrystalJsonSerializerDefaults.General)
+			else if (defaults is not (CrystalJsonSerializerDefaults.General or CrystalJsonSerializerDefaults.DataContractCompat))
 			{
 				throw new ArgumentOutOfRangeException(nameof(defaults));
 			}
+			// DataContractCompat: no naming change (the DCJS wire uses the declared member names); the profile
+			// governs the VALUE formats of the generated entry points, and is applied by the source generator
 		}
 
 		/// <summary>Gets or sets the default value of <see cref="CrystalJsonSettings.IgnoreCaseForNames" />.</summary>
@@ -102,6 +104,14 @@ namespace SnowBank.Data.Json
 		///   <para>- Quoted numbers (JSON strings for number properties) are allowed.</para>
 		/// </summary>
 		Web,
+
+		/// <summary>
+		///   <para>For teams coming from <c>DataContractJsonSerializer</c>: the container's generated entry points default to the legacy wire (<see cref="CrystalJsonSettings.DataContractCompat"/> - numeric enums, <c>\/Date(ms)\/</c> dates, ISO 8601 durations, pair-array dictionaries, explicit nulls) instead of the standard wire.</para>
+		///   <para>A container with this profile produces what DCJS would have produced for the same type, POCO or <c>[DataContract]</c> alike, with the documented differences. Member names stay as declared (the DCJS wire has no naming policy), so combining this profile with a camelCase or case-insensitive naming option is refused at build time.</para>
+		///   <para>Explicitly passed settings always replace the profile entirely; settings the baked names cannot honor fail loudly instead of silently producing another wire.</para>
+		///   <para>The dual-container pattern is the intended shape for a progressive portage: not-yet-ported services serialize through a container with this profile, modernized services through a default or <see cref="Web"/> container over the SAME types; when the portage completes, delete the legacy container.</para>
+		/// </summary>
+		DataContractCompat,
 	}
 
 	/// <summary>Meta-attribute that marks another attribute as enabling JSON source code generation on the types it decorates</summary>

@@ -43,6 +43,8 @@ namespace SnowBank.Data.Json
 		OmitNullValues = 1 << 8,
 		/// <summary>The member is omitted when its value equals its default, regardless of the settings (<c>[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]</c>)</summary>
 		OmitDefaultValues = 1 << 9,
+		/// <summary>The member must be PRESENT in the document when binding (<c>[DataMember(IsRequired = true)]</c>): an absent member throws, an explicit <see langword="null"/> satisfies it (DCJS semantics), unlike <see cref="Required"/> which refuses null as well</summary>
+		RequiredPresence = 1 << 10,
 	}
 
 	/// <summary>Structure that holds the cached serialization metadata for a field or property of a class or struct</summary>
@@ -120,6 +122,10 @@ namespace SnowBank.Data.Json
 		/// required string Foo { get; ... }  // IsRequired == true
 		/// </code></remarks>
 		public bool IsRequired => this.Flags.HasFlag(CrystalJsonMemberFlags.Required);
+
+		/// <summary>The member must be present in the document when binding (<c>[DataMember(IsRequired = true)]</c>)</summary>
+		/// <remarks>An absent member throws; an explicit <see langword="null"/> satisfies it (DCJS semantics), unlike <see cref="IsRequired"/> which refuses null as well.</remarks>
+		public bool IsRequiredPresence => this.Flags.HasFlag(CrystalJsonMemberFlags.RequiredPresence);
 
 		/// <summary>The member has the <see cref="System.ComponentModel.DataAnnotations.KeyAttribute"/> attribute</summary>
 		/// <remarks>Examples: <code>
