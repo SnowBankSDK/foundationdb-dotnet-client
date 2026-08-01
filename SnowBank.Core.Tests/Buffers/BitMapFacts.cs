@@ -355,6 +355,64 @@ namespace SnowBank.Buffers.Tests
 		}
 
 		[Test]
+		public void Test_BitMap64_FindSpan()
+		{
+			const int SIZE = 256;
+
+			// naive reference: first index >= start where `span` consecutive bits are all set (within SIZE)
+			static long Naive(bool[] bits, uint span, long start)
+			{
+				for (long i = Math.Max(0L, start); i + span <= bits.Length; i++)
+				{
+					bool all = true;
+					for (uint j = 0; j < span; j++)
+					{
+						if (!bits[i + j]) { all = false; break; }
+					}
+					if (all) return i;
+				}
+				return -1L;
+			}
+
+			// explicit cases
+			{
+				var m = new BitMap64(SIZE);
+				Assert.That(m.FindSpan(1, 0), Is.EqualTo(-1L), "empty map has no run");
+				m.Set(10); m.Set(11); m.Set(12);
+				Assert.That(m.FindSpan(1, 0), Is.EqualTo(10L));
+				Assert.That(m.FindSpan(3, 0), Is.EqualTo(10L));
+				Assert.That(m.FindSpan(4, 0), Is.EqualTo(-1L), "no run of 4");
+				Assert.That(m.FindSpan(3, 11), Is.EqualTo(-1L), "run of 3 does not start at or after 11");
+				Assert.That(m.FindSpan(2, 11), Is.EqualTo(11L));
+			}
+
+			// randomized parity against the naive reference, across many maps and span sizes
+			var rnd = new Random(20260801);
+			for (int iter = 0; iter < 1000; iter++)
+			{
+				var map = new BitMap64(SIZE);
+				var bits = new bool[SIZE];
+				int ones = rnd.Next(0, SIZE + 1);
+				for (int k = 0; k < ones; k++)
+				{
+					int b = rnd.Next(SIZE);
+					map.Set(b);
+					bits[b] = true;
+				}
+				for (uint span = 1; span <= 40; span++)
+				{
+					long start = rnd.Next(0, SIZE);
+					long expected = Naive(bits, span, start);
+					long actual = map.FindSpan(span, start);
+					if (actual != expected)
+					{
+						Assert.That(actual, Is.EqualTo(expected), $"span={span} start={start} map={map.ToString("B")}");
+					}
+				}
+			}
+		}
+
+		[Test]
 		public void Test_BitMap64_TestAndClear()
 		{
 			var map = new BitMap64(128);

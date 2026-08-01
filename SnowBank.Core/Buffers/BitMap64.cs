@@ -778,6 +778,74 @@ namespace SnowBank.Buffers
 			return -1;
 		}
 
+		/// <summary>Finds the start index of the first run of <paramref name="span"/> contiguous set bits, or a negative value if none exists</summary>
+		/// <param name="span">Number of consecutive set bits to look for (must be 1 or more)</param>
+		/// <param name="start">Bit index where the scan starts</param>
+		/// <returns>If non-negative, all bits from the returned index to (index + <paramref name="span"/> - 1) are set (1)</returns>
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public long FindSpan(uint span, long start = 0)
+		{
+			return FindSpan(this.Words.Span, this.Capacity, span, start);
+		}
+
+		/// <summary>Finds the start index of the first run of <paramref name="span"/> contiguous set bits in the specified range, or a negative value if none exists</summary>
+		[Pure]
+		public static long FindSpan(ReadOnlySpan<ulong> map, long capacity, uint span, long start)
+		{
+			Contract.Debug.Requires(span >= 1);
+			if ((ulong) start > (ulong) capacity) ThrowHelper.ThrowArgumentOutOfRangeException(nameof(start));
+			if (capacity == 0 || start >= capacity) return -1L;
+			unsafe
+			{
+				fixed (ulong* ptr = map)
+				{
+					return FindSpanUnsafe(ptr, span, start, capacity);
+				}
+			}
+		}
+
+		/// <summary>Finds the start index of the first run of <paramref name="span"/> contiguous set bits in the specified range, or a negative value if none exists</summary>
+		/// <param name="map">Pointer to the first word of the bitmap</param>
+		/// <param name="span">Number of consecutive set bits to look for (must be 1 or more)</param>
+		/// <param name="start">Bit index where the scan starts</param>
+		/// <param name="size">Size (in bits) of the bitmap</param>
+		[Pure]
+		public static unsafe long FindSpanUnsafe(ulong* map, [Positive] uint span, [Positive] long start, [Positive] long size)
+		{
+			Contract.Debug.Requires(map != null && span >= 1 && start >= 0 && size >= 0);
+
+			long idx = start;              // cursor
+			long end = size - span + 1;    // no full run can start at or after this point
+
+			while (idx < end)
+			{
+				// find the next set bit at or after the cursor
+				long p = FindNextUnsafe(map, idx, size);
+				if (p < 0 || p >= end)
+				{ // no remaining candidate can fit a full run
+					break;
+				}
+
+				// verify that the (span - 1) following bits are also set
+				uint j;
+				for (j = 1; j < span; j++)
+				{
+					if ((map[(p + j) >> IndexShift] & (1UL << (int) ((p + j) & WordMask))) == 0)
+					{ // run is incomplete
+						break;
+					}
+				}
+				if (j == span)
+				{ // all bits set: this is the first full run
+					return p;
+				}
+
+				// the bit at (p + j) is cleared, so the next possible run can only start after it
+				idx = p + j + 1;
+			}
+			return -1L; // not found
+		}
+
 		#region Enumerable<bool>...
 
 		/// <summary>Capacity of this bitmap</summary>
