@@ -7,18 +7,9 @@
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<EnableNUnitRunner>true</EnableNUnitRunner>
-		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
-
-	<PropertyGroup>
-		<IsTestProject>true</IsTestProject>
-		<IsPackable>false</IsPackable>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
-	</PropertyGroup>
 
 	<!-- Source Code Generator -->
 	<!--
@@ -35,6 +26,8 @@
 	-->
 
 	<ItemGroup>
+		<!-- in-process compilation harness (GeneratedCodeHygieneFacts drives the generator through CSharpGeneratorDriver) -->
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
 		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" />
@@ -53,7 +46,8 @@
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
-		<ProjectReference Include="..\SnowBank.Serialization.Json.CodeGen\SnowBank.Serialization.Json.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<!-- both the analyzer (generates code for THIS project) and a plain reference (the hygiene facts instantiate the generator in-process) -->
+		<ProjectReference Include="..\SnowBank.Serialization.Json.CodeGen\SnowBank.Serialization.Json.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="true" />
 	</ItemGroup>
 
 </Project>

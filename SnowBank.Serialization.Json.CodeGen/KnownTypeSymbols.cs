@@ -122,6 +122,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 		
 		public Compilation Compilation { get; }
 
+		/// <summary>The compilation's core library defines <c>[UnsafeAccessor]</c> (net8+): non-public members get zero-cost accessor thunks; otherwise the generated code falls back to reflection-based accessors</summary>
+		public bool HasUnsafeAccessor { get; }
+
 		#region JSON Serialization Attributes...
 
 		public INamedTypeSymbol? CrystalJsonConverterAttribute { get; }
@@ -152,6 +155,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 			this.Compilation = compilation;
 
 			this.CrystalJsonConverterAttribute = compilation.GetBestTypeByMetadataName(CrystalJsonConverterAttributeFullName);
+
+			this.HasUnsafeAccessor = compilation.GetBestTypeByMetadataName("System.Runtime.CompilerServices.UnsafeAccessorAttribute") is not null;
 
 			this.IJsonPackable = compilation.GetBestTypeByMetadataName(IJsonPackableFullName);
 			this.IJsonSerializable = compilation.GetBestTypeByMetadataName(IJsonSerializableFullName);

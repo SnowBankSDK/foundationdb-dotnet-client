@@ -86,6 +86,16 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	}
 
+	/// <summary>The omit-when-false shapes, so the generated path can be compared against reflection</summary>
+	public sealed class ProbeOmitWhenFalseDto
+	{
+		[JsonBooleanLiterals(null, "1")]
+		public bool Literal { get; set; }
+
+		[JsonBooleanLiterals(null, true)]
+		public bool Plain { get; set; }
+	}
+
 	/// <summary>Asymmetric converter: packing facet only</summary>
 	public sealed class ProbePackOnlyConverter : IJsonPacker<bool>
 	{
@@ -117,10 +127,58 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public bool Flag { get; set; }
 	}
 
+	/// <summary>Legacy-shaped converter declared for the NULLABLE form itself: a present-but-unreadable value answers "no value"</summary>
+	/// <remarks>Both throw-arms pin the pipeline invariant race-free: the pipeline owns null and missing on BOTH sides, so if any route ever hands them to the converter, whatever test triggered it fails loudly.</remarks>
+	public sealed class ProbeNullableFormCountConverter : IJsonMemberConverter<int?>
+	{
+
+		public JsonValue Pack(int? instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			// the legacy body wrote "" for a null member; that form must stay unreachable, the pipeline owns the null-member wire
+			=> instance is { } value ? JsonString.Return(value.ToString(System.Globalization.CultureInfo.InvariantCulture)) : throw new InvalidOperationException("Pack must never see a null member");
+
+		public int? Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
+			=> value switch
+			{
+				JsonString s => int.TryParse(s.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : null,
+				JsonNumber n => n.ToInt32(),
+				JsonNull => throw new InvalidOperationException("the converter must never see JSON null or a missing member"),
+				_ => throw new JsonBindingException($"Cannot convert {value.Type} into an optional count")
+			};
+
+	}
+
+	/// <summary>Converter declared for the underlying value type, applied to a nullable member through the lift</summary>
+	public sealed class ProbeHexCountConverter : IJsonMemberConverter<int>
+	{
+		public JsonValue Pack(int instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			=> JsonString.Return(instance.ToString("x", System.Globalization.CultureInfo.InvariantCulture));
+
+		public int Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
+			=> value is JsonString s ? int.Parse(s.Value, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture) : value.ToInt32();
+	}
+
+	public sealed record ProbeNullableFormDto
+	{
+		[JsonConvertWith(typeof(ProbeNullableFormCountConverter))]
+		public int? Count { get; set; }
+
+		[JsonConvertWith(typeof(ProbeHexCountConverter))]
+		public int? Lifted { get; set; }
+	}
+
+	public sealed record ProbeRequiredNullableFormDto
+	{
+		[JsonConvertWith(typeof(ProbeNullableFormCountConverter))]
+		public required int? Count { get; set; }
+	}
+
 	[CrystalJsonConverter]
 	[CrystalJsonSerializable(typeof(ProbeConvertedDto))]
 	[CrystalJsonSerializable(typeof(ProbePackOnlyDto))]
 	[CrystalJsonSerializable(typeof(ProbeUnpackOnlyDto))]
+	[CrystalJsonSerializable(typeof(ProbeNullableFormDto))]
+	[CrystalJsonSerializable(typeof(ProbeOmitWhenFalseDto))]
+	[CrystalJsonSerializable(typeof(ProbeRequiredNullableFormDto))]
 	public static partial class ProbeConverterHost
 	{
 		// generated code goes here!
@@ -264,6 +322,85 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
+		public void Test_NullableForm_Converter_Distinguishes_No_Value_From_Default_And_From_Null()
+		{
+			// the three outcomes must stay distinguishable, because default(T) is itself a legitimate domain value (0 for int?):
+			// 1) present but unreadable -> the CONVERTER answers "no value" ("xx" is the proof of WHO answered: a route
+			//    that bypassed the converter could only throw on it, never answer null)
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("""{ "Count": "" }""").Count, Is.Null, "a present-but-unreadable value binds to no-value");
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("""{ "Count": "xx" }""").Count, Is.Null, "the converter, not the pipeline, answered no-value");
+
+			// 2) default(T) round-trips as a real value, NOT as no-value
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("""{ "Count": "0" }""").Count, Is.EqualTo(0), "zero is a domain value, distinct from no-value");
+
+			// 3) JSON null -> the PIPELINE answers; the converter never runs, even in the T? form (it would throw)
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("""{ "Count": null }""").Count, Is.Null);
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("{ }").Count, Is.Null);
+
+			// and a readable value still binds through the converter
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("""{ "Count": "42" }""").Count, Is.EqualTo(42));
+		}
+
+		[Test]
+		public void Test_NullableForm_Converter_Write_Of_Null_Stays_Pipeline_Controlled()
+		{
+			// the T? declaration transfers the READ side only: Pack never sees null (the converter throws if it ever
+			// does), so its legacy null-write form is unreachable by design, and the wire follows the settings
+			var dto = new ProbeNullableFormDto { Count = null };
+
+			var obj = JsonObject.Parse(ProbeConverterHost.ProbeNullableFormDto.ToJsonText(dto)).AsObject();
+			Assert.That(obj.ContainsKey("Count"), Is.False, "a null member is omitted by default, never written as the converter's \"\" form");
+
+			var objNulls = JsonObject.Parse(ProbeConverterHost.ProbeNullableFormDto.ToJsonText(dto, CrystalJsonSettings.Json.WithNullMembers())).AsObject();
+			Assert.That(objNulls.ContainsKey("Count"), Is.True, "WithNullMembers() governs the null-member wire");
+			Assert.That(objNulls["Count"].IsNull, Is.True, "the pipeline writes JSON null, not the converter's \"\" form");
+
+			// a PRESENT value still routes through the converter, on both write routes
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.Pack(new ProbeNullableFormDto { Count = 7 }).AsObject().Get<string>("Count"), Is.EqualTo("7"), "a present value routes through the converter");
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.ToJsonText(new ProbeNullableFormDto { Count = 7 }), Does.Contain("\"7\""));
+		}
+
+		[Test]
+		public void Test_NullableForm_Converter_Reads_Through_Proxies()
+		{
+			var ro = ProbeConverterHost.ProbeNullableFormDto.ToReadOnly(new ProbeNullableFormDto { Count = 7 });
+			Assert.That(ro.Count, Is.EqualTo(7), "the read-only proxy decodes through the T?-form converter");
+
+			var w = ProbeConverterHost.ProbeNullableFormDto.ToMutable(new ProbeNullableFormDto { Count = 7 });
+			Assert.That(w.Count, Is.EqualTo(7), "the writable proxy decodes through the T?-form converter");
+
+			// an absent member reads as no-value through the proxy, answered by the pipeline (the converter would throw)
+			Assert.That(ProbeConverterHost.ProbeNullableFormDto.ToReadOnly(new ProbeNullableFormDto()).Count, Is.Null, "an absent member reads as no-value through the proxy");
+		}
+
+		[Test]
+		public void Test_Lifted_Converter_On_Nullable_Member_Still_Lifts()
+		{
+			// regression pin: a converter declared for the underlying T keeps today's lifted behavior on a T? member
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("""{ "Lifted": "2a" }""").Lifted, Is.EqualTo(42));
+				Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("""{ "Lifted": null }""").Lifted, Is.Null);
+				Assert.That(ProbeConverterHost.ProbeNullableFormDto.Deserialize("{ }").Lifted, Is.Null);
+				Assert.That(ProbeConverterHost.ProbeNullableFormDto.Pack(new ProbeNullableFormDto { Lifted = 42 }).AsObject().Get<string>("Lifted"), Is.EqualTo("2a"));
+				Assert.That(JsonObject.Parse(ProbeConverterHost.ProbeNullableFormDto.ToJsonText(new ProbeNullableFormDto { Lifted = null })).AsObject().ContainsKey("Lifted"), Is.False);
+			}
+		}
+
+		[Test]
+		public void Test_Required_NullableForm_Member_Rejects_Null_And_Missing_But_Accepts_Unreadable()
+		{
+			// required = the pipeline's null/missing gate; a PRESENT value the converter maps to no-value passes it
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(() => ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("{ }"), Throws.InstanceOf<JsonBindingException>(), "a missing required member throws");
+				Assert.That(() => ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": null }"""), Throws.InstanceOf<JsonBindingException>(), "an explicit null on a required member throws");
+				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": "42" }""").Count, Is.EqualTo(42));
+				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": "" }""").Count, Is.Null, "present-but-unreadable satisfies the presence gate and the converter answers no-value");
+			}
+		}
+
+		[Test]
 		public void Test_Generated_Round_Trip()
 		{
 			var dto = new ProbeConvertedDto { Enabled = true, Maybe = true, Day = DayOfWeek.Sunday, Kind = ProbeCourierKind.Electronic };
@@ -275,6 +412,29 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(back.Day, Is.EqualTo(DayOfWeek.Sunday));
 				Assert.That(back.Kind, Is.EqualTo(ProbeCourierKind.Electronic));
 			}
+		}
+
+
+		[Test]
+		public void Test_Omit_When_False_Is_Identical_On_Both_Paths()
+		{
+			// the omission is decided from the member's flags, not inside the converter, so the generated path has to
+			// resolve it at compile time exactly as the reflection path resolves it at contract build. Run both,
+			// compare: a generated converter that emitted the member anyway would be a silent wire divergence.
+			foreach (var value in new[] { true, false })
+			{
+				var dto = new ProbeOmitWhenFalseDto { Literal = value, Plain = value };
+				var generated = ProbeConverterHost.ProbeOmitWhenFalseDto.ToJsonText(dto, CrystalJsonSettings.JsonCompact);
+				var reflection = CrystalJson.Serialize(dto, CrystalJsonSettings.JsonCompact);
+				Assert.That(generated, Is.EqualTo(reflection), $"the two paths must agree byte for byte (value = {value})");
+			}
+
+			var absent = ProbeConverterHost.ProbeOmitWhenFalseDto.ToJsonText(new ProbeOmitWhenFalseDto(), CrystalJsonSettings.JsonCompact);
+			Assert.That(absent, Is.EqualTo("{}"), "and both members really are omitted when false, rather than merely agreeing on something wrong");
+
+			var present = ProbeConverterHost.ProbeOmitWhenFalseDto.ToJsonText(new ProbeOmitWhenFalseDto { Literal = true, Plain = true }, CrystalJsonSettings.JsonCompact);
+			Assert.That(present, Is.EqualTo(CrystalJson.Serialize(new ProbeOmitWhenFalseDto { Literal = true, Plain = true }, CrystalJsonSettings.JsonCompact)), "true emits the configured literal on both paths");
+			Assert.That(CrystalJson.Parse(present).AsObject().Get<bool>("Plain"), Is.True, "the bool form keeps an ordinary JSON boolean on the wire");
 		}
 
 	}

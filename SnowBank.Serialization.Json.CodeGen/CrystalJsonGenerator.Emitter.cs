@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -67,7 +67,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private const string EditorBrowsableAttributeFullName = "global::System.ComponentModel.EditorBrowsableAttribute";
 
 			private const string EditorBrowsableStateFullName = "global::System.ComponentModel.EditorBrowsableState";
-			
+
+			// BCL type names referenced by emitted bodies: the generated files carry no `using` directive, so every
+			// name outside the consumer's own namespace must be fully qualified or the code only compiles when the
+			// project happens to supply matching global usings (e.g. ImplicitUsings)
+			private const string SystemTypeFullName = "global::System.Type";
+
+			private const string ActionFullName = "global::System.Action";
+
+			private const string ReadOnlyMemoryOfCharFullName = "global::System.ReadOnlyMemory<char>";
+
+			private const string IndexFullName = "global::System.Index";
+
+			private const string NotSupportedExceptionFullName = "global::System.NotSupportedException";
+
+			private const string ArgumentNullExceptionFullName = "global::System.ArgumentNullException";
+
+			private const string UnsafeFullName = "global::System.Runtime.CompilerServices.Unsafe";
 
 			#endregion
 
@@ -104,6 +120,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				this.PolymorphicMap = polymorphicMap;
 			}
+
+			/// <summary>Returns the member's default-value literal, ready to embed in a value position of the generated code</summary>
+			/// <remarks>The generated files force <c>#nullable enable</c> on themselves while the member's declared type may be non-nullable or oblivious, so a bare <c>null</c> default must be null-forgiving (<c>null!</c>): the <c>[NotNullIfNotNull]</c> contract on the <c>Get(name, defaultValue)</c> family then keeps the returned flow-state aligned with the declared member type.</remarks>
+			private static string GetForgivingDefaultLiteral(CrystalJsonMemberMetadata member) => member.DefaultLiteral == "null" ? "null!" : member.DefaultLiteral;
 
 			private static void AddFileHeaders(CSharpCodeBuilder sb)
 			{
@@ -166,9 +186,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.AppendLine("public static readonly TypeMapper Default = new();");
 						sb.NewLine();
 
-						sb.AppendLine($"private {FrozenDictionaryFullName}<Type, {KnownTypeSymbols.IJsonConverterInterfaceFullName}> ConvertersByType {{ get; }}");
+						sb.AppendLine($"private {FrozenDictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}> ConvertersByType {{ get; }}");
 						sb.NewLine();
-						sb.AppendLine($"private {FrozenDictionaryFullName}<Type, {KnownTypeSymbols.IJsonConverterInterfaceFullName}> ConvertersByTypeExtended {{ get; }}");
+						sb.AppendLine($"private {FrozenDictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}> ConvertersByTypeExtended {{ get; }}");
 						sb.NewLine();
 
 						// ctor()
@@ -176,7 +196,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.AppendLine("private TypeMapper()");
 						sb.EnterBlock("ctor");
 						// map of all application types
-						sb.AppendLine($"var map = new {DictionaryFullName}<Type, {KnownTypeSymbols.IJsonConverterInterfaceFullName}>();");
+						sb.AppendLine($"var map = new {DictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}>();");
 						foreach (var type in includedTypes)
 						{
 							sb.AppendLine($"map[typeof({type.Type.FullyQualifiedName})] = {GetLocalSerializerRef(type)};");
@@ -194,7 +214,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 						// TryGetConverterFor(Type)
 						sb.InheritDoc();
-						sb.AppendLine($"public bool TryGetConverterFor(Type type, [{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.IJsonConverterInterfaceFullName} converter)");
+						sb.AppendLine($"public bool TryGetConverterFor({SystemTypeFullName} type, [{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.IJsonConverterInterfaceFullName} converter)");
 						sb.EnterBlock();
 						{
 							sb.AppendLine("return this.ConvertersByTypeExtended.TryGetValue(type, out converter);");
@@ -212,7 +232,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							sb.AppendLine("converter = null;");
 							sb.AppendLine("return false;");
 							sb.LeaveBlock();
-							sb.AppendLine($"converter = System.Runtime.CompilerServices.Unsafe.As<{KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>>(instance);");
+							sb.AppendLine($"converter = {UnsafeFullName}.As<{KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>>(instance);");
 							sb.AppendLine("return true;");
 						}
 						sb.LeaveBlock();
@@ -226,13 +246,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 							sb.EnterBlock();
 							sb.AppendLine("return null;");
 							sb.LeaveBlock();
-							sb.AppendLine($"return System.Runtime.CompilerServices.Unsafe.As<{KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>>(instance);");
+							sb.AppendLine($"return {UnsafeFullName}.As<{KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>>(instance);");
 						}
 						sb.LeaveBlock();
 						sb.NewLine();
 
 						// TryResolveTypeDefinition()
-						sb.AppendLine($"public bool TryResolveTypeDefinition(Type type, [{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.CrystalJsonTypeDefinitionFullName} definition)");
+						sb.AppendLine($"public bool TryResolveTypeDefinition({SystemTypeFullName} type, [{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.CrystalJsonTypeDefinitionFullName} definition)");
 						sb.EnterBlock();
 						sb.AppendLine("if (!TryGetConverterFor(type, out var converter))");
 						sb.EnterBlock();
@@ -621,6 +641,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
+				EmitNonPublicAccessorThunks(sb, typeDef);
+				EmitCallbackThunks(sb, typeDef);
+
 				#region Type Definition...
 
 				sb.BeginRegion("Conversion Helpers...");
@@ -639,7 +662,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 
 				sb.InheritDoc();
-				sb.AppendLine($"public Type GetTargetType() => typeof({typeDef.Type.FullyQualifiedName});");
+				sb.AppendLine($"public {SystemTypeFullName} GetTargetType() => typeof({typeDef.Type.FullyQualifiedName});");
 				sb.NewLine();
 
 				WriteProxyInstanceHelpers(sb, typeDef, typeCref);
@@ -826,23 +849,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 						// this[ReadOnlyMemory<char>]
 						sb.InheritDoc();
-						sb.AppendLine($"public {KnownTypeSymbols.ObservableJsonValueFullName} this[ReadOnlyMemory<char> name] => m_value.Get(name);");
+						sb.AppendLine($"public {KnownTypeSymbols.ObservableJsonValueFullName} this[{ReadOnlyMemoryOfCharFullName} name] => m_value.Get(name);");
 						sb.NewLine();
 
 						// Get(ReadOnlyMemory<char>)
 						sb.InheritDoc();
-						sb.AppendLine($"public {KnownTypeSymbols.ObservableJsonValueFullName} Get(ReadOnlyMemory<char> name) => m_value.Get(name);");
+						sb.AppendLine($"public {KnownTypeSymbols.ObservableJsonValueFullName} Get({ReadOnlyMemoryOfCharFullName} name) => m_value.Get(name);");
 						sb.NewLine();
 
 						// Get<T>(ReadOnlyMemory<char>)
 						sb.InheritDoc();
-						sb.AppendLine("public T Get<T>(ReadOnlyMemory<char> name) where T : notnull => m_value.Get<T>(name);");
+						sb.AppendLine($"public T Get<T>({ReadOnlyMemoryOfCharFullName} name) where T : notnull => m_value.Get<T>(name);");
 						sb.NewLine();
 
 						// Get<T>(ReadOnlyMemory<char>, T)
 						sb.InheritDoc();
 						sb.AppendLine($"[return: {NotNullIfNotNullAttributeFullName}(nameof(defaultValue))]");
-						sb.AppendLine("public T? Get<T>(ReadOnlyMemory<char> name, T defaultValue) => m_value.Get<T>(name, defaultValue);");
+						sb.AppendLine($"public T? Get<T>({ReadOnlyMemoryOfCharFullName} name, T defaultValue) => m_value.Get<T>(name, defaultValue);");
 						sb.NewLine();
 
 						// Get(JsonPath)
@@ -868,12 +891,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 						// Get(Index)
 						sb.InheritDoc();
-						sb.AppendLine($"public {KnownTypeSymbols.ObservableJsonValueFullName} Get(Index index) => m_value.Get(index);");
+						sb.AppendLine($"public {KnownTypeSymbols.ObservableJsonValueFullName} Get({IndexFullName} index) => m_value.Get(index);");
 						sb.NewLine();
 
 						// TReadOnly With(Action<TMutable>)
 						sb.InheritDoc();
-						sb.AppendLine($"public {readOnlyProxyTypeName} With(Action<{writableProxyTypeName}> modifier)");
+						sb.AppendLine($"public {readOnlyProxyTypeName} With({ActionFullName}<{writableProxyTypeName}> modifier)");
 						sb.EnterBlock();
 						sb.AppendLine("var copy = m_value.GetJsonUnsafe().Copy();");
 						sb.AppendLine($"modifier(new({KnownTypeSymbols.MutableJsonValueFullName}.Untracked(copy)));");
@@ -942,7 +965,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 								var converterRef = $"JsonConverter.{GetMemberConverterRef(member)}";
 								if (!member.CustomConverterHasDeserializer)
 								{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
-									getterExpr = $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), typeof({member.CustomConverterType}), {member.DefaultLiteral})!";
+									getterExpr = $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), typeof({member.CustomConverterType}), {GetForgivingDefaultLiteral(member)})!";
+								}
+								else if (member.CustomConverterIsNullableForm)
+								{ // converter declared for the T? form itself: it owns every PRESENT value, the pipeline still owns null/missing
+									getterExpr = member.IsRequired
+										? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null, null, {CSharpCodeBuilder.Constant(member.MemberName)})"
+										: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null)";
 								}
 								else if (member.IsRequired)
 								{
@@ -954,7 +983,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 								}
 								else
 								{
-									getterExpr = $"/* member-converter */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {member.DefaultLiteral}, null)!";
+									getterExpr = $"/* member-converter */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {GetForgivingDefaultLiteral(member)}, null)!";
 								}
 							}
 							else if (IsLocallyGeneratedType(member.Type, out var target, out _))
@@ -979,11 +1008,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 							}
 							else if (member.Type.IsJsonDeserializable())
 							{
-								getterExpr = $"/* json-deserializable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackJsonDeserializable<{member.Type.FullyQualifiedName}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {member.DefaultLiteral}, null)"; //TODO: default value!
+								getterExpr = $"/* json-deserializable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackJsonDeserializable<{member.Type.FullyQualifiedName}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {GetForgivingDefaultLiteral(member)}, null)"; //TODO: default value!
 							}
 							else if (member.Type.IsNullableOfT(out var underlyingType) && underlyingType.IsJsonDeserializable())
 							{
-								getterExpr = $"/* nullable-json-deserializable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableJsonDeserializable<{underlyingType.FullyQualifiedName}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {member.DefaultLiteral}, null)"; //TODO: default value!
+								getterExpr = $"/* nullable-json-deserializable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableJsonDeserializable<{underlyingType.FullyQualifiedName}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {GetForgivingDefaultLiteral(member)}, null)"; //TODO: default value!
 							}
 							else if (member.Type.IsDictionary(out var keyType, out var valueType))
 							{
@@ -1037,7 +1066,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{
 								if (member.IsNullableRefType())
 								{
-									getterExpr = $"/* ref-nullable */ m_value.Get<{member.Type.FullyQualifiedNameAnnotated}>({GetTargetPropertyNameRef(typeDef, member)}, {member.DefaultLiteral})";
+									getterExpr = $"/* ref-nullable */ m_value.Get<{member.Type.FullyQualifiedNameAnnotated}>({GetTargetPropertyNameRef(typeDef, member)}, {GetForgivingDefaultLiteral(member)})";
 								}
 								else if (member.IsRequired)
 								{
@@ -1045,11 +1074,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 								}
 								else if (member.Type.IsValueType() && !member.Type.IsNullableOfT())
 								{ // TODO: BUGBUG: it is the same as the next statement?
-									getterExpr = $"/* vt-not-null */ m_value.Get<{member.Type.FullyQualifiedNameAnnotated}>({GetTargetPropertyNameRef(typeDef, member)}, {member.DefaultLiteral})";
+									getterExpr = $"/* vt-not-null */ m_value.Get<{member.Type.FullyQualifiedNameAnnotated}>({GetTargetPropertyNameRef(typeDef, member)}, {GetForgivingDefaultLiteral(member)})";
 								}
 								else
 								{
-									getterExpr = $"/* else */ m_value.Get<{member.Type.FullyQualifiedNameAnnotated}>({GetTargetPropertyNameRef(typeDef, member)}, {member.DefaultLiteral})";
+									getterExpr = $"/* else */ m_value.Get<{member.Type.FullyQualifiedNameAnnotated}>({GetTargetPropertyNameRef(typeDef, member)}, {GetForgivingDefaultLiteral(member)})";
 								}
 							}
 
@@ -1141,7 +1170,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.EnterBlock();
 						if (!typeDef.Type.IsValueType())
 						{
-							sb.AppendLine("ArgumentNullException.ThrowIfNull(value);");
+							sb.AppendLine($"{ArgumentNullExceptionFullName}.ThrowIfNull(value);");
 						}
 						sb.AppendLine($"return new({KnownTypeSymbols.MutableJsonValueFullName}.Untracked({GetLocalSerializerRef(typeDef)}.Pack(value, {KnownTypeSymbols.CrystalJsonSettingsFullName}.Json)));");
 						sb.LeaveBlock();
@@ -1153,7 +1182,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.EnterBlock();
 						if (!typeDef.Type.IsValueType())
 						{
-							sb.AppendLine("ArgumentNullException.ThrowIfNull(value);");
+							sb.AppendLine($"{ArgumentNullExceptionFullName}.ThrowIfNull(value);");
 						}
 						sb.AppendLine($"return new({KnownTypeSymbols.MutableJsonValueFullName}.Tracked(ctx, {GetLocalSerializerRef(typeDef)}.Pack(value, {KnownTypeSymbols.CrystalJsonSettingsFullName}.Json)));");
 						sb.LeaveBlock();
@@ -1187,7 +1216,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						// GetHashCode()
 						sb.InheritDoc();
 						sb.AppendLine($"[{DoesNotReturnAttributeFullName}]");
-						sb.AppendLine("public override int GetHashCode() => throw new NotSupportedException();");
+						sb.AppendLine($"public override int GetHashCode() => throw new {NotSupportedExceptionFullName}();");
 						sb.NewLine();
 
 						// Equals(TWritable)
@@ -1211,7 +1240,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.NewLine();
 						foreach (var member in typeDef.Members)
 						{
-							var defaultValue = member.DefaultLiteral;
+							var defaultValue = GetForgivingDefaultLiteral(member);
 
 							string proxyType = member.Type.FullyQualifiedNameAnnotated;
 							string? setterExpr = null;
@@ -1224,6 +1253,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 								if (!member.CustomConverterHasDeserializer)
 								{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
 									getterExpr = $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), typeof({member.CustomConverterType}), {defaultValue})!";
+								}
+								else if (member.CustomConverterIsNullableForm)
+								{ // converter declared for the T? form itself: it owns every PRESENT value, the pipeline still owns null/missing
+									getterExpr = member.IsRequired
+										? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null, null, {CSharpCodeBuilder.Constant(member.MemberName)})"
+										: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null)";
 								}
 								else if (member.IsRequired)
 								{
@@ -1265,7 +1300,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 										attributeExpr = $"[{DisallowNullAttributeFullName}]";
 										if (!proxyType.EndsWith("?")) proxyType += "?";
 									}
-									getterExpr ??= $"/* fast-string */ m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}).ToStringOrDefault({defaultValue})";
+									// ToStringOrDefault has no [NotNullIfNotNull], so the flow-state must be forgiven to match the declared member type
+									getterExpr ??= $"/* fast-string */ m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}).ToStringOrDefault({defaultValue})!";
 								}
 								else if (member.IsNullableRefType())
 								{
@@ -1473,22 +1509,22 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// ToJsonText(...)
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a string literal</summary>");
-				sb.AppendLine($"public static string ToJsonText({typeDef.Type.FullyQualifiedNameAnnotated} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Default.ToJson(instance, settings, resolver);");
+				sb.AppendLine($"public static string ToJsonText({typeDef.Type.FullyQualifiedNameAnnotated} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Default.ToJson(instance, {GetSettingsFallbackExpr("settings", compact: false)}, resolver);");
 				sb.NewLine();
 
 				// ToJsonBytes(...)
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a byte array</summary>");
-				sb.AppendLine($"public static byte[] ToJsonBytes({typeDef.Type.FullyQualifiedNameAnnotated} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => {KnownTypeSymbols.CrystalJsonFullName}.ToBytes(instance, Default, settings ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.JsonCompact, resolver);");
+				sb.AppendLine($"public static byte[] ToJsonBytes({typeDef.Type.FullyQualifiedNameAnnotated} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => {KnownTypeSymbols.CrystalJsonFullName}.ToBytes(instance, Default, {GetSettingsFallbackExpr("settings", compact: true)}, resolver);");
 				sb.NewLine();
 
 				// ToJsonSlice(...)
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a <see cref=\"{KnownTypeSymbols.SliceFullName}\"/></summary>");
-				sb.AppendLine($"public static {KnownTypeSymbols.SliceFullName} ToJsonSlice({typeDef.Type.FullyQualifiedNameAnnotated} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => {KnownTypeSymbols.CrystalJsonFullName}.ToSlice(instance, Default, settings ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.JsonCompact, resolver);");
+				sb.AppendLine($"public static {KnownTypeSymbols.SliceFullName} ToJsonSlice({typeDef.Type.FullyQualifiedNameAnnotated} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => {KnownTypeSymbols.CrystalJsonFullName}.ToSlice(instance, Default, {GetSettingsFallbackExpr("settings", compact: true)}, resolver);");
 				sb.NewLine();
 
 				// ToJsonSlice(...)
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a <see cref=\"{KnownTypeSymbols.SliceFullName}\"/>, using the specified <see cref=\"{KnownTypeSymbols.ArrayPoolFullName}{{T}}\"/></summary>");
-				sb.AppendLine($"public static {KnownTypeSymbols.SliceOwnerFullName} ToJsonSlice({typeDef.Type.FullyQualifiedNameAnnotated} instance, {KnownTypeSymbols.ArrayPoolFullName}<byte>? pool, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => {KnownTypeSymbols.CrystalJsonFullName}.ToSlice(instance, Default, pool, settings ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.JsonCompact, resolver);");
+				sb.AppendLine($"public static {KnownTypeSymbols.SliceOwnerFullName} ToJsonSlice({typeDef.Type.FullyQualifiedNameAnnotated} instance, {KnownTypeSymbols.ArrayPoolFullName}<byte>? pool, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => {KnownTypeSymbols.CrystalJsonFullName}.ToSlice(instance, Default, pool, {GetSettingsFallbackExpr("settings", compact: true)}, resolver);");
 				sb.NewLine();
 
 				// Deserialize(...)
@@ -1521,8 +1557,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(value);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+				if (typeDef.Members.Count > 0)
+				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
+					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
+					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToMutable({KnownTypeSymbols.JsonValueFullName})\">If you need a writable view</seealso>");
@@ -1538,8 +1577,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(value);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+				if (typeDef.Members.Count > 0)
+				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
+					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
+					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToMutable({KnownTypeSymbols.JsonValueFullName})\">If you need a writable view</seealso>");
@@ -1551,11 +1593,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as getter-only properties.</returns>");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
-				sb.XmlComment("// ...");
-				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+				if (typeDef.Members.Count > 0)
+				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment("// ...");
+					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
+					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
+					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public static {GetLocalReadOnlyProxyRef(typeDef)} ToReadOnly({typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalReadOnlyProxyRef(typeDef)}.Create(instance);");
@@ -1566,11 +1611,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as getter-only properties.</returns>");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
-				sb.XmlComment("// ...");
-				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+				if (typeDef.Members.Count > 0)
+				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment("// ...");
+					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
+					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
+					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public static {GetLocalReadOnlyProxyRef(typeDef)} ToReadOnly({KnownTypeSymbols.IObservableJsonContextFullName} ctx, {typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalReadOnlyProxyRef(typeDef)}.Create(ctx, instance);");
@@ -1673,7 +1721,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock();
 				foreach (var member in typeDef.Members)
 				{
-					sb.AppendLine($"nameof({typeDef.Type.FullyQualifiedName}.{member.MemberName}) => {GetLocalPropertyNameRef(member)},");
+					sb.AppendLine($"{GetMemberNameExpr(typeDef, member)} => {GetLocalPropertyNameRef(member)},");
 				}
 
 				sb.AppendLine("_ => null,");
@@ -1690,7 +1738,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock();
 				foreach (var member in typeDef.Members)
 				{
-					sb.AppendLine($"{GetLocalPropertyNameRef(member)} => nameof({typeDef.Type.FullyQualifiedName}.{member.MemberName}),");
+					sb.AppendLine($"{GetLocalPropertyNameRef(member)} => {GetMemberNameExpr(typeDef, member)},");
 				}
 
 				sb.AppendLine("_ => null,");
@@ -1708,8 +1756,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+				if (typeDef.Members.Count > 0)
+				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
+					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
+					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToMutable({KnownTypeSymbols.JsonValueFullName})\">If you need a writable view</seealso>");
@@ -1725,8 +1776,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+				if (typeDef.Members.Count > 0)
+				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
+					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
+					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToMutable({KnownTypeSymbols.JsonValueFullName})\">If you need a writable view</seealso>");
@@ -1738,11 +1792,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as getter-only properties.</returns>");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
-				sb.XmlComment("// ...");
-				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+				if (typeDef.Members.Count > 0)
+				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment("// ...");
+					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
+					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
+					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public {GetLocalReadOnlyProxyRef(typeDef)} ToReadOnly({typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalReadOnlyProxyRef(typeDef)}.Create(instance);");
@@ -1753,11 +1810,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as getter-only properties.</returns>");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
-				sb.XmlComment("// ...");
-				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+				if (typeDef.Members.Count > 0)
+				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment("// ...");
+					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
+					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
+					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public {GetLocalReadOnlyProxyRef(typeDef)} ToReadOnly({KnownTypeSymbols.IObservableJsonContextFullName} ctx, {typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalReadOnlyProxyRef(typeDef)}.Create(ctx, instance);");
@@ -1881,7 +1941,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.AppendLine($"Type = typeof({member.Type.FullyQualifiedName}),");
 					sb.AppendLine($"Flags = {string.Join(" | ", flags)},");
 					sb.AppendLine($"Name = {GetLocalPropertyNameRef(member)},");
-					sb.AppendLine($"OriginalName = nameof({typeDef.Type.FullyQualifiedName}.{member.MemberName}),");
+					sb.AppendLine($"OriginalName = {GetMemberNameExpr(typeDef, member)},");
 					sb.AppendLine($"EncodedName = {GetPropertyEncodedNameRef(member)},");
 					if (member.Type.NullableOfType != null) sb.AppendLine($"NullableOfType = typeof({member.Type.NullableOfType.FullyQualifiedName}),");
 					if (member.DefaultLiteral is "default")
@@ -1890,31 +1950,63 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					else
 					{
-						sb.AppendLine($"DefaultValue = {member.DefaultLiteral},");
+						sb.AppendLine($"DefaultValue = {GetForgivingDefaultLiteral(member)},");
 					}
 					//TODO: Attributes? is it needed?
-					sb.AppendLine($"Getter = (instance) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName},");
+					string typedInstance = $"(({typeDef.Type.FullyQualifiedName}) instance)";
+					if (!member.NeedsGetterThunk)
+					{
+						sb.AppendLine($"Getter = (instance) => {typedInstance}.{member.MemberName},");
+					}
+					else if (!typeDef.Type.IsValueType())
+					{
+						sb.AppendLine($"Getter = (instance) => __get_{member.MemberName}({typedInstance}),");
+					}
+					else
+					{ // the thunk takes the struct by ref
+						sb.AppendLine($"Getter = (instance) => {{ var typed = ({typeDef.Type.FullyQualifiedName}) instance; return __get_{member.MemberName}(ref typed); }},");
+					}
 					if (!member.IsReadOnly && !member.IsInitOnly)
 					{
+						// the value expression per shape (shared by the direct assignment and the thunk call)
+						string valueExpr;
+						string tag;
 						if (member.Type.IsValueType())
 						{ // struct that _could_ be null
-							sb.AppendLine($"Setter = (instance, value) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName} = value is not null ? ({member.Type.FullyQualifiedName}) value : {member.DefaultLiteral} /* value-type */,");
+							valueExpr = $"value is not null ? ({member.Type.FullyQualifiedName}) value : {GetForgivingDefaultLiteral(member)}";
+							tag = "value-type";
 						}
 						else if (member.HasNonZeroDefault)
 						{ // a ref type _could_ be null, but the setter does not allow it...
-							sb.AppendLine($"Setter = (instance, value) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName} = value is not null ? ({member.Type.FullyQualifiedName}) value : {member.DefaultLiteral} /* has-default-value */,");
+							valueExpr = $"value is not null ? ({member.Type.FullyQualifiedName}) value : {GetForgivingDefaultLiteral(member)}";
+							tag = "has-default-value";
 						}
 						else if (member.IsNotNull && member.Type.IsString())
 						{ // use string.Empty
-							sb.AppendLine($"Setter = (instance, value) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName} = value is not null ? ({member.Type.FullyQualifiedName}) value : \"\" /* not-null-string */,");
+							valueExpr = $"value is not null ? ({member.Type.FullyQualifiedName}) value : \"\"";
+							tag = "not-null-string";
 						}
 						else if (member.IsNotNull && member.Type.IsEnumerable(out _))
 						{ // not-null collection type without a default value, we will inject a default empty collection expression
-							sb.AppendLine($"Setter = (instance, value) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName} = value is not null ? ({member.Type.FullyQualifiedName}) value : [ ] /* not-null-collection */,");
+							valueExpr = $"value is not null ? ({member.Type.FullyQualifiedName}) value : [ ]";
+							tag = "not-null-collection";
 						}
 						else
 						{
-							sb.AppendLine($"Setter = (instance, value) => (({typeDef.Type.FullyQualifiedName}) instance).{member.MemberName} = ({member.Type.FullyQualifiedNameAnnotated}) value /* fallback */,");
+							valueExpr = $"({member.Type.FullyQualifiedNameAnnotated}) value!";
+							tag = "fallback";
+						}
+						if (!member.NeedsSetterThunk)
+						{
+							sb.AppendLine($"Setter = (instance, value) => {typedInstance}.{member.MemberName} = {valueExpr} /* {tag} */,");
+						}
+						else if (!typeDef.Type.IsValueType())
+						{
+							sb.AppendLine($"Setter = (instance, value) => __set_{member.MemberName}({typedInstance}, {valueExpr}) /* {tag} */,");
+						}
+						else
+						{ // same boxed-copy semantics as the direct struct assignment above
+							sb.AppendLine($"Setter = (instance, value) => {{ var typed = ({typeDef.Type.FullyQualifiedName}) instance; __set_{member.MemberName}(ref typed, {valueExpr}); }} /* {tag} */,");
 						}
 					}
 
@@ -1968,7 +2060,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"{KnownTypeSymbols.CrystalJsonTypeBinderFullName} binder = (instance, type, resolver) => instance is not null ? Default.Unpack(instance, resolver) : {KnownTypeSymbols.JsonNullFullName}.Null;");
 				if (typeDef.IsPolymorphicRoot)
 				{
-					sb.AppendLine($"var map = new Dictionary<JsonValue, Type>({KnownTypeSymbols.JsonValueComparerFullName}.Default);");
+					sb.AppendLine($"var map = new {DictionaryFullName}<{KnownTypeSymbols.JsonValueFullName}, {SystemTypeFullName}>({KnownTypeSymbols.JsonValueComparerFullName}.Default);");
 					foreach (var x in typeDef.DerivedTypes)
 					{
 						if (x.Discriminator is not null)
@@ -2067,8 +2159,40 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				//BUGBUG: we need to check that, if there is a $type, it matches with the expected value ?
 
-				sb.AppendLine("return new ()");
-				sb.EnterBlock();
+				// members behind a setter thunk cannot appear in the object initializer: they are written after
+				// construction, so the initializer form only remains when every bound member is directly reachable
+				this.DeferredUnpackAssignments.Clear();
+				bool hasThunkedWrites = false;
+				foreach (var member in typeDef.Members)
+				{
+					if (member.NeedsSetterThunk) { hasThunkedWrites = true; break; }
+				}
+
+				// [DataMember(IsRequired = true)]: presence is independent of how the value decodes, so it is one guard per
+				// member emitted before the initializer, rather than a variant of every decoding shape below.
+				// An explicit null falls through to the normal (optional) decode, which is the DCJS contract.
+				foreach (var member in typeDef.Members)
+				{
+					if (member.IsRequiredPresence)
+					{
+						sb.AppendLine($"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.VerifyRequiredPresence(obj, {CSharpCodeBuilder.Constant(member.Name)});");
+					}
+				}
+
+				// [OnDeserializing] must observe a constructed, unpopulated instance, which an object initializer cannot offer
+				this.UnpackAsStatements = typeDef.OnDeserializing != null;
+				if (this.UnpackAsStatements)
+				{
+					sb.AppendLine($"var instance = new {typeDef.Type.FullyQualifiedName}();");
+					EmitCallbackInvocation(sb, typeDef.OnDeserializing, "instance", "obj");
+					sb.NewLine();
+				}
+				else
+				{ // a post-populate callback also needs a local to run against, so it forces the instance form (initializer kept, so init-only and required members still bind)
+					bool needsLocal = hasThunkedWrites || typeDef.OnDeserialized != null;
+					sb.AppendLine(needsLocal ? $"{typeDef.Type.FullyQualifiedName} instance = new ()" : "return new ()");
+					sb.EnterBlock();
+				}
 				foreach (var member in typeDef.Members)
 				{
 					if (member.CustomConverterType != null)
@@ -2078,25 +2202,31 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
 							if (member.IsRequired)
 							{
-								sb.AppendLine($"{member.MemberName} = /* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedName}>(typeof({member.CustomConverterType})),");
+								EmitUnpackAssignment(sb, member, $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedName}>(typeof({member.CustomConverterType}))");
 							}
 							else
 							{
-								sb.AppendLine($"{member.MemberName} = /* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(obj[{GetLocalPropertyNameRef(member)}], typeof({member.CustomConverterType}), {member.DefaultLiteral})!,");
+								EmitUnpackAssignment(sb, member, $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(obj[{GetLocalPropertyNameRef(member)}], typeof({member.CustomConverterType}), {GetForgivingDefaultLiteral(member)})!");
 							}
 							continue;
 						}
-						if (member.IsRequired)
+						if (member.CustomConverterIsNullableForm)
+						{ // converter declared for the T? form itself: it owns every PRESENT value, the pipeline still owns null/missing
+							EmitUnpackAssignment(sb, member, member.IsRequired
+								? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})"
+								: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver)");
+						}
+						else if (member.IsRequired)
 						{
-							sb.AppendLine($"{member.MemberName} = /* member-converter-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)}),");
+							EmitUnpackAssignment(sb, member, $"/* member-converter-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})");
 						}
 						else if (member.Type.NullableOfType is not null)
 						{
-							sb.AppendLine($"{member.MemberName} = /* member-converter-nullable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullable({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver),");
+							EmitUnpackAssignment(sb, member, $"/* member-converter-nullable */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullable({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver)");
 						}
 						else
 						{
-							sb.AppendLine($"{member.MemberName} = /* member-converter-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver)!,");
+							EmitUnpackAssignment(sb, member, $"/* member-converter-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, obj[{GetLocalPropertyNameRef(member)}], {GetForgivingDefaultLiteral(member)}, resolver)!");
 						}
 						continue;
 					}
@@ -2106,15 +2236,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 						if (member.IsRequired)
 						{
 							// REVIEW: what if isNullableOfT is true ? this is a bit weird to have nullable value type that is also required??
-							sb.AppendLine($"{member.MemberName} = /* local-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)}),");
+							EmitUnpackAssignment(sb, member, $"/* local-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})");
 						}
 						else if (isNullableOfT)
 						{
-							sb.AppendLine($"{member.MemberName} = /* local-optional-nullable */ {GetLocalSerializerRef(target)}.UnpackNullable(obj[{GetLocalPropertyNameRef(member)}], resolver),");
+							EmitUnpackAssignment(sb, member, $"/* local-optional-nullable */ {GetLocalSerializerRef(target)}.UnpackNullable(obj[{GetLocalPropertyNameRef(member)}], resolver)");
 						}
 						else
 						{
-							sb.AppendLine($"{member.MemberName} = /* local-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver),");
+							EmitUnpackAssignment(sb, member, $"/* local-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {GetForgivingDefaultLiteral(member)}, resolver)");
 						}
 						continue;
 					}
@@ -2123,11 +2253,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (member.IsRequired)
 						{
-							sb.AppendLine($"{member.MemberName} = /* deserializable-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredJsonDeserializable<{member.Type.FullyQualifiedName}>(obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)}),");
+							EmitUnpackAssignment(sb, member, $"/* deserializable-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredJsonDeserializable<{member.Type.FullyQualifiedName}>(obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})");
 						}
 						else
 						{
-							sb.AppendLine($"{member.MemberName} = /* deserializable-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackJsonDeserializable<{member.Type.FullyQualifiedNameAnnotated}>(obj[{GetLocalPropertyNameRef(member)}], resolver),");
+							EmitUnpackAssignment(sb, member, $"/* deserializable-optional */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackJsonDeserializable<{member.Type.FullyQualifiedNameAnnotated}>(obj[{GetLocalPropertyNameRef(member)}], resolver)");
 						}
 						continue;
 					}
@@ -2136,11 +2266,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (member.IsRequired)
 						{
-							sb.AppendLine($"{member.MemberName} = /* fast-required */ obj.Get<{member.Type.FullyQualifiedName}>({GetLocalPropertyNameRef(member)}),");
+							EmitUnpackAssignment(sb, member, $"/* fast-required */ obj.Get<{member.Type.FullyQualifiedName}>({GetLocalPropertyNameRef(member)})");
 						}
 						else
 						{
-							sb.AppendLine($"{member.MemberName} = /* fast-optional */ obj.Get<{member.Type.FullyQualifiedNameAnnotated}>({GetLocalPropertyNameRef(member)}, {member.DefaultLiteral}),");
+							EmitUnpackAssignment(sb, member, $"/* fast-optional */ obj.Get<{member.Type.FullyQualifiedNameAnnotated}>({GetLocalPropertyNameRef(member)}, {GetForgivingDefaultLiteral(member)})");
 						}
 						continue;
 					}
@@ -2157,15 +2287,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 								if (member.IsRequired)
 								{
 									// REVIEW: what if isNullableOfT is true ? this is a bit weird to have nullable value type that is also required??
-									sb.AppendLine($"{member.MemberName} = /* local-required-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired{sequenceShape}({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})!,");
+									EmitUnpackAssignment(sb, member, $"/* local-required-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired{sequenceShape}({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})!");
 								}
 								else if (isNullableOfT)
 								{
-									sb.AppendLine($"{member.MemberName} = /* local-optional-nullable-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullable{sequenceShape}({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver)!,");
+									EmitUnpackAssignment(sb, member, $"/* local-optional-nullable-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullable{sequenceShape}({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {GetForgivingDefaultLiteral(member)}, resolver)!");
 								}
 								else
 								{
-									sb.AppendLine($"{member.MemberName} = /* local-optional-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack{sequenceShape}({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver)!,");
+									EmitUnpackAssignment(sb, member, $"/* local-optional-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack{sequenceShape}({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {GetForgivingDefaultLiteral(member)}, resolver)!");
 								}
 								continue;
 							}
@@ -2182,11 +2312,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{
 								if (member.IsRequired)
 								{
-									sb.AppendLine($"{member.MemberName} = /* string-required-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired{elemShape}{sequenceShape}(obj[{GetLocalPropertyNameRef(member)}], obj, {CSharpCodeBuilder.Constant(member.MemberName)})!,");
+									EmitUnpackAssignment(sb, member, $"/* string-required-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired{elemShape}{sequenceShape}(obj[{GetLocalPropertyNameRef(member)}], obj, {CSharpCodeBuilder.Constant(member.MemberName)})!");
 								}
 								else
 								{
-									sb.AppendLine($"{member.MemberName} = /* string-optional-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack{elemShape}{sequenceShape}(obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral})!,");
+									EmitUnpackAssignment(sb, member, $"/* string-optional-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack{elemShape}{sequenceShape}(obj[{GetLocalPropertyNameRef(member)}], {GetForgivingDefaultLiteral(member)})!");
 								}
 								continue;
 							}
@@ -2195,11 +2325,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 							if (member.IsRequired)
 							{
-								sb.AppendLine($"{member.MemberName} = /* fallback-required-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired{sequenceShape}<{elemType.FullyQualifiedName}>(obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})!,");
+								EmitUnpackAssignment(sb, member, $"/* fallback-required-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequired{sequenceShape}<{elemType.FullyQualifiedName}>(obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})!");
 							}
 							else
 							{
-								sb.AppendLine($"{member.MemberName} = /* fallback-optional-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack{sequenceShape}<{elemType.FullyQualifiedName}>(obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver)!,");
+								EmitUnpackAssignment(sb, member, $"/* fallback-optional-{sequenceShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack{sequenceShape}<{elemType.FullyQualifiedName}>(obj[{GetLocalPropertyNameRef(member)}], {GetForgivingDefaultLiteral(member)}, resolver)!");
 							}
 							continue;
 						}
@@ -2211,11 +2341,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 						  // the container's naming policy applies to the elements (the runtime As<> fallback would not know it)
 							if (member.IsRequired)
 							{
-								sb.AppendLine($"{member.MemberName} = /* local-required-Collection */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredCollection<{member.Type.FullyQualifiedName}, {elemType.FullyQualifiedName}>({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})!,");
+								EmitUnpackAssignment(sb, member, $"/* local-required-Collection */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredCollection<{member.Type.FullyQualifiedName}, {elemType.FullyQualifiedName}>({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})!");
 							}
 							else
 							{
-								sb.AppendLine($"{member.MemberName} = /* local-optional-Collection */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackCollection<{member.Type.FullyQualifiedName}, {elemType.FullyQualifiedName}>({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {member.DefaultLiteral}, resolver)!,");
+								EmitUnpackAssignment(sb, member, $"/* local-optional-Collection */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackCollection<{member.Type.FullyQualifiedName}, {elemType.FullyQualifiedName}>({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {GetForgivingDefaultLiteral(member)}, resolver)!");
 							}
 							continue;
 						}
@@ -2250,19 +2380,264 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					else if (member.IsRequired)
 					{
-						getterExpr = $"{jsonExpr}.As<{member.Type.FullyQualifiedName}>({member.DefaultLiteral})!";
+						getterExpr = $"{jsonExpr}.As<{member.Type.FullyQualifiedName}>({GetForgivingDefaultLiteral(member)})!";
 					}
 					else
 					{
-						getterExpr = $"{jsonExpr}.As<{member.Type.FullyQualifiedNameAnnotated}>({member.DefaultLiteral})";
+						getterExpr = $"{jsonExpr}.As<{member.Type.FullyQualifiedNameAnnotated}>({GetForgivingDefaultLiteral(member)})";
 					}
 
-					sb.AppendLine($"{member.MemberName} = {getterExpr},");
+					EmitUnpackAssignment(sb, member, $"{getterExpr}");
 
 				}
-				sb.LeaveBlock(suffix: ';');
+				if (this.UnpackAsStatements)
+				{
+					sb.NewLine();
+					EmitCallbackInvocation(sb, typeDef.OnDeserialized, "instance", "obj");
+					sb.AppendLine("return instance;");
+					this.UnpackAsStatements = false;
+				}
+				else
+				{
+					sb.LeaveBlock(suffix: ';');
+					if (hasThunkedWrites || typeDef.OnDeserialized != null)
+					{
+						string instanceArg = typeDef.Type.IsValueType() ? "ref instance" : "instance";
+						foreach (var (member, expr) in this.DeferredUnpackAssignments)
+						{
+							sb.AppendLine($"__set_{member.MemberName}({instanceArg}, {expr});");
+						}
+						this.DeferredUnpackAssignments.Clear();
+						EmitCallbackInvocation(sb, typeDef.OnDeserialized, "instance", "obj");
+						sb.AppendLine("return instance;");
+					}
+				}
 				sb.LeaveBlock();
 				sb.NewLine();
+			}
+
+			/// <summary>List of member bindings of the Unpack method being generated that must go through a setter thunk (filled while the object-initializer entries are emitted, flushed after construction)</summary>
+			private List<(CrystalJsonMemberMetadata Member, string Expr)> DeferredUnpackAssignments { get; } = [ ];
+
+			/// <summary>Emits one member binding of the Unpack method: an object-initializer entry for a directly-reachable member, or a deferred thunk write for a non-public one</summary>
+			private void EmitUnpackAssignment(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member, string expr)
+			{
+				if (this.UnpackAsStatements)
+				{ // construct-then-assign form: the members are written as statements so a pre-populate callback can bracket them
+					sb.AppendLine(member.NeedsSetterThunk
+						? $"__set_{member.MemberName}(instance, {expr});"
+						: $"instance.{member.MemberName} = {expr};");
+					return;
+				}
+
+				if (!member.NeedsSetterThunk)
+				{
+					sb.AppendLine($"{member.MemberName} = {expr},");
+				}
+				else
+				{
+					this.DeferredUnpackAssignments.Add((member, expr));
+				}
+			}
+
+			/// <summary>When set, Unpack constructs the instance first and writes members as statements, instead of using an object initializer</summary>
+			/// <remarks>Required by <c>[OnDeserializing]</c>, which must run on a constructed but UNPOPULATED instance: an object initializer leaves no point between the two.</remarks>
+			private bool UnpackAsStatements { get; set; }
+
+			/// <summary>Returns the settings expression a generated entry point uses when the caller passed none: the container's baked wire profile, or the standard defaults</summary>
+			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging): a merged wire would be unauditable. Settings the baked names cannot honor are refused by the guard in the Serialize method.</remarks>
+			private string GetSettingsFallbackExpr(string settingsVar, bool compact)
+			{
+				if (this.Metadata.WireProfile == "DataContractCompat")
+				{
+					var profile = $"{KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat";
+					return compact ? $"{settingsVar} ?? {profile}.Compacted()" : $"{settingsVar} ?? {profile}";
+				}
+				return compact ? $"{settingsVar} ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.JsonCompact" : settingsVar;
+			}
+
+			/// <summary>Returns the C# expression for the member's C# name: <c>nameof(...)</c> when the member is reachable, a plain string constant when it is not (<c>nameof</c> requires an accessible member)</summary>
+			private static string GetMemberNameExpr(CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member)
+				=> member.IsNonPublic
+					? CSharpCodeBuilder.Constant(member.MemberName)
+					: $"nameof({typeDef.Type.FullyQualifiedName}.{member.MemberName})";
+
+			/// <summary>Returns the C# expression that reads a member from the local <c>instance</c>: a direct access, or the accessor thunk for a member the generated code cannot reach</summary>
+			private static string GetInstanceMemberReadExpr(CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member)
+				=> member.NeedsGetterThunk
+					? $"__get_{member.MemberName}({(typeDef.Type.IsValueType() ? "ref " : "")}instance)"
+					: $"instance.{member.MemberName}";
+
+			/// <summary>Emits the accessor thunks for members that generated code cannot reach directly (a private/protected member, or a non-public accessor unlocked by <c>[JsonInclude]</c>)</summary>
+			/// <remarks>Two flavors with identical call sites: zero-cost <c>[UnsafeAccessor]</c> thunks when the consuming compilation defines the attribute (net8+), and reflection-based accessors otherwise (correct wire, slower). Internal members never get a thunk: the generated code lives in the same assembly and reaches them directly.</remarks>
+			/// <summary>Emits the call to one lifecycle callback, or nothing when the type does not declare it</summary>
+			/// <param name="documentExpr">Expression yielding the document being bound, for the deserialize pair; <see langword="null"/> on the serialize side, which has no document</param>
+			/// <remarks>The parameter shapes were validated at parse time (CJSON0015), so the emitted call needs no runtime test.</remarks>
+			private static void EmitCallbackInvocation(CSharpCodeBuilder sb, CrystalJsonCallbackMetadata? callback, string instanceExpr, string? documentExpr)
+			{
+				if (callback is null) return;
+
+				var arg = callback.Argument switch
+				{
+					CrystalJsonCallbackArgument.JsonValue => documentExpr,
+					CrystalJsonCallbackArgument.JsonObject => $"{documentExpr}.AsObject()",
+					CrystalJsonCallbackArgument.JsonArray => $"{documentExpr}.AsArray()",
+					_ => null,
+				};
+
+				sb.AppendLine(callback.IsNonPublic
+					? $"__cb_{callback.MethodName}({instanceExpr}{(arg != null ? ", " + arg : "")});"
+					: $"{instanceExpr}.{callback.MethodName}({arg ?? ""});");
+			}
+
+			/// <summary>Emits accessor thunks for the non-public lifecycle callbacks, mirroring the non-public MEMBER thunks</summary>
+			private void EmitCallbackThunks(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
+			{
+				var callbacks = new[] { typeDef.OnSerializing, typeDef.OnSerialized, typeDef.OnDeserializing, typeDef.OnDeserialized };
+
+				bool any = false;
+				foreach (var cb in callbacks)
+				{
+					if (cb is { IsNonPublic: true }) { any = true; break; }
+				}
+				if (!any) return;
+
+				var typeFullName = typeDef.Type.FullyQualifiedName;
+				bool isStruct = typeDef.Type.IsValueType();
+				string instanceParam = isStruct ? $"ref {typeFullName} instance" : $"{typeFullName} instance";
+
+				sb.BeginRegion("Non-public lifecycle callbacks...");
+				sb.NewLine();
+				foreach (var cb in callbacks)
+				{
+					if (cb is not { IsNonPublic: true }) continue;
+
+					var argType = cb.Argument switch
+					{
+						CrystalJsonCallbackArgument.JsonValue => KnownTypeSymbols.JsonValueFullName,
+						CrystalJsonCallbackArgument.JsonObject => KnownTypeSymbols.JsonObjectFullName,
+						CrystalJsonCallbackArgument.JsonArray => KnownTypeSymbols.JsonArrayFullName,
+						_ => null,
+					};
+					var argParam = argType != null ? $", {argType} document" : "";
+					var argCall = argType != null ? ", document" : "";
+
+					if (this.Metadata.SupportsUnsafeAccessors)
+					{
+						sb.AppendLine($"[global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = {CSharpCodeBuilder.Constant(cb.MethodName)})]");
+						sb.AppendLine($"private static extern void __cb_{cb.MethodName}({instanceParam}{argParam});");
+					}
+					else
+					{ // no [UnsafeAccessor] on this target: reflection, same shape as the member accessors
+						var types = argType != null ? $"[ typeof({argType}) ]" : "global::System.Type.EmptyTypes";
+						sb.AppendLine($"private static readonly global::System.Reflection.MethodInfo __mi_{cb.MethodName} = typeof({typeFullName}).GetMethod({CSharpCodeBuilder.Constant(cb.MethodName)}, global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic, null, {types}, null)!;");
+						sb.AppendLine($"private static void __cb_{cb.MethodName}({instanceParam}{argParam}) => __mi_{cb.MethodName}.Invoke(instance, {(argType != null ? "[ document ]" : "null")});");
+					}
+					sb.NewLine();
+				}
+				sb.EndRegion();
+				sb.NewLine();
+			}
+
+			private void EmitNonPublicAccessorThunks(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
+			{
+				bool any = false;
+				foreach (var member in typeDef.Members)
+				{
+					if (member.NeedsGetterThunk || member.NeedsSetterThunk) { any = true; break; }
+				}
+				if (!any) return;
+
+				var typeFullName = typeDef.Type.FullyQualifiedName;
+				bool isStruct = typeDef.Type.IsValueType();
+				string instanceParam = isStruct ? $"ref {typeFullName} instance" : $"{typeFullName} instance";
+				string instanceArg = isStruct ? "ref instance" : "instance";
+
+				sb.BeginRegion("Non-public member accessors...");
+				sb.NewLine();
+				foreach (var member in typeDef.Members)
+				{
+					if (!member.NeedsGetterThunk && !member.NeedsSetterThunk) continue;
+					var valueType = member.Type.FullyQualifiedNameAnnotated;
+					bool needsSetter = member.NeedsSetterThunk && !member.IsReadOnly;
+					if (this.Metadata.SupportsUnsafeAccessors)
+					{
+						if (member.IsField)
+						{
+							sb.AppendLine($"[global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Field, Name = {CSharpCodeBuilder.Constant(member.MemberName)})]");
+							sb.AppendLine($"private static extern ref {valueType} __ref_{member.MemberName}({instanceParam});");
+							if (member.NeedsGetterThunk)
+							{
+								sb.AppendLine($"private static {valueType} __get_{member.MemberName}({instanceParam}) => __ref_{member.MemberName}({instanceArg});");
+							}
+							if (needsSetter)
+							{
+								sb.AppendLine($"private static void __set_{member.MemberName}({instanceParam}, {valueType} value) => __ref_{member.MemberName}({instanceArg}) = value;");
+							}
+						}
+						else
+						{
+							if (member.NeedsGetterThunk)
+							{
+								sb.AppendLine($"[global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = {CSharpCodeBuilder.Constant("get_" + member.MemberName)})]");
+								sb.AppendLine($"private static extern {valueType} __get_{member.MemberName}({instanceParam});");
+							}
+							if (needsSetter)
+							{
+								sb.AppendLine($"[global::System.Runtime.CompilerServices.UnsafeAccessor(global::System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = {CSharpCodeBuilder.Constant("set_" + member.MemberName)})]");
+								sb.AppendLine($"private static extern void __set_{member.MemberName}({instanceParam}, {valueType} value);");
+							}
+						}
+					}
+					else
+					{ // no [UnsafeAccessor] on this target: reflection-based accessors (correct wire, slower)
+						if (member.IsField)
+						{
+							sb.AppendLine($"private static readonly global::System.Reflection.FieldInfo __fi_{member.MemberName} = typeof({typeFullName}).GetField({CSharpCodeBuilder.Constant(member.MemberName)}, global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic)!;");
+							if (member.NeedsGetterThunk)
+							{
+								sb.AppendLine($"private static {valueType} __get_{member.MemberName}({instanceParam}) => ({valueType}) __fi_{member.MemberName}.GetValue(instance)!;");
+							}
+							if (needsSetter)
+							{
+								EmitReflectionSetterThunk(sb, member, "__fi_" + member.MemberName, typeFullName, isStruct, instanceParam, valueType);
+							}
+						}
+						else
+						{
+							sb.AppendLine($"private static readonly global::System.Reflection.PropertyInfo __pi_{member.MemberName} = typeof({typeFullName}).GetProperty({CSharpCodeBuilder.Constant(member.MemberName)}, global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic)!;");
+							if (member.NeedsGetterThunk)
+							{
+								sb.AppendLine($"private static {valueType} __get_{member.MemberName}({instanceParam}) => ({valueType}) __pi_{member.MemberName}.GetValue(instance)!;");
+							}
+							if (needsSetter)
+							{
+								EmitReflectionSetterThunk(sb, member, "__pi_" + member.MemberName, typeFullName, isStruct, instanceParam, valueType);
+							}
+						}
+					}
+					sb.NewLine();
+				}
+				sb.EndRegion();
+				sb.NewLine();
+			}
+
+			/// <summary>Emits the reflection-based setter thunk (with the box-mutate-unbox dance a struct needs)</summary>
+			private static void EmitReflectionSetterThunk(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member, string infoRef, string typeFullName, bool isStruct, string instanceParam, string valueType)
+			{
+				sb.AppendLine($"private static void __set_{member.MemberName}({instanceParam}, {valueType} value)");
+				sb.EnterBlock();
+				if (isStruct)
+				{
+					sb.AppendLine("object boxed = instance;");
+					sb.AppendLine($"{infoRef}.SetValue(boxed, value);");
+					sb.AppendLine($"instance = ({typeFullName}) boxed;");
+				}
+				else
+				{
+					sb.AppendLine($"{infoRef}.SetValue(instance, value);");
+				}
+				sb.LeaveBlock();
 			}
 
 			private void WritePackMethod(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
@@ -2284,6 +2659,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.InheritDoc();
 				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default)");
 				sb.EnterBlock("Pack");
+				if (this.Metadata.WireProfile == "DataContractCompat")
+				{ // the container's baked wire profile is the "no settings" default; explicit settings replace it entirely
+					sb.AppendLine($"settings ??= {KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat;");
+				}
 
 				if (!typeDef.Type.IsValueType())
 				{ // ref types can be null, we will return JsonNull.Null in this case
@@ -2360,11 +2739,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
+				EmitCallbackInvocation(sb, typeDef.OnSerializing, "instance", null);
+				sb.NewLine();
+
 				foreach (var member in typeDef.Members)
 				{
 					sb.Comment($"\"{member.Name}\" => {member.Type.FullName} {member.MemberName}{(member.IsKey ? ", KEY" : "")}{(member.IsField ? ", field" : ", prop")}{(member.IsRequired ? ", required" : "")}{(member.IsInitOnly ? ", initOnly" : member.IsReadOnly ? ", readOnly" : "")}{(member.IgnoreCondition != null ? $", [{member.IgnoreCondition}]" : "")}");
 
-					var getterExpr = $"instance.{member.MemberName}"; //TODO: maybe use unsafe accessors for some fields?
+					var getterExpr = GetInstanceMemberReadExpr(typeDef, member);
 					var packerExpr = GetMemberPackerExpression(member, getterExpr);
 
 					if (member.IgnoreCondition == "Never")
@@ -2377,7 +2759,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					else if (member.IgnoreCondition == "WhenWritingDefault")
 					{ // omitted when equal to the member's default, regardless of the settings
-						sb.AppendLine($"if (!global::System.Collections.Generic.EqualityComparer<{member.Type.FullyQualifiedNameAnnotated}>.Default.Equals({getterExpr}, {member.DefaultLiteral}))");
+						sb.AppendLine($"if (!global::System.Collections.Generic.EqualityComparer<{member.Type.FullyQualifiedNameAnnotated}>.Default.Equals({getterExpr}, {GetForgivingDefaultLiteral(member)}))");
 						sb.EnterBlock();
 						sb.AppendLine($"obj.Add({GetLocalPropertyNameRef(member)}, {packerExpr});");
 						sb.LeaveBlock();
@@ -2396,6 +2778,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					sb.NewLine();
 				}
+				EmitCallbackInvocation(sb, typeDef.OnSerialized, "instance", null);
+
 				sb.AppendLine($"return settings.IsReadOnly() ? {KnownTypeSymbols.CrystalJsonMarshallFullName}.FreezeTopLevel(obj) : obj;");
 				sb.LeaveBlock("Pack");
 				sb.NewLine();
@@ -2404,7 +2788,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private void WriteSerializeMethod(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
 				sb.InheritDoc();
-				sb.AppendLine($"void IJsonConverter.Serialize(object? instance, Type declaringType, Type? runtimeType, {KnownTypeSymbols.CrystalJsonWriterFullName} writer)");
+				sb.AppendLine($"void {KnownTypeSymbols.IJsonConverterInterfaceFullName}.Serialize(object? instance, {SystemTypeFullName} declaringType, {SystemTypeFullName}? runtimeType, {KnownTypeSymbols.CrystalJsonWriterFullName} writer)");
 				sb.EnterBlock();
 				if (typeDef.Type.IsValueType())
 				{ // null cannot be cast into a value type, handle this specifically here
@@ -2417,7 +2801,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// check that we have a compatible type
 				sb.AppendLine($"if (instance is not {typeDef.Type.FullyQualifiedName} value)");
 				sb.EnterBlock();
-				sb.AppendLine("throw CrystalJson.Errors.Serialization_DoesNotKnowHowToSerializeType(runtimeType ?? declaringType);");
+				sb.AppendLine($"throw {KnownTypeSymbols.CrystalJsonFullName}.Errors.Serialization_DoesNotKnowHowToSerializeType(runtimeType ?? declaringType);");
 				sb.LeaveBlock();
 				sb.AppendLine("Serialize(writer, value);");
 				sb.LeaveBlock();
@@ -2441,6 +2825,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.InheritDoc();
 				sb.AppendLine($"public void Serialize({KnownTypeSymbols.CrystalJsonWriterFullName} writer, {typeDef.Type.FullyQualifiedName}{(typeDef.Type.IsValueType() ? "" : "?")} instance)");
 				sb.EnterBlock("Serialize()");
+
+				// note: no incompatible-settings guard is needed here: the emitted names carry BOTH casings
+				// (JsonEncodedPropertyName bakes the declared and camelCased literals, and the writer picks per
+				// settings), so naming, like the value formats, is runtime-honorable - there is currently no
+				// passed setting the generated code cannot honor. The no-silent-path-switch doctrine is enforced
+				// where a real conflict exists: at generation time (CJSON0013, profile vs naming option).
 
 				if (!typeDef.Type.IsValueType())
 				{ // ref types can be null, we will write "null" in this case
@@ -2491,7 +2881,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					//TODO: we should have a local method that can dispatch known types!
 					sb.AppendLine($"if (instance.GetType() != typeof({typeDef.Type.FullyQualifiedName}))");
 					sb.EnterBlock();
-					sb.AppendLine("throw new NotSupportedException(\"Cannot serialize a polymorphic type. You must add at least one [JsonDerivedType] to the base class or interface.\");");
+					sb.AppendLine($"throw new {NotSupportedExceptionFullName}(\"Cannot serialize a polymorphic type. You must add at least one [JsonDerivedType] to the base class or interface.\");");
 					//sb.AppendLine($"{KnownTypeSymbols.CrystalJsonVisitorFullName}.VisitValue(instance, typeof({typeFullName}), writer);");
 					//sb.AppendLine("return;");
 					sb.LeaveBlock();
@@ -2513,11 +2903,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
+				EmitCallbackInvocation(sb, typeDef.OnSerializing, "instance", null);
+
 				foreach (var member in typeDef.Members)
 				{
-					this.WriteMemberSerializer(sb, member);
+					this.WriteMemberSerializer(sb, typeDef, member);
 				}
 				sb.NewLine();
+
+				EmitCallbackInvocation(sb, typeDef.OnSerialized, "instance", null);
+
 				sb.AppendLine("writer.EndObject(state);");
 				sb.LeaveBlock("Serialize()");
 				sb.NewLine();
@@ -2759,13 +3154,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return this.IsLocallyGeneratedType((underlyingType ?? type).Ref, out metadata);
 			}
 
-			private void WriteMemberSerializer(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member)
+			private void WriteMemberSerializer(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member)
 			{
 				sb.NewLine();
 				sb.Comment($"{member.Type.Name} {member.MemberName} => \"{member.Name}\"{(member.IgnoreCondition != null ? $" [{member.IgnoreCondition}]" : "")}");
 
 				var propertyName = GetPropertyEncodedNameRef(member);
-				var getterExpr = "instance." + member.MemberName;
+				var getterExpr = GetInstanceMemberReadExpr(typeDef, member);
 
 				switch (member.IgnoreCondition)
 				{
@@ -2803,7 +3198,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					case "WhenWritingDefault":
 					{ // omitted when equal to the member's default, regardless of the settings
-						sb.AppendLine($"if (!global::System.Collections.Generic.EqualityComparer<{member.Type.FullyQualifiedNameAnnotated}>.Default.Equals({getterExpr}, {member.DefaultLiteral}))");
+						sb.AppendLine($"if (!global::System.Collections.Generic.EqualityComparer<{member.Type.FullyQualifiedNameAnnotated}>.Default.Equals({getterExpr}, {GetForgivingDefaultLiteral(member)}))");
 						sb.EnterBlock();
 						this.WriteMemberSerializerCore(sb, member, propertyName, getterExpr);
 						sb.LeaveBlock();

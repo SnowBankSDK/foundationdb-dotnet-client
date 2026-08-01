@@ -50,6 +50,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Default naming policy for all the properties of types in this container</summary>
 		public string? PropertyNamingPolicy { get; init; }
 
+		/// <summary>The consuming compilation defines <c>[UnsafeAccessor]</c> (net8+): non-public members are reached through zero-cost accessor thunks; otherwise the generated code falls back to reflection-based accessors</summary>
+		public bool SupportsUnsafeAccessors { get; init; }
+
+		/// <summary>Name of the wire profile baked into the container's generated entry points (<c>"DataContractCompat"</c>), or <see langword="null"/> for the standard wire</summary>
+		/// <remarks>The profile only replaces the "caller passed no settings" fallback of the generated entry points; explicitly passed settings always win entirely.</remarks>
+		public string? WireProfile { get; init; }
+
 		/// <summary>Specifies whether the container is the serialized type itself (self-serializable mode)</summary>
 		/// <remarks>
 		/// <para>When <c>true</c>, <see cref="Type"/> is a partial application type that acts as its own container: all its generated code lives inside a single reserved nested scope (ex: <c>Widget.Json.ReadOnly</c>), and any other included type (crawled from its members) is hosted inside that scope under its own name (ex: <c>Widget.Json.WidgetPart.ReadOnly</c>; inside the scope, holders cannot shadow the referenced types in the entity's own source).</para>
@@ -74,6 +81,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		/// <summary>Indicates if this is the top-most base type for a tree of derived types</summary>
 		public required bool IsPolymorphicRoot { get; init; }
+
+		/// <summary>The type's serialization lifecycle callbacks, if any</summary>
+		public CrystalJsonCallbackMetadata? OnSerializing { get; init; }
+
+		/// <inheritdoc cref="OnSerializing"/>
+		public CrystalJsonCallbackMetadata? OnSerialized { get; init; }
+
+		/// <inheritdoc cref="OnSerializing"/>
+		public CrystalJsonCallbackMetadata? OnDeserializing { get; init; }
+
+		/// <inheritdoc cref="OnSerializing"/>
+		public CrystalJsonCallbackMetadata? OnDeserialized { get; init; }
+
+		/// <summary>Specifies if this type declares at least one lifecycle callback that generated code must invoke</summary>
+		public bool HasCallbacks => this.OnSerializing != null || this.OnSerialized != null || this.OnDeserializing != null || this.OnDeserialized != null;
 
 		/// <summary>Name of the field added to the JSON output, that holds the type discriminator value</summary>
 		/// <remarks>If <c>null</c>, the default name is <c>$type</c>.</remarks>
@@ -124,6 +146,32 @@ namespace SnowBank.Serialization.Json.CodeGen
 	}
 
 	/// <summary>Metadata about a member (field or property) of a serialized type</summary>
+	/// <summary>What the deserialize-side callbacks accept as their single argument</summary>
+	public enum CrystalJsonCallbackArgument
+	{
+		/// <summary><c>void M()</c></summary>
+		None = 0,
+		/// <summary><c>void M(JsonValue)</c></summary>
+		JsonValue,
+		/// <summary><c>void M(JsonObject)</c></summary>
+		JsonObject,
+		/// <summary><c>void M(JsonArray)</c></summary>
+		JsonArray,
+	}
+
+	/// <summary>One serialization lifecycle callback that generated code must invoke</summary>
+	public sealed record CrystalJsonCallbackMetadata
+	{
+		/// <summary>Name of the method to call</summary>
+		public required string MethodName { get; init; }
+
+		/// <summary>Whether the method needs an accessor thunk (it is not reachable from generated code)</summary>
+		public required bool IsNonPublic { get; init; }
+
+		/// <summary>The single argument the method takes, if any</summary>
+		public required CrystalJsonCallbackArgument Argument { get; init; }
+	}
+
 	public sealed record CrystalJsonMemberMetadata
 	{
 		
@@ -157,7 +205,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 		
 		/// <summary><c>true</c> if the member is annotated with the <c>required</c> keyword</summary>
 		/// <example><c>public required string Id { ... }</c> is required</example>
-		public required bool IsRequired { get; init; } 
+		public required bool IsRequired { get; init; }
+
+		/// <summary><c>true</c> if the member must be PRESENT in the document when binding (<c>[DataMember(IsRequired = true)]</c>)</summary>
+		/// <remarks>Deliberately distinct from <see cref="IsRequired"/>: an ABSENT member throws, but an explicit <c>null</c> satisfies it, which is what <c>DataContractJsonSerializer</c> does. The <c>required</c> keyword refuses null as well.</remarks>
+		public bool IsRequiredPresence { get; init; }
 
 		/// <summary><c>true</c> if <see cref="DefaultLiteral"/> is not the default for this type</summary>
 		public required bool HasNonZeroDefault { get; init; }
@@ -181,6 +233,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>The custom converter implements the deserializing facet (<c>IJsonDeserializer&lt;T&gt;</c>); when <see langword="false"/>, any attempt to deserialize a present value for the member fails loudly</summary>
 		public bool CustomConverterHasDeserializer { get; init; } = true;
 
+		/// <summary>The custom converter is declared for the member's <c>Nullable&lt;T&gt;</c> form itself (e.g. <c>IJsonDeserializer&lt;DateTime?&gt;</c> on a <c>DateTime?</c> member), so the emitter must call the nullable-form unpack helpers instead of unwrap-then-lift</summary>
+		public bool CustomConverterIsNullableForm { get; init; }
+
 		/// <summary>C# literal for the expression that represents the default value for this member, when it is missing</summary>
 		/// <remarks>This should be a valid C# constant expression, like <c>123</c>, <c>"hello"</c>, <c>true</c>, <c>global::System.Guid.Empty</c>, ...</remarks>
 		public required string DefaultLiteral { get; init; }
@@ -188,11 +243,27 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>The member is annotated with the <c>[System.ComponentModel.DataAnnotations.Key]</c> attribute</summary>
 		/// <remarks>Examples: <code>
 		/// int Id { get; ... } // IsKey == false
-		/// 
+		///
 		/// [Key]
 		/// int Id { get; ... } // IsKey == true
 		/// </code></remarks>
 		public required bool IsKey { get; init; }
+
+		/// <summary>The member itself is not reachable from the generated code (private, protected, or private protected): every read and write goes through an accessor thunk</summary>
+		/// <remarks>Only members carrying <c>[JsonInclude]</c> reach this state; <c>internal</c> and <c>protected internal</c> members are reachable directly (the generated code lives in the same assembly).</remarks>
+		public bool IsNonPublic { get; init; }
+
+		/// <summary>The member is reachable but its set/init accessor is not (e.g. a public property with a private setter): writes go through an accessor thunk</summary>
+		public bool HasNonPublicSetter { get; init; }
+
+		/// <summary>The member is reachable but its get accessor is not (e.g. a public property with a private getter): reads go through an accessor thunk</summary>
+		public bool HasNonPublicGetter { get; init; }
+
+		/// <summary>Reads of this member go through the <c>__get_X</c> accessor thunk</summary>
+		public bool NeedsGetterThunk => this.IsNonPublic || this.HasNonPublicGetter;
+
+		/// <summary>Writes of this member go through the <c>__set_X</c> accessor thunk (instead of an object-initializer entry)</summary>
+		public bool NeedsSetterThunk => this.IsNonPublic || this.HasNonPublicSetter;
 
 		/// <summary>The member cannot be <c>null</c>, or is annotated with the <c>[System.Diagnostics.CodeAnalysis.NotNull]</c> attribute</summary>
 		/// <remarks>Examples: <code>

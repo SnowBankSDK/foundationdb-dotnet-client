@@ -40,6 +40,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 	public partial class CrystalJsonSourceGenerator : IIncrementalGenerator
 	{
 
+		/// <summary>Message for <c>CJSON0015</c>, kept identical to <c>CrystalJson.Errors.CallbackStreamingContextNotSupported</c></summary>
+		/// <remarks>An analyzer cannot reference SnowBank.Core, so the string exists in both assemblies. It is public here so a test can assert the two copies are equal: a build error whose text does not match the documented migration recipe is one nobody can grep for.</remarks>
+		public const string CallbackStreamingContextNotSupportedMessage = "Remove the StreamingContext parameter from serialization callback '{0}', or replace it with JsonValue, JsonObject or JsonArray. The legacy DataContractJsonSerializer callback signature is not supported.";
+
+		/// <summary>Message for <c>CJSON0015</c> on any other unusable callback signature, kept identical to <c>CrystalJson.Errors.CallbackSignatureNotSupported</c></summary>
+		public const string CallbackSignatureNotSupportedMessage = "Serialization callback '{0}' must be parameterless, or take a single JsonValue, JsonObject or JsonArray parameter.";
+
+		/// <summary>Message for <c>CJSON0017</c>, kept identical to <c>CrystalJson.Errors.BooleanLiteralTypeNotSupported</c></summary>
+		public const string BooleanLiteralTypeNotSupportedMessage = "The [JsonBooleanLiterals] argument '{0}' is of type {1}, which has no JSON wire form: use a string, a bool, or a numeric value.";
+
 		private const string CrystalJsonConverterAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonConverterAttribute";
 
 		private const string CrystalJsonSerializableAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSerializableAttribute";

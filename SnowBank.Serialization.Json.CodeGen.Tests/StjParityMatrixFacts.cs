@@ -51,23 +51,13 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public int Count { get; init; }
 	}
 
-	[DataContract]
-	public sealed record MxDataContractDto
-	{
-		[DataMember(Name = "renamed")]
-		public string? Id { get; init; }
-
-		public string? NotMember { get; init; }
-	}
-
-	public sealed record MxBothSignalsDto
-	{
-		[DataMember]
-		[STJ.JsonIgnore]
-		public string? Both { get; init; }
-
-		public int Kept { get; init; }
-	}
+	// note: a [DataContract] DTO cannot appear in this matrix: enrolling one is refused at build time (error
+	// CJSON0014, the interim constraint until generated containers learn the DataContract contract model), so
+	// there is no generated wire to compare - the STJ-vs-reflection divergence for [DataContract] types stays
+	// pinned by the Core.Tests DCJS parity fixtures, and the refusal by DataContractRefusalDiagnosticFacts.
+	// A [DataMember] + unconditional [STJ.JsonIgnore] pair cannot be declared here either: refused at build
+	// time on both paths (error CJSON0008 / a contract-build throw), pinned by IgnoreConflictDiagnosticFacts
+	// and the Core.Tests DataContractCompat facts
 
 	public sealed record MxStjRenameDto
 	{
@@ -174,8 +164,6 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	[CrystalJsonConverter]
 	[CrystalJsonSerializable(typeof(MxIgnoreDto))]
 	[CrystalJsonSerializable(typeof(MxIgnoreConditionsDto))]
-	[CrystalJsonSerializable(typeof(MxDataContractDto))]
-	[CrystalJsonSerializable(typeof(MxBothSignalsDto))]
 	[CrystalJsonSerializable(typeof(MxStjRenameDto))]
 	[CrystalJsonSerializable(typeof(MxSnowRenameDto))]
 	[CrystalJsonSerializable(typeof(MxEnumDto))]
@@ -285,25 +273,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				stjWire: """{"Pinned":0}""",
 				cjWire: """{"Pinned":0}""");
 
-			yield return Case(
-				id: "datamember-plus-jsonignore",
-				dto: new MxBothSignalsDto { Both = "b", Kept = 1 },
-				generated: ParityHost.MxBothSignalsDto.Default,
-				stjWire: """{"Kept":1}""",
-				cjWire: """{"Kept":1}""");
+			// (the former "datamember-plus-jsonignore" row is gone: that pair is now refused at build time on
+			// both paths - a ruled divergence from STJ, which silently lets [JsonIgnore] win)
 
-			// ---- DataContract interplay: THREE different wires, all deliberate, all documented ----
+			// ---- DataContract interplay ----
 			// STJ does not know DataContract (all public members, C# names); CrystalJson reflection honors the
-			// [DataMember] opt-in and rename; the source generator does not read DataContract (matrix divergence D1),
-			// so a legacy [DataContract] DTO must stay on the reflection path until it is modernized.
-
-			yield return Case(
-				id: "datacontract-optin-rename",
-				dto: new MxDataContractDto { Id = "X", NotMember = "n" },
-				generated: ParityHost.MxDataContractDto.Default,
-				stjWire: """{"Id":"X","NotMember":"n"}""",
-				cjWire: """{"renamed":"X"}""",
-				cjGeneratedWire: """{"Id":"X","NotMember":"n"}""");
+			// [DataMember] opt-in and rename; and the source generator REFUSES an enrolled [DataContract] type at
+			// build time (CJSON0014, the interim constraint - the former matrix divergence D1 is no longer
+			// reachable), so there is no generated wire to compare here: a legacy [DataContract] DTO stays on the
+			// reflection path until it is modernized, and the refusal is pinned by DataContractRefusalDiagnosticFacts.
 
 			// ---- renames ----
 

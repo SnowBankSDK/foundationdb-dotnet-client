@@ -60,9 +60,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string JsonIncludeAttributeFullName = "System.Text.Json.Serialization.JsonIncludeAttribute";
 
+			public const string DataContractAttributeFullName = "System.Runtime.Serialization.DataContractAttribute";
+
 			public const string DataMemberAttributeFullName = "System.Runtime.Serialization.DataMemberAttribute";
 
 			public const string IgnoreDataMemberAttributeFullName = "System.Runtime.Serialization.IgnoreDataMemberAttribute";
+
 
 			public const string JsonConverterAttributeFullName = "System.Text.Json.Serialization.JsonConverterAttribute";
 
@@ -131,6 +134,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				bool caseInsensitiveNames = false;
 				string? propertyNamingPolicy = null;
+				string? wireProfile = null;
 
 				// key: fullyQualifiedName
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
@@ -181,12 +185,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 								// 0 == General
 								// 1 == Web
+								// 2 == DataContractCompat
 								switch (defaults)
 								{
 									case 1: // CrystalJsonSerializerDefaults.Web
 									{
 										caseInsensitiveNames = true;
 										propertyNamingPolicy = "camel";
+										break;
+									}
+									case 2: // CrystalJsonSerializerDefaults.DataContractCompat
+									{ // the profile governs value formats only: the DCJS wire uses the declared member names
+										wireProfile = "DataContractCompat";
 										break;
 									}
 								}
@@ -224,6 +234,22 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
+				if (wireProfile != null && (caseInsensitiveNames || propertyNamingPolicy != null))
+				{ // the DCJS wire has no naming policy: a naming option next to the profile is a contradiction, refused at build time
+					ReportDiagnostic(
+						new(
+							"CJSON0013",
+							"A wire profile cannot be combined with a naming option",
+							"The container '{0}' bakes the {1} profile, whose wire uses the declared member names; combining it with a camelCase or case-insensitive naming option is refused. Remove the naming option, or serialize the modern wire through a separate container (the dual-container pattern).",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						symbol.ToDisplayString(), wireProfile);
+					return null;
+				}
+
 				Kenobi($"Found {work.Count} root types to include");
 
 				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy);
@@ -257,6 +283,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					IncludedTypes = includedTypes.ToImmutableEquatableArray(),
 					PropertyNameCaseInsensitive = caseInsensitiveNames,
 					PropertyNamingPolicy = propertyNamingPolicy,
+					SupportsUnsafeAccessors = this.KnownSymbols.HasUnsafeAccessor,
+					WireProfile = wireProfile,
 				};
 			}
 
@@ -375,6 +403,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					PropertyNameCaseInsensitive = false,
 					PropertyNamingPolicy = null,
 					IsSelfContained = true,
+					SupportsUnsafeAccessors = this.KnownSymbols.HasUnsafeAccessor,
 				};
 			}
 
@@ -509,6 +538,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
+				// [DataContract] switches membership from "every public member unless excluded" to "only what [DataMember] opts in",
+				// and makes accessibility stop filtering. That is a TYPE-level fact, so it has to reach the per-member step.
+				bool hasDataContract = HasDataContractAttribute(type);
+
+				var callbacks = ParseSerializationCallbacks(type);
+
 				// if this is a derived type, we need to enumerate the symbols starting from the top (interface or base class)
 				// we also want to have "id" as the first member
 				int indexOfId = -1;
@@ -519,7 +554,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						if (member.Kind is (SymbolKind.Property or SymbolKind.Field or SymbolKind.Method))
 						{
 							Kenobi($"Inspecting member {member.Name}...");
-							var (memberDef, memberType) = ParseMemberMetadata(member, mappedTypes, work, namingPolicy);
+							var (memberDef, memberType) = ParseMemberMetadata(member, mappedTypes, work, namingPolicy, hasDataContract);
 							if (memberDef is not null)
 							{
 								Kenobi($"Inspected member {member.Name} with type {memberDef.Type.FullName}, N={memberDef.Type.NullableOfType?.FullName}, E={memberDef.Type.ElementType?.FullName}, K={memberDef.Type.KeyType?.FullName}, V={memberDef.Type.ValueType?.FullName}");
@@ -549,11 +584,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 					typeDiscriminatorPropertyName = "$type";
 				}
 
+				ReportPrePopulateCallbackConflicts(type, callbacks.OnDeserializing, members);
+
 				return new()
 				{
 					Type = TypeMetadata.Create(type),
 					Members = members.ToImmutableEquatableArray(),
 					IsPolymorphicRoot = isPolymorphic,
+					OnSerializing = callbacks.OnSerializing,
+					OnSerialized = callbacks.OnSerialized,
+					OnDeserializing = callbacks.OnDeserializing,
+					OnDeserialized = callbacks.OnDeserialized,
 					TypeDiscriminatorPropertyName = typeDiscriminatorPropertyName,
 					DerivedTypes = derivedTypes.ToImmutableEquatableArray(),
 				};
@@ -666,56 +707,306 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 			}
 
-			/// <summary>Warns when a non-public member carries <c>[JsonInclude]</c>, which the generator does not support yet (the reflection path does)</summary>
-			private void ReportJsonIncludeNotSupported(ISymbol member)
+			/// <summary>Tests whether generated code (living in the same assembly, outside the type) can access a member with this accessibility directly</summary>
+			/// <remarks>Private, protected and private-protected members need an accessor thunk; internal and protected-internal members are reachable directly.</remarks>
+			private static bool IsReachableFromGeneratedCode(Accessibility accessibility)
+				=> accessibility is Accessibility.Public or Accessibility.Internal or Accessibility.ProtectedOrInternal;
+
+			private static bool HasJsonIncludeAttribute(ISymbol member)
 			{
 				foreach (var attribute in member.GetAttributes())
 				{
 					if (attribute.AttributeClass?.ToDisplayString() == JsonIncludeAttributeFullName)
 					{
-						ReportDiagnostic(
-							new(
-								"SYSLIB1038", //note: we use the same ID as System.Text.Json, since this is the same situation
-								"The member annotated with JsonIncludeAttribute is not supported by the source generator.",
-								"The member '{0}' has been annotated with JsonIncludeAttribute, but the source generator does not support non-public members yet: it will NOT be part of the generated converter (the reflection path does honor it).",
-								"SnowBank.Serialization.Json.CodeGen",
-								DiagnosticSeverity.Warning,
-								isEnabledByDefault: true
-							),
-							member.Locations.Length > 0 ? member.Locations[0] : null,
-							member.ToDisplayString());
-						return;
+						return true;
 					}
+				}
+				return false;
+			}
+
+			/// <summary>Collects the type's serialization lifecycle callbacks, reporting <c>CJSON0015</c> on any signature generated code cannot invoke</summary>
+			/// <remarks>
+			/// <para>Reported at the CALLSITE, because that is where the fix is applied. The reflection path refuses the same shapes when it builds the type's contract, with the same message for the legacy one.</para>
+			/// <para>Refusing at compile time is what lets generated code invoke the callback directly, with no runtime signature test.</para>
+			/// </remarks>
+			private (CrystalJsonCallbackMetadata? OnSerializing, CrystalJsonCallbackMetadata? OnSerialized, CrystalJsonCallbackMetadata? OnDeserializing, CrystalJsonCallbackMetadata? OnDeserialized) ParseSerializationCallbacks(INamedTypeSymbol type)
+			{
+				CrystalJsonCallbackMetadata? onSerializing = null, onSerialized = null, onDeserializing = null, onDeserialized = null;
+
+				for (var current = type; current is not null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+				{
+					foreach (var member in current.GetMembers())
+					{
+						if (member is not IMethodSymbol method) continue;
+
+						string? kind = null;
+						foreach (var attribute in method.GetAttributes())
+						{
+							switch (attribute.AttributeClass?.Name)
+							{
+								case "OnSerializingAttribute": kind = "OnSerializing"; break;
+								case "OnSerializedAttribute": kind = "OnSerialized"; break;
+								case "OnDeserializingAttribute": kind = "OnDeserializing"; break;
+								case "OnDeserializedAttribute": kind = "OnDeserialized"; break;
+							}
+							if (kind is not null) break;
+						}
+						if (kind is null) continue;
+
+						bool isDeserialize = kind is "OnDeserializing" or "OnDeserialized";
+						if (!TryClassifyCallbackArgument(method, isDeserialize, out var argument))
+						{
+							// the legacy shape keeps its own message: it is the migration recipe, and people grep for it
+							bool isLegacyShape = method.Parameters.Length == 1 && method.Parameters[0].Type.Name == "StreamingContext";
+							ReportDiagnostic(
+								new(
+									"CJSON0015",
+									"A serialization callback has a signature this serializer cannot invoke",
+									isLegacyShape ? CallbackStreamingContextNotSupportedMessage : CallbackSignatureNotSupportedMessage,
+									"SnowBank.Serialization.Json.CodeGen",
+									DiagnosticSeverity.Error,
+									isEnabledByDefault: true
+								),
+								method.Locations.Length > 0 ? method.Locations[0] : null,
+								method.Name);
+							continue;
+						}
+
+						var entry = new CrystalJsonCallbackMetadata
+						{
+							MethodName = method.Name,
+							IsNonPublic = !IsReachableFromGeneratedCode(method.DeclaredAccessibility),
+							Argument = argument,
+						};
+						switch (kind)
+						{
+							case "OnSerializing": onSerializing ??= entry; break;
+							case "OnSerialized": onSerialized ??= entry; break;
+							case "OnDeserializing": onDeserializing ??= entry; break;
+							case "OnDeserialized": onDeserialized ??= entry; break;
+						}
+					}
+				}
+
+				return (onSerializing, onSerialized, onDeserializing, onDeserialized);
+			}
+
+			/// <summary>Reports <c>CJSON0016</c> when a pre-populate callback cannot coexist with how a member must be assigned</summary>
+			/// <remarks>
+			/// <para><c>[OnDeserializing]</c> must observe a constructed but UNPOPULATED instance, so generated code constructs first and assigns members as statements. An <c>init</c>-only or <c>required</c> member cannot be assigned that way, and without this diagnostic the consumer would get a compiler error inside generated source they never wrote.</para>
+			/// <para>Fires only when both are genuinely present on the same type: neither construct is a problem on its own.</para>
+			/// </remarks>
+			private void ReportPrePopulateCallbackConflicts(INamedTypeSymbol type, CrystalJsonCallbackMetadata? onDeserializing, List<CrystalJsonMemberMetadata> members)
+			{
+				if (onDeserializing is null) return;
+
+				foreach (var member in members)
+				{
+					// the two remedies differ, so the messages do
+					string? message = member switch
+					{
+						{ IsRequired: true } => "Remove the 'required' modifier from member '{1}' of type '{0}', or remove [OnDeserializing] from that type. A pre-populate callback must observe an unpopulated instance, so members are assigned after construction, and a 'required' member can only be set in an object initializer.",
+						{ IsInitOnly: true } => "Change the 'init' accessor of member '{1}' of type '{0}' to 'set', or remove [OnDeserializing] from that type. A pre-populate callback must observe an unpopulated instance, so members are assigned after construction, which an init-only member does not allow.",
+						_ => null,
+					};
+					if (message is null) continue;
+
+					ReportDiagnostic(
+						new(
+							"CJSON0016",
+							"A pre-populate callback cannot coexist with a required or init-only member",
+							message,
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						type.Locations.Length > 0 ? type.Locations[0] : null,
+						type.ToDisplayString(), member.MemberName);
 				}
 			}
 
-			public (CrystalJsonMemberMetadata? Metadata, ITypeSymbol Type) ParseMemberMetadata(ISymbol member, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work, string? namingPolicy)
+			/// <summary>Reports <c>CJSON0017</c> when a <c>[JsonBooleanLiterals]</c> argument has a type with no JSON wire form</summary>
+			/// <remarks>The attribute takes <c>object</c> parameters so that <see langword="null"/> can mean "do not emit", which moves type checking off the compiler. This restores it at compile time, with the same message the runtime guard throws.</remarks>
+			private bool ValidateBooleanLiteral(ISymbol member, TypedConstant argument, string parameterName)
 			{
+				if (argument.IsNull) return true;
+
+				switch (argument.Type?.SpecialType)
+				{
+					case SpecialType.System_String:
+					case SpecialType.System_Boolean:
+					case SpecialType.System_SByte:
+					case SpecialType.System_Byte:
+					case SpecialType.System_Int16:
+					case SpecialType.System_UInt16:
+					case SpecialType.System_Int32:
+					case SpecialType.System_UInt32:
+					case SpecialType.System_Int64:
+					case SpecialType.System_UInt64:
+					case SpecialType.System_Single:
+					case SpecialType.System_Double:
+					{
+						return true;
+					}
+				}
+
+				ReportDiagnostic(
+					new(
+						"CJSON0017",
+						"A [JsonBooleanLiterals] argument has a type with no JSON wire form",
+						BooleanLiteralTypeNotSupportedMessage,
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					parameterName, argument.Type?.Name ?? "?");
+				return false;
+			}
+
+			/// <summary>Classifies a callback's parameter list, rejecting anything the runtime path would also reject</summary>
+			private static bool TryClassifyCallbackArgument(IMethodSymbol method, bool isDeserialize, out CrystalJsonCallbackArgument argument)
+			{
+				argument = CrystalJsonCallbackArgument.None;
+
+				if (!method.ReturnsVoid || method.IsStatic || method.Parameters.Length > 1)
+				{
+					return false;
+				}
+				if (method.Parameters.Length == 0)
+				{
+					return true;
+				}
+				if (!isDeserialize)
+				{ // the serialize pair has no document to hand over: parameterless only
+					return false;
+				}
+
+				switch (method.Parameters[0].Type.ToDisplayString())
+				{
+					case KnownTypeSymbols.JsonValueFullName: argument = CrystalJsonCallbackArgument.JsonValue; return true;
+					case KnownTypeSymbols.JsonObjectFullName: argument = CrystalJsonCallbackArgument.JsonObject; return true;
+					case KnownTypeSymbols.JsonArrayFullName: argument = CrystalJsonCallbackArgument.JsonArray; return true;
+					default: return false;
+				}
+			}
+
+			private static bool HasDataMemberAttribute(ISymbol member)
+			{
+				foreach (var attribute in member.GetAttributes())
+				{
+					if (attribute.AttributeClass?.ToDisplayString() == DataMemberAttributeFullName)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+
+			private static bool HasDataContractAttribute(ISymbol type)
+			{
+				foreach (var attribute in type.GetAttributes())
+				{
+					if (attribute.AttributeClass?.ToDisplayString() == DataContractAttributeFullName)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+
+			/// <summary>Warns (CJSON0012, suppressible) on an internal member with no include/exclude signal: the generated converter serializes it while the reflection path does not see it</summary>
+			/// <remarks>The generated-only inclusion is kept for wire compatibility (existing applications depend on it); the warning makes the cross-path divergence observable so the intent gets pinned explicitly ([JsonInclude] includes the member on both paths, [JsonIgnore] excludes it on both).</remarks>
+			private void MaybeReportInternalUnannotated(ISymbol member)
+			{
+				if (member.DeclaredAccessibility is not (Accessibility.Internal or Accessibility.ProtectedOrInternal))
+				{
+					return;
+				}
+				foreach (var attribute in member.GetAttributes())
+				{
+					switch (attribute.AttributeClass?.Name)
+					{
+						case "JsonIncludeAttribute":
+						case "JsonIgnoreAttribute":
+						case "IgnoreDataMemberAttribute":
+						{ // the intent is pinned: both paths resolve the member the same way
+							return;
+						}
+					}
+				}
+				ReportDiagnostic(
+					new(
+						"CJSON0012",
+						"An internal member is serialized by the generated converter but invisible to the reflection path",
+						"The internal member '{0}' is included by the generated converter, but the reflection path does not see it: the two paths disagree on this member. Pin the intent explicitly: [JsonInclude] includes it on both paths, [JsonIgnore] excludes it on both. Suppress this warning to keep the generated-only inclusion.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Warning,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString());
+			}
+
+			public (CrystalJsonMemberMetadata? Metadata, ITypeSymbol Type) ParseMemberMetadata(ISymbol member, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work, string? namingPolicy, bool hasDataContract)
+			{
+				// On a [DataContract] type the model is opt-in and accessibility-blind: [DataMember] is the ONLY membership
+				// signal, so a member without it is out whatever its accessibility, and a member with it is in whatever its
+				// accessibility. Mirrors CrystalJsonTypeResolver.FilterMemberByAttributes, which is the reference behaviour.
+				bool dataContractMember = hasDataContract && HasDataMemberAttribute(member);
+				if (hasDataContract && !dataContractMember)
+				{
+					return default;
+				}
+
 				var memberName = member.Name;
 				bool isField;
 				ITypeSymbol typeSymbol;
 				bool isReadOnly;
 				bool isInitOnly;
 				bool isRequired;
+				bool isNonPublic = false;
+				bool hasNonPublicGetter = false;
+				bool hasNonPublicSetter = false;
 
 				switch (member)
 				{
 					case IPropertySymbol property:
 					{
-						if (property.IsImplicitlyDeclared || property.DeclaredAccessibility is (Accessibility.Private or Accessibility.Protected))
+						if (property.IsImplicitlyDeclared)
 						{
-							// REVIEW: what should we do with private properties?
-							// - if they have a backing field, the object may not incomplete when deserialized
-							if (!property.IsImplicitlyDeclared)
-							{
-								ReportJsonIncludeNotSupported(property);
-							}
 							return default;
+						}
+						if (!IsReachableFromGeneratedCode(property.DeclaredAccessibility))
+						{
+							// non-public membership needs an opt-in, and there are two: [JsonInclude] in STJ mode, or
+							// [DataMember] on a [DataContract] type. Either way every access goes through an accessor thunk.
+							if (!HasJsonIncludeAttribute(property) && !dataContractMember)
+							{
+								return default;
+							}
+							isNonPublic = true;
+						}
+						else if (!dataContractMember)
+						{ // in DataContract mode [DataMember] already pins the intent, so the two paths cannot disagree
+							MaybeReportInternalUnannotated(property);
 						}
 						isField = false;
 						typeSymbol = property.Type;
 						isReadOnly = property.IsReadOnly;
 						isRequired = property.IsRequired;
+
+						if (!isNonPublic && property.GetMethod is { } getMethod && !IsReachableFromGeneratedCode(getMethod.DeclaredAccessibility))
+						{
+							// a member whose value cannot be read cannot be serialized: [JsonInclude], or [DataMember] on a
+							// [DataContract] type, unlocks the accessor through a thunk; otherwise the member stays
+							// invisible (same as the reflection path)
+							if (!HasJsonIncludeAttribute(property) && !dataContractMember)
+							{
+								return default;
+							}
+							hasNonPublicGetter = true;
+						}
 
 						var setMethod = property.SetMethod;
 						isInitOnly = false;
@@ -728,6 +1019,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 									isInitOnly = true;
 								}
 							}
+							if (!isNonPublic && !IsReachableFromGeneratedCode(setMethod.DeclaredAccessibility))
+							{
+								if (HasJsonIncludeAttribute(property) || dataContractMember)
+								{ // [JsonInclude], or [DataMember] on a [DataContract] type, unlocks the non-public accessor (through a thunk)
+									hasNonPublicSetter = true;
+								}
+								else
+								{ // same as the reflection path without the opt-in: the member is serialize-only
+									isReadOnly = true;
+								}
+							}
 						}
 
 						break;
@@ -738,14 +1040,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{ // do not include constants
 							return default;
 						}
-						if (field.IsImplicitlyDeclared || field.DeclaredAccessibility is (Accessibility.Private or Accessibility.Protected))
+						if (field.IsImplicitlyDeclared)
 						{
-							//note: we see the backing fields here, we could maybe capture them somewhere in order to generate optimized unsafe accessors?return null;
-							if (!field.IsImplicitlyDeclared)
-							{
-								ReportJsonIncludeNotSupported(field);
-							}
 							return default;
+						}
+						if (!IsReachableFromGeneratedCode(field.DeclaredAccessibility))
+						{
+							if (!HasJsonIncludeAttribute(field) && !dataContractMember)
+							{
+								return default;
+							}
+							isNonPublic = true;
+						}
+						else if (!dataContractMember)
+						{ // in DataContract mode [DataMember] already pins the intent, so the two paths cannot disagree
+							MaybeReportInternalUnannotated(field);
 						}
 						isField = true;
 						//Debug.Assert(field.Type is INamedTypeSymbol);
@@ -795,7 +1104,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// so say so loudly (the reflection path has no build step and cannot warn; this diagnostic is its only surface)
 				{
 					string? includeSignal = null;
-					bool hasIgnore = false;
+					bool hasUnconditionalJsonIgnore = false;
+					bool hasIgnoreDataMember = false;
 					foreach (var attribute in memberAttributes)
 					{
 						switch (attribute.AttributeClass?.ToDisplayString())
@@ -807,22 +1117,48 @@ namespace SnowBank.Serialization.Json.CodeGen
 								{
 									if (kv.Key == "Condition" && kv.Value.Value is int n) condition = n;
 								}
-								hasIgnore |= condition == 1;
+								hasUnconditionalJsonIgnore |= condition == 1;
 								break;
 							}
-							case IgnoreDataMemberAttributeFullName: hasIgnore = true; break;
+							case IgnoreDataMemberAttributeFullName: hasIgnoreDataMember = true; break;
 							case DataMemberAttributeFullName: includeSignal ??= "DataMember"; break;
 							case JsonIncludeAttributeFullName: includeSignal ??= "JsonInclude"; break;
 							case KnownTypeSymbols.JsonPropertyAttributeFullName: includeSignal ??= "JsonProperty"; break;
+							default:
+							{
+								// a [JsonIgnore] spelled by another library (e.g. Newtonsoft) has no Condition property;
+								// the reflection path matches it by name, so the conflict check must too
+								if (attribute.AttributeClass?.Name == "JsonIgnoreAttribute") hasUnconditionalJsonIgnore = true;
+								break;
+							}
 						}
 					}
-					if (hasIgnore && includeSignal != null)
+					if (hasUnconditionalJsonIgnore && includeSignal != null)
+					{
+						// an ERROR, not a warning: a mid-port project carries thousands of interim warnings, and a
+						// warning drowns where an error gets read. The dual-output DTO is not supported, so the
+						// message leads with the split and never suggests a Condition (a Condition would flip the
+						// member to included-with-a-write-rule and ship it onto the second wire for the first time).
+						// The reflection path refuses the same conflict when it builds the type's contract.
+						ReportDiagnostic(
+							new(
+								"CJSON0008",
+								"A member mixes an unconditional [JsonIgnore] with an attribute that includes it",
+								"The member '{0}' carries an unconditional [JsonIgnore] next to [{1}]. In a DCJS-era two-serializer setup this pair put the member on one wire and kept it off the other; that dual-output pattern is not supported here, because one type cannot serve two wire contracts at once: split the type into one DTO per serializer, each with a single coherent set of attributes. If one of the two attributes is simply a mistake, remove it.",
+								"SnowBank.Serialization.Json.CodeGen",
+								DiagnosticSeverity.Error,
+								isEnabledByDefault: true
+							),
+							member.Locations.Length > 0 ? member.Locations[0] : null,
+							member.ToDisplayString(), includeSignal);
+					}
+					else if (hasIgnoreDataMember && includeSignal != null)
 					{
 						ReportDiagnostic(
 							new(
 								"CJSON0008",
-								"A member mixes [JsonIgnore] with an attribute that includes it",
-								"The member '{0}' carries both [JsonIgnore] and [{1}]: the two contradict each other. [JsonIgnore] wins (the member is excluded), but this is almost certainly a bug: keep only one of the two attributes.",
+								"A member mixes [IgnoreDataMember] with an attribute that includes it",
+								"The member '{0}' carries both [IgnoreDataMember] and [{1}]: the two contradict each other. The ignore signal wins (the member is excluded), but this is almost certainly a bug: keep only one of the two attributes.",
 								"SnowBank.Serialization.Json.CodeGen",
 								DiagnosticSeverity.Warning,
 								isEnabledByDefault: true
@@ -835,6 +1171,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// parameters that can be modified via attributes or keywords on the member
 				string? name = null;
 				string? dataMemberName = null;
+				bool dataMemberIsRequired = false;
 				string? stjPropertyName = null;
 				string? newtonsoftPropertyName = null;
 				bool isKey = false;
@@ -844,9 +1181,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				string? customConverterArgs = null;
 				bool customConverterHasPacker = true;
 				bool customConverterHasDeserializer = true;
+				bool customConverterIsNullableForm = false;
 				string? nativeConverterType = null;
 				bool nativeConverterHasPacker = true;
 				bool nativeConverterHasDeserializer = true;
+				bool nativeConverterIsNullableForm = false;
 
 				string defaultLiteral = GetDefaultLiteral(type);
 				bool hasNonZeroDefault = false;
@@ -922,12 +1261,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 							break;
 						}
 						case DataMemberAttributeFullName:
-						{ // [DataMember(Name = "fooBar")]: only observed for conflict detection (the generator does not honour the rename)
+						{ // [DataMember(Name = "fooBar", IsRequired = true)]. Note Order= and EmitDefaultValue= are deliberately
+							// NOT read: the reflection path ignores both, and matching it is the acceptance bar for this type.
 							foreach (var kv in attribute.NamedArguments)
 							{
 								if (kv.Key == "Name" && kv.Value.Value is string dmName)
 								{
 									dataMemberName = dmName;
+								}
+								else if (kv.Key == "IsRequired" && kv.Value.Value is bool dmRequired)
+								{
+									dataMemberIsRequired = dmRequired;
 								}
 							}
 							break;
@@ -964,6 +1308,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									nativeConverterType = nativeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 									nativeConverterHasPacker = facets.Packer;
 									nativeConverterHasDeserializer = facets.Deserializer;
+									nativeConverterIsNullableForm = facets.NullableForm;
 								}
 								else
 								{
@@ -997,6 +1342,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									customConverterArgs = "";
 									customConverterHasPacker = facets.Packer;
 									customConverterHasDeserializer = facets.Deserializer;
+									customConverterIsNullableForm = facets.NullableForm;
 								}
 							}
 							break;
@@ -1020,13 +1366,43 @@ namespace SnowBank.Serialization.Json.CodeGen
 							}
 							if (attribute.ConstructorArguments.Length == 2)
 							{
+								// the arguments are declared as `object`, so the COMPILER no longer type-checks them at the
+								// callsite. Without this the change would be a net safety regression for generated
+								// containers, which used to get a compile error for a bad literal type.
+								if (!ValidateBooleanLiteral(member, attribute.ConstructorArguments[0], "whenFalse")
+								 || !ValidateBooleanLiteral(member, attribute.ConstructorArguments[1], "whenTrue"))
+								{
+									break;
+								}
+
 								bool strict = false;
 								foreach (var kv in attribute.NamedArguments)
 								{
 									if (kv.Key == "StrictLiterals" && kv.Value.Value is bool b) strict = b;
 								}
+
+								if (strict && attribute.ConstructorArguments[0].IsNull)
+								{ // both arguments are known at compile time, so the contradiction can be pointed out where it is written
+									ReportDiagnostic(
+										new(
+											"CJSON0018",
+											"StrictLiterals has nothing to enforce when there is no false literal",
+											"The member '{0}' combines StrictLiterals with a null false literal. Strict mode rejects genuine JSON true/false in favour of the configured literals, but with no false literal there is nothing on the false side to enforce: absence is what carries false. Remove StrictLiterals, or give the member a real false literal.",
+											"SnowBank.Serialization.Json.CodeGen",
+											DiagnosticSeverity.Warning,
+											isEnabledByDefault: true
+										),
+										member.Locations.Length > 0 ? member.Locations[0] : null,
+										member.ToDisplayString());
+								}
+
 								customConverterType = "global::SnowBank.Data.Json.JsonBooleanLiteralsConverter";
 								customConverterArgs = $"{attribute.ConstructorArguments[0].ToCSharpString()}, {attribute.ConstructorArguments[1].ToCSharpString()}{(strict ? ", strictLiterals: true" : "")}";
+
+								if (attribute.ConstructorArguments[0].IsNull)
+								{ // "do not emit for false" is the same rule as [JsonIgnore(Condition = WhenWritingDefault)], resolved here so the writer side needs no special case
+									ignoreCondition ??= "WhenWritingDefault";
+								}
 							}
 							break;
 						}
@@ -1064,6 +1440,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 					customConverterArgs = "";
 					customConverterHasPacker = nativeConverterHasPacker;
 					customConverterHasDeserializer = nativeConverterHasDeserializer;
+					customConverterIsNullableForm = nativeConverterIsNullableForm;
+				}
+
+				if (dataContractMember && dataMemberName is not null)
+				{ // on a [DataContract] type the DataMember rename wins, as it does on the reflection path (attr.Name ?? name)
+					name = dataMemberName;
 				}
 
 				if (string.IsNullOrEmpty(name))
@@ -1084,6 +1466,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						IsReadOnly = isReadOnly,
 						IsInitOnly = isInitOnly,
 						IsRequired = isRequired,
+						IsRequiredPresence = dataContractMember && dataMemberIsRequired,
 						IsNotNull = isNotNull,
 						IsKey = isKey,
 						HasNonZeroDefault = hasNonZeroDefault,
@@ -1094,6 +1477,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 						CustomConverterArgs = customConverterArgs,
 						CustomConverterHasPacker = customConverterHasPacker,
 						CustomConverterHasDeserializer = customConverterHasDeserializer,
+						CustomConverterIsNullableForm = customConverterIsNullableForm,
+						IsNonPublic = isNonPublic,
+						HasNonPublicGetter = hasNonPublicGetter,
+						HasNonPublicSetter = hasNonPublicSetter,
 					},
 					typeSymbol
 				);
@@ -1115,9 +1502,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				SpecialType.System_Single => "0f",
 				SpecialType.System_Double => "0d",
 				SpecialType.System_String => "null",
-				SpecialType.System_IntPtr => "IntPtr.Zero",
-				SpecialType.System_UIntPtr => "UIntPtr.Zero",
-				SpecialType.System_DateTime => "DateTime.MinValue",
+				SpecialType.System_IntPtr => "global::System.IntPtr.Zero",
+				SpecialType.System_UIntPtr => "global::System.UIntPtr.Zero",
+				SpecialType.System_DateTime => "global::System.DateTime.MinValue",
 				SpecialType.System_Enum => "0",
 				_ => !type.IsValueType() || type.IsNullableOfT() ? "null" : "default"
 			};
@@ -1130,11 +1517,25 @@ namespace SnowBank.Serialization.Json.CodeGen
 					: type;
 			}
 
-			/// <summary>Returns which of <c>IJsonPacker&lt;T&gt;</c> / <c>IJsonDeserializer&lt;T&gt;</c> a converter type implements for the member's (nullable-unwrapped) type</summary>
-			/// <remarks>Recognition is per facet: a converter for a type that is only ever written (or only ever read) may implement a single facet.</remarks>
-			private static (bool Packer, bool Deserializer) GetConverterFacets(INamedTypeSymbol converterType, ITypeSymbol memberType)
+			/// <summary>Returns which of <c>IJsonPacker&lt;T&gt;</c> / <c>IJsonDeserializer&lt;T&gt;</c> a converter type implements for the member's type: the EXACT form first (a converter declared for <c>T?</c> takes responsibility for the nullable case itself), then the nullable-unwrapped lift - the same probe order as the reflection bridge</summary>
+			/// <remarks>Recognition is per facet: a converter for a type that is only ever written (or only ever read) may implement a single facet. <c>NullableForm</c> is <see langword="true"/> when the exact probe matched on a <c>Nullable&lt;T&gt;</c> member, which changes which unpack helper the emitter calls.</remarks>
+			private static (bool Packer, bool Deserializer, bool NullableForm) GetConverterFacets(INamedTypeSymbol converterType, ITypeSymbol memberType)
 			{
-				var valueType = GetUnderlyingValueType(memberType);
+				var underlying = GetUnderlyingValueType(memberType);
+				if (!ReferenceEquals(underlying, memberType))
+				{ // Nullable<T> member: probe the exact T? form first, with precedence over the lift
+					var exact = GetConverterFacetsFor(converterType, memberType);
+					if (exact.Packer || exact.Deserializer)
+					{
+						return (exact.Packer, exact.Deserializer, NullableForm: true);
+					}
+				}
+				var lifted = GetConverterFacetsFor(converterType, underlying);
+				return (lifted.Packer, lifted.Deserializer, NullableForm: false);
+			}
+
+			private static (bool Packer, bool Deserializer) GetConverterFacetsFor(INamedTypeSymbol converterType, ITypeSymbol valueType)
+			{
 				bool packer = false, deserializer = false;
 				foreach (var iface in converterType.AllInterfaces)
 				{

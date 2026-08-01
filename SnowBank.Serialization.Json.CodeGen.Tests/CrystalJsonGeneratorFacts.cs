@@ -206,11 +206,20 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	}
 
+	/// <summary>Minimal shape for the required-member contract (both paths must refuse a null-or-missing member)</summary>
+	public sealed record RequiredProbeDto
+	{
+		public required string Name { get; init; }
+
+		public int Age { get; init; }
+	}
+
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
 	[CrystalJsonSerializable(typeof(Person))]
 	[CrystalJsonSerializable(typeof(MyAwesomeUser))]
 	[CrystalJsonSerializable(typeof(Animal))]
 	[CrystalJsonSerializable(typeof(LegacyBag))]
+	[CrystalJsonSerializable(typeof(RequiredProbeDto))]
 	public static partial class GeneratedConverters
 	{
 		// generated code goes here!
@@ -305,6 +314,26 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(unpacked.Codes, Is.EqualTo((int[]) [ 1, 2, 3 ]));
 			Assert.That(unpacked.Tags, Is.EqualTo((string[]) [ "red", "blue" ]));
 			Assert.That(unpacked.Devices!["X1"].Model, Is.EqualTo("laser"));
+		}
+
+		[Test]
+		public void Test_Required_Member_Throws_On_Both_Paths()
+		{
+			// the C# `required` contract: a null-or-missing member refuses to bind, with the same exception
+			// family on the generated path (which always enforced it) and the reflection path (which now does)
+			Assert.That(
+				() => GeneratedConverters.RequiredProbeDto.Deserialize("""{ "age": 5 }"""),
+				Throws.InstanceOf<JsonBindingException>().With.Message.Contains("Required JSON field"),
+				"the generated converter enforces the `required` contract");
+
+			Assert.That(
+				() => CrystalJson.Deserialize<RequiredProbeDto>("""{ "Age": 5 }"""),
+				Throws.InstanceOf<JsonBindingException>().With.Message.Contains("Required JSON field"),
+				"the reflection path enforces the same contract (the two paths agree)");
+
+			// and a document that carries the member binds on both
+			Assert.That(GeneratedConverters.RequiredProbeDto.Deserialize("""{ "name": "n", "age": 5 }""").Name, Is.EqualTo("n"));
+			Assert.That(CrystalJson.Deserialize<RequiredProbeDto>("""{ "Name": "n", "Age": 5 }""").Name, Is.EqualTo("n"));
 		}
 
 		[Test]
@@ -1412,18 +1441,23 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			var stjOps = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
 
-			// the same payload feeds several deserializers: numeric enums are the wire that all of them read without extra configuration
+			// the same payload feeds several deserializers: numeric enums are the wire that all of them read without
+			// extra configuration. The document is camelCase (Web container), so the REFLECTION legs read it with
+			// case-insensitive matching - a case-sensitive read would bind nothing (and throws on the `required` Id)
 			var json = CrystalJson.Serialize(user, GeneratedConverters.MyAwesomeUser.Default, CrystalJsonSettings.Json.WithEnumAsNumbers());
-			var parsed = JsonObject.Parse(json);
+			var parsed = JsonObject.Parse(json, CrystalJsonSettings.JsonIgnoreCase);
 
 			// warmup
 			{
 				_ = JsonValue.Parse(CrystalJson.Serialize(user)).As<MyAwesomeUser>();
 				_ = GeneratedConverters.MyAwesomeUser.Unpack(JsonValue.Parse(CrystalJson.Serialize(user, GeneratedConverters.MyAwesomeUser.Default)));
-				_ = CrystalJson.Deserialize<MyAwesomeUser>(json);
+				_ = CrystalJson.Deserialize<MyAwesomeUser>(json, CrystalJsonSettings.JsonIgnoreCase);
 				_ = System.Text.Json.JsonSerializer.Deserialize<MyAwesomeUser>(json, stjOps);
 				_ = System.Text.Json.JsonSerializer.Deserialize<MyAwesomeUser>(json, SystemTextJsonGeneratedSerializers.Default.MyAwesomeUser);
 			}
+
+			// the benchmark only measures what actually runs: prove the reflection leg BINDS the document
+			Assert.That(CrystalJson.Deserialize<MyAwesomeUser>(json, CrystalJsonSettings.JsonIgnoreCase).Id, Is.EqualTo(user.Id), "the reflection leg must bind the camelCase document");
 
 			Log($"JSON: {json.Length:N0} chars");
 
@@ -1482,7 +1516,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Report("DESERIALIZE STJ_GEN", report);
 			}
 			{
-				var report = RobustBenchmark.Run(() => CrystalJson.Deserialize<MyAwesomeUser>(json), RUNS, ITERATIONS);
+				var report = RobustBenchmark.Run(() => CrystalJson.Deserialize<MyAwesomeUser>(json, CrystalJsonSettings.JsonIgnoreCase), RUNS, ITERATIONS);
 				Report("DESERIALIZE RUNTIME", report);
 			}
 			{
