@@ -1,4 +1,4 @@
-﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -120,7 +120,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 			for (int start = 0; start < KEYS; start += BATCH)
 			{
-				using var tr = await db.BeginTransactionAsync(FdbTransactionMode.Default, this.Cancellation);
+				using var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
 				for (int i = start; i < start + BATCH; i++)
 				{
 					tr.Set(Slice.FromBytes(CounterKey(i)), Slice.FromInt64(0));
@@ -132,7 +132,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			{
 				for (int start = 0; start < KEYS; start += BATCH)
 				{
-					using var tr = await db.BeginTransactionAsync(FdbTransactionMode.Default, this.Cancellation);
+					using var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
 					for (int i = start; i < start + BATCH; i++)
 					{
 						// same-length replacement, which is what an increment settles into
@@ -142,7 +142,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				}
 
 				// full range read, which is the path that tripped the extent decoder
-				using var read = await db.BeginTransactionAsync(FdbTransactionMode.Default, this.Cancellation);
+				using var read = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
 				var all = await read.GetRangeAsync(Slice.FromBytes(CounterKey(0)), Slice.FromBytes(CounterKey(KEYS)), new() { Limit = KEYS + 10 });
 				Assert.That(all.Count, Is.EqualTo(KEYS), $"round {round}: every counter must read back");
 			}

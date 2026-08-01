@@ -42,7 +42,7 @@ namespace FoundationDB.Client.Tests
 			var versions = new List<long>();
 			for (int i = 0; i < 3; i++)
 			{
-				using var tr = await db.BeginTransactionAsync(this.Cancellation);
+				using var tr = db.BeginTransaction(this.Cancellation);
 				tr.Set(Slice.FromString($"k{i}"), Slice.FromString($"v{i}"));
 				await tr.CommitAsync();
 				versions.Add(tr.GetCommittedVersion());
@@ -55,7 +55,7 @@ namespace FoundationDB.Client.Tests
 		{
 			try
 			{
-				using var tr = await db.BeginTransactionAsync(this.Cancellation);
+				using var tr = db.BeginTransaction(this.Cancellation);
 				tr.SetReadVersion(version);
 				await tr.GetAsync(Slice.FromString("k0"));
 				return null;
