@@ -184,6 +184,9 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Opens (or creates) a file-backed store.</summary>
+		/// <param name="path">The path to the store file.</param>
+		/// <param name="geometry">The geometry of the store.</param>
+		/// <param name="regionSizeInBytes">The size of each region in bytes.</param>
 		/// <param name="initialSizeInBytes">Reserve this much file up front rather than growing into it a region at a time. See <see cref="FdbLiteMemoryMappedPager.Open"/>; it is a hint, not a cap.</param>
 		/// <remarks><b>The <paramref name="geometry"/> argument is only honoured when the file does not exist yet.</b>
 		/// For an existing store it is read back from the file's own header and this argument is IGNORED, so

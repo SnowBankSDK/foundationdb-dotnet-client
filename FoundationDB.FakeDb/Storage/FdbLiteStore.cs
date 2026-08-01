@@ -47,6 +47,10 @@ namespace FoundationDB.Storage.FdbLite
 			=> new(FdbLiteEngine.OpenOrCreateFile(path, geometry), apiVersion, protocolVersion, time: time);
 
 		/// <summary>Creates a non-persistent store over the heap pager (the engine-under-test and future ephemeral mode).</summary>
+		/// <param name="geometry">The geometry for the in-memory store.</param>
+		/// <param name="apiVersion">The API version to use.</param>
+		/// <param name="protocolVersion">The protocol version to use.</param>
+		/// <param name="time">The time provider to use.</param>
 		/// <param name="retainEveryVersion">Keeps every published version readable instead of a cluster-like recent-version window, at the cost of unbounded growth. This is the emulator configuration: it is what makes a store's whole history inspectable from a test.</param>
 		public static FdbLiteStore CreateInMemory(FdbLiteGeometry geometry, int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, TimeProvider? time = null, bool retainEveryVersion = false)
 			=> new(FdbLiteEngine.Create(new FdbLiteHeapPager(geometry)), apiVersion, protocolVersion, time: time, retainEveryVersion: retainEveryVersion);

@@ -1,4 +1,4 @@
-﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -860,6 +860,9 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Rebuilds a leaf with one key inserted or replaced (a replaced extent value is released).</summary>
+		/// <param name="leafId">The ID of the leaf to rebuild</param>
+		/// <param name="key">The key to insert or replace</param>
+		/// <param name="newCell">The cell to insert or replace</param>
 		/// <param name="rightmost">True when no separator bounds this leaf on the right, i.e. it holds the highest keys in the tree</param>
 		private RebuildResult RebuildLeafWithInsert(uint leafId, ReadOnlySpan<byte> key, CellRef newCell, bool rightmost)
 		{
@@ -1145,6 +1148,11 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Writes a rebuilt cell list as one page, or as a K-way split when it does not fit (greedy: each page takes the largest prefix that fits).</summary>
+		/// <param name="oldPageId">The ID of the page being replaced</param>
+		/// <param name="isInternal">True if the page is an internal node, false if it is a leaf</param>
+		/// <param name="leftmostChild">The ID of the leftmost child node</param>
+		/// <param name="sourcePage">The page from which the cells are being rebuilt</param>
+		/// <param name="cells">The list of cells to write</param>
 		/// <param name="maxLeafFillBytes">Fill ceiling per emitted LEAF page (0 = the page size): a consolidation merge aims each part at its volatility-adaptive target instead of packing to capacity, which is the hysteresis that keeps a merged run from re-splitting under the workload that produced it</param>
 		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, CellRef[] cells, int maxLeafFillBytes = 0)
 		{

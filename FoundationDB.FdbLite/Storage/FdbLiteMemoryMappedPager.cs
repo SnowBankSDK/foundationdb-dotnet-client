@@ -64,6 +64,9 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Opens (or creates a zero-length file for) a store file. The file is held with shared-READ access: a second writer cannot open it, read-only inspectors can.</summary>
+		/// <param name="path">The path to the store file.</param>
+		/// <param name="geometry">The geometry of the store.</param>
+		/// <param name="regionSizeInBytes">The size of each region in bytes.</param>
 		/// <param name="initialSizeInBytes">Reserve this much file up front instead of growing into it one region at a time. Rounded UP to a whole number of regions; ignored when the file is already at least this long.</param>
 		/// <remarks>
 		/// <para>Pre-allocating costs nothing at rest - the file is sparse until written - but it moves every
