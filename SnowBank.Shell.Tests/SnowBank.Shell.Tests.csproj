@@ -15,15 +15,6 @@
 
 	<Import Project="..\Common\VersionInfo.props" />
 
-	<PropertyGroup>
-		<IsTestProject>true</IsTestProject>
-		<IsPackable>false</IsPackable>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
-		<EnableNUnitRunner>true</EnableNUnitRunner>
-		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
-	</PropertyGroup>
-
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<NoWarn>1701;1702</NoWarn>

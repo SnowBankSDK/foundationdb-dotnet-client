@@ -9,11 +9,6 @@
 		     netstandard2.0 build (Layers.Experimental) have their test folders removed on net472 (see below) -->
 		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
-		<IsTestProject>true</IsTestProject>
-		<EnableNUnitRunner>true</EnableNUnitRunner>
-		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
-		<IsPackable>false</IsPackable>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
@@ -24,10 +19,6 @@
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
-
-	<PropertyGroup>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
-	</PropertyGroup>
 
 	<PropertyGroup>
 		<ServerGarbageCollection>true</ServerGarbageCollection>

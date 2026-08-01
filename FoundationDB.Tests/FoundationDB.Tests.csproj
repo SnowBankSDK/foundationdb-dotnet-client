@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<OutputType>Library</OutputType>
+		<OutputType>Exe</OutputType>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
 		<!-- the net472 validation target consumes the netstandard2.0 builds of the FoundationDB.* libraries, so it follows the same switch -->
 		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
@@ -14,15 +14,6 @@
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
-
-	<PropertyGroup>
-		<IsTestProject>true</IsTestProject>
-		<EnableNUnitRunner>true</EnableNUnitRunner>
-		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-		<TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
-		<IsPackable>false</IsPackable>
-		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
-	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
