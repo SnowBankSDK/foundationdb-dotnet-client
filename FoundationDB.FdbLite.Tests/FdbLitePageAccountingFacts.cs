@@ -50,7 +50,12 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
 			int prefixRegion = (prefixLen + 1) & ~1;
 			int slotsAt = 128 + prefixRegion; // the 128-byte universal header, spelled as this oracle's own constant
-			int keyBase = slotsAt + (count * 2);
+			// The directory reserves slots AHEAD of the cell count, so the key heap begins after the reserved
+			// span, not after the live one. Re-derived here from the header rather than by calling the engine's
+			// own helper, which would forfeit this oracle's independence. A capacity of 0 means "no headroom",
+			// which is what a page built by a rebuild carries.
+			int capacity = FdbLitePageHeader.GetSlotCapacity(page);
+			int keyBase = slotsAt + (Math.Max(capacity, count) * 2);
 			int keyUsed = FdbLitePageHeader.GetKeyAreaLength(page);
 			int area = FdbLitePageHeader.GetCellAreaOffset(page);
 			int frontier = area != 0 ? area : pageSize;

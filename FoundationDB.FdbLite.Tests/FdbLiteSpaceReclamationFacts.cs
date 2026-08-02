@@ -510,7 +510,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				int prefixLen = FdbLitePageHeader.GetPrefixLength(leaf);
 				int leafCells = FdbLitePageHeader.GetCellCount(leaf);
 				int slotsAt = 128 + ((prefixLen + 1) & ~1);
-				int keyBase = slotsAt + (leafCells * 2);
+				// the directory reserves slots ahead of the cell count, so the key heap starts after the RESERVED span
+				int keyBase = slotsAt + (Math.Max(FdbLitePageHeader.GetSlotCapacity(leaf), leafCells) * 2);
 				Span<byte> first8 = stackalloc byte[8];
 				leaf.Slice(128, Math.Min(prefixLen, 8)).CopyTo(first8);
 				int entry = keyBase + System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(leaf[(slotsAt + ((leafCells - 1) * 2))..]);

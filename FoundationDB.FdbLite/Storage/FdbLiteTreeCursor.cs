@@ -62,9 +62,11 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Resolves a leaf cell's value: the inline bytes, or the single contiguous span of its extent.</summary>
 		internal static ReadOnlySpan<byte> ResolveLeafValue(IFdbLitePager pager, ReadOnlySpan<byte> leaf, int slot)
 		{
-			if ((FdbLiteTreePage.GetLeafFlags(leaf, slot) & FdbLiteTreePage.FlagValueIsExtent) == 0)
+			// ONE pass: asking for the flag and then the value walked the cell's whole entry chain twice, per row
+			var (offset, length, flags) = FdbLiteTreePage.LeafValueAndFlags(leaf, slot);
+			if ((flags & FdbLiteTreePage.FlagValueIsExtent) == 0)
 			{
-				return FdbLiteTreePage.GetLeafInlineValue(leaf, slot);
+				return leaf.Slice(offset, length);
 			}
 			var (start, blockCount, totalLength, _) = FdbLiteTreePage.GetLeafExtentDescriptor(leaf, slot);
 			return pager.ReadBlocks(start, blockCount)[..(int) totalLength];
@@ -151,6 +153,27 @@ namespace FoundationDB.Storage.FdbLite
 			return this.Pager.ReadBlocks(this.LeafPage, this.Pager.Geometry.BlocksPerPage);
 		}
 
+		/// <summary>Page whose cell count <see cref="CachedCellCount"/> holds (0 = nothing cached).</summary>
+		/// <remarks>Fields, not auto-properties: this pair is read on every single row of a scan, which is where the repo's property convention stops paying for itself.</remarks>
+		private uint CachedCountPage;
+
+		private int CachedCellCount;
+
+		/// <summary>Cell count of the current leaf, resolved once per LEAF rather than once per row.</summary>
+		/// <remarks>
+		/// <para>The advance step used to re-resolve the whole page through the pager just to read this number, and a pager read is not free: a disposed check, three always-on preconditions (two of them integer divisions) and a region lookup, paid per row. The legacy prototype keeps a page POINTER on its cursor and reads the count off it, which is why its per-row advance is so much cheaper.</para>
+		/// <para>Self-invalidating on the page id, so no seek path has to remember to clear it. Sound because a cursor runs over a COMMITTED generation: the pages under it are immutable for as long as the pin is held.</para>
+		/// </remarks>
+		private int LeafCellCount()
+		{
+			if (this.CachedCountPage != this.LeafPage)
+			{
+				this.CachedCellCount = FdbLitePageHeader.GetCellCount(ReadLeaf());
+				this.CachedCountPage = this.LeafPage;
+			}
+			return this.CachedCellCount;
+		}
+
 		private ReadOnlySpan<byte> ReadPage(uint pageId) => this.Pager.ReadBlocks(pageId, this.Pager.Geometry.BlocksPerPage);
 
 		/// <summary>Positions on the smallest key of the tree.</summary>
@@ -235,8 +258,7 @@ namespace FoundationDB.Storage.FdbLite
 		public bool MoveNext()
 		{
 			Contract.Debug.Requires(this.IsValid);
-			var leaf = ReadLeaf();
-			if (this.LeafSlot + 1 < FdbLitePageHeader.GetCellCount(leaf))
+			if (this.LeafSlot + 1 < LeafCellCount())
 			{
 				this.LeafSlot++;
 				return true;

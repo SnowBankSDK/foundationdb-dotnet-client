@@ -66,7 +66,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			int prefixLen = FdbLitePageHeader.GetPrefixLength(page);
 			var prefix = page.Slice(128, prefixLen);
 			int slotsAt = 128 + ((prefixLen + 1) & ~1);
-			int keyBase = slotsAt + (count * 2);
+			// the directory reserves slots ahead of the cell count, so the key heap starts after the RESERVED span
+			int keyBase = slotsAt + (Math.Max(FdbLitePageHeader.GetSlotCapacity(page), count) * 2);
 
 			long sumWhole = 0, sumValue = 0;
 			long first = 0, last = 0;

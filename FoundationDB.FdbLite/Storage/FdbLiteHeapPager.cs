@@ -43,6 +43,9 @@ namespace FoundationDB.Storage.FdbLite
 			Contract.Requires(regionSizeInBytes >= geometry.PageSize && BitOperations.IsPow2(regionSizeInBytes));
 			this.Geometry = geometry;
 			this.RegionSizeInBlocks = (uint) (regionSizeInBytes >> geometry.BlockSizeLog2);
+			// power-of-two region and power-of-two block, so the region index and in-region offset are a shift
+			// and a mask (this runs per row on a scan, where divisions showed up in the per-row cost)
+			this.RegionSizeInBlocksLog2 = BitOperations.TrailingZeroCount(this.RegionSizeInBlocks);
 			this.RegionSizeInBytes = regionSizeInBytes;
 		}
 
@@ -54,6 +57,9 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <inheritdoc />
 		public uint RegionSizeInBlocks { get; }
+
+		/// <summary>Log2 of <see cref="RegionSizeInBlocks"/>, so the hot path shifts instead of dividing.</summary>
+		private int RegionSizeInBlocksLog2 { get; }
 
 		private int RegionSizeInBytes { get; }
 
@@ -73,10 +79,10 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			ObjectDisposedException.ThrowIf(this.Disposed, this);
 			Contract.Requires(count > 0 && firstBlock + (uint) count <= this.BlockCount, "block run out of bounds");
-			uint region = firstBlock / this.RegionSizeInBlocks;
-			uint last = (firstBlock + (uint) count - 1) / this.RegionSizeInBlocks;
+			uint region = firstBlock >> this.RegionSizeInBlocksLog2;
+			uint last = (firstBlock + (uint) count - 1) >> this.RegionSizeInBlocksLog2;
 			Contract.Requires(region == last, "block run straddles a region boundary");
-			int offset = (int) (firstBlock % this.RegionSizeInBlocks) << this.Geometry.BlockSizeLog2;
+			int offset = (int) (firstBlock & (this.RegionSizeInBlocks - 1)) << this.Geometry.BlockSizeLog2;
 			var regions = this.Regions; // one snapshot read: the array is immutable once published
 			return regions[(int) region].AsSpan(offset, count << this.Geometry.BlockSizeLog2);
 		}

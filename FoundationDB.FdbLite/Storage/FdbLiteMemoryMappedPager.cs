@@ -60,6 +60,11 @@ namespace FoundationDB.Storage.FdbLite
 			this.Geometry = geometry;
 			this.RegionSizeInBytes = regionSizeInBytes;
 			this.RegionSizeInBlocks = (uint) (regionSizeInBytes >> geometry.BlockSizeLog2);
+			// Open() requires a power-of-two region and the block size is one too, so the block count per region
+			// is one as well: the region index and the in-region offset are a shift and a mask, never a division.
+			// This matters because ReadBlocks is per-ROW on a scan, where two integer divisions were a measurable
+			// share of the per-row cost.
+			this.RegionSizeInBlocksLog2 = BitOperations.TrailingZeroCount(this.RegionSizeInBlocks);
 			this.BlockCount = (uint) (RandomAccess.GetLength(handle) >> geometry.BlockSizeLog2);
 		}
 
@@ -121,16 +126,19 @@ namespace FoundationDB.Storage.FdbLite
 		/// <inheritdoc />
 		public uint RegionSizeInBlocks { get; }
 
+		/// <summary>Log2 of <see cref="RegionSizeInBlocks"/>, so the hot path shifts instead of dividing.</summary>
+		private int RegionSizeInBlocksLog2 { get; }
+
 		/// <inheritdoc />
 		public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count)
 		{
 			ObjectDisposedException.ThrowIf(this.Disposed, this);
 			Contract.Requires(count > 0 && firstBlock + (uint) count <= this.BlockCount, "block run out of bounds");
-			uint region = firstBlock / this.RegionSizeInBlocks;
-			Contract.Requires((firstBlock + (uint) count - 1) / this.RegionSizeInBlocks == region, "block run straddles a region boundary");
+			uint region = firstBlock >> this.RegionSizeInBlocksLog2;
+			Contract.Requires((firstBlock + (uint) count - 1) >> this.RegionSizeInBlocksLog2 == region, "block run straddles a region boundary");
 
 			var mapped = GetOrMapRegion((int) region);
-			int offset = (int) (firstBlock % this.RegionSizeInBlocks) << this.Geometry.BlockSizeLog2;
+			int offset = (int) (firstBlock & (this.RegionSizeInBlocks - 1)) << this.Geometry.BlockSizeLog2;
 			return new ReadOnlySpan<byte>(mapped.Pointer + offset, count << this.Geometry.BlockSizeLog2);
 		}
 
@@ -141,7 +149,7 @@ namespace FoundationDB.Storage.FdbLite
 			Contract.Requires((data.Length & (this.Geometry.BlockSize - 1)) == 0);
 			int count = data.Length >> this.Geometry.BlockSizeLog2;
 			Contract.Requires(count > 0 && firstBlock + (uint) count <= this.BlockCount, "block run out of bounds");
-			Contract.Requires((firstBlock + (uint) count - 1) / this.RegionSizeInBlocks == firstBlock / this.RegionSizeInBlocks, "block run straddles a region boundary");
+			Contract.Requires((firstBlock + (uint) count - 1) >> this.RegionSizeInBlocksLog2 == firstBlock >> this.RegionSizeInBlocksLog2, "block run straddles a region boundary");
 
 			RandomAccess.Write(this.Handle, data, (long) firstBlock << this.Geometry.BlockSizeLog2);
 		}

@@ -36,7 +36,8 @@ namespace FoundationDB.Storage.FdbLite
 	public sealed class FdbLiteTreeWriter
 	{
 
-		public FdbLiteTreeWriter(IFdbLitePager pager, FdbLiteBlockAllocator allocator, ulong generation, uint root)
+		/// <param name="pageBufferPool">Page images recycled ACROSS generations, owned by the engine. Optional: without it every generation allocates its own, which measured as the engine's largest remaining <c>byte[]</c> source once the gather lists were pooled (a write workload allocates one page image per page it touches, so the cost is the whole dirty set per commit).</param>
+		public FdbLiteTreeWriter(IFdbLitePager pager, FdbLiteBlockAllocator allocator, ulong generation, uint root, Stack<byte[]>? pageBufferPool = null)
 		{
 			Contract.NotNull(pager);
 			Contract.NotNull(allocator);
@@ -44,7 +45,28 @@ namespace FoundationDB.Storage.FdbLite
 			this.Allocator = allocator;
 			this.Generation = generation;
 			this.Root = root;
+			this.PageBufferPool = pageBufferPool;
 		}
+
+		/// <summary>Engine-owned free list of page-sized image buffers, or <c>null</c> when this writer allocates its own.</summary>
+		private Stack<byte[]>? PageBufferPool { get; }
+
+		/// <summary>A page-image buffer for a newly dirtied page.</summary>
+		/// <remarks>A recycled buffer needs no clearing: every dirty image is written whole (<see cref="WritePage"/> copies a full page over it) before anything reads it.</remarks>
+		private byte[] RentPageBuffer()
+			=> this.PageBufferPool is { Count: > 0 } pool ? pool.Pop() : new byte[this.Pager.Geometry.PageSize];
+
+		/// <summary>Hands a page image back for the next generation to reuse.</summary>
+		/// <remarks>
+		/// UNCAPPED on purpose, because it is already bounded by construction: a buffer only enters the pool when
+		/// it LEAVES the dirty set, and every generation drains the pool before allocating, so the pool can never
+		/// exceed the largest single dirty set the engine has ever held - which is exactly the page memory one
+		/// generation legitimately needs, and will need again. An arbitrary ceiling here does not bound anything
+		/// extra; it just makes every generation past the ceiling allocate afresh, which is the shape a first
+		/// attempt at this had (a 256-buffer cap measured as 5.3 GB of page images still being allocated on a
+		/// standard-scale sweep, because a real transaction's dirty set is far larger than the cap).
+		/// </remarks>
+		private void ReturnPageBuffer(byte[] buffer) => this.PageBufferPool?.Push(buffer);
 
 		private IFdbLitePager Pager { get; }
 
@@ -139,6 +161,39 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Page splits performed by this generation</summary>
 		public int PageSplits { get; private set; }
 
+		/// <summary>Optional sink for a full trace of what the writer did, one tagged record per event.</summary>
+		/// <remarks>
+		/// <para>Null by default and therefore free. When set, every structural event emits a TAB-separated
+		/// record whose first field is a TAG, so the file can be located in with a plain grep rather than read:
+		/// <c>OP</c> (one per public mutation), <c>LEAF+</c> / <c>NODE+</c> (a page came into existence, with
+		/// the method that created it), <c>SPLIT</c>, <c>SPLICE</c>, <c>OVERWRITE</c>, <c>REMOVE</c>,
+		/// <c>COW</c>, <c>FREE</c>.</para>
+		/// <para>The point of the caller tag is that counters can say a thing happened N times but never WHERE
+		/// from, which is exactly the wall this session hit: 484 two-way splits cannot account for 929 leaves,
+		/// and no counter can say what made the other 444.</para>
+		/// </remarks>
+		public static Action<string>? OpLog { get; set; }
+
+		/// <summary>True when tracing is on, so callers can skip building records nobody will read.</summary>
+		public static bool IsLogging => OpLog is not null;
+
+		/// <summary>Optional sink for leaf-split SIZING decisions, for diagnosing fill factor.</summary>
+		/// <remarks>
+		/// <para>Null by default and therefore free. It exists because the split fan-out is computed from an
+		/// ESTIMATE of what the run will occupy, and an estimate that runs high splits a page into more parts
+		/// than it needs, leaving every part correspondingly emptier. Nothing else in the engine can show the
+		/// difference between "this page really needed three parts" and "the sizing thought it did".</para>
+		/// <para>Arguments: cell count, the estimated run footprint, the capacity it was tested against, the
+		/// resulting part count, the SOURCE page's prefix length, the run's own longest common prefix, and the
+		/// source page's actual live bytes. The last three are the ones that decide whether prefix re-expansion
+		/// inflated the estimate: a run LCP shorter than the source prefix lengthens every stored key at once.</para>
+		/// </remarks>
+		public static Action<int, long, int, int, int, int, long>? SplitDiagnostics { get; set; }
+
+		/// <summary>Sibling pages CREATED by those splits, which is not the same number.</summary>
+		/// <remarks>A split is K-way, so one event can produce more than one sibling. The ratio of this to <see cref="PageSplits"/> is the average fan-out, and it is the difference between "pages are half full because that is what a 2-way split does" and "pages are a third full because the split made three of them".</remarks>
+		public int SplitSiblingsCreated { get; private set; }
+
 		/// <summary>Cells spliced into an already-owned page, instead of rebuilding it (the cheap insert path)</summary>
 		public int CellsSpliced { get; private set; }
 
@@ -202,15 +257,26 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		private uint CursorLeaf { get; set; }
 
-		private byte[]? CursorLower { get; set; }
+		/// <summary>Backing buffers for the two bounds, allocated at most once per generation and overwritten by every descent.</summary>
+		/// <remarks>The bounds used to be a fresh <c>ToArray()</c> per bounded level per descent, which measured as the second-largest <c>byte[]</c> source in the engine. They are copies rather than spans because the mutation that follows the descent can rewrite the very page they point into.</remarks>
+		private byte[]? CursorLowerBuffer { get; set; }
 
-		private byte[]? CursorUpper { get; set; }
+		private byte[]? CursorUpperBuffer { get; set; }
+
+		/// <summary>Length of the bound held in the matching buffer, or -1 when that side is UNBOUNDED.</summary>
+		private int CursorLowerLength { get; set; } = -1;
+
+		private int CursorUpperLength { get; set; } = -1;
+
+		private ReadOnlySpan<byte> CursorLower => this.CursorLowerLength < 0 ? default : this.CursorLowerBuffer.AsSpan(0, this.CursorLowerLength);
+
+		private ReadOnlySpan<byte> CursorUpper => this.CursorUpperLength < 0 ? default : this.CursorUpperBuffer.AsSpan(0, this.CursorUpperLength);
 
 		/// <summary>True when <paramref name="key"/> falls in the range the cached descent proved the cursor leaf covers.</summary>
 		private bool CursorCovers(ReadOnlySpan<byte> key)
 			=> this.CursorLeaf != 0
-			&& (this.CursorLower is null || key.SequenceCompareTo(this.CursorLower) >= 0)
-			&& (this.CursorUpper is null || key.SequenceCompareTo(this.CursorUpper) < 0);
+			&& (this.CursorLowerLength < 0 || key.SequenceCompareTo(this.CursorLower) >= 0)
+			&& (this.CursorUpperLength < 0 || key.SequenceCompareTo(this.CursorUpper) < 0);
 
 		/// <summary>Outcome of rebuilding one page: the page (possibly relocated), plus right siblings when it split</summary>
 		private readonly record struct RebuildResult(uint FirstId, List<(byte[] Separator, uint PageId)>? Siblings)
@@ -275,6 +341,25 @@ namespace FoundationDB.Storage.FdbLite
 			// contract failure several frames deep
 			Contract.Requires(value.Length <= (long) this.Pager.RegionSizeInBlocks << this.Pager.Geometry.BlockSizeLog2, "value exceeds the store's region size (the maximum length of one contiguous extent)");
 
+			if (OpLog is { } opLog) { opLog($"OP\tinsert\tklen={key.Length}\tvlen={value.Length}\tkey={Convert.ToHexString(key[..Math.Min(12, key.Length)])}\troot={this.Root}"); }
+
+			// THE HOT PATH, and it must not touch a buffer. An inline value is stored verbatim, so the bytes the
+			// page wants are the caller's own bytes: splicing straight from these spans lets the page copy key and
+			// value ONCE, into their final home, which is what the legacy prototype does. Going through the
+			// scratch below instead cost a rent/return pair plus a full extra copy of every key and value on
+			// EVERY insert - and the splice takes ~99.9% of a sorted load, so that was almost the whole cost.
+			if (this.Root != 0
+			 && value.Length <= this.Pager.Geometry.MaxInlineValueLength
+			 && CursorCovers(key)
+			 && TrySpliceInto(this.CursorLeaf, key, value, flags: 0))
+			{
+				return;
+			}
+
+			// Everything else: a first key, an out-of-line value (whose stored bytes are a SYNTHESIZED descriptor
+			// rather than the caller's), or a page that could not take the cell where it lies. Those reach the
+			// rebuild path, which gathers this cell alongside cells that live in page memory, so it needs the cell
+			// in a buffer that outlives the call.
 			var cellScratch = ArrayPool<byte>.Shared.Rent(key.Length + Math.Max(Math.Min(value.Length, this.Pager.Geometry.MaxInlineValueLength), FdbLiteTreePage.ExtentDescriptorSize));
 			try
 			{
@@ -329,8 +414,8 @@ namespace FoundationDB.Storage.FdbLite
 				this.Root = result.FirstId;
 				this.KeyCountDelta++;
 				this.CursorLeaf = result.FirstId;
-				this.CursorLower = null;
-				this.CursorUpper = null;
+				this.CursorLowerLength = -1;
+				this.CursorUpperLength = -1;
 				return;
 			}
 
@@ -346,7 +431,7 @@ namespace FoundationDB.Storage.FdbLite
 			uint pageId = DescendToLeaf(key, pathPages, pathChildren, out int depth);
 
 			int splitsBefore = this.PageSplits;
-			var outcome = RebuildLeafWithInsert(pageId, key, newCell, rightmost: this.CursorUpper is null);
+			var outcome = RebuildLeafWithInsert(pageId, key, newCell, rightmost: this.CursorUpperLength < 0);
 			if (this.PageSplits != splitsBefore)
 			{ // the ONE site where a leaf splits (delete rebuilds only shrink); the ascent has not run yet, so the
 			  // parent still lists the pre-split siblings, which is exactly what the opportunity probe needs
@@ -369,15 +454,15 @@ namespace FoundationDB.Storage.FdbLite
 			depth = 0;
 			this.LeafDescents++;
 			uint pageId = this.Root;
-			byte[]? lower = null, upper = null;
+			int lowerLength = -1, upperLength = -1;
 			while (true)
 			{
 				var page = ReadPage(pageId);
 				if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
 				{
 					this.CursorLeaf = pageId;
-					this.CursorLower = lower;
-					this.CursorUpper = upper;
+					this.CursorLowerLength = lowerLength;
+					this.CursorUpperLength = upperLength;
 					return pageId;
 				}
 				Contract.Debug.Assert(depth < MaxDepth);
@@ -388,11 +473,15 @@ namespace FoundationDB.Storage.FdbLite
 				// mutation about to happen can rewrite the page these spans point into)
 				if (childIndex > 0)
 				{
-					lower = FdbLiteTreePage.GetSeparator(page, childIndex - 1).ToArray();
+					var sep = FdbLiteTreePage.GetSeparator(page, childIndex - 1);
+					sep.CopyTo(this.CursorLowerBuffer ??= new byte[FdbLiteTreePage.MaxKeyLength]);
+					lowerLength = sep.Length;
 				}
 				if (childIndex < FdbLitePageHeader.GetCellCount(page))
 				{
-					upper = FdbLiteTreePage.GetSeparator(page, childIndex).ToArray();
+					var sep = FdbLiteTreePage.GetSeparator(page, childIndex);
+					sep.CopyTo(this.CursorUpperBuffer ??= new byte[FdbLiteTreePage.MaxKeyLength]);
+					upperLength = sep.Length;
 				}
 
 				pathPages[depth] = pageId;
@@ -447,6 +536,16 @@ namespace FoundationDB.Storage.FdbLite
 			Span<uint> pathPages = stackalloc uint[MaxDepth];
 			Span<int> pathChildren = stackalloc int[MaxDepth];
 			uint leafId = DescendToLeaf(key, pathPages, pathChildren, out int depth);
+
+			// The descent proves this leaf is where the key lives, which is the same proof the cursor carries.
+			// So when this generation ALSO already owns the page, closing the directory over the cell is the
+			// whole operation: no rebuild, no gather list, no ancestor patch. Only the cursor-covered path used
+			// to reach here, so a batch that came back to an owned page through a fresh descent - any delete
+			// order that is not one run per leaf - paid a full O(cells) rebuild the page could have absorbed.
+			if (TryRemoveInPlace(leafId, key, out removedInPlace))
+			{
+				return removedInPlace;
+			}
 
 			var page = ReadPage(leafId);
 			int slot = FdbLiteTreePage.FindLeafSlot(page, key, out bool exact);
@@ -530,17 +629,31 @@ namespace FoundationDB.Storage.FdbLite
 				return;
 			}
 
-			var cells = new CellRef[cellCount - (last - first)];
-			int w = 0;
-			for (int i = 0; i < cellCount; i++)
-			{
-				if (i >= first && i < last) { continue; }
-				cells[w++] = CellRef.OfLeafPage(page, i);
-			}
+			// POOLED, not `new`: this gather list is one CellRef per surviving cell of a full page, built and
+			// discarded on EVERY delete that reaches the rebuild path. Measured at smoke scale it was 96% of
+			// the engine's total CellRef[] allocation (1.2 GB) - the single largest allocation site there is.
+			// The list is strictly scoped: WriteCells consumes it and nothing retains it past this frame.
+			int survivors = cellCount - (last - first);
+			var cells = ArrayPool<CellRef>.Shared.Rent(survivors);
+			RebuildResult outcome;
 			// a delete the page SURVIVES is an episode (whole-page death, the branch above, never is); the
 			// dedup reads the pre-rebuild stamp, as everywhere the mutation rebuilds its page
 			bool firstMutationThisGeneration = FdbLitePageHeader.GetGeneration(page) != this.Generation;
-			var outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
+			try
+			{
+				int w = 0;
+				for (int i = 0; i < cellCount; i++)
+				{
+					if (i >= first && i < last) { continue; }
+					cells[w++] = CellRef.OfLeafPage(page, i);
+				}
+				Contract.Debug.Assert(w == survivors);
+				outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells.AsSpan(0, survivors));
+			}
+			finally
+			{ // cleared: a CellRef holds a byte[] reference, and a pooled array must not pin a page buffer
+				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
+			}
 			BumpVolatilityEpisodeAfterRebuild(in outcome, episode: true, firstMutationThisGeneration);
 			if (!outcome.Split && this.Dirty.TryGetValue(outcome.FirstId, out var shrunk))
 			{ // delete-driven underflow is exactly what the pre-commit consolidation arm feeds on
@@ -589,29 +702,37 @@ namespace FoundationDB.Storage.FdbLite
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
 
-			var cells = new CellRef[cellCount - 1];
-			int w = 0;
-			if (childIndex == 0)
-			{ // the leftmost child dies: cell 0's child is the new leftmost, and its separator disappears
-				leftmost = FdbLiteTreePage.GetChild(page, 1);
-				for (int i = 1; i < cellCount; i++)
-				{
-					cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+			int survivors = cellCount - 1;
+			var cells = ArrayPool<CellRef>.Shared.Rent(survivors);
+			try
+			{
+				int w = 0;
+				if (childIndex == 0)
+				{ // the leftmost child dies: cell 0's child is the new leftmost, and its separator disappears
+					leftmost = FdbLiteTreePage.GetChild(page, 1);
+					for (int i = 1; i < cellCount; i++)
+					{
+						cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+					}
 				}
-			}
-			else
-			{ // cell childIndex-1 carried the dead child
-				for (int i = 0; i < cellCount; i++)
-				{
-					if (i == childIndex - 1) { continue; }
-					cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+				else
+				{ // cell childIndex-1 carried the dead child
+					for (int i = 0; i < cellCount; i++)
+					{
+						if (i == childIndex - 1) { continue; }
+						cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+					}
 				}
-			}
-			Contract.Debug.Assert(w == cells.Length);
+				Contract.Debug.Assert(w == survivors);
 
-			var outcome = WriteCells(pageId, isInternal: true, leftmost, page, cells);
-			Contract.Debug.Assert(!outcome.Split);
-			return outcome;
+				var outcome = WriteCells(pageId, isInternal: true, leftmost, page, cells.AsSpan(0, survivors));
+				Contract.Debug.Assert(!outcome.Split);
+				return outcome;
+			}
+			finally
+			{
+				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
+			}
 		}
 
 		/// <summary>Shrinks a degenerate root chain (internal pages with a single child) and clears the empty tree.</summary>
@@ -634,7 +755,10 @@ namespace FoundationDB.Storage.FdbLite
 		private void FreePage(uint pageId)
 		{
 			uint blocks = (uint) this.Pager.Geometry.BlocksPerPage;
-			this.Dirty.Remove(pageId); // a released page must not be written back by a later flush
+			if (this.Dirty.Remove(pageId, out var released))
+			{ // a released page must not be written back by a later flush, and its image buffer can be recycled
+				ReturnPageBuffer(released);
+			}
 
 			if (this.Shadow.Remove(pageId))
 			{
@@ -699,6 +823,17 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Splices a new key into a page image this generation already owns, when its free area can take the cell.</summary>
 		/// <returns><c>false</c> when the page is not owned yet, the key is a REPLACE, or the cell does not fit: all three are the caller's signal to take the rebuild path, which compacts and splits.</returns>
 		private bool TrySpliceInto(uint leafId, ReadOnlySpan<byte> key, CellRef newCell)
+			=> TrySpliceInto(leafId, key, newCell.ResolveValue(default), newCell.Flags);
+
+		/// <inheritdoc cref="TrySpliceInto(uint,System.ReadOnlySpan{byte},CellRef)"/>
+		/// <remarks>
+		/// Span-native on purpose, and it is the form the hot path calls. For an inline value the bytes the page
+		/// wants ARE the caller's own bytes, so handing the spans down lets the page copy key and value exactly
+		/// ONCE, straight into their final home - which is what the legacy prototype does and why it pays no
+		/// scratch. Routing this through a <see cref="CellRef"/> instead cost a rented buffer plus a full extra
+		/// copy of every key and every value, on every insert, for a cell that never outlives the call.
+		/// </remarks>
+		private bool TrySpliceInto(uint leafId, ReadOnlySpan<byte> key, ReadOnlySpan<byte> storedValue, byte flags)
 		{
 			if (!this.Dirty.TryGetValue(leafId, out var buffered))
 			{
@@ -717,13 +852,12 @@ namespace FoundationDB.Storage.FdbLite
 				// An extent on EITHER side is deliberately excluded. Those blocks have to be freed and
 				// reallocated, which is not an overwrite - it is precisely where a leak or a double free would
 				// live - so it keeps the rebuild path.
-				if (newCell.Flags == 0
+				if (flags == 0
 				 && (FdbLiteTreePage.GetLeafFlags(image, at) & FdbLiteTreePage.FlagValueIsExtent) == 0)
 				{
-					var storedValue = newCell.ResolveValue(default);
 					// fits where it lies, or grows into the free gap and leaves its old slot behind as waste
-					if (FdbLiteTreePage.TryOverwriteLeafValue(image, at, storedValue, newCell.Flags)
-					 || FdbLiteTreePage.TryRelocateLeafValue(image, at, storedValue, newCell.Flags))
+					if (FdbLiteTreePage.TryOverwriteLeafValue(image, at, storedValue, flags)
+					 || FdbLiteTreePage.TryRelocateLeafValue(image, at, storedValue, flags))
 					{
 						this.CellsOverwritten++;
 						BumpVolatilityEpisode(image); // an in-place value mutation is an episode
@@ -738,7 +872,7 @@ namespace FoundationDB.Storage.FdbLite
 			// interior iff strictly below this leaf's own maximum: the leaf's right edge is its append edge,
 			// which holds for any number of append-shaped subspaces at once (a global maximum would not)
 			bool interior = at < FdbLitePageHeader.GetCellCount(image);
-			if (!FdbLiteTreePage.TryInsertLeafCell(image, at, newCell.ResolveKey(default), newCell.ResolveValue(default), newCell.Flags))
+			if (!FdbLiteTreePage.TryInsertLeafCell(image, at, key, storedValue, flags))
 			{
 				return false;
 			}
@@ -940,24 +1074,32 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			int resultCount = cellCount + (replace ? 0 : 1);
-			var cells = new CellRef[resultCount];
-			int w = 0;
-			for (int i = 0; i < cellCount; i++)
+			var cells = ArrayPool<CellRef>.Shared.Rent(resultCount); // pooled: one entry per cell of a full page, per rebuild
+			RebuildResult outcome;
+			try
 			{
-				if (i == insertAt)
+				int w = 0;
+				for (int i = 0; i < cellCount; i++)
 				{
-					cells[w++] = newCell;
-					if (replace) { continue; }
+					if (i == insertAt)
+					{
+						cells[w++] = newCell;
+						if (replace) { continue; }
+					}
+					cells[w++] = CellRef.OfLeafPage(page, i);
 				}
-				cells[w++] = CellRef.OfLeafPage(page, i);
-			}
-			if (insertAt == cellCount)
-			{ // appending past the last key
-				cells[w++] = newCell;
-			}
-			Contract.Debug.Assert(w == resultCount);
+				if (insertAt == cellCount)
+				{ // appending past the last key
+					cells[w++] = newCell;
+				}
+				Contract.Debug.Assert(w == resultCount);
 
-			var outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
+				outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells.AsSpan(0, resultCount));
+			}
+			finally
+			{ // cleared: a CellRef holds a byte[] reference, and a pooled array must not pin a page buffer
+				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
+			}
 			BumpVolatilityEpisodeAfterRebuild(in outcome, episode, firstMutationThisGeneration);
 			if (replace && !outcome.Split && this.Dirty.TryGetValue(outcome.FirstId, out var replaced))
 			{ // a shrinking replace is a shrink site like any other (an insert or a split is growth, and growth
@@ -1000,35 +1142,45 @@ namespace FoundationDB.Storage.FdbLite
 				return 0;
 			}
 
-			var cells = new CellRef[cellCount];
-			for (int i = 0; i < cellCount; i++)
+			var cells = ArrayPool<CellRef>.Shared.Rent(cellCount); // pooled: one entry per cell of a full page
+			uint rebuiltId;
+			try
 			{
-				cells[i] = CellRef.OfLeafPage(page, i);
-			}
+				var run = cells.AsSpan(0, cellCount);
+				for (int i = 0; i < cellCount; i++)
+				{
+					run[i] = CellRef.OfLeafPage(page, i);
+				}
 
-			// The rebuild is a strict shrink (same cells, strictly longer prefix), so it always fits one
-			// page - but prove it BEFORE calling WriteCells: by the time WriteCells returns, part 0 has
-			// already overwritten or relocated the leaf and any sibling is written, so there is no way to
-			// back out of an unexpected split. Returning 0 after one orphans the sibling's keys, and on the
-			// copy-on-write variant queues the old page for delayed free twice.
-			long stripSumWhole = 0, stripSumValue = 0;
-			foreach (var cell in cells)
-			{
-				stripSumWhole += LeafWholeKeyLength(cell, current);
-				stripSumValue += cell.ValueLength;
-			}
-			if (LeafRunBytes(cellCount, stripSumWhole, stripSumValue, shared) > this.Pager.Geometry.PageSize)
-			{ // cannot happen while the sizing is exact; if a future change breaks that, fail SAFELY here
-			  // (no side effects yet) and let the caller's ordinary rebuild-and-split path handle it
-				return 0;
-			}
+				// The rebuild is a strict shrink (same cells, strictly longer prefix), so it always fits one
+				// page - but prove it BEFORE calling WriteCells: by the time WriteCells returns, part 0 has
+				// already overwritten or relocated the leaf and any sibling is written, so there is no way to
+				// back out of an unexpected split. Returning 0 after one orphans the sibling's keys, and on the
+				// copy-on-write variant queues the old page for delayed free twice.
+				long stripSumWhole = 0, stripSumValue = 0;
+				foreach (var cell in run)
+				{
+					stripSumWhole += LeafWholeKeyLength(cell, current);
+					stripSumValue += cell.ValueLength;
+				}
+				if (LeafRunBytes(cellCount, stripSumWhole, stripSumValue, shared) > this.Pager.Geometry.PageSize)
+				{ // cannot happen while the sizing is exact; if a future change breaks that, fail SAFELY here
+				  // (no side effects yet) and let the caller's ordinary rebuild-and-split path handle it
+					return 0;
+				}
 
-			var rebuilt = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells);
-			Contract.Requires(!rebuilt.Split, "a strip rebuild is a strict shrink and can never split");
+				var rebuilt = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, run);
+				Contract.Requires(!rebuilt.Split, "a strip rebuild is a strict shrink and can never split");
+				rebuiltId = rebuilt.FirstId;
+			}
+			finally
+			{ // cleared: a CellRef holds a byte[] reference, and a pooled array must not pin a page buffer
+				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
+			}
 
 			this.PagesStripped++;
-			spliced = TrySpliceInto(rebuilt.FirstId, key, newCell);
-			return rebuilt.FirstId;
+			spliced = TrySpliceInto(rebuiltId, key, newCell);
+			return rebuiltId;
 		}
 
 		/// <summary>Whole key of leaf cell <paramref name="cellIndex"/> on <paramref name="page"/>, prefix included.</summary>
@@ -1069,7 +1221,14 @@ namespace FoundationDB.Storage.FdbLite
 
 			// scratch for the patched cell and each inserted separator cell
 			byte[]? patchScratch = null;
-			var siblingScratch = new byte[inserted][];
+			// `inserted` is 0 on every rebuild that is not following a split, which is the overwhelming majority:
+			// an empty jagged array per call is a pure allocation for a loop that will not run
+			var siblingScratch = inserted == 0 ? [ ] : new byte[inserted][];
+			// POOLED: this is the gather list for the internal page, and at standard scale it measured as 78.6%
+			// of ALL CellRef[] allocation (4.5 GB) - every right-edge page appended by a sorted load rebuilds its
+			// parent through here. Strictly scoped: WriteCells consumes it and nothing retains it past this frame.
+			int cellTotal = cellCount + inserted;
+			var cells = ArrayPool<CellRef>.Shared.Rent(cellTotal);
 			try
 			{
 				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
@@ -1088,7 +1247,6 @@ namespace FoundationDB.Storage.FdbLite
 					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
 				}
 
-				var cells = new CellRef[cellCount + inserted];
 				int w = 0;
 				for (int i = 0; i <= cellCount; i++)
 				{
@@ -1107,12 +1265,13 @@ namespace FoundationDB.Storage.FdbLite
 						cells[w++] = (i == childIndex - 1) ? patchedCell : CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
 					}
 				}
-				Contract.Debug.Assert(w == cells.Length);
+				Contract.Debug.Assert(w == cellTotal);
 
-				return WriteCells(pageId, isInternal: true, leftmost, page, cells);
+				return WriteCells(pageId, isInternal: true, leftmost, page, cells.AsSpan(0, cellTotal));
 			}
 			finally
 			{
+				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
 				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
 				foreach (var s in siblingScratch)
 				{
@@ -1154,7 +1313,8 @@ namespace FoundationDB.Storage.FdbLite
 		/// <param name="sourcePage">The page from which the cells are being rebuilt</param>
 		/// <param name="cells">The list of cells to write</param>
 		/// <param name="maxLeafFillBytes">Fill ceiling per emitted LEAF page (0 = the page size): a consolidation merge aims each part at its volatility-adaptive target instead of packing to capacity, which is the hysteresis that keeps a merged run from re-splitting under the workload that produced it</param>
-		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, CellRef[] cells, int maxLeafFillBytes = 0)
+		/// <param name="caller">Filled in by the compiler; carried only so the trace can name what created a page.</param>
+		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, int maxLeafFillBytes = 0, [System.Runtime.CompilerServices.CallerMemberName] string? caller = null)
 		{
 			var type = isInternal ? FdbLitePageType.Internal : FdbLitePageType.Leaf;
 			int pageSize = this.Pager.Geometry.PageSize;
@@ -1243,15 +1403,51 @@ namespace FoundationDB.Storage.FdbLite
 				// the hard per-page limit still absorbs the adversarial giant-cell cases
 				long fillCeiling = !isInternal && maxLeafFillBytes > 0 ? Math.Min(maxLeafFillBytes, usable) : usable;
 				int partCount = (int) ((totalBytes + fillCeiling - 1) / fillCeiling);
-				long targetBytes = partCount > 1 ? (totalBytes + partCount - 1) / partCount
-					: maxLeafFillBytes > 0 ? fillCeiling
-					: long.MaxValue;
+
+				if (!isInternal && partCount > 1 && SplitDiagnostics is { } diag)
+				{
+					// re-derive the run's own LCP for the report; the sizing above already used it
+					int reportLcp = 0;
+					if (cells.Length > 1)
+					{
+						var probe = ArrayPool<byte>.Shared.Rent(2 * FdbLiteTreePage.MaxKeyLength);
+						try
+						{
+							var sp = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
+							var lo = MaterializeKey(cells[0], sourcePage, sp, probe.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
+							var hi = MaterializeKey(cells[^1], sourcePage, sp, probe.AsSpan(FdbLiteTreePage.MaxKeyLength, FdbLiteTreePage.MaxKeyLength));
+							reportLcp = FdbLiteTreePage.CommonPrefixLength(lo, hi);
+						}
+						finally { ArrayPool<byte>.Shared.Return(probe); }
+					}
+					long sourceLive = sourcePage.IsEmpty ? 0 : FdbLiteTreePage.LeafLiveBytes(sourcePage);
+					diag(cells.Length, totalBytes, (int) fillCeiling, partCount, sourcePrefixLength, reportLcp, sourceLive);
+				}
+				// The balance target is recomputed from what is STILL LEFT, not fixed once at total/partCount.
+				//
+				// Fixing it strands a tail, and that tail was the engine's largest space defect. Every part pays
+				// the per-page fixed overhead (header, prefix region, its own slot directory) in full, but a
+				// target of total/K silently assumes that overhead is shared across the K parts. So K parts sized
+				// at total/K hold slightly LESS than the run, and the leftover becomes an extra, nearly empty
+				// page. Measured before this change: a two-way split of a 1,717-cell leaf emitted parts of 854,
+				// 854 and NINE cells, on every split, which is what drove leaf fill on random inserts down to
+				// 31% (against 99% sequential) and the store to several times its logical size.
+				//
+				// Dividing what remains by the parts that remain makes the last part's target the whole
+				// remainder, so it absorbs the tail. The hard per-page cap below is untouched: if the remainder
+				// genuinely does not fit, the loop still starts another part, so this can only reduce part count.
+				long remainingBytes = totalBytes;
+				int remainingParts = partCount;
 
 				int start = 0;
 				uint partLeftmost = leftmostChild;
 				byte[]? partSeparator = null;
 				while (true)
 				{
+					long targetBytes = remainingParts > 1 ? (remainingBytes + remainingParts - 1) / remainingParts
+						: maxLeafFillBytes > 0 ? fillCeiling
+						: long.MaxValue;
+
 					// extend the part up to the balance target, never past the page capacity
 					long bytes = 0;
 					int end = start;
@@ -1341,7 +1537,16 @@ namespace FoundationDB.Storage.FdbLite
 					if (carriedEpisodes != 0) { FdbLitePageHeader.SetVolatilityEpisodes(image, carriedEpisodes); }
 					if (isInternal) { FdbLiteTreePage.SetLeftmostChild(image, partLeftmost); }
 					AppendCells(image, isInternal, sourcePage, cells, start, end);
-					uint id = WritePage(partSeparator == null ? oldPageId : 0, image);
+					uint reusing = partSeparator == null ? oldPageId : 0;
+					uint id = WritePage(reusing, image);
+					if (OpLog is { } log)
+					{
+						// "+" means a page that did NOT exist before this call: either a part beyond the first
+						// (which always allocates) or a build with no source page at all. This is the ONLY place
+						// a tree page is created, so a count of these records by caller is exhaustive.
+						string tag = reusing == 0 ? (isInternal ? "NODE+" : "LEAF+") : (isInternal ? "NODE=" : "LEAF=");
+						log($"{tag}\t{id}\tfrom={caller}\tpart={(partSeparator == null ? 0 : (siblings?.Count ?? 0) + 1)}\tcells={end - start}\tsrc={oldPageId}\tparts={partCount}");
+					}
 					if (partSeparator == null)
 					{
 						firstId = id;
@@ -1355,6 +1560,12 @@ namespace FoundationDB.Storage.FdbLite
 					{
 						break;
 					}
+					// book what this part consumed, so the next target is computed from what is genuinely left.
+					// remainingParts floors at 1: once the plan is used up, every further part (which can only
+					// happen if the remainder did not fit) takes as much as the page allows.
+					remainingBytes -= bytes;
+					if (remainingParts > 1) { remainingParts--; }
+
 					start = nextStart;
 					partSeparator = nextSeparator;
 					partLeftmost = nextLeftmost;
@@ -1373,6 +1584,7 @@ namespace FoundationDB.Storage.FdbLite
 				if (siblings != null)
 				{
 					this.PageSplits++;
+					this.SplitSiblingsCreated += siblings.Count;
 				}
 				return new(firstId, siblings);
 			}
@@ -1461,7 +1673,7 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Appends cells [<paramref name="start"/>, <paramref name="end"/>) (already in key order) to a freshly formatted page image.</summary>
-		private static void AppendCells(Span<byte> image, bool isInternal, ReadOnlySpan<byte> sourcePage, CellRef[] cells, int start, int end)
+		private static void AppendCells(Span<byte> image, bool isInternal, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, int start, int end)
 		{
 			int count = end - start;
 
@@ -2515,8 +2727,8 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			if (!this.Dirty.TryGetValue(id, out var slot))
-			{ // one buffer per dirty page, allocated once and reused for every later mutation of that page
-				slot = new byte[this.Pager.Geometry.PageSize];
+			{ // one buffer per dirty page, taken once and reused for every later mutation of that page
+				slot = RentPageBuffer();
 				this.Dirty.Add(id, slot);
 			}
 			image.CopyTo(slot);
@@ -2605,6 +2817,8 @@ namespace FoundationDB.Storage.FdbLite
 				FdbLitePageHeader.Seal(image, id);
 				this.Pager.WriteBlocks(id, image);
 				this.PagesWritten++;
+				// the pager copies the bytes out synchronously, so the image buffer is free the moment it returns
+				ReturnPageBuffer(image);
 			}
 			this.Dirty.Clear();
 		}

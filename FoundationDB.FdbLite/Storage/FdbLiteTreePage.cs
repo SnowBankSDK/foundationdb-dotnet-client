@@ -177,7 +177,35 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Where the key heap starts: immediately after the slot directory, whose size depends on the cell count.</summary>
 		/// <remarks><b>Slots are key-heap-RELATIVE, so the key region can move freely.</b> That is the invariant, not an implementation detail of insertion: the directory and the key heap grow towards the same end of the page, so the base shifts whenever a slot is added, and relative slots mean such a move costs one memmove and leaves every slot valid. It is also what would make a reserve, a compaction or a defragmentation a memmove rather than a rewrite. Do NOT "simplify" these to absolute page offsets.</remarks>
-		public static int LeafKeyBase(ReadOnlySpan<byte> page) => SlotsOffset(page, isInternal: false) + (FdbLitePageHeader.GetCellCount(page) * 2);
+		/// <remarks>Based on the RESERVED slot count, so headroom keeps the key heap still across inserts. <c>Max</c> is a fail-safe: a page whose capacity was never stamped reports zero and falls back to the cell count, which is exactly the pre-headroom layout.</remarks>
+		public static int LeafKeyBase(ReadOnlySpan<byte> page)
+			=> SlotsOffset(page, isInternal: false) + (Math.Max(FdbLitePageHeader.GetSlotCapacity(page), FdbLitePageHeader.GetCellCount(page)) * 2);
+
+		/// <summary>Slots reserved per growth step when a splice exhausts the directory's headroom.</summary>
+		/// <remarks>
+		/// <para>32 slots is 64 bytes on a page of 16 KiB or more, so the density cost is under 0.2 percent against
+		/// amortising the key-area slide over 32 inserts.</para>
+		/// <para>A knob rather than a constant so a benchmark can measure both ways, as
+		/// <c>FdbLiteTreeWriter.AvoidSequentialAppendSplits</c> already is. <b>A value of 1 reproduces the
+		/// pre-headroom behaviour exactly</b> (the key area slides by one slot on every insert), which is what
+		/// makes an A/B of this change possible from a single binary. Zero is NOT a legal "off": the directory
+		/// would grow into the key heap without ever moving it.</para>
+		/// </remarks>
+		public static int SlotGrowth { get; set; } = 32;
+
+		/// <summary>Debug-only invariant: the occupied key heap must never reach into the value heap.</summary>
+		/// <remarks>Asserted at every site that moves the directory or the key heap, so a base disagreement is caught where it is CREATED rather than several operations later inside a binary search reading past the page.</remarks>
+		[Conditional("DEBUG")]
+		private static void AssertHeapsIntact(ReadOnlySpan<byte> page, string site)
+		{
+			int cells = FdbLitePageHeader.GetCellCount(page);
+			int cap = FdbLitePageHeader.GetSlotCapacity(page);
+			int area = FdbLitePageHeader.GetKeyAreaLength(page);
+			int keyEnd = LeafKeyBase(page) + area;
+			string state = $"(cells={cells}, capacity={cap}, keyArea={area}, keyBase={LeafKeyBase(page)}, frontier={LeafValueFrontier(page)})";
+			Contract.Debug.Assert(cap == 0 || cap >= cells, $"{site}: capacity below cell count {state}");
+			Contract.Debug.Assert(keyEnd <= LeafValueFrontier(page), $"{site}: key heap crossed the value frontier {state}");
+		}
 
 		/// <summary>Absolute offset of cell <paramref name="cellIndex"/>'s key-heap entry</summary>
 		private static int LeafEntry(ReadOnlySpan<byte> page, int cellIndex) => LeafKeyBase(page) + GetSlot(page, isInternal: false, cellIndex);
@@ -228,6 +256,20 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			int f = ValueOffsetField(page, LeafEntry(page, cellIndex));
 			return (BinaryPrimitives.ReadUInt16LittleEndian(page[f..]), BinaryPrimitives.ReadUInt16LittleEndian(page[(f + 2)..]));
+		}
+
+		/// <summary>Value extent AND flags of leaf cell <paramref name="cellIndex"/>, resolved in ONE pass over its key-heap entry.</summary>
+		/// <remarks>
+		/// The pair exists because reading a value needs both, and asking for them separately walks the whole
+		/// entry chain twice per cell: slot lookup, key-heap base (itself a cell-count read), then the
+		/// value-offset field. On a scan that is per ROW, and it showed up in a profile as time inside
+		/// <see cref="ValueOffsetField"/> and <c>ReadUInt16LittleEndian</c>. Same reasoning as
+		/// <c>CellRef.OfLeafPage</c>, which already resolves a whole cell in one pass for the same reason.
+		/// </remarks>
+		public static (int Offset, int Length, byte Flags) LeafValueAndFlags(ReadOnlySpan<byte> page, int cellIndex)
+		{
+			int f = ValueOffsetField(page, LeafEntry(page, cellIndex));
+			return (BinaryPrimitives.ReadUInt16LittleEndian(page[f..]), BinaryPrimitives.ReadUInt16LittleEndian(page[(f + 2)..]), page[f + 4]);
 		}
 
 		/// <summary>Inline value bytes of leaf cell <paramref name="cellIndex"/> (the caller checked the extent flag)</summary>
@@ -300,9 +342,14 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Fill-oriented live bytes of a leaf, derived from its v1 header fields: everything but the free gap and the booked waste.</summary>
 		/// <remarks>A leaf does not STORE this number, because its own fields already carry it: header + prefix region + slots + occupied key heap + occupied value heap, minus the dead bytes the in-place mutations booked. This is the per-leaf term of the subtree occupancy aggregates, so the derivation must stay in one place.</remarks>
 		public static long LeafLiveBytes(ReadOnlySpan<byte> page)
-			=> LeafKeyBase(page) + FdbLitePageHeader.GetKeyAreaLength(page)
+			=> LeafKeyBase(page) - UnusedSlotBytes(page) + FdbLitePageHeader.GetKeyAreaLength(page)
 			+ (page.Length - LeafValueFrontier(page))
 			- FdbLitePageHeader.GetWastedBytes(page);
+
+		/// <summary>Bytes of directory the page has RESERVED but not yet filled.</summary>
+		/// <remarks>Occupancy must not count these, or a page looks fuller simply for having headroom and the underflow and consolidation arms start deciding on the headroom rather than on the data. Subtracting them makes <see cref="LeafLiveBytes"/> identical for the same cells with and without reserved slots.</remarks>
+		private static int UnusedSlotBytes(ReadOnlySpan<byte> page)
+			=> (Math.Max(FdbLitePageHeader.GetSlotCapacity(page), FdbLitePageHeader.GetCellCount(page)) - FdbLitePageHeader.GetCellCount(page)) * 2;
 
 		/// <summary>Logical length of a stored value: the full extent length for an extent cell (read from its descriptor), the payload length itself otherwise.</summary>
 		public static long LeafLogicalValueLength(ReadOnlySpan<byte> storedValue, byte flags)
@@ -430,22 +477,37 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			var keySuffix = key;
 
-			if (!LeafHasRoomFor(page, keySuffix.Length, storedValue.Length))
+			// The directory grows INTO the key heap. Rather than sliding the key region on every insert, the
+			// directory reserves slots ahead of the count: while headroom remains, NOTHING moves. Only when it is
+			// exhausted does the key area slide, by a whole growth step at once, so the O(key-area) cost is paid
+			// once per SlotGrowth inserts instead of once per insert. That per-insert slide was the dominant cost
+			// of a sequential load, and it is why FdbLite got slower as values got SMALLER (more cells per page,
+			// so more key area to move) where the legacy prototype, whose append moves nothing, got faster.
+			AssertHeapsIntact(page, "TryInsertLeafCell entry");
+			int capacity = Math.Max(FdbLitePageHeader.GetSlotCapacity(page), cellCount);
+			int growBy = cellCount < capacity ? 0 : SlotGrowth;
+
+			// the reserved-but-unused slots are room this cell cannot have, so they belong in the room test
+			if (LeafFreeGap(page) < LeafCellOverhead + keySuffix.Length + storedValue.Length + (growBy * 2))
 			{
 				return false;
 			}
 
 			int keyBase = LeafKeyBase(page);
 			int keyUsed = FdbLitePageHeader.GetKeyAreaLength(page);
-			int valueAt = LeafValueFrontier(page) - storedValue.Length;
 
-			// The directory is about to gain a slot, and it grows INTO the key heap. Slide the key region up by one
-			// slot's width to make room. Because slots are key-heap-relative the region moves and NOT ONE SLOT
-			// CHANGES; with absolute offsets this would be an O(cells) fixup and the splice would buy nothing.
-			if (keyUsed > 0)
+			if (growBy > 0)
 			{
-				page.Slice(keyBase, keyUsed).CopyTo(page[(keyBase + 2)..]);
+				if (keyUsed > 0)
+				{
+					page.Slice(keyBase, keyUsed).CopyTo(page[(keyBase + (growBy * 2))..]);
+				}
+				capacity += growBy;
+				FdbLitePageHeader.SetSlotCapacity(page, checked((ushort) capacity));
+				keyBase += growBy * 2; // the heap moved, and LeafKeyBase now agrees
 			}
+
+			int valueAt = LeafValueFrontier(page) - storedValue.Length;
 
 			// open the sorted position by sliding the slots above it up one entry (overlapping, so copy order matters)
 			int from = SlotsOffset(page, isInternal: false) + (index * 2);
@@ -457,10 +519,16 @@ namespace FoundationDB.Storage.FdbLite
 
 			FdbLitePageHeader.SetCellCount(page, (ushort) (cellCount + 1));
 			SetSlot(page, isInternal: false, index, (ushort) keyUsed);
-			WriteLeafEntry(page, keyBase + 2 + keyUsed, valueAt, keySuffix, storedValue, flags);
+			// keyBase already accounts for the reserved directory (and for a growth step, when one just happened),
+			// so the append point is simply the end of the occupied key heap. The old "+ 2" here was the
+			// per-insert slide, which no longer takes place.
+			// keyBase already accounts for the reserved directory (and for a growth step, when one just happened),
+			// so the append point is the end of the occupied key heap. The old "+ 2" here was the per-insert slide.
+			WriteLeafEntry(page, keyBase + keyUsed, valueAt, keySuffix, storedValue, flags);
 			FdbLitePageHeader.SetKeyAreaLength(page, checked((ushort) (keyUsed + 2 + keySuffix.Length + 5)));
 			FdbLitePageHeader.SetCellAreaOffset(page, checked((ushort) valueAt));
 			AdjustLeafAggregates(page, +1, wholeKeyLength, LeafLogicalValueLength(storedValue, flags));
+			AssertHeapsIntact(page, "TryInsertLeafCell exit");
 			return true;
 		}
 
@@ -504,19 +572,16 @@ namespace FoundationDB.Storage.FdbLite
 				page.Slice(from, tailBytes).CopyTo(page[(from - 2)..]);
 			}
 
-			// the directory just shrank, so the key heap's base moves down with it
-			int keyBase = LeafKeyBase(page);
-			int keyUsed = FdbLitePageHeader.GetKeyAreaLength(page);
-			if (keyUsed > 0)
-			{
-				page.Slice(keyBase, keyUsed).CopyTo(page[(keyBase - 2)..]);
-				page.Slice(keyBase + keyUsed - 2, 2).Clear(); // the two bytes the region no longer covers
-			}
-
+			// The key heap does NOT move. The directory keeps its reserved capacity when a cell goes, so the slot
+			// the removal freed becomes headroom for the next insert instead of a reason to slide the whole key
+			// area down and then back up on the next splice. Capacity is pinned here for pages that carry none:
+			// without it, dropping the count would move LeafKeyBase and orphan every key on the page.
+			FdbLitePageHeader.SetSlotCapacity(page, checked((ushort) Math.Max(FdbLitePageHeader.GetSlotCapacity(page), cellCount)));
 			FdbLitePageHeader.SetCellCount(page, (ushort) (cellCount - 1));
 			FdbLitePageHeader.SetWastedBytes(page, checked((ushort) (FdbLitePageHeader.GetWastedBytes(page) + entryBytes + valueLength)));
 			// extents are refused above, so the stored value length IS the logical one
 			AdjustLeafAggregates(page, -1, -(FdbLitePageHeader.GetPrefixLength(page) + keyLen), -valueLength);
+			AssertHeapsIntact(page, "TryRemoveLeafCell exit");
 			return true;
 		}
 
@@ -601,7 +666,11 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			int count = FdbLitePageHeader.GetCellCount(page);
 			int slotsAt = SlotsOffset(page, isInternal: false);
-			int keyBase = slotsAt + (count * 2);
+			// MUST go through LeafKeyBase: the directory reserves slots ahead of the cell count, so the base is
+			// NOT slotsAt + count * 2. Inlining that expression here (which this did, for the one-read-per-search
+			// reason in the remarks) silently resolved every slot against the wrong base the moment headroom
+			// existed, and the search then read past the key heap. Still one call, still once per search.
+			int keyBase = LeafKeyBase(page);
 			exact = false;
 
 			// The probe is compared against the page prefix ONCE, not once per probe, which is what keeps the

@@ -246,7 +246,19 @@ namespace FoundationDB.Storage.FdbLite
 		public TimeSpan CommitDurationEma => Stopwatch.GetElapsedTime(0, (long) this.CommitEmaStopwatchTicks);
 
 		/// <summary>Starts the writable generation (exactly one at a time; commit or abandon it before starting another).</summary>
-		public FdbLiteTreeWriter BeginWrite() => new(this.Pager, this.Allocator, this.Durable.Generation + 1, this.Durable.RootPageId) { AvoidSequentialAppendSplits = this.AvoidSequentialAppendSplits };
+		public FdbLiteTreeWriter BeginWrite() => new(this.Pager, this.Allocator, this.Durable.Generation + 1, this.Durable.RootPageId, this.PageBufferPool) { AvoidSequentialAppendSplits = this.AvoidSequentialAppendSplits };
+
+		/// <summary>Slots the leaf directory reserves each time a splice exhausts its headroom.</summary>
+		/// <remarks>Exposed here because the page layout itself is internal, and a benchmark has to be able to measure this both ways in one window. <b>1 reproduces the pre-headroom behaviour</b>, where the key area slides on every insert; the default is 32. Process-wide, and meant for measurement rather than for tuning a live store.</remarks>
+		public static int LeafSlotGrowth
+		{
+			get => FdbLiteTreePage.SlotGrowth;
+			set => FdbLiteTreePage.SlotGrowth = value;
+		}
+
+		/// <summary>Page-image buffers recycled across generations, so a write workload stops allocating one page per page it touches.</summary>
+		/// <remarks>Owned here rather than by the writer because a writer lives for exactly one generation, which is the interval the buffers have to OUTLIVE to be worth pooling. Single-writer by construction (one writable generation at a time), so no synchronization.</remarks>
+		private Stack<byte[]> PageBufferPool { get; } = new();
 
 		/// <summary>Publishes a written generation: flush data, then flip the alternate header, then flush again.</summary>
 		public void Commit(FdbLiteTreeWriter writer, ulong databaseVersion)

@@ -68,6 +68,8 @@ namespace FoundationDB.Storage.FdbLite
 
 		private const int WastedBytesOffset = 26;
 
+		private const int SlotCapacityOffset = 28;
+
 		private const int EntryCountOffset = 32;
 		private const int LogicalKeyBytesOffset = 40;
 		private const int LogicalValueBytesOffset = 48;
@@ -114,6 +116,12 @@ namespace FoundationDB.Storage.FdbLite
 		/// <para>A LENGTH, not an offset, and deliberately so: the key heap's base moves whenever the slot directory grows, and a length survives that move untouched while an absolute end would have to be rewritten.</para>
 		/// <para>The leaf holds two heaps growing towards each other and so needs two frontiers: this one and <see cref="GetCellAreaOffset"/>, the down-growing value heap. Neither is derivable from the slot directory, because the heaps are packed in insertion order rather than key order; keeping them in key order would cost a memmove per insert, which is the trade the layout deliberately refuses.</para>
 		/// </remarks>
+		/// <summary>Slots the leaf's directory has RESERVED, which may exceed its cell count. Zero means "exactly the cell count", which is what a page built by a rebuild carries.</summary>
+		/// <remarks>Lives in the padding between the wasted-bytes and aggregate fields, NOT in the reserved block at the end of the header, which <see cref="Verify"/> requires to stay zero.</remarks>
+		public static ushort GetSlotCapacity(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[SlotCapacityOffset..]);
+
+		public static void SetSlotCapacity(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[SlotCapacityOffset..], value);
+
 		public static ushort GetKeyAreaLength(ReadOnlySpan<byte> page) => BinaryPrimitives.ReadUInt16LittleEndian(page[KeyAreaLengthOffset..]);
 
 		public static void SetKeyAreaLength(Span<byte> page, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(page[KeyAreaLengthOffset..], value);
@@ -175,15 +183,16 @@ namespace FoundationDB.Storage.FdbLite
 
 		public static void SetVolatilityEpisodes(Span<byte> page, byte value) => page[VolatilityEpisodesOffset] = value;
 
-		/// <summary>Computes the page checksum: XxHash3-64 over the page with the checksum field zeroed, seeded by the page's first block id.</summary>
+		/// <summary>Computes the page checksum: XxHash3-64 over everything AFTER the checksum field, seeded by the page's first block id.</summary>
+		/// <remarks>
+		/// <para>The checksum field is EXCLUDED from its own input rather than zeroed inside it, which makes the hashed bytes one contiguous run and the whole thing a single static call. The previous form fed 8 zero bytes and then the rest through a streaming <c>XxHash3</c>, and <c>XxHash3</c> is a CLASS: that allocated one instance per page sealed and per page verified, which measured at 466 MB on one benchmark sweep. A constant zero prefix contributes no integrity, so dropping it costs nothing but the constant.</para>
+		/// <para>The seed is what ties a page to its location, so a page written to the wrong block still fails verification.</para>
+		/// <para>FORMAT: this changes the checksum VALUES. A store written by an older build fails <see cref="Verify"/> against this one.</para>
+		/// </remarks>
 		public static ulong ComputeChecksum(ReadOnlySpan<byte> page, uint firstBlockId)
 		{
 			Contract.Debug.Requires(page.Length >= Size);
-			var hash = new XxHash3(unchecked((long) firstBlockId));
-			Span<byte> zeroed = stackalloc byte[8];
-			hash.Append(zeroed);
-			hash.Append(page[GenerationOffset..]);
-			return hash.GetCurrentHashAsUInt64();
+			return XxHash3.HashToUInt64(page[GenerationOffset..], unchecked((long) firstBlockId));
 		}
 
 		/// <summary>Writes the checksum of a fully-built page into its header (the last step before the page goes to the pager).</summary>
