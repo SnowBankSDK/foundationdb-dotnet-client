@@ -50,6 +50,47 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(volatile_.FillCeiling(PAGE), Is.EqualTo((PAGE * 85) / 100));
 		}
 
+		/// <summary>Cells of a known size, in key order, so page counts are arithmetic rather than approximate.</summary>
+		private static byte[] GraftKey(int i)
+		{
+			var key = new byte[16];
+			System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(key.AsSpan(8), i);
+			return key;
+		}
+
+		[Test]
+		public void Test_RenderRun_Packs_Pages_To_The_Ceiling()
+		{
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			int pageSize = engine.Pager.Geometry.PageSize;
+
+			// 400 cells of 16-byte key + 256-byte value. Enough to need several pages at any sane page size.
+			const int COUNT = 400;
+			const int VALUE = 256;
+			var value = new byte[VALUE];
+
+			var writer = engine.BeginWrite();
+			for (int i = 0; i < COUNT; i++)
+			{
+				writer.Insert(GraftKey(i), value);
+			}
+			engine.Commit(writer, 1);
+
+			var stats = engine.MeasureTreeStatistics();
+
+			// every leaf but the last must be packed at or above 95% of the page: a renderer that stops early
+			// leaves a trail of half-full pages, which is the whole defect this design exists to avoid
+			int atLeast95 = 0;
+			FdbLiteTreeStatistics.VisitLeaves(engine.Pager, engine.Durable.RootPageId, live =>
+			{
+				if (live * 100 >= pageSize * 95L) { atLeast95++; }
+			});
+
+			Log($"leaves={stats.LeafPages} at>=95%={atLeast95} liveBytes={stats.LeafLiveBytes}");
+			Assert.That(stats.LeafPages, Is.GreaterThan(1), "the run must span several pages or this proves nothing");
+			Assert.That(atLeast95, Is.EqualTo(stats.LeafPages - 1), "every page but the last is packed to the ceiling");
+		}
+
 	}
 
 }
