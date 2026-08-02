@@ -132,6 +132,146 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(empty.Length, Is.Zero);
 		}
 
+		private const int GRAFT_VALUE = 256;
+
+		/// <summary>Seeds a tree with a deliberate GAP: keys 0..<paramref name="side"/>-1 and 100000..100000+<paramref name="side"/>-1, nothing between.</summary>
+		private static FdbLiteEngine SeedGappedTree(int side)
+		{
+			var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			var value = new byte[GRAFT_VALUE];
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < side; i++) { seed.Insert(GraftKey(i), value); }
+			for (int i = 0; i < side; i++) { seed.Insert(GraftKey(100_000 + i), value); }
+			engine.Commit(seed, 1);
+			return engine;
+		}
+
+		/// <summary>The run a graft consumes: cells that carry their own buffer, since nothing gathered them from a page.</summary>
+		private static FdbLiteTreeWriter.CellRef[] BuildRun(int first, int count)
+		{
+			var run = new FdbLiteTreeWriter.CellRef[count];
+			for (int i = 0; i < count; i++)
+			{
+				var cell = new byte[16 + GRAFT_VALUE];
+				GraftKey(first + i).CopyTo(cell.AsSpan(0, 16));
+				run[i] = FdbLiteTreeWriter.CellRef.OfLeafBuffer(cell, 16, GRAFT_VALUE, 0);
+			}
+			return run;
+		}
+
+		/// <summary>Grafts <paramref name="run"/> and returns the number of pages it emitted.</summary>
+		private static int Graft(FdbLiteTreeWriter writer, int pageSize, ReadOnlySpan<byte> begin, FdbLiteTreeWriter.CellRef[] run)
+		{
+			// the caller names the leaf the run falls in, which is what Task 6's driver will do too
+			Span<uint> pathPages = stackalloc uint[20];
+			Span<int> pathChildren = stackalloc int[20];
+			uint leafId = writer.DescendToLeaf(begin, pathPages, pathChildren, out _);
+
+			// one entry per emitted page, and the merged list is the run plus the boundary leaf's cells; a cell
+			// costs at least one byte, so the page size is a safe (if generous) bound on that second term
+			var output = new FdbLiteGraftedPage[run.Length + pageSize];
+			return writer.GraftIntoGap(leafId, begin, run, FdbLiteImportOptions.Default.FillCeiling(pageSize), output);
+		}
+
+		/// <summary>The cross-level structural oracle: separators, ordering and aggregates must all agree after a splice.</summary>
+		private static void AssertStructurallySound(FdbLiteEngine engine)
+		{
+			var problems = FdbLiteTreeAudit.Check(engine.Pager, engine.Durable.RootPageId, maxProblems: 8);
+			foreach (var p in problems) { Log($"# STRUCT {p}"); }
+			Assert.That(problems, Is.Empty, "the grafted pages must splice into a structurally sound tree");
+		}
+
+		/// <summary>Reads every key of the committed tree back in order, as its GraftKey index.</summary>
+		private static List<long> ReadAllKeys(FdbLiteEngine engine)
+		{
+			var keys = new List<long>();
+			var cursor = new FdbLiteTreeCursor(engine.Pager, engine.Durable.RootPageId);
+			if (cursor.SeekCeiling([]))
+			{
+				do
+				{
+					keys.Add(System.Buffers.Binary.BinaryPrimitives.ReadInt64BigEndian(cursor.CurrentKey[8..]));
+				}
+				while (cursor.MoveNext());
+			}
+			return keys;
+		}
+
+		/// <summary>Records what per-key insertion into a gap achieves, which is the bar <see cref="Test_GraftIntoGap_Fills_The_Middle_Pages_Whole"/> exists to beat.</summary>
+		/// <remarks>Not a graft test: it drives <see cref="FdbLiteTreeWriter.Insert"/> only, and pins the defect rather than the fix.</remarks>
+		[Test]
+		public void Test_Per_Key_Insertion_Into_A_Gap_Leaves_Leaves_Half_Empty()
+		{
+			using var engine = SeedGappedTree(100);
+			int pageSize = engine.Pager.Geometry.PageSize;
+			var value = new byte[GRAFT_VALUE];
+
+			var writer = engine.BeginWrite();
+			for (int i = 0; i < 2000; i++) { writer.Insert(GraftKey(1000 + i), value); }
+			engine.Commit(writer, 2);
+
+			var stats = engine.MeasureTreeStatistics();
+			int fillPct = (int) (100.0 * stats.LeafLiveBytes / ((long) stats.LeafPages * pageSize));
+			Log($"per-key: leaves={stats.LeafPages} fill={fillPct}%");
+			Assert.That(fillPct, Is.LessThan(90), "if per-key insertion already packed a gap full, the graft would have nothing to fix");
+		}
+
+		[Test]
+		public void Test_GraftIntoGap_Fills_The_Middle_Pages_Whole()
+		{
+			using var engine = SeedGappedTree(100);
+			int pageSize = engine.Pager.Geometry.PageSize;
+
+			int leavesBefore = engine.MeasureTreeStatistics().LeafPages;
+
+			// graft 2,000 keys into the gap, which is several pages worth
+			var writer = engine.BeginWrite();
+			var run = BuildRun(1000, 2000);
+			int emitted = Graft(writer, pageSize, GraftKey(1000), run);
+			engine.Commit(writer, 2);
+
+			var stats = engine.MeasureTreeStatistics();
+			long capacity = (long) stats.LeafPages * pageSize;
+			int fillPct = (int) (100.0 * stats.LeafLiveBytes / capacity);
+			Log($"leavesBefore={leavesBefore} emitted={emitted} leavesAfter={stats.LeafPages} fill={fillPct}%");
+
+			// the graft must not lose or duplicate a key, and the tree must still be in key order
+			AssertStructurallySound(engine);
+			var keys = ReadAllKeys(engine);
+			Assert.That(keys.Count, Is.EqualTo(2200), "100 below + 2000 grafted + 100 above");
+			Assert.That(keys, Is.Ordered, "the spliced separators must keep the tree sorted");
+			Assert.That(keys[100], Is.EqualTo(1000L));
+			Assert.That(keys[2099], Is.EqualTo(2999L));
+
+			// the acceptance bar from the design: a run that owns its range packs like a sequential build
+			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "a run owning its range must pack near full");
+		}
+
+		/// <summary>The boundary leaf IS the root: the graft's pages have no parent to splice into and must grow one.</summary>
+		[Test]
+		public void Test_GraftIntoGap_Grows_A_Root_When_The_Leaf_Was_The_Tree()
+		{
+			using var engine = SeedGappedTree(20);
+			int pageSize = engine.Pager.Geometry.PageSize;
+			Assert.That(engine.MeasureTreeStatistics().LeafPages, Is.EqualTo(1), "the seed must fit ONE leaf or this proves nothing");
+
+			var writer = engine.BeginWrite();
+			var run = BuildRun(1000, 2000);
+			int emitted = Graft(writer, pageSize, GraftKey(1000), run);
+			engine.Commit(writer, 2);
+
+			var stats = engine.MeasureTreeStatistics();
+			int fillPct = (int) (100.0 * stats.LeafLiveBytes / ((long) stats.LeafPages * pageSize));
+			Log($"root grew: emitted={emitted} leaves={stats.LeafPages} internal={stats.InternalPages} fill={fillPct}%");
+
+			AssertStructurallySound(engine);
+			var keys = ReadAllKeys(engine);
+			Assert.That(keys.Count, Is.EqualTo(2040), "20 below + 2000 grafted + 20 above");
+			Assert.That(keys, Is.Ordered);
+			Assert.That(stats.InternalPages, Is.GreaterThan(0), "the tree must have grown a level");
+			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90));
+		}
+
 	}
 
 }

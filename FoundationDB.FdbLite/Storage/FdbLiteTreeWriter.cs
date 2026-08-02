@@ -449,7 +449,7 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Walks from the root to the leaf covering <paramref name="key"/>, recording internal pages and child indexes, and positioning the writer's cursor on the leaf it reaches.</summary>
-		private uint DescendToLeaf(ReadOnlySpan<byte> key, Span<uint> pathPages, Span<int> pathChildren, out int depth)
+		internal uint DescendToLeaf(ReadOnlySpan<byte> key, Span<uint> pathPages, Span<int> pathChildren, out int depth)
 		{
 			depth = 0;
 			this.LeafDescents++;
