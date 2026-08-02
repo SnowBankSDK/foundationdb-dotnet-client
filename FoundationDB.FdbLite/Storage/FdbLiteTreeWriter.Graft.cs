@@ -78,6 +78,39 @@ namespace FoundationDB.Storage.FdbLite
 			return pages;
 		}
 
+		/// <summary>Partitions a leaf's cells at <paramref name="key"/>: everything strictly below, and everything at or above.</summary>
+		/// <remarks>
+		/// The split is at the INSERTION POINT, not at the page's midpoint, which is what makes a graft's two boundary
+		/// pages the only ones it disturbs. Either side may come back empty, and that is the normal case rather than a
+		/// degenerate one: an empty left side is a run landing before every key in the page, an empty right side is a
+		/// run landing after all of them, and those are the two edge situations the graft handles with the same code.
+		/// </remarks>
+		internal (CellRef[] Below, CellRef[] AtOrAbove) SplitCellsAt(uint leafId, ReadOnlySpan<byte> key)
+		{
+			var page = ReadPage(leafId);
+			int count = FdbLitePageHeader.GetCellCount(page);
+			int at = FdbLiteTreePage.FindLeafSlot(page, key, out _);
+
+			var below = new CellRef[at];
+			var above = new CellRef[count - at];
+			for (int i = 0; i < at; i++)
+			{
+				below[i] = CellRef.OfLeafPage(page, i);
+			}
+			for (int i = at; i < count; i++)
+			{
+				above[i - at] = CellRef.OfLeafPage(page, i);
+			}
+			return (below, above);
+		}
+
+		/// <summary>Test seam: <see cref="CellRef"/> is not visible outside this assembly, so a test cannot receive one.</summary>
+		public (int Below, int AtOrAbove) SplitCellsAtForTest(uint leafId, byte[] key)
+		{
+			var (below, above) = SplitCellsAt(leafId, key);
+			return (below.Length, above.Length);
+		}
+
 	}
 
 }

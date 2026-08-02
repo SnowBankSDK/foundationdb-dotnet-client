@@ -96,6 +96,37 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(atLeast95, Is.EqualTo(stats.LeafPages - 1), "every page but the last is packed to the ceiling");
 		}
 
+		[Test]
+		public void Test_SplitCellsAt_Partitions_A_Page_At_The_Insertion_Point()
+		{
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			var value = new byte[16];
+
+			var writer = engine.BeginWrite();
+			for (int i = 0; i < 6; i++)
+			{
+				writer.Insert(GraftKey(i * 10), value);   // keys 0,10,20,30,40,50 in ONE leaf
+			}
+
+			// partition at 25: keys 0,10,20 below, keys 30,40,50 at-or-above
+			var (below, above) = writer.SplitCellsAtForTest(writer.Root, GraftKey(25));
+			Assert.That(below, Is.EqualTo(3), "keys 0,10,20 sort below 25");
+			Assert.That(above, Is.EqualTo(3), "keys 30,40,50 sort at or above 25");
+
+			// a key that precedes everything leaves the whole page on the right. GraftKey(-1) does NOT work for
+			// this: WriteInt64BigEndian encodes -1 as 0xFF...FF, which sorts ABOVE every non-negative GraftKey, not
+			// below it. The empty key is a proper prefix of every non-empty key, so it is the one value guaranteed
+			// to precede all of them under the tree's byte-lexicographic ordering.
+			var (none, all) = writer.SplitCellsAtForTest(writer.Root, []);
+			Assert.That(none, Is.Zero);
+			Assert.That(all, Is.EqualTo(6));
+
+			// a key that follows everything leaves the whole page on the left
+			var (everything, empty) = writer.SplitCellsAtForTest(writer.Root, GraftKey(999));
+			Assert.That(everything, Is.EqualTo(6));
+			Assert.That(empty, Is.Zero);
+		}
+
 	}
 
 }
