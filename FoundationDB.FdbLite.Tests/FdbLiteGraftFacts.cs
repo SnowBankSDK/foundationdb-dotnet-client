@@ -508,9 +508,9 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>The same run, with every value byte set to <paramref name="fill"/>, so a replaced value is distinguishable from the one it replaced.</summary>
-		private static List<KeyValuePair<Slice, Slice>> BuildImportRun(int first, int count, byte fill)
+		private static List<KeyValuePair<Slice, Slice>> BuildImportRun(int first, int count, byte fill, int valueSize = GRAFT_VALUE)
 		{
-			var value = new byte[GRAFT_VALUE];
+			var value = new byte[valueSize];
 			value.AsSpan().Fill(fill);
 			var run = new List<KeyValuePair<Slice, Slice>>(count);
 			for (int i = 0; i < count; i++) { run.Add(new(GraftKey(first + i).AsSlice(), value.AsSlice())); }
@@ -518,7 +518,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>Reads every key back with the first byte of its value, which is the marker the import runs stamp.</summary>
-		private static List<(long Key, byte Fill)> ReadAllPairs(FdbLiteEngine engine)
+		private static List<(long Key, byte Fill)> ReadAllPairs(FdbLiteEngine engine, int valueSize = GRAFT_VALUE)
 		{
 			var pairs = new List<(long, byte)>();
 			var cursor = new FdbLiteTreeCursor(engine.Pager, engine.Durable.RootPageId);
@@ -527,7 +527,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				do
 				{
 					var value = cursor.CurrentValue;
-					pairs.Add((System.Buffers.Binary.BinaryPrimitives.ReadInt64BigEndian(cursor.CurrentKey[8..]), value.Length == GRAFT_VALUE ? value[0] : (byte) 0xFF));
+					pairs.Add((System.Buffers.Binary.BinaryPrimitives.ReadInt64BigEndian(cursor.CurrentKey[8..]), value.Length == valueSize ? value[0] : (byte) 0xFF));
 				}
 				while (cursor.MoveNext());
 			}
@@ -569,6 +569,71 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(pairs.Where(p => p.Key is < 1000 or >= 3000).Select(p => p.Fill), Is.All.EqualTo((byte) 0x00), "a key outside the range must keep the value the seed gave it");
 			Assert.That(stats.LeafPages, Is.GreaterThan(1), "the run must span several pages or the packing claim proves nothing");
 			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "re-importing over a populated range must pack as well as importing into a gap");
+		}
+
+		/// <summary>Levels of the committed tree, counting the leaf: 1 is a lone root leaf, 3 is a root over internal pages over leaves.</summary>
+		private static int TreeDepth(FdbLiteEngine engine)
+		{
+			int depth = 1;
+			uint pageId = engine.Durable.RootPageId;
+			while (true)
+			{
+				var page = engine.Pager.ReadBlocks(pageId, engine.Pager.Geometry.BlocksPerPage);
+				if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
+				{
+					return depth;
+				}
+				depth++;
+				pageId = FdbLiteTreePage.GetChild(page, 0);
+			}
+		}
+
+		/// <summary>The same import over a populated range, in a THREE-level tree: the ascent's per-level raise loop
+		/// iterates more than once, and the leaves the clear empties can sit under DIFFERENT parents, which puts the
+		/// loose separator at the grandparent.</summary>
+		/// <remarks>Every other graft test runs on <see cref="FdbLiteGeometry.Default"/> (32 KiB pages) with a couple of
+		/// thousand SMALL cells, which all fit under ONE internal page: the raise loop cannot climb twice and the root
+		/// cannot grow twice, so those paths are structurally unreachable there rather than merely untested. Depth comes
+		/// from the leaf count, and the page floor is 16 KiB (<see cref="FdbLiteGeometry.MinPageSizeLog2"/>), so this test
+		/// buys its leaves with FAT values instead: at the smallest legal page, a value at the inline ceiling puts three
+		/// cells in a leaf, and 4,200 keys then need more leaves than one internal page can address. The depth is asserted
+		/// BEFORE anything else, because a two-level tree passes every assert below while proving nothing new.</remarks>
+		[Test]
+		public void Test_Import_Over_A_Populated_Range_In_A_Three_Level_Tree()
+		{
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Uniform(FdbLiteGeometry.MinPageSizeLog2)));
+			int deepValue = engine.Pager.Geometry.MaxInlineValueLength;
+
+			// 100 below the range, 4000 inside it with the 0xA5 marker, 100 above
+			var seeded = new byte[deepValue];
+			seeded.AsSpan().Fill(0xA5);
+			var untouched = new byte[deepValue];
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < 100; i++) { seed.Insert(GraftKey(i), untouched); }
+			for (int i = 0; i < 4000; i++) { seed.Insert(GraftKey(1000 + i), seeded); }
+			for (int i = 0; i < 100; i++) { seed.Insert(GraftKey(100_000 + i), untouched); }
+			engine.Commit(seed, 1);
+
+			int depth = TreeDepth(engine);
+			Log($"seeded: depth={depth} leaves={engine.MeasureTreeStatistics().LeafPages} internal={engine.MeasureTreeStatistics().InternalPages} keys={engine.Durable.KeyCount}");
+			Assert.That(depth, Is.GreaterThanOrEqualTo(3), "the seed must build a tree of three levels or more, or this test proves nothing the two-level ones do not");
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo(4200UL));
+
+			// every key of [1000, 5000) is supplied, so the gate stays on the graft path and the clear drops all 4000
+			int applied = engine.Import(BuildImportRun(1000, 4000, 0x5C, deepValue), GraftKey(1000).AsSlice(), GraftKey(5000).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2);
+
+			int depthAfter = TreeDepth(engine);
+			Log($"deep import: applied={applied} depth={depthAfter} keys={engine.Durable.KeyCount}");
+
+			AssertStructurallySound(engine);
+			var pairs = ReadAllPairs(engine, deepValue);
+			Assert.That(applied, Is.EqualTo(4000));
+			Assert.That(pairs.Count, Is.EqualTo(4200), "replacing 4000 keys with 4000 keys must not change the population");
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo(4200UL));
+			Assert.That(pairs.Select(p => p.Key), Is.Ordered);
+			Assert.That(pairs.Where(p => p.Key is >= 1000 and < 5000).Select(p => p.Fill), Is.All.EqualTo((byte) 0x5C), "every key of the imported range must carry the NEW value");
+			Assert.That(pairs.Where(p => p.Key is < 1000 or >= 5000).Select(p => p.Fill), Is.All.EqualTo((byte) 0x00), "a key outside the range must keep the value the seed gave it");
+			Assert.That(depthAfter, Is.GreaterThanOrEqualTo(3), "the graft must splice into the deep tree, not flatten it");
 		}
 
 		/// <summary>The imported range covers the WHOLE tree: the clear drops the root, and the graft re-enters the empty-store branch from inside <c>ImportRun</c>.</summary>
