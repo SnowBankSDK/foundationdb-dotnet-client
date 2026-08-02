@@ -73,6 +73,42 @@ namespace FoundationDB.Storage.FdbLite
 			return new(acc.InternalPages, acc.LeafPages, acc.CellCount, acc.WastedBytes, acc.MaxWastedBytesPerPage, acc.FreeGapBytes, acc.LeafLiveBytes);
 		}
 
+		/// <summary>Walks the generation rooted at <paramref name="root"/> and reports every LEAF's live bytes.</summary>
+		/// <param name="visit">Called once per leaf with its fill-oriented live bytes.</param>
+		/// <remarks>
+		/// The per-leaf form of <see cref="Measure"/>, for the questions an aggregate cannot answer. A mean fill
+		/// of 68% is produced equally by every leaf sitting at 68% and by half of them sitting at 50% while the
+		/// other half sit at 85%, and those two imply different defects: the second is splits leaving half-pages
+		/// behind, the first is not. Same cost and same walk as <see cref="Measure"/>; a diagnostic, not a hot
+		/// path, and it wants a read pin exactly as that one does.
+		/// </remarks>
+		public static void VisitLeaves(IFdbLitePager pager, uint root, Action<long> visit)
+		{
+			Contract.NotNull(pager);
+			Contract.NotNull(visit);
+			if (root == 0)
+			{
+				return;
+			}
+			VisitLeaf(pager, root, 0, visit);
+		}
+
+		private static void VisitLeaf(IFdbLitePager pager, uint pageId, int depth, Action<long> visit)
+		{
+			Contract.Requires(depth <= 32, "tree deeper than any legal geometry allows");
+			var page = pager.ReadBlocks(pageId, pager.Geometry.BlocksPerPage);
+			if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
+			{
+				visit(FdbLiteTreePage.LeafLiveBytes(page));
+				return;
+			}
+			int children = FdbLiteTreePage.GetChildCount(page);
+			for (int i = 0; i < children; i++)
+			{
+				VisitLeaf(pager, FdbLiteTreePage.GetChild(page, i), depth + 1, visit);
+			}
+		}
+
 		private static void Walk(IFdbLitePager pager, uint pageId, int depth, ref Accumulator acc)
 		{
 			Contract.Requires(depth <= 32, "tree deeper than any legal geometry allows");
