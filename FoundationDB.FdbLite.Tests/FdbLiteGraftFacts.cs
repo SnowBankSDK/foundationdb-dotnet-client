@@ -223,6 +223,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			int pageSize = engine.Pager.Geometry.PageSize;
 
 			int leavesBefore = engine.MeasureTreeStatistics().LeafPages;
+			long pendingReclaimBefore = engine.GetStats().PendingReclaimBlocks;
 
 			// graft 2,000 keys into the gap, which is several pages worth
 			var writer = engine.BeginWrite();
@@ -233,7 +234,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			var stats = engine.MeasureTreeStatistics();
 			long capacity = (long) stats.LeafPages * pageSize;
 			int fillPct = (int) (100.0 * stats.LeafLiveBytes / capacity);
-			Log($"leavesBefore={leavesBefore} emitted={emitted} leavesAfter={stats.LeafPages} fill={fillPct}%");
+			Log($"leavesBefore={leavesBefore} emitted={emitted} leavesAfter={stats.LeafPages} fill={fillPct}% pendingReclaimBefore={pendingReclaimBefore} pendingReclaimAfter={engine.GetStats().PendingReclaimBlocks}");
 
 			// the graft must not lose or duplicate a key, and the tree must still be in key order
 			AssertStructurallySound(engine);
@@ -242,6 +243,17 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(keys, Is.Ordered, "the spliced separators must keep the tree sorted");
 			Assert.That(keys[100], Is.EqualTo(1000L));
 			Assert.That(keys[2099], Is.EqualTo(2999L));
+
+			// the boundary leaf's own cells were carried over, not re-added, so the count comes ONLY from the run:
+			// a wrong KeyCountDelta (e.g. double-counting the carried-over cells, or missing the run) passes every
+			// other oracle here (cursor readback, structural audit) but not this one
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo(2200UL), "KeyCountDelta must book exactly the run's new keys, not the boundary leaf's carried-over ones");
+
+			// two pages are retired here: the rebuilt root is an ordinary copy-on-write (WritePage frees the old
+			// root as it copies it) plus the boundary leaf itself, which ONLY FreePage(originalChildId) in
+			// AscendPatchGrafted retires. Without it this figure is short by exactly one BlocksPerPage, and every
+			// other oracle here (structural audit, cursor readback) stays silent about the leak
+			Assert.That(engine.GetStats().PendingReclaimBlocks, Is.EqualTo(pendingReclaimBefore + (2 * engine.Pager.Geometry.BlocksPerPage)), "the boundary leaf's page must be retired, not leaked");
 
 			// the acceptance bar from the design: a run that owns its range packs like a sequential build
 			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "a run owning its range must pack near full");

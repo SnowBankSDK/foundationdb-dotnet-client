@@ -157,6 +157,13 @@ namespace FoundationDB.Storage.FdbLite
 			var page = ReadPage(leafId);
 			var (below, above) = SplitCellsAt(leafId, begin);
 
+			if (above.Length > 0)
+			{ // an unsorted merge would render a silently mis-ordered tree, which this code must never produce
+				var runLastKey = WholeKeyOf(run[^1], page);
+				var aboveFirstKey = WholeKeyOf(above[0], page);
+				Contract.Requires(runLastKey.AsSpan().SequenceCompareTo(aboveFirstKey) < 0, "the run's last key must sort strictly below the first key of the gap's upper side, or the caller handed GraftIntoGap a run that overruns the gap");
+			}
+
 			var all = ArrayPool<CellRef>.Shared.Rent(below.Length + run.Length + above.Length);
 			try
 			{
