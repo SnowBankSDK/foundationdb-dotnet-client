@@ -883,6 +883,14 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				BumpVolatilityEpisode(image);
 			}
+			// the INPUT side of the trace. The LEAF+/LEAF= records say which pages were created and by which
+			// method, which is enough to explain a split once you suspect one, but not enough to reconstruct
+			// how a page got to the state where it split. This says where each key landed and how full the
+			// page was afterwards, so one leaf's whole life can be replayed from the log.
+			if (OpLog is { } log)
+			{
+				log($"SPLICE\t{leafId}\tat={at}\tcells={FdbLitePageHeader.GetCellCount(image)}\tlive={FdbLiteTreePage.LeafLiveBytes(image)}\tinterior={(interior ? 1 : 0)}\tepisodes={FdbLitePageHeader.GetVolatilityEpisodes(image)}");
+			}
 			return true;
 		}
 
@@ -1046,6 +1054,14 @@ namespace FoundationDB.Storage.FdbLite
 			var page = ReadPage(leafId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			int insertAt = FdbLiteTreePage.FindLeafSlot(page, key, out bool replace);
+
+			// the moment a page stops taking keys in place. Paired with the SPLICE records it says how full the
+			// page was when it gave up and WHERE in it the key was going, which is what distinguishes a page
+			// that filled evenly from one a sweeping run walked off the end of.
+			if (OpLog is { } rlog)
+			{
+				rlog($"REBUILD\t{leafId}\tat={insertAt}\tcells={cellCount}\tlive={FdbLiteTreePage.LeafLiveBytes(page)}\trightmost={(rightmost ? 1 : 0)}\treplace={(replace ? 1 : 0)}\tepisodes={FdbLitePageHeader.GetVolatilityEpisodes(page)}");
+			}
 
 			// `rightmost` is load-bearing and is NOT safely generalisable to "append-shaped", which was tried
 			// and measured on 2026-08-02. The zero-volatility-episode count looks like the same statement
