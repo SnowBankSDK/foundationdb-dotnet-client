@@ -60,9 +60,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 		/// <summary>Pins the append-path packing guarantee the graft renderer must later match: sequential
 		/// <see cref="FdbLiteTreeWriter.Insert"/> packs every leaf but the last to at least 95% of the page.</summary>
-		/// <remarks>Drives cells through <c>Insert</c>/<c>Commit</c>, not <see cref="FdbLiteTreeWriter.RenderRun"/> -
-		/// the test assembly has no <c>InternalsVisibleTo</c> into <c>FoundationDB.FdbLite</c>, so it cannot call
-		/// internal members at all. This is a regression gate on the append path's own packing behaviour.</remarks>
+		/// <remarks>Drives cells through <c>Insert</c>/<c>Commit</c>, not <see cref="FdbLiteTreeWriter.RenderRun"/>.
+		/// This is a regression gate on the append path's own packing behaviour.</remarks>
 		[Test]
 		public void Test_Sequential_Insert_Packs_Leaves_To_The_Ceiling()
 		{
@@ -109,22 +108,28 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 
 			// partition at 25: keys 0,10,20 below, keys 30,40,50 at-or-above
-			var (below, above) = writer.SplitCellsAtForTest(writer.Root, GraftKey(25));
-			Assert.That(below, Is.EqualTo(3), "keys 0,10,20 sort below 25");
-			Assert.That(above, Is.EqualTo(3), "keys 30,40,50 sort at or above 25");
+			var (below, above) = writer.SplitCellsAt(writer.Root, GraftKey(25));
+			Assert.That(below.Length, Is.EqualTo(3), "keys 0,10,20 sort below 25");
+			Assert.That(above.Length, Is.EqualTo(3), "keys 30,40,50 sort at or above 25");
+
+			// a key EQUAL to an existing key belongs on the at-or-above side (below is strictly less): with
+			// 30 present in the page, splitting at 30 must give the same 3/3 split as splitting at 25.
+			var (belowEqual, aboveEqual) = writer.SplitCellsAt(writer.Root, GraftKey(30));
+			Assert.That(belowEqual.Length, Is.EqualTo(3), "keys 0,10,20 sort strictly below 30");
+			Assert.That(aboveEqual.Length, Is.EqualTo(3), "keys 30,40,50 sort at or above 30, including 30 itself");
 
 			// a key that precedes everything leaves the whole page on the right. GraftKey(-1) does NOT work for
 			// this: WriteInt64BigEndian encodes -1 as 0xFF...FF, which sorts ABOVE every non-negative GraftKey, not
 			// below it. The empty key is a proper prefix of every non-empty key, so it is the one value guaranteed
 			// to precede all of them under the tree's byte-lexicographic ordering.
-			var (none, all) = writer.SplitCellsAtForTest(writer.Root, []);
-			Assert.That(none, Is.Zero);
-			Assert.That(all, Is.EqualTo(6));
+			var (none, all) = writer.SplitCellsAt(writer.Root, []);
+			Assert.That(none.Length, Is.Zero);
+			Assert.That(all.Length, Is.EqualTo(6));
 
 			// a key that follows everything leaves the whole page on the left
-			var (everything, empty) = writer.SplitCellsAtForTest(writer.Root, GraftKey(999));
-			Assert.That(everything, Is.EqualTo(6));
-			Assert.That(empty, Is.Zero);
+			var (everything, empty) = writer.SplitCellsAt(writer.Root, GraftKey(999));
+			Assert.That(everything.Length, Is.EqualTo(6));
+			Assert.That(empty.Length, Is.Zero);
 		}
 
 	}

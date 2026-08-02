@@ -80,10 +80,16 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Partitions a leaf's cells at <paramref name="key"/>: everything strictly below, and everything at or above.</summary>
 		/// <remarks>
-		/// The split is at the INSERTION POINT, not at the page's midpoint, which is what makes a graft's two boundary
+		/// <para>The split is at the INSERTION POINT, not at the page's midpoint, which is what makes a graft's two boundary
 		/// pages the only ones it disturbs. Either side may come back empty, and that is the normal case rather than a
 		/// degenerate one: an empty left side is a run landing before every key in the page, an empty right side is a
-		/// run landing after all of them, and those are the two edge situations the graft handles with the same code.
+		/// run landing after all of them, and those are the two edge situations the graft handles with the same code.</para>
+		/// <para>The returned <see cref="CellRef"/>s carry no buffer of their own: <see cref="CellRef.OfLeafPage"/> leaves
+		/// <c>Buffer</c> null and records bare offsets into <paramref name="leafId"/>'s page, unlike every other gatherer in
+		/// this class, which resolves its cells synchronously while the page span is still in hand. Whatever resolves these
+		/// cells later must be handed the SAME page bytes this call read. For a dirty page <see cref="ReadPage"/> returns the
+		/// live mutable array, so the caller must not let <paramref name="leafId"/> be rewritten while it still holds these
+		/// cells, or they silently point at different bytes than the ones they were read from.</para>
 		/// </remarks>
 		internal (CellRef[] Below, CellRef[] AtOrAbove) SplitCellsAt(uint leafId, ReadOnlySpan<byte> key)
 		{
@@ -102,13 +108,6 @@ namespace FoundationDB.Storage.FdbLite
 				above[i - at] = CellRef.OfLeafPage(page, i);
 			}
 			return (below, above);
-		}
-
-		/// <summary>Test seam: <see cref="CellRef"/> is not visible outside this assembly, so a test cannot receive one.</summary>
-		public (int Below, int AtOrAbove) SplitCellsAtForTest(uint leafId, byte[] key)
-		{
-			var (below, above) = SplitCellsAt(leafId, key);
-			return (below.Length, above.Length);
 		}
 
 	}
