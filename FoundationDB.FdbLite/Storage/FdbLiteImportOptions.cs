@@ -48,17 +48,14 @@ namespace FoundationDB.Storage.FdbLite
 	}
 
 	/// <summary>Knobs for one bulk import.</summary>
+	/// <remarks><c>FdbLiteEngine.Import</c> materialises the whole run before it applies anything, so an import is
+	/// one generation and its peak memory is the run's. Splitting a large restore into bounded chunks, each its own
+	/// generation, is a separate feature that does not exist yet: a knob for it would be read by nothing.</remarks>
 	public readonly record struct FdbLiteImportOptions
 	{
 
 		/// <summary>Declared future mutability of the imported data.</summary>
 		public FdbLiteVolatilityClass Volatility { get; init; }
-
-		/// <summary>Bytes buffered before a chunk is applied and the buffer reused. 0 means unbounded.</summary>
-		/// <remarks>Each chunk is its own generation, so this knob sits directly on the retention curve: the store's
-		/// steady-state footprint is the live tree plus twice one chunk's churn. A large chunk leaves the file near
-		/// three times the tree until the frees promote; a small one pays in total write volume.</remarks>
-		public long ChunkSizeBytes { get; init; }
 
 		public static FdbLiteImportOptions Default => new() { Volatility = FdbLiteVolatilityClass.Stable };
 

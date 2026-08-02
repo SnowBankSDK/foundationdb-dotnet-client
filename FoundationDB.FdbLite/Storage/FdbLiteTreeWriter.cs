@@ -501,10 +501,11 @@ namespace FoundationDB.Storage.FdbLite
 			=> outcome.Siblings is { } siblings ? CollectionsMarshal.AsSpan(siblings) : default;
 
 		/// <summary>Ascends from <paramref name="fromLevel"/> over a caller-owned sibling span, for a producer that has no <see cref="RebuildResult"/> to hand over.</summary>
-		/// <param name="raiseFollowingSeparatorTo">Lower bound the separator that FOLLOWS the descended child must reach, at every level where it sits below it, or empty for the ordinary ascent. See the remarks.</param>
+		/// <param name="raiseFollowingSeparatorTo">Lower bound the separator that FOLLOWS the descended child must reach, at every level where it sits below it, or empty for the ordinary ascent. Only valid when the interval it moves left was CLEARED and proven to hold no survivor. See the remarks.</param>
 		/// <remarks>
 		/// <para>A GRAFT emits its pages straight into a rented array rather than a <see cref="List{T}"/>, which is the only reason this form exists; the split path reaches it through the overload above and behaves identically (an empty span and a null <see cref="RebuildResult.Siblings"/> are the same thing here).</para>
 		/// <para><paramref name="raiseFollowingSeparatorTo"/> repairs what a preceding <see cref="RemoveRange"/> leaves behind: dropping a leaf's LEADING cells raises the page's first key but not the separator that routes to it, which stays a valid (merely loose) lower bound for every other operation. It stops being one as soon as pages are SPLICED into the space that clear vacated: the graft's last emitted separator can then sort above that loose one, and the parent's separators come out of order. Raising it to the imported range's exclusive upper bound restores the order, and routes nothing wrongly: the interval it moves left is exactly what the clear emptied.</para>
+		/// <para>PRECONDITION, and it is the whole reason the repair is safe: <paramref name="raiseFollowingSeparatorTo"/> may only be passed for a range the caller CLEARED and proved held no survivor. Raising a separator makes every key still living below the new bound unreachable - the cursor routes past them, with no exception and nothing the audit can see. A driver grafting into a gap between survivors WITHOUT clearing it (the design's situation D) must therefore pass nothing here, however similar its call looks.</para>
 		/// </remarks>
 		private void AscendPatch(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int fromLevel, uint originalChildId, uint firstId, ReadOnlySpan<(Slice Separator, uint PageId)> siblings, ReadOnlySpan<byte> raiseFollowingSeparatorTo = default)
 		{
@@ -524,6 +525,13 @@ namespace FoundationDB.Storage.FdbLite
 				var raise = raiseFollowingSeparatorTo.Length > 0 && FollowingSeparatorSitsBelow(pathPages[level], pathChildren[level], raiseFollowingSeparatorTo)
 					? raiseFollowingSeparatorTo
 					: default;
+				if (raise.Length > 0 && siblings.Length > 0)
+				{ // Kept ALWAYS ON: the raised separator lands immediately after the last one being inserted, so a
+				  // bound at or below it writes the parent's separators out of order - silently, and only the caller
+				  // knows whether its bound really is the top of a cleared range. This is the one comparison that
+				  // notices, it costs one per graft, and being wrong corrupts the tree.
+					Contract.Requires(siblings[^1].Separator.Span.SequenceCompareTo(raise) < 0, "the raise bound must sort strictly above the last separator the ascent inserts, or the parent comes out unsorted and keys below the bound become unreachable");
+				}
 				var rebuilt = RebuildInternal(pathPages[level], pathChildren[level], firstId, siblings, raise);
 				firstId = rebuilt.FirstId;
 				siblings = AsSiblingSpan(rebuilt);

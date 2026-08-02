@@ -35,7 +35,7 @@ namespace FoundationDB.Storage.FdbLite
 	{
 
 		/// <summary>Renders an ordered run of cells into finished leaf pages, each packed to <paramref name="fillCeiling"/> live bytes.</summary>
-		/// <param name="cells">Cells in strictly ascending key order, each carrying its own buffer (a grafted cell is built, not gathered from a page).</param>
+		/// <param name="cells">Cells in strictly ascending key order. A cell may carry its own buffer (built, as a run's cells are) or be backed by a page (gathered with <see cref="CellRef.OfLeafPage"/>, which stores bare offsets); a page-backed cell only resolves when handed the page it came from, which is what <paramref name="sourcePage"/> is for.</param>
 		/// <param name="fillCeiling">Live bytes a page is packed to before the next one is started; clamped to the page size.</param>
 		/// <param name="reusePageId">Page whose id the FIRST output may take over, or 0 for all-new pages.</param>
 		/// <param name="sourcePage">Page the buffer-less cells were gathered from, or empty when every cell carries its own buffer.</param>
@@ -147,7 +147,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// <param name="fillCeiling">Live bytes each output page is packed to.</param>
 		/// <param name="volatility">Declared future mutability of the run, stamped on every emitted page as its episode count (see <see cref="RenderRun"/>).</param>
 		/// <param name="output">Receives one entry per emitted page, in key order. Must hold at least <c>run.Length</c> plus the boundary leaf's cell count entries.</param>
-		/// <param name="raiseFollowingSeparatorTo">Bound the separators that follow the graft must reach, or empty when nothing preceded the graft; see <c>AscendPatch</c>. An <see cref="ImportRun"/> passes the cleared range's upper bound.</param>
+		/// <param name="raiseFollowingSeparatorTo">Bound the separators that follow the graft must reach, or empty when nothing preceded the graft; see <c>AscendPatch</c>. An <see cref="ImportRun"/> passes the cleared range's upper bound. ONLY VALID FOR A RANGE THAT WAS CLEARED AND PROVEN TO HOLD NO SURVIVOR: raising a separator moves keys below the bound out of reach, so a driver that grafts into a gap WITHOUT clearing it (the design's situation D) must pass nothing here.</param>
 		/// <returns>Number of pages emitted.</returns>
 		/// <remarks>
 		/// <para>The boundary page's cells join the run rather than being preserved beside it, which is what lets the two
