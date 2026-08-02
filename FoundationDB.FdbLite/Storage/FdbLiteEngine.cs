@@ -530,21 +530,29 @@ namespace FoundationDB.Storage.FdbLite
 		/// and 99% at full, while scattered arrival sits flat at 76%. Ordered arrival therefore only beats scattered from
 		/// roughly half the range upward, and below that it packs no better while costing up to 20x the CPU.</para>
 		/// <para>Keys and values are stored INLINE. A key longer than <see cref="FdbLiteTreePage.MaxKeyLength"/> or a
-		/// value longer than <see cref="FdbLiteGeometry.MaxInlineValueLength"/> is rejected by contract instead of being
-		/// silently truncated: the out-of-line extent path that <c>Insert</c> uses is not wired into the graft renderer
-		/// yet.</para>
+		/// value longer than <see cref="FdbLiteGeometry.MaxInlineValueLength"/> is rejected instead of being silently
+		/// truncated: the out-of-line extent path that <c>Insert</c> uses is not wired into the graft renderer yet.</para>
+		/// <para>Everything the caller can get wrong is checked BEFORE any write begins, so a rejected import leaves the
+		/// store exactly as it was.</para>
 		/// <para>Commits its own generation, at <paramref name="databaseVersion"/>. An import changes what readers see,
 		/// so - unlike <see cref="VacuumStep"/>, which republishes the current version because it changes nothing
 		/// logically - reusing the previous version would make that generation unreachable through
 		/// <see cref="TryBeginReadAtVersion"/>.</para>
 		/// </remarks>
+		/// <exception cref="ArgumentException">The range is empty or its upper bound is too long, or the run is not in strictly ascending key order, or it holds a key outside <c>[begin, end)</c>, an oversized key, or an oversized value.</exception>
 		public int Import(IEnumerable<KeyValuePair<Slice, Slice>> run, Slice begin, Slice end, FdbLiteImportOptions options, ulong databaseVersion)
 		{
 			Contract.NotNull(run);
-			Contract.Requires(begin.Span.SequenceCompareTo(end.Span) < 0, "the imported range must be non-empty");
+			if (begin.Span.SequenceCompareTo(end.Span) >= 0)
+			{
+				throw new ArgumentException("The end key must sort strictly above the begin key: the imported range cannot be empty.", nameof(end));
+			}
 			// the graft writes `end` as a separator when it repairs the bound the clear left behind, so the range's
 			// upper bound is held to the same ceiling as a key
-			Contract.Requires(end.Count <= FdbLiteTreePage.MaxKeyLength, "the imported range's upper bound must fit a page: it is held to the same ceiling as a key");
+			if (end.Count > FdbLiteTreePage.MaxKeyLength)
+			{
+				throw new ArgumentException($"The imported range's upper bound is {end.Count} bytes long, which exceeds the maximum key length of {FdbLiteTreePage.MaxKeyLength}: the bound is written as a separator, so it is held to the same ceiling as a key.", nameof(end));
+			}
 
 			int maxInline = this.Pager.Geometry.MaxInlineValueLength;
 			var cells = new List<FdbLiteTreeWriter.CellRef>();
@@ -552,10 +560,22 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				var key = kv.Key.Span;
 				var value = kv.Value.Span;
-				Contract.Requires(key.Length <= FdbLiteTreePage.MaxKeyLength, "an imported key must fit a page: a key longer than FdbLiteTreePage.MaxKeyLength cannot be stored");
-				Contract.Requires(value.Length <= maxInline, "an imported value must fit inline: a value longer than FdbLiteGeometry.MaxInlineValueLength needs the out-of-line extent path, which Import does not implement");
-				Contract.Requires(key.SequenceCompareTo(begin.Span) >= 0 && key.SequenceCompareTo(end.Span) < 0, "every key of the run must fall inside [begin, end)");
-				Contract.Requires(cells.Count == 0 || cells[^1].ResolveKey(default).SequenceCompareTo(key) < 0, "the run must be in strictly ascending key order");
+				if (key.Length > FdbLiteTreePage.MaxKeyLength)
+				{
+					throw new ArgumentException($"The key at index {cells.Count} of the run is {key.Length} bytes long, which exceeds the maximum key length of {FdbLiteTreePage.MaxKeyLength}.", nameof(run));
+				}
+				if (value.Length > maxInline)
+				{
+					throw new ArgumentException($"The value at index {cells.Count} of the run is {value.Length} bytes long, which exceeds the maximum inline value length of {maxInline}: a longer value needs the out-of-line extent path, which Import does not implement.", nameof(run));
+				}
+				if (key.SequenceCompareTo(begin.Span) < 0 || key.SequenceCompareTo(end.Span) >= 0)
+				{
+					throw new ArgumentException($"The key at index {cells.Count} of the run falls outside the imported range [begin, end).", nameof(run));
+				}
+				if (cells.Count > 0 && cells[^1].ResolveKey(default).SequenceCompareTo(key) >= 0)
+				{
+					throw new ArgumentException($"The key at index {cells.Count} of the run does not sort strictly above the one before it: the run must be in strictly ascending key order.", nameof(run));
+				}
 
 				// ONE buffer per cell, key then value, which is the shape both paths below read: the graft renders
 				// these cells as they are, and the fallback resolves the two parts back out of them, so the run is

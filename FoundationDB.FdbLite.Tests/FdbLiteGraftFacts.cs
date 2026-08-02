@@ -603,29 +603,73 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "rebuilding the whole tree must pack near full");
 		}
 
-		/// <summary>An oversize KEY is rejected up front, as <see cref="FdbLiteTreeWriter.Insert"/> already does: without the guard the graft
-		/// renderer accepts a cell no page can hold, and its part-sizing loop stops making progress.</summary>
+		/// <summary>What <see cref="FdbLiteEngine.Import"/> rejects, and how. These are all things a CALLER gets wrong, so each one
+		/// is an explicit <see cref="ArgumentException"/> naming the offending parameter, not a contract failure: an important check
+		/// on a public entry point belongs in the code, and stays in a release build.</summary>
+		/// <remarks>Every check runs before the first write, so a rejected import must leave the store untouched - which is what the
+		/// last case asserts.</remarks>
 		[Test]
-		public void Test_Import_Rejects_A_Key_Too_Long_For_A_Page()
+		public void Test_Import_Rejects_What_The_Caller_Got_Wrong()
 		{
 			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
 
-			// seeded OUTSIDE the imported range, so the import takes the graft path (a run into an empty store is
-			// routed through Insert, whose own guard would mask this one)
 			var seed = engine.BeginWrite();
 			for (int i = 100; i < 110; i++) { seed.Insert(GraftKey(i), new byte[16]); }
 			engine.Commit(seed, 1);
 
-			// a key that starts like GraftKey(1) and is one byte over the ceiling: still inside [0, 2) by ordering
-			var key = new byte[FdbLiteTreePage.MaxKeyLength + 1];
-			GraftKey(1).CopyTo(key.AsSpan(0, 16));
-			var run = new List<KeyValuePair<Slice, Slice>> { new(key.AsSlice(), new byte[16].AsSlice()) };
+			var value = new byte[16].AsSlice();
+			List<KeyValuePair<Slice, Slice>> One(byte[] key, Slice v) => [ new(key.AsSlice(), v) ];
 
+			// an EMPTY range: nothing can be imported into it
 			Assert.That(
-				() => engine.Import(run, GraftKey(0).AsSlice(), GraftKey(2).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
-				Throws.Exception,
-				"a key longer than FdbLiteTreePage.MaxKeyLength must be refused by contract, not handed to the renderer"
+				() => engine.Import(One(GraftKey(1), value), GraftKey(1).AsSlice(), GraftKey(1).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
+				Throws.ArgumentException.With.Property("ParamName").EqualTo("end").And.Message.Contains("strictly above the begin key")
 			);
+
+			// an OVERSIZE upper bound: the graft writes `end` as a separator, so it is held to a key's ceiling
+			var longEnd = new byte[FdbLiteTreePage.MaxKeyLength + 1];
+			longEnd.AsSpan().Fill(0xFF);
+			Assert.That(
+				() => engine.Import(One(GraftKey(1), value), GraftKey(0).AsSlice(), longEnd.AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
+				Throws.ArgumentException.With.Property("ParamName").EqualTo("end").And.Message.Contains("maximum key length")
+			);
+
+			// an OVERSIZE key: without this the renderer accepts a cell no page can hold, and its part-sizing loop stops making progress
+			var longKey = new byte[FdbLiteTreePage.MaxKeyLength + 1];
+			GraftKey(1).CopyTo(longKey.AsSpan(0, 16));
+			Assert.That(
+				() => engine.Import(One(longKey, value), GraftKey(0).AsSlice(), GraftKey(2).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
+				Throws.ArgumentException.With.Property("ParamName").EqualTo("run").And.Message.Contains("maximum key length")
+			);
+
+			// an OVERSIZE value: the out-of-line extent path is not wired into the graft renderer
+			int maxInline = FdbLiteGeometry.Default.MaxInlineValueLength;
+			Assert.That(
+				() => engine.Import(One(GraftKey(1), new byte[maxInline + 1].AsSlice()), GraftKey(0).AsSlice(), GraftKey(2).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
+				Throws.ArgumentException.With.Property("ParamName").EqualTo("run").And.Message.Contains("maximum inline value length")
+			);
+
+			// a key OUTSIDE the range: the graft clears [begin, end), so a key beyond it would be applied by one path and not the other
+			Assert.That(
+				() => engine.Import(One(GraftKey(9), value), GraftKey(0).AsSlice(), GraftKey(2).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
+				Throws.ArgumentException.With.Property("ParamName").EqualTo("run").And.Message.Contains("outside the imported range")
+			);
+
+			// an UNSORTED run (here a duplicate, which is the strictness half of the rule): an unsorted merge renders a silently mis-ordered tree
+			List<KeyValuePair<Slice, Slice>> descending = [ new(GraftKey(1).AsSlice(), value), new(GraftKey(0).AsSlice(), value) ];
+			Assert.That(
+				() => engine.Import(descending, GraftKey(0).AsSlice(), GraftKey(2).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
+				Throws.ArgumentException.With.Property("ParamName").EqualTo("run").And.Message.Contains("strictly ascending key order")
+			);
+			List<KeyValuePair<Slice, Slice>> duplicate = [ new(GraftKey(1).AsSlice(), value), new(GraftKey(1).AsSlice(), value) ];
+			Assert.That(
+				() => engine.Import(duplicate, GraftKey(0).AsSlice(), GraftKey(2).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
+				Throws.ArgumentException.With.Property("ParamName").EqualTo("run").And.Message.Contains("strictly ascending key order")
+			);
+
+			// nothing above reached a write: the seed is still the durable generation, intact
+			Assert.That(engine.Durable.DatabaseVersion, Is.EqualTo(1UL), "a rejected import must not commit a generation");
+			Assert.That(ReadAllKeys(engine).Count, Is.EqualTo(10), "a rejected import must leave the store untouched");
 		}
 
 		[Test]
