@@ -181,17 +181,20 @@ namespace FoundationDB.Storage.FdbLite
 				int pages = RenderRun(all.AsSpan(0, total), fillCeiling, reusePageId: 0, sourcePage: page, volatility, output);
 
 				// RENTED, not a List: a graft emits hundreds of pages, and the ascent only needs the separators
-				// for the length of one call. The separator arrays themselves are unavoidable - a separator handed
-				// to a parent outlives the page image it was read from.
-				var siblings = ArrayPool<(byte[] Separator, uint PageId)>.Shared.Rent(pages - 1);
+				// for the length of one call. The separator BYTES are rented too, as ONE buffer the Slices point
+				// into, so a run of hundreds costs one array instead of one per page; `separators` owns that buffer
+				// and must outlive every read of them, which means the whole ascent.
+				var siblings = ArrayPool<(Slice Separator, uint PageId)>.Shared.Rent(pages - 1);
+				var separators = default(SliceOwner);
 				try
 				{
-					GraftedSiblings(page, all.AsSpan(0, total), output.AsSpan(0, pages), siblings);
+					separators = GraftedSiblings(page, all.AsSpan(0, total), output.AsSpan(0, pages), siblings);
 					AscendPatch(pathPages, pathChildren, depth - 1, leafId, output[0].PageId, siblings.AsSpan(0, pages - 1));
 				}
 				finally
-				{ // cleared: the separator arrays must not stay pinned by a pooled array
-					ArrayPool<(byte[] Separator, uint PageId)>.Shared.Return(siblings, clearArray: true);
+				{ // cleared: a Slice holds a byte[] reference, and a pooled array must not pin the separator buffer
+					separators.Dispose();
+					ArrayPool<(Slice Separator, uint PageId)>.Shared.Return(siblings, clearArray: true);
 				}
 
 				// Nothing else retires the boundary leaf: on the rebuild path WritePage frees the old page as it
@@ -214,13 +217,45 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Materialises a graft's separators into <paramref name="siblings"/>: the first cell of each page after the first IS that page's separator.</summary>
-		/// <remarks>Materialised rather than read in place, because a separator handed to a parent outlives the page image it came from. <see cref="WholeKeyOf"/> is what puts the source page's stripped prefix back: a cell gathered from the boundary leaf holds only its suffix, and a partial separator would mis-sort the tree instead of failing loudly.</remarks>
-		private static void GraftedSiblings(ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, ReadOnlySpan<FdbLiteGraftedPage> pages, Span<(byte[] Separator, uint PageId)> siblings)
+		/// <remarks>
+		/// <para>Materialised rather than read in place, because a separator handed to a parent outlives the page image it came from.
+		/// They all land in ONE pooled buffer, each <see cref="Slice"/> pointing at its own region, so a run of hundreds of pages costs
+		/// one rental instead of one array per page. The returned owner holds that buffer: the caller must keep it alive until the
+		/// ascent has copied every separator into its parent page, and dispose it in a <c>finally</c>.</para>
+		/// <para>The prefix rule is <see cref="WholeKeyOf(in CellRef, ReadOnlySpan{byte})"/>'s, and is what puts the source page's
+		/// stripped prefix back: a cell gathered from the boundary leaf holds only its suffix, and a partial separator would
+		/// mis-sort the tree instead of failing loudly. A cell that carries its own buffer was built whole and takes no prefix.</para>
+		/// </remarks>
+		private static SliceOwner GraftedSiblings(ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, ReadOnlySpan<FdbLiteGraftedPage> pages, Span<(Slice Separator, uint PageId)> siblings)
 		{
+			var prefix = FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false);
+
+			int total = 0;
 			for (int i = 1; i < pages.Length; i++)
 			{
-				siblings[i - 1] = (WholeKeyOf(cells[pages[i].RunIndex], sourcePage), pages[i].PageId);
+				ref readonly var cell = ref cells[pages[i].RunIndex];
+				total += cell.ResolveKey(sourcePage).Length + (cell.Buffer is null ? prefix.Length : 0);
 			}
+
+			var buffer = ArrayPool<byte>.Shared.Rent(total);
+			int pos = 0;
+			for (int i = 1; i < pages.Length; i++)
+			{
+				ref readonly var cell = ref cells[pages[i].RunIndex];
+				int start = pos;
+				if (cell.Buffer is null && prefix.Length > 0)
+				{
+					prefix.CopyTo(buffer.AsSpan(pos));
+					pos += prefix.Length;
+				}
+				var stored = cell.ResolveKey(sourcePage);
+				stored.CopyTo(buffer.AsSpan(pos));
+				pos += stored.Length;
+				siblings[i - 1] = (buffer.AsSlice(start, pos - start), pages[i].PageId);
+			}
+			Contract.Debug.Assert(pos == total);
+
+			return SliceOwner.Create(buffer.AsSlice(0, pos), ArrayPool<byte>.Shared);
 		}
 
 	}

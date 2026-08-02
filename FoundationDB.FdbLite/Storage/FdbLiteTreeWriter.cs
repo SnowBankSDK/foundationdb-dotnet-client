@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -280,7 +280,7 @@ namespace FoundationDB.Storage.FdbLite
 			&& (this.CursorUpperLength < 0 || key.SequenceCompareTo(this.CursorUpper) < 0);
 
 		/// <summary>Outcome of rebuilding one page: the page (possibly relocated), plus right siblings when it split</summary>
-		private readonly record struct RebuildResult(uint FirstId, List<(byte[] Separator, uint PageId)>? Siblings)
+		private readonly record struct RebuildResult(uint FirstId, List<(Slice Separator, uint PageId)>? Siblings)
 		{
 			public bool Split => this.Siblings != null;
 		}
@@ -497,12 +497,12 @@ namespace FoundationDB.Storage.FdbLite
 			=> AscendPatch(pathPages, pathChildren, fromLevel, originalChildId, outcome.FirstId, AsSiblingSpan(outcome));
 
 		/// <summary>The siblings of a rebuild outcome as a span, without copying: an empty span IS "did not split", which is the only distinction the ascent makes.</summary>
-		private static ReadOnlySpan<(byte[] Separator, uint PageId)> AsSiblingSpan(RebuildResult outcome)
+		private static ReadOnlySpan<(Slice Separator, uint PageId)> AsSiblingSpan(RebuildResult outcome)
 			=> outcome.Siblings is { } siblings ? CollectionsMarshal.AsSpan(siblings) : default;
 
 		/// <summary>Ascends from <paramref name="fromLevel"/> over a caller-owned sibling span, for a producer that has no <see cref="RebuildResult"/> to hand over.</summary>
 		/// <remarks>A GRAFT emits its pages straight into a rented array rather than a <see cref="List{T}"/>, which is the only reason this form exists; the split path reaches it through the overload above and behaves identically (an empty span and a null <see cref="RebuildResult.Siblings"/> are the same thing here).</remarks>
-		private void AscendPatch(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int fromLevel, uint originalChildId, uint firstId, ReadOnlySpan<(byte[] Separator, uint PageId)> siblings)
+		private void AscendPatch(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int fromLevel, uint originalChildId, uint firstId, ReadOnlySpan<(Slice Separator, uint PageId)> siblings)
 		{
 			for (int level = fromLevel; level >= 0; level--)
 			{
@@ -1101,7 +1101,7 @@ namespace FoundationDB.Storage.FdbLite
 				this.PagesAppended++;
 				var fresh = WriteCells(0, isInternal: false, leftmostChild: 0, default, [ newCell ]);
 				Contract.Debug.Assert(!fresh.Split);
-				return new(leafId, [ (key.ToArray(), fresh.FirstId) ]);
+				return new(leafId, [ (Slice.FromBytes(key), fresh.FirstId) ]);
 			}
 
 			if (replace)
@@ -1261,7 +1261,7 @@ namespace FoundationDB.Storage.FdbLite
 			=> RebuildInternal(pageId, childIndex, child.FirstId, AsSiblingSpan(child));
 
 		/// <inheritdoc cref="RebuildInternal(uint,int,RebuildResult)"/>
-		private RebuildResult RebuildInternal(uint pageId, int childIndex, uint childFirstId, ReadOnlySpan<(byte[] Separator, uint PageId)> childSiblings)
+		private RebuildResult RebuildInternal(uint pageId, int childIndex, uint childFirstId, ReadOnlySpan<(Slice Separator, uint PageId)> childSiblings)
 		{
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
@@ -1303,8 +1303,8 @@ namespace FoundationDB.Storage.FdbLite
 						for (int s = 0; s < inserted; s++)
 						{
 							var (separator, siblingId) = childSiblings[s];
-							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
-							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator).Length;
+							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Count);
+							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator.Span).Length;
 							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
 						}
 					}
@@ -1329,7 +1329,7 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Builds one new root level over a split result (loops in the caller if the new level itself splits).</summary>
-		private RebuildResult BuildRootLevel(uint firstId, ReadOnlySpan<(byte[] Separator, uint PageId)> siblings)
+		private RebuildResult BuildRootLevel(uint firstId, ReadOnlySpan<(Slice Separator, uint PageId)> siblings)
 		{
 			var scratches = new byte[siblings.Length][];
 			try
@@ -1338,8 +1338,8 @@ namespace FoundationDB.Storage.FdbLite
 				for (int i = 0; i < siblings.Length; i++)
 				{
 					var (separator, id) = siblings[i];
-					scratches[i] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
-					int len = FdbLiteTreePage.BuildInternalCell(scratches[i], id, separator).Length;
+					scratches[i] = ArrayPool<byte>.Shared.Rent(6 + separator.Count);
+					int len = FdbLiteTreePage.BuildInternalCell(scratches[i], id, separator.Span).Length;
 					cells[i] = CellRef.OfInternalBuffer(scratches[i], len);
 				}
 				return WriteCells(0, isInternal: true, leftmostChild: firstId, default, cells);
@@ -1448,7 +1448,7 @@ namespace FoundationDB.Storage.FdbLite
 				}
 
 				var image = scratch.AsSpan(0, pageSize);
-				List<(byte[] Separator, uint PageId)>? siblings = null;
+				List<(Slice Separator, uint PageId)>? siblings = null;
 				uint firstId = 0;
 
 				// balanced K-way split: cutting at the LARGEST prefix that fits would leave near-empty right
@@ -1577,7 +1577,7 @@ namespace FoundationDB.Storage.FdbLite
 					}
 					else
 					{
-						(siblings ??= [ ]).Add((partSeparator, id));
+						(siblings ??= [ ]).Add((partSeparator.AsSlice(), id));
 					}
 
 					if (nextStart >= cells.Length && nextSeparator == null)
@@ -1600,7 +1600,10 @@ namespace FoundationDB.Storage.FdbLite
 						FdbLiteTreePage.SetLeftmostChild(image, partLeftmost);
 						AppendCells(image, isInternal, sourcePage, cells, 0, 0);
 						uint tailId = WritePage(0, image);
-						(siblings ??= [ ]).Add((partSeparator!, tailId));
+						// wrapped, not copied: a split emits one or two separators, so the per-separator array it
+						// already allocated is not worth pooling away (the GRAFT path, which emits hundreds, packs
+						// them into one rented buffer instead - see GraftedSiblings)
+						(siblings ??= [ ]).Add((partSeparator!.AsSlice(), tailId));
 						break;
 					}
 				}
@@ -2179,8 +2182,8 @@ namespace FoundationDB.Storage.FdbLite
 						for (int s = 0; s < inserted; s++)
 						{
 							var (separator, siblingId) = merged.Siblings![s];
-							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
-							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator).Length;
+							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Count);
+							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator.Span).Length;
 							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
 						}
 					}
@@ -2590,8 +2593,8 @@ namespace FoundationDB.Storage.FdbLite
 						for (int s = 0; s < inserted; s++)
 						{
 							var (separator, siblingId) = left.Siblings![s];
-							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
-							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator).Length;
+							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Count);
+							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator.Span).Length;
 							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
 						}
 						cells[w++] = CellRef.OfInternalBuffer(joinScratch, joinLen);
