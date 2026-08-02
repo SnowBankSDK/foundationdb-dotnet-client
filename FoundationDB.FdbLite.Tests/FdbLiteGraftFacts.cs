@@ -397,7 +397,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 				if (useImport)
 				{
-					int applied = engine.Import(BuildImportRun(1000, 2000), GraftKey(1000).AsSlice(), GraftKey(3001).AsSlice(), FdbLiteImportOptions.Default);
+					int applied = engine.Import(BuildImportRun(1000, 2000), GraftKey(1000).AsSlice(), GraftKey(3001).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2);
 					Assert.That(applied, Is.EqualTo(2000), "every pair of the run must be applied");
 				}
 				else
@@ -444,7 +444,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(LeafEpisodes(engine), Is.EqualTo(new List<byte> { 2 }), "the boundary leaf must carry a non-zero count, or this test cannot tell inheritance from a correct stamp");
 
 			// declared Occasional == 1, deliberately different from the boundary leaf's 2 AND from 0
-			int applied = engine.Import(BuildImportRun(1000, 2000), GraftKey(1000).AsSlice(), GraftKey(3001).AsSlice(), FdbLiteImportOptions.Default with { Volatility = FdbLiteVolatilityClass.Occasional });
+			int applied = engine.Import(BuildImportRun(1000, 2000), GraftKey(1000).AsSlice(), GraftKey(3001).AsSlice(), FdbLiteImportOptions.Default with { Volatility = FdbLiteVolatilityClass.Occasional }, databaseVersion: 4);
 
 			var after = LeafEpisodes(engine);
 			Log($"declared=Occasional applied={applied} leafEpisodes=[{string.Join(",", after)}]");
@@ -472,7 +472,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			engine.Commit(seed, 1);
 
 			// the run supplies 0..198 and the range covers 0..199, so key 199 is the lone survivor
-			int applied = engine.Import(BuildImportRun(0, 199), GraftKey(0).AsSlice(), GraftKey(200).AsSlice(), FdbLiteImportOptions.Default);
+			int applied = engine.Import(BuildImportRun(0, 199), GraftKey(0).AsSlice(), GraftKey(200).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2);
 			Assert.That(applied, Is.EqualTo(199));
 
 			AssertStructurallySound(engine);
@@ -491,7 +491,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
 			int pageSize = engine.Pager.Geometry.PageSize;
 
-			int applied = engine.Import(BuildImportRun(0, 2000), GraftKey(0).AsSlice(), GraftKey(2000).AsSlice(), FdbLiteImportOptions.Default);
+			int applied = engine.Import(BuildImportRun(0, 2000), GraftKey(0).AsSlice(), GraftKey(2000).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 1);
 
 			var stats = engine.MeasureTreeStatistics();
 			int fillPct = (int) (100.0 * stats.LeafLiveBytes / ((long) stats.LeafPages * pageSize));
@@ -505,6 +505,127 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(engine.Durable.KeyCount, Is.EqualTo(2000UL));
 			Assert.That(stats.LeafPages, Is.GreaterThan(1), "the run must span several pages or the packing claim proves nothing");
 			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "a run owning a whole empty store must pack near full");
+		}
+
+		/// <summary>The same run, with every value byte set to <paramref name="fill"/>, so a replaced value is distinguishable from the one it replaced.</summary>
+		private static List<KeyValuePair<Slice, Slice>> BuildImportRun(int first, int count, byte fill)
+		{
+			var value = new byte[GRAFT_VALUE];
+			value.AsSpan().Fill(fill);
+			var run = new List<KeyValuePair<Slice, Slice>>(count);
+			for (int i = 0; i < count; i++) { run.Add(new(GraftKey(first + i).AsSlice(), value.AsSlice())); }
+			return run;
+		}
+
+		/// <summary>Reads every key back with the first byte of its value, which is the marker the import runs stamp.</summary>
+		private static List<(long Key, byte Fill)> ReadAllPairs(FdbLiteEngine engine)
+		{
+			var pairs = new List<(long, byte)>();
+			var cursor = new FdbLiteTreeCursor(engine.Pager, engine.Durable.RootPageId);
+			if (cursor.SeekCeiling([]))
+			{
+				do
+				{
+					var value = cursor.CurrentValue;
+					pairs.Add((System.Buffers.Binary.BinaryPrimitives.ReadInt64BigEndian(cursor.CurrentKey[8..]), value.Length == GRAFT_VALUE ? value[0] : (byte) 0xFF));
+				}
+				while (cursor.MoveNext());
+			}
+			return pairs;
+		}
+
+		/// <summary>The re-restore case: the imported range is ALREADY populated, so the graft's clear removes exactly what the run puts back.</summary>
+		/// <remarks>The untested intersection of the two riskiest paths - <c>RemoveRange</c> deleting N keys and the renderer writing n back
+		/// into the hole - and the shape a second restore of the same range actually has.</remarks>
+		[Test]
+		public void Test_Import_Over_A_Populated_Range_Replaces_Every_Key()
+		{
+			using var engine = SeedGappedTree(100);
+			int pageSize = engine.Pager.Geometry.PageSize;
+
+			// fill the gap first: 1000..2999 exist, with the 0xA5 marker, before the import touches them
+			var seeded = new byte[GRAFT_VALUE];
+			seeded.AsSpan().Fill(0xA5);
+			var fill = engine.BeginWrite();
+			for (int i = 0; i < 2000; i++) { fill.Insert(GraftKey(1000 + i), seeded); }
+			engine.Commit(fill, 2);
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo(2200UL), "100 below + 2000 in the range + 100 above");
+
+			// every key of [1000, 3000) is supplied, so the gate stays on the graft path and the clear drops all 2000
+			int applied = engine.Import(BuildImportRun(1000, 2000, 0x5C), GraftKey(1000).AsSlice(), GraftKey(3000).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 3);
+
+			var stats = engine.MeasureTreeStatistics();
+			int fillPct = (int) (100.0 * stats.LeafLiveBytes / ((long) stats.LeafPages * pageSize));
+			Log($"re-import: applied={applied} keys={engine.Durable.KeyCount} leaves={stats.LeafPages} fill={fillPct}%");
+
+			AssertStructurallySound(engine);
+			var pairs = ReadAllPairs(engine);
+			Assert.That(applied, Is.EqualTo(2000));
+			Assert.That(pairs.Count, Is.EqualTo(2200), "replacing 2000 keys with 2000 keys must not change the population");
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo(2200UL), "the clear and the render must balance in the key count too");
+			Assert.That(pairs.Select(p => p.Key), Is.Ordered);
+			// a graft that cleared but re-rendered stale cells would read back 0xA5 here
+			Assert.That(pairs.Where(p => p.Key is >= 1000 and < 3000).Select(p => p.Fill), Is.All.EqualTo((byte) 0x5C), "every key of the imported range must carry the NEW value");
+			Assert.That(pairs.Where(p => p.Key is < 1000 or >= 3000).Select(p => p.Fill), Is.All.EqualTo((byte) 0x00), "a key outside the range must keep the value the seed gave it");
+			Assert.That(stats.LeafPages, Is.GreaterThan(1), "the run must span several pages or the packing claim proves nothing");
+			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "re-importing over a populated range must pack as well as importing into a gap");
+		}
+
+		/// <summary>The imported range covers the WHOLE tree: the clear drops the root, and the graft re-enters the empty-store branch from inside <c>ImportRun</c>.</summary>
+		[Test]
+		public void Test_Import_Over_The_Whole_Tree_Rebuilds_It_From_Empty()
+		{
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			int pageSize = engine.Pager.Geometry.PageSize;
+
+			var seeded = new byte[GRAFT_VALUE];
+			seeded.AsSpan().Fill(0xA5);
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < 2000; i++) { seed.Insert(GraftKey(i), seeded); }
+			engine.Commit(seed, 1);
+			Assert.That(engine.MeasureTreeStatistics().InternalPages, Is.GreaterThan(0), "the seed must be a multi-level tree or the root-drop proves nothing");
+
+			// [0, 2000) is the entire tree: nothing survives the clear, so the renderer starts from Root == 0
+			int applied = engine.Import(BuildImportRun(0, 2000, 0x5C), GraftKey(0).AsSlice(), GraftKey(2000).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2);
+
+			var stats = engine.MeasureTreeStatistics();
+			int fillPct = (int) (100.0 * stats.LeafLiveBytes / ((long) stats.LeafPages * pageSize));
+			Log($"whole tree: applied={applied} keys={engine.Durable.KeyCount} leaves={stats.LeafPages} fill={fillPct}%");
+
+			AssertStructurallySound(engine);
+			var pairs = ReadAllPairs(engine);
+			Assert.That(applied, Is.EqualTo(2000));
+			Assert.That(pairs.Count, Is.EqualTo(2000));
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo(2000UL));
+			Assert.That(pairs.Select(p => p.Key), Is.Ordered);
+			Assert.That(pairs.Select(p => p.Fill), Is.All.EqualTo((byte) 0x5C), "every key must carry the NEW value");
+			Assert.That(stats.LeafPages, Is.GreaterThan(1), "the run must span several pages or the packing claim proves nothing");
+			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "rebuilding the whole tree must pack near full");
+		}
+
+		/// <summary>An oversize KEY is rejected up front, as <see cref="FdbLiteTreeWriter.Insert"/> already does: without the guard the graft
+		/// renderer accepts a cell no page can hold, and its part-sizing loop stops making progress.</summary>
+		[Test]
+		public void Test_Import_Rejects_A_Key_Too_Long_For_A_Page()
+		{
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+
+			// seeded OUTSIDE the imported range, so the import takes the graft path (a run into an empty store is
+			// routed through Insert, whose own guard would mask this one)
+			var seed = engine.BeginWrite();
+			for (int i = 100; i < 110; i++) { seed.Insert(GraftKey(i), new byte[16]); }
+			engine.Commit(seed, 1);
+
+			// a key that starts like GraftKey(1) and is one byte over the ceiling: still inside [0, 2) by ordering
+			var key = new byte[FdbLiteTreePage.MaxKeyLength + 1];
+			GraftKey(1).CopyTo(key.AsSpan(0, 16));
+			var run = new List<KeyValuePair<Slice, Slice>> { new(key.AsSlice(), new byte[16].AsSlice()) };
+
+			Assert.That(
+				() => engine.Import(run, GraftKey(0).AsSlice(), GraftKey(2).AsSlice(), FdbLiteImportOptions.Default, databaseVersion: 2),
+				Throws.Exception,
+				"a key longer than FdbLiteTreePage.MaxKeyLength must be refused by contract, not handed to the renderer"
+			);
 		}
 
 		[Test]
