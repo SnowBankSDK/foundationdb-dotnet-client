@@ -250,8 +250,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(engine.Durable.KeyCount, Is.EqualTo(2200UL), "KeyCountDelta must book exactly the run's new keys, not the boundary leaf's carried-over ones");
 
 			// two pages are retired here: the rebuilt root is an ordinary copy-on-write (WritePage frees the old
-			// root as it copies it) plus the boundary leaf itself, which ONLY FreePage(originalChildId) in
-			// AscendPatchGrafted retires. Without it this figure is short by exactly one BlocksPerPage, and every
+			// root as it copies it) plus the boundary leaf itself, which ONLY the FreePage(leafId) at the tail of
+			// GraftIntoGap retires. Without it this figure is short by exactly one BlocksPerPage, and every
 			// other oracle here (structural audit, cursor readback) stays silent about the leak
 			Assert.That(engine.GetStats().PendingReclaimBlocks, Is.EqualTo(pendingReclaimBefore + (2 * engine.Pager.Geometry.BlocksPerPage)), "the boundary leaf's page must be retired, not leaked");
 

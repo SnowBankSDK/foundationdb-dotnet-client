@@ -28,7 +28,7 @@ namespace FoundationDB.Storage.FdbLite
 {
 
 	/// <summary>One leaf page rendered by a graft: the page, and where in the run its first cell (which IS its separator) lives.</summary>
-	/// <remarks>The separator is BORROWED from the run rather than copied out of it, which is the whole difference with the split path's <c>(byte[] Separator, uint PageId)</c> pairs: a graft emits hundreds of pages, so one array per page plus a growing list is exactly the cost the bulk path exists to avoid.</remarks>
+	/// <remarks>The renderer records an INDEX rather than a separator, so a run of hundreds of pages costs no array per page while it is being rendered; the separators are materialised once, at the end, only for the pages that need one (see <c>GraftedSiblings</c>).</remarks>
 	internal readonly record struct FdbLiteGraftedPage(int RunIndex, uint PageId);
 
 	public sealed partial class FdbLiteTreeWriter
@@ -133,10 +133,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <para>The boundary page's cells join the run rather than being preserved beside it, which is what lets the two
 		/// ends come out packed instead of half empty: the head of the run tops up what was below the insertion point
 		/// and the tail is completed by what was above it. Everything between is written whole.</para>
-		/// <para>The ascent is done HERE rather than left to the caller, because the two things it reads - the merged
-		/// cell list and the boundary page - exist only inside this call: every emitted page's separator is read
-		/// straight out of them, and handing them back out would mean handing out a pooled array and a page image
-		/// whose lifetime the caller cannot see.</para>
+		/// <para>The ascent is done HERE rather than left to the caller, because the two things its separators are
+		/// materialised from - the merged cell list and the boundary page - exist only inside this call: handing
+		/// them back out would mean handing out a pooled array and a page image whose lifetime the caller cannot see.</para>
 		/// </remarks>
 		internal int GraftIntoGap(uint leafId, ReadOnlySpan<byte> begin, ReadOnlySpan<CellRef> run, int fillCeiling, FdbLiteGraftedPage[] output)
 		{
@@ -174,7 +173,25 @@ namespace FoundationDB.Storage.FdbLite
 				int total = below.Length + run.Length + above.Length;
 				int pages = RenderRun(all.AsSpan(0, total), fillCeiling, reusePageId: 0, sourcePage: page, output);
 
-				AscendPatchGrafted(pathPages, pathChildren, depth - 1, leafId, page, all.AsSpan(0, total), output.AsSpan(0, pages));
+				// RENTED, not a List: a graft emits hundreds of pages, and the ascent only needs the separators
+				// for the length of one call. The separator arrays themselves are unavoidable - a separator handed
+				// to a parent outlives the page image it was read from.
+				var siblings = ArrayPool<(byte[] Separator, uint PageId)>.Shared.Rent(pages - 1);
+				try
+				{
+					GraftedSiblings(page, all.AsSpan(0, total), output.AsSpan(0, pages), siblings);
+					AscendPatch(pathPages, pathChildren, depth - 1, leafId, output[0].PageId, siblings.AsSpan(0, pages - 1));
+				}
+				finally
+				{ // cleared: the separator arrays must not stay pinned by a pooled array
+					ArrayPool<(byte[] Separator, uint PageId)>.Shared.Return(siblings, clearArray: true);
+				}
+
+				// Nothing else retires the boundary leaf: on the rebuild path WritePage frees the old page as it
+				// copies it, and a graft deliberately never hands it one (the render reuses no page id). LAST,
+				// because FreePage recycles the page's buffer and every read of those bytes - the render, and the
+				// separators materialised above - had to happen first.
+				FreePage(leafId);
 
 				// the run owns its range, so every one of its cells is a key the tree did not hold; the boundary
 				// page's own cells were carried over, not re-added, so they are already counted
@@ -189,125 +206,13 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
-		/// <summary>Ascends from <paramref name="fromLevel"/>, splicing a graft's emitted pages in place of the boundary leaf; grows the root as needed.</summary>
-		/// <param name="originalChildId">The boundary leaf the graft replaced, retired here.</param>
-		/// <param name="sourcePage">The boundary leaf's page, which the buffer-less cells of <paramref name="cells"/> resolve against.</param>
-		/// <param name="cells">The merged cell list the pages were rendered from.</param>
-		/// <param name="pages">The emitted pages, in key order.</param>
-		/// <remarks>
-		/// The twin of <see cref="AscendPatch"/>, and it exists for one reason: a split hands its parent a
-		/// <c>(byte[] Separator, uint PageId)</c> per sibling, which a graft emitting hundreds of pages would pay
-		/// for hundreds of times. Here each page's separator is READ from <c>cells[page.RunIndex]</c> - the first
-		/// cell of that page IS its separator - so nothing is copied out of the run. Only the first level differs;
-		/// above it a rebuilt internal page splits like any other, so the ordinary ascent takes over.
-		/// </remarks>
-		internal void AscendPatchGrafted(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int fromLevel, uint originalChildId, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, ReadOnlySpan<FdbLiteGraftedPage> pages)
+		/// <summary>Materialises a graft's separators into <paramref name="siblings"/>: the first cell of each page after the first IS that page's separator.</summary>
+		/// <remarks>Materialised rather than read in place, because a separator handed to a parent outlives the page image it came from. <see cref="WholeKeyOf"/> is what puts the source page's stripped prefix back: a cell gathered from the boundary leaf holds only its suffix, and a partial separator would mis-sort the tree instead of failing loudly.</remarks>
+		private static void GraftedSiblings(ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, ReadOnlySpan<FdbLiteGraftedPage> pages, Span<(byte[] Separator, uint PageId)> siblings)
 		{
-			Contract.Requires(pages.Length > 0);
-
-			if (fromLevel < 0)
-			{ // the boundary leaf WAS the whole tree: the emitted pages become a new root level (which may itself split)
-				var grown = pages.Length == 1
-					? new RebuildResult(pages[0].PageId, null)
-					: new RebuildResult(pages[0].PageId, GraftedSiblings(sourcePage, cells, pages));
-				while (grown.Split)
-				{
-					grown = BuildRootLevel(grown);
-				}
-				this.Root = grown.FirstId;
-			}
-			else
-			{
-				var outcome = RebuildInternalGrafted(pathPages[fromLevel], pathChildren[fromLevel], sourcePage, cells, pages);
-				AscendPatch(pathPages, pathChildren, fromLevel - 1, pathPages[fromLevel], outcome);
-			}
-
-			// Nothing else retires the boundary leaf: on the rebuild path WritePage frees the old page as it copies
-			// it, and a graft deliberately never hands it one (see GraftIntoGap). LAST, because FreePage recycles
-			// the page's buffer and the separators above were still being read out of it.
-			FreePage(originalChildId);
-		}
-
-		/// <summary>Materialises a graft's separators as owned arrays, for the one path that cannot read them in place: growing a new root level.</summary>
-		private static List<(byte[] Separator, uint PageId)> GraftedSiblings(ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, ReadOnlySpan<FdbLiteGraftedPage> pages)
-		{
-			var siblings = new List<(byte[], uint)>(pages.Length - 1);
 			for (int i = 1; i < pages.Length; i++)
 			{
-				siblings.Add((WholeKeyOf(cells[pages[i].RunIndex], sourcePage), pages[i].PageId));
-			}
-			return siblings;
-		}
-
-		/// <summary>Rebuilds the graft's parent: the descended child pointer becomes the first emitted page, and each further page inserts one separator cell after it.</summary>
-		/// <remarks>The body mirrors <see cref="RebuildInternal"/> cell for cell; the ONE difference is where a sibling's separator comes from - <c>cells[page.RunIndex]</c> read in place, instead of a <c>byte[]</c> the splitter copied out.</remarks>
-		private RebuildResult RebuildInternalGrafted(uint pageId, int childIndex, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> runCells, ReadOnlySpan<FdbLiteGraftedPage> pages)
-		{
-			var page = ReadPage(pageId);
-			int cellCount = FdbLitePageHeader.GetCellCount(page);
-			int inserted = pages.Length - 1;
-
-			byte[]? patchScratch = null;
-			var siblingScratch = inserted == 0 ? [ ] : new byte[inserted][];
-			var keyScratch = ArrayPool<byte>.Shared.Rent(FdbLiteTreePage.MaxKeyLength);
-			int cellTotal = cellCount + inserted;
-			var cells = ArrayPool<CellRef>.Shared.Rent(cellTotal);
-			try
-			{
-				// a cell gathered from the boundary leaf holds only its suffix, and a separator handed to a PARENT
-				// must be the whole key or the tree mis-sorts instead of failing loudly
-				var sourcePrefix = sourcePage.Length > 0 && FdbLitePageHeader.GetCellCount(sourcePage) > 0
-					? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false)
-					: default;
-
-				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
-
-				var patchedCell = default(CellRef);
-				if (childIndex == 0)
-				{
-					leftmost = pages[0].PageId;
-				}
-				else
-				{
-					var original = FdbLiteTreePage.GetInternalCell(page, childIndex - 1);
-					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
-					original.CopyTo(patchScratch);
-					FdbLiteTreePage.PatchInternalCellChild(patchScratch, pages[0].PageId);
-					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
-				}
-
-				int w = 0;
-				for (int i = 0; i <= cellCount; i++)
-				{
-					if (i == childIndex)
-					{ // the grafted pages slot in right after the descended child
-						for (int s = 0; s < inserted; s++)
-						{
-							var grafted = pages[s + 1];
-							var separator = MaterializeKey(runCells[grafted.RunIndex], sourcePage, sourcePrefix, keyScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
-							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
-							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], grafted.PageId, separator).Length;
-							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
-						}
-					}
-					if (i < cellCount)
-					{
-						cells[w++] = (i == childIndex - 1) ? patchedCell : CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
-					}
-				}
-				Contract.Debug.Assert(w == cellTotal);
-
-				return WriteCells(pageId, isInternal: true, leftmost, page, cells.AsSpan(0, cellTotal));
-			}
-			finally
-			{
-				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
-				ArrayPool<byte>.Shared.Return(keyScratch);
-				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
-				foreach (var s in siblingScratch)
-				{
-					if (s != null) { ArrayPool<byte>.Shared.Return(s); }
-				}
+				siblings[i - 1] = (WholeKeyOf(cells[pages[i].RunIndex], sourcePage), pages[i].PageId);
 			}
 		}
 

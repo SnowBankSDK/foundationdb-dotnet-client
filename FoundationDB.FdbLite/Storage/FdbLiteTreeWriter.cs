@@ -26,6 +26,7 @@
 
 namespace FoundationDB.Storage.FdbLite
 {
+	using System.Runtime.InteropServices;
 
 	/// <summary>Builds the writable copy-on-write generation of a tree: inserts and updates, page splits, shadow-set page reuse.</summary>
 	/// <remarks>
@@ -493,10 +494,19 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Ascends from <paramref name="fromLevel"/>, patching each parent's child pointer and inserting separators for split siblings; grows the root as needed.</summary>
 		private void AscendPatch(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int fromLevel, uint originalChildId, RebuildResult outcome)
+			=> AscendPatch(pathPages, pathChildren, fromLevel, originalChildId, outcome.FirstId, AsSiblingSpan(outcome));
+
+		/// <summary>The siblings of a rebuild outcome as a span, without copying: an empty span IS "did not split", which is the only distinction the ascent makes.</summary>
+		private static ReadOnlySpan<(byte[] Separator, uint PageId)> AsSiblingSpan(RebuildResult outcome)
+			=> outcome.Siblings is { } siblings ? CollectionsMarshal.AsSpan(siblings) : default;
+
+		/// <summary>Ascends from <paramref name="fromLevel"/> over a caller-owned sibling span, for a producer that has no <see cref="RebuildResult"/> to hand over.</summary>
+		/// <remarks>A GRAFT emits its pages straight into a rented array rather than a <see cref="List{T}"/>, which is the only reason this form exists; the split path reaches it through the overload above and behaves identically (an empty span and a null <see cref="RebuildResult.Siblings"/> are the same thing here).</remarks>
+		private void AscendPatch(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int fromLevel, uint originalChildId, uint firstId, ReadOnlySpan<(byte[] Separator, uint PageId)> siblings)
 		{
 			for (int level = fromLevel; level >= 0; level--)
 			{
-				if (!outcome.Split && outcome.FirstId == originalChildId && this.Dirty.ContainsKey(pathPages[level]))
+				if (siblings.Length == 0 && firstId == originalChildId && this.Dirty.ContainsKey(pathPages[level]))
 				{ // the child was rebuilt in place and its parent is in the dirty set: every ancestor already
 				  // points at it and is itself dirty, so the aggregate stamp pass will re-sum the whole chain.
 				  // The dirty-parent condition is load-bearing: after a mid-generation flush a shadow page
@@ -505,15 +515,19 @@ namespace FoundationDB.Storage.FdbLite
 					return;
 				}
 				originalChildId = pathPages[level];
-				outcome = RebuildInternal(pathPages[level], pathChildren[level], outcome);
+				var rebuilt = RebuildInternal(pathPages[level], pathChildren[level], firstId, siblings);
+				firstId = rebuilt.FirstId;
+				siblings = AsSiblingSpan(rebuilt);
 			}
 
 			// the root may have been relocated, and may have split (possibly more than once)
-			while (outcome.Split)
+			while (siblings.Length > 0)
 			{
-				outcome = BuildRootLevel(outcome);
+				var grown = BuildRootLevel(firstId, siblings);
+				firstId = grown.FirstId;
+				siblings = AsSiblingSpan(grown);
 			}
-			this.Root = outcome.FirstId;
+			this.Root = firstId;
 		}
 
 		#region Deletion...
@@ -1244,10 +1258,14 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Rebuilds an internal page after a child rebuild: the descended child pointer becomes <paramref name="child"/>.FirstId, and each split sibling inserts one separator cell after it.</summary>
 		private RebuildResult RebuildInternal(uint pageId, int childIndex, RebuildResult child)
+			=> RebuildInternal(pageId, childIndex, child.FirstId, AsSiblingSpan(child));
+
+		/// <inheritdoc cref="RebuildInternal(uint,int,RebuildResult)"/>
+		private RebuildResult RebuildInternal(uint pageId, int childIndex, uint childFirstId, ReadOnlySpan<(byte[] Separator, uint PageId)> childSiblings)
 		{
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
-			int inserted = child.Siblings?.Count ?? 0;
+			int inserted = childSiblings.Length;
 
 			// scratch for the patched cell and each inserted separator cell
 			byte[]? patchScratch = null;
@@ -1266,14 +1284,14 @@ namespace FoundationDB.Storage.FdbLite
 				var patchedCell = default(CellRef);
 				if (childIndex == 0)
 				{
-					leftmost = child.FirstId;
+					leftmost = childFirstId;
 				}
 				else
 				{
 					var original = FdbLiteTreePage.GetInternalCell(page, childIndex - 1);
 					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
 					original.CopyTo(patchScratch);
-					FdbLiteTreePage.PatchInternalCellChild(patchScratch, child.FirstId);
+					FdbLiteTreePage.PatchInternalCellChild(patchScratch, childFirstId);
 					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
 				}
 
@@ -1284,7 +1302,7 @@ namespace FoundationDB.Storage.FdbLite
 					{ // the sibling separators slot in right after the descended child
 						for (int s = 0; s < inserted; s++)
 						{
-							var (separator, siblingId) = child.Siblings![s];
+							var (separator, siblingId) = childSiblings[s];
 							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
 							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator).Length;
 							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
@@ -1311,21 +1329,20 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Builds one new root level over a split result (loops in the caller if the new level itself splits).</summary>
-		private RebuildResult BuildRootLevel(RebuildResult split)
+		private RebuildResult BuildRootLevel(uint firstId, ReadOnlySpan<(byte[] Separator, uint PageId)> siblings)
 		{
-			var siblings = split.Siblings!;
-			var scratches = new byte[siblings.Count][];
+			var scratches = new byte[siblings.Length][];
 			try
 			{
-				var cells = new CellRef[siblings.Count];
-				for (int i = 0; i < siblings.Count; i++)
+				var cells = new CellRef[siblings.Length];
+				for (int i = 0; i < siblings.Length; i++)
 				{
 					var (separator, id) = siblings[i];
 					scratches[i] = ArrayPool<byte>.Shared.Rent(6 + separator.Length);
 					int len = FdbLiteTreePage.BuildInternalCell(scratches[i], id, separator).Length;
 					cells[i] = CellRef.OfInternalBuffer(scratches[i], len);
 				}
-				return WriteCells(0, isInternal: true, leftmostChild: split.FirstId, default, cells);
+				return WriteCells(0, isInternal: true, leftmostChild: firstId, default, cells);
 			}
 			finally
 			{
