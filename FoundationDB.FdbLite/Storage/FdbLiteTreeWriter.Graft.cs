@@ -58,29 +58,24 @@ namespace FoundationDB.Storage.FdbLite
 			int pageSize = this.Pager.Geometry.PageSize;
 			long ceiling = Math.Min(fillCeiling, pageSize);
 
-			var scratch = ArrayPool<byte>.Shared.Rent(FdbLiteTreePage.MaxKeyLength);
-			try
+			int pages = 0;
+			int start = 0;
+			while (start < cells.Length)
 			{
-				int pages = 0;
-				int start = 0;
-				while (start < cells.Length)
-				{
-					// no source page: a grafted cell carries its own buffer, so there is no page prefix to put back
-					int end = LeafPartEnd(cells, start, sourcePage: default, sourcePrefixLength: 0, ceiling, pageSize, scratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength), out _);
+				// no source page: a grafted cell carries its own buffer, so there is no page prefix to put back.
+				// LeafPartEnd's scratch is only for materializing a page-backed key against a non-empty source
+				// prefix; sourcePrefixLength is always 0 here, so MaterializeKey never touches it - `default` needs
+				// no rented buffer behind it.
+				int end = LeafPartEnd(cells, start, sourcePage: default, sourcePrefixLength: 0, ceiling, pageSize, default, out _);
 
-					uint reuse = pages == 0 ? reusePageId : 0;
-					var part = WriteCells(reuse, isInternal: false, leftmostChild: 0, default, cells[start..end]);
-					Contract.Ensures(!part.Split, "the boundary was chosen to fit one page, so WriteCells must not split it (a dropped sibling would silently orphan cells)");
+				uint reuse = pages == 0 ? reusePageId : 0;
+				var part = WriteCells(reuse, isInternal: false, leftmostChild: 0, default, cells[start..end]);
+				Contract.Ensures(!part.Split, "the boundary was chosen to fit one page, so WriteCells must not split it (a dropped sibling would silently orphan cells)");
 
-					output[pages++] = new(start, part.FirstId);
-					start = end;
-				}
-				return pages;
+				output[pages++] = new(start, part.FirstId);
+				start = end;
 			}
-			finally
-			{
-				ArrayPool<byte>.Shared.Return(scratch);
-			}
+			return pages;
 		}
 
 	}

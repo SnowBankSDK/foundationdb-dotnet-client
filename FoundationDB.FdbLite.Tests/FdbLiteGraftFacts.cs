@@ -58,8 +58,13 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			return key;
 		}
 
+		/// <summary>Pins the append-path packing guarantee the graft renderer must later match: sequential
+		/// <see cref="FdbLiteTreeWriter.Insert"/> packs every leaf but the last to at least 95% of the page.</summary>
+		/// <remarks>Drives cells through <c>Insert</c>/<c>Commit</c>, not <see cref="FdbLiteTreeWriter.RenderRun"/> -
+		/// the test assembly has no <c>InternalsVisibleTo</c> into <c>FoundationDB.FdbLite</c>, so it cannot call
+		/// internal members at all. This is a regression gate on the append path's own packing behaviour.</remarks>
 		[Test]
-		public void Test_RenderRun_Packs_Pages_To_The_Ceiling()
+		public void Test_Sequential_Insert_Packs_Leaves_To_The_Ceiling()
 		{
 			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
 			int pageSize = engine.Pager.Geometry.PageSize;
