@@ -216,6 +216,51 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Counts keys in <c>[begin, end)</c> that <paramref name="run"/> does NOT supply, stopping at <paramref name="stopAfter"/>.</summary>
+		/// <remarks>
+		/// <para>The graft's decision procedure, and deliberately a BUDGETED count rather than a full classification.
+		/// Zero survivors means the run owns the range outright and it can be cleared and grafted whole (situation C).
+		/// A handful means the run splits into that many gap-grafts plus one (situation D). Many means the run is
+		/// sparse and per-key insertion is the right path, and there is no reason to keep counting to learn that.</para>
+		/// <para>The walk is a merge of two ordered streams and IS the work rather than a detection pass paid before
+		/// it: whichever path is chosen has to visit these same keys.</para>
+		/// <para>Reads through <see cref="PagerView"/>, not <see cref="Pager"/> directly: the walk runs mid-transaction,
+		/// on the same writer that may already hold dirty pages from earlier in this generation (the pattern
+		/// <see cref="RemoveRange"/> already follows for the same reason), and a run's cells always carry their own
+		/// buffer (built by the caller, never gathered from a page), so <see cref="CellRef.ResolveKey"/> is called
+		/// with no source page.</para>
+		/// </remarks>
+		internal int CountSurvivors(ReadOnlySpan<byte> begin, ReadOnlySpan<byte> end, ReadOnlySpan<CellRef> run, int stopAfter)
+		{
+			Contract.Requires(stopAfter > 0);
+
+			int survivors = 0;
+			int r = 0;
+			var cursor = new FdbLiteTreeCursor(this.PagerView, this.Root);
+			if (!cursor.SeekCeiling(begin))
+			{
+				return 0;
+			}
+
+			do
+			{
+				var existing = cursor.CurrentKey;
+				if (existing.SequenceCompareTo(end) >= 0)
+				{
+					break;
+				}
+				// advance the run past every key below this one; if it lands ON it, the key is overwritten
+				while (r < run.Length && run[r].ResolveKey(default).SequenceCompareTo(existing) < 0) { r++; }
+				if (r >= run.Length || !run[r].ResolveKey(default).SequenceEqual(existing))
+				{
+					if (++survivors >= stopAfter) { return survivors; }
+				}
+			}
+			while (cursor.MoveNext());
+
+			return survivors;
+		}
+
 		/// <summary>Materialises a graft's separators into <paramref name="siblings"/>: the first cell of each page after the first IS that page's separator.</summary>
 		/// <remarks>
 		/// <para>Materialised rather than read in place, because a separator handed to a parent outlives the page image it came from.

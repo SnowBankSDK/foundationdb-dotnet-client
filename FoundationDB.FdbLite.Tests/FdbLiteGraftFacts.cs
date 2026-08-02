@@ -159,6 +159,42 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			return run;
 		}
 
+		/// <summary>A run over an arbitrary (non-contiguous) key list, for tests whose run itself has gaps.</summary>
+		private static FdbLiteTreeWriter.CellRef[] BuildRun(IReadOnlyList<byte[]> keys)
+		{
+			var run = new FdbLiteTreeWriter.CellRef[keys.Count];
+			for (int i = 0; i < keys.Count; i++)
+			{
+				var cell = new byte[keys[i].Length + GRAFT_VALUE];
+				keys[i].CopyTo(cell.AsSpan(0, keys[i].Length));
+				run[i] = FdbLiteTreeWriter.CellRef.OfLeafBuffer(cell, keys[i].Length, GRAFT_VALUE, 0);
+			}
+			return run;
+		}
+
+		/// <summary>Wraps a pager to count <see cref="ReadBlocks"/> calls, so an early-exit claim can be checked against
+		/// how many pages a walk actually touched instead of trusting the returned count alone.</summary>
+		private sealed class CountingPager(IFdbLitePager inner) : IFdbLitePager
+		{
+			public int ReadCalls;
+
+			public FdbLiteGeometry Geometry => inner.Geometry;
+			public uint BlockCount => inner.BlockCount;
+			public uint RegionSizeInBlocks => inner.RegionSizeInBlocks;
+
+			public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count)
+			{
+				this.ReadCalls++;
+				return inner.ReadBlocks(firstBlock, count);
+			}
+
+			public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data) => inner.WriteBlocks(firstBlock, data);
+			public void Flush() => inner.Flush();
+			public void Grow(uint minimumBlockCount) => inner.Grow(minimumBlockCount);
+			public void Truncate(uint newBlockCount) => inner.Truncate(newBlockCount);
+			public void Dispose() => inner.Dispose();
+		}
+
 		/// <summary>Grafts <paramref name="run"/> and returns the number of pages it emitted.</summary>
 		private static int Graft(FdbLiteTreeWriter writer, int pageSize, ReadOnlySpan<byte> begin, FdbLiteTreeWriter.CellRef[] run, FdbLiteVolatilityClass volatility = FdbLiteVolatilityClass.Stable)
 		{
@@ -341,6 +377,66 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(keys, Is.Ordered);
 			Assert.That(stats.InternalPages, Is.GreaterThan(0), "the tree must have grown a level");
 			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90));
+		}
+
+		[Test]
+		public void Test_CountSurvivors_Early_Exits_Once_The_Budget_Is_Reached()
+		{
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			var value = new byte[16];
+
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < 20; i++) { seed.Insert(GraftKey(i), value); }   // keys 0..19
+			engine.Commit(seed, 1);
+
+			var writer = engine.BeginWrite();
+
+			// a run supplying every even key in 0..19 leaves the 10 odd ones surviving
+			var evenKeys = new List<byte[]>();
+			for (int i = 0; i < 20; i += 2) { evenKeys.Add(GraftKey(i)); }
+			var evens = BuildRun(evenKeys);
+
+			int found = writer.CountSurvivors(GraftKey(0), GraftKey(20), evens, stopAfter: 3);
+			Assert.That(found, Is.EqualTo(3), "the walk stops as soon as the budget is reached");
+
+			// a run supplying EVERY key in the range leaves none: that is situation C, a clean overwrite
+			var allKeys = new List<byte[]>();
+			for (int i = 0; i < 20; i++) { allKeys.Add(GraftKey(i)); }
+			var all = BuildRun(allKeys);
+			Assert.That(writer.CountSurvivors(GraftKey(0), GraftKey(20), all, stopAfter: 3), Is.Zero);
+		}
+
+		/// <summary>The required test above only checks the RETURN VALUE, which a "count everything, then clamp
+		/// the result" implementation would also pass while defeating the entire point of the budget (it would
+		/// still walk every survivor). This test proves the walk itself stops: it counts pager reads through a
+		/// budget-of-3 call against a seed large enough to need many leaves, and requires that far fewer leaves
+		/// were touched than a full scan would need.</summary>
+		[Test]
+		public void Test_CountSurvivors_Early_Exit_Stops_The_Walk_Not_Just_The_Count()
+		{
+			var counting = new CountingPager(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			using var engine = FdbLiteEngine.Create(counting);
+			var value = new byte[8];
+
+			const int COUNT = 20_000;
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < COUNT; i++) { seed.Insert(GraftKey(i), value); }
+			engine.Commit(seed, 1);
+
+			var stats = engine.MeasureTreeStatistics();
+			Log($"seeded leaves={stats.LeafPages}");
+			Assert.That(stats.LeafPages, Is.GreaterThan(5), "the seed must span several leaves or a bounded read count proves nothing");
+
+			var writer = engine.BeginWrite();
+			counting.ReadCalls = 0; // only the walk under test counts from here
+
+			// an EMPTY run supplies nothing: every key in [0, COUNT) is a survivor, so a walk that did not stop
+			// at the budget would visit all COUNT keys, across every leaf
+			int found = writer.CountSurvivors(GraftKey(0), GraftKey(COUNT), [], stopAfter: 3);
+
+			Log($"readCalls={counting.ReadCalls} leaves={stats.LeafPages}");
+			Assert.That(found, Is.EqualTo(3));
+			Assert.That(counting.ReadCalls, Is.LessThan(stats.LeafPages), "an early exit that actually stopped the walk touches far fewer leaves than a full scan would (a full scan touches every leaf at least once)");
 		}
 
 	}
