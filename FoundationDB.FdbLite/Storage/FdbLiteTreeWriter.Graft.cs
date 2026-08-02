@@ -39,18 +39,24 @@ namespace FoundationDB.Storage.FdbLite
 		/// <param name="fillCeiling">Live bytes a page is packed to before the next one is started; clamped to the page size.</param>
 		/// <param name="reusePageId">Page whose id the FIRST output may take over, or 0 for all-new pages.</param>
 		/// <param name="sourcePage">Page the buffer-less cells were gathered from, or empty when every cell carries its own buffer.</param>
+		/// <param name="volatility">Declared future mutability of the rendered data, stamped on every emitted page as its episode count.</param>
 		/// <param name="output">Receives one entry per emitted page, in key order. Must hold at least <c>cells.Length</c> entries.</param>
 		/// <returns>Number of pages emitted, i.e. the number of <paramref name="output"/> entries written.</returns>
 		/// <remarks>
 		/// <para>The whole point of the bulk path: page boundaries are chosen with the ENTIRE run in hand, so every
 		/// page but the last comes out full. Feeding the same keys through <see cref="Insert"/> cannot do this, because
 		/// a split decides where to cut before the writer knows which keys still arrive.</para>
+		/// <para>Every emitted page takes the DECLARED volatility class as its episode count, and does NOT inherit
+		/// <paramref name="sourcePage"/>'s. These pages are fresh, not that page's life continuing, and the reset-on-repack
+		/// rule the counter is defined by exists precisely so a one-time bulk load cannot brand its leaves volatile
+		/// forever. <see cref="FdbLiteVolatilityClass"/>'s values are on the same scale as the counter, so the class
+		/// value IS the count.</para>
 		/// <para>Sizing deliberately goes through <see cref="LeafPartEnd"/>, the same boundary rule <see cref="WriteCells"/>
 		/// uses for its split parts, rather than a second rule of its own: this renderer hands each range to
 		/// <see cref="WriteCells"/> as ONE page, so a sizing that disagreed by a byte would make that call split again -
 		/// and the extra sibling would be dropped on the floor here. Agreement is what makes the postcondition below hold.</para>
 		/// </remarks>
-		internal int RenderRun(ReadOnlySpan<CellRef> cells, int fillCeiling, uint reusePageId, ReadOnlySpan<byte> sourcePage, FdbLiteGraftedPage[] output)
+		internal int RenderRun(ReadOnlySpan<CellRef> cells, int fillCeiling, uint reusePageId, ReadOnlySpan<byte> sourcePage, FdbLiteVolatilityClass volatility, FdbLiteGraftedPage[] output)
 		{
 			Contract.Requires(cells.Length > 0);
 			Contract.Requires(fillCeiling > 0);
@@ -76,7 +82,7 @@ namespace FoundationDB.Storage.FdbLite
 					int end = LeafPartEnd(cells, start, sourcePage, sourcePrefixLength, ceiling, pageSize, scratch.AsSpan(), out _);
 
 					uint reuse = pages == 0 ? reusePageId : 0;
-					var part = WriteCells(reuse, isInternal: false, leftmostChild: 0, sourcePage, cells[start..end]);
+					var part = WriteCells(reuse, isInternal: false, leftmostChild: 0, sourcePage, cells[start..end], declaredEpisodes: (int) volatility);
 					Contract.Ensures(!part.Split, "the boundary was chosen to fit one page, so WriteCells must not split it (a dropped sibling would silently orphan cells)");
 
 					output[pages++] = new(start, part.FirstId);
@@ -127,6 +133,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// <param name="begin">First key of the run, used to find the insertion point in <paramref name="leafId"/>.</param>
 		/// <param name="run">The run's cells, in strictly ascending key order.</param>
 		/// <param name="fillCeiling">Live bytes each output page is packed to.</param>
+		/// <param name="volatility">Declared future mutability of the run, stamped on every emitted page as its episode count (see <see cref="RenderRun"/>).</param>
 		/// <param name="output">Receives one entry per emitted page, in key order. Must hold at least <c>run.Length</c> plus the boundary leaf's cell count entries.</param>
 		/// <returns>Number of pages emitted.</returns>
 		/// <remarks>
@@ -137,7 +144,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// materialised from - the merged cell list and the boundary page - exist only inside this call: handing
 		/// them back out would mean handing out a pooled array and a page image whose lifetime the caller cannot see.</para>
 		/// </remarks>
-		internal int GraftIntoGap(uint leafId, ReadOnlySpan<byte> begin, ReadOnlySpan<CellRef> run, int fillCeiling, FdbLiteGraftedPage[] output)
+		internal int GraftIntoGap(uint leafId, ReadOnlySpan<byte> begin, ReadOnlySpan<CellRef> run, int fillCeiling, FdbLiteVolatilityClass volatility, FdbLiteGraftedPage[] output)
 		{
 			Contract.Requires(run.Length > 0);
 
@@ -171,7 +178,7 @@ namespace FoundationDB.Storage.FdbLite
 				above.CopyTo(all.AsSpan(below.Length + run.Length));
 
 				int total = below.Length + run.Length + above.Length;
-				int pages = RenderRun(all.AsSpan(0, total), fillCeiling, reusePageId: 0, sourcePage: page, output);
+				int pages = RenderRun(all.AsSpan(0, total), fillCeiling, reusePageId: 0, sourcePage: page, volatility, output);
 
 				// RENTED, not a List: a graft emits hundreds of pages, and the ascent only needs the separators
 				// for the length of one call. The separator arrays themselves are unavoidable - a separator handed

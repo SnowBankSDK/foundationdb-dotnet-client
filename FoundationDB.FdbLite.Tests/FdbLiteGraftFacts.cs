@@ -160,7 +160,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>Grafts <paramref name="run"/> and returns the number of pages it emitted.</summary>
-		private static int Graft(FdbLiteTreeWriter writer, int pageSize, ReadOnlySpan<byte> begin, FdbLiteTreeWriter.CellRef[] run)
+		private static int Graft(FdbLiteTreeWriter writer, int pageSize, ReadOnlySpan<byte> begin, FdbLiteTreeWriter.CellRef[] run, FdbLiteVolatilityClass volatility = FdbLiteVolatilityClass.Stable)
 		{
 			// the caller names the leaf the run falls in, which is what Task 6's driver will do too
 			Span<uint> pathPages = stackalloc uint[20];
@@ -170,7 +170,30 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			// one entry per emitted page, and the merged list is the run plus the boundary leaf's cells; a cell
 			// costs at least one byte, so the page size is a safe (if generous) bound on that second term
 			var output = new FdbLiteGraftedPage[run.Length + pageSize];
-			return writer.GraftIntoGap(leafId, begin, run, FdbLiteImportOptions.Default.FillCeiling(pageSize), output);
+			var options = FdbLiteImportOptions.Default with { Volatility = volatility };
+			return writer.GraftIntoGap(leafId, begin, run, options.FillCeiling(pageSize), volatility, output);
+		}
+
+		/// <summary>Volatility episode count of every leaf of the committed tree, in key order.</summary>
+		private static List<byte> LeafEpisodes(FdbLiteEngine engine)
+		{
+			var episodes = new List<byte>();
+			Walk(engine.Durable.RootPageId);
+			return episodes;
+
+			void Walk(uint pageId)
+			{
+				var page = engine.Pager.ReadBlocks(pageId, engine.Pager.Geometry.BlocksPerPage);
+				if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
+				{
+					episodes.Add(FdbLitePageHeader.GetVolatilityEpisodes(page));
+					return;
+				}
+				int children = FdbLiteTreePage.GetChildCount(page);
+				var ids = new uint[children];
+				for (int i = 0; i < children; i++) { ids[i] = FdbLiteTreePage.GetChild(page, i); }
+				foreach (var id in ids) { Walk(id); }
+			}
 		}
 
 		/// <summary>The cross-level structural oracle: separators, ordering and aggregates must all agree after a splice.</summary>
@@ -257,6 +280,42 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 			// the acceptance bar from the design: a run that owns its range packs like a sequential build
 			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "a run owning its range must pack near full");
+		}
+
+		/// <summary>A grafted page takes the DECLARED volatility class, and does not inherit the boundary leaf's own history.</summary>
+		[Test]
+		public void Test_GraftIntoGap_Stamps_The_Declared_Volatility_Class()
+		{
+			using var engine = SeedGappedTree(20);
+			int pageSize = engine.Pager.Geometry.PageSize;
+			var value = new byte[GRAFT_VALUE];
+
+			// Brand the boundary leaf: an INTERIOR insert books one episode, at most one per generation, so two
+			// generations give it a count of 2. Without this seeding the defect is invisible - a boundary leaf
+			// at 0 is indistinguishable from a correctly stamped Stable page.
+			var bump1 = engine.BeginWrite();
+			bump1.Insert(GraftKey(500), value);
+			engine.Commit(bump1, 2);
+			var bump2 = engine.BeginWrite();
+			bump2.Insert(GraftKey(600), value);
+			engine.Commit(bump2, 3);
+
+			Assert.That(LeafEpisodes(engine), Is.EqualTo(new List<byte> { 2 }), "the boundary leaf must carry a non-zero count, or this test cannot tell inheritance from a correct stamp");
+
+			// declared Occasional == 1, deliberately different from the boundary leaf's 2 AND from 0
+			var writer = engine.BeginWrite();
+			var run = BuildRun(1000, 2000);
+			int emitted = Graft(writer, pageSize, GraftKey(1000), run, FdbLiteVolatilityClass.Occasional);
+			engine.Commit(writer, 4);
+
+			var after = LeafEpisodes(engine);
+			Log($"declared=Occasional emitted={emitted} leafEpisodes=[{string.Join(",", after)}]");
+
+			AssertStructurallySound(engine);
+			Assert.That(after.Count, Is.GreaterThan(1), "the graft must have emitted several pages or this proves little");
+			// reading 2 here is the defect: every grafted page inheriting the boundary leaf's history, which would
+			// make a one-time bulk load brand its leaves volatile forever
+			Assert.That(after, Is.All.EqualTo((byte) FdbLiteVolatilityClass.Occasional), "every grafted page must carry the declared class, not the boundary leaf's episode count");
 		}
 
 		/// <summary>The boundary leaf IS the root: the graft's pages have no parent to splice into and must grow one.</summary>

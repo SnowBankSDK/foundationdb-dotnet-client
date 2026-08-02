@@ -1360,8 +1360,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <param name="sourcePage">The page from which the cells are being rebuilt</param>
 		/// <param name="cells">The list of cells to write</param>
 		/// <param name="maxLeafFillBytes">Fill ceiling per emitted LEAF page (0 = the page size): a consolidation merge aims each part at its volatility-adaptive target instead of packing to capacity, which is the hysteresis that keeps a merged run from re-splitting under the workload that produced it</param>
+		/// <param name="declaredEpisodes">Volatility episode count to stamp on the emitted LEAF pages, or -1 to carry <paramref name="sourcePage"/>'s own. An IMPORT knows the answer up front (<see cref="FdbLiteVolatilityClass"/>, whose values ARE episode counts) and says so; inheriting the boundary leaf's history instead would brand a fresh bulk-loaded page with the volatility of the page it happened to land next to.</param>
 		/// <param name="caller">Filled in by the compiler; carried only so the trace can name what created a page.</param>
-		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, int maxLeafFillBytes = 0, [System.Runtime.CompilerServices.CallerMemberName] string? caller = null)
+		private RebuildResult WriteCells(uint oldPageId, bool isInternal, uint leftmostChild, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<CellRef> cells, int maxLeafFillBytes = 0, int declaredEpisodes = -1, [System.Runtime.CompilerServices.CallerMemberName] string? caller = null)
 		{
 			var type = isInternal ? FdbLitePageType.Internal : FdbLitePageType.Leaf;
 			int pageSize = this.Pager.Geometry.PageSize;
@@ -1425,7 +1426,13 @@ namespace FoundationDB.Storage.FdbLite
 			// pages into buffers - restarts at zero. Reset-on-repack is part of the counter's definition:
 			// counted since birth, a one-time bulk load brands its leaves volatile forever and the
 			// write-once shape the count exists to identify could never be packed full again.
-			byte carriedEpisodes = !isInternal && sourcePage.Length > 0 ? FdbLitePageHeader.GetVolatilityEpisodes(sourcePage) : (byte) 0;
+			// A DECLARED class overrides the whole rule: a graft always passes a source page (its buffer-less cells
+			// resolve against it), so without this every fresh grafted page would inherit the boundary leaf's
+			// history and the caller's declared intent would be silently discarded.
+			byte carriedEpisodes =
+				declaredEpisodes >= 0 ? (byte) declaredEpisodes
+				: !isInternal && sourcePage.Length > 0 ? FdbLitePageHeader.GetVolatilityEpisodes(sourcePage)
+				: (byte) 0;
 
 			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
 			var partScratch = ArrayPool<byte>.Shared.Rent(FdbLiteTreePage.MaxKeyLength);
