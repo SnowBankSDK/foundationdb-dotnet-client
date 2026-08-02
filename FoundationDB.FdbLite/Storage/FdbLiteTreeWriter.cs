@@ -1047,6 +1047,20 @@ namespace FoundationDB.Storage.FdbLite
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			int insertAt = FdbLiteTreePage.FindLeafSlot(page, key, out bool replace);
 
+			// `rightmost` is load-bearing and is NOT safely generalisable to "append-shaped", which was tried
+			// and measured on 2026-08-02. The zero-volatility-episode count looks like the same statement
+			// (only an `interior` insert bumps it, see TrySpliceInto) but it is a statement about the PAST,
+			// whereas this branch is a bet about the FUTURE. At the tree's right edge the bet is guaranteed:
+			// no key can ever sort into this page again. Anywhere else it is a guess, and under scattered
+			// arrival it is usually wrong, because later keys DO land in the page that was packed full and
+			// split it anyway. Measured cost of the generalisation over 500k scattered keys: leaves 10,408 ->
+			// 10,458, page copies 21,898 -> 22,381, fill 76% -> 75%.
+			//
+			// It also bought nothing on sorted arrival, which is what it was written for. Sorting a commit's
+			// keys does not make its inserts append-shaped: 100,000 sorted keys spread over 10,408 leaves land
+			// BETWEEN keys already in each leaf, so they are interior inserts and neither this condition nor
+			// `insertAt == cellCount` holds. Append-shape needs fresh space, not ordered input, which is why
+			// only a load into an empty range reaches it.
 			if (this.AvoidSequentialAppendSplits
 			 && rightmost && !replace && insertAt == cellCount
 			 && !FdbLiteTreePage.LeafHasRoomFor(page, newCell.KeyLength, newCell.ValueLength))
