@@ -514,14 +514,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <param name="begin">Inclusive lower bound of the range the run targets.</param>
 		/// <param name="end">Exclusive upper bound of the range the run targets.</param>
 		/// <param name="options">Declared volatility, which selects the fill target; see <see cref="FdbLiteImportOptions"/>.</param>
+		/// <param name="databaseVersion">Version the import's generation is published at. The CALLER owns the version counter, exactly as for <see cref="Commit"/>: the engine never invents one.</param>
 		/// <returns>Number of keys applied.</returns>
 		/// <remarks>
-		/// <para>The graft is worth its cost only when the run owns a large share of the range it targets. Measured on
-		/// 500,000 keys, fill against how much of the range one ordered run covers is a VALLEY: 74% at 0.2% coverage,
-		/// bottoming at 67% around a tenth, then 79% at half and 99% at full, while scattered arrival sits flat at 76%.
-		/// Ordered arrival therefore only beats scattered from roughly half the range upward, and below that it packs no
-		/// better while costing up to 20x the CPU. That is why there is a fallback at all rather than a graft that always
-		/// runs.</para>
 		/// <para>The gate is EXACT rather than a share of the range: the graft path clears <c>[begin, end)</c> before it
 		/// renders, so it may only run when the run supplies every key the range already holds, and a key the run does
 		/// not supply is never dropped. A restore owns 100% of its range by construction and always takes the graft; an
@@ -529,18 +524,27 @@ namespace FoundationDB.Storage.FdbLite
 		/// survivors (one gap-graft per survivor, the design's situation D) is the follow-up that would move the gate off
 		/// zero, and until it exists a partial run is served correctly by the fallback rather than incorrectly by the
 		/// graft.</para>
-		/// <para>Values are stored INLINE. A value longer than <see cref="FdbLiteGeometry.MaxInlineValueLength"/> is
-		/// rejected by contract instead of being silently truncated: the out-of-line extent path that <c>Insert</c> uses
-		/// is not wired into the graft renderer yet.</para>
-		/// <para>Commits its own generation, at the NEXT database version. Unlike <see cref="VacuumStep"/>, which
-		/// republishes the current one because it changes nothing logically, an import does change what readers see, and
-		/// reusing the version would make the previous generation unreachable through
+		/// <para>That a fallback exists at all is what the density curve says: the graft is worth its cost only when the
+		/// run owns a large share of the range it targets. Measured on 500,000 keys, fill against how much of the range
+		/// one ordered run covers is a VALLEY: 74% at 0.2% coverage, bottoming at 67% around a tenth, then 79% at half
+		/// and 99% at full, while scattered arrival sits flat at 76%. Ordered arrival therefore only beats scattered from
+		/// roughly half the range upward, and below that it packs no better while costing up to 20x the CPU.</para>
+		/// <para>Keys and values are stored INLINE. A key longer than <see cref="FdbLiteTreePage.MaxKeyLength"/> or a
+		/// value longer than <see cref="FdbLiteGeometry.MaxInlineValueLength"/> is rejected by contract instead of being
+		/// silently truncated: the out-of-line extent path that <c>Insert</c> uses is not wired into the graft renderer
+		/// yet.</para>
+		/// <para>Commits its own generation, at <paramref name="databaseVersion"/>. An import changes what readers see,
+		/// so - unlike <see cref="VacuumStep"/>, which republishes the current version because it changes nothing
+		/// logically - reusing the previous version would make that generation unreachable through
 		/// <see cref="TryBeginReadAtVersion"/>.</para>
 		/// </remarks>
-		public int Import(IEnumerable<KeyValuePair<Slice, Slice>> run, Slice begin, Slice end, FdbLiteImportOptions options)
+		public int Import(IEnumerable<KeyValuePair<Slice, Slice>> run, Slice begin, Slice end, FdbLiteImportOptions options, ulong databaseVersion)
 		{
 			Contract.NotNull(run);
 			Contract.Requires(begin.Span.SequenceCompareTo(end.Span) < 0, "the imported range must be non-empty");
+			// the graft writes `end` as a separator when it repairs the bound the clear left behind, so the range's
+			// upper bound is held to the same ceiling as a key
+			Contract.Requires(end.Count <= FdbLiteTreePage.MaxKeyLength, "the imported range's upper bound must fit a page: it is held to the same ceiling as a key");
 
 			int maxInline = this.Pager.Geometry.MaxInlineValueLength;
 			var cells = new List<FdbLiteTreeWriter.CellRef>();
@@ -548,6 +552,7 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				var key = kv.Key.Span;
 				var value = kv.Value.Span;
+				Contract.Requires(key.Length <= FdbLiteTreePage.MaxKeyLength, "an imported key must fit a page: a key longer than FdbLiteTreePage.MaxKeyLength cannot be stored");
 				Contract.Requires(value.Length <= maxInline, "an imported value must fit inline: a value longer than FdbLiteGeometry.MaxInlineValueLength needs the out-of-line extent path, which Import does not implement");
 				Contract.Requires(key.SequenceCompareTo(begin.Span) >= 0 && key.SequenceCompareTo(end.Span) < 0, "every key of the run must fall inside [begin, end)");
 				Contract.Requires(cells.Count == 0 || cells[^1].ResolveKey(default).SequenceCompareTo(key) < 0, "the run must be in strictly ascending key order");
@@ -565,7 +570,8 @@ namespace FoundationDB.Storage.FdbLite
 				return 0;
 			}
 
-			var all = cells.ToArray();
+			// the list IS the backing array: a span over it skips a full copy of the run (~24 MB on a 500k restore)
+			ReadOnlySpan<FdbLiteTreeWriter.CellRef> all = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(cells);
 			var writer = BeginWrite();
 
 			// stopAfter is 1 because the gate is "no survivor at all": once one exists the answer is settled, and
@@ -577,13 +583,13 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			else
 			{ // sparse: per-key insertion, which is what the measured curve says is right below about half coverage
-				foreach (ref readonly var cell in all.AsSpan())
+				foreach (ref readonly var cell in all)
 				{
 					writer.Insert(cell.ResolveKey(default), cell.ResolveValue(default));
 				}
 			}
 
-			Commit(writer, this.Durable.DatabaseVersion + 1);
+			Commit(writer, databaseVersion);
 			return all.Length;
 		}
 

@@ -135,6 +135,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// <param name="fillCeiling">Live bytes each output page is packed to.</param>
 		/// <param name="volatility">Declared future mutability of the run, stamped on every emitted page as its episode count (see <see cref="RenderRun"/>).</param>
 		/// <param name="output">Receives one entry per emitted page, in key order. Must hold at least <c>run.Length</c> plus the boundary leaf's cell count entries.</param>
+		/// <param name="raiseFollowingSeparatorTo">Bound the separators that follow the graft must reach, or empty when nothing preceded the graft; see <c>AscendPatch</c>. An <see cref="ImportRun"/> passes the cleared range's upper bound.</param>
 		/// <returns>Number of pages emitted.</returns>
 		/// <remarks>
 		/// <para>The boundary page's cells join the run rather than being preserved beside it, which is what lets the two
@@ -144,7 +145,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// materialised from - the merged cell list and the boundary page - exist only inside this call: handing
 		/// them back out would mean handing out a pooled array and a page image whose lifetime the caller cannot see.</para>
 		/// </remarks>
-		internal int GraftIntoGap(uint leafId, ReadOnlySpan<byte> begin, ReadOnlySpan<CellRef> run, int fillCeiling, FdbLiteVolatilityClass volatility, FdbLiteGraftedPage[] output)
+		internal int GraftIntoGap(uint leafId, ReadOnlySpan<byte> begin, ReadOnlySpan<CellRef> run, int fillCeiling, FdbLiteVolatilityClass volatility, FdbLiteGraftedPage[] output, ReadOnlySpan<byte> raiseFollowingSeparatorTo = default)
 		{
 			Contract.Requires(run.Length > 0);
 
@@ -189,7 +190,7 @@ namespace FoundationDB.Storage.FdbLite
 				try
 				{
 					separators = GraftedSiblings(page, all.AsSpan(0, total), output.AsSpan(0, pages), siblings);
-					AscendPatch(pathPages, pathChildren, depth - 1, leafId, output[0].PageId, siblings.AsSpan(0, pages - 1));
+					AscendPatch(pathPages, pathChildren, depth - 1, leafId, output[0].PageId, siblings.AsSpan(0, pages - 1), raiseFollowingSeparatorTo);
 				}
 				finally
 				{ // cleared: a Slice holds a byte[] reference, and a pooled array must not pin the separator buffer
@@ -256,7 +257,9 @@ namespace FoundationDB.Storage.FdbLite
 			// one entry per emitted page: the merged list is the run plus the boundary leaf's own cells, and a page
 			// holds at least one cell, so that sum is an exact bound on the page count (RenderRun requires it)
 			var output = new FdbLiteGraftedPage[run.Length + FdbLitePageHeader.GetCellCount(ReadPage(leafId))];
-			GraftIntoGap(leafId, first, run, fillCeiling, volatility, output);
+			// the clear may have left a leaf whose separator still sits inside the range it emptied: the graft's
+			// own pages are about to occupy that space, so the ascent raises it to the range's upper bound
+			GraftIntoGap(leafId, first, run, fillCeiling, volatility, output, end);
 		}
 
 		/// <summary>Counts keys in <c>[begin, end)</c> that <paramref name="run"/> does NOT supply, stopping at <paramref name="stopAfter"/>.</summary>

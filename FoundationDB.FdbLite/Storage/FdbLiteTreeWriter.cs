@@ -501,12 +501,16 @@ namespace FoundationDB.Storage.FdbLite
 			=> outcome.Siblings is { } siblings ? CollectionsMarshal.AsSpan(siblings) : default;
 
 		/// <summary>Ascends from <paramref name="fromLevel"/> over a caller-owned sibling span, for a producer that has no <see cref="RebuildResult"/> to hand over.</summary>
-		/// <remarks>A GRAFT emits its pages straight into a rented array rather than a <see cref="List{T}"/>, which is the only reason this form exists; the split path reaches it through the overload above and behaves identically (an empty span and a null <see cref="RebuildResult.Siblings"/> are the same thing here).</remarks>
-		private void AscendPatch(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int fromLevel, uint originalChildId, uint firstId, ReadOnlySpan<(Slice Separator, uint PageId)> siblings)
+		/// <param name="raiseFollowingSeparatorTo">Lower bound the separator that FOLLOWS the descended child must reach, at every level where it sits below it, or empty for the ordinary ascent. See the remarks.</param>
+		/// <remarks>
+		/// <para>A GRAFT emits its pages straight into a rented array rather than a <see cref="List{T}"/>, which is the only reason this form exists; the split path reaches it through the overload above and behaves identically (an empty span and a null <see cref="RebuildResult.Siblings"/> are the same thing here).</para>
+		/// <para><paramref name="raiseFollowingSeparatorTo"/> repairs what a preceding <see cref="RemoveRange"/> leaves behind: dropping a leaf's LEADING cells raises the page's first key but not the separator that routes to it, which stays a valid (merely loose) lower bound for every other operation. It stops being one as soon as pages are SPLICED into the space that clear vacated: the graft's last emitted separator can then sort above that loose one, and the parent's separators come out of order. Raising it to the imported range's exclusive upper bound restores the order, and routes nothing wrongly: the interval it moves left is exactly what the clear emptied.</para>
+		/// </remarks>
+		private void AscendPatch(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int fromLevel, uint originalChildId, uint firstId, ReadOnlySpan<(Slice Separator, uint PageId)> siblings, ReadOnlySpan<byte> raiseFollowingSeparatorTo = default)
 		{
 			for (int level = fromLevel; level >= 0; level--)
 			{
-				if (siblings.Length == 0 && firstId == originalChildId && this.Dirty.ContainsKey(pathPages[level]))
+				if (siblings.Length == 0 && firstId == originalChildId && raiseFollowingSeparatorTo.Length == 0 && this.Dirty.ContainsKey(pathPages[level]))
 				{ // the child was rebuilt in place and its parent is in the dirty set: every ancestor already
 				  // points at it and is itself dirty, so the aggregate stamp pass will re-sum the whole chain.
 				  // The dirty-parent condition is load-bearing: after a mid-generation flush a shadow page
@@ -515,7 +519,12 @@ namespace FoundationDB.Storage.FdbLite
 					return;
 				}
 				originalChildId = pathPages[level];
-				var rebuilt = RebuildInternal(pathPages[level], pathChildren[level], firstId, siblings);
+				// checked per level, not once: whether the loose separator sits at this level or at an ancestor
+				// depends on where the descended child is the LAST one, and both can need raising
+				var raise = raiseFollowingSeparatorTo.Length > 0 && FollowingSeparatorSitsBelow(pathPages[level], pathChildren[level], raiseFollowingSeparatorTo)
+					? raiseFollowingSeparatorTo
+					: default;
+				var rebuilt = RebuildInternal(pathPages[level], pathChildren[level], firstId, siblings, raise);
 				firstId = rebuilt.FirstId;
 				siblings = AsSiblingSpan(rebuilt);
 			}
@@ -1260,8 +1269,17 @@ namespace FoundationDB.Storage.FdbLite
 		private RebuildResult RebuildInternal(uint pageId, int childIndex, RebuildResult child)
 			=> RebuildInternal(pageId, childIndex, child.FirstId, AsSiblingSpan(child));
 
+		/// <summary>True when <paramref name="pageId"/> holds a separator right after child <paramref name="childIndex"/> and it sorts strictly below <paramref name="bound"/>.</summary>
+		private bool FollowingSeparatorSitsBelow(uint pageId, int childIndex, ReadOnlySpan<byte> bound)
+		{
+			var page = ReadPage(pageId);
+			return childIndex < FdbLitePageHeader.GetCellCount(page)
+				&& FdbLiteTreePage.GetSeparator(page, childIndex).SequenceCompareTo(bound) < 0;
+		}
+
 		/// <inheritdoc cref="RebuildInternal(uint,int,RebuildResult)"/>
-		private RebuildResult RebuildInternal(uint pageId, int childIndex, uint childFirstId, ReadOnlySpan<(Slice Separator, uint PageId)> childSiblings)
+		/// <param name="raiseFollowingSeparator">Replaces the separator of cell <paramref name="childIndex"/> (the one that follows the descended child), keeping its child; empty leaves it verbatim. See <see cref="AscendPatch(ReadOnlySpan{uint},ReadOnlySpan{int},int,uint,uint,ReadOnlySpan{ValueTuple{Slice,uint}},ReadOnlySpan{byte})"/>.</param>
+		private RebuildResult RebuildInternal(uint pageId, int childIndex, uint childFirstId, ReadOnlySpan<(Slice Separator, uint PageId)> childSiblings, ReadOnlySpan<byte> raiseFollowingSeparator = default)
 		{
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
@@ -1269,6 +1287,7 @@ namespace FoundationDB.Storage.FdbLite
 
 			// scratch for the patched cell and each inserted separator cell
 			byte[]? patchScratch = null;
+			byte[]? raiseScratch = null;
 			// `inserted` is 0 on every rebuild that is not following a split, which is the overwhelming majority:
 			// an empty jagged array per call is a pure allocation for a loop that will not run
 			var siblingScratch = inserted == 0 ? [ ] : new byte[inserted][];
@@ -1295,6 +1314,14 @@ namespace FoundationDB.Storage.FdbLite
 					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
 				}
 
+				var raisedCell = default(CellRef);
+				if (raiseFollowingSeparator.Length > 0 && childIndex < cellCount)
+				{ // same child, higher key: the cell is rebuilt rather than copied
+					raiseScratch = ArrayPool<byte>.Shared.Rent(6 + raiseFollowingSeparator.Length);
+					int len = FdbLiteTreePage.BuildInternalCell(raiseScratch, FdbLiteTreePage.GetChild(page, childIndex + 1), raiseFollowingSeparator).Length;
+					raisedCell = CellRef.OfInternalBuffer(raiseScratch, len);
+				}
+
 				int w = 0;
 				for (int i = 0; i <= cellCount; i++)
 				{
@@ -1310,7 +1337,9 @@ namespace FoundationDB.Storage.FdbLite
 					}
 					if (i < cellCount)
 					{
-						cells[w++] = (i == childIndex - 1) ? patchedCell : CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+						cells[w++] = (i == childIndex - 1) ? patchedCell
+							: (i == childIndex && raiseScratch != null) ? raisedCell
+							: CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
 					}
 				}
 				Contract.Debug.Assert(w == cellTotal);
@@ -1321,6 +1350,7 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
 				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
+				if (raiseScratch != null) { ArrayPool<byte>.Shared.Return(raiseScratch); }
 				foreach (var s in siblingScratch)
 				{
 					if (s != null) { ArrayPool<byte>.Shared.Return(s); }
