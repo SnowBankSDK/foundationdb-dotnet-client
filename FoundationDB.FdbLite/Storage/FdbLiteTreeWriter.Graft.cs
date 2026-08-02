@@ -216,6 +216,49 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Clears <c>[begin, end)</c> and grafts <paramref name="run"/> into the gap that leaves.</summary>
+		/// <param name="begin">Inclusive lower bound of the range the run replaces.</param>
+		/// <param name="end">Exclusive upper bound of the range the run replaces.</param>
+		/// <param name="run">The run's cells, in strictly ascending key order, each carrying its own buffer.</param>
+		/// <param name="fillCeiling">Live bytes each emitted page is packed to.</param>
+		/// <param name="volatility">Declared future mutability of the run, stamped on every emitted page as its episode count (see <see cref="RenderRun"/>).</param>
+		/// <remarks>
+		/// <para>The clear is what turns the range into the gap <see cref="GraftIntoGap"/> requires, and it is also why
+		/// the caller must only bring runs that own their range: a key in <c>[begin, end)</c> that the run does not
+		/// supply is removed here and never comes back. <see cref="CountSurvivors"/> is the check that establishes that,
+		/// and <c>FdbLiteEngine.Import</c> is the caller that runs it.</para>
+		/// <para>Nothing follows the graft: <see cref="GraftIntoGap"/> performs its own descent and ascent and retires
+		/// the boundary leaf itself, so an ascent or a <c>FreePage</c> here would be a second one.</para>
+		/// </remarks>
+		internal void ImportRun(ReadOnlySpan<byte> begin, ReadOnlySpan<byte> end, ReadOnlySpan<CellRef> run, int fillCeiling, FdbLiteVolatilityClass volatility)
+		{
+			Contract.Requires(run.Length > 0);
+
+			RemoveRange(begin, end);
+
+			if (this.Root == 0)
+			{ // the tree was empty, or the clear emptied it: there is no boundary leaf to graft into and nothing
+			  // else in this class creates a root, so the first cell builds one and the rest grafts around it.
+			  // This is the fresh-restore case, i.e. the one an import exists for.
+				Insert(run[0].ResolveKey(default), run[0].ResolveValue(default));
+				run = run[1..];
+				if (run.Length == 0)
+				{
+					return;
+				}
+			}
+
+			var first = run[0].ResolveKey(default);
+			Span<uint> pathPages = stackalloc uint[MaxDepth];
+			Span<int> pathChildren = stackalloc int[MaxDepth];
+			uint leafId = DescendToLeaf(first, pathPages, pathChildren, out _);
+
+			// one entry per emitted page: the merged list is the run plus the boundary leaf's own cells, and a page
+			// holds at least one cell, so that sum is an exact bound on the page count (RenderRun requires it)
+			var output = new FdbLiteGraftedPage[run.Length + FdbLitePageHeader.GetCellCount(ReadPage(leafId))];
+			GraftIntoGap(leafId, first, run, fillCeiling, volatility, output);
+		}
+
 		/// <summary>Counts keys in <c>[begin, end)</c> that <paramref name="run"/> does NOT supply, stopping at <paramref name="stopAfter"/>.</summary>
 		/// <remarks>
 		/// <para>The graft's decision procedure, and deliberately a BUDGETED count rather than a full classification.

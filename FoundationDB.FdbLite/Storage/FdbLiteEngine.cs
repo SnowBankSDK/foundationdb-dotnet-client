@@ -509,6 +509,84 @@ namespace FoundationDB.Storage.FdbLite
 			return outcome;
 		}
 
+		/// <summary>Applies an ordered run of key/value pairs to <c>[begin, end)</c>, grafting whole pages when the run owns the range outright.</summary>
+		/// <param name="run">Pairs in strictly ascending key order, every key inside <c>[begin, end)</c>.</param>
+		/// <param name="begin">Inclusive lower bound of the range the run targets.</param>
+		/// <param name="end">Exclusive upper bound of the range the run targets.</param>
+		/// <param name="options">Declared volatility, which selects the fill target; see <see cref="FdbLiteImportOptions"/>.</param>
+		/// <returns>Number of keys applied.</returns>
+		/// <remarks>
+		/// <para>The graft is worth its cost only when the run owns a large share of the range it targets. Measured on
+		/// 500,000 keys, fill against how much of the range one ordered run covers is a VALLEY: 74% at 0.2% coverage,
+		/// bottoming at 67% around a tenth, then 79% at half and 99% at full, while scattered arrival sits flat at 76%.
+		/// Ordered arrival therefore only beats scattered from roughly half the range upward, and below that it packs no
+		/// better while costing up to 20x the CPU. That is why there is a fallback at all rather than a graft that always
+		/// runs.</para>
+		/// <para>The gate is EXACT rather than a share of the range: the graft path clears <c>[begin, end)</c> before it
+		/// renders, so it may only run when the run supplies every key the range already holds, and a key the run does
+		/// not supply is never dropped. A restore owns 100% of its range by construction and always takes the graft; an
+		/// ordinary commit owns a fraction of a percent and always takes the fallback. Grafting AROUND a handful of
+		/// survivors (one gap-graft per survivor, the design's situation D) is the follow-up that would move the gate off
+		/// zero, and until it exists a partial run is served correctly by the fallback rather than incorrectly by the
+		/// graft.</para>
+		/// <para>Values are stored INLINE. A value longer than <see cref="FdbLiteGeometry.MaxInlineValueLength"/> is
+		/// rejected by contract instead of being silently truncated: the out-of-line extent path that <c>Insert</c> uses
+		/// is not wired into the graft renderer yet.</para>
+		/// <para>Commits its own generation, at the NEXT database version. Unlike <see cref="VacuumStep"/>, which
+		/// republishes the current one because it changes nothing logically, an import does change what readers see, and
+		/// reusing the version would make the previous generation unreachable through
+		/// <see cref="TryBeginReadAtVersion"/>.</para>
+		/// </remarks>
+		public int Import(IEnumerable<KeyValuePair<Slice, Slice>> run, Slice begin, Slice end, FdbLiteImportOptions options)
+		{
+			Contract.NotNull(run);
+			Contract.Requires(begin.Span.SequenceCompareTo(end.Span) < 0, "the imported range must be non-empty");
+
+			int maxInline = this.Pager.Geometry.MaxInlineValueLength;
+			var cells = new List<FdbLiteTreeWriter.CellRef>();
+			foreach (var kv in run)
+			{
+				var key = kv.Key.Span;
+				var value = kv.Value.Span;
+				Contract.Requires(value.Length <= maxInline, "an imported value must fit inline: a value longer than FdbLiteGeometry.MaxInlineValueLength needs the out-of-line extent path, which Import does not implement");
+				Contract.Requires(key.SequenceCompareTo(begin.Span) >= 0 && key.SequenceCompareTo(end.Span) < 0, "every key of the run must fall inside [begin, end)");
+				Contract.Requires(cells.Count == 0 || cells[^1].ResolveKey(default).SequenceCompareTo(key) < 0, "the run must be in strictly ascending key order");
+
+				// ONE buffer per cell, key then value, which is the shape both paths below read: the graft renders
+				// these cells as they are, and the fallback resolves the two parts back out of them, so the run is
+				// materialised once whichever path is taken
+				var buffer = new byte[key.Length + value.Length];
+				key.CopyTo(buffer);
+				value.CopyTo(buffer.AsSpan(key.Length));
+				cells.Add(FdbLiteTreeWriter.CellRef.OfLeafBuffer(buffer, key.Length, value.Length, 0));
+			}
+			if (cells.Count == 0)
+			{
+				return 0;
+			}
+
+			var all = cells.ToArray();
+			var writer = BeginWrite();
+
+			// stopAfter is 1 because the gate is "no survivor at all": once one exists the answer is settled, and
+			// the walk has nothing left to learn. The count IS the density test - a run with survivors in its range
+			// is by definition not the whole of it.
+			if (writer.CountSurvivors(begin.Span, end.Span, all, stopAfter: 1) == 0)
+			{
+				writer.ImportRun(begin.Span, end.Span, all, options.FillCeiling(this.Pager.Geometry.PageSize), options.Volatility);
+			}
+			else
+			{ // sparse: per-key insertion, which is what the measured curve says is right below about half coverage
+				foreach (ref readonly var cell in all.AsSpan())
+				{
+					writer.Insert(cell.ResolveKey(default), cell.ResolveValue(default));
+				}
+			}
+
+			Commit(writer, this.Durable.DatabaseVersion + 1);
+			return all.Length;
+		}
+
 		/// <summary>Tree-wide totals of the current durable generation, from its root page's aggregate block: O(1), exact, and safe on any thread.</summary>
 		public FdbLiteTreeAggregates GetTreeAggregates()
 		{

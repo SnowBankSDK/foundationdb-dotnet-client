@@ -379,6 +379,134 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90));
 		}
 
+		/// <summary>The run a public <see cref="FdbLiteEngine.Import"/> consumes, over a contiguous key range.</summary>
+		private static List<KeyValuePair<Slice, Slice>> BuildImportRun(int first, int count)
+		{
+			var value = new byte[GRAFT_VALUE];
+			var run = new List<KeyValuePair<Slice, Slice>>(count);
+			for (int i = 0; i < count; i++) { run.Add(new(GraftKey(first + i).AsSlice(), value.AsSlice())); }
+			return run;
+		}
+
+		[Test]
+		public void Test_Import_Beats_Per_Key_Insertion_On_A_Range_It_Owns()
+		{
+			int Build(bool useImport)
+			{
+				using var engine = SeedGappedTree(100);
+
+				if (useImport)
+				{
+					int applied = engine.Import(BuildImportRun(1000, 2000), GraftKey(1000).AsSlice(), GraftKey(3001).AsSlice(), FdbLiteImportOptions.Default);
+					Assert.That(applied, Is.EqualTo(2000), "every pair of the run must be applied");
+				}
+				else
+				{
+					var value = new byte[GRAFT_VALUE];
+					var w = engine.BeginWrite();
+					for (int i = 0; i < 2000; i++) { w.Insert(GraftKey(1000 + i), value); }
+					engine.Commit(w, 2);
+				}
+
+				// same 2,200 keys either way, so the leaf counts below compare like for like
+				AssertStructurallySound(engine);
+				var keys = ReadAllKeys(engine);
+				Assert.That(keys.Count, Is.EqualTo(2200), "100 below + 2000 imported + 100 above");
+				Assert.That(keys, Is.Ordered);
+
+				return engine.MeasureTreeStatistics().LeafPages;
+			}
+
+			int perKey = Build(useImport: false);
+			int imported = Build(useImport: true);
+			Log($"perKey={perKey} leaves, import={imported} leaves");
+
+			Assert.That(imported, Is.LessThanOrEqualTo(perKey), "the graft must never produce MORE pages than per-key insertion");
+		}
+
+		/// <summary>The volatility class the CALLER declares must reach the emitted pages, not stop at the options record.</summary>
+		[Test]
+		public void Test_Import_Stamps_The_Declared_Volatility_Class()
+		{
+			using var engine = SeedGappedTree(20);
+			var value = new byte[GRAFT_VALUE];
+
+			// Brand the boundary leaf: an INTERIOR insert books one episode, at most one per generation, so two
+			// generations give it a count of 2. Without this seeding the defect is invisible - a boundary leaf at 0
+			// is indistinguishable from a correctly stamped Stable page. Both keys sit OUTSIDE the imported range,
+			// so they are not cleared and the count they brand the leaf with survives to the graft.
+			var bump1 = engine.BeginWrite();
+			bump1.Insert(GraftKey(500), value);
+			engine.Commit(bump1, 2);
+			var bump2 = engine.BeginWrite();
+			bump2.Insert(GraftKey(600), value);
+			engine.Commit(bump2, 3);
+			Assert.That(LeafEpisodes(engine), Is.EqualTo(new List<byte> { 2 }), "the boundary leaf must carry a non-zero count, or this test cannot tell inheritance from a correct stamp");
+
+			// declared Occasional == 1, deliberately different from the boundary leaf's 2 AND from 0
+			int applied = engine.Import(BuildImportRun(1000, 2000), GraftKey(1000).AsSlice(), GraftKey(3001).AsSlice(), FdbLiteImportOptions.Default with { Volatility = FdbLiteVolatilityClass.Occasional });
+
+			var after = LeafEpisodes(engine);
+			Log($"declared=Occasional applied={applied} leafEpisodes=[{string.Join(",", after)}]");
+
+			AssertStructurallySound(engine);
+			Assert.That(applied, Is.EqualTo(2000));
+			Assert.That(after.Count, Is.GreaterThan(1), "the import must have emitted several pages or this proves little");
+			// a knob that silently did nothing reads 0 (Stable, the default the options record never left) or 2
+			// (the boundary leaf's own history); only the declared class proves the value travelled end to end
+			Assert.That(after, Is.All.EqualTo((byte) FdbLiteVolatilityClass.Occasional), "every page the import emitted must carry the class the caller declared");
+		}
+
+		/// <summary>A run that does not own its range takes the per-key fallback, and the keys it does not supply survive.</summary>
+		/// <remarks>The gate is "no survivor at all" rather than "few enough survivors" precisely because of this case:
+		/// the graft path CLEARS the range before rendering, so grafting a run with even one survivor in its range would
+		/// delete that key. A single survivor is the smallest input that tells the two gates apart.</remarks>
+		[Test]
+		public void Test_Import_Falls_Back_To_Per_Key_And_Keeps_The_Survivors()
+		{
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			var value = new byte[GRAFT_VALUE];
+
+			var seed = engine.BeginWrite();
+			for (int i = 0; i < 200; i++) { seed.Insert(GraftKey(i), value); }
+			engine.Commit(seed, 1);
+
+			// the run supplies 0..198 and the range covers 0..199, so key 199 is the lone survivor
+			int applied = engine.Import(BuildImportRun(0, 199), GraftKey(0).AsSlice(), GraftKey(200).AsSlice(), FdbLiteImportOptions.Default);
+			Assert.That(applied, Is.EqualTo(199));
+
+			AssertStructurallySound(engine);
+			var keys = ReadAllKeys(engine);
+			Log($"applied={applied} keysAfter={keys.Count} keyCount={engine.Durable.KeyCount}");
+			Assert.That(keys.Count, Is.EqualTo(200), "the key the run does not supply must survive the import");
+			Assert.That(keys[199], Is.EqualTo(199L), "the survivor is the last key of the range");
+			Assert.That(keys, Is.Ordered);
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo(200UL), "an import that only replaces existing keys must not move the key count");
+		}
+
+		/// <summary>An import into an EMPTY store: there is no boundary leaf to graft into, and it is the case a restore actually hits.</summary>
+		[Test]
+		public void Test_Import_Into_An_Empty_Store_Grafts_A_Whole_Tree()
+		{
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			int pageSize = engine.Pager.Geometry.PageSize;
+
+			int applied = engine.Import(BuildImportRun(0, 2000), GraftKey(0).AsSlice(), GraftKey(2000).AsSlice(), FdbLiteImportOptions.Default);
+
+			var stats = engine.MeasureTreeStatistics();
+			int fillPct = (int) (100.0 * stats.LeafLiveBytes / ((long) stats.LeafPages * pageSize));
+			Log($"empty store: applied={applied} leaves={stats.LeafPages} fill={fillPct}%");
+
+			AssertStructurallySound(engine);
+			var keys = ReadAllKeys(engine);
+			Assert.That(applied, Is.EqualTo(2000));
+			Assert.That(keys.Count, Is.EqualTo(2000));
+			Assert.That(keys, Is.Ordered);
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo(2000UL));
+			Assert.That(stats.LeafPages, Is.GreaterThan(1), "the run must span several pages or the packing claim proves nothing");
+			Assert.That(fillPct, Is.GreaterThanOrEqualTo(90), "a run owning a whole empty store must pack near full");
+		}
+
 		[Test]
 		public void Test_CountSurvivors_Early_Exits_Once_The_Budget_Is_Reached()
 		{
