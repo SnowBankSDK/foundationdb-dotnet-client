@@ -58,9 +58,15 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		internal int RenderRun(ReadOnlySpan<CellRef> cells, int fillCeiling, uint reusePageId, ReadOnlySpan<byte> sourcePage, FdbLiteVolatilityClass volatility, FdbLiteGraftedPage[] output)
 		{
-			Contract.Requires(cells.Length > 0);
-			Contract.Requires(fillCeiling > 0);
-			Contract.Requires(output.Length >= cells.Length, "a page holds at least one cell, so cells.Length bounds the page count");
+			// defence in depth: cells.Length>0 and fillCeiling>0 are guaranteed by the only caller (GraftIntoGap,
+			// itself fed by ImportRun off Import's public-boundary checks), and output.Length is sized by that
+			// same caller to at least cells.Length. A violation here is a bug in this class, not in a caller's
+			// input, and surfaces as an exception a few lines down (a negative ArrayPool rent or an
+			// IndexOutOfRangeException on `output[pages++]`) rather than silently - so it does not need to be
+			// always-on.
+			Contract.Debug.Requires(cells.Length > 0);
+			Contract.Debug.Requires(fillCeiling > 0);
+			Contract.Debug.Requires(output.Length >= cells.Length, "a page holds at least one cell, so cells.Length bounds the page count");
 
 			int pageSize = this.Pager.Geometry.PageSize;
 			long ceiling = Math.Min(fillCeiling, pageSize);
@@ -83,6 +89,12 @@ namespace FoundationDB.Storage.FdbLite
 
 					uint reuse = pages == 0 ? reusePageId : 0;
 					var part = WriteCells(reuse, isInternal: false, leftmostChild: 0, sourcePage, cells[start..end], declaredEpisodes: (int) volatility);
+					// Kept ALWAYS ON, not downgraded to Debug: this is the only thing that would notice the
+					// renderer and WriteCells' splitter disagreeing about a cell's footprint. If they ever do,
+					// WriteCells' extra sibling is dropped on the floor right here - cells vanish from the tree
+					// with no exception and no other check anywhere catches it. The cost is one bool compare per
+					// EMITTED PAGE (not per cell, not per key), against the cost of writing that page out, so it
+					// is immaterial to a bulk import's running time.
 					Contract.Ensures(!part.Split, "the boundary was chosen to fit one page, so WriteCells must not split it (a dropped sibling would silently orphan cells)");
 
 					output[pages++] = new(start, part.FirstId);
@@ -147,11 +159,20 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		internal int GraftIntoGap(uint leafId, ReadOnlySpan<byte> begin, ReadOnlySpan<CellRef> run, int fillCeiling, FdbLiteVolatilityClass volatility, FdbLiteGraftedPage[] output, ReadOnlySpan<byte> raiseFollowingSeparatorTo = default)
 		{
-			Contract.Requires(run.Length > 0);
+			// defence in depth: the only caller (ImportRun) checks this same condition immediately before
+			// calling in, itself established by Import's public-boundary `cells.Count == 0` early return. A
+			// violation here would surface a few lines down anyway (SplitCellsAt/RenderRun on an empty run
+			// eventually rents a negative-length buffer or indexes out of range), so it is not silent.
+			Contract.Debug.Requires(run.Length > 0);
 
 			Span<uint> pathPages = stackalloc uint[MaxDepth];
 			Span<int> pathChildren = stackalloc int[MaxDepth];
 			uint descended = DescendToLeaf(begin, pathPages, pathChildren, out int depth);
+			// Kept ALWAYS ON, not downgraded: pathPages/pathChildren/depth are `descended`'s ancestry, but every
+			// operation below - ReadPage, SplitCellsAt, AscendPatch's originalChildId, FreePage - uses the
+			// CALLER-NAMED `leafId` instead. If the two ever disagree, the ascent patches a parent using an
+			// ancestry that does not belong to the page it frees: the tree comes out with a corrupted pointer,
+			// silently, no exception. Nothing else in this call would notice.
 			Contract.Requires(descended == leafId, "the run's first key must fall in the leaf the caller named");
 
 			// CELLS GATHERED FROM A PAGE DO NOT CARRY THAT PAGE. CellRef.OfLeafPage leaves Buffer null and
@@ -165,7 +186,10 @@ namespace FoundationDB.Storage.FdbLite
 			var (below, above) = SplitCellsAt(leafId, begin);
 
 			if (above.Length > 0)
-			{ // an unsorted merge would render a silently mis-ordered tree, which this code must never produce
+			{ // Kept ALWAYS ON, not downgraded: an unsorted merge renders a silently mis-ordered tree, which
+			  // this code must never produce. The result would look structurally fine - no exception, no crash -
+			  // and only surface later as a cursor skipping or duplicating a key. No other check anywhere
+			  // catches it.
 				var runLastKey = WholeKeyOf(run[^1], page);
 				var aboveFirstKey = WholeKeyOf(above[0], page);
 				Contract.Requires(runLastKey.AsSpan().SequenceCompareTo(aboveFirstKey) < 0, "the run's last key must sort strictly below the first key of the gap's upper side, or the caller handed GraftIntoGap a run that overruns the gap");
@@ -233,7 +257,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		internal void ImportRun(ReadOnlySpan<byte> begin, ReadOnlySpan<byte> end, ReadOnlySpan<CellRef> run, int fillCeiling, FdbLiteVolatilityClass volatility)
 		{
-			Contract.Requires(run.Length > 0);
+			// defence in depth: a literal restatement of FdbLiteEngine.Import's own `cells.Count == 0` early
+			// return, the only path that reaches this method.
+			Contract.Debug.Requires(run.Length > 0);
 
 			RemoveRange(begin, end);
 
@@ -278,7 +304,8 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		internal int CountSurvivors(ReadOnlySpan<byte> begin, ReadOnlySpan<byte> end, ReadOnlySpan<CellRef> run, int stopAfter)
 		{
-			Contract.Requires(stopAfter > 0);
+			// defence in depth: the only call site (FdbLiteEngine.Import) passes the literal 1.
+			Contract.Debug.Requires(stopAfter > 0);
 
 			int survivors = 0;
 			int r = 0;
