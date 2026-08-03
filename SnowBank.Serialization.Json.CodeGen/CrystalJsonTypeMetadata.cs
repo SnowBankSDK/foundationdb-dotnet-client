@@ -115,6 +115,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>If this type is polymorphic, list of all the known derived types</summary>
 		public required ImmutableEquatableArray<(INamedTypeSymbol Symbol, TypeMetadata Type, object? Discriminator)> DerivedTypes { get; init; }
 
+		/// <summary>Value of <c>[DataContract(Name = "...")]</c>, or <see langword="null"/> when the type carries no data contract, or one that does not rename it</summary>
+		/// <remarks>The DataContract XML wire names the type's element after the contract, so the VALUE is needed, not just the attribute's presence (which is all the JSON wire ever needed). Left <see langword="null"/> rather than defaulted to the type name: the default is a wire rule, and resolving it here would make an explicit <c>Name</c> that happens to match indistinguishable from an absent one.</remarks>
+		public string? DataContractName { get; init; }
+
+		/// <summary>Value of <c>[DataContract(Namespace = "...")]</c>, or <see langword="null"/> when the type carries no data contract, or one that does not set a namespace</summary>
+		/// <inheritdoc cref="DataContractName" path="/remarks"/>
+		public string? DataContractNamespace { get; init; }
+
 		public void Explain(StringBuilder sb, string? indent = null)
 		{
 			var subIndent = indent is null ? "- " : ("  " + indent);
@@ -231,6 +239,32 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		/// <summary>Per-member enum format from <c>[JsonProperty(EnumFormat = ...)]</c>: <c>"String"</c>, <c>"Number"</c>, or <see langword="null"/> when inherited from the settings</summary>
 		public string? EnumFormat { get; init; }
+
+		/// <summary>XML name of this member from <c>[XmlProperty]</c>, or <see langword="null"/> when the member does not override it (the XML name then derives from <see cref="Name"/>)</summary>
+		/// <remarks>
+		/// <para>Already NORMALIZED: the <c>"@id"</c> sugar has been split into <c>"id"</c> plus <see cref="XmlIsAttribute"/>, so nothing downstream ever sees a <c>'@'</c> in a name, and the value is known to be a legal XML NCName.</para>
+		/// <para>Only ever set when the container produces XML: on a JSON-only container the whole XML vocabulary is inert.</para>
+		/// </remarks>
+		public string? XmlName { get; init; }
+
+		/// <summary>The member is projected as an XML ATTRIBUTE instead of a nested element (from <c>[XmlProperty(Attribute = true)]</c> or the <c>"@name"</c> sugar)</summary>
+		public bool XmlIsAttribute { get; init; }
+
+		/// <summary>Name given to the items of a collection member, or the entries of a dictionary member, from <c>[XmlProperty(ItemName = "...")]</c>; <see langword="null"/> when not overridden</summary>
+		/// <inheritdoc cref="XmlName" path="/remarks/para[2]"/>
+		public string? XmlItemName { get; init; }
+
+		/// <summary>Per-member dictionary representation from <c>[XmlProperty(DictionaryFormat = ...)]</c>, as the enum MEMBER NAME (ex: <c>"KeyValueAttributes"</c>); <see langword="null"/> when not overridden</summary>
+		/// <inheritdoc cref="XmlName" path="/remarks/para[2]"/>
+		public string? XmlDictionaryFormat { get; init; }
+
+		/// <summary>Value of <c>[DataMember(Order = n)]</c> when <c>n</c> is zero or greater, or <see langword="null"/> when the member declares no order</summary>
+		/// <remarks>A NEGATIVE order is carried as <see langword="null"/>, like <c>DataContractSerializer</c> does: an unordered member sorts by name, which is a different rule from ordering at zero.</remarks>
+		public int? DataMemberOrder { get; init; }
+
+		/// <summary>The member is written even when its value is the type's default (<see langword="false"/> only for <c>[DataMember(EmitDefaultValue = false)]</c>)</summary>
+		/// <remarks>The RAW flag, carried as the attribute spells it: how it combines with <see cref="IgnoreCondition"/> is a wire rule resolved downstream, and folding it in here would make the two indistinguishable.</remarks>
+		public bool EmitDefaultValue { get; init; } = true;
 
 		/// <summary>Fully qualified name of a custom converter attached to this member (<c>[JsonConverter(typeof(...))]</c> naming a type with the Pack/Unpack pair, or the built-in converter for <c>[JsonBooleanLiterals]</c>), or <see langword="null"/></summary>
 		public string? CustomConverterType { get; init; }

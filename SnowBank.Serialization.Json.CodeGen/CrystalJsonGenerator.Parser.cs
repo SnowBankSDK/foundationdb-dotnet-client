@@ -275,7 +275,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				Kenobi($"Found {work.Count} root types to include");
 
-				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy);
+				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy, xmlProfile);
 
 				if (includedTypes.Count == 0)
 				{
@@ -507,7 +507,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				Queue<INamedTypeSymbol> work = [];
 				work.Enqueue(symbol);
 
-				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy: null);
+				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy: null, xmlProfile);
 
 				// a referenced type named like a member of the generated scope would collide inside it: exclude it
 				// from generation (the emitted code falls back to runtime serialization for it) and warn
@@ -575,7 +575,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Drains the work queue, parsing each type and crawling any nested, derived or referenced type into the included list</summary>
-			private void CrawlIncludedTypes(Queue<INamedTypeSymbol> work, HashSet<INamedTypeSymbol> mappedTypes, List<CrystalJsonTypeMetadata> includedTypes, string? propertyNamingPolicy)
+			/// <param name="xmlProfile">The container's RESOLVED XML wire profile, or <see langword="null"/> when it produces no XML (which makes the whole member-level XML vocabulary inert, diagnostics included)</param>
+			private void CrawlIncludedTypes(Queue<INamedTypeSymbol> work, HashSet<INamedTypeSymbol> mappedTypes, List<CrystalJsonTypeMetadata> includedTypes, string? propertyNamingPolicy, string? xmlProfile)
 			{
 				while(work.Count > 0)
 				{
@@ -584,7 +585,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					Kenobi($"Inspect type {type}");
 					try
 					{
-						var typeDef = ParseTypeMetadata(type, mappedTypes, work, propertyNamingPolicy);
+						var typeDef = ParseTypeMetadata(type, mappedTypes, work, propertyNamingPolicy, xmlProfile);
 						if (typeDef is not null)
 						{
 							includedTypes.Add(typeDef);
@@ -631,7 +632,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 			}
 
-			public CrystalJsonTypeMetadata? ParseTypeMetadata(INamedTypeSymbol type, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work, string? namingPolicy)
+			/// <param name="xmlProfile"><inheritdoc cref="CrawlIncludedTypes" path="/param[@name='xmlProfile']"/></param>
+			public CrystalJsonTypeMetadata? ParseTypeMetadata(INamedTypeSymbol type, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work, string? namingPolicy, string? xmlProfile)
 			{
 				// we have to extract all the properties that will be required later during the code generation phase
 
@@ -684,7 +686,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// [DataContract] switches membership from "every public member unless excluded" to "only what [DataMember] opts in",
 				// and makes accessibility stop filtering. That is a TYPE-level fact, so it has to reach the per-member step.
-				bool hasDataContract = HasDataContractAttribute(type);
+				var dataContract = GetDataContractInfo(type);
+				bool hasDataContract = dataContract.Present;
 
 				var callbacks = ParseSerializationCallbacks(type);
 
@@ -698,7 +701,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						if (member.Kind is (SymbolKind.Property or SymbolKind.Field or SymbolKind.Method))
 						{
 							Kenobi($"Inspecting member {member.Name}...");
-							var (memberDef, memberType) = ParseMemberMetadata(member, mappedTypes, work, namingPolicy, hasDataContract);
+							var (memberDef, memberType) = ParseMemberMetadata(member, mappedTypes, work, namingPolicy, hasDataContract, xmlProfile);
 							if (memberDef is not null)
 							{
 								Kenobi($"Inspected member {member.Name} with type {memberDef.Type.FullName}, N={memberDef.Type.NullableOfType?.FullName}, E={memberDef.Type.ElementType?.FullName}, K={memberDef.Type.KeyType?.FullName}, V={memberDef.Type.ValueType?.FullName}");
@@ -730,11 +733,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				ReportPrePopulateCallbackConflicts(type, callbacks.OnDeserializing, members);
 
+				if (xmlProfile is not null)
+				{ // a name collision can only be seen once every member of the type has resolved its own XML name
+					ReportDuplicateXmlNames(type, members);
+				}
+
 				return new()
 				{
 					Type = TypeMetadata.Create(type),
 					Members = members.ToImmutableEquatableArray(),
 					IsPolymorphicRoot = isPolymorphic,
+					DataContractName = dataContract.Name,
+					DataContractNamespace = dataContract.Namespace,
 					OnSerializing = callbacks.OnSerializing,
 					OnSerialized = callbacks.OnSerialized,
 					OnDeserializing = callbacks.OnDeserializing,
@@ -1047,17 +1057,290 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return false;
 			}
 
-			private static bool HasDataContractAttribute(ISymbol type)
+			/// <summary>Reads the type's <c>[DataContract]</c> attribute: whether it is present (which switches membership to opt-in), and the contract's own <c>Name</c> / <c>Namespace</c> values (which name the type's element on the DataContract XML wire)</summary>
+			private static (bool Present, string? Name, string? Namespace) GetDataContractInfo(ISymbol type)
 			{
 				foreach (var attribute in type.GetAttributes())
 				{
-					if (attribute.AttributeClass?.ToDisplayString() == DataContractAttributeFullName)
+					if (attribute.AttributeClass?.ToDisplayString() != DataContractAttributeFullName) continue;
+
+					string? name = null;
+					string? ns = null;
+					foreach (var kv in attribute.NamedArguments)
+					{
+						if (kv.Key == "Name" && kv.Value.Value is string dcName)
+						{
+							name = dcName;
+						}
+						else if (kv.Key == "Namespace" && kv.Value.Value is string dcNamespace)
+						{
+							ns = dcNamespace;
+						}
+					}
+					return (true, name, ns);
+				}
+				return (false, null, null);
+			}
+
+			#region XML member vocabulary...
+
+			/// <summary>Resolves the member-level XML settings of a <c>[XmlProperty]</c> attribute, reporting <c>CXML0003</c>, <c>CXML0004</c> and <c>CXML0007</c></summary>
+			/// <param name="member">Member being parsed (named in every diagnostic, and where they are reported)</param>
+			/// <param name="type">Type of the member, which decides whether it can be projected as an XML attribute</param>
+			/// <param name="xmlProfile">The container's RESOLVED XML wire profile (never <see langword="null"/>: the caller only resolves when the container produces XML)</param>
+			/// <param name="rawName">The attribute's <c>Name</c> as written, <c>'@'</c> prefix included</param>
+			/// <param name="attributeSpelled"><see langword="true"/> when <c>Attribute =</c> was written at all (which is what makes an explicit <see langword="false"/> a contradiction rather than a default)</param>
+			/// <param name="attributeValue">The value <c>Attribute =</c> was set to</param>
+			/// <param name="itemName">The attribute's <c>ItemName</c> as written</param>
+			/// <param name="dictionaryFormat">The attribute's <c>DictionaryFormat</c>, as its enum member name</param>
+			/// <returns>The normalized settings; every refused shape returns them EMPTY, so that one build error is not followed by a cascade of downstream ones</returns>
+			private (string? Name, bool IsAttribute, string? ItemName, string? DictionaryFormat) ResolveXmlMember(ISymbol member, TypeMetadata type, string xmlProfile, string? rawName, bool attributeSpelled, bool attributeValue, string? itemName, string? dictionaryFormat)
+			{
+				if (xmlProfile == XmlProfileDataContract)
+				{
+					// the DataContract wire names every element after the data contract and has no notion of a user-data
+					// attribute: none of these three settings can be honored, and honoring none of them silently is worse
+					string? refused =
+						rawName is not null ? "Name = \"" + rawName + "\""
+						: attributeSpelled && attributeValue ? "Attribute = true"
+						: itemName is not null ? "ItemName = \"" + itemName + "\""
+						: null;
+
+					if (refused is not null)
+					{
+						ReportDiagnostic(
+							new(
+								"CXML0004",
+								"The member-level XML vocabulary cannot be combined with the DataContract XML wire",
+								"The member '{0}' carries [XmlProperty({1})], but its container produces the DataContract XML wire, whose element names all come from the data contract and which has no notion of a user-data XML attribute: the setting cannot be honored. Remove it (the contract already decides the name), or publish the Modern XML wire, which does honor it, from a separate container (the dual-container pattern).",
+								"SnowBank.Serialization.Json.CodeGen",
+								DiagnosticSeverity.Error,
+								isEnabledByDefault: true
+							),
+							member.Locations.Length > 0 ? member.Locations[0] : null,
+							member.ToDisplayString(), refused);
+					}
+
+					// the dictionary format survives: it selects between representations, it does not rename anything
+					return (null, false, null, dictionaryFormat);
+				}
+
+				bool isAttribute = attributeSpelled && attributeValue;
+				string? name = rawName;
+
+				if (name is not null && name.Length > 0 && name[0] == '@')
+				{ // the sugar: "@id" means an XML attribute named "id", resolved HERE so nothing downstream ever sees a '@'
+					if (name.Length == 1)
+					{
+						ReportDiagnostic(
+							new(
+								"CXML0007",
+								"An XML name is not valid",
+								"The member '{0}' declares [XmlProperty(\"@\")]: the leading '@' is the sugar that projects a member as an XML attribute, and it needs a name after it (ex: \"@id\"). Write the attribute name, or use [XmlProperty(Attribute = true)] to keep the member's own name.",
+								"SnowBank.Serialization.Json.CodeGen",
+								DiagnosticSeverity.Error,
+								isEnabledByDefault: true
+							),
+							member.Locations.Length > 0 ? member.Locations[0] : null,
+							member.ToDisplayString());
+						return default;
+					}
+
+					if (attributeSpelled && !attributeValue)
+					{ // the two spellings genuinely disagree, and silently picking either gives a wire the author did not ask for
+						ReportDiagnostic(
+							new(
+								"CXML0007",
+								"An XML name is not valid",
+								"The member '{0}' declares [XmlProperty(\"{1}\", Attribute = false)]: the leading '@' asks for the member to be projected as an XML attribute, while Attribute = false refuses one. Keep only one of the two: drop the '@' to project a nested element, or drop Attribute = false.",
+								"SnowBank.Serialization.Json.CodeGen",
+								DiagnosticSeverity.Error,
+								isEnabledByDefault: true
+							),
+							member.Locations.Length > 0 ? member.Locations[0] : null,
+							member.ToDisplayString(), rawName);
+						return default;
+					}
+
+					isAttribute = true;
+					name = name.Substring(1);
+				}
+
+				// both names land in the document verbatim, so both get the same validation
+				if (name is not null && !ValidateXmlName(member, name, "element or attribute"))
+				{
+					return default;
+				}
+				if (itemName is not null && !ValidateXmlName(member, itemName, "item"))
+				{
+					return default;
+				}
+
+				if (isAttribute && !IsXmlScalar(type))
+				{ // an attribute value is text: a type with no lexical form could only ever be mangled into one
+					ReportDiagnostic(
+						new(
+							"CXML0003",
+							"Only a scalar member can be projected as an XML attribute",
+							"The member '{0}' asks to be projected as an XML attribute, but its type '{1}' has no lexical form: an XML attribute value is text, so only scalars (booleans, numbers, strings, enums, dates, durations, GUIDs, URIs, byte arrays) can become one. Drop the '@' prefix (or Attribute = true) to project the member as a nested element instead.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						member.Locations.Length > 0 ? member.Locations[0] : null,
+						member.ToDisplayString(), type.FullName);
+					return default;
+				}
+
+				return (name, isAttribute, itemName, dictionaryFormat);
+			}
+
+			/// <summary>Reports <c>CXML0007</c> when a name is not a legal XML NCName, and returns whether it is</summary>
+			/// <remarks>Uses the same probe as <c>XmlName.Create</c>, so that a name accepted at compile time cannot be refused at runtime: <c>XmlConvert.VerifyNCName</c> throws instead of returning, so it is caught and translated here (an exception escaping the parser would surface as the generic CJSON0001 crash instead of a message the author can act on).</remarks>
+			private bool ValidateXmlName(ISymbol member, string name, string role)
+			{
+				string? why = null;
+				try
+				{
+					System.Xml.XmlConvert.VerifyNCName(name);
+				}
+				catch (Exception ex) when (ex is System.Xml.XmlException or ArgumentException)
+				{
+					// XmlException for a malformed name (space, leading digit, colon, ...); ArgumentException for an
+					// empty one specifically. Either way, forward VerifyNCName's own message so the diagnostic says WHY.
+					why = ex.Message;
+				}
+
+				if (why is null) return true;
+
+				ReportDiagnostic(
+					new(
+						"CXML0007",
+						"An XML name is not valid",
+						"The member '{0}' declares the XML {1} name '{2}', which is not a legal XML name: {3}",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString(), role, name, why);
+				return false;
+			}
+
+			/// <summary>Reports <c>CXML0006</c> on a sequence whose items are themselves bare sequences, with no intermediate type to name the inner items</summary>
+			/// <remarks>Structural, so it applies to every member of an XML container, annotated or not. A DICTIONARY is not a bare sequence on either side of this test: its entries are named by the resolved dictionary format, so it always has names to give, which is exactly what a bare sequence lacks. Nor is a <c>byte[]</c> or a <c>string</c>, which are scalars on this wire however enumerable C# considers them.</remarks>
+			private void ReportBareNestedCollection(ISymbol member, TypeMetadata type)
+			{
+				if (!IsBareXmlSequence(type, out var item)) return;
+				if (!IsBareXmlSequence(item, out _)) return;
+
+				ReportDiagnostic(
+					new(
+						"CXML0006",
+						"A sequence of sequences has no name for its inner items",
+						"The member '{0}' is a sequence of type '{1}' whose items are themselves sequences: the inner sequence has no element name to give its own items, so the shape has no XML projection. Introduce an intermediate type for the inner sequence (a small record holding one collection member), which gives the inner items a name.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString(), type.FullName);
+			}
+
+			/// <summary>Reports <c>CXML0005</c> when two members of a type resolve to the same effective XML name, once the <c>'@'</c> sugar has been normalized</summary>
+			/// <remarks>
+			/// <para>Elements and attributes are checked SEPARATELY, because in XML they do not share a namespace: an attribute and a child element may legitimately carry the same name, and refusing that pair would be a false positive on a perfectly readable document.</para>
+			/// <para>Only member-versus-member: a collision with a polymorphic type's discriminator is not checked here, because the XML name of the discriminator is an emission decision this step deliberately does not pre-empt.</para>
+			/// </remarks>
+			private void ReportDuplicateXmlNames(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members)
+			{
+				var elements = new Dictionary<string, string>(StringComparer.Ordinal);
+				var attributes = new Dictionary<string, string>(StringComparer.Ordinal);
+
+				foreach (var member in members)
+				{
+					// the JSON name is the fallback: it is what the XML name derives from when the member does not override it
+					string effective = member.XmlName ?? member.Name;
+					var seen = member.XmlIsAttribute ? attributes : elements;
+
+					if (!seen.TryGetValue(effective, out var previous))
+					{
+						seen.Add(effective, member.MemberName);
+						continue;
+					}
+
+					// a member shadowing an inherited one of the same name (the 'new' keyword) appears twice in the
+					// hierarchy walk: that is one member, not a collision
+					if (previous == member.MemberName) continue;
+
+					ReportDiagnostic(
+						new(
+							"CXML0005",
+							"Two members resolve to the same XML name",
+							"The members '{1}' and '{2}' of type '{0}' both resolve to the XML {3} name '{4}': one of the two would silently win in the document, which parses either way. Rename one of them for XML with [XmlProperty(\"...\")].",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						type.Locations.Length > 0 ? type.Locations[0] : null,
+						type.ToDisplayString(), previous, member.MemberName, member.XmlIsAttribute ? "attribute" : "element", effective);
+				}
+			}
+
+			/// <summary>Tests whether a type has a lexical form on the XML wire: the set the <c>CrystalXmlFormatters</c> cover, plus strings and enums</summary>
+			/// <remarks>This is what an XML ATTRIBUTE can hold, since an attribute value is text and nothing else. <c>Nullable&lt;T&gt;</c> is unwrapped (the absent case is a presence question, not a formatting one); a <c>byte[]</c> counts, because it renders as base64 text; a <c>string</c> counts even though C# makes it enumerable.</remarks>
+			private static bool IsXmlScalar(TypeMetadata type)
+			{
+				var actual = type.NullableOfType ?? type;
+
+				if (actual.IsEnum()) return true;
+
+				switch (actual.SpecialType)
+				{
+					case SpecialType.System_Boolean:
+					case SpecialType.System_Char:
+					case SpecialType.System_SByte:
+					case SpecialType.System_Byte:
+					case SpecialType.System_Int16:
+					case SpecialType.System_UInt16:
+					case SpecialType.System_Int32:
+					case SpecialType.System_UInt32:
+					case SpecialType.System_Int64:
+					case SpecialType.System_UInt64:
+					case SpecialType.System_Single:
+					case SpecialType.System_Double:
+					case SpecialType.System_Decimal:
+					case SpecialType.System_String:
+					case SpecialType.System_DateTime:
 					{
 						return true;
 					}
 				}
+
+				if (actual.NameSpace == "System" && actual.Name is "TimeSpan" or "Guid" or "Uri")
+				{ // the three the formatters cover that have no SpecialType of their own
+					return true;
+				}
+
+				// a byte[] is base64 TEXT on both wires; a List<byte> is not (it renders as a sequence of numbers)
+				return actual.TypeKind == TypeKind.Array && actual.ElementType is { SpecialType: SpecialType.System_Byte };
+			}
+
+			/// <summary>Tests whether a type is projected as a BARE sequence of unnamed children on the XML wire, and hands back its item type</summary>
+			/// <remarks>Bare means "brings no names of its own": a scalar is not a sequence at all (a <c>string</c> and a <c>byte[]</c> included, however enumerable C# considers them), and a dictionary is a sequence whose entries the dictionary format names.</remarks>
+			private static bool IsBareXmlSequence(TypeMetadata type, [MaybeNullWhen(false)] out TypeMetadata itemType)
+			{
+				var actual = type.NullableOfType ?? type;
+				if (!IsXmlScalar(actual) && actual.KeyType is null && actual.ElementType is { } element)
+				{
+					itemType = element;
+					return true;
+				}
+				itemType = null;
 				return false;
 			}
+
+			#endregion
 
 			/// <summary>Warns (CJSON0012, suppressible) on an internal member with no include/exclude signal: the generated converter serializes it while the reflection path does not see it</summary>
 			/// <remarks>The generated-only inclusion is kept for wire compatibility (existing applications depend on it); the warning makes the cross-path divergence observable so the intent gets pinned explicitly ([JsonInclude] includes the member on both paths, [JsonIgnore] excludes it on both).</remarks>
@@ -1092,7 +1375,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.ToDisplayString());
 			}
 
-			public (CrystalJsonMemberMetadata? Metadata, ITypeSymbol Type) ParseMemberMetadata(ISymbol member, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work, string? namingPolicy, bool hasDataContract)
+			/// <param name="xmlProfile"><inheritdoc cref="CrawlIncludedTypes" path="/param[@name='xmlProfile']"/></param>
+			public (CrystalJsonMemberMetadata? Metadata, ITypeSymbol Type) ParseMemberMetadata(ISymbol member, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work, string? namingPolicy, bool hasDataContract, string? xmlProfile)
 			{
 				// On a [DataContract] type the model is opt-in and accessibility-blind: [DataMember] is the ONLY membership
 				// signal, so a member without it is out whatever its accessibility, and a member with it is in whatever its
@@ -1316,6 +1600,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				string? name = null;
 				string? dataMemberName = null;
 				bool dataMemberIsRequired = false;
+				int? dataMemberOrder = null;
+				bool emitDefaultValue = true;
+				bool hasXmlProperty = false;
+				string? xmlRawName = null;
+				bool xmlAttributeSpelled = false;
+				bool xmlAttributeValue = false;
+				string? xmlItemName = null;
+				string? xmlDictionaryFormat = null;
 				string? stjPropertyName = null;
 				string? newtonsoftPropertyName = null;
 				bool isKey = false;
@@ -1405,8 +1697,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 							break;
 						}
 						case DataMemberAttributeFullName:
-						{ // [DataMember(Name = "fooBar", IsRequired = true)]. Note Order= and EmitDefaultValue= are deliberately
-							// NOT read: the reflection path ignores both, and matching it is the acceptance bar for this type.
+						{ // [DataMember(Name = "fooBar", IsRequired = true, Order = 3, EmitDefaultValue = false)]
+							// Order= and EmitDefaultValue= are read for the XML wire, which honours both; the JSON side
+							// keeps ignoring them, exactly as the reflection path does.
 							foreach (var kv in attribute.NamedArguments)
 							{
 								if (kv.Key == "Name" && kv.Value.Value is string dmName)
@@ -1416,6 +1709,55 @@ namespace SnowBank.Serialization.Json.CodeGen
 								else if (kv.Key == "IsRequired" && kv.Value.Value is bool dmRequired)
 								{
 									dataMemberIsRequired = dmRequired;
+								}
+								else if (kv.Key == "Order" && kv.Value.Value is int dmOrder)
+								{ // a negative order means "unordered" to DataContractSerializer, and unordered is a different rule from ordered-at-zero
+									dataMemberOrder = dmOrder >= 0 ? dmOrder : null;
+								}
+								else if (kv.Key == "EmitDefaultValue" && kv.Value.Value is bool dmEmitDefault)
+								{
+									emitDefaultValue = dmEmitDefault;
+								}
+							}
+							break;
+						}
+						case KnownTypeSymbols.XmlPropertyAttributeFullName:
+						{ // [XmlProperty("@id")], [XmlProperty(Name = "tags", ItemName = "tag", Attribute = false, DictionaryFormat = ...)]
+							// captured RAW here; the '@' sugar, the name validation and the refusals resolve below, once the
+							// whole attribute list has been read (and only if the container actually produces XML)
+							hasXmlProperty = true;
+							if (attribute.ConstructorArguments.Length > 0 && attribute.ConstructorArguments[0].Value is string xmlCtorName)
+							{
+								xmlRawName = xmlCtorName;
+							}
+							foreach (var kv in attribute.NamedArguments)
+							{
+								switch (kv.Key)
+								{
+									case "Name":
+									{
+										if (kv.Value.Value is string xmlNamedName) xmlRawName = xmlNamedName;
+										break;
+									}
+									case "Attribute":
+									{
+										if (kv.Value.Value is bool xmlAttr)
+										{ // remember that it was SPELLED: 'Attribute = false' next to the '@' sugar is a contradiction, while an absent one is not
+											xmlAttributeSpelled = true;
+											xmlAttributeValue = xmlAttr;
+										}
+										break;
+									}
+									case "ItemName":
+									{
+										if (kv.Value.Value is string xmlItem) xmlItemName = xmlItem;
+										break;
+									}
+									case "DictionaryFormat":
+									{
+										xmlDictionaryFormat = GetEnumMemberName(kv.Value);
+										break;
+									}
 								}
 							}
 							break;
@@ -1596,13 +1938,37 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					name = FormatName(memberName, namingPolicy);
 				}
-				
+
+				string? xmlName = null;
+				bool xmlIsAttribute = false;
+				if (xmlProfile is null)
+				{ // the container produces no XML: the whole member-level vocabulary is inert, diagnostics included
+					xmlItemName = null;
+					xmlDictionaryFormat = null;
+				}
+				else
+				{
+					if (hasXmlProperty)
+					{
+						(xmlName, xmlIsAttribute, xmlItemName, xmlDictionaryFormat) = ResolveXmlMember(member, type, xmlProfile, xmlRawName, xmlAttributeSpelled, xmlAttributeValue, xmlItemName, xmlDictionaryFormat);
+					}
+
+					// structural, so it applies to every member of an XML container, annotated or not
+					ReportBareNestedCollection(member, type);
+				}
+
 				return (
 					new()
 					{
 						Type = type,
 						Name = name!,
 						MemberName = memberName,
+						XmlName = xmlName,
+						XmlIsAttribute = xmlIsAttribute,
+						XmlItemName = xmlItemName,
+						XmlDictionaryFormat = xmlDictionaryFormat,
+						DataMemberOrder = dataMemberOrder,
+						EmitDefaultValue = emitDefaultValue,
 #if FULL_DEBUG
 						Attributes = attributes,
 #endif

@@ -41,6 +41,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		public const string CrystalXmlOutputAttributeFullName = CrystalXmlNamespace + ".CrystalXmlOutputAttribute";
 
+		/// <summary>Member-level XML vocabulary: every XML-only concern lives here, so the JSON attributes are never modified by the XML feature</summary>
+		public const string XmlPropertyAttributeFullName = CrystalXmlNamespace + ".XmlPropertyAttribute";
+
 		public const string CrystalJsonFullName = CrystalJsonNamespace + ".CrystalJson";
 		public const string CrystalJsonConverterAttributeFullName = CrystalJsonNamespace + ".CrystalJsonConverterAttribute";
 		public const string JsonPropertyAttributeFullName = CrystalJsonNamespace + ".JsonPropertyAttribute";
