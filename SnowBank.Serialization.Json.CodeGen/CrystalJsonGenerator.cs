@@ -142,6 +142,60 @@ namespace SnowBank.Serialization.Json.CodeGen
 				;
 
 			context.RegisterSourceOutput(selfSerializableTypes, EmitSourceCode);
+
+			// find the types that ask for XML output without hosting any generated serializer: neither pipeline above
+			// ever sees them, so the attribute would be silently inert (CXML0002)
+			var orphanXmlOutputTypes = context.SyntaxProvider
+				.ForAttributeWithMetadataName(
+					KnownTypeSymbols.CrystalXmlOutputAttributeFullName,
+					static (node, _) => node is TypeDeclarationSyntax,
+					static (ctx, _) => (TypeDeclaration: (TypeDeclarationSyntax) ctx.TargetNode, Symbol: ctx.TargetSymbol as INamedTypeSymbol)
+				)
+				.Where(static candidate => candidate.Symbol is not null && !HostsGeneratedSerializer(candidate.Symbol))
+				.Combine(knownTypeSymbols)
+				.Select(static (tuple, _) =>
+				{
+					var parser = new Parser(tuple.Right);
+					parser.ReportOrphanXmlOutput(tuple.Left.TypeDeclaration, tuple.Left.Symbol!);
+					return (Metadata: (CrystalJsonContainerMetadata?) null, Diagnostics: parser.Diagnostics.ToImmutableEquatableArray());
+				})
+				.WithTrackingName("CrystalXmlOrphanSpec")
+				;
+
+			context.RegisterSourceOutput(orphanXmlOutputTypes, EmitSourceCode);
+		}
+
+		/// <summary>Tests whether a type hosts source-generated serialization code: a <c>[CrystalJsonConverter]</c> container, or a self-serializable type</summary>
+		private static bool HostsGeneratedSerializer(INamedTypeSymbol symbol)
+		{
+			foreach (var attribute in symbol.GetAttributes())
+			{
+				if (attribute.AttributeClass?.ToDisplayString() == CrystalJsonConverterAttributeFullName)
+				{
+					return true;
+				}
+			}
+			return IsSelfSerializable(symbol);
+		}
+
+		/// <summary>Tests whether a type is self-serializable: one of its attributes carries the <c>[CrystalJsonSelfSerializable]</c> meta-marker</summary>
+		/// <remarks>The decorating attribute belongs to the application or to another layer, not to this generator, so it cannot be matched by name: only the meta-marker it carries can.</remarks>
+		private static bool IsSelfSerializable(INamedTypeSymbol symbol)
+		{
+			foreach (var attribute in symbol.GetAttributes())
+			{
+				var attributeClass = attribute.AttributeClass;
+				if (attributeClass is null) continue;
+
+				foreach (var marker in attributeClass.GetAttributes())
+				{
+					if (marker.AttributeClass?.ToDisplayString() == CrystalJsonSelfSerializableAttributeFullName)
+					{
+						return true;
+					}
+				}
+			}
+			return false;
 		}
 
 		/// <summary>Filters a type declaration, keeping only self-serializable types (one of their attributes carries the meta-marker)</summary>
@@ -154,23 +208,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return default;
 			}
 
-			bool found = false;
-			foreach (var attribute in symbol.GetAttributes())
-			{
-				var attributeClass = attribute.AttributeClass;
-				if (attributeClass is null) continue;
-
-				foreach (var marker in attributeClass.GetAttributes())
-				{
-					if (marker.AttributeClass?.ToDisplayString() == CrystalJsonSelfSerializableAttributeFullName)
-					{
-						found = true;
-						break;
-					}
-				}
-				if (found) break;
-			}
-			if (!found)
+			if (!IsSelfSerializable(symbol))
 			{
 				return default;
 			}

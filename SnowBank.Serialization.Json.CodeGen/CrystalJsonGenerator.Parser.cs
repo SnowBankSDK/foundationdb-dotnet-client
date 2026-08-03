@@ -81,6 +81,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			public const string JsonDerivedTypeAttributeFullName = "System.Text.Json.Serialization.JsonDerivedTypeAttribute";
 
+			/// <summary>Name of the JSON wire profile that serves the legacy DCJS wire, and the only one the default XML profile derives the DataContract wire from</summary>
+			private const string WireProfileDataContractCompat = "DataContractCompat";
+
+			/// <summary>Members of <c>XmlOutputProfile</c>, as stored in the metadata (the enum lives in SnowBank.Core, which an analyzer cannot reference)</summary>
+			private const string XmlProfileDefault = "Default";
+
+			/// <inheritdoc cref="XmlProfileDefault"/>
+			private const string XmlProfileModern = "Modern";
+
+			/// <inheritdoc cref="XmlProfileDefault"/>
+			private const string XmlProfileDataContract = "DataContract";
+
+			/// <summary>Member of <c>XmlDictionaryFormat</c> meaning "not overridden by this container"</summary>
+			private const string XmlDictionaryFormatDefault = "Default";
+
 			/// <summary>Table of known symbols from this compilation</summary>
 			private KnownTypeSymbols KnownSymbols { get; }
 
@@ -135,6 +150,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				bool caseInsensitiveNames = false;
 				string? propertyNamingPolicy = null;
 				string? wireProfile = null;
+				AttributeData? xmlOutputAttribute = null;
 
 				// key: fullyQualifiedName
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
@@ -196,7 +212,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									}
 									case 2: // CrystalJsonSerializerDefaults.DataContractCompat
 									{ // the profile governs value formats only: the DCJS wire uses the declared member names
-										wireProfile = "DataContractCompat";
+										wireProfile = WireProfileDataContractCompat;
 										break;
 									}
 								}
@@ -231,6 +247,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 							break;
 						}
+						case KnownTypeSymbols.CrystalXmlOutputAttributeFullName:
+						{ // XML output is opt-in; the wire it resolves to depends on the JSON profile, which is only known once the whole attribute list has been read
+							xmlOutputAttribute = typeAttribute;
+							break;
+						}
 					}
 				}
 
@@ -249,6 +270,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 						symbol.ToDisplayString(), wireProfile);
 					return null;
 				}
+
+				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, xmlOutputAttribute, wireProfile, caseInsensitiveNames, propertyNamingPolicy);
 
 				Kenobi($"Found {work.Count} root types to include");
 
@@ -285,7 +308,122 @@ namespace SnowBank.Serialization.Json.CodeGen
 					PropertyNamingPolicy = propertyNamingPolicy,
 					SupportsUnsafeAccessors = this.KnownSymbols.HasUnsafeAccessor,
 					WireProfile = wireProfile,
+					XmlProfile = xmlProfile,
+					XmlDictionaryFormat = xmlDictionaryFormat,
 				};
+			}
+
+			/// <summary>Resolves the XML wire of a container from its <c>[CrystalXmlOutput]</c> attribute, reporting <c>CXML0001</c> when the resolved wire cannot honor the container's naming options</summary>
+			/// <param name="symbol">Container being parsed (used to name it in the diagnostic)</param>
+			/// <param name="xmlOutputAttribute">The container's <c>[CrystalXmlOutput]</c> attribute, or <see langword="null"/> when it has none (XML output is opt-in)</param>
+			/// <param name="wireProfile">The container's resolved JSON wire profile, which the default XML profile derives from</param>
+			/// <param name="caseInsensitiveNames">The container's <c>PropertyNameCaseInsensitive</c> option</param>
+			/// <param name="propertyNamingPolicy">The container's <c>PropertyNamingPolicy</c> option, or <see langword="null"/> for the declared names</param>
+			/// <returns>The resolved profile name and dictionary format name, or <c>(null, null)</c> when the container produces no XML</returns>
+			private (string? Profile, string? DictionaryFormat) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? wireProfile, bool caseInsensitiveNames, string? propertyNamingPolicy)
+			{
+				if (xmlOutputAttribute is null)
+				{ // no opt-in: the container is JSON-only, and nothing else about it changes
+					return (null, null);
+				}
+
+				// the attribute only exposes named properties (its single constructor is parameterless)
+				string? explicitProfile = null;
+				string? dictionaryFormat = null;
+				foreach (var kv in xmlOutputAttribute.NamedArguments)
+				{
+					if (kv.Key == "Profile")
+					{
+						explicitProfile = GetEnumMemberName(kv.Value);
+					}
+					else if (kv.Key == "DictionaryFormat")
+					{
+						dictionaryFormat = GetEnumMemberName(kv.Value);
+					}
+				}
+
+				// an explicit profile wins; 'Default' (or unspecified) derives the XML wire from the JSON one
+				string profile =
+					explicitProfile is null or XmlProfileDefault
+						? (wireProfile == WireProfileDataContractCompat ? XmlProfileDataContract : XmlProfileModern)
+						: explicitProfile;
+
+				if (profile == XmlProfileDataContract && (caseInsensitiveNames || propertyNamingPolicy != null))
+				{ // the DataContract wire names its elements after the data contract: a naming option next to it cannot be honored, and honoring neither silently is worse
+					//note: this is only reachable through an EXPLICIT profile: the derived one requires the DCJS JSON profile, which already refuses naming options (CJSON0013)
+					ReportDiagnostic(
+						new(
+							"CXML0001",
+							"The DataContract XML wire cannot be combined with a naming option",
+							"The container '{0}' produces the DataContract XML wire, whose element names come from the data contract; combining it with a camelCase or case-insensitive naming option is refused. Remove the naming option, use the Modern XML wire (which follows the naming policy), or produce the DataContract wire from a separate container (the dual-container pattern).",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						symbol.ToDisplayString());
+
+					// the XML request is dropped, and the container keeps generating its JSON: one error to read instead of an error plus a cascade of missing members
+					return (null, null);
+				}
+
+				Kenobi($"Resolved XML output for container {symbol.Name}: profile={profile}; dictionaryFormat={dictionaryFormat ?? XmlDictionaryFormatDefault}");
+
+				return (profile, dictionaryFormat ?? XmlDictionaryFormatDefault);
+			}
+
+			/// <summary>Returns the name of the enum member an attribute argument was set to, or <see langword="null"/> when the argument is not a known enum member</summary>
+			/// <remarks>Reads the NAME rather than the ordinal: the metadata layer stores these names verbatim, so reordering the runtime enum cannot silently change what the generator resolves.</remarks>
+			private static string? GetEnumMemberName(TypedConstant value)
+			{
+				if (value.Value is null || value.Type is not INamedTypeSymbol { TypeKind: TypeKind.Enum } enumType)
+				{
+					return null;
+				}
+
+				foreach (var member in enumType.GetMembers())
+				{
+					if (member is IFieldSymbol { HasConstantValue: true } field && Equals(field.ConstantValue, value.Value))
+					{
+						return field.Name;
+					}
+				}
+
+				return null;
+			}
+
+			/// <summary>Returns the type's <c>[CrystalXmlOutput]</c> attribute, or <see langword="null"/> when it has none</summary>
+			private static AttributeData? FindXmlOutputAttribute(INamedTypeSymbol symbol)
+			{
+				foreach (var attribute in symbol.GetAttributes())
+				{
+					if (attribute.AttributeClass?.ToDisplayString() == KnownTypeSymbols.CrystalXmlOutputAttributeFullName)
+					{
+						return attribute;
+					}
+				}
+				return null;
+			}
+
+			/// <summary>Reports <c>CXML0002</c> on a type that asks for XML output but hosts no generated serializer</summary>
+			/// <remarks>Neither generation pipeline ever reaches such a type, so without this diagnostic the attribute would be silently inert.</remarks>
+			public void ReportOrphanXmlOutput(TypeDeclarationSyntax typeDeclaration, INamedTypeSymbol symbol)
+			{
+				this.ContextClassLocation = typeDeclaration.GetLocation();
+
+				ReportDiagnostic(
+					new(
+						"CXML0002",
+						"XML output requires a serializer container",
+						"The type '{0}' is decorated with [CrystalXmlOutput], but hosts no generated serializer: no XML output is produced for it. Add [CrystalJsonConverter] (with one [CrystalJsonSerializable] per type to serialize), or decorate the type with a self-serializable attribute.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					this.ContextClassLocation,
+					symbol.ToDisplayString());
+
+				this.ContextClassLocation = null;
 			}
 
 			/// <summary>Parses a self-serializable type: a partial type decorated with an attribute that carries the <c>[CrystalJsonSelfSerializable]</c> meta-marker</summary>
@@ -359,6 +497,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return null;
 				}
 
+				// a self-serializable type hosts its own generated code, so it can opt into XML output the same way a
+				// container does; it declares no JSON wire profile, so an unspecified profile derives the Modern wire
+				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), wireProfile: null, caseInsensitiveNames: false, propertyNamingPolicy: null);
+
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
 				var mappedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default) { symbol };
 
@@ -404,6 +546,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					PropertyNamingPolicy = null,
 					IsSelfContained = true,
 					SupportsUnsafeAccessors = this.KnownSymbols.HasUnsafeAccessor,
+					XmlProfile = xmlProfile,
+					XmlDictionaryFormat = xmlDictionaryFormat,
 				};
 			}
 

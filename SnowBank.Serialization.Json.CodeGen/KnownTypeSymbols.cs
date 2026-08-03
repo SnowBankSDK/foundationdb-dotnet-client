@@ -36,6 +36,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		public const string CrystalJsonNamespace = "SnowBank.Data.Json";
 
+		/// <summary>Namespace of the XML output vocabulary (opt-in: a container only produces XML when it asks for it)</summary>
+		public const string CrystalXmlNamespace = "SnowBank.Data.Xml";
+
+		public const string CrystalXmlOutputAttributeFullName = CrystalXmlNamespace + ".CrystalXmlOutputAttribute";
+
 		public const string CrystalJsonFullName = CrystalJsonNamespace + ".CrystalJson";
 		public const string CrystalJsonConverterAttributeFullName = CrystalJsonNamespace + ".CrystalJsonConverterAttribute";
 		public const string JsonPropertyAttributeFullName = CrystalJsonNamespace + ".JsonPropertyAttribute";

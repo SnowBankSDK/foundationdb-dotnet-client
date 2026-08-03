@@ -57,6 +57,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks>The profile only replaces the "caller passed no settings" fallback of the generated entry points; explicitly passed settings always win entirely.</remarks>
 		public string? WireProfile { get; init; }
 
+		/// <summary>Name of the resolved XML wire profile of this container (<c>"Modern"</c> or <c>"DataContract"</c>), or <see langword="null"/> when the container produces no XML output</summary>
+		/// <remarks>
+		/// <para>XML output is strictly opt-in: only a container decorated with <c>[CrystalXmlOutput]</c> gets a non-null profile. The value is already RESOLVED: an explicit <c>Profile</c> wins, otherwise it is derived from <see cref="WireProfile"/> (the DCJS JSON wire derives the DataContract XML wire, anything else derives the Modern one).</para>
+		/// <para>Typed as a string, like <see cref="WireProfile"/>: the metadata layer stays symbol-free, so the whole record keeps a cheap structural equality for the incremental pipeline.</para>
+		/// </remarks>
+		public string? XmlProfile { get; init; }
+
+		/// <summary>Name of the container's default representation for dictionary-like members (<c>"Default"</c> when the container did not override it), or <see langword="null"/> when the container produces no XML output</summary>
+		/// <remarks><c>"Default"</c> is carried as-is rather than flattened into the profile's shape: the per-profile default and the per-member override both resolve downstream, and collapsing them here would lose the "unset" state.</remarks>
+		public string? XmlDictionaryFormat { get; init; }
+
 		/// <summary>Specifies whether the container is the serialized type itself (self-serializable mode)</summary>
 		/// <remarks>
 		/// <para>When <c>true</c>, <see cref="Type"/> is a partial application type that acts as its own container: all its generated code lives inside a single reserved nested scope (ex: <c>Widget.Json.ReadOnly</c>), and any other included type (crawled from its members) is hosted inside that scope under its own name (ex: <c>Widget.Json.WidgetPart.ReadOnly</c>; inside the scope, holders cannot shadow the referenced types in the entity's own source).</para>
