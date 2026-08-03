@@ -91,8 +91,9 @@ namespace SnowBank.Data.Xml
 			{
 				// XmlException for a malformed name (space, leading digit, colon, ...); ArgumentException for an
 				// empty string specifically (XmlConvert.VerifyNCName special-cases that one via ThrowIfNullOrEmpty
-				// instead of going through its usual XmlException path)
-				throw new CrystalXmlInvalidNameException(text);
+				// instead of going through its usual XmlException path). Either way, forward VerifyNCName's own
+				// message so the diagnostic says WHY the name was rejected, not just that it was.
+				throw new CrystalXmlInvalidNameException(text, $"'{text}' is not a valid XML name: {ex.Message}");
 			}
 			return new(text, Encoding.UTF8.GetBytes(text));
 		}

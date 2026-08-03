@@ -105,6 +105,22 @@ namespace SnowBank.Data.Xml.Tests
 
 		}
 
+		/// <summary>Writes more than one buffer's worth of text (forcing at least one real growth-triggered drain, since the sink proxies default to a 4 KB rent), then throws</summary>
+		/// <remarks>Exercises the exact failure mode the review called out: an exception AFTER the pooled buffer has
+		/// already been grown/drained at least once, not just before the first rent.</remarks>
+		private sealed class ThrowingAfterALargeChunkSerializer : ICrystalXmlSerializer<Book>
+		{
+
+			public void WriteXml<TEmitter>(ref TEmitter emitter, Book? value, CrystalJsonSettings? settings = null, string? rootName = null)
+				where TEmitter : struct, IXmlEmitter
+			{
+				emitter.WriteStartElement(in DefaultRoot);
+				emitter.WriteText(new string('x', 5000));
+				throw new InvalidOperationException("boom-after-drain");
+			}
+
+		}
+
 		#endregion
 
 		#region The five outputs agree...
@@ -127,6 +143,7 @@ namespace SnowBank.Data.Xml.Tests
 			{
 				CrystalXml.WriteTo(ms, Serializer, book);
 				Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(text), "WriteTo(Stream), UTF-8 decoded");
+				Assert.That(ms.CanWrite, Is.True, "WriteTo(Stream) must not close or otherwise take ownership of the caller's stream");
 			}
 
 			var sw = new StringWriter();
@@ -212,6 +229,37 @@ namespace SnowBank.Data.Xml.Tests
 
 		#endregion
 
+		#region large documents cross the initial 4 KB buffer (regression: TextWriterBufferProxy grow/drain)...
+
+		[Test]
+		public void Test_Large_Document_Crosses_The_Initial_Buffer_On_WriteTo_TextWriter()
+		{
+			// an 8000-char title, plus markup, is comfortably more than one 4 KB rent's worth of char data: this
+			// forces at least one growth-triggered Drain() mid-document, which is exactly where the reviewed bug
+			// (NullReferenceException, then a double-return once naively null-guarded) used to live
+			var book = new Book { Title = new string('y', 8000), Rating = 'A' };
+			string expectedText = CrystalXml.ToText(Serializer, book);
+
+			var sw = new StringWriter();
+			CrystalXml.WriteTo(sw, Serializer, book);
+			Assert.That(sw.ToString(), Is.EqualTo(expectedText));
+		}
+
+		[Test]
+		public void Test_Large_Document_Crosses_The_Initial_Buffer_On_WriteTo_Stream()
+		{
+			var book = new Book { Title = new string('y', 8000), Rating = 'A' };
+			string expectedText = CrystalXml.ToText(Serializer, book);
+
+			using (var ms = new MemoryStream())
+			{
+				CrystalXml.WriteTo(ms, Serializer, book);
+				Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expectedText));
+			}
+		}
+
+		#endregion
+
 		#region exception safety...
 
 		[Test]
@@ -228,6 +276,33 @@ namespace SnowBank.Data.Xml.Tests
 			{
 				Assert.That(() => CrystalXml.WriteTo<Book>(ms, thrower, null), Throws.InstanceOf<InvalidOperationException>().With.Message.EqualTo("boom"));
 			}
+		}
+
+		[Test]
+		public void Test_Exception_After_A_Real_Drain_Still_Propagates_Unchanged_And_Returns_The_Pool()
+		{
+			// the 5000-char chunk forces at least one growth-triggered Drain() BEFORE the throw, so this exercises
+			// the failure path from a state where the pool has already been touched once - not just the "never
+			// grew" case Test_Exceptions_During_Serialization_Propagate_Unchanged covers
+			var thrower = new ThrowingAfterALargeChunkSerializer();
+
+			var sw = new StringWriter();
+			Assert.That(() => CrystalXml.WriteTo<Book>(sw, thrower, null), Throws.InstanceOf<InvalidOperationException>().With.Message.EqualTo("boom-after-drain"));
+
+			using (var ms = new MemoryStream())
+			{
+				Assert.That(() => CrystalXml.WriteTo<Book>(ms, thrower, null), Throws.InstanceOf<InvalidOperationException>().With.Message.EqualTo("boom-after-drain"));
+			}
+
+			// pool sanity: if either failure path above had double-returned or corrupted a rented array, the shared
+			// ArrayPool could hand out an aliased or too-small buffer next time around, which a large, unrelated,
+			// entirely successful call below would be very likely to trip over (it rents/grows from the same shared
+			// pools the two failing calls just abandoned)
+			var book = new Book { Title = new string('z', 9000), Rating = 'A' };
+			string text = CrystalXml.ToText(Serializer, book);
+			var sw2 = new StringWriter();
+			CrystalXml.WriteTo(sw2, Serializer, book);
+			Assert.That(sw2.ToString(), Is.EqualTo(text));
 		}
 
 		#endregion

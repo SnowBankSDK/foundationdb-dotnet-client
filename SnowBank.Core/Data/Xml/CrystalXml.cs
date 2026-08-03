@@ -27,7 +27,6 @@
 namespace SnowBank.Data.Xml
 {
 	using System.Buffers;
-	using System.IO.Pipelines;
 	using System.Xml;
 	using System.Xml.Linq;
 	using SnowBank.Buffers;
@@ -108,43 +107,68 @@ namespace SnowBank.Data.Xml
 
 		/// <summary>Serializes <paramref name="value"/> as UTF-8 encoded XML into <paramref name="destination"/></summary>
 		/// <typeparam name="T">Type of the value being serialized</typeparam>
-		/// <param name="destination">Destination stream, flushed but not disposed by this call; ownership stays with the caller</param>
+		/// <param name="destination">Destination stream; ownership stays with the caller, who is responsible for flushing and disposing it</param>
 		/// <param name="serializer">Serializer that knows how to write a <typeparamref name="T"/></param>
 		/// <param name="value">Value to serialize, or <see langword="null"/> to write the empty/self-closing root element</param>
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
-		/// <remarks>Writes through a <see cref="PipeWriter"/> created directly over <paramref name="destination"/>
-		/// (<c>System.IO.Pipelines</c> is already a dependency of this assembly, for the unrelated Slice pipe helpers).
-		/// A <see cref="PipeWriter"/> is a reference type, so it cannot itself satisfy the <c>struct</c> constraint on
-		/// <see cref="CrystalXmlWriter{TRune,TWriter}"/>'s <c>TWriter</c>; <see cref="BufferWriterProxy{TRune}"/> is the
-		/// thin struct wrapper that lets it through.</remarks>
+		/// <remarks>
+		/// <para>Writes synchronously through a pooled <see cref="byte"/> buffer (<see cref="StreamBufferProxy"/>), draining
+		/// to <paramref name="destination"/> via the plain synchronous <see cref="Stream.Write(byte[],int,int)"/> whenever
+		/// the buffer would need to grow. This deliberately does <b>not</b> go through a <see cref="System.IO.Pipelines.PipeWriter"/>:
+		/// <c>StreamPipeWriter.FlushAsync()</c> returns a <see cref="ValueTask{TResult}"/> that is only guaranteed to have
+		/// completed synchronously for a sink like <see cref="MemoryStream"/>; blocking on it via <c>.GetAwaiter().GetResult()</c>
+		/// for a <see cref="FileStream"/> or a <see cref="System.Net.Sockets.NetworkStream"/> is not a supported use of an
+		/// <see cref="System.Threading.Tasks.Sources.IValueTaskSource{TResult}"/>-backed <see cref="ValueTask{TResult}"/> and
+		/// can throw or return early - a real risk this method's own signature is synchronous, so there is no way to await
+		/// it correctly here.</para>
+		/// <para><b>Failure-path contract.</b> If <paramref name="serializer"/> throws, cleanup (a) always returns the pooled
+		/// buffer to <see cref="ArrayPool{Byte}.Shared"/>, (b) does <b>not</b> write the still-buffered tail to
+		/// <paramref name="destination"/> - only whatever had already reached it through an earlier, growth-triggered drain,
+		/// which is unavoidable once a large document has forced more than one chunk out the door, and this is by design,
+		/// not a bug, and (c) never lets a cleanup failure replace the original exception: the caller always sees the
+		/// original exception from <paramref name="serializer"/>. On success, the buffered tail is drained the same way the
+		/// mid-document chunks were, and the buffer is returned identically. Either way, this method never closes, disposes,
+		/// or otherwise completes <paramref name="destination"/>: ownership is entirely the caller's, for the whole call.</para>
+		/// </remarks>
 		public static void WriteTo<T>(Stream destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
 		{
 			Contract.NotNull(destination);
 			Contract.NotNull(serializer);
-			var pipeWriter = PipeWriter.Create(destination, new StreamPipeWriterOptions(leaveOpen: true));
+			var sink = new StreamBufferProxy(destination);
+			var emitter = new CrystalXmlWriter<byte, StreamBufferProxy>(ref sink);
 			try
 			{
-				var sink = new BufferWriterProxy<byte>(pipeWriter);
-				var emitter = new CrystalXmlWriter<byte, BufferWriterProxy<byte>>(ref sink);
 				serializer.WriteXml(ref emitter, value, settings, rootName);
-				pipeWriter.FlushAsync().GetAwaiter().GetResult();
+				emitter.Writer.Drain();
 			}
-			finally
+			catch
 			{
-				// releases the PipeWriter's own pooled segments; harmless to call after a successful flush, and
-				// leaveOpen: true above means this never touches the caller's destination stream
-				pipeWriter.Complete();
+				emitter.Writer.Abandon();
+				throw;
 			}
 		}
 
 		/// <summary>Serializes <paramref name="value"/> as XML text into <paramref name="destination"/></summary>
 		/// <typeparam name="T">Type of the value being serialized</typeparam>
-		/// <param name="destination">Destination writer, flushed but not disposed by this call; ownership stays with the caller</param>
+		/// <param name="destination">Destination writer; ownership stays with the caller, who is responsible for flushing and disposing it</param>
 		/// <param name="serializer">Serializer that knows how to write a <typeparamref name="T"/></param>
 		/// <param name="value">Value to serialize, or <see langword="null"/> to write the empty/self-closing root element</param>
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
+		/// <remarks>
+		/// <para>Writes through a pooled <see cref="char"/> buffer (<see cref="TextWriterBufferProxy"/>), draining to
+		/// <paramref name="destination"/> via <see cref="TextWriter.Write(char[],int,int)"/> whenever the buffer would need
+		/// to grow.</para>
+		/// <para><b>Failure-path contract.</b> If <paramref name="serializer"/> throws, cleanup (a) always returns the pooled
+		/// buffer to <see cref="ArrayPool{Char}.Shared"/>, (b) does <b>not</b> write the still-buffered tail to
+		/// <paramref name="destination"/> - only whatever had already reached it through an earlier, growth-triggered drain,
+		/// which is unavoidable once a large document has forced more than one chunk out the door, and this is by design,
+		/// not a bug, and (c) never lets a cleanup failure replace the original exception: the caller always sees the
+		/// original exception from <paramref name="serializer"/>. On success, the buffered tail is drained the same way the
+		/// mid-document chunks were, and the buffer is returned identically. Either way, this method never closes, disposes,
+		/// or otherwise completes <paramref name="destination"/>: ownership is entirely the caller's, for the whole call.</para>
+		/// </remarks>
 		public static void WriteTo<T>(TextWriter destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
 		{
 			Contract.NotNull(destination);
@@ -154,12 +178,12 @@ namespace SnowBank.Data.Xml
 			try
 			{
 				serializer.WriteXml(ref emitter, value, settings, rootName);
+				emitter.Writer.Drain();
 			}
-			finally
+			catch
 			{
-				// flushes whatever was buffered so far (even a partial document, on the exception path) and always
-				// returns the rented array to the pool
-				emitter.Writer.Flush();
+				emitter.Writer.Abandon();
+				throw;
 			}
 		}
 
@@ -171,7 +195,11 @@ namespace SnowBank.Data.Xml
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
 		/// <remarks><paramref name="destination"/> is an interface, so its concrete type is not known at compile time and
-		/// cannot itself satisfy the <c>struct</c> constraint on <c>TWriter</c>; see the remarks on <see cref="BufferWriterProxy{TRune}"/>.</remarks>
+		/// cannot itself satisfy the <c>struct</c> constraint on <c>TWriter</c>; see the remarks on <see cref="BufferWriterProxy{TRune}"/>.
+		/// This overload owns no pooled resource of its own (the buffer is entirely <paramref name="destination"/>'s), so
+		/// there is nothing to return on the failure path: whatever <paramref name="serializer"/> already wrote through
+		/// <paramref name="destination"/> before throwing simply stays there, exactly as it would for any other
+		/// <see cref="IBufferWriter{T}"/> consumer.</remarks>
 		public static void WriteTo<T>(IBufferWriter<byte> destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
 		{
 			Contract.NotNull(destination);
@@ -222,7 +250,7 @@ namespace SnowBank.Data.Xml
 
 		#region Sink adapters...
 
-		/// <summary>Struct wrapper that lets a reference-typed <see cref="IBufferWriter{T}"/> (a <see cref="PipeWriter"/>, an <see cref="ArrayBufferWriter{T}"/>, ...) satisfy the <c>struct</c> constraint on <see cref="CrystalXmlWriter{TRune,TWriter}"/>'s <c>TWriter</c></summary>
+		/// <summary>Struct wrapper that lets a reference-typed <see cref="IBufferWriter{T}"/> satisfy the <c>struct</c> constraint on <see cref="CrystalXmlWriter{TRune,TWriter}"/>'s <c>TWriter</c></summary>
 		/// <remarks>
 		/// <para>Every field here is a reference to the caller's own buffer writer, so a copy of this struct - which is
 		/// exactly what <see cref="CrystalXmlWriter{TRune,TWriter}"/>'s constructor makes when it takes the writer by value -
@@ -230,6 +258,9 @@ namespace SnowBank.Data.Xml
 		/// which hold their buffer inline and therefore require the "read back through <c>emitter.Writer</c>, never through
 		/// the abandoned caller variable" discipline, this proxy has no state of its own to lose: it is safe by construction,
 		/// not merely by convention.</para>
+		/// <para>Used only by the public <see cref="WriteTo{T}(IBufferWriter{byte},ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>
+		/// overload: the caller supplies and owns the buffer writer, so there is no pooled resource of this type's own to
+		/// manage on either the success or the failure path.</para>
 		/// </remarks>
 		private readonly struct BufferWriterProxy<TRune> : IBufferWriter<TRune>
 			where TRune : unmanaged
@@ -251,13 +282,137 @@ namespace SnowBank.Data.Xml
 
 		}
 
-		/// <summary>Struct <see cref="IBufferWriter{Char}"/> that buffers into a pooled <see cref="char"/> array and flushes it to a <see cref="TextWriter"/></summary>
+		/// <summary>Struct <see cref="IBufferWriter{Byte}"/> that buffers into a pooled <see cref="byte"/> array and drains it to a <see cref="Stream"/> synchronously</summary>
 		/// <remarks>
-		/// <para><see cref="TextWriter"/> is a push-based sink (<see cref="TextWriter.Write(char[],int,int)"/>), not a
-		/// <see cref="IBufferWriter{T}"/>, so there is no direct adapter the way there is for a <see cref="PipeWriter"/>
-		/// (which already implements <see cref="IBufferWriter{Byte}"/>). This type buffers writes into a rented array and
-		/// flushes whenever the array would need to grow, plus once more at the end via <see cref="Flush"/>, which the
-		/// caller must call after the emitter has finished writing.</para>
+		/// <para><see cref="Stream"/> is a push-based sink (<see cref="Stream.Write(byte[],int,int)"/>), not an
+		/// <see cref="IBufferWriter{T}"/>. This buffers writes into a rented array and drains it, synchronously, whenever the
+		/// array would need to grow to fit the next request, and once more at the end via <see cref="Drain"/> (success) or
+		/// <see cref="Abandon"/> (failure) - see <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>'s
+		/// remarks for the exact contract each of those two implements.</para>
+		/// <para><b>Single-owner discipline.</b> <see cref="Buffer"/> is returned to <see cref="ArrayPool{Byte}.Shared"/> in
+		/// exactly one place each for the "write it" and the "just give it back" cases (<see cref="Drain"/> and
+		/// <see cref="Abandon"/> respectively), and both null the field as the very first step - before the array can
+		/// possibly be written to the stream and before any exception from that write can be thrown - so no caller can ever
+		/// observe a stale array, and no code path can return the same array twice.</para>
+		/// <para>The rented buffer and the running <see cref="Count"/> are fields on this struct, which lives, by value,
+		/// inside <see cref="CrystalXmlWriter{TRune,TWriter}.Writer"/>: every mutation happens through that one instance
+		/// (the emitter is always used by <see langword="ref"/>), so there is no aliasing hazard here, unlike the general
+		/// by-value-writer caveat documented on <see cref="CrystalXmlWriter{TRune,TWriter}"/> itself.</para>
+		/// </remarks>
+		private struct StreamBufferProxy : IBufferWriter<byte>
+		{
+
+			private const int DefaultBufferSize = 4096;
+
+			private readonly Stream Writer;
+
+			private byte[]? Buffer;
+
+			private int Count;
+
+			public StreamBufferProxy(Stream stream)
+			{
+				Contract.NotNull(stream);
+				this.Writer = stream;
+				this.Buffer = null;
+				this.Count = 0;
+			}
+
+			public void Advance(int count)
+			{
+				Contract.Debug.Requires(count >= 0 && this.Buffer is not null && this.Count + count <= this.Buffer.Length);
+				this.Count += count;
+			}
+
+			public Memory<byte> GetMemory(int sizeHint = 0)
+			{
+				EnsureCapacity(sizeHint);
+				return this.Buffer.AsMemory(this.Count);
+			}
+
+			public Span<byte> GetSpan(int sizeHint = 0)
+			{
+				EnsureCapacity(sizeHint);
+				return this.Buffer.AsSpan(this.Count);
+			}
+
+			private void EnsureCapacity(int sizeHint)
+			{
+				int needed = Math.Max(sizeHint, 1);
+				var buffer = this.Buffer;
+				if (buffer is not null && buffer.Length - this.Count >= needed)
+				{
+					return;
+				}
+
+				// not enough room left in the current buffer (or no buffer rented yet): Drain() writes whatever is
+				// pending and returns the current array exactly once (a no-op if Buffer is already null), THEN a
+				// fresh one is rented, sized for this request - no double-return path, because Drain() always owns
+				// the transition from "have a buffer" to "have none" before renting the replacement
+				Drain();
+				this.Buffer = ArrayPool<byte>.Shared.Rent(Math.Max(needed, DefaultBufferSize));
+			}
+
+			/// <summary>Writes any buffered bytes to the wrapped <see cref="Stream"/> and returns the buffer to the pool - the success-path cleanup, and also what a mid-document growth spill uses</summary>
+			/// <remarks>Claims and nulls <see cref="Buffer"/> before the write, so the array is returned to the pool exactly
+			/// once even if <see cref="Stream.Write(byte[],int,int)"/> itself throws (a genuine I/O failure, not the
+			/// serializer exception this call is not meant to run under - see <see cref="Abandon"/> for that case).</remarks>
+			public void Drain()
+			{
+				var buffer = this.Buffer;
+				if (buffer is null)
+				{
+					return;
+				}
+				this.Buffer = null;
+				try
+				{
+					if (this.Count > 0)
+					{
+						this.Writer.Write(buffer, 0, this.Count);
+					}
+				}
+				finally
+				{
+					this.Count = 0;
+					ArrayPool<byte>.Shared.Return(buffer);
+				}
+			}
+
+			/// <summary>Returns the buffer to the pool WITHOUT writing the still-pending tail - the failure-path cleanup</summary>
+			/// <remarks>Deliberately does not call <see cref="Stream.Write(byte[],int,int)"/>: per the failure-path contract
+			/// documented on <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>,
+			/// content that has not already reached the destination through an earlier growth-triggered <see cref="Drain"/>
+			/// must not be written after the serializer has thrown.</remarks>
+			public void Abandon()
+			{
+				var buffer = this.Buffer;
+				this.Buffer = null;
+				this.Count = 0;
+				if (buffer is not null)
+				{
+					ArrayPool<byte>.Shared.Return(buffer);
+				}
+			}
+
+		}
+
+		/// <summary>Struct <see cref="IBufferWriter{Char}"/> that buffers into a pooled <see cref="char"/> array and drains it to a <see cref="TextWriter"/></summary>
+		/// <remarks>
+		/// <para><see cref="TextWriter"/> is a push-based sink (<see cref="TextWriter.Write(char[],int,int)"/>), not an
+		/// <see cref="IBufferWriter{T}"/>. This buffers writes into a rented array and drains it whenever the array would
+		/// need to grow to fit the next request, and once more at the end via <see cref="Drain"/> (success) or
+		/// <see cref="Abandon"/> (failure) - see <see cref="CrystalXml.WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>'s
+		/// remarks for the exact contract each of those two implements.</para>
+		/// <para><b>Single-owner discipline</b> (structurally identical to <see cref="StreamBufferProxy"/>, its byte-core
+		/// twin). <see cref="Buffer"/> is returned to <see cref="ArrayPool{Char}.Shared"/> in exactly one place each for the
+		/// "write it" and the "just give it back" cases, and both null the field as the very first step - before the array
+		/// can possibly be written to the destination and before any exception from that write can be thrown - so no caller
+		/// can ever observe a stale array, and no code path can return the same array twice. (An earlier version of this
+		/// type read <c>this.Buffer.Length</c> and called <see cref="ArrayPool{Char}.Return"/> again AFTER an unconditional
+		/// flush-and-null step, which threw a <see cref="NullReferenceException"/> on the first grow past the initial rent
+		/// and would have double-returned the array had the null check alone been patched in; this shape has exactly one
+		/// return per buffer, full stop.)</para>
 		/// <para>The rented buffer and the running <see cref="Count"/> are fields on this struct, which lives, by value,
 		/// inside <see cref="CrystalXmlWriter{TRune,TWriter}.Writer"/>: every mutation happens through that one instance
 		/// (the emitter is always used by <see langword="ref"/>), so there is no aliasing hazard here, unlike the general
@@ -303,41 +458,59 @@ namespace SnowBank.Data.Xml
 			private void EnsureCapacity(int sizeHint)
 			{
 				int needed = Math.Max(sizeHint, 1);
-				if (this.Buffer is null)
-				{
-					this.Buffer = ArrayPool<char>.Shared.Rent(Math.Max(needed, DefaultBufferSize));
-					return;
-				}
-
-				if (this.Buffer.Length - this.Count >= needed)
+				var buffer = this.Buffer;
+				if (buffer is not null && buffer.Length - this.Count >= needed)
 				{
 					return;
 				}
 
-				// no room left for the request: flush what has accumulated so far, and grow if even the whole
-				// (now-empty) buffer would still be too small for this one request
-				Flush();
-				if (this.Buffer.Length < needed)
+				// not enough room left in the current buffer (or no buffer rented yet): Drain() writes whatever is
+				// pending and returns the current array exactly once (a no-op if Buffer is already null), THEN a
+				// fresh one is rented, sized for this request - no double-return path, because Drain() always owns
+				// the transition from "have a buffer" to "have none" before renting the replacement
+				Drain();
+				this.Buffer = ArrayPool<char>.Shared.Rent(Math.Max(needed, DefaultBufferSize));
+			}
+
+			/// <summary>Writes any buffered characters to the wrapped <see cref="TextWriter"/> and returns the buffer to the pool - the success-path cleanup, and also what a mid-document growth spill uses</summary>
+			/// <remarks>Claims and nulls <see cref="Buffer"/> before the write, so the array is returned to the pool exactly
+			/// once even if <see cref="TextWriter.Write(char[],int,int)"/> itself throws (a genuine I/O failure, not the
+			/// serializer exception this call is not meant to run under - see <see cref="Abandon"/> for that case).</remarks>
+			public void Drain()
+			{
+				var buffer = this.Buffer;
+				if (buffer is null)
 				{
-					ArrayPool<char>.Shared.Return(this.Buffer);
-					this.Buffer = ArrayPool<char>.Shared.Rent(Math.Max(needed, DefaultBufferSize));
+					return;
+				}
+				this.Buffer = null;
+				try
+				{
+					if (this.Count > 0)
+					{
+						this.Writer.Write(buffer, 0, this.Count);
+					}
+				}
+				finally
+				{
+					this.Count = 0;
+					ArrayPool<char>.Shared.Return(buffer);
 				}
 			}
 
-			/// <summary>Writes any buffered characters to the wrapped <see cref="TextWriter"/> and returns the rented buffer to the pool</summary>
-			/// <remarks>Must be called once, after the emitter has finished writing, to flush the final partial buffer; see the type remarks.</remarks>
-			public void Flush()
+			/// <summary>Returns the buffer to the pool WITHOUT writing the still-pending tail - the failure-path cleanup</summary>
+			/// <remarks>Deliberately does not call <see cref="TextWriter.Write(char[],int,int)"/>: per the failure-path
+			/// contract documented on <see cref="CrystalXml.WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>,
+			/// content that has not already reached the destination through an earlier growth-triggered <see cref="Drain"/>
+			/// must not be written after the serializer has thrown.</remarks>
+			public void Abandon()
 			{
-				if (this.Count > 0)
+				var buffer = this.Buffer;
+				this.Buffer = null;
+				this.Count = 0;
+				if (buffer is not null)
 				{
-					this.Writer.Write(this.Buffer!, 0, this.Count);
-					this.Count = 0;
-				}
-
-				if (this.Buffer is not null)
-				{
-					ArrayPool<char>.Shared.Return(this.Buffer);
-					this.Buffer = null;
+					ArrayPool<char>.Shared.Return(buffer);
 				}
 			}
 
