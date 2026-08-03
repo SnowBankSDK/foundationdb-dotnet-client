@@ -83,11 +83,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Tests if this type implements <c>IJsonDeserializable&lt;T&gt;</c></summary>
 		public static bool IsJsonDeserializable(this TypeMetadata type) => ImplementsCrystalJsonInterface(type, "IJsonDeserializable");
 
-		private static bool ImplementsCrystalJsonInterface(TypeMetadata type, string interfaceName)
+		/// <summary>Tests if this type implements <c>ICrystalXmlSerializable</c>, the instance hook through which a type writes its own XML content</summary>
+		/// <remarks>The XML counterpart of <see cref="IsJsonSerializable"/>, and like it, this only sees the interfaces a type declares DIRECTLY: a type inheriting the hook from a base class is not recognized here, which mirrors the JSON side rather than inventing a second rule for the same shape.</remarks>
+		public static bool IsCrystalXmlSerializable(this TypeMetadata type) => ImplementsInterface(type, "ICrystalXmlSerializable", KnownTypeSymbols.CrystalXmlNamespace);
+
+		private static bool ImplementsCrystalJsonInterface(TypeMetadata type, string interfaceName) => ImplementsInterface(type, interfaceName, KnownTypeSymbols.CrystalJsonNamespace);
+
+		private static bool ImplementsInterface(TypeMetadata type, string interfaceName, string nameSpace)
 		{
 			foreach (var iface in type.Interfaces)
 			{
-				if (iface.Name == interfaceName && iface.NameSpace == KnownTypeSymbols.CrystalJsonNamespace)
+				if (iface.Name == interfaceName && iface.NameSpace == nameSpace)
 				{
 					return true;
 				}

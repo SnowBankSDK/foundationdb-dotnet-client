@@ -281,6 +281,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>The custom converter is declared for the member's <c>Nullable&lt;T&gt;</c> form itself (e.g. <c>IJsonDeserializer&lt;DateTime?&gt;</c> on a <c>DateTime?</c> member), so the emitter must call the nullable-form unpack helpers instead of unwrap-then-lift</summary>
 		public bool CustomConverterIsNullableForm { get; init; }
 
+		/// <summary>The custom converter implements the XML facet (<c>ICrystalXmlSerializer&lt;T&gt;</c>) for this member's type</summary>
+		/// <remarks>Only ever resolved when the container produces XML: a converter without the facet is a build error there (CXML0008), because the member's XML form would otherwise be written by rules the converter was declared to replace.</remarks>
+		public bool CustomConverterHasXmlSerializer { get; init; }
+
+		/// <summary>The custom converter's XML facet is declared for the member's <c>Nullable&lt;T&gt;</c> form itself, so the emitter passes the nullable value through instead of unwrapping it</summary>
+		/// <remarks>Resolved separately from <see cref="CustomConverterIsNullableForm"/>: one converter can perfectly well take responsibility for the nullable case on one format and not on the other.</remarks>
+		public bool CustomConverterXmlIsNullableForm { get; init; }
+
 		/// <summary>C# literal for the expression that represents the default value for this member, when it is missing</summary>
 		/// <remarks>This should be a valid C# constant expression, like <c>123</c>, <c>"hello"</c>, <c>true</c>, <c>global::System.Guid.Empty</c>, ...</remarks>
 		public required string DefaultLiteral { get; init; }

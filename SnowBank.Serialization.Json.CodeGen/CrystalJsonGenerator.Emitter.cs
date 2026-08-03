@@ -37,7 +37,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 	{
 
 		[SuppressMessage("ReSharper", "InconsistentNaming")]
-		internal sealed class Emitter
+		internal sealed partial class Emitter
 		{
 
 			#region Attributes Names ...
@@ -538,6 +538,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EndRegion();
 				sb.NewLine();
 
+				if (this.WritesXml)
+				{ // the five XML outputs, symmetrical with the JSON ones (emission section: CrystalJsonGenerator.Emitter.Xml.cs)
+					sb.BeginRegion("XML Output...");
+					sb.NewLine();
+
+					WriteXmlStaticHelpers(sb, typeDef, typeCref);
+
+					sb.EndRegion();
+					sb.NewLine();
+				}
+
 				#region Metadata...
 
 				sb.BeginRegion("Metadata...");
@@ -627,7 +638,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				#region JsonConverter class...
 
-				sb.AppendLine($"public sealed class JsonConverter : {KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>"); //TODO: implements!
+				// when the container also produces XML, the SAME instance carries the XML facet: passing Default to code that
+				// wants an ICrystalXmlSerializer<T> resolves statically, with no second converter to keep in sync
+				sb.AppendLine($"public sealed class JsonConverter : {KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>{(this.WritesXml ? $", {ICrystalXmlSerializerFullName}<{typeFullName}>" : "")}"); //TODO: implements!
 				sb.EnterBlock("JsonConverter");
 
 				// custom converters attached to members ([JsonConverter(typeof(...))] or [JsonBooleanLiterals])
@@ -705,6 +718,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				sb.EndRegion();
 				sb.NewLine();
+
+				#endregion
+
+				#region WriteXml...
+
+				if (this.WritesXml)
+				{
+					sb.BeginRegion($"ICrystalXmlSerializer<{typeName}>...");
+					sb.NewLine();
+
+					WriteXmlSerializer(sb, typeDef);
+
+					sb.EndRegion();
+					sb.NewLine();
+				}
 
 				#endregion
 

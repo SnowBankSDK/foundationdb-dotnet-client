@@ -91,6 +91,26 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				{
 				}
 
+				// the same graph, published as XML too: the emitted XML members must be just as clean, including the ones
+				// with NO XML projection at all (a JsonObject, a DateTimeOffset), which emit a call that fails at write time
+				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeUser))]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeItem))]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeAnimal))]
+				public static partial class ProbeXmlConverters
+				{
+				}
+
+				// a container that resolves to the DataContract XML wire, whose emission does not exist yet: it must degrade
+				// to a clean JSON-only container (no half-written XML surface), which is what compiling it here proves
+				[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeItem))]
+				public static partial class ProbeCompatXmlConverters
+				{
+				}
+
 			}
 
 			#nullable disable
@@ -110,6 +130,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				[SnowBank.Data.Json.CrystalJsonConverter]
 				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(LegacyProbeDto))]
 				public static partial class LegacyProbeConverters
+				{
+				}
+
+				// and the oblivious DTO published as XML: every null test the XML members emit sits on an oblivious member type
+				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(LegacyProbeDto))]
+				public static partial class LegacyProbeXmlConverters
 				{
 				}
 

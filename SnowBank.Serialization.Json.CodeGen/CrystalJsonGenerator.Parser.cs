@@ -363,7 +363,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 						this.ContextClassLocation,
 						symbol.ToDisplayString());
 
-					// the XML request is dropped, and the container keeps generating its JSON: one error to read instead of an error plus a cascade of missing members
+					// the XML request is dropped, and the container keeps generating its JSON: one error to read, plus the
+					// missing-member errors at whatever XML call sites the application already had (the degraded container
+					// emits no XML member at all), which is still smaller than abandoning the container entirely
 					return (null, null);
 				}
 
@@ -847,7 +849,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return true;
 			}
 
-			private static string FormatName(string name, string? policy)
+			internal static string FormatName(string name, string? policy)
 			{
 				switch (policy)
 				{
@@ -1308,9 +1310,67 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 			}
 
+			/// <summary>Reports <c>CXML0008</c> when a member's custom converter has no XML facet, on a container that produces XML</summary>
+			/// <remarks>
+			/// <para>A converter attached to a member REPLACES the rules that would otherwise decide the member's wire form. On a
+			/// container that publishes two formats, a converter that only answers for one of them leaves the other to be written by
+			/// the very rules it was declared to replace: the JSON says <c>"0"</c>/<c>"1"</c> while the XML says <c>true</c>/<c>false</c>,
+			/// with nothing in the source saying so. That is the silently-divergent wire this range exists to refuse.</para>
+			/// <para>This fires for the built-in converters too (<c>[JsonBooleanLiterals]</c>): they are JSON converters, and there is
+			/// no XML form of "write this boolean as 0 or 1" that the generator may assume on the author's behalf.</para>
+			/// </remarks>
+			private void ReportMissingXmlConverterFacet(ISymbol member, TypeMetadata type, string converterType)
+			{
+				ReportDiagnostic(
+					new(
+						"CXML0008",
+						"A member's custom converter has no XML facet",
+						"The member '{0}' is written through the custom converter '{1}', but its container also produces XML, and that converter does not implement ICrystalXmlSerializer<{2}>: the converter owns the member's JSON form while its XML form would be written by the rules the converter replaced, so the two wires would disagree with nothing in the source saying so. Implement the XML facet on the converter, drop the converter (the member's own type is then written directly on both wires), or publish XML from a separate container (the dual-container pattern).",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString(), converterType, (type.NullableOfType ?? type).FullName);
+			}
+
+			/// <summary>Returns whether a converter type implements the XML facet for the member's type, and whether it took the <c>Nullable&lt;T&gt;</c> form itself</summary>
+			/// <remarks>The same probe order as <see cref="GetConverterFacets"/> on the JSON side: the EXACT form first (a converter declared for <c>T?</c> answers for the absent case itself), then the nullable-unwrapped lift.</remarks>
+			private static (bool Serializer, bool NullableForm) GetXmlConverterFacet(INamedTypeSymbol? converterType, ITypeSymbol memberType)
+			{
+				if (converterType is null)
+				{ // a converter with no symbol of its own is one of the built-ins, which are JSON-only by construction
+					return (false, false);
+				}
+
+				var underlying = GetUnderlyingValueType(memberType);
+				if (!ReferenceEquals(underlying, memberType) && ImplementsXmlSerializerFor(converterType, memberType))
+				{
+					return (true, true);
+				}
+				return (ImplementsXmlSerializerFor(converterType, underlying), false);
+			}
+
+			/// <inheritdoc cref="GetXmlConverterFacet"/>
+			private static bool ImplementsXmlSerializerFor(INamedTypeSymbol converterType, ITypeSymbol valueType)
+			{
+				foreach (var iface in converterType.AllInterfaces)
+				{
+					if (iface.TypeArguments.Length != 1 || !SymbolEqualityComparer.Default.Equals(iface.TypeArguments[0], valueType)) continue;
+					if (iface.Name == "ICrystalXmlSerializer" && iface.ContainingNamespace?.ToDisplayString() == KnownTypeSymbols.CrystalXmlNamespace)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+
 			/// <summary>Tests whether a type has a lexical form on the XML wire: the set the <c>CrystalXmlFormatters</c> cover, plus strings and enums</summary>
-			/// <remarks>This is what an XML ATTRIBUTE can hold, since an attribute value is text and nothing else. <c>Nullable&lt;T&gt;</c> is unwrapped (the absent case is a presence question, not a formatting one); a <c>byte[]</c> counts, because it renders as base64 text; a <c>string</c> counts even though C# makes it enumerable.</remarks>
-			private static bool IsXmlScalar(TypeMetadata type)
+			/// <remarks>
+			/// <para>This is what an XML ATTRIBUTE can hold, since an attribute value is text and nothing else. <c>Nullable&lt;T&gt;</c> is unwrapped (the absent case is a presence question, not a formatting one); a <c>byte[]</c> counts, because it renders as base64 text; a <c>string</c> counts even though C# makes it enumerable.</para>
+			/// <para><b>Shared with the emitter</b> (hence <c>internal</c>): <c>Emitter.GetXmlScalarText</c> resolves a formatter for exactly this set, so a member the parser accepted as an attribute is one the emitter can format, and a member it refused (CXML0003) never reaches an attribute position. Widening one without the other is what would break that.</para>
+			/// </remarks>
+			internal static bool IsXmlScalar(TypeMetadata type)
 			{
 				var actual = type.NullableOfType ?? type;
 
@@ -1639,10 +1699,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 				bool customConverterHasPacker = true;
 				bool customConverterHasDeserializer = true;
 				bool customConverterIsNullableForm = false;
+				// the converter's SYMBOL, kept next to its name so that a second format can probe its OWN facet on it (the XML one, below)
+				INamedTypeSymbol? customConverterSymbol = null;
 				string? nativeConverterType = null;
 				bool nativeConverterHasPacker = true;
 				bool nativeConverterHasDeserializer = true;
 				bool nativeConverterIsNullableForm = false;
+				INamedTypeSymbol? nativeConverterSymbol = null;
 
 				string defaultLiteral = GetDefaultLiteral(type);
 				bool hasNonZeroDefault = false;
@@ -1813,6 +1876,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 								if (facets.Packer || facets.Deserializer)
 								{
 									nativeConverterType = nativeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+									nativeConverterSymbol = nativeSymbol;
 									nativeConverterHasPacker = facets.Packer;
 									nativeConverterHasDeserializer = facets.Deserializer;
 									nativeConverterIsNullableForm = facets.NullableForm;
@@ -1846,6 +1910,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 								if (facets.Packer || facets.Deserializer)
 								{
 									customConverterType = converterSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+									customConverterSymbol = converterSymbol;
 									customConverterArgs = "";
 									customConverterHasPacker = facets.Packer;
 									customConverterHasDeserializer = facets.Deserializer;
@@ -1944,6 +2009,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (nativeConverterType != null)
 				{ // the native attribute wins over [JsonBooleanLiterals] and the foreign [JsonConverter] spellings
 					customConverterType = nativeConverterType;
+					customConverterSymbol = nativeConverterSymbol;
 					customConverterArgs = "";
 					customConverterHasPacker = nativeConverterHasPacker;
 					customConverterHasDeserializer = nativeConverterHasDeserializer;
@@ -1962,6 +2028,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				string? xmlName = null;
 				bool xmlIsAttribute = false;
+				bool customConverterHasXmlSerializer = false;
+				bool customConverterXmlIsNullableForm = false;
 				if (xmlProfile is null)
 				{ // the container produces no XML: the whole member-level vocabulary is inert, diagnostics included
 					xmlItemName = null;
@@ -1980,6 +2048,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (!xmlRefused && xmlProfile == XmlProfileModern)
 					{
 						ReportBareNestedCollection(member, type);
+					}
+
+					if (customConverterType is not null)
+					{ // the converter took the member's wire form over; on an XML container it has to answer for BOTH wires
+						(customConverterHasXmlSerializer, customConverterXmlIsNullableForm) = GetXmlConverterFacet(customConverterSymbol, typeSymbol);
+						if (!customConverterHasXmlSerializer)
+						{
+							ReportMissingXmlConverterFacet(member, type, customConverterType);
+						}
 					}
 				}
 
@@ -2014,6 +2091,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 						CustomConverterHasPacker = customConverterHasPacker,
 						CustomConverterHasDeserializer = customConverterHasDeserializer,
 						CustomConverterIsNullableForm = customConverterIsNullableForm,
+						CustomConverterHasXmlSerializer = customConverterHasXmlSerializer,
+						CustomConverterXmlIsNullableForm = customConverterXmlIsNullableForm,
 						IsNonPublic = isNonPublic,
 						HasNonPublicGetter = hasNonPublicGetter,
 						HasNonPublicSetter = hasNonPublicSetter,

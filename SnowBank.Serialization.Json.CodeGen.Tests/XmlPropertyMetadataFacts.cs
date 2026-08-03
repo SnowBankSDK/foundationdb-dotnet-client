@@ -931,6 +931,77 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
+		#region CXML0008: a member converter with no XML facet...
+
+		/// <summary>Wraps a converter for <c>bool</c> implementing the facets named in <paramref name="interfaces"/>, applied to a member of the probe's DTO</summary>
+		private static string ConverterProbe(string interfaces, string containerAttributes = ModernContainer) => $$"""
+			namespace Probe
+			{
+
+				public sealed class ProbeBoolConverter : {{interfaces}}
+				{
+
+					public SnowBank.Data.Json.JsonValue Pack(bool instance, SnowBank.Data.Json.CrystalJsonSettings? settings = null, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver = null)
+						=> SnowBank.Data.Json.JsonString.Return(instance ? "1" : "0");
+
+					public bool Unpack(SnowBank.Data.Json.JsonValue value, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver) => value.ToBoolean();
+
+					public void WriteXml<TEmitter>(ref TEmitter emitter, bool value, SnowBank.Data.Json.CrystalJsonSettings? settings = null, string? rootName = null)
+						where TEmitter : struct, SnowBank.Data.Xml.IXmlEmitter
+					{
+						var name = SnowBank.Data.Xml.XmlName.Create(rootName ?? "bit");
+						emitter.WriteStartElement(in name);
+						emitter.WriteRawAscii(value ? "1" : "0");
+						emitter.WriteEndElement(in name);
+					}
+
+				}
+
+				public sealed record ProbeDto
+				{
+					[SnowBank.Data.Json.JsonConvertWith(typeof(ProbeBoolConverter))]
+					public bool Live { get; set; }
+				}
+
+			{{containerAttributes}}
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+				public static partial class ProbeConverters
+				{
+				}
+
+			}
+			""";
+
+		[Test]
+		public void Test_A_Member_Converter_Without_An_Xml_Facet_Is_A_Build_Error()
+		{
+			// the converter owns the member's JSON form; its XML form would be written by the very rules the converter
+			// was declared to replace, so the two wires would disagree with nothing in the source saying so
+			var refusal = AssertRefusal(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>"), "CXML0008");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("ProbeBoolConverter"), "the message names the converter");
+				Assert.That(refusal.GetMessage(), Does.Contain("ICrystalXmlSerializer<bool>"), "and the facet it is missing, for the member's own type");
+			}
+		}
+
+		[Test]
+		public void Test_A_Member_Converter_With_An_Xml_Facet_Is_Not_Reported()
+		{
+			// the same converter, now answering for both wires: nothing is left to be decided behind the author's back
+			AssertNotReported(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>, SnowBank.Data.Xml.ICrystalXmlSerializer<bool>"), "CXML0008");
+		}
+
+		[Test]
+		public void Test_A_Member_Converter_Without_An_Xml_Facet_Is_Not_Reported_On_A_Json_Only_Container()
+		{
+			// the rule exists because the container publishes TWO wires: with only one of them, the converter owns all of it
+			AssertNotReported(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>", JsonOnlyContainer), "CXML0008");
+		}
+
+		#endregion
+
 		#region A JSON-only container never sees a CXML diagnostic...
 
 		[Test]
