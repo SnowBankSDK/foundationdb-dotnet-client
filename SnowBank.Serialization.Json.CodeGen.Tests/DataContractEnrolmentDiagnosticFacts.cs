@@ -328,10 +328,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_StrictLiterals_Without_A_False_Literal_Warns()
 		{
-			// deliberately generator-only, and that is not a violation of the both-paths rule: CJSON0015 and
-			// CJSON0016 refuse things that would otherwise BEHAVE differently on the two paths, so they must exist
-			// on both. This one changes no behaviour at all, it is advice about a pointless combination, so a
-			// compile-time nudge is the whole feature.
+			// deliberately generator-only, and that is not a violation of the both-paths rule. That rule binds a
+			// diagnostic that refuses something which would otherwise BEHAVE differently on the two paths, which is
+			// CJSON0015. CJSON0016 is generator-only for its own reason: it describes a property of generated code
+			// (members assigned as statements after construction), and the reflection path assigns reflectively, so
+			// there is nothing there to refuse. This one changes no behaviour at all, it is advice about a pointless
+			// combination, so a compile-time nudge is the whole feature.
 			var diagnostics = RunOn("""
 					public sealed record ProbeDto
 					{
