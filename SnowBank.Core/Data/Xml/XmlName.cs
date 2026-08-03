@@ -27,6 +27,7 @@
 namespace SnowBank.Data.Xml
 {
 	using System.Text;
+	using System.Xml;
 
 	/// <summary>Name of an XML element or attribute, held in both its text and UTF-8 representations</summary>
 	/// <remarks>
@@ -34,13 +35,16 @@ namespace SnowBank.Data.Xml
 	/// <see cref="Text"/>, the <c>byte</c> core copies <see cref="Utf8"/>. Names are written far more often than any other
 	/// token in a document, so transcoding them at write time would dominate the cost.</para>
 	/// <para>Generated code emits one cached <c>static readonly</c> instance per name, built from a frozen UTF-8 literal so
-	/// that no transcoding happens at all, not even once:</para>
+	/// that no transcoding happens at all, not even once, via the public constructor below, which is the
+	/// <b>trusted, non-validating</b> path: the generator already validated the literal at compile time, so re-validating
+	/// it on every process start would be pure waste.</para>
 	/// <code>private static readonly XmlName TagsName = new("Tags", "Tags"u8.ToArray());</code>
-	/// <para>Use <see cref="Create"/> only for names that are not known at compile time, typically a <c>rootName</c>
-	/// override coming from a caller.</para>
-	/// <para>This type does <b>not</b> validate that the name is a legal XML name: the generator validates explicit names at
-	/// compile time, and the dictionary writers validate keys at write time, both raising
-	/// <see cref="CrystalXmlInvalidNameException"/>.</para>
+	/// <para>Use <see cref="Create"/> instead for names that are not known at compile time - typically a <c>rootName</c>
+	/// override coming from a caller, or a dictionary key written under <see cref="XmlDictionaryFormat.Direct"/>. Unlike
+	/// the constructor, <see cref="Create"/> <b>validates</b> that the name is a legal XML NCName (no colon, no leading
+	/// digit, no whitespace, ...) and raises <see cref="CrystalXmlInvalidNameException"/> if it is not: this is the one
+	/// place user-supplied text turns into a name, so a silent pass-through would let a single bad rootName or key
+	/// corrupt the whole document into unparseable XML instead of failing loudly at the source.</para>
 	/// </remarks>
 	[PublicAPI]
 	[DebuggerDisplay("{Text,nq}")]
@@ -68,14 +72,28 @@ namespace SnowBank.Data.Xml
 		/// <summary>UTF-8 representation of the name</summary>
 		public ReadOnlySpan<byte> Utf8 => this.Bytes.Span;
 
-		/// <summary>Builds a name from its text, computing the UTF-8 representation now</summary>
+		/// <summary>Builds a name from its text, validating it and computing the UTF-8 representation now</summary>
 		/// <param name="text">Text representation of the name</param>
 		/// <returns>Name usable by both output cores</returns>
-		/// <remarks>This transcodes and allocates, so it belongs at setup time (a cached static, a <c>rootName</c> override),
-		/// never on a per-element path.</remarks>
+		/// <exception cref="ArgumentNullException">If <paramref name="text"/> is <see langword="null"/></exception>
+		/// <exception cref="CrystalXmlInvalidNameException">If <paramref name="text"/> is not a valid XML NCName (empty, a colon, a leading digit, embedded whitespace, ...)</exception>
+		/// <remarks>This transcodes, validates and allocates, so it belongs at setup time (a cached static, a <c>rootName</c>
+		/// override), never on a per-element path. For a frozen literal already known to be valid at compile time, use the
+		/// constructor instead: see the type remarks.</remarks>
 		public static XmlName Create(string text)
 		{
 			Contract.NotNull(text);
+			try
+			{
+				XmlConvert.VerifyNCName(text);
+			}
+			catch (Exception ex) when (ex is XmlException or ArgumentException)
+			{
+				// XmlException for a malformed name (space, leading digit, colon, ...); ArgumentException for an
+				// empty string specifically (XmlConvert.VerifyNCName special-cases that one via ThrowIfNullOrEmpty
+				// instead of going through its usual XmlException path)
+				throw new CrystalXmlInvalidNameException(text);
+			}
 			return new(text, Encoding.UTF8.GetBytes(text));
 		}
 
