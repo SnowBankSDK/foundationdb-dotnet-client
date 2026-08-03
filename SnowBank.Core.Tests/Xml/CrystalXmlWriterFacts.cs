@@ -47,29 +47,6 @@ namespace SnowBank.Data.Xml.Tests
 	public sealed class CrystalXmlWriterFacts : SimpleTest
 	{
 
-		#region Test Sinks...
-
-		/// <summary>Struct adapter that lets an <see cref="ArrayBufferWriter{T}"/> (a class) satisfy the <c>TWriter : struct</c> constraint</summary>
-		/// <remarks>Holds a reference to the buffer, so every copy of the struct appends to the same underlying array. The
-		/// production sinks (<c>ValueStringWriter</c>, <c>SliceWriter</c>) keep their state inline instead, which is exactly
-		/// why the emitter must always be passed by ref. That integration is a later task.</remarks>
-		private readonly struct SinkRef<T> : IBufferWriter<T>
-		{
-
-			private readonly ArrayBufferWriter<T> Buffer;
-
-			public SinkRef(ArrayBufferWriter<T> buffer) => this.Buffer = buffer;
-
-			public void Advance(int count) => this.Buffer.Advance(count);
-
-			public Memory<T> GetMemory(int sizeHint = 0) => this.Buffer.GetMemory(sizeHint);
-
-			public Span<T> GetSpan(int sizeHint = 0) => this.Buffer.GetSpan(sizeHint);
-
-		}
-
-		#endregion
-
 		#region Helpers...
 
 		private static readonly XmlName Root = XmlName.Create("r");
@@ -90,8 +67,8 @@ namespace SnowBank.Data.Xml.Tests
 		private static string RenderChars(IXmlScenario scenario, bool strictControlCharacters = false)
 		{
 			var sink = new ArrayBufferWriter<char>();
-			var inner = new SinkRef<char>(sink);
-			var writer = new CrystalXmlWriter<char, SinkRef<char>>(ref inner, strictControlCharacters);
+			var inner = new XmlEmitterConformance.SinkRef<char>(sink);
+			var writer = new CrystalXmlWriter<char, XmlEmitterConformance.SinkRef<char>>(ref inner, strictControlCharacters);
 			scenario.Run(ref writer);
 			return sink.WrittenSpan.ToString();
 		}
@@ -100,8 +77,8 @@ namespace SnowBank.Data.Xml.Tests
 		private static byte[] RenderBytes(IXmlScenario scenario, bool strictControlCharacters = false)
 		{
 			var sink = new ArrayBufferWriter<byte>();
-			var inner = new SinkRef<byte>(sink);
-			var writer = new CrystalXmlWriter<byte, SinkRef<byte>>(ref inner, strictControlCharacters);
+			var inner = new XmlEmitterConformance.SinkRef<byte>(sink);
+			var writer = new CrystalXmlWriter<byte, XmlEmitterConformance.SinkRef<byte>>(ref inner, strictControlCharacters);
 			scenario.Run(ref writer);
 			return sink.WrittenSpan.ToArray();
 		}
@@ -528,9 +505,9 @@ namespace SnowBank.Data.Xml.Tests
 		public void Test_Constructor_Rejects_Unsupported_Rune()
 		{
 			var sink = new ArrayBufferWriter<int>();
-			var inner = new SinkRef<int>(sink);
+			var inner = new XmlEmitterConformance.SinkRef<int>(sink);
 			Assert.That(
-				() => { _ = new CrystalXmlWriter<int, SinkRef<int>>(ref inner); },
+				() => { _ = new CrystalXmlWriter<int, XmlEmitterConformance.SinkRef<int>>(ref inner); },
 				Throws.InstanceOf<NotSupportedException>()
 			);
 		}
@@ -539,8 +516,8 @@ namespace SnowBank.Data.Xml.Tests
 		public void Test_Depth_Tracks_The_Open_Elements()
 		{
 			var sink = new ArrayBufferWriter<char>();
-			var inner = new SinkRef<char>(sink);
-			var writer = new CrystalXmlWriter<char, SinkRef<char>>(ref inner);
+			var inner = new XmlEmitterConformance.SinkRef<char>(sink);
+			var writer = new CrystalXmlWriter<char, XmlEmitterConformance.SinkRef<char>>(ref inner);
 
 			Assert.That(writer.Depth, Is.Zero);
 			writer.WriteStartElement(in Root);
@@ -591,8 +568,8 @@ namespace SnowBank.Data.Xml.Tests
 			// null means "no content written": the element self-closes, exactly like a missing WriteText
 			{
 				var sink = new ArrayBufferWriter<char>();
-				var inner = new SinkRef<char>(sink);
-				var writer = new CrystalXmlWriter<char, SinkRef<char>>(ref inner);
+				var inner = new XmlEmitterConformance.SinkRef<char>(sink);
+				var writer = new CrystalXmlWriter<char, XmlEmitterConformance.SinkRef<char>>(ref inner);
 				writer.WriteStartElement(in Root);
 				writer.WriteText(null);
 				writer.WriteEndElement(in Root);
@@ -602,8 +579,8 @@ namespace SnowBank.Data.Xml.Tests
 			// an empty string still forces the expanded form
 			{
 				var sink = new ArrayBufferWriter<byte>();
-				var inner = new SinkRef<byte>(sink);
-				var writer = new CrystalXmlWriter<byte, SinkRef<byte>>(ref inner);
+				var inner = new XmlEmitterConformance.SinkRef<byte>(sink);
+				var writer = new CrystalXmlWriter<byte, XmlEmitterConformance.SinkRef<byte>>(ref inner);
 				writer.WriteStartElement(in Root);
 				writer.WriteText(string.Empty);
 				writer.WriteEndElement(in Root);
@@ -613,8 +590,8 @@ namespace SnowBank.Data.Xml.Tests
 			// a non-empty string still goes through the escaper
 			{
 				var sink = new ArrayBufferWriter<char>();
-				var inner = new SinkRef<char>(sink);
-				var writer = new CrystalXmlWriter<char, SinkRef<char>>(ref inner);
+				var inner = new XmlEmitterConformance.SinkRef<char>(sink);
+				var writer = new CrystalXmlWriter<char, XmlEmitterConformance.SinkRef<char>>(ref inner);
 				writer.WriteStartElement(in Root);
 				writer.WriteText("a<b");
 				writer.WriteEndElement(in Root);
@@ -628,51 +605,39 @@ namespace SnowBank.Data.Xml.Tests
 
 		/// <summary>Writes a document through a <c>TEmitter : struct, IXmlEmitter</c> constraint, exactly like generated code</summary>
 		/// <remarks>Only interface members are visible here. That is the whole point: if the null-tolerant
-		/// <c>WriteText(string?)</c> were not on the interface, <paramref name="text"/> would bind the span overload through
-		/// the implicit string conversion, and a null would silently emit <c>&lt;r&gt;&lt;/r&gt;</c> instead of <c>&lt;r /&gt;</c>.</remarks>
-		private static void EmitTextThroughInterface<TEmitter>(ref TEmitter emitter, string? text)
-			where TEmitter : struct, IXmlEmitter
-		{
-			emitter.WriteStartElement(in Root);
-			emitter.WriteText(text);
-			emitter.WriteEndElement(in Root);
-		}
-
-		private static void EmitRawThroughInterface<TEmitter>(ref TEmitter emitter, string? ascii)
-			where TEmitter : struct, IXmlEmitter
-		{
-			emitter.WriteStartElement(in Root);
-			emitter.WriteRawAscii(ascii);
-			emitter.WriteEndElement(in Root);
-		}
-
+		/// <c>WriteText(string?)</c> were not on the interface, a <c>string?</c> argument would bind the span overload through
+		/// the implicit string conversion, and a null would silently emit <c>&lt;r&gt;&lt;/r&gt;</c> instead of <c>&lt;r /&gt;</c>.
+		/// The event sequences and the null/""/typical-value pin cases live on <see cref="XmlEmitterConformance"/>, shared with
+		/// the infoset emitters' own fixture, so all three families are proven against the identical cases.</remarks>
 		[Test]
 		public void Test_Interface_Constrained_Caller_Gets_The_Same_Wire_As_The_Struct()
 		{
 			// null through the interface must self-close, and an empty string must expand, on BOTH cores
-			AssertInterfaceText(null, "<r />");
-			AssertInterfaceText("", "<r></r>");
-			AssertInterfaceText("a<b", "<r>a&lt;b</r>");
+			foreach (var (text, expected) in XmlEmitterConformance.TextCases)
+			{
+				AssertInterfaceText(text, expected);
+			}
 
-			AssertInterfaceRaw(null, "<r />");
-			AssertInterfaceRaw("", "<r></r>");
-			AssertInterfaceRaw("42", "<r>42</r>");
+			foreach (var (ascii, expected) in XmlEmitterConformance.RawCases)
+			{
+				AssertInterfaceRaw(ascii, expected);
+			}
 		}
 
 		private static void AssertInterfaceText(string? text, string expected)
 		{
 			{
 				var sink = new ArrayBufferWriter<char>();
-				var inner = new SinkRef<char>(sink);
-				var emitter = new CrystalXmlWriter<char, SinkRef<char>>(ref inner);
-				EmitTextThroughInterface(ref emitter, text);
+				var inner = new XmlEmitterConformance.SinkRef<char>(sink);
+				var emitter = new CrystalXmlWriter<char, XmlEmitterConformance.SinkRef<char>>(ref inner);
+				XmlEmitterConformance.EmitTextThroughInterface(ref emitter, text);
 				Assert.That(sink.WrittenSpan.ToString(), Is.EqualTo(expected), "char core, through the interface");
 			}
 			{
 				var sink = new ArrayBufferWriter<byte>();
-				var inner = new SinkRef<byte>(sink);
-				var emitter = new CrystalXmlWriter<byte, SinkRef<byte>>(ref inner);
-				EmitTextThroughInterface(ref emitter, text);
+				var inner = new XmlEmitterConformance.SinkRef<byte>(sink);
+				var emitter = new CrystalXmlWriter<byte, XmlEmitterConformance.SinkRef<byte>>(ref inner);
+				XmlEmitterConformance.EmitTextThroughInterface(ref emitter, text);
 				Assert.That(Encoding.UTF8.GetString(sink.WrittenSpan.ToArray()), Is.EqualTo(expected), "byte core, through the interface");
 			}
 		}
@@ -681,16 +646,16 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			{
 				var sink = new ArrayBufferWriter<char>();
-				var inner = new SinkRef<char>(sink);
-				var emitter = new CrystalXmlWriter<char, SinkRef<char>>(ref inner);
-				EmitRawThroughInterface(ref emitter, ascii);
+				var inner = new XmlEmitterConformance.SinkRef<char>(sink);
+				var emitter = new CrystalXmlWriter<char, XmlEmitterConformance.SinkRef<char>>(ref inner);
+				XmlEmitterConformance.EmitRawThroughInterface(ref emitter, ascii);
 				Assert.That(sink.WrittenSpan.ToString(), Is.EqualTo(expected), "char core, through the interface");
 			}
 			{
 				var sink = new ArrayBufferWriter<byte>();
-				var inner = new SinkRef<byte>(sink);
-				var emitter = new CrystalXmlWriter<byte, SinkRef<byte>>(ref inner);
-				EmitRawThroughInterface(ref emitter, ascii);
+				var inner = new XmlEmitterConformance.SinkRef<byte>(sink);
+				var emitter = new CrystalXmlWriter<byte, XmlEmitterConformance.SinkRef<byte>>(ref inner);
+				XmlEmitterConformance.EmitRawThroughInterface(ref emitter, ascii);
 				Assert.That(Encoding.UTF8.GetString(sink.WrittenSpan.ToArray()), Is.EqualTo(expected), "byte core, through the interface");
 			}
 		}
