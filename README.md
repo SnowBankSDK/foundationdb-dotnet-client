@@ -136,10 +136,34 @@ The skills are **not** included in the NuGet packages. The easiest way to get th
 
 Update later with `/plugin update foundationdb-dotnet-skills@snowbank`.
 
-Alternatives, if you'd rather not use the plugin system:
+## Which version of the skills you get
+
+The skills describe the version of the library they were written against, and they are versioned by **git tag**, the same tag that produced the NuGet packages. Every feature added in a given release is marked in the text, for example *(7.4.3+)*.
+
+`/plugin marketplace add` with no ref tracks this repository's **default branch**, so it gives you the skills for the version under development, which is ahead of the latest published package. That is the right default while you are following the library, and the wrong one if you are pinned to an older release: the skills will describe APIs your package does not have.
+
+To get the skills that match the package version you actually reference, pin the marketplace to that tag in your `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "snowbank": {
+      "source": {
+        "source": "github",
+        "repo": "SnowBankSDK/foundationdb-dotnet-client",
+        "ref": "7.4.2"
+      }
+    }
+  }
+}
+```
+
+Change `ref` to the tag matching your package (`7.4.2`, `7.4.1`, ...) and run `/plugin install foundationdb-dotnet-skills@snowbank`. A marketplace source accepts a branch or a tag; it does not accept a commit SHA. When you upgrade the package, move the `ref` in the same commit, so the skills and the package never disagree.
+
+Alternatives, if you'd rather not use the plugin system (all of them work at a tag: check the repository out at that tag first):
 - **Personal (all your projects):** copy the skill folders into `~/.claude/skills/`.
 - **Per-project:** copy them into your app's `.claude/skills/` and commit them.
-- **Submodule users:** point Claude at the checked-out submodule with `claude --add-dir path/to/foundationdb-dotnet-client` (or `/add-dir`), which loads its `.claude/skills/`.
+- **Submodule users:** point Claude at the checked-out submodule with `claude --add-dir path/to/foundationdb-dotnet-client` (or `/add-dir`), which loads its `.claude/skills/`. A submodule is already pinned to a commit, so this matches your version by construction.
 
 The same material is available as human-readable documentation under [`Documentation/guide/`](Documentation/guide/) for developers (and agents that don't support Agent Skills).
 
