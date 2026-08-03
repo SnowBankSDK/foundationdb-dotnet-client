@@ -62,14 +62,35 @@ namespace SnowBank.Data.Xml
 		/// <c>&lt;Name&gt;&lt;/Name&gt;</c> form instead of the self-closing one.</remarks>
 		void WriteText(ReadOnlySpan<char> text);
 
+		/// <summary>Appends text content to the element that is currently open, treating <see langword="null"/> as "no content at all"</summary>
+		/// <param name="text">Raw text. <see langword="null"/> writes nothing, leaving the element free to self-close as
+		/// <c>&lt;Name /&gt;</c>; an <b>empty</b> string counts as content and forces the expanded
+		/// <c>&lt;Name&gt;&lt;/Name&gt;</c> form.</param>
+		/// <remarks>
+		/// <para>This member exists on the interface, and not merely as an overload on the concrete emitters, because
+		/// generated bodies reach an emitter through a <c>where TEmitter : struct, IXmlEmitter</c> constraint, where only
+		/// interface members are visible. Were it absent, <c>emitter.WriteText(someString)</c> would silently bind
+		/// <see cref="WriteText(ReadOnlySpan{char})"/> through the implicit <c>string</c> to <see cref="ReadOnlySpan{T}"/>
+		/// conversion, turning a <see langword="null"/> into an empty span and flipping the wire from <c>&lt;Name /&gt;</c>
+		/// to <c>&lt;Name&gt;&lt;/Name&gt;</c> depending only on whether the call site saw the interface or the struct.</para>
+		/// </remarks>
+		void WriteText(string? text);
+
 		/// <summary>Appends content that is already known to be valid, unescaped ASCII</summary>
 		/// <param name="ascii">Pre-validated ASCII content: a formatted number, a date, a base64 payload, ...</param>
 		/// <remarks>
 		/// <para>This bypasses the escaper entirely, which is the point: these forms cannot contain a character that
 		/// would need escaping. Passing arbitrary user text here would emit malformed XML.</para>
-		/// <para>Like <see cref="WriteText"/>, this counts as content.</para>
+		/// <para>Like <see cref="WriteText(ReadOnlySpan{char})"/>, this counts as content.</para>
 		/// </remarks>
 		void WriteRawAscii(ReadOnlySpan<char> ascii);
+
+		/// <summary>Appends pre-validated ASCII content, treating <see langword="null"/> as "no content at all"</summary>
+		/// <param name="ascii">Pre-validated ASCII content. <see langword="null"/> writes nothing, leaving the element free
+		/// to self-close; an <b>empty</b> string counts as content and forces the expanded form.</param>
+		/// <remarks>On the interface for the same reason as <see cref="WriteText(string?)"/>: an interface-constrained
+		/// caller must get the same wire as a caller holding the concrete struct.</remarks>
+		void WriteRawAscii(string? ascii);
 
 		/// <summary>Closes the element that is currently open</summary>
 		/// <param name="name">Name of the element being closed, in both its text and UTF-8 representations</param>

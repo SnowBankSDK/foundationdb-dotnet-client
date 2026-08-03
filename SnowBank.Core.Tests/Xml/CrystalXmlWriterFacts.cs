@@ -624,6 +624,166 @@ namespace SnowBank.Data.Xml.Tests
 
 		#endregion
 
+		#region Interface-constrained callers (the shape generated code uses)...
+
+		/// <summary>Writes a document through a <c>TEmitter : struct, IXmlEmitter</c> constraint, exactly like generated code</summary>
+		/// <remarks>Only interface members are visible here. That is the whole point: if the null-tolerant
+		/// <c>WriteText(string?)</c> were not on the interface, <paramref name="text"/> would bind the span overload through
+		/// the implicit string conversion, and a null would silently emit <c>&lt;r&gt;&lt;/r&gt;</c> instead of <c>&lt;r /&gt;</c>.</remarks>
+		private static void EmitTextThroughInterface<TEmitter>(ref TEmitter emitter, string? text)
+			where TEmitter : struct, IXmlEmitter
+		{
+			emitter.WriteStartElement(in Root);
+			emitter.WriteText(text);
+			emitter.WriteEndElement(in Root);
+		}
+
+		private static void EmitRawThroughInterface<TEmitter>(ref TEmitter emitter, string? ascii)
+			where TEmitter : struct, IXmlEmitter
+		{
+			emitter.WriteStartElement(in Root);
+			emitter.WriteRawAscii(ascii);
+			emitter.WriteEndElement(in Root);
+		}
+
+		[Test]
+		public void Test_Interface_Constrained_Caller_Gets_The_Same_Wire_As_The_Struct()
+		{
+			// null through the interface must self-close, and an empty string must expand, on BOTH cores
+			AssertInterfaceText(null, "<r />");
+			AssertInterfaceText("", "<r></r>");
+			AssertInterfaceText("a<b", "<r>a&lt;b</r>");
+
+			AssertInterfaceRaw(null, "<r />");
+			AssertInterfaceRaw("", "<r></r>");
+			AssertInterfaceRaw("42", "<r>42</r>");
+		}
+
+		private static void AssertInterfaceText(string? text, string expected)
+		{
+			{
+				var sink = new ArrayBufferWriter<char>();
+				var inner = new SinkRef<char>(sink);
+				var emitter = new CrystalXmlWriter<char, SinkRef<char>>(ref inner);
+				EmitTextThroughInterface(ref emitter, text);
+				Assert.That(sink.WrittenSpan.ToString(), Is.EqualTo(expected), "char core, through the interface");
+			}
+			{
+				var sink = new ArrayBufferWriter<byte>();
+				var inner = new SinkRef<byte>(sink);
+				var emitter = new CrystalXmlWriter<byte, SinkRef<byte>>(ref inner);
+				EmitTextThroughInterface(ref emitter, text);
+				Assert.That(Encoding.UTF8.GetString(sink.WrittenSpan.ToArray()), Is.EqualTo(expected), "byte core, through the interface");
+			}
+		}
+
+		private static void AssertInterfaceRaw(string? ascii, string expected)
+		{
+			{
+				var sink = new ArrayBufferWriter<char>();
+				var inner = new SinkRef<char>(sink);
+				var emitter = new CrystalXmlWriter<char, SinkRef<char>>(ref inner);
+				EmitRawThroughInterface(ref emitter, ascii);
+				Assert.That(sink.WrittenSpan.ToString(), Is.EqualTo(expected), "char core, through the interface");
+			}
+			{
+				var sink = new ArrayBufferWriter<byte>();
+				var inner = new SinkRef<byte>(sink);
+				var emitter = new CrystalXmlWriter<byte, SinkRef<byte>>(ref inner);
+				EmitRawThroughInterface(ref emitter, ascii);
+				Assert.That(Encoding.UTF8.GetString(sink.WrittenSpan.ToArray()), Is.EqualTo(expected), "byte core, through the interface");
+			}
+		}
+
+		#endregion
+
+		#region Inline-state sink (proves the documented read-back contract)...
+
+		/// <summary>Buffer writer whose <b>position</b> lives inline in the struct, like the production sinks</summary>
+		/// <remarks><see cref="SinkRef{T}"/> hides the hazard because it defers everything to a class. Here the cursor is a
+		/// field, so a copy of the struct stops tracking the real position: this is what makes
+		/// <c>emitter.Writer</c> the only valid place to read the output from.</remarks>
+		private struct InlineSink<T> : IBufferWriter<T>
+		{
+
+			private readonly T[] Storage;
+
+			private int Count;
+
+			public InlineSink(int capacity)
+			{
+				this.Storage = new T[capacity];
+				this.Count = 0;
+			}
+
+			public readonly ReadOnlySpan<T> WrittenSpan => this.Storage.AsSpan(0, this.Count);
+
+			public void Advance(int count) => this.Count += count;
+
+			public readonly Memory<T> GetMemory(int sizeHint = 0) => this.Storage.AsMemory(this.Count);
+
+			public readonly Span<T> GetSpan(int sizeHint = 0)
+			{
+				var span = this.Storage.AsSpan(this.Count);
+				if (span.Length < sizeHint) throw new InvalidOperationException($"InlineSink capacity exceeded: needed {sizeHint}, {span.Length} left");
+				return span;
+			}
+
+		}
+
+		[Test]
+		public void Test_Inline_State_Sink_Char_Core_Reads_Back_Through_Emitter()
+		{
+			var sink = new InlineSink<char>(256);
+			var emitter = new CrystalXmlWriter<char, InlineSink<char>>(ref sink);
+			new KitchenSinkScenario().Run(ref emitter);
+
+			// the ONLY live view of the output
+			Assert.That(
+				emitter.Writer.WrittenSpan.ToString(),
+				Is.EqualTo("<r a=\"café&#x9;&amp;&quot;>\"><c>1 € &lt;😀&gt;\r\nligne 2</c><c /><c></c><c>3.14</c></r>")
+			);
+
+			// and the variable handed to the constructor never advanced: it is a dead copy, exactly as documented
+			Assert.That(sink.WrittenSpan.Length, Is.Zero, "the constructor consumed the writer variable");
+		}
+
+		[Test]
+		public void Test_Inline_State_Sink_Byte_Core_Reads_Back_Through_Emitter()
+		{
+			var sink = new InlineSink<byte>(512);
+			var emitter = new CrystalXmlWriter<byte, InlineSink<byte>>(ref sink);
+			new KitchenSinkScenario().Run(ref emitter);
+
+			Assert.That(
+				Encoding.UTF8.GetString(emitter.Writer.WrittenSpan.ToArray()),
+				Is.EqualTo("<r a=\"café&#x9;&amp;&quot;>\"><c>1 € &lt;😀&gt;\r\nligne 2</c><c /><c></c><c>3.14</c></r>")
+			);
+
+			Assert.That(sink.WrittenSpan.Length, Is.Zero, "the constructor consumed the writer variable");
+		}
+
+		#endregion
+
+		#region Empty-value edges...
+
+		[Test]
+		public void Test_Empty_Attribute_Value_Does_Not_Count_As_Content()
+		{
+			// an attribute, empty or not, is not content: the element still self-closes
+			AssertDocument(new AttributeScenario(""), "<r a=\"\" />");
+			AssertAttribute("", "");
+		}
+
+		[Test]
+		public void Test_Empty_Raw_Ascii_Counts_As_Content()
+		{
+			// consistent with WriteText(""): writing content, even nothing, forces the expanded form
+			AssertDocument(new RawScenario(""), "<r></r>");
+		}
+
+		#endregion
+
 	}
 
 }

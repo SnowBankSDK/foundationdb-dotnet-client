@@ -57,9 +57,22 @@ namespace SnowBank.Data.Xml
 	/// <item>An element with no content self-closes as <c>&lt;Name /&gt;</c>, with a space before the slash; writing an
 	/// <b>empty</b> string as content forces the expanded form <c>&lt;Name&gt;&lt;/Name&gt;</c>.</item>
 	/// </list>
-	/// <para><b>Always pass this struct by ref.</b> It holds both the element state and the destination writer inline, so a
-	/// copy silently loses every write made through it. Read the accumulated output back through <see cref="Writer"/> on the
-	/// same instance you wrote to, not through the variable that was handed to the constructor.</para>
+	/// <para><b>Always pass this struct by ref, and abandon the writer variable you constructed it from.</b> The emitter holds
+	/// both the element state and the destination writer <i>inline</i>, so a copy of the emitter silently loses every write
+	/// made through it.</para>
+	/// <para>The constructor <b>copies</b> the writer into <see cref="Writer"/>. From that moment there are two live writer
+	/// structs sharing one underlying buffer, and only the emitter's copy tracks the real position. The caller's variable is
+	/// not merely stale: with a pooled or rented sink (for instance <c>SliceWriter</c>) it is a second claim on the same
+	/// buffer, so disposing, resetting or reusing it is double ownership and, after the emitter's buffer has grown or been
+	/// returned, a use-after-return. Treat the variable as consumed by the constructor:</para>
+	/// <code>
+	/// var sink = new ValueStringWriter();
+	/// var emitter = new CrystalXmlWriter&lt;char, ValueStringWriter&gt;(ref sink);
+	/// Emit(ref emitter);                       // always by ref
+	/// string xml = emitter.Writer.ToString();  // read back HERE, never from `sink`
+	/// </code>
+	/// <para>Everything after construction, including reading the output and disposing the sink, goes through
+	/// <see cref="Writer"/> on the very instance that was written to.</para>
 	/// <para>The <typeparamref name="TRune"/> divergence is concentrated in a handful of leaf primitives (ASCII literal,
 	/// escaped text, precomputed name, character reference). Everything above them, the element stack, the self-closing
 	/// decision and the escaping tables, is written once. The <c>typeof(TRune) == typeof(char)</c> tests are folded away by
@@ -77,9 +90,10 @@ namespace SnowBank.Data.Xml
 		/// unit (the worst case for the BMP; a surrogate pair is 4 bytes for 2 units, so it stays under the bound).</remarks>
 		private const int Utf8ChunkSize = 512;
 
-		/// <summary>Destination writer, held inline</summary>
-		/// <remarks>Public so that the caller can read the accumulated output back once emission is done. Mutating it from
-		/// the outside while the emitter is in use would corrupt the document.</remarks>
+		/// <summary>Destination writer, held inline; the only live view of the output</summary>
+		/// <remarks>Public because this is where the caller reads the accumulated output back, and where the sink must be
+		/// disposed if it owns pooled memory. The writer variable passed to the constructor is a dead copy from that point
+		/// on: see the remarks on <see cref="CrystalXmlWriter{TRune,TWriter}"/>.</remarks>
 		public TWriter Writer;
 
 		/// <summary>When <see langword="true"/>, C0 control characters are emitted as character references instead of being dropped</summary>
@@ -97,8 +111,13 @@ namespace SnowBank.Data.Xml
 		private bool HasContent;
 
 		/// <summary>Constructs an emitter writing into <paramref name="writer"/></summary>
-		/// <param name="writer">Destination buffer writer. Its state is taken over by this emitter: read the result back
-		/// through <see cref="Writer"/>, not through this variable.</param>
+		/// <param name="writer">Destination buffer writer, <b>consumed</b> by this constructor. It is copied into
+		/// <see cref="Writer"/>, and the caller's variable must not be read, disposed or reused afterwards: it becomes a
+		/// second, position-less claim on the same buffer. Do everything through <see cref="Writer"/> instead.
+		/// <para>The <c>ref</c> here only avoids copying a potentially large writer struct as an <i>argument</i>; the field
+		/// assignment copies it regardless, and no aliasing is established (a <c>ref</c> field is impossible on the
+		/// <c>netstandard2.0</c> and <c>net8.0</c> targets). It is a signal that the writer is being taken over, not a
+		/// mechanism that keeps the caller's variable in sync.</para></param>
 		/// <param name="strictControlCharacters">When <see langword="true"/>, reproduce the legacy character-reference
 		/// treatment of C0 control characters instead of dropping them. See <see cref="StrictControlCharacters"/>.</param>
 		/// <exception cref="NotSupportedException">If <typeparamref name="TRune"/> is neither <see cref="char"/> nor <see cref="byte"/>.</exception>
@@ -152,9 +171,7 @@ namespace SnowBank.Data.Xml
 			WriteEscaped(text, inAttribute: false);
 		}
 
-		/// <summary>Appends text content to the element that is currently open, escaping it as needed</summary>
-		/// <param name="text">Raw text; <see langword="null"/> writes nothing at all, which leaves the element free to
-		/// self-close, whereas an empty string forces the expanded <c>&lt;Name&gt;&lt;/Name&gt;</c> form.</param>
+		/// <inheritdoc />
 		public void WriteText(string? text)
 		{
 			if (text is not null)
@@ -172,8 +189,7 @@ namespace SnowBank.Data.Xml
 			WriteAscii(ascii);
 		}
 
-		/// <summary>Appends content that is already known to be valid, unescaped ASCII</summary>
-		/// <param name="ascii">Pre-validated ASCII content; <see langword="null"/> writes nothing at all.</param>
+		/// <inheritdoc />
 		public void WriteRawAscii(string? ascii)
 		{
 			if (ascii is not null)
