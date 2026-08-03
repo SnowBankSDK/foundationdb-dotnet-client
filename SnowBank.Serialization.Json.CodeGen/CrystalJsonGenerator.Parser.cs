@@ -735,7 +735,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				if (xmlProfile is not null)
 				{ // a name collision can only be seen once every member of the type has resolved its own XML name
-					ReportDuplicateXmlNames(type, members);
+					ReportDuplicateXmlNames(type, members, xmlProfile);
 				}
 
 				return new()
@@ -1093,36 +1093,42 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="attributeValue">The value <c>Attribute =</c> was set to</param>
 			/// <param name="itemName">The attribute's <c>ItemName</c> as written</param>
 			/// <param name="dictionaryFormat">The attribute's <c>DictionaryFormat</c>, as its enum member name</param>
+			/// <param name="refused"><see langword="true"/> when the member's shape was refused here, so that no further member-level diagnostic stacks on top of the one already reported</param>
 			/// <returns>The normalized settings; every refused shape returns them EMPTY, so that one build error is not followed by a cascade of downstream ones</returns>
-			private (string? Name, bool IsAttribute, string? ItemName, string? DictionaryFormat) ResolveXmlMember(ISymbol member, TypeMetadata type, string xmlProfile, string? rawName, bool attributeSpelled, bool attributeValue, string? itemName, string? dictionaryFormat)
+			private (string? Name, bool IsAttribute, string? ItemName, string? DictionaryFormat) ResolveXmlMember(ISymbol member, TypeMetadata type, string xmlProfile, string? rawName, bool attributeSpelled, bool attributeValue, string? itemName, string? dictionaryFormat, out bool refused)
 			{
+				refused = false;
+
 				if (xmlProfile == XmlProfileDataContract)
 				{
-					// the DataContract wire names every element after the data contract and has no notion of a user-data
-					// attribute: none of these three settings can be honored, and honoring none of them silently is worse
-					string? refused =
-						rawName is not null ? "Name = \"" + rawName + "\""
-						: attributeSpelled && attributeValue ? "Attribute = true"
-						: itemName is not null ? "ItemName = \"" + itemName + "\""
-						: null;
+					// The compat wire derives EVERY name from the data contract, has no notion of a user-data XML
+					// attribute, and has exactly one dictionary shape. So none of these settings can be honored, and
+					// honoring none of them silently would be a config that changes nothing without saying so.
+					// All the present ones are named in ONE diagnostic: an author who wrote two of them has to see both.
+					var settings = new List<string>(4);
+					if (rawName is not null) settings.Add("Name = \"" + rawName + "\"");
+					if (attributeSpelled && attributeValue) settings.Add("Attribute = true");
+					if (itemName is not null) settings.Add("ItemName = \"" + itemName + "\"");
+					// an explicitly spelled 'Default' asks to INHERIT, which the compat wire can honor: it is not a refusal
+					if (dictionaryFormat is not (null or XmlDictionaryFormatDefault)) settings.Add("DictionaryFormat = " + dictionaryFormat);
 
-					if (refused is not null)
+					if (settings.Count > 0)
 					{
+						refused = true;
 						ReportDiagnostic(
 							new(
 								"CXML0004",
 								"The member-level XML vocabulary cannot be combined with the DataContract XML wire",
-								"The member '{0}' carries [XmlProperty({1})], but its container produces the DataContract XML wire, whose element names all come from the data contract and which has no notion of a user-data XML attribute: the setting cannot be honored. Remove it (the contract already decides the name), or publish the Modern XML wire, which does honor it, from a separate container (the dual-container pattern).",
+								"The member '{0}' carries [XmlProperty({1})], but its container produces the DataContract XML wire, whose names all come from the data contract, which has no notion of a user-data XML attribute, and which has a single dictionary shape: the setting cannot be honored. Remove it (the contract already decides), or publish the Modern XML wire, which does honor it, from a separate container (the dual-container pattern).",
 								"SnowBank.Serialization.Json.CodeGen",
 								DiagnosticSeverity.Error,
 								isEnabledByDefault: true
 							),
 							member.Locations.Length > 0 ? member.Locations[0] : null,
-							member.ToDisplayString(), refused);
+							member.ToDisplayString(), string.Join(", ", settings));
 					}
 
-					// the dictionary format survives: it selects between representations, it does not rename anything
-					return (null, false, null, dictionaryFormat);
+					return (null, false, null, null);
 				}
 
 				bool isAttribute = attributeSpelled && attributeValue;
@@ -1143,6 +1149,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							),
 							member.Locations.Length > 0 ? member.Locations[0] : null,
 							member.ToDisplayString());
+						refused = true;
 						return default;
 					}
 
@@ -1159,6 +1166,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							),
 							member.Locations.Length > 0 ? member.Locations[0] : null,
 							member.ToDisplayString(), rawName);
+						refused = true;
 						return default;
 					}
 
@@ -1169,10 +1177,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// both names land in the document verbatim, so both get the same validation
 				if (name is not null && !ValidateXmlName(member, name, "element or attribute"))
 				{
+					refused = true;
 					return default;
 				}
 				if (itemName is not null && !ValidateXmlName(member, itemName, "item"))
 				{
+					refused = true;
 					return default;
 				}
 
@@ -1189,6 +1199,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						),
 						member.Locations.Length > 0 ? member.Locations[0] : null,
 						member.ToDisplayString(), type.FullName);
+					refused = true;
 					return default;
 				}
 
@@ -1228,7 +1239,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Reports <c>CXML0006</c> on a sequence whose items are themselves bare sequences, with no intermediate type to name the inner items</summary>
-			/// <remarks>Structural, so it applies to every member of an XML container, annotated or not. A DICTIONARY is not a bare sequence on either side of this test: its entries are named by the resolved dictionary format, so it always has names to give, which is exactly what a bare sequence lacks. Nor is a <c>byte[]</c> or a <c>string</c>, which are scalars on this wire however enumerable C# considers them.</remarks>
+			/// <remarks>
+			/// <para>MODERN wire only. The DataContract wire derives a name for every level from the contract (an inner sequence of strings becomes <c>ArrayOfstring</c> holding <c>string</c> items), so the shape is decidable there and the compat emitter names it instead of refusing it; refusing it would block porting a legacy DTO that <c>DataContractSerializer</c> serializes today.</para>
+			/// <para>A DICTIONARY is not a bare sequence on either side of this test: its entries are named by the resolved dictionary format, so it always has names to give, which is exactly what a bare sequence lacks. Nor is a <c>byte[]</c> or a <c>string</c>, which are scalars on this wire however enumerable C# considers them.</para>
+			/// </remarks>
 			private void ReportBareNestedCollection(ISymbol member, TypeMetadata type)
 			{
 				if (!IsBareXmlSequence(type, out var item)) return;
@@ -1251,9 +1265,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>
 			/// <para>Elements and attributes are checked SEPARATELY, because in XML they do not share a namespace: an attribute and a child element may legitimately carry the same name, and refusing that pair would be a false positive on a perfectly readable document.</para>
 			/// <para>Only member-versus-member: a collision with a polymorphic type's discriminator is not checked here, because the XML name of the discriminator is an emission decision this step deliberately does not pre-empt.</para>
+			/// <para>The REMEDY is profile-aware, because the obvious one is not available on both: on the DataContract wire an <c>[XmlProperty]</c> rename is itself refused (CXML0004), so the fix has to point at the <c>[DataMember(Name = ...)]</c> that owns the colliding name.</para>
 			/// </remarks>
-			private void ReportDuplicateXmlNames(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members)
+			private void ReportDuplicateXmlNames(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members, string xmlProfile)
 			{
+				// naming the remedy the OTHER wire uses would send the author straight into CXML0004
+				string remedy =
+					xmlProfile == XmlProfileDataContract
+						? "The names come from the data contract on this wire, so rename one of them there, with [DataMember(Name = \"...\")]."
+						: "Rename one of them for XML with [XmlProperty(\"...\")], which leaves the JSON name untouched.";
+
 				var elements = new Dictionary<string, string>(StringComparer.Ordinal);
 				var attributes = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -1277,13 +1298,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 						new(
 							"CXML0005",
 							"Two members resolve to the same XML name",
-							"The members '{1}' and '{2}' of type '{0}' both resolve to the XML {3} name '{4}': one of the two would silently win in the document, which parses either way. Rename one of them for XML with [XmlProperty(\"...\")].",
+							"The members '{1}' and '{2}' of type '{0}' both resolve to the XML {3} name '{4}': one of the two would silently win in the document, which parses either way. {5}",
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Error,
 							isEnabledByDefault: true
 						),
 						type.Locations.Length > 0 ? type.Locations[0] : null,
-						type.ToDisplayString(), previous, member.MemberName, member.XmlIsAttribute ? "attribute" : "element", effective);
+						type.ToDisplayString(), previous, member.MemberName, member.XmlIsAttribute ? "attribute" : "element", effective, remedy);
 				}
 			}
 
@@ -1948,13 +1969,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 				else
 				{
+					bool xmlRefused = false;
 					if (hasXmlProperty)
 					{
-						(xmlName, xmlIsAttribute, xmlItemName, xmlDictionaryFormat) = ResolveXmlMember(member, type, xmlProfile, xmlRawName, xmlAttributeSpelled, xmlAttributeValue, xmlItemName, xmlDictionaryFormat);
+						(xmlName, xmlIsAttribute, xmlItemName, xmlDictionaryFormat) = ResolveXmlMember(member, type, xmlProfile, xmlRawName, xmlAttributeSpelled, xmlAttributeValue, xmlItemName, xmlDictionaryFormat, out xmlRefused);
 					}
 
-					// structural, so it applies to every member of an XML container, annotated or not
-					ReportBareNestedCollection(member, type);
+					// structural, so it applies to every member of the MODERN wire, annotated or not; skipped for a member
+					// whose settings were already refused, so that one member never collects two stacked errors
+					if (!xmlRefused && xmlProfile == XmlProfileModern)
+					{
+						ReportBareNestedCollection(member, type);
+					}
 				}
 
 				return (

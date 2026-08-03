@@ -144,11 +144,16 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			return refusal;
 		}
 
-		/// <summary>Asserts that a probe was NOT refused with a given diagnostic (the non-trigger side of every rule)</summary>
+		/// <summary>Asserts that a probe was NOT refused with a given diagnostic, and that NO other XML diagnostic fired either (the non-trigger side of every rule)</summary>
+		/// <remarks>The second half is what makes these tests worth having: a probe that dodges the rule under test only to trip a neighbouring one is not an accepted shape, and asserting on a single id would let that through.</remarks>
 		private void AssertNotReported(string source, string id)
 		{
 			var (_, diagnostics) = RunOn(source);
-			Assert.That(diagnostics.Where(d => d.Id == id), Is.Empty, $"{id} must not fire on this shape");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(diagnostics.Where(d => d.Id == id), Is.Empty, $"{id} must not fire on this shape");
+				Assert.That(diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)), Is.Empty, "and the shape must be accepted whole: no other XML diagnostic either");
+			}
 		}
 
 		#region The new metadata fields...
@@ -658,6 +663,64 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
+		public void Test_An_Explicit_DictionaryFormat_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the compat wire has exactly ONE dictionary shape: a format override there changes nothing, and a setting
+			// that silently changes nothing is the failure mode this whole family of diagnostics exists to prevent
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueAttributes)]
+								public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("KeyValueAttributes"), "the message names the setting that cannot be honored");
+		}
+
+		[Test]
+		public void Test_An_Explicitly_Default_DictionaryFormat_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// spelling out 'Default' asks to INHERIT, which the compat wire honors perfectly: it is not an override
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.Default)]
+								public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+		}
+
+		[Test]
+		public void Test_Several_Refused_Settings_Are_Named_In_One_Diagnostic()
+		{
+			// an author who wrote two refused settings has to see BOTH: fixing the first only to rebuild into the second
+			// is the kind of drip-feed that makes a build error feel arbitrary
+			var (_, diagnostics) = RunOn(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember]
+							[SnowBank.Data.Xml.XmlProperty("tags", ItemName = "tag")]
+							public System.Collections.Generic.List<string>? Tags { get; set; }
+					""",
+				containerAttributes: DataContractContainer,
+				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"));
+
+			var refusals = diagnostics.Where(static d => d.Id == "CXML0004").ToList();
+			Assert.That(refusals, Has.Count.EqualTo(1), "the two refused settings belong to one member, so they belong to one diagnostic");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusals[0].GetMessage(), Does.Contain("Name = \"tags\""));
+				Assert.That(refusals[0].GetMessage(), Does.Contain("ItemName = \"tag\""));
+			}
+		}
+
+		[Test]
 		public void Test_A_DataContract_Container_Without_Any_XmlProperty_Is_Not_Reported()
 		{
 			AssertNotReported(
@@ -714,6 +777,44 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						[SnowBank.Data.Xml.XmlProperty("@Alpha")]
 						public int Other { get; set; }
 				"""), "CXML0005");
+		}
+
+		[Test]
+		public void Test_The_Collision_Remedy_Points_At_XmlProperty_On_A_Modern_Container()
+		{
+			var refusal = AssertRefusal(Probe("""
+						public int Alpha { get; set; }
+
+						[SnowBank.Data.Xml.XmlProperty("Alpha")]
+						public int Other { get; set; }
+				"""), "CXML0005");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("XmlProperty"), "the Modern wire honors an XML-only rename, so that is the remedy to name");
+		}
+
+		[Test]
+		public void Test_The_Collision_Remedy_Points_At_DataMember_On_A_DataContract_Container()
+		{
+			// the remedy has to be one the author can actually apply: an [XmlProperty] rename on this wire is itself
+			// refused by CXML0004, so suggesting it would send them from one build error straight into another
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember(Name = "same")]
+								public int Alpha { get; set; }
+
+								[System.Runtime.Serialization.DataMember(Name = "same")]
+								public int Other { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0005");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("DataMember"), "on the compat wire the names come from the contract, so that is where the fix goes");
+				Assert.That(refusal.GetMessage(), Does.Not.Contain("XmlProperty"), "and the remedy CXML0004 would refuse must not be suggested");
+			}
 		}
 
 		[Test]
@@ -785,6 +886,35 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			AssertNotReported(Probe("""
 						public System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, int>>? Maps { get; set; }
 				"""), "CXML0006");
+		}
+
+		[Test]
+		public void Test_A_List_Of_Lists_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// the compat wire DOES have a name for every level (an inner sequence of ints becomes 'ArrayOfint' holding
+			// 'int' items), so the shape is decidable there: refusing it would block porting a legacy DTO that
+			// DataContractSerializer serializes today, which is the one thing this profile exists to avoid
+			AssertNotReported(
+				Probe(
+					"""
+								public System.Collections.Generic.List<System.Collections.Generic.List<int>>? Matrix { get; set; }
+						""",
+					containerAttributes: DataContractContainer),
+				"CXML0006");
+		}
+
+		[Test]
+		public void Test_A_Refused_Member_Does_Not_Also_Collect_The_Nested_Sequence_Refusal()
+		{
+			// one member, one error: a bad name on a shape that is ALSO a bare nested sequence must not report twice,
+			// because the second message would be noise until the first is fixed
+			var (_, diagnostics) = RunOn(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("not a name")]
+						public System.Collections.Generic.List<System.Collections.Generic.List<int>>? Matrix { get; set; }
+				"""));
+
+			var reported = diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)).Select(static d => d.Id).ToList();
+			Assert.That(reported, Is.EqualTo((string[]) [ "CXML0007" ]), "the name refusal is the one to report; CXML0006 must not stack on top of it");
 		}
 
 		[Test]
