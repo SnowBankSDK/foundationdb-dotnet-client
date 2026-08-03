@@ -95,7 +95,7 @@ namespace SnowBank.Data.Xml
 		/// <inheritdoc />
 		public void WriteRawAscii(ReadOnlySpan<char> ascii)
 		{
-			Contract.Debug.Requires(IsAscii(ascii), "Raw content must be pre-validated ASCII");
+			Contract.Debug.Requires(XmlCharHelpers.IsAscii(ascii), "Raw content must be pre-validated ASCII");
 			// see the type remarks: WriteString, not WriteRaw, so that an empty value still counts as content
 			this.Writer.WriteString(ascii.ToString());
 		}
@@ -105,21 +105,14 @@ namespace SnowBank.Data.Xml
 		{
 			if (ascii is not null)
 			{
-				this.Writer.WriteString(ascii);
+				// delegate to the span overload, like XDocumentEmitter and CrystalXmlWriter do, so the ASCII
+				// precondition above is not bypassed for callers going through this null-tolerant overload
+				WriteRawAscii(ascii.AsSpan());
 			}
 		}
 
 		/// <inheritdoc />
 		public void WriteEndElement(in XmlName name) => this.Writer.WriteEndElement();
-
-		private static bool IsAscii(ReadOnlySpan<char> chars)
-		{
-			foreach (char c in chars)
-			{
-				if (c >= 0x80) return false;
-			}
-			return true;
-		}
 
 	}
 

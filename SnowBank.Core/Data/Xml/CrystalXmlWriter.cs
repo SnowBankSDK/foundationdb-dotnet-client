@@ -183,7 +183,7 @@ namespace SnowBank.Data.Xml
 		/// <inheritdoc />
 		public void WriteRawAscii(ReadOnlySpan<char> ascii)
 		{
-			Contract.Debug.Requires(IsAscii(ascii), "Raw content must be pre-validated ASCII");
+			Contract.Debug.Requires(XmlCharHelpers.IsAscii(ascii), "Raw content must be pre-validated ASCII");
 			CloseTagIfPending();
 			this.HasContent = true;
 			WriteAscii(ascii);
@@ -529,15 +529,6 @@ namespace SnowBank.Data.Xml
 			}
 
 			this.Writer.Advance(count);
-		}
-
-		private static bool IsAscii(ReadOnlySpan<char> chars)
-		{
-			foreach (char c in chars)
-			{
-				if (c >= 0x80) return false;
-			}
-			return true;
 		}
 
 		#endregion

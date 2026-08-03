@@ -70,7 +70,7 @@ namespace SnowBank.Data.Xml.Tests
 		/// <summary>Renders <paramref name="scenario"/> through the byte-exact char core: the reference this fixture treats as ground truth</summary>
 		private static string RenderReferenceWire(IEmitterScenario scenario)
 		{
-			var sink = new ArrayBufferWriter<char>();
+			var sink = new XmlEmitterConformance.GrowableBuffer<char>();
 			var inner = new XmlEmitterConformance.SinkRef<char>(sink);
 			var writer = new CrystalXmlWriter<char, XmlEmitterConformance.SinkRef<char>>(ref inner);
 			scenario.Run(ref writer);
@@ -338,6 +338,30 @@ namespace SnowBank.Data.Xml.Tests
 		public void Test_XmlWriterEmitter_Constructor_Rejects_Null_Writer()
 		{
 			Assert.That(() => new XmlWriterEmitter(null!), Throws.InstanceOf<ArgumentNullException>());
+		}
+
+		#endregion
+
+		#region Review round 1 fixes...
+
+		[Test]
+		public void Test_XDocumentEmitter_WriteEndElement_Requires_An_Open_Element()
+		{
+			// balance guard: calling WriteEndElement with nothing open must not silently pop an empty stack
+			var emitter = new XDocumentEmitter();
+			Assert.That(() => emitter.WriteEndElement(in Root), Throws.InstanceOf<AssertionException>());
+		}
+
+		[Test]
+		public void Test_XmlWriterEmitter_WriteRawAscii_String_Overload_Enforces_Ascii_Precondition()
+		{
+			// the string? overload must delegate to the span overload, so the same ASCII precondition applies to both -
+			// this is what FIX 1 (review round 1) restored: it previously called this.Writer.WriteString(ascii) directly,
+			// bypassing the Contract.Debug.Requires(IsAscii(...)) guard that only lived on the span overload
+			var sb = new StringBuilder();
+			using var writer = XmlWriter.Create(sb, new XmlWriterSettings { OmitXmlDeclaration = true });
+			var emitter = new XmlWriterEmitter(writer);
+			Assert.That(() => emitter.WriteRawAscii("café"), Throws.InstanceOf<AssertionException>());
 		}
 
 		#endregion

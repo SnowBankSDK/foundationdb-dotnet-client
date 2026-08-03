@@ -129,7 +129,7 @@ namespace SnowBank.Data.Xml
 		/// <inheritdoc />
 		public readonly void WriteRawAscii(ReadOnlySpan<char> ascii)
 		{
-			Contract.Debug.Requires(IsAscii(ascii), "Raw content must be pre-validated ASCII");
+			Contract.Debug.Requires(XmlCharHelpers.IsAscii(ascii), "Raw content must be pre-validated ASCII");
 			this.OpenElements.Peek().Add(ascii.ToString());
 		}
 
@@ -145,6 +145,7 @@ namespace SnowBank.Data.Xml
 		/// <inheritdoc />
 		public void WriteEndElement(in XmlName name)
 		{
+			Contract.Debug.Requires(this.OpenElements.Count > 0, "There is no open element to close");
 			var element = this.OpenElements.Pop();
 			if (this.OpenElements.Count > 0)
 			{
@@ -185,15 +186,6 @@ namespace SnowBank.Data.Xml
 				}
 			}
 			return sb.ToString();
-		}
-
-		private static bool IsAscii(ReadOnlySpan<char> chars)
-		{
-			foreach (char c in chars)
-			{
-				if (c >= 0x80) return false;
-			}
-			return true;
 		}
 
 	}
