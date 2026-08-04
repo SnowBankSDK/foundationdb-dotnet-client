@@ -830,6 +830,80 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
+		#region CXML0005: a member colliding with the type discriminator...
+
+		/// <summary>Builds a polymorphic probe: one base, one derived type carrying <paramref name="derivedMembers"/>, and a container that enrols both</summary>
+		private static string PolymorphicProbe(string derivedMembers, string polymorphicAttributes = "") => $$"""
+			namespace Probe
+			{
+
+			{{polymorphicAttributes}}
+				[System.Text.Json.Serialization.JsonDerivedType(typeof(ProbeEbook), "ebook")]
+				public abstract record ProbeMedia
+				{
+					public string? Title { get; set; }
+				}
+
+				public sealed record ProbeEbook : ProbeMedia
+				{
+			{{derivedMembers}}
+				}
+
+				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeMedia))]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeEbook))]
+				public static partial class ProbeConverters
+				{
+				}
+
+			}
+			""";
+
+		[Test]
+		public void Test_An_Attribute_Member_Colliding_With_The_Discriminator_Is_A_Build_Error()
+		{
+			// the discriminator is written as an attribute on every derived element, BEFORE the members: a member attribute
+			// of the same name would emit the attribute twice on one element, which is not even a well-formed document
+			var refusal = AssertRefusal(PolymorphicProbe("""
+						[SnowBank.Data.Xml.XmlProperty("@type")]
+						public string? Kind { get; set; }
+				"""), "CXML0005");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("type"), "the message names the attribute written twice");
+				Assert.That(refusal.GetMessage(), Does.Contain("Kind"), "and the member that has to move");
+			}
+		}
+
+		[Test]
+		public void Test_A_Member_Colliding_With_A_Renamed_Discriminator_Is_A_Build_Error()
+		{
+			// the name to check is the RESOLVED one: [JsonPolymorphic] renames it, and the XML form drops the leading '$'
+			AssertRefusal(
+				PolymorphicProbe(
+					"""
+								[SnowBank.Data.Xml.XmlProperty("@kind")]
+								public string? Kind { get; set; }
+						""",
+					polymorphicAttributes: "	[System.Text.Json.Serialization.JsonPolymorphic(TypeDiscriminatorPropertyName = \"$kind\")]"),
+				"CXML0005");
+		}
+
+		[Test]
+		public void Test_An_Element_Member_Named_Like_The_Discriminator_Is_Not_Reported()
+		{
+			// the discriminator is an ATTRIBUTE: a child element of the same name shares no namespace with it, exactly like
+			// the member-versus-member case
+			AssertNotReported(PolymorphicProbe("""
+						[SnowBank.Data.Xml.XmlProperty("type")]
+						public string? Kind { get; set; }
+				"""), "CXML0005");
+		}
+
+		#endregion
+
 		#region CXML0006: a bare nested collection...
 
 		[Test]

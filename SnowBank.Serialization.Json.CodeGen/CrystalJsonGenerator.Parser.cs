@@ -277,6 +277,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy, xmlProfile);
 
+				if (xmlProfile is not null)
+				{ // a collision with the discriminator can only be seen once every type of the hierarchy has resolved its members
+					ReportDiscriminatorXmlNameCollisions(includedTypes, mappedTypes, xmlProfile);
+				}
+
 				if (includedTypes.Count == 0)
 				{
 					ReportDiagnostic(
@@ -510,6 +515,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				work.Enqueue(symbol);
 
 				CrawlIncludedTypes(work, mappedTypes, includedTypes, propertyNamingPolicy: null, xmlProfile);
+
+				if (xmlProfile is not null)
+				{ // a collision with the discriminator can only be seen once every type of the hierarchy has resolved its members
+					ReportDiscriminatorXmlNameCollisions(includedTypes, mappedTypes, xmlProfile);
+				}
 
 				// a referenced type named like a member of the generated scope would collide inside it: exclude it
 				// from generation (the emitted code falls back to runtime serialization for it) and warn
@@ -1310,6 +1320,72 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 			}
 
+			/// <summary>Reports <c>CXML0005</c> when a member of a derived type resolves to the XML name the type discriminator will occupy</summary>
+			/// <remarks>
+			/// <para>MODERN wire only: this is the wire that writes the discriminator as an XML ATTRIBUTE on every derived element,
+			/// named after the JSON discriminator property with its leading <c>'$'</c> removed. Two attributes of one name on one
+			/// element is not even a well-formed document, and nothing downstream would say so.</para>
+			/// <para>Run over the WHOLE container rather than per type, because a derived type does not know its own hierarchy: the
+			/// discriminator is declared on the polymorphic root, which is a different type, parsed separately.</para>
+			/// <para>Only ATTRIBUTE-projected members collide: a child element of the same name shares no namespace with an attribute,
+			/// exactly as in the member-versus-member check.</para>
+			/// </remarks>
+			private void ReportDiscriminatorXmlNameCollisions(List<CrystalJsonTypeMetadata> includedTypes, HashSet<INamedTypeSymbol> mappedTypes, string xmlProfile)
+			{
+				if (xmlProfile != XmlProfileModern) return;
+
+				var byRef = new Dictionary<TypeRef, CrystalJsonTypeMetadata>();
+				foreach (var includedType in includedTypes)
+				{
+					byRef[includedType.Type.Ref] = includedType;
+				}
+
+				foreach (var root in includedTypes)
+				{
+					if (!root.IsPolymorphicRoot || root.DerivedTypes.Count == 0) continue;
+
+					string declared = root.TypeDiscriminatorPropertyName ?? "$type";
+					string name = declared.StartsWith("$", StringComparison.Ordinal) ? declared.Substring(1) : declared;
+					if (name.Length == 0) continue; // the emitter refuses that shape on its own
+
+					foreach (var (_, derivedType, _) in root.DerivedTypes)
+					{
+						if (!byRef.TryGetValue(derivedType.Ref, out var derived)) continue;
+
+						foreach (var member in derived.Members)
+						{
+							if (!member.XmlIsAttribute) continue;
+							if ((member.XmlName ?? member.Name) != name) continue;
+
+							ReportDiagnostic(
+								new(
+									"CXML0005",
+									"Two members resolve to the same XML name",
+									"The member '{1}' of type '{0}' resolves to the XML attribute name '{2}', which is also where the type discriminator of '{3}' is written on this wire: the element would carry that attribute twice, which is not a well-formed document. Rename the member for XML with [XmlProperty(\"...\")], which leaves the JSON name untouched, or rename the discriminator with [JsonPolymorphic(TypeDiscriminatorPropertyName = \"...\")].",
+									"SnowBank.Serialization.Json.CodeGen",
+									DiagnosticSeverity.Error,
+									isEnabledByDefault: true
+								),
+								FindLocation(mappedTypes, derived.Type.Ref),
+								derived.Type.FullName, member.MemberName, name, root.Type.FullName);
+						}
+					}
+				}
+			}
+
+			/// <summary>Returns the declaration location of one of the crawled types, or the container's own when the symbol is out of reach</summary>
+			private Location? FindLocation(HashSet<INamedTypeSymbol> mappedTypes, TypeRef type)
+			{
+				foreach (var symbol in mappedTypes)
+				{
+					if (symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == type.FullyQualifiedName)
+					{
+						return symbol.Locations.Length > 0 ? symbol.Locations[0] : this.ContextClassLocation;
+					}
+				}
+				return this.ContextClassLocation;
+			}
+
 			/// <summary>Reports <c>CXML0008</c> when a member's custom converter has no XML facet, on a container that produces XML</summary>
 			/// <remarks>
 			/// <para>A converter attached to a member REPLACES the rules that would otherwise decide the member's wire form. On a
@@ -2029,7 +2105,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				string? xmlName = null;
 				bool xmlIsAttribute = false;
 				bool customConverterHasXmlSerializer = false;
-				bool customConverterXmlIsNullableForm = false;
+				bool customConverterXmlFacetDeclaredForNullable = false;
 				if (xmlProfile is null)
 				{ // the container produces no XML: the whole member-level vocabulary is inert, diagnostics included
 					xmlItemName = null;
@@ -2052,7 +2128,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 					if (customConverterType is not null)
 					{ // the converter took the member's wire form over; on an XML container it has to answer for BOTH wires
-						(customConverterHasXmlSerializer, customConverterXmlIsNullableForm) = GetXmlConverterFacet(customConverterSymbol, typeSymbol);
+						(customConverterHasXmlSerializer, customConverterXmlFacetDeclaredForNullable) = GetXmlConverterFacet(customConverterSymbol, typeSymbol);
 						if (!customConverterHasXmlSerializer)
 						{
 							ReportMissingXmlConverterFacet(member, type, customConverterType);
@@ -2092,7 +2168,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						CustomConverterHasDeserializer = customConverterHasDeserializer,
 						CustomConverterIsNullableForm = customConverterIsNullableForm,
 						CustomConverterHasXmlSerializer = customConverterHasXmlSerializer,
-						CustomConverterXmlIsNullableForm = customConverterXmlIsNullableForm,
+						CustomConverterXmlFacetDeclaredForNullable = customConverterXmlFacetDeclaredForNullable,
 						IsNonPublic = isNonPublic,
 						HasNonPublicGetter = hasNonPublicGetter,
 						HasNonPublicSetter = hasNonPublicSetter,

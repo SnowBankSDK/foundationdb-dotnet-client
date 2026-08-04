@@ -24,8 +24,32 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+namespace NodaTime
+{
+	using SnowBank.Data.Xml;
+
+	/// <summary>A type the crawler deliberately leaves out (its namespace is one of the three it skips), which still writes its own XML content</summary>
+	/// <remarks>Declared HERE, in a namespace the parser never enrols, so that the member-level <c>ICrystalXmlSerializable</c> dispatch of the emitter is the code that runs: an enrolled type would reach its own hook through its own generated body instead, leaving that branch unexecuted.</remarks>
+	public readonly struct Stamp : ICrystalXmlSerializable
+	{
+
+		public Stamp(string text) => this.Text = text;
+
+		public string Text { get; }
+
+		public void WriteXml<TEmitter>(ref TEmitter emitter)
+			where TEmitter : struct, IXmlEmitter
+		{
+			emitter.WriteText(this.Text);
+		}
+
+	}
+
+}
+
 namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 {
+	using System.Runtime.Serialization;
 	using System.Text.Json.Serialization;
 	using SnowBank.Data.Xml;
 
@@ -151,6 +175,50 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 		public Signature? Mark { get; init; }
 
+		/// <summary>A member type the crawler never enrols, so the member-level hook dispatch is what writes it</summary>
+		public global::NodaTime.Stamp? Tick { get; init; }
+
+	}
+
+	/// <summary>An enum whose wire label is a domain code, declared on its own field (the DataContract spelling the JSON side already honors)</summary>
+	public enum Courier
+	{
+
+		[EnumMember(Value = "on-foot")]
+		Foot = 0,
+
+		Bike = 1,
+
+	}
+
+	/// <summary>A combinable enum: a declared combination has a label of its own, an undeclared one has none</summary>
+	[Flags]
+	public enum Access
+	{
+		None = 0,
+		Read = 1,
+		Write = 2,
+		Full = Read | Write,
+	}
+
+	/// <summary>The three enum wire forms: the label, the numeric override, and the combinable case</summary>
+	public sealed record Dispatch
+	{
+
+		public Courier Mode { get; init; }
+
+		[JsonProperty(EnumFormat = JsonEnumFormat.Number)]
+		public Courier Code { get; init; }
+
+		[XmlProperty("@via")]
+		public Courier Via { get; init; }
+
+		[XmlProperty("@tally")]
+		[JsonProperty(EnumFormat = JsonEnumFormat.Number)]
+		public Courier Tally { get; init; }
+
+		public Access Rights { get; init; }
+
 	}
 
 	/// <summary>The per-member overrides of the null rule, in the JSON vocabulary the XML wire reuses as-is</summary>
@@ -241,6 +309,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	[CrystalJsonSerializable(typeof(Paper))]
 	[CrystalJsonSerializable(typeof(Switchboard))]
 	[CrystalJsonSerializable(typeof(Exotic))]
+	[CrystalJsonSerializable(typeof(Dispatch))]
 	public static partial class AcmeSerializers
 	{
 	}
@@ -263,6 +332,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.Text;
 	using System.Xml;
 	using System.Xml.Linq;
+	using Microsoft.CodeAnalysis;
 	using SnowBank.Data.Xml;
 	using SnowBank.Serialization.Json.CodeGen.Tests.Acme;
 
@@ -522,6 +592,70 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
+		#region Enums...
+
+		[Test]
+		public void Test_An_Enum_Writes_The_Same_Label_As_The_Json_String_Form()
+		{
+			var dispatch = new Dispatch { Mode = Courier.Foot, Via = Courier.Foot };
+
+			string xml = AcmeSerializers.Dispatch.ToXmlText(dispatch);
+			string json = AcmeSerializers.Dispatch.ToJsonText(dispatch, CrystalJsonSettings.Json.WithEnumAsStrings());
+			Log($"XML : {xml}");
+			Log($"JSON: {json}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				// the label comes from the generated switch, not from Enum.ToString(), and it is the token the JSON side
+				// writes for the same value: one label, two wires
+				Assert.That(xml, Does.Contain("<mode>on-foot</mode>"), "[EnumMember(Value = ...)] renames the value on the XML wire too");
+				Assert.That(xml, Does.Contain("via=\"on-foot\""), "and in an attribute position as well");
+				Assert.That(json, Does.Contain("\"on-foot\""), "which is exactly the label the JSON string form uses");
+			}
+		}
+
+		[Test]
+		public void Test_An_Enum_Member_With_EnumFormat_Number_Writes_The_Numeric_Form()
+		{
+			var dispatch = new Dispatch { Mode = Courier.Bike, Code = Courier.Bike, Via = Courier.Foot, Tally = Courier.Bike, Rights = Access.Full };
+
+			string xml = AcmeSerializers.Dispatch.ToXmlText(dispatch);
+			string json = AcmeSerializers.Dispatch.ToJsonText(dispatch, CrystalJsonSettings.JsonCompact);
+			Log($"XML : {xml}");
+			Log($"JSON: {json}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				// [JsonProperty(EnumFormat = Number)] forces the numeric form on BOTH wires: honoring it on one only is the
+				// silent cross-wire divergence this surface refuses
+				Assert.That(
+					xml,
+					Is.EqualTo("<dispatch via=\"on-foot\" tally=\"1\"><mode>Bike</mode><code>1</code><rights>Full</rights></dispatch>"),
+					"a value with no token keeps its declared name, a declared flags combination keeps its own label");
+				Assert.That(json, Does.Contain("\"code\":1"), "and the JSON side of the same member says the same thing");
+			}
+		}
+
+		[Test]
+		public void Test_An_Undeclared_Enum_Value_Falls_Back_To_Its_Numeric_Form()
+		{
+			// the same answer Enum.ToString() gives, reached without it: the switch has no case for 7, and the default arm
+			// formats the underlying integer
+			Assert.That(AcmeSerializers.Dispatch.ToXmlText(new Dispatch { Mode = (Courier) 7 }), Does.Contain("<mode>7</mode>"));
+		}
+
+		[Test]
+		public void Test_An_Undeclared_Flags_Combination_Is_Refused_Loudly()
+		{
+			// a reflection-free rendering of an arbitrary flags combination would have to invent a separator this profile
+			// never specified, so the wire refuses it at the member instead of guessing one
+			Assert.That(
+				() => AcmeSerializers.Dispatch.ToXmlText(new Dispatch { Rights = (Access) 5 }),
+				Throws.InstanceOf<CrystalXmlNotSupportedException>().With.Message.Contains("Access"));
+		}
+
+		#endregion
+
 		#region Nested types and hooks...
 
 		[Test]
@@ -545,6 +679,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// dispatches to the hook (the member-level dispatch in the emitter is the fallback for a member type the
 			// crawler leaves out, which the same rule covers)
 			Assert.That(xml, Is.EqualTo("<wrapper><mark>ok</mark></wrapper>"));
+		}
+
+		[Test]
+		public void Test_A_Member_Type_The_Crawler_Skips_Reaches_Its_Hook_Through_The_Member_Branch()
+		{
+			// NodaTime.Stamp lives in a namespace the crawler skips, so it has NO generated body of its own: the only
+			// code that can write it is the member-level ICrystalXmlSerializable dispatch, which owns the element shell
+			string xml = AcmeSerializers.Wrapper.ToXmlText(new Wrapper { Tick = new global::NodaTime.Stamp("now") });
+			Log($"XML : {xml}");
+
+			Assert.That(xml, Is.EqualTo("<wrapper><tick>now</tick></wrapper>"));
 		}
 
 		[Test]
@@ -688,6 +833,82 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			ICrystalXmlSerializer<Book> serializer = AcmeSerializers.Book.Default;
 
 			Assert.That(CrystalXml.ToText(serializer, MakeBook()), Is.EqualTo(BookXml));
+		}
+
+		#endregion
+
+		#region Generation-time refusals...
+
+		/// <summary>Runs the generator over a probe and returns the <c>#error</c> directives its output carries</summary>
+		/// <remarks>An <c>#error</c> is not a generator diagnostic: it only exists once the emitted source is compiled, where it
+		/// surfaces as CS1029. These two shapes are refused there rather than by a CXML descriptor, so this is where they are pinned.</remarks>
+		private static List<string> EmissionErrorsOf(string source)
+		{
+			var compilation = GeneratorProbeHarness.Compile("namespace Probe\n{\n" + source + "\n}\n");
+			Assert.That(
+				compilation.GetDiagnostics().Where(static d => d.Severity >= DiagnosticSeverity.Warning),
+				Is.Empty,
+				"the probe source must compile clean on its own");
+
+			var (output, _) = GeneratorProbeHarness.RunGenerator(compilation);
+			var errors = output.GetDiagnostics().Where(static d => d.Id == "CS1029").Select(static d => d.GetMessage()).ToList();
+			foreach (var error in errors)
+			{
+				Log($"#error: {error}");
+			}
+			return errors;
+		}
+
+		[Test]
+		public void Test_An_Attribute_Shaped_Dictionary_With_A_Non_Scalar_Value_Fails_The_Build()
+		{
+			// the two attribute shapes carry the value as TEXT: a value type with no lexical form has nothing to put there,
+			// and the shape is picked in the source, so the answer belongs at build time
+			var errors = EmissionErrorsOf("""
+					public sealed record ProbePart
+					{
+						public int Value { get; set; }
+					}
+
+					public sealed record ProbeDto
+					{
+						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueAttributes)]
+						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
+					}
+
+					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.Xml.CrystalXmlOutput]
+					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					public static partial class ProbeConverters
+					{
+					}
+				""");
+
+			Assert.That(errors, Has.Exactly(1).Contains("KeyValueAttributes"), "the message names the shape that cannot hold the value, and the two that can");
+		}
+
+		[Test]
+		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Fails_The_Build()
+		{
+			// the root name is the one name no [XmlProperty] can override: a contract name written for another wire would
+			// produce a document that does not parse, so it is refused where it is resolved
+			var errors = EmissionErrorsOf("""
+					[System.Runtime.Serialization.DataContract(Name = "not a name")]
+					public sealed record ProbeDto
+					{
+						[System.Runtime.Serialization.DataMember(Name = "id")]
+						public int Id { get; set; }
+					}
+
+					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.Xml.CrystalXmlOutput]
+					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					public static partial class ProbeConverters
+					{
+					}
+				""");
+
+			Assert.That(errors, Has.Exactly(1).Contains("not a name"), "the message quotes the offending name");
 		}
 
 		#endregion

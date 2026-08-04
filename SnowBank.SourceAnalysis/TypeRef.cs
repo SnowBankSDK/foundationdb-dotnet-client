@@ -27,6 +27,7 @@
 namespace SnowBank.SourceAnalysis
 {
 	using System.Collections.Generic;
+	using System.Globalization;
 	using System.Text;
 	using Microsoft.CodeAnalysis;
 
@@ -119,6 +120,26 @@ namespace SnowBank.SourceAnalysis
 
 	}
 
+	/// <summary>Extracted metadata about one declared member of an enum type.</summary>
+	/// <remarks>Captured so that a generator can emit a reflection-free label lookup (a <c>switch</c> over the declared values) instead of calling <c>Enum.ToString()</c>, which resolves names through the runtime's reflection-backed cache.</remarks>
+	[DebuggerDisplay("{Name} = {Value}")]
+	public sealed record EnumMemberMetadata
+	{
+
+		/// <summary>Name of the field, as declared in C#</summary>
+		public required string Name { get; init; }
+
+		/// <summary>Constant value of the field, formatted in the invariant culture (the underlying integer, as text)</summary>
+		public required string Value { get; init; }
+
+		/// <summary>Value of the <c>[EnumMember(Value = ...)]</c> attribute on the field, if any (the DataContract wire token)</summary>
+		public string? EnumMemberValue { get; init; }
+
+		/// <summary>Value of the <c>[JsonStringEnumMemberName("...")]</c> attribute on the field, if any (the System.Text.Json 9+ wire token)</summary>
+		public string? JsonStringEnumMemberName { get; init; }
+
+	}
+
 	/// <summary>Extracted metadata about a type symbol, that can be used to detect changes.</summary>
 	[DebuggerDisplay("Name = {Name}")]
 	public sealed record TypeMetadata
@@ -180,6 +201,18 @@ namespace SnowBank.SourceAnalysis
 					this.Name = "Nullable<" + underlyingType.Name + ">";
 					this.NullableOfType = Create(underlyingType);
 				}
+			}
+
+			if (this.TypeKind == TypeKind.Enum)
+			{
+				CaptureEnumMembers(type, out var enumMembers, out var isFlags, out var underlying);
+				this.EnumMembers = enumMembers;
+				this.IsFlagsEnum = isFlags;
+				this.EnumUnderlyingSpecialType = underlying;
+			}
+			else
+			{
+				this.EnumMembers = ImmutableEquatableArray<EnumMemberMetadata>.Empty;
 			}
 
 			// we want to generate the hierarchy of derived classes
@@ -271,6 +304,66 @@ namespace SnowBank.SourceAnalysis
 				(this.Nullability == NullableAnnotation.Annotated && this.NullableOfType is null)
 					? (this.FullyQualifiedName + "?")
 					: this.FullyQualifiedName;
+		}
+
+		/// <summary>Collects the declared members of an enum type, with any custom wire token declared on their fields</summary>
+		/// <remarks>Tokens are matched by attribute NAME and namespace, so no reference (and no version floor) on System.Text.Json is required, and a hand-written or injected clone of either attribute is matched too. This mirrors what the runtime enum cache does on the JSON side.</remarks>
+		private static void CaptureEnumMembers(ITypeSymbol type, out ImmutableEquatableArray<EnumMemberMetadata> members, out bool isFlags, out SpecialType underlyingSpecialType)
+		{
+			isFlags = false;
+			foreach (var attribute in type.GetAttributes())
+			{
+				var attributeClass = attribute.AttributeClass;
+				if (attributeClass?.Name == "FlagsAttribute" && attributeClass.ContainingNamespace?.ToDisplayString() == "System")
+				{
+					isFlags = true;
+					break;
+				}
+			}
+
+			underlyingSpecialType = (type as INamedTypeSymbol)?.EnumUnderlyingType?.SpecialType ?? SpecialType.System_Int32;
+
+			var list = new List<EnumMemberMetadata>();
+			foreach (var member in type.GetMembers())
+			{
+				if (member is not IFieldSymbol { HasConstantValue: true, IsStatic: true } field) continue;
+
+				string? enumMemberValue = null;
+				string? stjName = null;
+				foreach (var attribute in field.GetAttributes())
+				{
+					var attributeClass = attribute.AttributeClass;
+					if (attributeClass is null) continue;
+					string ns = attributeClass.ContainingNamespace?.ToDisplayString() ?? "";
+					if (attributeClass.Name == "EnumMemberAttribute" && ns == "System.Runtime.Serialization")
+					{ // a bare [EnumMember] (no Value) keeps the declared name, matching DataContract behavior
+						foreach (var arg in attribute.NamedArguments)
+						{
+							if (arg.Key == "Value" && arg.Value.Value is string { Length: > 0 } value)
+							{
+								enumMemberValue = value;
+							}
+						}
+					}
+					else if (attributeClass.Name == "JsonStringEnumMemberNameAttribute" && ns == "System.Text.Json.Serialization")
+					{
+						if (attribute.ConstructorArguments.Length > 0 && attribute.ConstructorArguments[0].Value is string { Length: > 0 } name)
+						{
+							stjName = name;
+						}
+					}
+				}
+
+				list.Add(new()
+				{
+					Name = field.Name,
+					Value = Convert.ToString(field.ConstantValue, CultureInfo.InvariantCulture) ?? "0",
+					EnumMemberValue = enumMemberValue,
+					JsonStringEnumMemberName = stjName,
+				});
+			}
+
+			members = list.ToImmutableEquatableArray();
 		}
 
 		private ImmutableEquatableArray<TypeRef> Parents { get; }
@@ -413,6 +506,15 @@ namespace SnowBank.SourceAnalysis
 		public bool IsValueType() => this.TypeKind is TypeKind.Struct or TypeKind.Enum;
 
 		public bool IsEnum() => this.TypeKind is TypeKind.Enum;
+
+		/// <summary>If this is an enum, its declared members in declaration order (with any custom wire token); otherwise empty</summary>
+		public ImmutableEquatableArray<EnumMemberMetadata> EnumMembers { get; }
+
+		/// <summary>If this is an enum, whether it carries <c>[Flags]</c>, so that an undeclared value may be a combination of declared ones</summary>
+		public bool IsFlagsEnum { get; }
+
+		/// <summary>If this is an enum, the <see cref="Microsoft.CodeAnalysis.SpecialType"/> of its underlying integer type</summary>
+		public SpecialType EnumUnderlyingSpecialType { get; }
 
 		public bool IsNullableOfT()
 		{

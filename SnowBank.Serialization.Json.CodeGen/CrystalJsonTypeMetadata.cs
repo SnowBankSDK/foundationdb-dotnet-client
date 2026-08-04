@@ -285,9 +285,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks>Only ever resolved when the container produces XML: a converter without the facet is a build error there (CXML0008), because the member's XML form would otherwise be written by rules the converter was declared to replace.</remarks>
 		public bool CustomConverterHasXmlSerializer { get; init; }
 
-		/// <summary>The custom converter's XML facet is declared for the member's <c>Nullable&lt;T&gt;</c> form itself, so the emitter passes the nullable value through instead of unwrapping it</summary>
-		/// <remarks>Resolved separately from <see cref="CustomConverterIsNullableForm"/>: one converter can perfectly well take responsibility for the nullable case on one format and not on the other.</remarks>
-		public bool CustomConverterXmlIsNullableForm { get; init; }
+		/// <summary>The custom converter's XML facet is declared for the member's <c>Nullable&lt;T&gt;</c> form itself (<c>ICrystalXmlSerializer&lt;DateTime?&gt;</c> on a <c>DateTime?</c> member), which is the form the emitter casts to when it hands the member over</summary>
+		/// <remarks>
+		/// <para>This selects the CAST's type argument (and therefore whether the value is unwrapped before the call), nothing more:
+		/// it does NOT make the converter responsible for the null case. On the XML wire a null member is decided by the profile
+		/// before any converter runs (absent, or <c>nil</c> under the settings), so a facet declared for <c>T?</c> is only ever
+		/// called with a value that has one.</para>
+		/// <para>Resolved separately from <see cref="CustomConverterIsNullableForm"/>, which is the JSON side's answer to the same
+		/// question: one converter can perfectly well declare the nullable form on one format and not on the other.</para>
+		/// </remarks>
+		public bool CustomConverterXmlFacetDeclaredForNullable { get; init; }
 
 		/// <summary>C# literal for the expression that represents the default value for this member, when it is missing</summary>
 		/// <remarks>This should be a valid C# constant expression, like <c>123</c>, <c>"hello"</c>, <c>true</c>, <c>global::System.Guid.Empty</c>, ...</remarks>

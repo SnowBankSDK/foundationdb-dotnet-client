@@ -128,6 +128,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				private readonly Dictionary<string, string> Fields = new(StringComparer.Ordinal);
 
+				/// <summary>Identifiers already handed out, so that resolving a collision is a lookup and not a scan of every field declared so far</summary>
+				private readonly HashSet<string> Taken = new(StringComparer.Ordinal);
+
 				private readonly List<KeyValuePair<string, string>> Order = [ ];
 
 				/// <summary>Returns the name of the field holding <paramref name="text"/>, declaring one if this is its first use</summary>
@@ -147,10 +150,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					// two different names can sanitize to the same identifier ("a-b" and "a.b"), so the first one keeps it
 					// and the others get a numeric suffix: the field name is an implementation detail, the mapping must be 1:1
 					string candidate = sb.ToString();
-					if (this.Fields.ContainsValue(candidate))
+					if (this.Taken.Contains(candidate))
 					{
 						int n = 2;
-						while (this.Fields.ContainsValue(candidate + "_" + n.ToString(CultureInfo.InvariantCulture)))
+						while (this.Taken.Contains(candidate + "_" + n.ToString(CultureInfo.InvariantCulture)))
 						{
 							++n;
 						}
@@ -158,6 +161,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 
 					this.Fields[text] = candidate;
+					this.Taken.Add(candidate);
 					this.Order.Add(new(candidate, text));
 					return candidate;
 				}
@@ -179,6 +183,147 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.AppendLine($"private static readonly {XmlNameFullName} {entry.Key} = new({CSharpCodeBuilder.Constant(entry.Value)}, {CSharpCodeBuilder.Constant(entry.Value)}u8.ToArray());");
 				}
 			}
+
+			#endregion
+
+			#region Enum label table...
+
+			/// <summary>Collects the enum types whose labels a generated converter writes, one static lookup method each</summary>
+			/// <remarks>
+			/// <para>The labels come from the metadata the parser captured, and the lookup is a generated <c>switch</c>: nothing on this
+			/// path calls <c>Enum.ToString()</c>, which resolves names through the runtime's reflection-backed enum cache.</para>
+			/// <para>Deduplicated by fully qualified type name: an enum used by two members of the same type is emitted once.</para>
+			/// </remarks>
+			private sealed class XmlEnumTable
+			{
+
+				private readonly Dictionary<string, string> Methods = new(StringComparer.Ordinal);
+
+				/// <summary>Identifiers already handed out (two enums of the same simple name live in different namespaces)</summary>
+				private readonly HashSet<string> Taken = new(StringComparer.Ordinal);
+
+				private readonly List<KeyValuePair<string, TypeMetadata>> Order = [ ];
+
+				/// <summary>Returns the name of the lookup method for <paramref name="type"/>, declaring one if this is its first use</summary>
+				public string Ref(TypeMetadata type)
+				{
+					string key = type.FullyQualifiedName;
+					if (this.Methods.TryGetValue(key, out var existing))
+					{
+						return existing;
+					}
+
+					var sb = new StringBuilder("__xml_enum_");
+					foreach (var c in type.Name)
+					{
+						sb.Append((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ? c : '_');
+					}
+
+					string candidate = sb.ToString();
+					if (this.Taken.Contains(candidate))
+					{
+						int n = 2;
+						while (this.Taken.Contains(candidate + "_" + n.ToString(CultureInfo.InvariantCulture)))
+						{
+							++n;
+						}
+						candidate += "_" + n.ToString(CultureInfo.InvariantCulture);
+					}
+
+					this.Methods[key] = candidate;
+					this.Taken.Add(candidate);
+					this.Order.Add(new(candidate, type));
+					return candidate;
+				}
+
+				/// <summary>Declared lookup methods, in first-use order</summary>
+				public List<KeyValuePair<string, TypeMetadata>> Entries => this.Order;
+
+			}
+
+			/// <summary>Returns the wire label of one enum member: the custom token if it declares one, else its C# name</summary>
+			/// <remarks>The same order as the JSON side's runtime cache (the System.Text.Json spelling wins over the DataContract one), so a value renders identically on both wires.</remarks>
+			private static string GetXmlEnumLabel(EnumMemberMetadata member) => member.JsonStringEnumMemberName ?? member.EnumMemberValue ?? member.Name;
+
+			/// <summary>Emits the generated label lookup of every enum this converter writes</summary>
+			private void WriteXmlEnumHelpers(CSharpCodeBuilder sb, XmlEnumTable enums)
+			{
+				foreach (var entry in enums.Entries)
+				{
+					var type = entry.Value;
+					string fullName = type.FullyQualifiedName;
+
+					sb.Comment($"Labels of {type.Name}, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache");
+					sb.AppendLine($"private static string {entry.Key}({fullName} value) => value switch");
+					sb.EnterBlock("switch");
+
+					// a duplicate constant value would be a duplicate case label (and the first declared name is the one
+					// ToString() itself returns), so only the FIRST member of each value gets a case
+					var seen = new HashSet<string>(StringComparer.Ordinal);
+					foreach (var member in type.EnumMembers)
+					{
+						if (!seen.Add(member.Value)) continue;
+						sb.AppendLine($"{fullName}.{member.Name} => {CSharpCodeBuilder.Constant(GetXmlEnumLabel(member))},");
+					}
+
+					string numeric = FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value");
+					if (type.IsFlagsEnum)
+					{ // an undeclared combination has no label of its own, and composing one would mean inventing a separator
+						this.XmlNeedsFlagsHelper = true;
+						sb.AppendLine($"_ => FailXmlUndeclaredFlags(typeof({fullName}), {numeric}),");
+					}
+					else
+					{ // an undeclared value renders as its underlying integer, exactly like Enum.ToString() does
+						sb.AppendLine($"_ => {numeric},");
+					}
+
+					sb.LeaveBlock("switch", ';');
+					sb.NewLine();
+				}
+			}
+
+			/// <summary>Emits the helper that refuses an undeclared combination of a <c>[Flags]</c> enum</summary>
+			private static void WriteXmlFlagsHelper(CSharpCodeBuilder sb)
+			{
+				sb.Comment("a [Flags] value that is not a declared member has no label: composing one from the declared flags would mean picking a separator this profile never specified");
+				sb.AppendLine($"private static string FailXmlUndeclaredFlags({SystemTypeFullName} type, string value)");
+				sb.EnterBlock();
+				sb.AppendLine($"throw new {CrystalXmlNotSupportedExceptionFullName}(type, \"Cannot write the value '\" + value + \"' of enum '\" + type.Name + \"' to XML: it is not one of the declared members of this [Flags] enum, and this profile does not define how to combine several of them into one label. Declare the combination as a member of the enum, write the member as a number with [JsonProperty(EnumFormat = JsonEnumFormat.Number)], or take the member over with a custom converter that has an XML facet.\");");
+				sb.LeaveBlock();
+				sb.NewLine();
+			}
+
+			/// <summary>Whether the converter currently being emitted needs the undeclared-flags helper</summary>
+			private bool XmlNeedsFlagsHelper { get; set; }
+
+			/// <summary>Table of the enum lookups of the converter currently being emitted</summary>
+			private XmlEnumTable XmlEnums { get; set; } = new();
+
+			/// <summary>Returns the C# keyword of the underlying integer type of an enum</summary>
+			private static string GetXmlEnumUnderlyingKeyword(TypeMetadata type) => type.EnumUnderlyingSpecialType switch
+			{
+				SpecialType.System_SByte => "sbyte",
+				SpecialType.System_Byte => "byte",
+				SpecialType.System_Int16 => "short",
+				SpecialType.System_UInt16 => "ushort",
+				SpecialType.System_UInt32 => "uint",
+				SpecialType.System_Int64 => "long",
+				SpecialType.System_UInt64 => "ulong",
+				_ => "int",
+			};
+
+			/// <summary>Returns the scalar family that formats the underlying integer type of an enum</summary>
+			private static string GetXmlEnumUnderlyingFamily(TypeMetadata type) => type.EnumUnderlyingSpecialType switch
+			{
+				SpecialType.System_SByte => "SByte",
+				SpecialType.System_Byte => "Byte",
+				SpecialType.System_Int16 => "Int16",
+				SpecialType.System_UInt16 => "UInt16",
+				SpecialType.System_UInt32 => "UInt32",
+				SpecialType.System_Int64 => "Int64",
+				SpecialType.System_UInt64 => "UInt64",
+				_ => "Int32",
+			};
 
 			#endregion
 
@@ -237,7 +382,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private void WriteXmlSerializer(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
 				var names = new XmlNameTable();
+				this.XmlEnums = new();
 				this.XmlNeedsNotSupportedHelper = false;
+				this.XmlNeedsFlagsHelper = false;
 				var type = typeDef.Type;
 				string valueType = type.FullyQualifiedName + (type.IsValueType() ? "" : "?");
 				string settingsType = KnownTypeSymbols.CrystalJsonSettingsFullName;
@@ -246,6 +393,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// WriteXml(...): the interface entry point, which owns the rootName override
 				sb.InheritDoc();
+				sb.XmlComment("<remarks>The serialization lifecycle callbacks of this type (<c>OnSerializing</c>, <c>OnSerialized</c>) are NOT invoked on the XML path: they are part of the JSON contract, and whether writing a second format should re-fire them has not been decided. Do not rely on them running here.</remarks>");
 				sb.AppendLine($"public void WriteXml<TEmitter>(ref TEmitter emitter, {valueType} value, {settingsType}? settings = default, string? rootName = default) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXml");
 				sb.AppendLine("if (rootName is null)");
@@ -362,6 +510,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					this.XmlNeedsNotSupportedHelper = false;
 				}
 
+				// emitted BEFORE the flags helper is asked for: the lookups are what set that flag
+				WriteXmlEnumHelpers(sb, this.XmlEnums);
+
+				if (this.XmlNeedsFlagsHelper)
+				{
+					WriteXmlFlagsHelper(sb);
+					this.XmlNeedsFlagsHelper = false;
+				}
+
 				WriteXmlNameFields(sb, names);
 			}
 
@@ -469,7 +626,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"var {local} = {GetXmlMemberReadExpr(typeDef, member)};");
 
 				// CXML0003 already refused any attribute-projected member with no lexical form, so this cannot fail to resolve
-				var text = GetXmlScalarText(member.Type, local);
+				var text = GetXmlScalarText(member.Type, local, member.EnumFormat);
 				if (text is null)
 				{
 					this.XmlNeedsNotSupportedHelper = true;
@@ -585,7 +742,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				// 2) a scalar is text inside the element
-				var text = GetXmlScalarText(type, valueExpr);
+				// the member's EnumFormat applies to the member's OWN value: an item of a collection, or an entry of a
+				// dictionary, is not the member, and carries none of the member's vocabulary
+				var text = GetXmlScalarText(type, valueExpr, ReferenceEquals(type, member?.Type) ? member!.EnumFormat : null);
 				if (text is not null)
 				{
 					sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
@@ -635,13 +794,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Writes a member whose projection is owned by a custom converter</summary>
-			/// <remarks>Routed through the interface so that an explicit implementation works too. This is the one write path that
+			/// <remarks>
+			/// <para>Routed through the interface so that an explicit implementation works too. This is the one write path that
 			/// validates a name at write time: the converter facet only exposes <c>rootName</c> as text, so the member's name goes
-			/// through <c>XmlName.Create</c> on every call (the name itself was already validated at generation time).</remarks>
+			/// through <c>XmlName.Create</c> on every call (the name itself was already validated at generation time).</para>
+			/// <para>A null member never reaches here: the profile decides the null case (absent, or <c>nil</c>) before this call, so
+			/// a facet declared for <c>T?</c> only changes the type argument of the cast, not who answers for the absent value.</para>
+			/// </remarks>
 			private void WriteXmlCustomConverterElement(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member, string valueExpr, string nameRef)
 			{
-				var facetType = member.CustomConverterXmlIsNullableForm ? member.Type : (member.Type.NullableOfType ?? member.Type);
-				string arg = valueExpr + (member.Type.NullableOfType is not null && !member.CustomConverterXmlIsNullableForm ? ".Value" : "");
+				var facetType = member.CustomConverterXmlFacetDeclaredForNullable ? member.Type : (member.Type.NullableOfType ?? member.Type);
+				string arg = valueExpr + (member.Type.NullableOfType is not null && !member.CustomConverterXmlFacetDeclaredForNullable ? ".Value" : "");
 
 				if (!member.CustomConverterHasXmlSerializer)
 				{ // CXML0008 already reported this at generation time: emit something that compiles and fails loudly
@@ -845,20 +1008,31 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Returns the expression yielding the lexical text of a scalar value, and whether the emitter must escape it</summary>
 			/// <returns><see langword="null"/> when the type has no lexical form, which is what makes it not a scalar</returns>
+			/// <param name="type">Type of the value to format</param>
+			/// <param name="valueExpr">Expression that reads the value</param>
+			/// <param name="enumFormat">The member's <c>[JsonProperty(EnumFormat = ...)]</c>, when the value IS the member (an item or a dictionary entry carries no member vocabulary of its own)</param>
 			/// <remarks>
 			/// <para>The set here is exactly <c>Parser.IsXmlScalar</c>'s: a member the parser accepted as an XML attribute is one this
 			/// method can format, and a member it refused (CXML0003) never reaches an attribute position.</para>
 			/// <para>Escaping is decided per type, not per value: a number, a date, a GUID or a base64 payload cannot contain a
 			/// character that needs escaping, so they go through the raw path; text, a char, an enum label and a URI can.</para>
 			/// </remarks>
-			private static (string Text, bool NeedsEscaping)? GetXmlScalarText(TypeMetadata type, string valueExpr)
+			private (string Text, bool NeedsEscaping)? GetXmlScalarText(TypeMetadata type, string valueExpr, string? enumFormat = null)
 			{
 				var actual = type.NullableOfType ?? type;
 				string expr = type.NullableOfType is null ? valueExpr : valueExpr + ".Value";
 
 				if (actual.IsEnum())
-				{ // the label is the member name: not a lexical rule, and never ASCII-guaranteed (a C# identifier may hold any letter)
-					return ($"{expr}.ToString()", true);
+				{
+					if (enumFormat == "Number")
+					{ // [JsonProperty(EnumFormat = Number)] forces the numeric form on BOTH wires: honoring it on one only is
+					  // exactly the silent cross-wire divergence this surface refuses
+						return (FormatXmlScalar(GetXmlEnumUnderlyingFamily(actual), $"({GetXmlEnumUnderlyingKeyword(actual)}) {expr}"), false);
+					}
+
+					// the label comes from a generated switch over the declared members: never ASCII-guaranteed (a C# identifier
+					// may hold any letter, and a custom token any character at all), so it takes the escaping path
+					return ($"{this.XmlEnums.Ref(actual)}({expr})", true);
 				}
 
 				switch (actual.SpecialType)
