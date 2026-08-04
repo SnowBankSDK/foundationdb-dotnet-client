@@ -267,8 +267,11 @@ namespace SnowBank.SourceAnalysis
 
 			this.TypeArguments ??= ImmutableEquatableArray<TypeRef>.Empty;
 
+			// only reference types (and open type parameters) take the trailing '?' annotation: for a value type the
+			// suffix would name a DIFFERENT type (Nullable<T>). This matters for an unconstrained `T?` member substituted
+			// with a value type: the annotation survives on the substituted `int`, but `int?` is Nullable<int>, not `int`.
 			this.FullyQualifiedNameAnnotated =
-				(this.Nullability == NullableAnnotation.Annotated && this.NullableOfType is null)
+				(this.Nullability == NullableAnnotation.Annotated && this.NullableOfType is null && !this.IsValueType())
 					? (this.FullyQualifiedName + "?")
 					: this.FullyQualifiedName;
 		}
