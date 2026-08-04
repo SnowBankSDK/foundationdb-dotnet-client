@@ -24,9 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is not compiled for the net472 validation target: same reason as Xml/DcsWireFidelityFacts.cs (it drives
-// the CrystalXml source generator as an analyzer and exercises generated code only produced for the runtime targets).
-#if !NETFRAMEWORK
+// This file IS compiled for the net472 validation target: same reason as Xml/AcmeDtos.cs (the generated XML code
+// compiles on the lite path, so the end-to-end simulation is validated on the .NET Framework CLR too).
 
 namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 {
@@ -298,4 +297,3 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 
 }
 
-#endif

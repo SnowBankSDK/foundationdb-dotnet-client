@@ -24,8 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is not compiled for the net472 validation target: see the remark on ReferenceDcsWire.cs.
-#if !NETFRAMEWORK
+// This file IS compiled for the net472 validation target: see the remark on ReferenceDcsWire.cs.
 
 // note: probe types mirror, family by family, the design spike's own probe set (Probes.cs), whose wire was measured
 // against a LIVE DataContractSerializer. Every expectation in DcsWireFidelityFacts is measured against that live
@@ -415,4 +414,3 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 }
 
-#endif

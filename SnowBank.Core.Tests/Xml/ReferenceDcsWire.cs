@@ -24,13 +24,11 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is not compiled for the net472 validation target: the XML certification suite is validated on modern
-// .NET only. Whether the lite (netstandard2.0/net472) path supports XML output at all is an open product question
-// (generated XML code emits "..."u8 literals, so CONSUMER projects need LangVersion 11+; this repo's own test
-// projects compile at LangVersion preview on every TFM, so the exclusion is a validation-scope decision, not a
-// compiler limitation). Until that question is answered, the whole Xml fixture set stays modern-.NET-only rather
-// than shipping an unvalidated netfx claim.
-#if !NETFRAMEWORK
+// This file IS compiled for the net472 validation target: the lite (netstandard2.0/net472) path is in scope for
+// CrystalXml, so the certification suite runs there too, against the netstandard2.0 build of SnowBank.Core on the
+// real .NET Framework CLR. The oracle below is a LIVE DataContractSerializer, so on that target it is the netfx
+// DCS that produces the reference wire: every fixture comparing the CrystalXml emitter to it is therefore also a
+// measurement that the two CLRs agree, and all of them pass byte for byte.
 
 namespace SnowBank.Data.Xml.Tests
 {
@@ -166,4 +164,3 @@ namespace SnowBank.Data.Xml.Tests
 
 }
 
-#endif

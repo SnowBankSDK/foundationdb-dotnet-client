@@ -24,9 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is not compiled for the net472 validation target: same reason as Xml/DcsProbes.cs (it drives the
-// CrystalXml source generator as an analyzer and exercises generated code only produced for the runtime targets).
-#if !NETFRAMEWORK
+// This file IS compiled for the net472 validation target: the generated XML code compiles on the lite path (see
+// the remark on Xml/ReferenceDcsWire.cs), so the simulation runs on the .NET Framework CLR as well.
 
 // note: this is a stage-A end-to-end simulation of "Acme" (pseudonym for the consuming application whose back-office
 // XSLT layer reads the DCS XML wire): a realistic ClientAccount-shaped DTO graph, big enough (30+ members, nested
@@ -199,4 +198,3 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 
 }
 
-#endif

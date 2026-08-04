@@ -24,8 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is not compiled for the net472 validation target: see the remark on ReferenceDcsWire.cs.
-#if !NETFRAMEWORK
+// This file IS compiled for the net472 validation target: see the remark on ReferenceDcsWire.cs.
 
 namespace SnowBank.Data.Xml.Tests
 {
@@ -509,4 +508,3 @@ namespace SnowBank.Data.Xml.Tests
 
 }
 
-#endif

@@ -237,11 +237,25 @@ CrystalXml never reads.
 
 ## Consumer requirements
 
-The generated XML code emits UTF-8 string literals (`"..."u8`) for the cached element and
-attribute names, so a container that enables XML output must compile at **`LangVersion` 11 or
-later**. Projects targeting .NET 8 or later meet this by default; older-style projects (including
-.NET Framework, whose default is C# 7.3) must set `LangVersion` explicitly. JSON-only containers
-are unaffected. The XML certification suite itself runs on modern .NET only: whether the lite
-(`netstandard2.0`/`net472`) path supports XML output at all is an open product question, and until
-it is answered the XML fixtures are excluded from the `net472` validation targets rather than
-shipped unvalidated.
+**Enabling XML output costs a container nothing that JSON output did not already cost.** The
+generator as a whole requires the consumer project to compile at **`LangVersion` 9 or later**
+(below that it refuses with `SYSLIB1221`, the same diagnostic and floor as the System.Text.Json
+generator, and emits nothing at all — JSON included). The emitted XML code stays inside that
+floor: the cached element and attribute names are spelled as `byte[]` array literals rather than
+as `"..."u8` UTF-8 string literals, which would have raised the bar to C# 11 for XML containers
+only. An old-style project (.NET Framework defaults to C# 7.3) therefore has exactly one thing to
+do, and it is the same thing a JSON-only container asks of it: set `LangVersion` to 9 or later.
+
+**The lite (`netstandard2.0` / `net472`) path is supported.** The CrystalXml runtime builds for
+`netstandard2.0`, and the generated XML code compiles and runs on the .NET Framework CLR. Two
+parts of a generated container are conditional there, and neither is XML:
+
+- the JSON `ReadOnly` / `Writable` **proxies** are not emitted, because their interfaces need
+  static abstract interface members, which the netfx CLR cannot support (they are equally absent
+  below C# 11). The converters, the `TypeMapper` and the whole XML surface are emitted normally;
+- the `[DynamicallyAccessedMembers]` trimming annotations are dropped when the attribute is not
+  visible to the consumer, which only matters to a trimming/AOT publish the lite path does not do.
+
+The XML certification suite runs on `net472` as well as on modern .NET, including the fixtures
+that compare the emitter's output to a **live `DataContractSerializer`**. Those fixtures pass byte
+for byte on both, so the netfx and modern DCS wires agree on every family the suite covers.
