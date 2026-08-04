@@ -39,8 +39,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks>
 		/// <para>Split out of <c>CrystalJsonGenerator.Emitter.cs</c> so that the XML wire stays legible next to the JSON one
 		/// rather than interleaved with it, and so that the second profile (the DataContract wire) has an obvious home.</para>
-		/// <para>The profile dispatch happens in exactly one place, <see cref="Emitter.WritesXml"/>: a container whose
-		/// resolved <c>XmlProfile</c> is not <c>Modern</c> produces no XML member at all today.</para>
+		/// <para>The profile dispatch happens in exactly two places: <see cref="Emitter.WritesXml"/> decides whether a container
+		/// produces XML at all, and <see cref="Emitter.WritesXmlDcs"/> picks between this section (the modern wire) and
+		/// <c>CrystalJsonGenerator.Emitter.Xml.Dcs.cs</c> (the DataContract wire). What the two share - the name and enum
+		/// tables, the holder helpers, the scalar formatter selection - lives here.</para>
 		/// </remarks>
 		internal sealed partial class Emitter
 		{
@@ -83,6 +85,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private const string XmlProfileModern = "Modern";
 
+			/// <inheritdoc cref="XmlProfileModern"/>
+			private const string XmlProfileDataContract = "DataContract";
+
 			private const string XmlDictionaryFormatDefault = "Default";
 
 			private const string XmlDictionaryFormatDirect = "Direct";
@@ -113,10 +118,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#endregion
 
-			/// <summary>Whether this container emits the modern XML surface</summary>
-			/// <remarks>The DataContract XML wire is a separate emission (it derives every name from the data contract and has
-			/// its own member order, null policy and dictionary shape), so it is deliberately NOT produced by this section.</remarks>
-			private bool WritesXml => this.Metadata.XmlProfile == XmlProfileModern;
+			/// <summary>Whether this container emits an XML surface at all</summary>
+			/// <remarks>Both profiles share the holder helpers, the <c>ICrystalXmlSerializer&lt;T&gt;</c> facet and the two write
+			/// methods; only the BODY of those methods differs, which is what <see cref="WritesXmlDcs"/> selects.</remarks>
+			private bool WritesXml => this.Metadata.XmlProfile is XmlProfileModern or XmlProfileDataContract;
+
+			/// <summary>Whether this container emits the DataContract (compat) XML wire rather than the modern one</summary>
+			/// <remarks>That wire derives every name from the data contract and has its own member order, null policy, dictionary
+			/// shape and scalar forms, so it is emitted by its own section (<c>CrystalJsonGenerator.Emitter.Xml.Dcs.cs</c>).</remarks>
+			private bool WritesXmlDcs => this.Metadata.XmlProfile == XmlProfileDataContract;
 
 			#region Name table...
 
@@ -260,6 +270,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 					var type = entry.Value;
 					string fullName = type.FullyQualifiedName;
 
+					if (this.WritesXmlDcs)
+					{ // the compat wire spells labels, filters members and combines flags by its own rules
+						WriteXmlDcsEnumHelper(sb, entry.Key, type);
+						continue;
+					}
+
 					sb.Comment($"Labels of {type.Name}, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache");
 					sb.AppendLine($"private static string {entry.Key}({fullName} value) => value switch");
 					sb.EnterBlock("switch");
@@ -388,6 +404,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Emits the <c>ICrystalXmlSerializer&lt;T&gt;</c> facet of one converter: the two write methods, then the names they cached</summary>
 			private void WriteXmlSerializer(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
+				if (this.WritesXmlDcs)
+				{ // the DataContract wire is a different emission from top to bottom (names, order, null policy, shapes)
+					WriteXmlDcsSerializer(sb, typeDef);
+					return;
+				}
+
 				var names = new XmlNameTable();
 				this.XmlEnums = new();
 				this.XmlNeedsNotSupportedHelper = false;
@@ -1100,7 +1122,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Returns the call to the profile's formatter for one scalar family</summary>
-			private static string FormatXmlScalar(string family, string valueExpr) => $"{CrystalXmlFormattersFullName}.FormatModern{family}({valueExpr})";
+			/// <remarks>The two families are named per PROFILE, not per type, so the selection is one prefix here rather than a
+			/// per-type table of "which types happen to format the same on both wires" (only <c>char</c> actually differs).</remarks>
+			private string FormatXmlScalar(string family, string valueExpr) => $"{CrystalXmlFormattersFullName}.{(this.WritesXmlDcs ? "FormatDcs" : "FormatModern")}{family}({valueExpr})";
 
 			#endregion
 

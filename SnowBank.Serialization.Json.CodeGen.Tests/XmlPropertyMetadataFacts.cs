@@ -1204,6 +1204,62 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
+		#region CXML0010 - [CollectionDataContract] on the compat wire...
+
+		/// <summary>A collection type carrying <c>[CollectionDataContract]</c>, declared next to the DTO</summary>
+		private const string NamedCollectionType = """
+				[System.Runtime.Serialization.CollectionDataContract(Name = "TheItems", ItemName = "TheItem")]
+				public sealed class ProbeItems : System.Collections.Generic.List<string> { }
+			""";
+
+		[Test]
+		public void Test_A_CollectionDataContract_Member_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the generated compat wire derives the element names of a collection from its ITEM type; a member whose type
+			// renames them would come out under names that differ from the ones DataContractSerializer produces, which is
+			// exactly the silent divergence this profile exists to prevent
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public ProbeItems? Items { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: NamedCollectionType + Environment.NewLine + "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0010");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("ProbeItems"), "the message names the annotated type");
+		}
+
+		[Test]
+		public void Test_A_Plain_Collection_Member_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public System.Collections.Generic.List<string>? Items { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0010");
+		}
+
+		[Test]
+		public void Test_A_CollectionDataContract_Member_On_A_Modern_Container_Is_Not_Reported()
+		{
+			// the modern wire never reads that attribute in the first place: its names come from the member vocabulary
+			AssertNotReported(
+				Probe(
+					"""
+								public ProbeItems? Items { get; set; }
+						""",
+					dtoAttributes: NamedCollectionType),
+				"CXML0010");
+		}
+
+		#endregion
+
 	}
 
 }

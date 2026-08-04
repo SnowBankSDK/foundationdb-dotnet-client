@@ -115,6 +115,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>If this type is polymorphic, list of all the known derived types</summary>
 		public required ImmutableEquatableArray<(INamedTypeSymbol Symbol, TypeMetadata Type, object? Discriminator)> DerivedTypes { get; init; }
 
+		/// <summary>The type carries a <c>[DataContract]</c> attribute</summary>
+		/// <remarks>Kept next to <see cref="DataContractName"/>, which only records a renaming: the DataContract XML wire needs the PRESENCE on its own, because a data contract outranks every other way of serializing a type (in particular the <c>ISerializable</c> dialect, which only applies to a type that declares no contract).</remarks>
+		public bool HasDataContract { get; init; }
+
 		/// <summary>Value of <c>[DataContract(Name = "...")]</c>, or <see langword="null"/> when the type carries no data contract, or one that does not rename it</summary>
 		/// <remarks>The DataContract XML wire names the type's element after the contract, so the VALUE is needed, not just the attribute's presence (which is all the JSON wire ever needed). Left <see langword="null"/> rather than defaulted to the type name: the default is a wire rule, and resolving it here would make an explicit <c>Name</c> that happens to match indistinguishable from an absent one.</remarks>
 		public string? DataContractName { get; init; }
@@ -261,6 +265,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Value of <c>[DataMember(Order = n)]</c> when <c>n</c> is zero or greater, or <see langword="null"/> when the member declares no order</summary>
 		/// <remarks>A NEGATIVE order is carried as <see langword="null"/>, like <c>DataContractSerializer</c> does: an unordered member sorts by name, which is a different rule from ordering at zero.</remarks>
 		public int? DataMemberOrder { get; init; }
+
+		/// <summary>Depth of the type that DECLARES this member in the inheritance chain, counted from the topmost base (<c>0</c>) down to the type being serialized</summary>
+		/// <remarks>Captured for the DataContract XML wire, whose member order is "every member of the base level first, then the next level": the flat member list cannot be regrouped by level once that fact is lost. The JSON wire ignores it.</remarks>
+		public int InheritanceLevel { get; init; }
 
 		/// <summary>The member is written even when its value is the type's default (<see langword="false"/> only for <c>[DataMember(EmitDefaultValue = false)]</c>)</summary>
 		/// <remarks>The RAW flag, carried as the attribute spells it: how it combines with <see cref="IgnoreCondition"/> is a wire rule resolved downstream, and folding it in here would make the two indistinguishable.</remarks>

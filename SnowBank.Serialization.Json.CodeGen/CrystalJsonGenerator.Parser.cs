@@ -706,8 +706,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// if this is a derived type, we need to enumerate the symbols starting from the top (interface or base class)
 				// we also want to have "id" as the first member
 				int indexOfId = -1;
+				// the hierarchy comes back topmost-base first, so the index of the level IS the inheritance depth the
+				// DataContract wire orders by (see CrystalJsonMemberMetadata.InheritanceLevel)
+				int inheritanceLevel = -1;
 				foreach (var current in GetTypeHierarchy(type))
 				{
+					++inheritanceLevel;
 					foreach (var member in current.GetMembers())
 					{
 						if (member.Kind is (SymbolKind.Property or SymbolKind.Field or SymbolKind.Method))
@@ -716,6 +720,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							var (memberDef, memberType) = ParseMemberMetadata(member, mappedTypes, work, namingPolicy, hasDataContract, xmlProfile);
 							if (memberDef is not null)
 							{
+								memberDef = memberDef with { InheritanceLevel = inheritanceLevel };
 								Kenobi($"Inspected member {member.Name} with type {memberDef.Type.FullName}, N={memberDef.Type.NullableOfType?.FullName}, E={memberDef.Type.ElementType?.FullName}, K={memberDef.Type.KeyType?.FullName}, V={memberDef.Type.ValueType?.FullName}");
 								if (member.Name == "Id")
 								{
@@ -755,6 +760,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					Type = TypeMetadata.Create(type),
 					Members = members.ToImmutableEquatableArray(),
 					IsPolymorphicRoot = isPolymorphic,
+					HasDataContract = hasDataContract,
 					DataContractName = dataContract.Name,
 					DataContractNamespace = dataContract.Namespace,
 					OnSerializing = callbacks.OnSerializing,
@@ -1448,6 +1454,44 @@ namespace SnowBank.Serialization.Json.CodeGen
 					),
 					member.Locations.Length > 0 ? member.Locations[0] : null,
 					member.ToDisplayString(), converterType);
+			}
+
+			/// <summary>Reports <c>CXML0010</c> on a DataContract-profile member whose type carries <c>[CollectionDataContract]</c></summary>
+			/// <remarks>
+			/// <para>That attribute renames the collection's contract, its items and (for a dictionary) its key and value elements.
+			/// This emission derives every one of those names from the item types instead, so honoring the attribute is not a matter
+			/// of degree: a member carrying it would silently get a DIFFERENT wire from the one the application reads today, which is
+			/// the single failure mode this whole profile exists to prevent.</para>
+			/// <para>Only the member's OWN type is probed. A collection nested inside another collection, or a dictionary value type,
+			/// carrying the attribute is not seen here, which is a gap this diagnostic does not close.</para>
+			/// </remarks>
+			private void ReportUnsupportedCollectionDataContract(ISymbol member, ITypeSymbol memberType)
+			{
+				var named = GetUnderlyingValueType(memberType);
+				bool present = false;
+				foreach (var attribute in named.GetAttributes())
+				{
+					var attributeClass = attribute.AttributeClass;
+					if (attributeClass?.Name == "CollectionDataContractAttribute" && attributeClass.ContainingNamespace?.ToDisplayString() == "System.Runtime.Serialization")
+					{
+						present = true;
+						break;
+					}
+				}
+
+				if (!present) return;
+
+				ReportDiagnostic(
+					new(
+						"CXML0010",
+						"[CollectionDataContract] is not honored by the generated DataContract XML wire",
+						"The member '{0}' is of type '{1}', which carries [CollectionDataContract]. The generated DataContract XML wire derives the collection's element names from the item types, and does not read that attribute: the member would be written under names that differ from the ones DataContractSerializer produces for it. Replace the annotated collection type with a plain one (List<T>, T[], Dictionary<K,V>) on this DTO, or keep this member off the XML container.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString(), named.ToDisplayString());
 			}
 
 			/// <summary>Returns whether a converter type implements the XML facet for the member's type, and whether it took the <c>Nullable&lt;T&gt;</c> form itself</summary>
@@ -2164,6 +2208,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (!xmlRefused && xmlProfile == XmlProfileModern)
 					{
 						ReportBareNestedCollection(member, type);
+					}
+
+					if (!xmlRefused && xmlProfile == XmlProfileDataContract)
+					{ // structural, and compat-only: the modern wire never reads [CollectionDataContract] in the first place
+						ReportUnsupportedCollectionDataContract(member, typeSymbol);
 					}
 
 					if (customConverterType is not null)
