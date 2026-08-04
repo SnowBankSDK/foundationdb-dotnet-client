@@ -30,6 +30,10 @@
 // note: probe types mirror, family by family, the design spike's own probe set (Probes.cs), whose wire was measured
 // against a LIVE DataContractSerializer. Every expectation in DcsWireFidelityFacts is measured against that live
 // oracle (ReferenceDcsWire), never assumed. Acme-flavored naming is kept, as in the spike.
+// note: this namespace (SnowBank.Data.Xml.Tests.Acme) is NOT the spike's own, and the difference is wire-safe only
+// because of two things: the reference pipeline's StrippingXmlWriter erases namespaces entirely, and the one test that
+// looks at a contract namespace (the dictionary-digest divergence) regex-matches whatever 8-char digest it finds
+// rather than a literal. A test that ever hard-codes a namespace-derived string must not assume the spike's value.
 namespace SnowBank.Data.Xml.Tests.Acme
 {
 	using System.Runtime.Serialization;

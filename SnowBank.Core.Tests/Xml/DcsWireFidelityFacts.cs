@@ -222,8 +222,9 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// bool lowercase; decimal keeps scale (1.50); double 1.2E-09 / NaN / INF; DateTime by Kind with minimal
 			// fraction; DateTimeOffset as {DateTime, OffsetMinutes}; TimeSpan as ISO 8601 duration; char as its code
-			// point (65); enums by name or [EnumMember]; flags space-separated; byte[] as base64; Uri escaped; control
-			// chars as character references (the measured defect, reproduced by default).
+			// point (65); enums by name or [EnumMember]; flags space-separated; byte[] as base64; Uri escaped.
+			// note: control characters are NOT part of this family. The ControlChars member below is kept inert, and the
+			// measured character-reference defect is pinned by the two dedicated deviation-2 tests instead.
 			AssertSameWire(new ScalarProbe
 			{
 				TrueBool = true,
@@ -401,6 +402,13 @@ namespace SnowBank.Data.Xml.Tests
 			string reference = ReferenceDcsWire.Serialize(probe, typeof(PolymorphicProbe));
 			Log($"reference (DCS succeeds): {reference}");
 
+			// the oracle half is an ASSERTION, not just a log line: this family only pins a DIVERGENCE for as long as the
+			// reference wire keeps succeeding, so the day DCS starts refusing the shape too, this test must say so
+			Assert.That(
+				reference,
+				Is.EqualTo("""<PolymorphicProbe><AsObjectInt nil="true" /><AsObjectLong nil="true" /><AsObjectNull nil="true" /><AsObjectString type="ArrayOfstring"><string>a</string></AsObjectString><DeclaredBaseHoldingBase nil="true" /><DeclaredBaseHoldingDerived nil="true" /><DeclaredExact nil="true" /><Zoo nil="true" /></PolymorphicProbe>"""),
+				"the reference wire still succeeds, naming the undeclared runtime type ArrayOfstring");
+
 			Assert.That(
 				() => DcsProbeSerializers.PolymorphicProbe.ToXmlText(probe),
 				Throws.InstanceOf<CrystalXmlNotSupportedException>(),
@@ -426,7 +434,7 @@ namespace SnowBank.Data.Xml.Tests
 			// CheckCharacters=false, which its own post-filter (built to catch escaped invalid characters, not raw
 			// control bytes hiding behind an entity) lets straight through: <Label>before&#x1;&#x8;after</Label>, a
 			// document no conformant XML reader accepts. CrystalXml drops them at the value level instead, by default.
-			var value = new Shelf { Label = "beforeafter" };
+			var value = new Shelf { Label = "before\u0001\u0008after" };
 			string reference = ReferenceDcsWire.Serialize(value, typeof(Shelf));
 			string actual = DcsProbeSerializers.Shelf.ToXmlText(value);
 
@@ -440,7 +448,7 @@ namespace SnowBank.Data.Xml.Tests
 			// The escape hatch back to the (defective) reference behavior: constructing the byte-exact writer directly
 			// with strictControlCharacters:true reproduces the reference wire's character references byte for byte,
 			// for a certification harness that wants to compare against captured legacy output on purpose.
-			var value = new Shelf { Label = "beforeafter" };
+			var value = new Shelf { Label = "before\u0001\u0008after" };
 			string reference = ReferenceDcsWire.Serialize(value, typeof(Shelf));
 
 			var sink = new ValueStringWriter();
