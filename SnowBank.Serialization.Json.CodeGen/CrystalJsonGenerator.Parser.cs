@@ -323,6 +323,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				var containerName = symbol.Name;
 
+				MaybeReportProxySurfaceNotGenerated(symbol);
+
 				this.ContextClassLocation = null;
 
 				return new()
@@ -653,6 +655,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				Kenobi($"Found {includedTypes.Count} total types to generate for self type {symbol.Name}");
+
+				MaybeReportProxySurfaceNotGenerated(symbol);
 
 				this.ContextClassLocation = null;
 
@@ -1893,6 +1897,31 @@ namespace SnowBank.Serialization.Json.CodeGen
 					),
 					member.Locations.Length > 0 ? member.Locations[0] : null,
 					member.ToDisplayString());
+			}
+
+			/// <summary>Reports CJSON0020 (informational, once per container) when the generated JSON proxy surface (ToReadOnly/ToMutable, the ReadOnly/Writable proxy types) is left out</summary>
+			/// <remarks>
+			/// <para>Generating the proxy surface needs static abstract interface members, which require both a .NET 7+ runtime (the proxy interfaces are absent from the lite <c>netstandard2.0</c> build) and C# 11 (a consumer below that floor cannot implement them even when they are visible). <see cref="KnownTypeSymbols.SupportsJsonProxies"/> is the single source of truth for that combined test.</para>
+			/// <para>Without this diagnostic, the loss is silent: the container still gets its converter, its <c>TypeMapper</c>, and (if requested) XML output, and a consumer only discovers the missing surface downstream, as a bare CS0117/CS1061 at whatever call site references <c>ToReadOnly</c>/<c>ToMutable</c> or the proxy types.</para>
+			/// </remarks>
+			private void MaybeReportProxySurfaceNotGenerated(ISymbol symbol)
+			{
+				if (this.KnownSymbols.SupportsJsonProxies)
+				{
+					return;
+				}
+
+				ReportDiagnostic(
+					new(
+						"CJSON0020",
+						"The generated JSON proxy surface is not generated for this container",
+						"The container '{0}' does not get its ToReadOnly/ToMutable methods or its ReadOnly/Writable proxy types: generating them requires a .NET 7+ runtime (static abstract interface members) and C# 11 or greater, and this compilation does not satisfy both. The converter, the TypeMapper, and any requested XML output are unaffected.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Info,
+						isEnabledByDefault: true
+					),
+					this.ContextClassLocation,
+					symbol.ToDisplayString());
 			}
 
 			/// <param name="xmlProfile"><inheritdoc cref="CrawlIncludedTypes" path="/param[@name='xmlProfile']"/></param>

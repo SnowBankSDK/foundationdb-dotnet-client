@@ -190,6 +190,19 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(diagnostics, Is.Empty, "generated code must compile without ImplicitUsings, and without warnings under '#nullable enable'");
 		}
 
+		/// <summary>A modern compilation sees the proxy interfaces and sits at or above C# 11, so it must not get the CJSON0020 proxy-surface-loss nudge</summary>
+		[Test]
+		public void Test_Proxy_Surface_Loss_Is_Not_Reported_On_A_Modern_Compilation()
+		{
+			var compilation = GeneratorProbeHarness.Compile(ProbeSource);
+			var (_, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+
+			Assert.That(
+				generatorDiagnostics.Select(static d => d.Id),
+				Does.Not.Contain("CJSON0020"),
+				"a modern compilation supports the JSON proxy surface, so its loss must not be reported");
+		}
+
 		/// <summary>A legacy consumer's DTO graph, written in plain C# 7.3 style: no records, no <c>init</c>, no <c>required</c>, no nullable annotations, no target-typed <c>new</c></summary>
 		/// <remarks>This is what an old-style .NET Framework project being migrated looks like. It publishes the same graph as JSON and as XML, so the facts below cover BOTH emitters.</remarks>
 		private const string LegacyProbeSource = """
@@ -221,6 +234,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					[System.Runtime.Serialization.DataMember(Order = 7)] public System.Collections.Generic.List<LegacyItem> Items { get; set; }
 					[System.Runtime.Serialization.DataMember(Order = 8)] public System.Collections.Generic.Dictionary<string, LegacyItem> Index { get; set; }
 					[SnowBank.Data.Xml.XmlProperty(Attribute = true)] [System.Runtime.Serialization.DataMember(Order = 9)] public int Revision { get; set; }
+					// not-null, no default, interface-typed collection member: the setter must fall back to an empty
+					// instance when handed a null value, and that empty instance must be a valid expression for an
+					// INTERFACE type (Array.Empty<T>()), not "new IList<string>()" (CS0144)
+					[System.Runtime.Serialization.DataMember(Order = 10)] public System.Collections.Generic.IList<string> Names { get; set; }
 				}
 
 				[SnowBank.Data.Json.CrystalJsonConverter]
@@ -282,6 +299,23 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(errors, Is.Empty, "generated code must compile in a consumer project sitting on the supported language floor");
 		}
 
+		/// <summary>A floor-level (C# 9) compilation cannot host the proxy surface (it needs C# 11): the container must get the CJSON0020 informational nudge, exactly once</summary>
+		[Test]
+		public void Test_Proxy_Surface_Loss_Is_Reported_Once_Per_Container_Below_The_Proxy_Floor()
+		{
+			var compilation = GeneratorProbeHarness.Compile(LegacyProbeSource, GeneratorProbeHarness.FloorParseOptions);
+			var (_, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation, GeneratorProbeHarness.FloorParseOptions);
+
+			var proxyDiagnostics = generatorDiagnostics.Where(static d => d.Id == "CJSON0020").ToList();
+			foreach (var diagnostic in proxyDiagnostics)
+			{
+				Log(diagnostic.ToString());
+			}
+
+			Assert.That(proxyDiagnostics, Has.Count.EqualTo(1), "the legacy probe declares a single container, so the nudge must fire exactly once");
+			Assert.That(proxyDiagnostics[0].Severity, Is.EqualTo(DiagnosticSeverity.Info), "the nudge is informational: the container still gets its converter, TypeMapper and XML output");
+		}
+
 		/// <summary>Below the floor, the generator refuses with <c>SYSLIB1221</c> instead of emitting code the consumer cannot compile</summary>
 		/// <remarks>The floor is inherited from the System.Text.Json generator (same diagnostic id, same message shape) and applies to the container as a whole: enabling XML output on a container does not change it, and a consumer below the floor gets no JSON serializer either.</remarks>
 		[Test]
@@ -306,6 +340,21 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				outputCompilation.SyntaxTrees.Skip(1).Where(static tree => tree.ToString().Contains("WriteXml")),
 				Is.Empty,
 				"a refused container must not emit XML members");
+		}
+
+		/// <summary>Pins the generator-side UTF-8 encoder (<see cref="SnowBank.SourceAnalysis.CSharpCodeBuilder.Utf8Constant"/>) against a non-ASCII name</summary>
+		/// <remarks>Backs the XML name table (<c>[XmlProperty]</c> / <c>[DataMember]</c> names): the byte array it spells out must be byte-for-byte what <see cref="System.Text.Encoding.UTF8"/> itself produces, since the wire cannot depend on how the generator encoded the literal.</remarks>
+		[Test]
+		public void Test_Utf8Constant_Encodes_Non_Ascii_Names()
+		{
+			// "Clé" forces a multi-byte UTF-8 sequence for the accented letter
+			const string name = "Clé";
+			var expectedBytes = System.Text.Encoding.UTF8.GetBytes(name);
+			var expectedExpr = "new byte[] { " + string.Join(", ", expectedBytes.Select(static b => $"0x{b:X2}")) + " }";
+
+			var expr = SnowBank.SourceAnalysis.CSharpCodeBuilder.Utf8Constant(name);
+
+			Assert.That(expr, Is.EqualTo(expectedExpr));
 		}
 
 	}

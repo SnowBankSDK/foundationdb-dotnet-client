@@ -765,22 +765,30 @@ namespace SnowBank.SourceAnalysis
 			return false;
 		}
 
-		/// <summary>Tests if the type is exactly the <see cref="IEnumerable{T}"/> interface (and not any derived type)</summary>
+		/// <summary>Tests if the type is exactly one of the "bare" generic collection interfaces (and not any concrete or derived type)</summary>
 		/// <remarks>
+		/// <para>Matches <see cref="IEnumerable{T}"/>, <see cref="IList{T}"/>, <see cref="ICollection{T}"/>, <see cref="IReadOnlyList{T}"/> and <see cref="IReadOnlyCollection{T}"/> in the <c>System.Collections.Generic</c> namespace. Deliberately does NOT match <c>ISet&lt;T&gt;</c> or <c>IDictionary&lt;TKey, TValue&gt;</c>.</para>
 		/// <list type="table">
 		///   <listheader><term>type</term><description>result</description></listheader>
 		///   <item><term>DateTime</term><description>false</description></item>
 		///   <item><term>MyCustomType</term><description>false</description></item>
 		///   <item><term>IEnumerable&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>IList&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>ICollection&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>IReadOnlyList&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>IReadOnlyCollection&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>ISet&lt;char&gt;</term><description>false</description></item>
 		///   <item><term>char[]</term><description>false</description></item>
-		///   <item><term>List&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>List&lt;char&gt;</term><description>false</description></item>
 		///   <item><term>string</term><description>false</description></item>
 		/// </list>
 		/// </remarks>
 		public bool IsEnumerableInterface([MaybeNullWhen(false)] out TypeMetadata elemType)
 		{
 			elemType = this.ElementType;
-			return elemType is not null && this.NameSpace == "System.Collections.Generic" && this.Name == "Enumerable`1";
+			return elemType is not null
+				&& this.NameSpace == "System.Collections.Generic"
+				&& this.Name is ("IEnumerable" or "IList" or "ICollection" or "IReadOnlyList" or "IReadOnlyCollection");
 		}
 
 		/// <summary>Tests if this type implements <see cref="IEnumerable{T}"/></summary>

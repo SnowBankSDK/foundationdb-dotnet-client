@@ -542,7 +542,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				var serializerTypeName = GetConverterName(typeDef);
-				var jsonConverterInterfaceName = $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}>";
 
 				var readOnlyProxyTypeName = GetReadOnlyProxyName(typeDef.Type);
 				var writableProxyTypeName = GetWritableProxyName(typeDef.Type);
@@ -2390,7 +2389,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						// note: we have to also know the target enumerable type: array? list? other?
 
-						string sequenceShape = member.Type.IsArray() ? "Array" : member.Type.IsList() ? "List" : member.Type.IsEnumerableInterface(out _) ? "Enumerable" : "Unknown"; //TODO: support more ?
+						// note: a bare interface (IList<T>, ICollection<T>, IReadOnlyList<T>, IReadOnlyCollection<T>, ...) is
+						// deliberately left "Unknown" here: there is no Unpack*Enumerable runtime helper for it (unlike the
+						// empty-instance expression on the write side, GetEmptyCollectionExpr, which Array.Empty<T>() covers),
+						// so it falls through to the generic deserialization fallback below instead of a fast path that does not exist
+						string sequenceShape = member.Type.IsArray() ? "Array" : member.Type.IsList() ? "List" : "Unknown"; //TODO: support more ?
 						if (sequenceShape != "Unknown")
 						{
 							if (IsLocallyGeneratedType(elemType, out target, out isNullableOfT))
