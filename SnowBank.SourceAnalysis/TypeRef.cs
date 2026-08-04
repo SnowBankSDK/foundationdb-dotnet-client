@@ -92,6 +92,42 @@ namespace SnowBank.SourceAnalysis
 			this.FullName = type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
 			this.FullyQualifiedName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 			this.Assembly = type.ContainingAssembly?.Name ?? "";
+
+			if (type.TypeKind == TypeKind.Enum)
+			{ // only enums pay for the attribute walk, see DataContractName
+				this.DataContractName = ReadDataContractName(type);
+			}
+		}
+
+		/// <summary>Value of the <c>[DataContract(Name = ...)]</c> attribute on an ENUM type, if any</summary>
+		/// <remarks>
+		/// <para>An enum is the one kind of type a wire has to be able to name from a reference alone: it is never registered as a
+		/// container type of its own (it has no members to serialize), yet a wire that names types after their data contract has to
+		/// spell it under its renamed contract everywhere that name is composed (a collection item, a <c>KeyValueOfXY</c> entry, a
+		/// generic argument). Every other kind reaches such a wire as a full <see cref="TypeMetadata"/>.</para>
+		/// <para><see langword="null"/> for anything that is not an enum, and for an enum with no declared name: the attribute walk
+		/// is deliberately NOT paid on every type reference.</para>
+		/// </remarks>
+		public string? DataContractName { get; }
+
+		private static string? ReadDataContractName(ITypeSymbol type)
+		{
+			foreach (var attribute in type.GetAttributes())
+			{
+				var attributeClass = attribute.AttributeClass;
+				if (attributeClass?.Name != "DataContractAttribute") continue;
+				if (attributeClass.ContainingNamespace?.ToDisplayString() != "System.Runtime.Serialization") continue;
+
+				foreach (var arg in attribute.NamedArguments)
+				{
+					if (arg.Key == "Name" && arg.Value.Value is string { Length: > 0 } name)
+					{
+						return name;
+					}
+				}
+			}
+
+			return null;
 		}
 
 		public string Name { get; }
@@ -403,6 +439,11 @@ namespace SnowBank.SourceAnalysis
 		}
 
 		private ImmutableEquatableArray<TypeRef> Parents { get; }
+
+		/// <summary>Number of base types between this one and the top of its hierarchy (<c>0</c> for a type that derives from nothing but <see cref="object"/>)</summary>
+		/// <remarks>A generator emitting a <c>switch</c> over runtime types needs it: a case on a base type captures every subclass, so
+		/// the case of the more DERIVED type has to come first or it is unreachable (CS8120).</remarks>
+		public int InheritanceDepth => this.Parents.Count;
 
 		public TypeRef Ref { get; }
 

@@ -89,6 +89,74 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#region Contract names...
 
+			/// <summary>One lexical type of the DataContract wire: how it is recognized, what it is called, and how it is written</summary>
+			/// <param name="Special">Roslyn <see cref="SpecialType"/> of the type, or <see cref="SpecialType.None"/> when it has none (<c>TimeSpan</c>, <c>Guid</c>, <c>Uri</c>, <c>DateTimeOffset</c>, <c>byte[]</c>)</param>
+			/// <param name="ClrName">Simple CLR name of the type inside the <c>System</c> namespace, or <see langword="null"/> when it is not a named <c>System</c> type (<c>byte[]</c>)</param>
+			/// <param name="Keyword">C# type this lexical family is matched by in a generated <c>anyType</c> switch, or <see langword="null"/> when it takes no case there</param>
+			/// <param name="Contract">The xsd contract name that appears on the wire</param>
+			/// <param name="Family">Formatter family of <c>FormatXmlScalar</c>, or <see langword="null"/> for a string, which is written raw</param>
+			/// <param name="Escaped">Whether the rendered text has to go through the escaping writer</param>
+			private readonly record struct XmlDcsLexicalType(SpecialType Special, string? ClrName, string? Keyword, string Contract, string? Family, bool Escaped);
+
+			/// <summary>THE table of the lexical types of this wire: one row per type, read through three different keys</summary>
+			/// <remarks>
+			/// <para>There used to be three independent spellings of this mapping (one keyed on <see cref="SpecialType"/>, one on the
+			/// CLR name of a generic argument, one on the C# keyword of an <c>anyType</c> case). They have to agree exactly - the
+			/// <c>sbyte</c> / <c>byte</c> transposition below (<c>sbyte</c> IS <c>byte</c> on the xsd wire, and <c>byte</c> is
+			/// <c>unsignedByte</c>) is the classic way to get one of them wrong - and a drift produced a wrong element name silently.
+			/// The three lookups now project THIS table, so they cannot desynchronize.</para>
+			/// <para>The order of the rows is the order the <c>anyType</c> cases are emitted in.</para>
+			/// </remarks>
+			private static readonly XmlDcsLexicalType[] XmlDcsLexicalTypes =
+			[
+				new(SpecialType.System_String, "String", "string", "string", null, true),
+				new(SpecialType.System_Boolean, "Boolean", "bool", "boolean", "Boolean", false),
+				new(SpecialType.System_Int32, "Int32", "int", "int", "Int32", false),
+				new(SpecialType.System_Int64, "Int64", "long", "long", "Int64", false),
+				new(SpecialType.System_Int16, "Int16", "short", "short", "Int16", false),
+				new(SpecialType.System_SByte, "SByte", "sbyte", "byte", "SByte", false),
+				new(SpecialType.System_Byte, "Byte", "byte", "unsignedByte", "Byte", false),
+				new(SpecialType.System_UInt16, "UInt16", "ushort", "unsignedShort", "UInt16", false),
+				new(SpecialType.System_UInt32, "UInt32", "uint", "unsignedInt", "UInt32", false),
+				new(SpecialType.System_UInt64, "UInt64", "ulong", "unsignedLong", "UInt64", false),
+				new(SpecialType.System_Single, "Single", "float", "float", "Single", false),
+				new(SpecialType.System_Double, "Double", "double", "double", "Double", false),
+				new(SpecialType.System_Decimal, "Decimal", "decimal", "decimal", "Decimal", false),
+				new(SpecialType.System_DateTime, "DateTime", "global::System.DateTime", "dateTime", "DateTime", false),
+				new(SpecialType.None, "TimeSpan", "global::System.TimeSpan", "duration", "Duration", false),
+				new(SpecialType.None, "Guid", "global::System.Guid", "guid", "Guid", false),
+				new(SpecialType.System_Char, "Char", "char", "char", "Char", false),
+				// byte[] is a base64 SCALAR on this wire, not a sequence of unsignedByte, so it belongs here and not in the sequence path
+				new(SpecialType.None, null, "byte[]", "base64Binary", "Base64", false),
+				new(SpecialType.None, "Uri", "global::System.Uri", "anyURI", "Uri", true),
+				// the two rows below take no anyType case: a bare object is written by the closed switch's own last case, and a
+				// DateTimeOffset is not a lexical form at all (it has a built-in two-member contract, see WriteXmlDcsDateTimeOffsetElement)
+				new(SpecialType.System_Object, "Object", null, XmlDcsAnyTypeName, null, false),
+				new(SpecialType.None, "DateTimeOffset", null, "DateTimeOffset", null, false),
+			];
+
+			/// <summary>Returns the contract name of a lexical type, matched on its <see cref="SpecialType"/> first and on its <c>System.*</c> name otherwise</summary>
+			private static string? GetXmlDcsLexicalContractName(SpecialType special, string nameSpace, string name)
+			{
+				if (special != SpecialType.None)
+				{
+					foreach (var entry in XmlDcsLexicalTypes)
+					{
+						if (entry.Special == special) return entry.Contract;
+					}
+				}
+
+				if (nameSpace == "System")
+				{ // the types the BCL gives no SpecialType to (TimeSpan, Guid, Uri, DateTimeOffset), matched by name
+					foreach (var entry in XmlDcsLexicalTypes)
+					{
+						if (entry.ClrName == name) return entry.Contract;
+					}
+				}
+
+				return null;
+			}
+
 			/// <summary>Returns the DataContract name of a type, XML-encoded and wire-ready, or <see langword="null"/> when this emission cannot derive one</summary>
 			/// <remarks>
 			/// <para>The transposition of the spike's <c>XmlContractFactory</c> naming rules: the xsd name for a primitive, the CLR
@@ -101,35 +169,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 			{
 				var actual = type.NullableOfType ?? type;
 
-				switch (actual.SpecialType)
+				if (GetXmlDcsLexicalContractName(actual.SpecialType, actual.NameSpace, actual.Name) is { } lexical)
 				{
-					case SpecialType.System_Object: return XmlDcsAnyTypeName;
-					case SpecialType.System_String: return "string";
-					case SpecialType.System_Boolean: return "boolean";
-					case SpecialType.System_Char: return "char";
-					case SpecialType.System_SByte: return "byte";
-					case SpecialType.System_Byte: return "unsignedByte";
-					case SpecialType.System_Int16: return "short";
-					case SpecialType.System_UInt16: return "unsignedShort";
-					case SpecialType.System_Int32: return "int";
-					case SpecialType.System_UInt32: return "unsignedInt";
-					case SpecialType.System_Int64: return "long";
-					case SpecialType.System_UInt64: return "unsignedLong";
-					case SpecialType.System_Single: return "float";
-					case SpecialType.System_Double: return "double";
-					case SpecialType.System_Decimal: return "decimal";
-					case SpecialType.System_DateTime: return "dateTime";
-				}
-
-				if (actual.NameSpace == "System")
-				{
-					switch (actual.Name)
-					{
-						case "TimeSpan": return "duration";
-						case "Guid": return "guid";
-						case "Uri": return "anyURI";
-						case "DateTimeOffset": return "DateTimeOffset";
-					}
+					return lexical;
 				}
 
 				if (IsXmlDcsByteArray(actual))
@@ -157,42 +199,61 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Returns the contract name of a user type: its <c>[DataContract(Name = ...)]</c>, else its declaration name</summary>
+			/// <remarks>
+			/// <para>The declared name is read from the container's own metadata when the type is registered there, and from the type
+			/// reference otherwise - which is how a RENAMED ENUM gets its contract name: an enum is never registered as a container
+			/// type (it has no members), yet <c>[DataContract(Name = "Support")]</c> on it renames every element the wire derives from
+			/// it (a list item, both sides of a <c>KeyValueOfXY</c>, a generic argument).</para>
+			/// <para>Encoding happens exactly ONCE, on the parts that come from source text. The pieces composed into a generic name
+			/// are contract names that are already encoded, and re-encoding them would turn <c>with_x0020_space</c> into
+			/// <c>with_x005F_x0020_space</c>; the reference wire writes <c>BoxOfwith_x0020_space</c>.</para>
+			/// </remarks>
 			private string? GetXmlDcsDeclaredContractName(TypeMetadata type)
 			{
-				string? declared = IsLocallyGeneratedType(type.Ref, out var typeDef) ? typeDef.DataContractName : null;
+				string? declared = (IsLocallyGeneratedType(type.Ref, out var typeDef) ? typeDef.DataContractName : null) ?? type.Ref.DataContractName;
 
-				string name;
 				if (declared is not null)
 				{
-					name = type.IsGenericType() ? ExpandXmlDcsGenericName(declared, type) ?? "" : declared;
-					if (name.Length == 0) return null;
-				}
-				else
-				{
-					name = type.DeclaringTypeNames is not null ? type.DeclaringTypeNames + "." + type.Name : type.Name;
-					if (type.IsGenericType())
+					if (!type.IsGenericType())
 					{
-						var args = new List<string>();
-						foreach (var arg in type.TypeArguments)
-						{
-							string? argName = GetXmlDcsContractNameOfArgument(arg);
-							if (argName is null) return null;
-							args.Add(argName);
-						}
-						name += "Of" + string.Concat(args);
+						return EncodeXmlDcsNamePart(declared);
 					}
+
+					string? expanded = ExpandXmlDcsGenericName(declared, type);
+					return expanded is { Length: > 0 } ? expanded : null;
 				}
 
-				return System.Xml.XmlConvert.EncodeLocalName(name);
+				string name = EncodeXmlDcsNamePart(type.DeclaringTypeNames is not null ? type.DeclaringTypeNames + "." + type.Name : type.Name);
+
+				if (type.IsGenericType())
+				{
+					var args = new List<string>();
+					foreach (var arg in type.TypeArguments)
+					{
+						string? argName = GetXmlDcsContractNameOfArgument(arg);
+						if (argName is null) return null;
+						args.Add(argName);
+					}
+					// DEVIATION 1 again: the reference wire appends the argument-namespace digest here too (BoxOfSupportCmwZw7JZ)
+					name += "Of" + string.Concat(args);
+				}
+
+				return name;
 			}
+
+			/// <summary>Encodes one part of a contract name that comes from SOURCE TEXT (a declared name, a type name), which is the only kind that is ever encoded</summary>
+			private static string EncodeXmlDcsNamePart(string part) => part.Length == 0 ? "" : System.Xml.XmlConvert.EncodeLocalName(part);
 
 			/// <summary>Expands the <c>{0}</c> / <c>{#}</c> placeholders of a <c>[DataContract(Name = "XOf{0}")]</c> on a generic type</summary>
 			/// <remarks>The <c>{#}</c> placeholder asks for the argument-namespace digest, which this emission never writes
 			/// (deviation 1), so it expands to nothing. An out-of-range index, or an argument with no contract name, makes the whole
-			/// name inexpressible.</remarks>
+			/// name inexpressible. The LITERAL runs of the format are encoded, the substituted arguments are not: they are contract
+			/// names, which are already encoded.</remarks>
 			private string? ExpandXmlDcsGenericName(string format, TypeMetadata type)
 			{
 				var sb = new System.Text.StringBuilder(format.Length);
+				var literal = new System.Text.StringBuilder(format.Length);
+
 				for (int i = 0; i < format.Length; i++)
 				{
 					char c = format[i];
@@ -212,14 +273,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 								if (index >= type.TypeArguments.Count) return null;
 								string? argName = GetXmlDcsContractNameOfArgument(type.TypeArguments[index]);
 								if (argName is null) return null;
+								sb.Append(EncodeXmlDcsNamePart(literal.ToString()));
+								literal.Clear();
 								sb.Append(argName);
 								i = close;
 								continue;
 							}
 						}
 					}
-					sb.Append(c);
+					literal.Append(c);
 				}
+
+				sb.Append(EncodeXmlDcsNamePart(literal.ToString()));
 				return sb.ToString();
 			}
 
@@ -230,31 +295,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// writes <c>EnvelopeArrayOfstring</c>.</remarks>
 			private string? GetXmlDcsContractNameOfArgument(TypeRef arg)
 			{
-				if (arg.NameSpace == "System")
+				// a TypeRef carries no SpecialType, so the lexical table is read through its CLR-name projection only
+				if (GetXmlDcsLexicalContractName(SpecialType.None, arg.NameSpace, arg.Name) is { } lexical)
 				{
-					switch (arg.Name)
-					{
-						case "Object": return XmlDcsAnyTypeName;
-						case "String": return "string";
-						case "Boolean": return "boolean";
-						case "Char": return "char";
-						case "SByte": return "byte";
-						case "Byte": return "unsignedByte";
-						case "Int16": return "short";
-						case "UInt16": return "unsignedShort";
-						case "Int32": return "int";
-						case "UInt32": return "unsignedInt";
-						case "Int64": return "long";
-						case "UInt64": return "unsignedLong";
-						case "Single": return "float";
-						case "Double": return "double";
-						case "Decimal": return "decimal";
-						case "DateTime": return "dateTime";
-						case "TimeSpan": return "duration";
-						case "Guid": return "guid";
-						case "Uri": return "anyURI";
-						case "DateTimeOffset": return "DateTimeOffset";
-					}
+					return lexical;
 				}
 
 				if (IsLocallyGeneratedType(arg, out var typeDef))
@@ -262,12 +306,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return GetXmlDcsContractName(typeDef.Type);
 				}
 
+				if (arg.DataContractName is not null)
+				{ // a renamed enum: the one kind of type that names itself from a reference alone
+					return EncodeXmlDcsNamePart(arg.DataContractName);
+				}
+
 				if (arg.FullName.IndexOf('<') >= 0 || arg.FullName.IndexOf('[') >= 0)
 				{ // a closed generic, or an array: naming it needs its arguments, which a TypeRef does not carry
 					return null;
 				}
 
-				return System.Xml.XmlConvert.EncodeLocalName(arg.Name);
+				return EncodeXmlDcsNamePart(arg.Name);
 			}
 
 			/// <summary>Resolves the contract name of the type a converter is being emitted for, emitting a <c>#error</c> when it cannot be derived or is not a legal XML name</summary>
@@ -483,9 +532,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Writes the content of a type's element: its own content hook, the <c>ISerializable</c> dialect, or its members</summary>
-			/// <remarks>The priority replicates the reference serializer's: a data contract wins over everything, collections come
-			/// before <c>ISerializable</c> (a <c>Dictionary&lt;K,V&gt;</c> implements it and still serializes as entries), and the
-			/// dialect is the last resort for a type that opted into it and nothing else.</remarks>
+			/// <remarks>
+			/// <para>Three branches, in this order: a type that writes its own content, the <c>ISerializable</c> dialect, and the
+			/// members. There is deliberately NO collection branch here: this method writes the body of a type ENROLLED in the
+			/// container, and a collection is only ever reached as the type of a member, where
+			/// <see cref="WriteXmlDcsValueContent"/> gives it its own shape (and applies the reference serializer's priority: a data
+			/// contract first, then the collection shapes, then <c>ISerializable</c>, so a <c>Dictionary&lt;K,V&gt;</c> serializes as
+			/// entries even though it implements <c>ISerializable</c>).</para>
+			/// <para>A registered type that DERIVES from a collection therefore gets the collection's contract name as its root
+			/// (<c>ArrayOfstring</c>) and an empty body, since it has no serialized member of its own. That is the same shape the
+			/// modern profile produces for it, and the reference wire would write the items.</para>
+			/// </remarks>
 			private void WriteXmlDcsBody(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef)
 			{
 				var type = typeDef.Type;
@@ -842,8 +899,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("break;");
 				sb.LeaveBlock("case");
 
-				foreach (var (keyword, contract, family, escaped) in XmlDcsAnyTypeScalars)
+				foreach (var (_, _, keyword, contract, family, escaped) in XmlDcsLexicalTypes)
 				{
+					// a row with no keyword takes no case here (a bare object is the switch's own last case, and a
+					// DateTimeOffset is a structure rather than a lexical form)
+					if (keyword is null) continue;
+
 					// one local per case, even though a switch section is its own declaration space: two identically named
 					// pattern variables in one switch read like a mistake to the next person editing this
 					string local = "__a" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) + "_" + scope;
@@ -874,13 +935,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.LeaveBlock("case");
 				}
 
-				foreach (var included in this.Metadata.IncludedTypes)
+				// a DECLARED derived type gets no case of its own: its base's case captures it, and the base's own dispatch
+				// switch hands it to the right body with the declared contract intact. Two registered types in an UNDECLARED
+				// base/derived relationship both get one, though, and a base case emitted before its subclass would make the
+				// subclass's case unreachable (CS8120, a build failure in the generated code): the most derived case comes
+				// first. Inheritance depth is the only key, and OrderByDescending is stable, so two unrelated types keep
+				// their declaration order and the emission stays deterministic.
+				foreach (var included in this.Metadata.IncludedTypes.OrderByDescending(static t => t.Type.InheritanceDepth))
 				{
 					if (included.Type.IsAbstract) continue;
 					if (this.PolymorphicMap.ContainsKey(included.Type.Ref)) continue;
-					// a DERIVED type gets no case of its own: its base's case captures it, and the base's own dispatch switch
-					// hands it to the right body with the declared contract intact. A case per level would be unreachable code
-					// (the base is emitted first), and picking the order by hand would just move the problem.
 					string? contract = GetXmlDcsContractName(included.Type);
 					if (contract is null) continue;
 
@@ -911,30 +975,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				sb.LeaveBlock("switch");
 			}
-
-			/// <summary>The closed set of runtime scalar types an <c>anyType</c> slot can hold: C# keyword, contract name, formatter family (<see langword="null"/> for a raw string), and whether the text needs escaping</summary>
-			private static readonly (string Keyword, string Contract, string? Family, bool Escaped)[] XmlDcsAnyTypeScalars =
-			[
-				("string", "string", null, true),
-				("bool", "boolean", "Boolean", false),
-				("int", "int", "Int32", false),
-				("long", "long", "Int64", false),
-				("short", "short", "Int16", false),
-				("sbyte", "byte", "SByte", false),
-				("byte", "unsignedByte", "Byte", false),
-				("ushort", "unsignedShort", "UInt16", false),
-				("uint", "unsignedInt", "UInt32", false),
-				("ulong", "unsignedLong", "UInt64", false),
-				("float", "float", "Single", false),
-				("double", "double", "Double", false),
-				("decimal", "decimal", "Decimal", false),
-				("global::System.DateTime", "dateTime", "DateTime", false),
-				("global::System.TimeSpan", "duration", "Duration", false),
-				("global::System.Guid", "guid", "Guid", false),
-				("char", "char", "Char", false),
-				("byte[]", "base64Binary", "Base64", false),
-				("global::System.Uri", "anyURI", "Uri", true),
-			];
 
 			/// <summary>Whether the converter currently being emitted needs the anyType refusal helper</summary>
 			private bool XmlNeedsAnyTypeHelper { get; set; }

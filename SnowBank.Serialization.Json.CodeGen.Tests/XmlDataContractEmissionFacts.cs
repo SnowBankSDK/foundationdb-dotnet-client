@@ -259,6 +259,70 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 		[DataMember] public KeyedBag? Properties;
 	}
 
+	/// <summary>An enum whose contract is RENAMED: the rename has to survive into every composed name, not just its own root</summary>
+	[DataContract(Name = "Support")]
+	public enum RenamedMedium
+	{
+		[EnumMember] Print = 0,
+		[EnumMember(Value = "numerique")] Digital = 1,
+	}
+
+	/// <summary>A renamed enum as a collection item, as a dictionary key, and as a dictionary value</summary>
+	[DataContract]
+	public sealed class RenamedEnumProbe
+	{
+		[DataMember] public List<RenamedMedium>? Media;
+		[DataMember] public Dictionary<RenamedMedium, string>? ByMedium;
+		[DataMember] public Dictionary<string, RenamedMedium>? ToMedium;
+		[DataMember] public RenamedMedium Single;
+		[DataMember] public List<Medium>? Plain;
+	}
+
+	/// <summary>Holder of a nested type, which the DataContract wire names <c>Outer.Inner</c></summary>
+	public static class Outer
+	{
+
+		[DataContract]
+		public sealed class Inner
+		{
+			[DataMember] public string? Label;
+		}
+
+	}
+
+	/// <summary>A generic type with NO declared name: the wire composes it as <c>BoxOf</c> + the arguments' contract names</summary>
+	[DataContract]
+	public sealed class Box<T>
+	{
+		// note: T (not T?), like NamedGenericProbe above: a T? member on an unconstrained T is a shape the JSON emission does not handle
+		[DataMember] public T Payload = default!;
+	}
+
+	/// <summary>A contract name that needs escaping, so composing it into a generic name must not escape it TWICE</summary>
+	[DataContract(Name = "with space")]
+	public sealed class SpacedName
+	{
+		[DataMember] public string? Label;
+	}
+
+	/// <summary>A declared generic name carrying both placeholders: <c>{0}</c> expands, <c>{#}</c> (the digest) does not</summary>
+	[DataContract(Name = "Digested{0}{#}")]
+	public sealed class DigestedProbe<T>
+	{
+		[DataMember] public T Payload = default!;
+	}
+
+	/// <summary>Every composed contract name, as the ITEM name of a collection (the one place a composed name reaches the wire)</summary>
+	[DataContract]
+	public sealed class CompositionProbe
+	{
+		[DataMember] public Outer.Inner? Nested;
+		[DataMember] public List<Outer.Inner>? NestedItems;
+		[DataMember] public List<Box<string>>? Boxes;
+		[DataMember] public List<Box<SpacedName>>? SpacedBoxes;
+		[DataMember] public List<SpacedName>? Spaced;
+	}
+
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
 	[CrystalJsonSerializable(typeof(NilProbe))]
@@ -277,6 +341,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	[CrystalJsonSerializable(typeof(ScalarProbe))]
 	[CrystalJsonSerializable(typeof(NamedGenericProbe<bool>))]
 	[CrystalJsonSerializable(typeof(KeyedBagProbe))]
+	[CrystalJsonSerializable(typeof(RenamedEnumProbe))]
+	[CrystalJsonSerializable(typeof(Outer.Inner))]
+	[CrystalJsonSerializable(typeof(SpacedName))]
+	[CrystalJsonSerializable(typeof(Box<string>))]
+	// note: qualified, because inside this class body the generated nested holder LegacySerializers.SpacedName shadows the probe type
+	[CrystalJsonSerializable(typeof(Box<SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy.SpacedName>))]
+	[CrystalJsonSerializable(typeof(DigestedProbe<string>))]
+	[CrystalJsonSerializable(typeof(DigestedProbe<RenamedMedium>))]
+	[CrystalJsonSerializable(typeof(CompositionProbe))]
 	public static partial class LegacySerializers
 	{
 	}
@@ -291,6 +364,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.Text;
 	using System.Xml;
 	using System.Xml.Linq;
+	using Microsoft.CodeAnalysis;
 	using SnowBank.Data.Xml;
 	using SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy;
 
@@ -496,12 +570,95 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
+		public void Test_A_Renamed_Enum_Contract_Names_The_Items_And_The_Dictionary_Entries()
+		{
+			var probe = new RenamedEnumProbe
+			{
+				Media = [ RenamedMedium.Print, RenamedMedium.Digital ],
+				ByMedium = new() { [RenamedMedium.Digital] = "d" },
+				ToMedium = new() { ["k"] = RenamedMedium.Print },
+				Single = RenamedMedium.Digital,
+				Plain = [ Medium.Digital ],
+			};
+
+			string xml = LegacySerializers.RenamedEnumProbe.ToXmlText(probe);
+			Log($"XML : {xml}");
+
+			// measured, MINUS the entry-name digest (deviation 1): the reference wire spells the two entries
+			// <KeyValueOfSupportstringVjK_S7bsW> and <KeyValueOfstringSupport4kHBl5Pd>. [DataContract(Name = "Support")]
+			// on the ENUM renames it everywhere its contract name is composed: as a collection item, and on both sides of
+			// a KeyValueOfXY. An enum with no [DataContract] keeps its declaration name (<Medium>).
+			Assert.That(xml, Is.EqualTo("""<RenamedEnumProbe><ByMedium><KeyValueOfSupportstring><Key>numerique</Key><Value>d</Value></KeyValueOfSupportstring></ByMedium><Media><Support>Print</Support><Support>numerique</Support></Media><Plain><Medium>Digital</Medium></Plain><Single>numerique</Single><ToMedium><KeyValueOfstringSupport><Key>k</Key><Value>Print</Value></KeyValueOfstringSupport></ToMedium></RenamedEnumProbe>"""));
+		}
+
+		[Test]
+		public void Test_Composed_Contract_Names()
+		{
+			var probe = new CompositionProbe
+			{
+				Nested = new() { Label = "n" },
+				NestedItems = [ new() { Label = "a" } ],
+				Boxes = [ new() { Payload = "s" } ],
+				SpacedBoxes = [ new() { Payload = new() { Label = "b" } } ],
+				Spaced = [ new() { Label = "i" } ],
+			};
+
+			string xml = LegacySerializers.CompositionProbe.ToXmlText(probe);
+			Log($"XML : {xml}");
+
+			// measured, MINUS the digest the reference wire appends to a generic name whose argument is not built-in
+			// (<BoxOfwith_x0020_spaceCmwZw7JZ>), which is the same deviation 1 as the dictionary entry names. A nested type
+			// is "Outer.Inner", a generic with no declared name is "BoxOf" + its arguments, and a contract name that needs
+			// escaping is escaped EXACTLY ONCE when it is composed into one ("with_x0020_space", never "with_x005F_x0020_space").
+			Assert.That(xml, Is.EqualTo("""<CompositionProbe><Boxes><BoxOfstring><Payload>s</Payload></BoxOfstring></Boxes><Nested><Label>n</Label></Nested><NestedItems><Outer.Inner><Label>a</Label></Outer.Inner></NestedItems><Spaced><with_x0020_space><Label>i</Label></with_x0020_space></Spaced><SpacedBoxes><BoxOfwith_x0020_space><Payload><Label>b</Label></Payload></BoxOfwith_x0020_space></SpacedBoxes></CompositionProbe>"""));
+		}
+
+		[Test]
+		public void Test_Composed_Contract_Names_As_Roots()
+		{
+			string nested = LegacySerializers.Inner.ToXmlText(new Outer.Inner { Label = "x" });
+			string boxed = LegacySerializers.Box_String.ToXmlText(new Box<string> { Payload = "s" });
+			string spaced = LegacySerializers.SpacedName.ToXmlText(new SpacedName { Label = "l" });
+			string digested = LegacySerializers.DigestedProbe_String.ToXmlText(new DigestedProbe<string> { Payload = "s" });
+			string digestedEnum = LegacySerializers.DigestedProbe_RenamedMedium.ToXmlText(new DigestedProbe<RenamedMedium> { Payload = RenamedMedium.Digital });
+
+			Log($"nested       : {nested}");
+			Log($"boxed        : {boxed}");
+			Log($"spaced       : {spaced}");
+			Log($"digested     : {digested}");
+			Log($"digested enum: {digestedEnum}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				// measured: the root takes the same composed contract name the item elements above carry
+				Assert.That(nested, Is.EqualTo("""<Outer.Inner><Label>x</Label></Outer.Inner>"""), "a nested type is named after its declaration chain");
+				Assert.That(boxed, Is.EqualTo("""<BoxOfstring><Payload>s</Payload></BoxOfstring>"""), "a generic with no declared name composes XOfY");
+				Assert.That(spaced, Is.EqualTo("""<with_x0020_space><Label>l</Label></with_x0020_space>"""), "a declared name that is not an XML name is encoded, not refused");
+				Assert.That(digested, Is.EqualTo("""<Digestedstring><Payload>s</Payload></Digestedstring>"""), "{0} expands to the argument's contract name, {#} to nothing");
+				// deviation 1 again: the reference wire writes <DigestedSupportCmwZw7JZ>, because {#} asks for the digest
+				Assert.That(digestedEnum, Is.EqualTo("""<DigestedSupport><Payload>numerique</Payload></DigestedSupport>"""), "{0} reads the ENUM's renamed contract, and {#} stays empty");
+			}
+		}
+
+		[Test]
 		public void Test_A_Null_Root_Is_A_Nil_Element()
 		{
 			string xml = LegacySerializers.Shelf.ToXmlText(null);
 			Log($"XML : {xml}");
 
 			Assert.That(xml, Is.EqualTo("""<Shelf nil="true" />"""));
+		}
+
+		[Test]
+		public void Test_A_Null_Root_Without_Null_Members_Is_An_Empty_Element()
+		{
+			// NOT a fidelity claim: the reference wire has no equivalent of WithoutNullMembers and always writes the nil
+			// attribute. What is pinned here is that the setting reaches the ROOT too, and that a document is still
+			// produced (an empty output would be unparseable, which is worse than a nil-less element)
+			string xml = LegacySerializers.Shelf.ToXmlText(null, CrystalJsonSettings.Json.WithoutNullMembers());
+			Log($"XML : {xml}");
+
+			Assert.That(xml, Is.EqualTo("""<Shelf />"""));
 		}
 
 		[Test]
@@ -636,6 +793,105 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(
 				() => LegacySerializers.PolymorphicProbe.ToXmlText(probe),
 				Throws.InstanceOf<CrystalXmlNotSupportedException>().With.Message.Contains("AsObjectString"));
+		}
+
+		/// <summary>Runs the generator over a probe and returns the <c>#error</c> directives its output carries</summary>
+		/// <remarks>An <c>#error</c> is not a generator diagnostic: it only exists once the emitted source is compiled, where it
+		/// surfaces as CS1029. A probe that carries one cannot live in this fixture's own container, which has to keep building.</remarks>
+		private static List<string> EmissionErrorsOf(string source)
+		{
+			var compilation = GeneratorProbeHarness.Compile("namespace Probe\n{\n" + source + "\n}\n");
+			Assert.That(
+				compilation.GetDiagnostics().Where(static d => d.Severity >= DiagnosticSeverity.Warning),
+				Is.Empty,
+				"the probe source must compile clean on its own");
+
+			var (output, _) = GeneratorProbeHarness.RunGenerator(compilation);
+			var errors = output.GetDiagnostics().Where(static d => d.Id == "CS1029").Select(static d => d.GetMessage()).ToList();
+			foreach (var error in errors)
+			{
+				Log($"#error: {error}");
+			}
+			return errors;
+		}
+
+		[Test]
+		public void Test_A_Generic_Argument_That_Is_Itself_A_Closed_Generic_Fails_The_Build()
+		{
+			// a type argument reaches the emitter as a TypeRef, which carries no element type: naming Envelope<List<string>>
+			// would produce "EnvelopeList" where the reference wire writes "EnvelopeArrayOfstring". A wrong name is the
+			// silent divergence this profile exists to prevent, so the emission refuses instead of guessing
+			var errors = EmissionErrorsOf("""
+					[System.Runtime.Serialization.DataContract]
+					public sealed class ProbeDto<T>
+					{
+						[System.Runtime.Serialization.DataMember]
+						public T? Payload { get; set; }
+					}
+
+					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.Xml.CrystalXmlOutput]
+					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto<System.Collections.Generic.List<string>>))]
+					public static partial class ProbeConverters
+					{
+					}
+				""");
+
+			Assert.That(errors, Has.Exactly(1).Contains("ProbeDto"), "the message names the container whose contract name cannot be derived");
+		}
+
+		[Test]
+		public void Test_The_AnyType_Switch_Of_An_Undeclared_Hierarchy_Still_Compiles()
+		{
+			// two registered types in an UNDECLARED base/derived relationship (no [JsonDerivedType], so neither is part of a
+			// polymorphic map) both take a case in the switch of an object-typed slot. A case on the BASE emitted first
+			// captures the subclass, which makes the subclass's own case unreachable: CS8120, i.e. a build failure of the
+			// generated code, from source that is perfectly legal. The cases are therefore emitted most-derived-first.
+			var compilation = GeneratorProbeHarness.Compile("""
+				namespace Probe
+				{
+
+					[System.Runtime.Serialization.DataContract]
+					public class ProbeBase
+					{
+						[System.Runtime.Serialization.DataMember]
+						public string? Title { get; set; }
+					}
+
+					[System.Runtime.Serialization.DataContract]
+					public sealed class ProbeDerived : ProbeBase
+					{
+						[System.Runtime.Serialization.DataMember]
+						public int Extra { get; set; }
+					}
+
+					[System.Runtime.Serialization.DataContract]
+					public sealed class ProbeDto
+					{
+						[System.Runtime.Serialization.DataMember]
+						public object? Slot { get; set; }
+					}
+
+					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.Xml.CrystalXmlOutput]
+					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeBase))]
+					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDerived))]
+					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					public static partial class ProbeConverters
+					{
+					}
+
+				}
+				""");
+
+			var (output, _) = GeneratorProbeHarness.RunGenerator(compilation);
+			var errors = output.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error).Select(static d => $"{d.Id}: {d.GetMessage()}").ToList();
+			foreach (var error in errors)
+			{
+				Log($"generated: {error}");
+			}
+
+			Assert.That(errors, Is.Empty, "the generated code must compile");
 		}
 
 		#endregion
