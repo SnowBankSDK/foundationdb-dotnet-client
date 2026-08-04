@@ -323,8 +323,18 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 		[DataMember] public List<SpacedName>? Spaced;
 	}
 
+	/// <summary>A self-referencing contract: the shape whose CYCLIC instances have no representation on this wire either</summary>
+	/// <remarks>The reference serializer answers a cycle with a <c>SerializationException</c>; this profile answers it with <c>CrystalXmlCycleException</c>.</remarks>
+	[DataContract]
+	public sealed class CycleNode
+	{
+		[DataMember] public string? Label;
+		[DataMember] public CycleNode? Next;
+	}
+
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
+	[CrystalJsonSerializable(typeof(CycleNode))]
 	[CrystalJsonSerializable(typeof(NilProbe))]
 	[CrystalJsonSerializable(typeof(Shelf))]
 	[CrystalJsonSerializable(typeof(OrderExplicitProbe))]
@@ -361,6 +371,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
 	using System.Buffers;
+	using System.Globalization;
 	using System.Text;
 	using System.Xml;
 	using System.Xml.Linq;
@@ -961,6 +972,70 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(json, Does.Contain("\"DateUtc\": \"\\/Date("), "the DCJS JSON writes a date in the Microsoft form");
 				Assert.That(xml, Does.Contain("<DateUtc>0001-01-01T00:00:00</DateUtc>"), "the DCS XML writes it in the ISO form");
 			}
+		}
+
+		#endregion
+
+		#region Cycles and depth...
+
+		/// <summary>Builds an ACYCLIC chain of <paramref name="length"/> nodes, so the deepest element sits at depth <c>length - 1</c></summary>
+		private static CycleNode MakeChain(int length)
+		{
+			var head = new CycleNode();
+			var tail = head;
+			for (int i = 1; i < length; i++)
+			{
+				var next = new CycleNode();
+				tail.Next = next;
+				tail = next;
+			}
+			return head;
+		}
+
+		private static int CountOf(string text, string token)
+		{
+			int n = 0;
+			for (int i = text.IndexOf(token, StringComparison.Ordinal); i >= 0; i = text.IndexOf(token, i + token.Length, StringComparison.Ordinal))
+			{
+				++n;
+			}
+			return n;
+		}
+
+		[Test]
+		public void Test_A_Reference_Cycle_Throws_Instead_Of_Overflowing_The_Stack()
+		{
+			// the compat wire has no z:Id/z:Ref form here either, so a cycle is a typed, CATCHABLE error: before the depth
+			// guard existed this recursed until the native stack gave out, taking the whole process with it
+			var a = new CycleNode { Label = "a" };
+			var b = new CycleNode { Label = "b" };
+			a.Next = b;
+			b.Next = a;
+
+			Assert.That(
+				() => LegacySerializers.CycleNode.ToXmlText(a),
+				Throws.InstanceOf<CrystalXmlCycleException>().With.Property("Type").EqualTo(typeof(CycleNode)).And.Message.Contains(CrystalXml.MaxDepth.ToString(CultureInfo.InvariantCulture)),
+				"the exception names the type the cycle was detected on, and the cap it hit");
+		}
+
+		[Test]
+		public void Test_A_Deep_Acyclic_Chain_Up_To_The_Cap_Is_Written_In_Full()
+		{
+			string xml = LegacySerializers.CycleNode.ToXmlText(MakeChain(CrystalXml.MaxDepth));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(xml, Does.StartWith("<CycleNode"), "the root element");
+				Assert.That(CountOf(xml, "<Next"), Is.EqualTo(CrystalXml.MaxDepth), "one nested element per node past the root, plus the nil marker the deepest node writes for its own null Next (this profile spells a null member out)");
+			}
+		}
+
+		[Test]
+		public void Test_A_Deep_Acyclic_Chain_Past_The_Cap_Throws_The_Same_Typed_Exception()
+		{
+			Assert.That(
+				() => LegacySerializers.CycleNode.ToXmlText(MakeChain(CrystalXml.MaxDepth + 1)),
+				Throws.InstanceOf<CrystalXmlCycleException>().With.Property("Type").EqualTo(typeof(CycleNode)));
 		}
 
 		#endregion

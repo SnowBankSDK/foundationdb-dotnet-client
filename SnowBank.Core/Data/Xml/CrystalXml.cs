@@ -53,6 +53,22 @@ namespace SnowBank.Data.Xml
 	public static class CrystalXml
 	{
 
+		/// <summary>Maximum nesting depth a generated XML emission may reach before it refuses to go deeper</summary>
+		/// <remarks>
+		/// <para>An object graph containing a reference cycle has no XML representation (neither profile has a
+		/// <c>z:Id</c>/<c>z:Ref</c> form), so the generated emission must stop instead of recursing forever. It counts the
+		/// elements it has opened and raises <see cref="CrystalXmlCycleException"/> once this cap is reached: a typed,
+		/// catchable error rather than a <see cref="StackOverflowException"/>, which .NET cannot catch and which takes the
+		/// whole process down.</para>
+		/// <para>The value is a deliberate compromise between "no legitimate document is this deep" and "the native stack
+		/// is still nowhere near exhausted". The measured overflow point of the generated recursion is around 2300 nested
+		/// <c>WriteXmlElement</c> frames (one frame per level); 256 leaves roughly a nine-fold margin, which still holds
+		/// even if a future emission spends several frames per level, runs in a DEBUG build where nothing inlines, or runs
+		/// on a thread with a smaller stack. Documents nested deeper than 256 elements are not a shape this serializer
+		/// supports; a graph that legitimately needs it should be flattened instead.</para>
+		/// </remarks>
+		public const int MaxDepth = 256;
+
 		#region Byte-exact wire (CrystalXmlWriter)...
 
 		/// <summary>Serializes <paramref name="value"/> to a <see cref="string"/> of XML text</summary>

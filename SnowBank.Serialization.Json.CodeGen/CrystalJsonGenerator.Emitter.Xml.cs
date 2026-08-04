@@ -65,6 +65,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private const string CrystalXmlNotSupportedExceptionFullName = CrystalXmlNamespaceQualified + ".CrystalXmlNotSupportedException";
 
+			private const string CrystalXmlCycleExceptionFullName = CrystalXmlNamespaceQualified + ".CrystalXmlCycleException";
+
+			private const string CrystalXmlMaxDepthFullName = CrystalXmlHelperFullName + ".MaxDepth";
+
 			private const string CrystalJsonSettingsExtensionsFullName = "global::" + KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSettingsExtensions";
 
 			private const string XDocumentFullName = "global::System.Xml.Linq.XDocument";
@@ -414,6 +418,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				this.XmlEnums = new();
 				this.XmlNeedsNotSupportedHelper = false;
 				this.XmlNeedsFlagsHelper = false;
+				this.XmlNeedsCycleHelper = false;
 				var type = typeDef.Type;
 				string valueType = type.FullyQualifiedName + (type.IsValueType() ? "" : "?");
 				string settingsType = KnownTypeSymbols.CrystalJsonSettingsFullName;
@@ -428,13 +433,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock("WriteXml");
 				sb.AppendLine("if (rootName is null)");
 				sb.EnterBlock();
-				sb.AppendLine($"WriteXmlElement(ref emitter, in {rootRef}, value, settings);");
+				sb.AppendLine($"WriteXmlElement(ref emitter, in {rootRef}, value, settings, 0);");
 				sb.LeaveBlock();
 				sb.AppendLine("else");
 				sb.EnterBlock("else");
 				sb.Comment("a caller-supplied name is the one place user text becomes an XML name: Create validates it, and raises CrystalXmlInvalidNameException rather than corrupting the document");
 				sb.AppendLine($"var __root = {XmlNameFullName}.Create(rootName);");
-				sb.AppendLine("WriteXmlElement(ref emitter, in __root, value, settings);");
+				sb.AppendLine("WriteXmlElement(ref emitter, in __root, value, settings, 0);");
 				sb.LeaveBlock("else");
 				sb.LeaveBlock("WriteXml");
 				sb.NewLine();
@@ -442,8 +447,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// WriteXmlElement(...): the nested entry point, so a parent can name the child element without re-validating a name
 				sb.XmlComment("<summary>Writes this value as an element of the given name</summary>");
 				sb.XmlComment("<remarks>The nested entry point: a parent converter writing this type as one of its members passes its own cached member name here, so no name is validated or transcoded at write time.</remarks>");
-				sb.AppendLine($"public void WriteXmlElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings) where TEmitter : struct, {IXmlEmitterFullName}");
+				sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one. Every nested call adds one, and reaching <c>CrystalXml.MaxDepth</c> raises <c>CrystalXmlCycleException</c> instead of recursing into a stack overflow.</param>");
+				sb.AppendLine($"public void WriteXmlElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, int {XmlDepthParameterName} = 0) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXmlElement");
+
+				WriteXmlDepthGuard(sb, type);
+				sb.NewLine();
 
 				bool hasPolymorphicDefinition = this.PolymorphicMap.TryGetValue(type.Ref, out var polymorphicMetadata);
 
@@ -472,21 +481,24 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (derivedType.IsAbstract) continue;
 						//BUGBUG: mirrors the JSON side: the cases are emitted in declaration order, so a base class declared before its own subclass would capture it first
-						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: {GetLocalSerializerRef(derivedType)}.WriteXmlElement(ref emitter, in name, x, settings); return;");
+						// the delegate writes THIS element, so it stands at the same depth: only a nested MEMBER adds a level
+						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: {GetLocalSerializerRef(derivedType)}.WriteXmlElement(ref emitter, in name, x, settings, {XmlDepthParameterName}); return;");
 					}
 					sb.AppendLine($"default: throw new {CrystalXmlUnknownTypeExceptionFullName}(value.GetType());");
 					sb.LeaveBlock("switch");
 					sb.LeaveBlock("WriteXmlElement");
 					sb.NewLine();
+					WriteXmlCycleHelper(sb);
 					WriteXmlNameFields(sb, names);
 					return;
 				}
 
 				if (type.IsAbstract && hasPolymorphicDefinition)
 				{ // an abstract type in the middle of a hierarchy: the root of the hierarchy owns the switch
-					sb.AppendLine($"{GetLocalSerializerRef(polymorphicMetadata.Parent)}.WriteXmlElement(ref emitter, in name, value, settings);");
+					sb.AppendLine($"{GetLocalSerializerRef(polymorphicMetadata.Parent)}.WriteXmlElement(ref emitter, in name, value, settings, {XmlDepthParameterName});");
 					sb.LeaveBlock("WriteXmlElement");
 					sb.NewLine();
+					WriteXmlCycleHelper(sb);
 					WriteXmlNameFields(sb, names);
 					return;
 				}
@@ -539,6 +551,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					WriteXmlNotSupportedHelper(sb);
 					this.XmlNeedsNotSupportedHelper = false;
 				}
+
+				WriteXmlCycleHelper(sb);
 
 				// emitted BEFORE the flags helper is asked for: the lookups are what set that flag
 				WriteXmlEnumHelpers(sb, this.XmlEnums);
@@ -611,6 +625,48 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				sb.Comment("the discriminator is an ANNOTATION on this wire, so it is an attribute, and it comes first");
 				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(name)}, {CSharpCodeBuilder.Constant(value)});");
+			}
+
+			/// <summary>Name of the depth parameter threaded through the generated element-writing recursion</summary>
+			/// <remarks>An explicit parameter, and not state on the emitter, because the emitter is a caller-supplied struct with
+			/// its own contract (an infoset emitter may be handed a writer that is already inside a document): the recursion the
+			/// guard measures is the GENERATED one, so the generated code is what must carry the counter.</remarks>
+			private const string XmlDepthParameterName = "__depth";
+
+			/// <summary>Emits the depth guard at the top of a generated element-writing body</summary>
+			/// <remarks>
+			/// <para>A cycle in the object graph has no XML representation on either profile, and the generated emission has no
+			/// visited-set to detect one with: left unguarded, it recurses until the native stack is exhausted, which raises a
+			/// <c>StackOverflowException</c> that .NET cannot catch and that takes the whole process down. Counting the levels
+			/// costs one comparison against a constant per element on the happy path, allocates nothing, and needs no reflection.</para>
+			/// <para>Measured before this guard existed: a two-node cycle overflowed after ~2300 nested <c>WriteXmlElement</c>
+			/// frames on the modern profile and ~4600 on the compat one (one frame per level). The cap lives in
+			/// <c>CrystalXml.MaxDepth</c>, whose own documentation justifies the value.</para>
+			/// </remarks>
+			private void WriteXmlDepthGuard(CSharpCodeBuilder sb, TypeMetadata type)
+			{
+				this.XmlNeedsCycleHelper = true;
+				sb.Comment("a reference cycle has no XML representation, and an unguarded recursion would die on a StackOverflowException that no caller can catch: count the levels and fail with a typed error instead");
+				sb.AppendLine($"if ({XmlDepthParameterName} >= {CrystalXmlMaxDepthFullName}) FailXmlCycle(typeof({type.FullyQualifiedName}));");
+			}
+
+			/// <summary>Whether the converter currently being emitted needs the depth-guard helper</summary>
+			private bool XmlNeedsCycleHelper { get; set; }
+
+			/// <summary>Emits the helper that raises <c>CrystalXmlCycleException</c> once the depth cap is reached</summary>
+			/// <remarks>A method call rather than an inline <c>throw</c>, so that the statements after the guard stay reachable for
+			/// the compiler and the generated body carries no unreachable-code warning (same shape as <c>FailXmlNotSupported</c>).</remarks>
+			private void WriteXmlCycleHelper(CSharpCodeBuilder sb)
+			{
+				if (!this.XmlNeedsCycleHelper) return;
+				this.XmlNeedsCycleHelper = false;
+
+				sb.Comment("the depth cap was reached: the graph either loops back on itself, or is deeper than this serializer supports - either way there is no document to write");
+				sb.AppendLine($"private static void FailXmlCycle({SystemTypeFullName} type)");
+				sb.EnterBlock();
+				sb.AppendLine($"throw new {CrystalXmlCycleExceptionFullName}(type, \"Cannot write an instance of type '\" + type.Name + \"' to XML: the emission reached the maximum nesting depth of \" + {CrystalXmlMaxDepthFullName}.ToString(global::System.Globalization.CultureInfo.InvariantCulture) + \" elements. The object graph either contains a reference cycle (which has no XML representation) or is nested deeper than this serializer supports.\");");
+				sb.LeaveBlock();
+				sb.NewLine();
 			}
 
 			/// <summary>Writes the <c>nil</c> marker on the element currently open, and closes it</summary>
@@ -804,7 +860,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// 3) a type of this container writes itself, under the name given here
 				if (IsLocallyGeneratedType(type, out var target, out _))
 				{
-					sb.AppendLine($"{GetLocalSerializerRef(target)}.WriteXmlElement(ref emitter, in {nameRef}, {valueExpr}{(type.NullableOfType is not null ? ".Value" : "")}, settings);");
+					// one level deeper: this is a nested element, and the callee's own guard is what stops a cycle running through it
+					sb.AppendLine($"{GetLocalSerializerRef(target)}.WriteXmlElement(ref emitter, in {nameRef}, {valueExpr}{(type.NullableOfType is not null ? ".Value" : "")}, settings, {XmlDepthParameterName} + 1);");
 					return;
 				}
 

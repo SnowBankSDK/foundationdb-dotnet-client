@@ -29,6 +29,7 @@
 
 namespace SnowBank.Data.Xml.Tests
 {
+	using System.Runtime.Serialization;
 	using NUnit.Framework;
 	using SnowBank.Buffers.Text;
 	using SnowBank.Data.Xml;
@@ -291,16 +292,25 @@ namespace SnowBank.Data.Xml.Tests
 			}, v => DcsProbeSerializers.SelfRefProbe.ToXmlText(v));
 		}
 
-		// note: NOT ported as a runnable test. The spike's cycle family expects CrystalXml to throw
-		// CrystalXmlCycleException on a genuine reference cycle (Node.Next pointing back into its own ancestry). The
-		// generated WriteXmlElement for a self-referencing type has no depth guard or visited-set at all: writing a
-		// cyclic SelfRefProbe recurses until the native stack is exhausted, which is an unrecoverable
-		// StackOverflowException that terminates the WHOLE test process, not a catchable exception -- confirmed by
-		// running it (it took the entire assembly down). CrystalXmlCycleException is declared in
-		// SnowBank.Core/Data/Xml/CrystalXmlExceptions.cs but is never thrown anywhere in
-		// SnowBank.Serialization.Json.CodeGen (grepped the whole generator: zero hits). This is a Task 8/9 defect,
-		// reported in full in the Task 10 report; it is not fixed here, and this test is deliberately left
-		// unexercised rather than committed in a form that would crash CI.
+		[Test]
+		public void Test_Cycle_Throws_In_Both_Pipelines()
+		{
+			// ACTED DEVIATION 3 (the typed-exception family): the two pipelines agree that a genuine reference cycle has
+			// no wire form at all, and disagree only on the exception TYPE. The reference serializer raises
+			// SerializationException; CrystalXml raises its own CrystalXmlCycleException.
+			// This family was withheld from the first cut of this suite: before the emission carried a depth guard, the
+			// generated recursion exhausted the native stack and killed the whole test process instead of throwing.
+			var a = new Node { Label = "a" };
+			var b = new Node { Label = "b", Next = a };
+			a.Next = b;
+			var probe = new SelfRefProbe { Root = a };
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(() => ReferenceDcsWire.Serialize(probe, typeof(SelfRefProbe)), Throws.InstanceOf<SerializationException>(), "the reference serializer refuses a cycle with its own exception type");
+				Assert.That(() => DcsProbeSerializers.SelfRefProbe.ToXmlText(probe), Throws.InstanceOf<CrystalXmlCycleException>().With.Property("Type").EqualTo(typeof(Node)), "CrystalXml refuses it with the typed counterpart, naming the type it stopped on");
+			}
+		}
 
 		#endregion
 

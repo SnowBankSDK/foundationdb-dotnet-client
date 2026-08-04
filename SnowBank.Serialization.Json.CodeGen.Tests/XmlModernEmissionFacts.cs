@@ -338,6 +338,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 	}
 
+	/// <summary>A self-referencing DTO: the shape whose CYCLIC instances have no XML representation at all</summary>
+	/// <remarks><c>Next</c> is settable (not <c>init</c>) on purpose, since building a cycle means assigning it after the fact.</remarks>
+	public sealed record Chain
+	{
+
+		public string? Label { get; init; }
+
+		public Chain? Next { get; set; }
+
+	}
+
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
 	[CrystalXmlOutput]
 	[CrystalJsonSerializable(typeof(Book))]
@@ -352,6 +363,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	[CrystalJsonSerializable(typeof(Paper))]
 	[CrystalJsonSerializable(typeof(Switchboard))]
 	[CrystalJsonSerializable(typeof(Exotic))]
+	[CrystalJsonSerializable(typeof(Chain))]
 	[CrystalJsonSerializable(typeof(Dispatch))]
 	[CrystalJsonSerializable(typeof(Route))]
 	[CrystalJsonSerializable(typeof(Parcel))]
@@ -374,6 +386,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
 	using System.Buffers;
+	using System.Globalization;
 	using System.Text;
 	using System.Xml;
 	using System.Xml.Linq;
@@ -988,6 +1001,75 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				""");
 
 			Assert.That(errors, Has.Exactly(1).Contains("not a name"), "the message quotes the offending name");
+		}
+
+		#endregion
+
+		#region Cycles and depth...
+
+		/// <summary>Builds an ACYCLIC chain of <paramref name="length"/> nodes, so the deepest element sits at depth <c>length - 1</c></summary>
+		private static Chain MakeChain(int length)
+		{
+			var head = new Chain();
+			var tail = head;
+			for (int i = 1; i < length; i++)
+			{
+				var next = new Chain();
+				tail.Next = next;
+				tail = next;
+			}
+			return head;
+		}
+
+		private static int CountOf(string text, string token)
+		{
+			int n = 0;
+			for (int i = text.IndexOf(token, StringComparison.Ordinal); i >= 0; i = text.IndexOf(token, i + token.Length, StringComparison.Ordinal))
+			{
+				++n;
+			}
+			return n;
+		}
+
+		[Test]
+		public void Test_A_Reference_Cycle_Throws_Instead_Of_Overflowing_The_Stack()
+		{
+			// a cycle has no representation on either wire (there is no z:Id/z:Ref form here), so the emission must stop
+			// with a typed, CATCHABLE error: before the depth guard existed this recursed ~2300 frames deep and killed the
+			// whole process with a StackOverflowException, which .NET cannot catch
+			var a = new Chain { Label = "a" };
+			var b = new Chain { Label = "b" };
+			a.Next = b;
+			b.Next = a;
+
+			Assert.That(
+				() => AcmeSerializers.Chain.ToXmlText(a),
+				Throws.InstanceOf<CrystalXmlCycleException>().With.Property("Type").EqualTo(typeof(Chain)).And.Message.Contains(CrystalXml.MaxDepth.ToString(CultureInfo.InvariantCulture)),
+				"the exception names the type the cycle was detected on, and the cap it hit");
+		}
+
+		[Test]
+		public void Test_A_Deep_Acyclic_Chain_Up_To_The_Cap_Is_Written_In_Full()
+		{
+			// the guard must not eat a legitimate (if absurd) deep document: a chain exactly as deep as the cap allows
+			// still serializes, which is what pins WHERE the line sits
+			string xml = AcmeSerializers.Chain.ToXmlText(MakeChain(CrystalXml.MaxDepth));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(xml, Does.StartWith("<chain"), "the root element");
+				Assert.That(CountOf(xml, "<next"), Is.EqualTo(CrystalXml.MaxDepth - 1), "one nested element per node past the root (the deepest one self-closes, hence the open-tag prefix rather than \"<next>\")");
+			}
+		}
+
+		[Test]
+		public void Test_A_Deep_Acyclic_Chain_Past_The_Cap_Throws_The_Same_Typed_Exception()
+		{
+			// one node deeper than the cap: the guard cannot tell a cycle from a graph that is simply too deep, and both
+			// answers are the same typed exception rather than a crash
+			Assert.That(
+				() => AcmeSerializers.Chain.ToXmlText(MakeChain(CrystalXml.MaxDepth + 1)),
+				Throws.InstanceOf<CrystalXmlCycleException>().With.Property("Type").EqualTo(typeof(Chain)));
 		}
 
 		#endregion

@@ -386,6 +386,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				this.XmlNeedsFlagsHelper = false;
 				this.XmlNeedsUndeclaredEnumHelper = false;
 				this.XmlNeedsAnyTypeHelper = false;
+				this.XmlNeedsCycleHelper = false;
 
 				var type = typeDef.Type;
 				string valueType = type.FullyQualifiedName + (type.IsValueType() ? "" : "?");
@@ -404,13 +405,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"settings ??= {XmlDcsDefaultSettings};");
 				sb.AppendLine("if (rootName is null)");
 				sb.EnterBlock();
-				sb.AppendLine($"WriteXmlElement(ref emitter, in {rootRef}, value, settings);");
+				sb.AppendLine($"WriteXmlElement(ref emitter, in {rootRef}, value, settings, 0);");
 				sb.LeaveBlock();
 				sb.AppendLine("else");
 				sb.EnterBlock("else");
 				sb.Comment("a caller-supplied name is the one place user text becomes an XML name: Create validates it, and raises CrystalXmlInvalidNameException rather than corrupting the document");
 				sb.AppendLine($"var __root = {XmlNameFullName}.Create(rootName);");
-				sb.AppendLine("WriteXmlElement(ref emitter, in __root, value, settings);");
+				sb.AppendLine("WriteXmlElement(ref emitter, in __root, value, settings, 0);");
 				sb.LeaveBlock("else");
 				sb.LeaveBlock("WriteXml");
 				sb.NewLine();
@@ -418,18 +419,22 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// WriteXmlElement(...): the nested entry point, for a parent that already knows the element name
 				sb.XmlComment("<summary>Writes this value as an element of the given name</summary>");
 				sb.XmlComment("<remarks>The nested entry point: a parent converter writing this type as one of its members passes its own cached member name here, so no name is validated or transcoded at write time. The declared type IS this type here, so no type annotation is written.</remarks>");
-				sb.AppendLine($"public void WriteXmlElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings) where TEmitter : struct, {IXmlEmitterFullName}");
+				sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one. Every nested call adds one, and reaching <c>CrystalXml.MaxDepth</c> raises <c>CrystalXmlCycleException</c> instead of recursing into a stack overflow.</param>");
+				sb.AppendLine($"public void WriteXmlElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, int {XmlDepthParameterName} = 0) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXmlElement");
-				sb.AppendLine($"WriteXmlDcsElement(ref emitter, in name, value, settings, {CSharpCodeBuilder.Constant(contractName)});");
+				sb.AppendLine($"WriteXmlDcsElement(ref emitter, in name, value, settings, {CSharpCodeBuilder.Constant(contractName)}, {XmlDepthParameterName});");
 				sb.LeaveBlock("WriteXmlElement");
 				sb.NewLine();
 
 				// WriteXmlDcsElement(...): the real body, which also knows what the DECLARED contract at the call site was
 				sb.XmlComment("<summary>Writes this value as an element of the given name, annotated with its contract name when the caller's declared type is a different contract</summary>");
 				sb.XmlComment("<param name=\"declaredContractName\">Contract name of the type the call site DECLARED. The reference wire writes a <c>type</c> annotation exactly when the runtime contract differs from it; <see langword=\"null\"/> suppresses the annotation entirely.</param>");
-				sb.AppendLine($"public void WriteXmlDcsElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, string? declaredContractName) where TEmitter : struct, {IXmlEmitterFullName}");
+				sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one; see the same parameter on <c>WriteXmlElement</c>.</param>");
+				sb.AppendLine($"public void WriteXmlDcsElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, string? declaredContractName, int {XmlDepthParameterName} = 0) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXmlDcsElement");
 				sb.AppendLine($"settings ??= {XmlDcsDefaultSettings};");
+				sb.NewLine();
+				WriteXmlDepthGuard(sb, type);
 
 				bool hasPolymorphicDefinition = this.PolymorphicMap.TryGetValue(type.Ref, out var polymorphicMetadata);
 
@@ -459,7 +464,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (derivedType.IsAbstract) continue;
 						//BUGBUG: mirrors the JSON side: the cases are emitted in declaration order, so a base class declared before its own subclass would capture it first
-						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: {GetLocalSerializerRef(derivedType)}.WriteXmlDcsElement(ref emitter, in name, x, settings, declaredContractName); return;");
+						// the delegate writes THIS element, so it stands at the same depth: only a nested MEMBER adds a level
+						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: {GetLocalSerializerRef(derivedType)}.WriteXmlDcsElement(ref emitter, in name, x, settings, declaredContractName, {XmlDepthParameterName}); return;");
 					}
 					if (!type.IsAbstract)
 					{ // an instance of the root type itself falls through to the body below
@@ -470,9 +476,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 				else if (type.IsAbstract && hasPolymorphicDefinition)
 				{ // an abstract type in the middle of a hierarchy: the root of the hierarchy owns the switch
-					sb.AppendLine($"{GetLocalSerializerRef(polymorphicMetadata.Parent)}.WriteXmlDcsElement(ref emitter, in name, value, settings, declaredContractName);");
+					sb.AppendLine($"{GetLocalSerializerRef(polymorphicMetadata.Parent)}.WriteXmlDcsElement(ref emitter, in name, value, settings, declaredContractName, {XmlDepthParameterName});");
 					sb.LeaveBlock("WriteXmlDcsElement");
 					sb.NewLine();
+					WriteXmlCycleHelper(sb);
 					WriteXmlNameFields(sb, names);
 					return;
 				}
@@ -512,6 +519,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					WriteXmlDcsAnyTypeHelper(sb);
 					this.XmlNeedsAnyTypeHelper = false;
 				}
+
+				WriteXmlCycleHelper(sb);
 
 				// emitted BEFORE the enum helpers are asked for: the lookups are what set those flags
 				WriteXmlEnumHelpers(sb, this.XmlEnums);
@@ -756,7 +765,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
-				sb.AppendLine($"{GetLocalSerializerRef(target.Type)}.WriteXmlDcsElement(ref emitter, in {nameRef}, {expr}, settings, {CSharpCodeBuilder.Constant(declared)});");
+				// one level deeper: this is a nested element, and the callee's own guard is what stops a cycle running through it
+				sb.AppendLine($"{GetLocalSerializerRef(target.Type)}.WriteXmlDcsElement(ref emitter, in {nameRef}, {expr}, settings, {CSharpCodeBuilder.Constant(declared)}, {XmlDepthParameterName} + 1);");
 			}
 
 			/// <summary>Writes a scalar element, and returns whether the type had a lexical form at all</summary>
@@ -953,7 +963,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 					sb.AppendLine($"case {included.Type.FullyQualifiedName} {local}:");
 					sb.EnterBlock("case");
-					sb.AppendLine($"{GetLocalSerializerRef(included.Type)}.WriteXmlDcsElement(ref emitter, in {nameRef}, {local}, settings, {CSharpCodeBuilder.Constant(XmlDcsAnyTypeName)});");
+					sb.AppendLine($"{GetLocalSerializerRef(included.Type)}.WriteXmlDcsElement(ref emitter, in {nameRef}, {local}, settings, {CSharpCodeBuilder.Constant(XmlDcsAnyTypeName)}, {XmlDepthParameterName} + 1);");
 					sb.AppendLine("break;");
 					sb.LeaveBlock("case");
 				}
