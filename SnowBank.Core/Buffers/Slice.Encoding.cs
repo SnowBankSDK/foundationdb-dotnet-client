@@ -748,6 +748,10 @@ namespace System
 		/// <summary>Encoding used to produce UTF-8 slices</summary>
 		internal static readonly UTF8Encoding Utf8NoBomEncoding = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
+		/// <summary>Encoding used to DECODE UTF-8 slices for display only: invalid bytes are replaced by U+FFFD instead of throwing.</summary>
+		/// <remarks>Distinct from <see cref="Utf8NoBomEncoding"/>, which throws on invalid bytes and is the one used for strict parsing.</remarks>
+		internal static readonly UTF8Encoding Utf8NoBomEncodingNoThrow = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+
 		/// <summary>Dangerously create a slice containing string converted to the local ANSI code page. All non-ANSI characters may be corrupted or converted to '?', and this slice may not decode properly on a different system.</summary>
 		/// <remarks>
 		/// <para>WARNING: if you put a string that contains non-ANSI chars, it will be silently corrupted! This should only be used to store keywords or 'safe' strings, and when the decoding will only happen on the same system, or systems using the same codepage.</para>
@@ -1550,6 +1554,30 @@ namespace System
 				if (count == 0) return string.Empty;
 			}
 			return Slice.Utf8NoBomEncoding.GetString(array, offset, count);
+		}
+
+		/// <summary>Decode a slice as a UTF-8 string for DISPLAY purposes, replacing any invalid byte with the Unicode replacement character (<c>U+FFFD</c>) instead of throwing.</summary>
+		/// <returns>Decoded string, or <see langword="null"/> if the slice is <see cref="Nil"/>. Any UTF-8 BOM is removed, matching <see cref="ToStringUtf8"/>.</returns>
+		/// <remarks>
+		/// <para>Unlike <see cref="ToStringUtf8"/>, this method NEVER throws on invalid UTF-8: it exists for diagnostic dumps and logging of arbitrary wire bytes whose encoding is not guaranteed.</para>
+		/// <para>Do NOT use it to decode data that must round-trip: a genuine parse should use the strict <see cref="ToStringUtf8"/> and fail on invalid bytes.</para>
+		/// </remarks>
+		[Pure]
+		public string? ToStringUtf8Lenient()
+		{
+			int count = this.Count;
+			var array = this.Array;
+			if (count == 0) return array != null ? string.Empty : null;
+
+			// detect and skip the BOM, same as ToStringUtf8()
+			int offset = this.Offset;
+			if (HasUtf8Bom(array, offset, count))
+			{
+				offset += 3;
+				count -= 3;
+				if (count == 0) return string.Empty;
+			}
+			return Slice.Utf8NoBomEncodingNoThrow.GetString(array, offset, count);
 		}
 
 		/// <summary>Converts a slice using Base64 encoding</summary>
