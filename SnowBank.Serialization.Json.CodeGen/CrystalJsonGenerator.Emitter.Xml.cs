@@ -435,7 +435,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// WriteXml(...): the interface entry point, which owns the rootName override
 				sb.InheritDoc();
-				sb.XmlComment("<remarks>The serialization lifecycle callbacks of this type (<c>OnSerializing</c>, <c>OnSerialized</c>) are NOT invoked on the XML path: they are part of the JSON contract, and whether writing a second format should re-fire them has not been decided. Do not rely on them running here.</remarks>");
+				sb.XmlComment("<remarks>The serialization lifecycle callbacks of this type (<c>OnSerializing</c>, <c>OnSerialized</c>) ARE invoked here, exactly as on the JSON path: the two formats are two renderings of one serialization, so a callback that prepares the members runs for both, once per write.</remarks>");
 				sb.XmlComment("<remarks>Enum labels are baked in at generation time, so they do NOT follow <c>CrystalJsonSettings.UseCamelCasingForEnums</c>: one call can render <c>sciFi</c> in JSON and <c>SciFi</c> in XML. Pin one spelling for both wires with <c>[JsonStringEnumMemberName]</c> or <c>[EnumMember(Value = ...)]</c>.</remarks>");
 				sb.AppendLine($"public void WriteXml<TEmitter>(ref TEmitter emitter, {valueType} value, {settingsType}? settings = default, string? rootName = default) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXml");
@@ -527,6 +527,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					WriteXmlDiscriminator(sb, names, typeDef, polymorphicMetadata);
 				}
 
+				// the same bracket the JSON side puts around its member loop, in the same place: after the element is
+				// opened and its discriminator written, before anything reads the value (the ATTRIBUTE members included,
+				// which are read below and not at the WriteStartElement above)
+				EmitXmlCallbackInvocation(sb, typeDef.OnSerializing);
+
 				if (typeDef.Type.IsCrystalXmlSerializable())
 				{ // the type writes its own content: this body owns the element shell, and nothing else
 					sb.NewLine();
@@ -550,6 +555,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				sb.NewLine();
+				EmitXmlCallbackInvocation(sb, typeDef.OnSerialized);
 				sb.AppendLine("emitter.WriteEndElement(in name);");
 				sb.LeaveBlock("WriteXmlElement");
 				sb.NewLine();
@@ -572,6 +578,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				WriteXmlNameFields(sb, names);
+			}
+
+			/// <summary>Emits one lifecycle callback call inside a generated XML body, or nothing when the type does not declare it</summary>
+			/// <remarks>
+			/// <para>Shared by both XML profiles, and deliberately the SAME emission as the JSON side (<c>EmitCallbackInvocation</c>),
+			/// down to the non-public thunk it routes through: the two formats are two renderings of one serialization, and a type
+			/// whose <c>OnSerializing</c> prepares its members would otherwise write a different document per format.</para>
+			/// <para>The only difference is the name of the instance: the XML bodies call their parameter <c>value</c>, where the JSON
+			/// ones call it <c>instance</c>.</para>
+			/// </remarks>
+			private static void EmitXmlCallbackInvocation(CSharpCodeBuilder sb, CrystalJsonCallbackMetadata? callback)
+			{
+				if (callback is null) return;
+
+				EmitCallbackInvocation(sb, callback, "value", null);
 			}
 
 			/// <summary>Resolves the name of the root element of a type: the data contract's own name, else the type name through the container's naming policy</summary>

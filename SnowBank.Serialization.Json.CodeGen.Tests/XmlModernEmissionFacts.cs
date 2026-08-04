@@ -361,8 +361,32 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 	}
 
+	/// <summary>Mutates one of its own members from <c>OnSerializing</c>, and records the bracket both callbacks form</summary>
+	/// <remarks>The mutation is the load-bearing part: a callback that only appended to a trace would still pass if the
+	/// generated body had read the members BEFORE calling it, which is precisely the ordering bug worth pinning.</remarks>
+	public sealed class Rehearsal
+	{
+
+		[System.Text.Json.Serialization.JsonIgnore]
+		public List<string> Trace { get; } = [ ];
+
+		public string? Stage { get; set; }
+
+		[OnSerializing]
+		private void BeforeWrite()
+		{
+			this.Trace.Add("OnSerializing");
+			this.Stage = "mutated";
+		}
+
+		[OnSerialized]
+		private void AfterWrite() => this.Trace.Add("OnSerialized");
+
+	}
+
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
 	[CrystalXmlOutput]
+	[CrystalJsonSerializable(typeof(Rehearsal))]
 	[CrystalJsonSerializable(typeof(Book))]
 	[CrystalJsonSerializable(typeof(Shelf))]
 	[CrystalJsonSerializable(typeof(Ledger))]
@@ -818,6 +842,67 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(AcmeSerializers.Switchboard.ToXmlText(new Switchboard { Live = true }), Is.EqualTo("<switchboard><live>1</live></switchboard>"));
 				// and the JSON side keeps going through the same converter's Pack
 				Assert.That(AcmeSerializers.Switchboard.ToJsonText(new Switchboard { Live = true }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"live":"1"}"""));
+			}
+		}
+
+		#endregion
+
+		#region Lifecycle callbacks...
+
+		[Test]
+		public void Test_The_Lifecycle_Callbacks_Fire_On_The_Xml_Path()
+		{
+			var probe = new Rehearsal { Stage = "initial" };
+
+			string xml = AcmeSerializers.Rehearsal.ToXmlText(probe);
+			Log($"XML : {xml}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				// the bracket is real, not decorative: OnSerializing runs BEFORE the members are read, so what it wrote
+				// into Stage is what the document carries
+				Assert.That(xml, Is.EqualTo("<rehearsal><stage>mutated</stage></rehearsal>"));
+				Assert.That(probe.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }), "both callbacks fire, in order, exactly once");
+			}
+		}
+
+		[Test]
+		public void Test_Every_Xml_Output_Fires_The_Callbacks_Once()
+		{
+			// the outputs are separate entry points into the same body: none of them may skip or double the bracket
+			var text = new Rehearsal();
+			var bytes = new Rehearsal();
+			var doc = new Rehearsal();
+
+			AcmeSerializers.Rehearsal.ToXmlText(text);
+			AcmeSerializers.Rehearsal.ToXmlBytes(bytes);
+			var xdoc = AcmeSerializers.Rehearsal.ToXDocument(doc);
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(text.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }));
+				Assert.That(bytes.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }));
+				Assert.That(doc.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }));
+				Assert.That(xdoc.Root!.Element("stage")!.Value, Is.EqualTo("mutated"), "the infoset emitter sees the mutated value too");
+			}
+		}
+
+		[Test]
+		public void Test_The_Json_Path_Still_Fires_The_Callbacks_Exactly_Once()
+		{
+			// the XML side is additive: adding the bracket there must not have moved or duplicated the JSON one
+			var text = new Rehearsal();
+			var packed = new Rehearsal();
+
+			string json = AcmeSerializers.Rehearsal.ToJsonText(text, CrystalJsonSettings.JsonCompact);
+			var dom = AcmeSerializers.Rehearsal.Pack(packed);
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(json, Is.EqualTo("""{"stage":"mutated"}"""));
+				Assert.That(text.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }));
+				Assert.That(dom.ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"stage":"mutated"}"""));
+				Assert.That(packed.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }));
 			}
 		}
 

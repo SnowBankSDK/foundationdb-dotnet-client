@@ -399,7 +399,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// WriteXml(...): the interface entry point, which owns the rootName override
 				sb.InheritDoc();
-				sb.XmlComment("<remarks>The serialization lifecycle callbacks of this type (<c>OnSerializing</c>, <c>OnSerialized</c>) are NOT invoked on the XML path: they are part of the JSON contract, and whether writing a second format should re-fire them has not been decided. Do not rely on them running here.</remarks>");
+				sb.XmlComment("<remarks>The serialization lifecycle callbacks of this type (<c>OnSerializing</c>, <c>OnSerialized</c>) ARE invoked here, exactly as on the JSON path, and on the <c>ISerializable</c> dialect they bracket the <c>GetObjectData</c> call the way the reference serializer brackets it.</remarks>");
 				sb.XmlComment("<remarks>This is the DataContract (compat) wire: element names come from the data contract, member order follows the DataContract rule, and scalars use the DCS lexical forms. The JSON-side vocabulary that shapes VALUES rather than membership (<c>[JsonProperty(EnumFormat = ...)]</c>, the enum naming settings) has no effect here, because the wire this profile reproduces never saw it.</remarks>");
 				sb.AppendLine($"public void WriteXml<TEmitter>(ref TEmitter emitter, {valueType} value, {settingsType}? settings = default, string? rootName = default) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXml");
@@ -506,9 +506,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlDcsTypeAttributeName)}, {CSharpCodeBuilder.Constant(contractName)});");
 				sb.LeaveBlock();
 
+				// the same bracket the JSON side puts around its member loop, in the same place: after the element is
+				// opened and its annotation written, before anything reads the value. On the ISerializable dialect this
+				// lands around the GetObjectData call, which is where the reference serializer fires them too.
+				EmitXmlCallbackInvocation(sb, typeDef.OnSerializing);
+
 				WriteXmlDcsBody(sb, names, typeDef);
 
 				sb.NewLine();
+				EmitXmlCallbackInvocation(sb, typeDef.OnSerialized);
 				sb.AppendLine("emitter.WriteEndElement(in name);");
 				sb.LeaveBlock("WriteXmlDcsElement");
 				sb.NewLine();

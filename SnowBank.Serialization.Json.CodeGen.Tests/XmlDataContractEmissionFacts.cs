@@ -332,8 +332,60 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 		[DataMember] public CycleNode? Next;
 	}
 
+	/// <summary>Mutates one of its own members from <c>OnSerializing</c>, and records the bracket both callbacks form</summary>
+	/// <remarks>The mutation is the load-bearing part: a callback that only appended to a trace would still pass if the
+	/// generated body had read the members BEFORE calling it, which is precisely the ordering bug worth pinning.</remarks>
+	[DataContract]
+	public sealed class RehearsalProbe
+	{
+
+		/// <summary>Not a <c>[DataMember]</c>, so it stays out of both wires of this container</summary>
+		public List<string> Trace { get; } = [ ];
+
+		[DataMember] public string? Stage;
+
+		[OnSerializing]
+		private void BeforeWrite()
+		{
+			this.Trace.Add("OnSerializing");
+			this.Stage = "mutated";
+		}
+
+		[OnSerialized]
+		private void AfterWrite() => this.Trace.Add("OnSerialized");
+
+	}
+
+	/// <summary>The same bracket held against the <c>ISerializable</c> dialect, where the "members" are whatever <c>GetObjectData</c> reports</summary>
+	/// <remarks>Real DCS fires the callbacks around <c>GetObjectData</c>, so the bracket has to sit outside that call and not around a member loop this type never runs.</remarks>
+	[Serializable]
+	public sealed class RehearsalBag : ISerializable
+	{
+
+		/// <summary>This type declares no data contract, so every public member is one: the trace has to opt out explicitly</summary>
+		[System.Text.Json.Serialization.JsonIgnore]
+		public List<string> Trace { get; } = [ ];
+
+		private string Stage { get; set; } = "initial";
+
+		[OnSerializing]
+		private void BeforeWrite()
+		{
+			this.Trace.Add("OnSerializing");
+			this.Stage = "mutated";
+		}
+
+		[OnSerialized]
+		private void AfterWrite() => this.Trace.Add("OnSerialized");
+
+		void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context) => info.AddValue("stage", this.Stage);
+
+	}
+
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
+	[CrystalJsonSerializable(typeof(RehearsalProbe))]
+	[CrystalJsonSerializable(typeof(RehearsalBag))]
 	[CrystalJsonSerializable(typeof(CycleNode))]
 	[CrystalJsonSerializable(typeof(NilProbe))]
 	[CrystalJsonSerializable(typeof(Shelf))]
@@ -812,6 +864,59 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// is declared as anyType so it carries its own contract. A key that is not an XML name is escaped by
 			// XmlConvert.EncodeLocalName, exactly as the reference serializer escapes it.
 			Assert.That(xml, Is.EqualTo("""<KeyedBagProbe><Properties><origin type="string">acme-main</origin><channel type="string">web</channel><not_x0020_a_x0020_name type="string">escaped</not_x0020_a_x0020_name></Properties></KeyedBagProbe>"""));
+		}
+
+		#endregion
+
+		#region Lifecycle callbacks...
+
+		[Test]
+		public void Test_The_Lifecycle_Callbacks_Fire_On_The_Compat_Xml_Path()
+		{
+			var probe = new RehearsalProbe { Stage = "initial" };
+
+			string xml = LegacySerializers.RehearsalProbe.ToXmlText(probe);
+			Log($"XML : {xml}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				// OnSerializing runs BEFORE the members are read, so what it wrote into Stage is what the document carries
+				Assert.That(xml, Is.EqualTo("<RehearsalProbe><Stage>mutated</Stage></RehearsalProbe>"));
+				Assert.That(probe.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }), "both callbacks fire, in order, exactly once");
+			}
+		}
+
+		[Test]
+		public void Test_The_Lifecycle_Callbacks_Bracket_The_ISerializable_Dialect()
+		{
+			// this type has no member loop at all: its content IS whatever GetObjectData reports, and the reference
+			// serializer brackets that call with the callbacks. The mutation shows the bracket is on the right side of it.
+			var probe = new RehearsalBag();
+
+			string xml = LegacySerializers.RehearsalBag.ToXmlText(probe);
+			Log($"XML : {xml}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(xml, Is.EqualTo("""<RehearsalBag><stage type="string">mutated</stage></RehearsalBag>"""));
+				Assert.That(probe.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }));
+			}
+		}
+
+		[Test]
+		public void Test_The_Compat_Json_Path_Still_Fires_The_Callbacks_Exactly_Once()
+		{
+			// the XML side is additive: adding the bracket there must not have moved or duplicated the JSON one
+			var probe = new RehearsalProbe();
+
+			string json = LegacySerializers.RehearsalProbe.ToJsonText(probe, CrystalJsonSettings.JsonCompact);
+			Log($"JSON: {json}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(json, Is.EqualTo("""{"Stage":"mutated"}"""));
+				Assert.That(probe.Trace, Is.EqualTo(new[] { "OnSerializing", "OnSerialized" }));
+			}
 		}
 
 		#endregion

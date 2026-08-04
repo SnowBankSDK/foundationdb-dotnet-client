@@ -213,8 +213,17 @@ At run time, graphs deeper than `CrystalXml.MaxDepth` (256 levels of generated r
 `CrystalXmlCycleException` - the guard cannot distinguish a genuine cycle from a legitimately
 deeper acyclic graph, and its message says so. The depth counter cannot cross a call into
 `ICrystalXmlSerializer<T>.WriteXml` or `ICrystalXmlSerializable.WriteXml`: a cycle running
-entirely through such hooks is not covered by the guard. Serialization lifecycle callbacks
-(`OnSerializing` and friends) are not invoked on the XML path.
+entirely through such hooks is not covered by the guard.
+
+Serialization lifecycle callbacks (`[OnSerializing]` / `[OnSerialized]`) **are** invoked on the
+XML path, in the same place and through the same generated call as on the JSON path: the two
+formats are two renderings of one serialization, so a callback that prepares the members runs
+for both, once per write. `OnSerializing` runs after the element is opened but before anything
+reads the value (attribute-projected members included), so its mutations are what the document
+carries; `OnSerialized` runs just before the element is closed. On the compat profile's
+`ISerializable` dialect the pair brackets the `GetObjectData` call, which is where the reference
+serializer fires them too. There is no `OnDeserializing` / `OnDeserialized` counterpart, since
+CrystalXml never reads.
 
 ## Consumer requirements
 
