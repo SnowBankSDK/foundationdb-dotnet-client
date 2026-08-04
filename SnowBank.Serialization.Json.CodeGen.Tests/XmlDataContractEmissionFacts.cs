@@ -332,6 +332,38 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 		[DataMember] public CycleNode? Next;
 	}
 
+	/// <summary>A three-level hierarchy whose CONCRETE intermediate is registered BEFORE its own subclass</summary>
+	/// <remarks>The shape that makes a dispatch switch emitted in registration order fail to compile: <c>case Sedan</c> captures
+	/// every <see cref="Estate"/> too, so the case that follows it is unreachable (CS8120). The registration order below is the
+	/// one that reproduces it, and the generated switch has to reorder it by inheritance depth rather than trust it.</remarks>
+	[DataContract]
+	[JsonDerivedType(typeof(Sedan), "sedan")]
+	[JsonDerivedType(typeof(Estate), "estate")]
+	public abstract class Chassis
+	{
+		[DataMember] public string? Vin;
+	}
+
+	/// <summary>Concrete AND not sealed: the intermediate level, which is what makes the ordering load-bearing</summary>
+	[DataContract]
+	public class Sedan : Chassis
+	{
+		[DataMember] public int Doors;
+	}
+
+	[DataContract]
+	public sealed class Estate : Sedan
+	{
+		[DataMember] public int Volume;
+	}
+
+	/// <summary>Holds the hierarchy behind a DECLARED base, which is how the compat wire reaches the dispatch switch with a contract annotation to write</summary>
+	[DataContract]
+	public sealed class ChassisProbe
+	{
+		[DataMember] public Chassis? Held;
+	}
+
 	/// <summary>Mutates one of its own members from <c>OnSerializing</c>, and records the bracket both callbacks form</summary>
 	/// <remarks>The mutation is the load-bearing part: a callback that only appended to a trace would still pass if the
 	/// generated body had read the members BEFORE calling it, which is precisely the ordering bug worth pinning.</remarks>
@@ -384,6 +416,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
+	[CrystalJsonSerializable(typeof(Chassis))]
+	[CrystalJsonSerializable(typeof(Sedan))]
+	[CrystalJsonSerializable(typeof(Estate))]
+	[CrystalJsonSerializable(typeof(ChassisProbe))]
 	[CrystalJsonSerializable(typeof(RehearsalProbe))]
 	[CrystalJsonSerializable(typeof(RehearsalBag))]
 	[CrystalJsonSerializable(typeof(CycleNode))]
@@ -864,6 +900,30 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// is declared as anyType so it carries its own contract. A key that is not an XML name is escaped by
 			// XmlConvert.EncodeLocalName, exactly as the reference serializer escapes it.
 			Assert.That(xml, Is.EqualTo("""<KeyedBagProbe><Properties><origin type="string">acme-main</origin><channel type="string">web</channel><not_x0020_a_x0020_name type="string">escaped</not_x0020_a_x0020_name></Properties></KeyedBagProbe>"""));
+		}
+
+		#endregion
+
+		#region Dispatch order over a three-level hierarchy...
+
+		[Test]
+		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Compat_Wire()
+		{
+			// that this fixture COMPILED is already half the fact: a switch emitted in registration order would have put
+			// 'case Sedan' first, making 'case Estate' unreachable (CS8120) and failing the build outright
+			string leaf = LegacySerializers.ChassisProbe.ToXmlText(new ChassisProbe { Held = new Estate { Vin = "V1", Doors = 5, Volume = 1600 } });
+			string middle = LegacySerializers.ChassisProbe.ToXmlText(new ChassisProbe { Held = new Sedan { Vin = "V2", Doors = 4 } });
+			Log($"leaf   : {leaf}");
+			Log($"middle : {middle}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				// the element keeps the DECLARED name, and the runtime contract arrives as the type annotation
+				Assert.That(leaf, Does.Contain("""<Held type="Estate">"""), "the most derived case has to win the dispatch");
+				Assert.That(leaf, Does.Contain("<Volume>1600</Volume>"), "and its own body is what writes the element, members included");
+				Assert.That(middle, Does.Contain("""<Held type="Sedan">"""), "the intermediate still reaches its own body");
+				Assert.That(middle, Does.Not.Contain("Volume"), "and writes only its own members");
+			}
 		}
 
 		#endregion

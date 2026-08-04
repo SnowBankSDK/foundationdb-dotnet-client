@@ -361,6 +361,28 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 	}
 
+	/// <summary>A three-level hierarchy whose CONCRETE intermediate is registered BEFORE its own subclass</summary>
+	/// <remarks>The shape that makes a dispatch switch emitted in declaration order fail to compile: <c>case Sedan</c> captures
+	/// every <see cref="Estate"/> too, so the case that follows it is unreachable (CS8120). The registration order below is the
+	/// one that reproduces it, and the generated switch has to reorder it by inheritance depth rather than trust it.</remarks>
+	[JsonDerivedType(typeof(Sedan), "sedan")]
+	[JsonDerivedType(typeof(Estate), "estate")]
+	public abstract record Chassis
+	{
+		public required string Vin { get; init; }
+	}
+
+	/// <summary>Concrete AND not sealed: the intermediate level, which is what makes the ordering load-bearing</summary>
+	public record Sedan : Chassis
+	{
+		public int Doors { get; init; }
+	}
+
+	public sealed record Estate : Sedan
+	{
+		public int Volume { get; init; }
+	}
+
 	/// <summary>Mutates one of its own members from <c>OnSerializing</c>, and records the bracket both callbacks form</summary>
 	/// <remarks>The mutation is the load-bearing part: a callback that only appended to a trace would still pass if the
 	/// generated body had read the members BEFORE calling it, which is precisely the ordering bug worth pinning.</remarks>
@@ -387,6 +409,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
 	[CrystalXmlOutput]
 	[CrystalJsonSerializable(typeof(Rehearsal))]
+	[CrystalJsonSerializable(typeof(Chassis))]
+	[CrystalJsonSerializable(typeof(Sedan))]
+	[CrystalJsonSerializable(typeof(Estate))]
 	[CrystalJsonSerializable(typeof(Book))]
 	[CrystalJsonSerializable(typeof(Shelf))]
 	[CrystalJsonSerializable(typeof(Ledger))]
@@ -842,6 +867,48 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(AcmeSerializers.Switchboard.ToXmlText(new Switchboard { Live = true }), Is.EqualTo("<switchboard><live>1</live></switchboard>"));
 				// and the JSON side keeps going through the same converter's Pack
 				Assert.That(AcmeSerializers.Switchboard.ToJsonText(new Switchboard { Live = true }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"live":"1"}"""));
+			}
+		}
+
+		#endregion
+
+		#region Dispatch order over a three-level hierarchy...
+
+		[Test]
+		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Modern_Wire()
+		{
+			// that this fixture COMPILED is already half the fact: a switch emitted in registration order would have put
+			// 'case Sedan' first, making 'case Estate' unreachable (CS8120) and failing the build outright
+			string leaf = AcmeSerializers.Chassis.ToXmlText(new Estate { Vin = "V1", Doors = 5, Volume = 1600 });
+			string middle = AcmeSerializers.Chassis.ToXmlText(new Sedan { Vin = "V2", Doors = 4 });
+			Log($"leaf   : {leaf}");
+			Log($"middle : {middle}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(leaf, Does.Contain("type=\"estate\""), "the most derived case has to win the dispatch");
+				Assert.That(leaf, Does.Contain("<volume>1600</volume>"), "and its own body is what writes the element, members included");
+				Assert.That(middle, Does.Contain("type=\"sedan\""), "the intermediate still reaches its own body");
+				Assert.That(middle, Does.Not.Contain("volume"), "and writes only its own members");
+			}
+		}
+
+		[Test]
+		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Json_Wire()
+		{
+			// the same ordering rule, on the sensitive wire: both JSON write routes (text and DOM) go through their own switch
+			var leaf = new Estate { Vin = "V1", Doors = 5, Volume = 1600 };
+
+			string json = AcmeSerializers.Chassis.ToJsonText(leaf, CrystalJsonSettings.JsonCompact);
+			string packed = AcmeSerializers.Chassis.Pack(leaf).ToJsonText(CrystalJsonSettings.JsonCompact);
+			Log($"text : {json}");
+			Log($"pack : {packed}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(json, Does.Contain("\"estate\""), "the most derived case has to win the dispatch");
+				Assert.That(json, Does.Contain("\"volume\":1600"), "and its own body is what writes the members");
+				Assert.That(packed, Is.EqualTo(json), "the DOM route dispatches the same way as the text route");
 			}
 		}
 

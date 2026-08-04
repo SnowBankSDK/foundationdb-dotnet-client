@@ -465,10 +465,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.Comment("the runtime type decides which generated body writes the element; the declared contract travels unchanged, so each body can tell whether it must annotate itself");
 					sb.AppendLine("switch (value)");
 					sb.EnterBlock("switch");
-					foreach (var (_, derivedType, _) in typeDef.DerivedTypes)
+					foreach (var derivedType in GetPolymorphicDispatchOrder(typeDef))
 					{
-						if (derivedType.IsAbstract) continue;
-						//BUGBUG: mirrors the JSON side: the cases are emitted in declaration order, so a base class declared before its own subclass would capture it first
 						// the delegate writes THIS element, so it stands at the same depth: only a nested MEMBER adds a level
 						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: {GetLocalSerializerRef(derivedType)}.WriteXmlDcsElement(ref emitter, in name, x, settings, declaredContractName, {XmlDepthParameterName}); return;");
 					}
@@ -478,6 +476,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					sb.AppendLine($"default: throw new {CrystalXmlUnknownTypeExceptionFullName}(value.GetType());");
 					sb.LeaveBlock("switch");
+
+					if (type.IsAbstract)
+					{ // no case falls through: an ABSTRACT root has no instance of its own to write, so a body below the switch
+					  // would be code no path can reach (CS0162). Close here, exactly as the abstract-intermediate branch does.
+						sb.LeaveBlock("WriteXmlDcsElement");
+						sb.NewLine();
+						WriteXmlCycleHelper(sb);
+						WriteXmlNameFields(sb, names);
+						return;
+					}
 				}
 				else if (type.IsAbstract && hasPolymorphicDefinition)
 				{ // an abstract type in the middle of a hierarchy: the root of the hierarchy owns the switch

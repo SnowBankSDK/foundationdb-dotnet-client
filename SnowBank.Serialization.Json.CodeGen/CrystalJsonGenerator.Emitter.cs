@@ -1,4 +1,4 @@
-﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -2521,6 +2521,25 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Emits the accessor thunks for members that generated code cannot reach directly (a private/protected member, or a non-public accessor unlocked by <c>[JsonInclude]</c>)</summary>
 			/// <remarks>Two flavors with identical call sites: zero-cost <c>[UnsafeAccessor]</c> thunks when the consuming compilation defines the attribute (net8+), and reflection-based accessors otherwise (correct wire, slower). Internal members never get a thunk: the generated code lives in the same assembly and reaches them directly.</remarks>
+			/// <summary>Returns the CONCRETE registered subtypes of a polymorphic root, MOST DERIVED FIRST: the order a switch over runtime types has to case them in</summary>
+			/// <remarks>
+			/// <para>A <c>case</c> on a base type captures every subclass, so a concrete non-sealed intermediate registered before its
+			/// own registered subclass would make that subclass's case unreachable - CS8120, which is a build FAILURE in the generated
+			/// code, not a wrong wire. Registration order cannot be trusted for this, and inheritance depth is the property that fixes it.</para>
+			/// <para>Depth is the only key, and <c>OrderByDescending</c> is stable, so two unrelated subtypes keep their registration
+			/// order and the emission stays deterministic. Abstract types are dropped: they have no instance to match.</para>
+			/// <para>Shared by all three wires (JSON <c>Pack</c> and <c>Serialize</c>, and the two XML profiles), which is the point:
+			/// one ordering rule, spelled once. The same mechanism already orders the compat wire's <c>anyType</c> switch.</para>
+			/// </remarks>
+			private static IEnumerable<TypeMetadata> GetPolymorphicDispatchOrder(CrystalJsonTypeMetadata typeDef)
+			{
+				foreach (var (_, derivedType, _) in typeDef.DerivedTypes.OrderByDescending(static x => x.Type.InheritanceDepth))
+				{
+					if (derivedType.IsAbstract) continue;
+					yield return derivedType;
+				}
+			}
+
 			/// <summary>Emits the call to one lifecycle callback, or nothing when the type does not declare it</summary>
 			/// <param name="documentExpr">Expression yielding the document being bound, for the deserialize pair; <see langword="null"/> on the serialize side, which has no document</param>
 			/// <remarks>The parameter shapes were validated at parse time (CJSON0015), so the emitted call needs no runtime test.</remarks>
@@ -2729,11 +2748,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					sb.AppendLine("switch(instance)");
 					sb.EnterBlock();
-					foreach (var (_, derivedType, _) in typeDef.DerivedTypes)
+					foreach (var derivedType in GetPolymorphicDispatchOrder(typeDef))
 					{
-						if (derivedType.IsAbstract) continue; // skip abstract types
-						//BUGBUG: TODO: we may need to sort the types from most specific to less specific, ex: "case Greyhound" then "case Dog", otherwise "case Dog" would match all Greyhound instances if evaluated first!
-						//note: if we compute the "depth" of each type (from the top most abstract class or interface), we could simply sort them from highest to lowest!
 						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: return {GetLocalSerializerRef(derivedType)}.Pack(x, settings, resolver);");
 					}
 					sb.AppendLine($"default: throw {KnownTypeSymbols.JsonSerializationExceptionFullName}.CannotPackDerivedTypeWithUnknownTypeDiscriminator(instance.GetType(), typeof({typeDef.Type.FullyQualifiedName}));");
@@ -2899,9 +2915,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					sb.AppendLine("switch(instance)");
 					sb.EnterBlock();
-					foreach (var (_, derivedType, _) in typeDef.DerivedTypes)
+					foreach (var derivedType in GetPolymorphicDispatchOrder(typeDef))
 					{
-						if (derivedType.IsAbstract) continue;
 						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: {GetLocalSerializerRef(derivedType)}.Serialize(writer, x); break;");
 					}
 					sb.AppendLine($"default: throw {KnownTypeSymbols.JsonSerializationExceptionFullName}.CannotSerializeDerivedTypeWithoutTypeDiscriminator(instance.GetType(), typeof({typeDef.Type.FullyQualifiedName}));");

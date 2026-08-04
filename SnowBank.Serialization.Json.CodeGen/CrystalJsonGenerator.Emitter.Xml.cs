@@ -485,10 +485,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.Comment("the runtime type decides which generated body writes the element (and the discriminator it carries)");
 					sb.AppendLine("switch (value)");
 					sb.EnterBlock("switch");
-					foreach (var (_, derivedType, _) in typeDef.DerivedTypes)
+					foreach (var derivedType in GetPolymorphicDispatchOrder(typeDef))
 					{
-						if (derivedType.IsAbstract) continue;
-						//BUGBUG: mirrors the JSON side: the cases are emitted in declaration order, so a base class declared before its own subclass would capture it first
 						// the delegate writes THIS element, so it stands at the same depth: only a nested MEMBER adds a level
 						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: {GetLocalSerializerRef(derivedType)}.WriteXmlElement(ref emitter, in name, x, settings, {XmlDepthParameterName}); return;");
 					}
