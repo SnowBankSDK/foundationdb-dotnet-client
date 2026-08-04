@@ -220,5 +220,9 @@ entirely through such hooks is not covered by the guard. Serialization lifecycle
 
 The generated XML code emits UTF-8 string literals (`"..."u8`) for the cached element and
 attribute names, so a container that enables XML output must compile at **`LangVersion` 11 or
-later**. JSON-only containers are unaffected. This is also why the XML fixtures are excluded from
-the repo's `net472` lite validation targets, which compile at 7.3.
+later**. Projects targeting .NET 8 or later meet this by default; older-style projects (including
+.NET Framework, whose default is C# 7.3) must set `LangVersion` explicitly. JSON-only containers
+are unaffected. The XML certification suite itself runs on modern .NET only: whether the lite
+(`netstandard2.0`/`net472`) path supports XML output at all is an open product question, and until
+it is answered the XML fixtures are excluded from the `net472` validation targets rather than
+shipped unvalidated.

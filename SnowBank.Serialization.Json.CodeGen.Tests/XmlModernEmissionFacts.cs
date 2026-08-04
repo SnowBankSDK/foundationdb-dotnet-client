@@ -968,7 +968,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		/// <summary>Runs the generator over a probe and returns the <c>#error</c> directives its output carries</summary>
 		/// <remarks>An <c>#error</c> is not a generator diagnostic: it only exists once the emitted source is compiled, where it
-		/// surfaces as CS1029. These two shapes are refused there rather than by a CXML descriptor, so this is where they are pinned.</remarks>
+		/// surfaces as CS1029. The two shapes pinned here are ALSO refused earlier by a parser diagnostic (CXML0011 for the
+		/// attribute-shaped dictionary value, CXML0007 for the root name); the <c>#error</c> is the unreachable backstop kept in
+		/// the emitted source, and these facts pin that the backstop still fires because the diagnostics do not abort emission.</remarks>
 		private static List<string> EmissionErrorsOf(string source)
 		{
 			var compilation = GeneratorProbeHarness.Compile("namespace Probe\n{\n" + source + "\n}\n");
@@ -990,7 +992,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_An_Attribute_Shaped_Dictionary_With_A_Non_Scalar_Value_Fails_The_Build()
 		{
 			// the two attribute shapes carry the value as TEXT: a value type with no lexical form has nothing to put there,
-			// and the shape is picked in the source, so the answer belongs at build time
+			// and the shape is picked in the source, so the answer belongs at build time. CXML0011 reports it at the member
+			// with a remedy; this fact pins the #error backstop that remains in the emitted source.
 			var errors = EmissionErrorsOf("""
 					public sealed record ProbePart
 					{
@@ -1018,7 +1021,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Fails_The_Build()
 		{
 			// the root name is the one name no [XmlProperty] can override: a contract name written for another wire would
-			// produce a document that does not parse, so it is refused where it is resolved
+			// produce a document that does not parse, so it is refused where it is resolved. CXML0007 reports it at the
+			// type with a remedy; this fact pins the #error backstop that remains in the emitted source.
 			var errors = EmissionErrorsOf("""
 					[System.Runtime.Serialization.DataContract(Name = "not a name")]
 					public sealed record ProbeDto

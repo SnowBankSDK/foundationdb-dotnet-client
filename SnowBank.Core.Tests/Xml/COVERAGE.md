@@ -102,14 +102,23 @@ Named, with owners:
    CXML0010 (`XmlPropertyMetadataFacts.Test_A_CollectionDataContract_Member_On_A_DataContract_Container_Is_A_Build_Error`)
    rather than half-honored. The matrix measures 182 source declarations; migrating call sites
    that rely on them will surface this diagnostic and must introduce an explicit shape.
-3. EXCLUDED, BLOCKED BY A PRE-EXISTING JSON-GENERATOR DEFECT (ruled defect B, fix on its own
-   branch off master) - bare collection/scalar roots (`List<Shelf>`, `string` as root: matrix
-   families "List as root", "named collection as root", "string as root") and the POCO
-   read-only-property trait (`ReadOnlyIgnored`): the JSON deserializer emission fails to compile
-   (CS0200 / nameless-indexer errors) before the XML overlay is even reached. These families
-   become portable when defect B lands; re-enabling them here is a one-commit follow-up. The
-   POCO read-only trait specifically is restored by the upstream fix `d14b5dd1` (integrated by
-   the owner via PR); re-enabling that probe on this branch is a named follow-up of this stream.
+3. Two distinct sub-cases, per the owner-pinned design ruling (2026-08-04):
+   (a) NATIVE-PATH FAMILIES, out of this suite's scope - bare collection/scalar roots
+   (`List<Shelf>`, `string` as root: matrix families "List as root", "named collection as root",
+   "string as root"). CrystalJson serializes collections, dictionaries and scalars NATIVELY,
+   root included; the source generator emits converters for POCO types only, and an owner-driven
+   follow-up makes it detect and skip such enrollments instead of crashing on them. These
+   families therefore belong to a native XML root path, which CrystalXml DOES NOT currently
+   have (its XML surface is exclusively generated per-type facets): they are out of scope for
+   this generated-converter certification suite and do not count against its family coverage.
+   The measured corpus does contain `ArrayOf*` roots in real captures, so the stage-B fidelity
+   harness will quantify the need; a native XML root path (composing the item type's
+   `ICrystalXmlSerializer<T>` facet under an `ArrayOfX` root) is the natural follow-up if the
+   captures demand it - parked as an owner question.
+   (b) DEFECT-GATED - the POCO read-only-property trait (`ReadOnlyIgnored`, family 20): the JSON
+   deserializer emission fails to compile (CS0200) before the XML overlay is reached. Restored
+   by the upstream fix `d14b5dd1` (integrated by the owner via PR); re-enabling that probe on
+   this branch is a named follow-up of this stream.
 4. REDUCED - the ISerializable family lost its `KeyedBag<List<string>>` half (gap 1's shape);
    `type="ArrayOfstring"` on an ISerializable value is pinned by the deviation-3 fact instead.
 5. COVERED (this ledger's own probe) - `List<object>` as a collection member (matrix:
