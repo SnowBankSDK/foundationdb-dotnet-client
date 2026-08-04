@@ -406,12 +406,37 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 	}
 
+	/// <summary>A polymorphic hierarchy whose DERIVED type declares <c>[OnSerializing]</c>: the Q2 x Q7 interaction under the BASE dispatch switch</summary>
+	/// <remarks>The base dispatch switch is what has to reach the derived type's own body, and that body carries its own lifecycle
+	/// bracket: a dispatch that forwarded to the member without also honoring the bracket would silently drop the callback for
+	/// every instance whose runtime type is a subclass.</remarks>
+	[JsonDerivedType(typeof(Amplifier), "amplifier")]
+	public abstract record Appliance
+	{
+		public required string Model { get; init; }
+	}
+
+	public sealed record Amplifier : Appliance
+	{
+
+		[System.Text.Json.Serialization.JsonIgnore]
+		public List<string> Trace { get; } = [ ];
+
+		public int Watts { get; init; }
+
+		[OnSerializing]
+		private void BeforeWrite() => this.Trace.Add("OnSerializing");
+
+	}
+
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
 	[CrystalXmlOutput]
 	[CrystalJsonSerializable(typeof(Rehearsal))]
 	[CrystalJsonSerializable(typeof(Chassis))]
 	[CrystalJsonSerializable(typeof(Sedan))]
 	[CrystalJsonSerializable(typeof(Estate))]
+	[CrystalJsonSerializable(typeof(Appliance))]
+	[CrystalJsonSerializable(typeof(Amplifier))]
 	[CrystalJsonSerializable(typeof(Book))]
 	[CrystalJsonSerializable(typeof(Shelf))]
 	[CrystalJsonSerializable(typeof(Ledger))]
@@ -909,6 +934,23 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(json, Does.Contain("\"estate\""), "the most derived case has to win the dispatch");
 				Assert.That(json, Does.Contain("\"volume\":1600"), "and its own body is what writes the members");
 				Assert.That(packed, Is.EqualTo(json), "the DOM route dispatches the same way as the text route");
+			}
+		}
+
+		[Test]
+		public void Test_A_Derived_Types_OnSerializing_Callback_Fires_Once_Through_The_Base_Dispatch_Switch()
+		{
+			// Q2 x Q7: the runtime type is the DERIVED Amplifier, reached only through Appliance's base dispatch switch, and
+			// its own [OnSerializing] callback has to fire from there, exactly once
+			var amplifier = new Amplifier { Model = "A1", Watts = 100 };
+
+			string xml = AcmeSerializers.Appliance.ToXmlText(amplifier);
+			Log($"XML : {xml}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(xml, Does.Contain("type=\"amplifier\""), "the derived case has to win the dispatch");
+				Assert.That(amplifier.Trace, Is.EqualTo(new[] { "OnSerializing" }), "the callback fires exactly once, dispatched from the base switch");
 			}
 		}
 

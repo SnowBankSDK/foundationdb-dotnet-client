@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -2519,8 +2519,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 					? $"__get_{member.MemberName}({(typeDef.Type.IsValueType() ? "ref " : "")}instance)"
 					: $"instance.{member.MemberName}";
 
-			/// <summary>Emits the accessor thunks for members that generated code cannot reach directly (a private/protected member, or a non-public accessor unlocked by <c>[JsonInclude]</c>)</summary>
-			/// <remarks>Two flavors with identical call sites: zero-cost <c>[UnsafeAccessor]</c> thunks when the consuming compilation defines the attribute (net8+), and reflection-based accessors otherwise (correct wire, slower). Internal members never get a thunk: the generated code lives in the same assembly and reaches them directly.</remarks>
 			/// <summary>Returns the CONCRETE registered subtypes of a polymorphic root, MOST DERIVED FIRST: the order a switch over runtime types has to case them in</summary>
 			/// <remarks>
 			/// <para>A <c>case</c> on a base type captures every subclass, so a concrete non-sealed intermediate registered before its
@@ -2528,7 +2526,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// code, not a wrong wire. Registration order cannot be trusted for this, and inheritance depth is the property that fixes it.</para>
 			/// <para>Depth is the only key, and <c>OrderByDescending</c> is stable, so two unrelated subtypes keep their registration
 			/// order and the emission stays deterministic. Abstract types are dropped: they have no instance to match.</para>
-			/// <para>Shared by all three wires (JSON <c>Pack</c> and <c>Serialize</c>, and the two XML profiles), which is the point:
+			/// <para>Shared by all four wires (JSON <c>Pack</c> and <c>Serialize</c>, and the two XML profiles), which is the point:
 			/// one ordering rule, spelled once. The same mechanism already orders the compat wire's <c>anyType</c> switch.</para>
 			/// </remarks>
 			private static IEnumerable<TypeMetadata> GetPolymorphicDispatchOrder(CrystalJsonTypeMetadata typeDef)
