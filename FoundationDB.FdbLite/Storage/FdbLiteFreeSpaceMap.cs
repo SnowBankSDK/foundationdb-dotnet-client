@@ -100,9 +100,41 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Takes the first reusable run of <paramref name="count"/> blocks whose start is a multiple of <paramref name="alignment"/> and which does not straddle a <paramref name="regionSizeInBlocks"/> boundary.</summary>
-		public bool TryAllocate(uint count, uint alignment, uint regionSizeInBlocks, out uint start)
+		public bool TryAllocate(uint count, uint alignment, uint regionSizeInBlocks, out uint start, bool fromHighEnd = false)
 		{
 			Contract.Requires(count > 0 && BitOperations.IsPow2(alignment) && BitOperations.IsPow2(regionSizeInBlocks) && count <= regionSizeInBlocks);
+
+			if (fromHighEnd)
+			{
+				// Leaf pages allocate from the HIGH end so that, over the churn of copy-on-write, they cluster near
+				// the end of the file and leave the low reusable runs for internal pages (which allocate low). Scan
+				// ranges high to low, and within a range take the highest aligned run that fits without straddling a
+				// region boundary.
+				for (int i = this.Reusable.Count - 1; i >= 0; i--)
+				{
+					var (rangeStart, rangeCount) = this.Reusable[i];
+					if (rangeCount < count) { continue; }
+
+					// highest aligned start whose run ends at or before the range end
+					uint candidate = (rangeStart + rangeCount - count) & ~(alignment - 1);
+					while (candidate >= rangeStart)
+					{
+						uint region = candidate / regionSizeInBlocks;
+						if ((candidate + count - 1) / regionSizeInBlocks != region)
+						{ // would straddle: the highest position that still fits ends at this region's last block
+							candidate = ((region + 1) * regionSizeInBlocks - count) & ~(alignment - 1);
+							continue;
+						}
+
+						RemoveFromRange(i, rangeStart, rangeCount, candidate, count);
+						start = candidate;
+						return true;
+					}
+				}
+
+				start = 0;
+				return false;
+			}
 
 			for (int i = 0; i < this.Reusable.Count; i++)
 			{

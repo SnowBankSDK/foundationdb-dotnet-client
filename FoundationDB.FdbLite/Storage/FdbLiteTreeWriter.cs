@@ -2829,7 +2829,12 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			else
 			{
-				id = this.Allocator.AllocatePage();
+				// Placement bias: leaf pages allocate from the high end of the free space, internal pages from the
+				// low end, so that over the churn of copy-on-write the internal tier clusters near the start of the
+				// file (see FdbLiteFreeSpaceMap.TryAllocate). A clustered, small internal tier can be warmed into
+				// cache on open, keeping tree descent hot.
+				bool leaf = FdbLitePageHeader.GetPageType(image) == FdbLitePageType.Leaf;
+				id = this.Allocator.AllocatePage(fromHighEnd: leaf);
 				this.Shadow.Add(id);
 				if (oldPageId != 0)
 				{

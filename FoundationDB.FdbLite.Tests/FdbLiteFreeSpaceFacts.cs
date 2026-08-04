@@ -58,6 +58,112 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_TryAllocate_FromHighEnd_Takes_The_Highest_Reusable_Run()
+		{
+			// Placement bias: internal pages reuse from the LOW end, leaf pages from the HIGH end, so that over
+			// the churn of copy-on-write the internal pages cluster near the start of the file. Same free set,
+			// opposite ends.
+
+			// low end (the existing default) takes the lowest run
+			var low = new FdbLiteFreeSpaceMap();
+			low.FreeImmediately(10, 1);
+			low.FreeImmediately(100, 1);
+			Assert.That(low.TryAllocate(1, 1, 1024, out uint lowStart, fromHighEnd: false), Is.True);
+			Assert.That(lowStart, Is.EqualTo(10), "low-end reuse must take the lowest reusable run");
+
+			// high end takes the highest run, leaving the low runs free for internal pages
+			var high = new FdbLiteFreeSpaceMap();
+			high.FreeImmediately(10, 1);
+			high.FreeImmediately(100, 1);
+			Assert.That(high.TryAllocate(1, 1, 1024, out uint highStart, fromHighEnd: true), Is.True);
+			Assert.That(highStart, Is.EqualTo(100), "high-end reuse must take the highest reusable run");
+		}
+
+		[Test]
+		public void Test_AllocatePage_Places_Leaf_High_And_Internal_Low()
+		{
+			// 1 block per page, so a page allocation is a single-block run and the test addresses are page ids
+			var pager = new FdbLiteHeapPager(new FdbLiteGeometry(14, 0));
+
+			// internal pages reuse from the LOW end
+			var lowFree = new FdbLiteFreeSpaceMap();
+			lowFree.FreeImmediately(10, 1);
+			lowFree.FreeImmediately(100, 1);
+			var internalAlloc = new FdbLiteBlockAllocator(pager, lowFree, frontier: 1000);
+			Assert.That(internalAlloc.AllocatePage(fromHighEnd: false), Is.EqualTo(10u), "internal pages reuse the lowest free page");
+
+			// leaf pages reuse from the HIGH end, leaving the low pages for internal pages
+			var highFree = new FdbLiteFreeSpaceMap();
+			highFree.FreeImmediately(10, 1);
+			highFree.FreeImmediately(100, 1);
+			var leafAlloc = new FdbLiteBlockAllocator(pager, highFree, frontier: 1000);
+			Assert.That(leafAlloc.AllocatePage(fromHighEnd: true), Is.EqualTo(100u), "leaf pages reuse the highest free page");
+		}
+
+		[Test]
+		public void Test_Churn_Clusters_Internal_Pages_Below_Leaf_Pages()
+		{
+			// Build a multi-level tree, then churn it: overwrite every key each generation so both leaves and their
+			// ancestor internal pages are copied-on-write and reallocated from the free list. That reuse is where the
+			// placement bias acts - leaves take high free pages, internal pages take low ones - so after enough churn
+			// the internal tier should sit below the leaves. This is emergent, not absolute, so the assertion is on
+			// the medians, not on every page.
+			var pager = new FdbLiteHeapPager(FdbLiteGeometry.Hypothesis);
+			var engine = FdbLiteEngine.Create(pager);
+			using var cleanup = engine;
+			engine.RetainFloor = ulong.MaxValue; // reclaim/reuse freed pages, so the bias has free pages to place into
+
+			const int keys = 30000;
+			for (int gen = 0; gen < 8; gen++)
+			{
+				var writer = engine.BeginWrite();
+				for (int i = 0; i < keys; i++)
+				{
+					var key = new byte[8];
+					System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(key, i);
+					var value = new byte[64];
+					value[0] = (byte) gen;
+					writer.Insert(key, value);
+				}
+				engine.Commit(writer, (ulong) (gen + 1));
+			}
+
+			var internalIds = new List<uint>();
+			var leafIds = new List<uint>();
+			CollectPageIds(pager, engine.BeginRead().RootPageId, internalIds, leafIds);
+
+			Assert.That(internalIds, Is.Not.Empty, "the tree must have internal pages for this to mean anything");
+			Assert.That(leafIds.Count, Is.GreaterThan(internalIds.Count), "leaves must dominate the page population");
+
+			internalIds.Sort();
+			leafIds.Sort();
+			uint maxInternal = internalIds[^1];
+			uint minLeaf = leafIds[0];
+			// The bias reallocates internal pages from the low end and leaves from the high end, so after churn the
+			// internal tier sits below the leaves. Without the bias the reallocated internal page lands amid the
+			// leaves (it takes the same lowest-free page they compete for).
+			Assert.That(maxInternal, Is.LessThan(minLeaf),
+				$"placement bias must put the internal pages below the leaves (max internal id {maxInternal}, min leaf id {minLeaf}; internal n={internalIds.Count}, leaf n={leafIds.Count})");
+		}
+
+		private static void CollectPageIds(IFdbLitePager pager, uint pageId, List<uint> internalIds, List<uint> leafIds)
+		{
+			if (pageId == 0) { return; }
+			var page = pager.ReadBlocks(pageId, pager.Geometry.BlocksPerPage);
+			if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
+			{
+				leafIds.Add(pageId);
+				return;
+			}
+			internalIds.Add(pageId);
+			int children = FdbLiteTreePage.GetChildCount(page);
+			for (int i = 0; i < children; i++)
+			{
+				CollectPageIds(pager, FdbLiteTreePage.GetChild(page, i), internalIds, leafIds);
+			}
+		}
+
+		[Test]
 		public void Test_RetainFloor_Is_The_Retention_Policy_Knob()
 		{
 			// identical churn on two engines: one retains every generation (RetainFloor = 0), one reclaims (the

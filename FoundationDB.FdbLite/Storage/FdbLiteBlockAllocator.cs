@@ -50,10 +50,10 @@ namespace FoundationDB.Storage.FdbLite
 		public uint Frontier { get; private set; }
 
 		/// <summary>Allocates one tree page (page-aligned, page-sized run).</summary>
-		public uint AllocatePage()
+		public uint AllocatePage(bool fromHighEnd = false)
 		{
 			var geometry = this.Pager.Geometry;
-			return AllocateRun((uint) geometry.BlocksPerPage, (uint) geometry.BlocksPerPage);
+			return AllocateRun((uint) geometry.BlocksPerPage, (uint) geometry.BlocksPerPage, fromHighEnd);
 		}
 
 		/// <summary>Allocates a contiguous extent of <paramref name="blockCount"/> blocks (block-granular).</summary>
@@ -62,12 +62,12 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Returns a run to the free machinery, reusable once no retained root or pin can reference it.</summary>
 		public void Free(uint start, uint count, ulong freedAtGeneration) => this.FreeSpace.Free(start, count, freedAtGeneration);
 
-		private uint AllocateRun(uint count, uint alignment)
+		private uint AllocateRun(uint count, uint alignment, bool fromHighEnd = false)
 		{
 			uint regionBlocks = this.Pager.RegionSizeInBlocks;
 			Contract.Requires(count > 0 && count <= regionBlocks);
 
-			if (this.FreeSpace.TryAllocate(count, alignment, regionBlocks, out uint start))
+			if (this.FreeSpace.TryAllocate(count, alignment, regionBlocks, out uint start, fromHighEnd))
 			{
 				return start;
 			}
