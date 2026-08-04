@@ -28,6 +28,8 @@
 	<ItemGroup>
 		<!-- the Acme DCJS sample zoo: per-case metadata + the wire captured from the real DataContractJsonSerializer -->
 		<EmbeddedResource Include="Data\JSON\AcmeZoo\zoo.json" />
+		<!-- Task 11: the stage-A Acme end-to-end simulation's back-office export stylesheet -->
+		<EmbeddedResource Include="Xml\AcmeSimulation\account-export.xslt" />
 	</ItemGroup>
 
 	<ItemGroup>
