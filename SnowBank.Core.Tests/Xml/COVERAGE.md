@@ -31,11 +31,11 @@ hidden hole.
 
 | Trait | Covering tests |
 |---|---|
-| item element = item type's contract name (`string`, `int`, `dateTime`, `Child`) | `DcsWireFidelityFacts.Test_Collection_Item_Element_Names`; `XmlDataContractEmissionFacts.Test_Collection_Item_Element_Names` |
+| item element = item type's contract name (`string`, `int`, `dateTime`, `Shelf`) | `DcsWireFidelityFacts.Test_Collection_Item_Element_Names`; `XmlDataContractEmissionFacts.Test_Collection_Item_Element_Names` |
 | nested list item = `ArrayOfstring` | same two facts (the `Nested` member) |
 | empty collection self-closes | nil truth tables + `Test_Collection_Item_Element_Names` |
-| dictionary `KeyValueOfXY` + `Key`/`Value` children | `DcsWireFidelityFacts.Test_Dictionary_Entry_Shapes`; `XmlDataContractEmissionFacts.Test_Dictionary_Entry_Shapes` |
-| namespace-hash digest divergence (acted deviation 1) | `DcsWireFidelityFacts.Test_Dictionary_Digest_Divergence_Is_Exactly_The_Hash_Suffix` (strip-and-compare); `XmlDataContractEmissionFacts.Test_Deviation_1_Dictionary_Entry_Names_Carry_No_Digest` |
+| dictionary `KeyValueOfXY` + `Key`/`Value` children (`KeyValueOfstringstring`, `KeyValueOfintstring`, `KeyValueOfstringArrayOfstring`, `KeyValueOfstringShelf`) | `DcsWireFidelityFacts.Test_Dictionary_Entry_Shapes`; `XmlDataContractEmissionFacts.Test_Dictionary_Entry_Shapes` |
+| namespace-hash digest divergence (acted deviation 1: `KeyValueOfstringShelf`, not `KeyValueOfstringShelfQU_P9Vt29`) | `DcsWireFidelityFacts.Test_Dictionary_Digest_Divergence_Is_Exactly_The_Hash_Suffix` (strip-and-compare); `XmlDataContractEmissionFacts.Test_Deviation_1_Dictionary_Entry_Names_Carry_No_Digest` |
 | renamed enum contract in item and entry names | `XmlDataContractEmissionFacts.Test_A_Renamed_Enum_Contract_Names_The_Items_And_The_Dictionary_Entries` |
 | composed generic contract names (`XOfY`, `{0}`, `{#}`, digest omitted, encode-once) | `XmlDataContractEmissionFacts.Test_Composed_Contract_Names`, `.Test_Composed_Contract_Names_As_Roots`, `.Test_Named_Generic_Expands_Its_Braces`; `DcsWireFidelityFacts.Test_Named_Generic_Expands_Braces` |
 
@@ -45,7 +45,7 @@ hidden hole.
 |---|---|
 | `EmitDefaultValue=false` members absent at CLR default (null, zero, false, MinValue) | `DcsWireFidelityFacts.Test_EmitDefaultValue_False_Omits_Default_And_Null`; `XmlDataContractEmissionFacts.Test_EmitDefaultValue_False_Omits_Default_And_Null` |
 | three distinguishable member states (value / nil / absent) | the two facts above plus the nil truth tables |
-| `WithoutNullMembers()` drops nil elements (opt-in, audited) | `XmlDataContractEmissionFacts.Test_Without_Null_Members_Drops_The_Nil_Elements`, `.Test_A_Null_Root_Without_Null_Members_Is_An_Empty_Element`; `AcmeRenderFacts` all-null parity |
+| `WithoutNullMembers()` drops nil elements (opt-in, audited) | `XmlDataContractEmissionFacts.Test_Without_Null_Members_Drops_The_Nil_Elements`, `.Test_A_Null_Root_Without_Null_Members_Is_An_Empty_Element` (the `AcmeRenderFacts` all-null run exercises nil members, NOT this setting) |
 
 ## 5. Scalar lexical forms
 
@@ -107,7 +107,9 @@ Named, with owners:
    families "List as root", "named collection as root", "string as root") and the POCO
    read-only-property trait (`ReadOnlyIgnored`): the JSON deserializer emission fails to compile
    (CS0200 / nameless-indexer errors) before the XML overlay is even reached. These families
-   become portable when defect B lands; re-enabling them here is a one-commit follow-up.
+   become portable when defect B lands; re-enabling them here is a one-commit follow-up. The
+   POCO read-only trait specifically is restored by the upstream fix `d14b5dd1` (integrated by
+   the owner via PR); re-enabling that probe on this branch is a named follow-up of this stream.
 4. REDUCED - the ISerializable family lost its `KeyedBag<List<string>>` half (gap 1's shape);
    `type="ArrayOfstring"` on an ISerializable value is pinned by the deviation-3 fact instead.
 5. COVERED (this ledger's own probe) - `List<object>` as a collection member (matrix:
@@ -123,3 +125,28 @@ Named, with owners:
    and no test.
 7. TIMEZONE - `DateTimeKind.Local` wire output depends on the machine timezone (reproduced
    product behavior, matrix XW-6); the covering tests compute the expected offset at run time.
+8. GAP, DISCLOSED - deviation-2 control-character sanitization is a property of the TEXT sinks
+   only. `CrystalXmlWriter` drops C0 controls, unpaired surrogate halves and U+FFFE/U+FFFF;
+   `XDocumentEmitter` and `XmlWriterEmitter` apply no such filter and disclose it in their
+   `<remarks>`. Deliberate (the rule exists to reproduce a byte-exact legacy wire, which an
+   infoset sink does not produce), but it means the same value can serialize through one sink and
+   throw through another. Not tested on the infoset side: `InfosetEmitterFacts` feeds no such
+   content by design.
+9. GAP, DISCLOSED - a cycle running through `ICrystalXmlSerializer<T>.WriteXml` or
+   `ICrystalXmlSerializable.WriteXml` is UNGUARDED: the depth counter is a generated parameter and
+   does not cross a hook call, so it resets to 0 on the other side and `CrystalXmlCycleException`
+   never fires. Stated in the runtime docs; no test pins it either way.
+10. REDUCED BY A PRE-EXISTING JSON-GENERATOR DEFECT - `NamedGenericProbe<T>.Payload` is declared
+   `T` and not `T?` (the nullable-generic form fails to compile, CS0266), and
+   `AnyTypeCollectionProbe` holds a `List<object>` and not a `List<object?>` (CS8619). The probes
+   therefore cover the composed-name and `anyType` traits, but the nullable-generic and
+   nullable-item traits they were meant to carry are silently dropped. Recoverable once the JSON
+   generator handles those two shapes.
+11. GAP, DISCLOSED - `GetXmlDcsContractNameOfArgument`'s fallback uses the argument's plain type
+   name, dropping a non-enum `[DataContract(Name = ...)]` and the declaring-type chain of a nested
+   type. It is only reachable through one narrow escape, and needs ALL THREE conditions at once:
+   the argument type is NOT registered in the container, AND it implements
+   `ICrystalXmlSerializable` (which is what keeps emission from refusing outright), AND it is
+   renamed by a contract or nested - so its composed name would differ from its plain one. Any
+   registered type, or any unregistered one without the hook, takes a different branch. Named
+   here rather than refused, per the ruling on that finding.

@@ -24,6 +24,8 @@
       href: guide/advanced-layers.md
     - name: Binary Data (Slice & Buffers)
       href: guide/slices-and-buffers.md
+    - name: XML Output (CrystalXml)
+      href: CrystalXml.md
 - name: Migrations
   items:
     - name: 7.4.2 to 7.4.3

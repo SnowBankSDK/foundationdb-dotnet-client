@@ -104,11 +104,14 @@ oracle (`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`; coverage ledger next 
 - Null members: `<X nil="true" />` by default; `[DataMember(EmitDefaultValue = false)]` makes the
   member absent when at its CLR default.
 - Collections: the item element is named after the item type's contract name (`<string>`,
-  `<int>`, `<dateTime>`, `<Child>`, `<ArrayOfstring>` for a nested list); empty collection
+  `<int>`, `<dateTime>`, `<Shelf>`, `<ArrayOfstring>` for a nested list); empty collection
   self-closes, empty string keeps a start+end tag pair.
-- Dictionaries: `<KeyValueOfstringstring><Key>..</Key><Value>..</Value></KeyValueOfstringstring>`.
+- Dictionaries: `<KeyValueOfstringstring><Key>..</Key><Value>..</Value></KeyValueOfstringstring>`,
+  and `<KeyValueOfstringShelf>` when the value is a contract type.
 - Polymorphism: `type="<contract name>"` attribute only when the runtime contract differs from
-  the declared one; the element name stays that of the declared type.
+  the declared one; the element name stays that of the declared type. An instance of a CONCRETE
+  polymorphic root writes its own body, unannotated - which is what the oracle does, and where
+  this profile deliberately parts ways with the modern one (see below).
 - `ISerializable` dialect: each `SerializationInfo` entry becomes an element named after the
   (encoded) key, values declared `object` carry a `type=` discriminator.
 - Scalars: DCS lexical forms (ISO dates truncated per `DateTimeKind`, ISO 8601 durations,
@@ -120,10 +123,13 @@ oracle (`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`; coverage ledger next 
 
 Three deliberate deviations from raw DCS, each pinned by a dedicated test, are requirements:
 
-1. Dictionary entry names carry no namespace-hash digest (`KeyValueOfstringChild`, not
-   `KeyValueOfstringChild49j59FH4`). Measured: zero consumers of the digest.
+1. Dictionary entry names carry no namespace-hash digest (`KeyValueOfstringShelf`, not
+   `KeyValueOfstringShelfQU_P9Vt29`). Measured: zero consumers of the digest.
 2. Control characters are sanitized at the value level (raw DCS emits `&#x1;`, a document a
    conformant parser rejects). A strict reproduction mode exists for certification harnesses.
+   **Text sinks only**: this filter lives in `CrystalXmlWriter`, which is what produces the wire.
+   The infoset emitters (`XDocumentEmitter`, `XmlWriterEmitter`) apply none of it - the DOM sees
+   the characters verbatim, and `XmlWriter` answers for them under its own `CheckCharacters`.
 3. Typed exceptions (`CrystalXmlCycleException`, `CrystalXmlUnknownTypeException`,
    `CrystalXmlNotSupportedException`, `CrystalXmlInvalidNameException`) replace
    `SerializationException`.
@@ -139,6 +145,12 @@ Three deliberate deviations from raw DCS, each pinned by a dedicated test, are r
 | dictionary | `XmlDictionaryFormat { Default, Direct, KeyAttribute, KeyValueAttributes, KeyValueElements }`; modern default is `Direct` (`<scores><math>12</math></scores>`, non-NCName key = typed runtime exception) |
 | `"$type": "cat"` | `type="cat"` attribute - the discriminator is an annotation |
 | `[XmlProperty("@id")]` | `<book id="42">` - data as an attribute, scalars only; forbidden on the compat profile (DCS has no user attributes) |
+
+An instance of a CONCRETE polymorphic root is refused here with
+`CrystalXmlUnknownTypeException`, where the compat profile writes the root's own body. This wire
+matches the JSON side, which carries no discriminator for that value either: a reader could not
+tell it from a subtype whose annotation went missing, so it is refused rather than written under
+a shape nobody can interpret.
 
 ## Example
 
@@ -173,13 +185,29 @@ takes the facet: `void Export<T>(ICrystalXmlSerializer<T> serializer, T value, I
 
 ## Diagnostics and runtime guards
 
-Build-time diagnostics live in the CXML range (CXML0001 profile/policy incoherence, CXML0002
-enrollment shape, CXML0003 attribute projection requires a scalar, CXML0004 compat refuses the
-XML naming vocabulary, CXML0005 duplicate resolved XML names including the discriminator,
-CXML0006 bare nested collection on the modern profile, CXML0007 invalid NCName, CXML0008
-member converter without the XML facet, CXML0009 attribute-projected member with a custom
-converter, CXML0010 `[CollectionDataContract]` on a compat member's type). Structural
-impossibilities inside generated bodies use `#error` in the emitted source.
+Three refusal mechanisms, and which one applies is a rule, not a case-by-case choice:
+
+| Mechanism | When |
+|---|---|
+| **CXML diagnostic** | the refusal is decidable at generation time from the DECLARATIONS alone (an attribute, a type, a contract name). It points at the offending declaration and carries a remedy. |
+| **`#error` in the emitted source** | a structural impossibility discovered inside emission, which no declaration could have predicted. Also kept as an unreachable backstop under a diagnostic that already covers the case. |
+| **typed exception** | the refusal is DATA-dependent: only the value being written can decide it (a runtime type outside the graph, a non-NCName dictionary key, an undeclared enum value, a graph deeper than the cap). |
+
+Build-time diagnostics live in the CXML range:
+
+| Id | Refuses |
+|---|---|
+| CXML0001 | profile/policy incoherence on the container |
+| CXML0002 | enrollment shape |
+| CXML0003 | attribute projection of a member with no lexical form |
+| CXML0004 | the XML naming vocabulary on the compat profile |
+| CXML0005 | two members resolving to the same XML name, discriminator included |
+| CXML0006 | a bare nested collection on the modern profile |
+| CXML0007 | any name that is not a legal NCName: a declared `[XmlProperty]` name or `ItemName`, a bare `@`, the `"@x"` + `Attribute = false` contradiction, a member's name DERIVED from its JSON name, and a `[DataContract(Name = ...)]` that would name the root element. Modern profile only for the derived and root cases: the compat wire encodes every name through `XmlConvert.EncodeLocalName` |
+| CXML0008 | a member converter without the XML facet |
+| CXML0009 | an attribute-projected member with a custom converter |
+| CXML0010 | `[CollectionDataContract]` on a compat member's type |
+| CXML0011 | a dictionary whose resolved shape carries the value as text (`KeyAttribute`, `KeyValueAttributes`) while the value type has no lexical form |
 
 At run time, graphs deeper than `CrystalXml.MaxDepth` (256 levels of generated recursion) raise
 `CrystalXmlCycleException` - the guard cannot distinguish a genuine cycle from a legitimately
@@ -187,3 +215,10 @@ deeper acyclic graph, and its message says so. The depth counter cannot cross a 
 `ICrystalXmlSerializer<T>.WriteXml` or `ICrystalXmlSerializable.WriteXml`: a cycle running
 entirely through such hooks is not covered by the guard. Serialization lifecycle callbacks
 (`OnSerializing` and friends) are not invoked on the XML path.
+
+## Consumer requirements
+
+The generated XML code emits UTF-8 string literals (`"..."u8`) for the cached element and
+attribute names, so a container that enables XML output must compile at **`LangVersion` 11 or
+later**. JSON-only containers are unaffected. This is also why the XML fixtures are excluded from
+the repo's `net472` lite validation targets, which compile at 7.3.
