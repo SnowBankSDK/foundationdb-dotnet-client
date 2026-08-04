@@ -426,7 +426,7 @@ namespace SnowBank.Data.Xml.Tests
 			// null items nil, non-null items carrying a type= discriminator (string/int), item element named anyType.
 			AssertSameWire(new AnyTypeCollectionProbe
 			{
-				Results = [null, "s1", 42],
+				Results = [null!, "s1", 42],
 			}, v => DcsProbeSerializers.AnyTypeCollectionProbe.ToXmlText(v));
 		}
 

@@ -365,7 +365,9 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[DataContract]
 	public sealed class AnyTypeCollectionProbe
 	{
-		[DataMember] public List<object?>? Results;
+		// List<object>, not List<object?>: the generated deserializer materializes List<object> and the
+		// nullability mismatch is a CS8619 in generated code; null items go in via null!, like WithNullItem.
+		[DataMember] public List<object>? Results;
 	}
 
 	#endregion
