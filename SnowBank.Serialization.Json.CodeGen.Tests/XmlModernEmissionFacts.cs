@@ -301,6 +301,18 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 		public int Seconds { get; init; }
 	}
 
+	/// <summary>A CONCRETE polymorphic root: an instance of the root type itself is a case the modern switch deliberately does not carry</summary>
+	[JsonDerivedType(typeof(Coupe), "coupe")]
+	public record Vehicle
+	{
+		public required string Plate { get; init; }
+	}
+
+	public sealed record Coupe : Vehicle
+	{
+		public int Doors { get; init; }
+	}
+
 	/// <summary>Member converter answering for BOTH formats: the JSON literal pair, and the XML element it writes itself</summary>
 	public sealed class BitFlagConverter : IJsonMemberConverter<bool>, ICrystalXmlSerializer<bool>
 	{
@@ -361,6 +373,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	[CrystalJsonSerializable(typeof(Media))]
 	[CrystalJsonSerializable(typeof(Ebook))]
 	[CrystalJsonSerializable(typeof(Paper))]
+	[CrystalJsonSerializable(typeof(Vehicle))]
+	[CrystalJsonSerializable(typeof(Coupe))]
 	[CrystalJsonSerializable(typeof(Switchboard))]
 	[CrystalJsonSerializable(typeof(Exotic))]
 	[CrystalJsonSerializable(typeof(Chain))]
@@ -847,6 +861,27 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(
 				() => AcmeSerializers.Media.ToXmlText(new Audio { Title = "Dune", Seconds = 3600 }),
 				Throws.InstanceOf<CrystalXmlUnknownTypeException>().With.Property("Type").EqualTo(typeof(Audio)));
+		}
+
+		[Test]
+		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Is_Refused_On_This_Wire()
+		{
+			// DELIBERATE DIVERGENCE from the compat wire, which writes the root's own body for this exact value.
+			// The modern wire matches the JSON side instead: an instance of the root type carries no discriminator
+			// there either, so a reader could not tell it from a subtype whose annotation went missing. It is refused
+			// rather than written under a shape the reader cannot interpret.
+			Assert.That(
+				() => AcmeSerializers.Vehicle.ToXmlText(new Vehicle { Plate = "AB-123-CD" }),
+				Throws.InstanceOf<CrystalXmlUnknownTypeException>().With.Property("Type").EqualTo(typeof(Vehicle)));
+		}
+
+		[Test]
+		public void Test_A_Declared_Subtype_Of_A_Concrete_Polymorphic_Root_Is_Written()
+		{
+			// the other half of the pair: the subtype the switch DOES carry is written, annotated, as usual
+			Assert.That(
+				AcmeSerializers.Vehicle.ToXmlText(new Coupe { Plate = "AB-123-CD", Doors = 2 }),
+				Is.EqualTo("""<vehicle type="coupe"><plate>AB-123-CD</plate><doors>2</doors></vehicle>"""));
 		}
 
 		#endregion

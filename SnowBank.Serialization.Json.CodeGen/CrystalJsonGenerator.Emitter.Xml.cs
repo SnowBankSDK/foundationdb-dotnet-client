@@ -360,9 +360,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#endregion
 
-			#region Holder helpers (the five outputs)...
+			#region Holder helpers (the eight outputs)...
 
-			/// <summary>Emits the five XML output entry points on the type's holder, each delegating to the matching <c>CrystalXml</c> helper</summary>
+			/// <summary>Emits the eight XML output entry points on the type's holder, each delegating to the matching <c>CrystalXml</c> helper</summary>
 			/// <remarks>None of them goes through another: every one owns its own sink lifecycle inside <c>CrystalXml</c>, so a
 			/// text document never round-trips through UTF-8 (or the other way around) just to reach a different overload.</remarks>
 			private void WriteXmlStaticHelpers(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef, string typeCref)

@@ -53,6 +53,11 @@ namespace SnowBank.Data.Xml
 	/// normalization on write (every line ending becomes a raw <c>\r\n</c> under the default <see cref="NewLineHandling"/>,
 	/// matching <see cref="CrystalXmlWriter{TRune,TWriter}"/>'s own rule 4) and already entitizes TAB/LF/CR inside attribute
 	/// values (matching rule 6), so neither needs any help from this type.</para>
+	/// <para><b>The wire core's control-character sanitization does NOT apply here.</b> <see cref="CrystalXmlWriter{TRune,TWriter}"/> drops the characters
+	/// XML 1.0 cannot represent (C0 controls, unpaired surrogate halves, U+FFFE/U+FFFF) as part of reproducing a byte-exact
+	/// legacy wire; that is deviation 2 of the compat profile, and it is a property of the TEXT sinks only. This emitter
+	/// applies no such filter: the wrapped writer sees the characters unchanged and answers for them under its own <see cref="XmlWriterSettings.CheckCharacters"/>, which throws by default. Content that may carry those characters and must survive
+	/// any sink has to be sanitized before it reaches the emitter.</para>
 	/// <para>This type owns none of the writer's lifetime: the caller is responsible for flushing and disposing it once
 	/// done. Like every <see cref="IXmlEmitter"/>, it must still be passed by <see langword="ref"/> per the interface
 	/// remarks, even though every field here is a reference to the same wrapped writer, so a copy would not actually lose

@@ -36,6 +36,11 @@ namespace SnowBank.Data.Xml
 	/// in <see cref="XmlWriterEmitter"/>). Unlike <see cref="CrystalXmlWriter{TRune,TWriter}"/>, this emitter makes no
 	/// byte-exactness promise: there is no wire, no indentation, and no CRLF convention to reproduce, only a node tree that
 	/// is infoset-equivalent to what a conformant XML parser would build from the same logical content.</para>
+	/// <para><b>The wire core's control-character sanitization does NOT apply here.</b> <see cref="CrystalXmlWriter{TRune,TWriter}"/> drops the characters
+	/// XML 1.0 cannot represent (C0 controls, unpaired surrogate halves, U+FFFE/U+FFFF) as part of reproducing a byte-exact
+	/// legacy wire; that is deviation 2 of the compat profile, and it is a property of the TEXT sinks only. This emitter
+	/// applies no such filter: whatever the caller writes lands in the node tree verbatim, and a document built from such content is not one a conformant parser would accept back. Content that may carry those characters and must survive
+	/// any sink has to be sanitized before it reaches the emitter.</para>
 	/// <para>Elements are built bottom-up: <see cref="WriteStartElement"/> pushes a fresh, unparented <see cref="XElement"/>
 	/// onto an internal stack, attributes and text accumulate directly on the element at the top of that stack, and
 	/// <see cref="WriteEndElement"/> pops it and appends it to its new parent (or, for the outermost element, records it as

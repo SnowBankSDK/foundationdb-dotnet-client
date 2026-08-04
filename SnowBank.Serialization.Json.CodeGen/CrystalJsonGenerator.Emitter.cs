@@ -558,7 +558,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 
 				if (this.WritesXml)
-				{ // the five XML outputs, symmetrical with the JSON ones (emission section: CrystalJsonGenerator.Emitter.Xml.cs)
+				{ // the eight XML outputs, symmetrical with the JSON ones (emission section: CrystalJsonGenerator.Emitter.Xml.cs)
 					sb.BeginRegion("XML Output...");
 					sb.NewLine();
 

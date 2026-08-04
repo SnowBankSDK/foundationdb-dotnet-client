@@ -536,6 +536,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		#region Polymorphism and naming...
 
 		[Test]
+		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Writes_Its_Own_Body()
+		{
+			// DELIBERATE DIVERGENCE from the modern wire, which refuses this exact value with
+			// CrystalXmlUnknownTypeException. Here the live DCS oracle writes the root's own body, unannotated (the
+			// runtime contract IS the declared one), and byte compatibility is what this profile exists for.
+			Assert.That(
+				LegacySerializers.CatalogItem.ToXmlText(new CatalogItem { Title = "Generic" }),
+				Is.EqualTo("""<CatalogItem><Title>Generic</Title></CatalogItem>"""));
+		}
+
+		[Test]
 		public void Test_Polymorphism_Annotates_The_Runtime_Contract()
 		{
 			var probe = new PolymorphicProbe

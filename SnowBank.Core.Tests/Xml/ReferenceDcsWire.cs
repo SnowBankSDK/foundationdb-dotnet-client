@@ -24,8 +24,11 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is not compiled for the net472 validation target: it drives the CrystalXml source generator as an
-// analyzer over this project, and exercises generated code that is only produced for the runtime targets.
+// This file is not compiled for the net472 validation target, for two independent reasons.
+// 1. The generated XML code emits UTF-8 string literals ("..."u8) for the cached XmlName byte forms, which require
+//    C# 11; the lite validation targets compile at LangVersion 7.3, so that code cannot build there at all.
+// 2. This oracle IS a live DataContractSerializer, driven to produce the reference wire the CrystalXml output is
+//    byte-compared against; the comparison is only meaningful where the generated side exists.
 #if !NETFRAMEWORK
 
 namespace SnowBank.Data.Xml.Tests

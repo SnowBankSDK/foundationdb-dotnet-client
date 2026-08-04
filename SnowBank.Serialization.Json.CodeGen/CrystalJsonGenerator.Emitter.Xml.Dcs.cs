@@ -626,8 +626,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.Comment($"{member.Type.Name} {member.MemberName} => <{wireName}>{(member.DataMemberOrder is { } order ? $" [Order = {order}]" : "")}{(!member.EmitDefaultValue ? " [EmitDefaultValue = false]" : "")}");
 				sb.AppendLine($"var {local} = {GetXmlMemberReadExpr(typeDef, member)};");
 
-				// [DataMember(EmitDefaultValue = false)] and [JsonIgnore(Condition = WhenWritingDefault)] are the same rule spelled
-				// in two vocabularies: a value equal to the type's default writes NOTHING at all, not even a nil element
+				// [DataMember(EmitDefaultValue = false)] and [JsonIgnore(Condition = WhenWritingDefault)] both mean "a value equal
+				// to the default writes NOTHING at all, not even a nil element" - but they do NOT agree on which default.
+				// DCS compares against the CLR default of the type, full stop, and this wire reproduces DCS: hence default!,
+				// where the modern emitter compares against the member's DECLARED default (GetForgivingDefaultLiteral).
+				// A member declaring `= 5` is therefore omitted at 0 here, and omitted at 5 there. Deliberate: byte
+				// compatibility is what this profile exists for, and the reference wire has no notion of a declared default.
 				bool guarded = !member.EmitDefaultValue || member.IgnoreCondition == "WhenWritingDefault";
 				if (guarded)
 				{

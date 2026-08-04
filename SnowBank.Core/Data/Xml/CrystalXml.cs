@@ -33,7 +33,7 @@ namespace SnowBank.Data.Xml
 	using SnowBank.Buffers.Text;
 	using SnowBank.Data.Json;
 
-	/// <summary>Sink plumbing for <see cref="ICrystalXmlSerializer{T}"/>: the five output entry points</summary>
+	/// <summary>Sink plumbing for <see cref="ICrystalXmlSerializer{T}"/>: the eight output entry points</summary>
 	/// <remarks>
 	/// <para>Every method here owns the whole sink lifecycle: it constructs the destination buffer (or reuses the one the
 	/// caller handed it), constructs the emitter over it, calls <see cref="ICrystalXmlSerializer{T}.WriteXml{TEmitter}"/>,

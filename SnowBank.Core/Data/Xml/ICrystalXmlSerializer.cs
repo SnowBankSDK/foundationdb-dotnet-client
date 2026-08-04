@@ -36,7 +36,7 @@ namespace SnowBank.Data.Xml
 	/// constraint on <see cref="WriteXml{TEmitter}"/> is what lets the same body target the byte-exact wire writer or
 	/// either infoset emitter without any virtual dispatch: the emitter type is only known at the call site, never
 	/// boxed to the interface.</para>
-	/// <para>The five public entry points in <see cref="CrystalXml"/> (<see cref="CrystalXml.ToText{T}"/>,
+	/// <para>The eight public entry points in <see cref="CrystalXml"/> (<see cref="CrystalXml.ToText{T}"/>,
 	/// <see cref="CrystalXml.ToSlice{T}"/>, and so on) are the only callers most code needs: each owns the whole sink
 	/// lifecycle (construct the sink, construct the emitter over it, invoke <see cref="WriteXml{TEmitter}"/>, read the
 	/// result back), so nothing outside those helpers ever touches an emitter's writer directly.</para>
