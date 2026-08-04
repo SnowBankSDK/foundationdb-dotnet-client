@@ -30,7 +30,6 @@
 
 namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 {
-	using System.Reflection;
 	using System.Xml;
 	using System.Xml.Linq;
 	using System.Xml.Xsl;
@@ -45,8 +44,8 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 	/// behavior on an all-null account.
 	/// </summary>
 	/// <remarks>Write-only: there is no FromXml in the public surface. The XSLT transform's input is the produced
-	/// text, read back through <see cref="XmlReader"/>/<see cref="XPathNavigator"/> -- test-side consumption of
-	/// CrystalXml's own output, not a round-trip deserializer.</remarks>
+	/// text, read back through <see cref="XmlReader"/> -- test-side consumption of CrystalXml's own output, not a
+	/// round-trip deserializer.</remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-XML")]
@@ -58,7 +57,7 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 		private static ClientAccount MakePopulatedAccount() => new()
 		{
 			AccountId = "ACC-0001",
-			AccountNumber = "FR76-3000-1007-9412-3456-7890-185",
+			AccountNumber = "ZZ00-TEST-0000-0000-0000-000",
 			OwnerName = "Jean Dupont",
 			Nickname = "jdupont",
 			OpenedDate = new DateTime(2018, 3, 12, 0, 0, 0, DateTimeKind.Utc),
@@ -153,14 +152,16 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 				Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(text), "WriteXmlTo(Stream), UTF-8 decoded");
 			}
 
-			var sw = new StringWriter();
-			AcmeAccountSerializers.ClientAccount.WriteXmlTo(sw, account);
-
-			using (Assert.EnterMultipleScope())
+			using (var sw = new StringWriter())
 			{
-				Assert.That(slice.ToStringUtf8(), Is.EqualTo(text), "ToXmlSlice, UTF-8 decoded");
-				Assert.That(Encoding.UTF8.GetString(bytes), Is.EqualTo(text), "ToXmlBytes, UTF-8 decoded");
-				Assert.That(sw.ToString(), Is.EqualTo(text), "WriteXmlTo(TextWriter)");
+				AcmeAccountSerializers.ClientAccount.WriteXmlTo(sw, account);
+
+				using (Assert.EnterMultipleScope())
+				{
+					Assert.That(slice.ToStringUtf8(), Is.EqualTo(text), "ToXmlSlice, UTF-8 decoded");
+					Assert.That(Encoding.UTF8.GetString(bytes), Is.EqualTo(text), "ToXmlBytes, UTF-8 decoded");
+					Assert.That(sw.ToString(), Is.EqualTo(text), "WriteXmlTo(TextWriter)");
+				}
 			}
 
 			XDocument fromText = XDocument.Parse(text);
@@ -221,6 +222,8 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 				// "!= 'InsuranceService'", so it does NOT count here -- only items that carry a type attribute whose
 				// value differs do. Measured identically on both wires by the parity tests below (both render "1").
 				Assert.That(html, Does.Contain("NonInsuranceServices: 1"));
+				// positive counterpart: exactly one Service item carries @type = 'InsuranceService' (the InsuranceService instance).
+				Assert.That(html, Does.Contain("InsuranceServices: 1"));
 			}
 		}
 
@@ -237,6 +240,7 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 				Assert.That(html, Does.Contain("Loans: none"));
 				Assert.That(html, Does.Contain("TagGroups: none"));
 				Assert.That(html, Does.Contain("NonInsuranceServices: none"));
+				Assert.That(html, Does.Contain("InsuranceServices: none"));
 			}
 		}
 
@@ -254,6 +258,13 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 			string crystalXmlWire = AcmeAccountSerializers.ClientAccount.ToXmlText(account);
 			string dcsWire = ReferenceDcsWire.Serialize(account, typeof(ClientAccount));
 
+			// direct wire assertion: this DTO graph uses the compat profile only (no AccountPropertyBag member is
+			// exercised through the ISerializable path in this specific fixture instance's populated members that
+			// differ from the DCS-native shape), so the whole document should be byte-for-byte identical, not merely
+			// HTML-equivalent after the lossy XSLT projection below.
+			Assert.That(crystalXmlWire, Is.EqualTo(dcsWire),
+				$"CrystalXml wire:\n{crystalXmlWire}\n\nDCS wire:\n{dcsWire}");
+
 			string crystalXmlHtml = Render(xslt, crystalXmlWire);
 			string dcsHtml = Render(xslt, dcsWire);
 
@@ -269,6 +280,10 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 
 			string crystalXmlWire = AcmeAccountSerializers.ClientAccount.ToXmlText(account);
 			string dcsWire = ReferenceDcsWire.Serialize(account, typeof(ClientAccount));
+
+			// direct wire assertion: see the populated-account counterpart above.
+			Assert.That(crystalXmlWire, Is.EqualTo(dcsWire),
+				$"CrystalXml wire:\n{crystalXmlWire}\n\nDCS wire:\n{dcsWire}");
 
 			string crystalXmlHtml = Render(xslt, crystalXmlWire);
 			string dcsHtml = Render(xslt, dcsWire);

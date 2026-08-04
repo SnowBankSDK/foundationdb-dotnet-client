@@ -66,6 +66,18 @@
 				</xsl:choose>
 			</span>
 
+			<span class="insurance-services">
+				<xsl:choose>
+					<xsl:when test="Services[not(@nil)]">
+						<xsl:text>InsuranceServices: </xsl:text>
+						<xsl:value-of select="count(Services/Service[@type = 'InsuranceService'])" />
+					</xsl:when>
+					<xsl:otherwise>
+						<xsl:text>InsuranceServices: none</xsl:text>
+					</xsl:otherwise>
+				</xsl:choose>
+			</span>
+
 		</div>
 	</xsl:template>
 
