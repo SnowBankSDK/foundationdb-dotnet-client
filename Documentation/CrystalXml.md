@@ -28,7 +28,7 @@ public static partial class LegacyRenderSerializers { }
 
 | Option | Meaning |
 |---|---|
-| `Profile` | XML variant; derived from the container's JSON profile by default (`DataContractCompat` gives the DCS wire, standard/Web gives the modern profile); explicit override allowed; an incoherent combination (naming policy + DCS wire) is a build error (CXML0001) |
+| `Profile` | XML variant; derived from the container's JSON profile by default (`DataContractCompat` gives the DCS wire, standard/Web gives the modern profile); explicit override allowed; an incoherent combination (a naming policy next to the DCS wire) is a build error (CXML0001) |
 | `DictionaryFormat` | container default for the dictionary shape (see the modern profile below) |
 
 ```csharp
@@ -197,7 +197,7 @@ Build-time diagnostics live in the CXML range:
 
 | Id | Refuses |
 |---|---|
-| CXML0001 | profile/policy incoherence on the container |
+| CXML0001 | profile/policy incoherence on the container: a naming policy (camelCase and friends) next to the DataContract XML wire, whose element names come from the data contract. `PropertyNameCaseInsensitive` is NOT a trigger: it decides how an incoming name is matched when reading JSON, and this overlay never reads |
 | CXML0002 | enrollment shape |
 | CXML0003 | attribute projection of a member with no lexical form |
 | CXML0004 | the XML naming vocabulary on the compat profile |

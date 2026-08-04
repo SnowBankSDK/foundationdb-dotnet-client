@@ -291,7 +291,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return null;
 				}
 
-				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, xmlOutputAttribute, wireProfile, caseInsensitiveNames, propertyNamingPolicy);
+				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, xmlOutputAttribute, wireProfile, propertyNamingPolicy);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				Kenobi($"Found {work.Count} root types to include");
@@ -410,14 +410,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				);
 			}
 
-			/// <summary>Resolves the XML wire of a container from its <c>[CrystalXmlOutput]</c> attribute, reporting <c>CXML0001</c> when the resolved wire cannot honor the container's naming options</summary>
+			/// <summary>Resolves the XML wire of a container from its <c>[CrystalXmlOutput]</c> attribute, reporting <c>CXML0001</c> when the resolved wire cannot honor the container's naming policy</summary>
 			/// <param name="symbol">Container being parsed (used to name it in the diagnostic)</param>
 			/// <param name="xmlOutputAttribute">The container's <c>[CrystalXmlOutput]</c> attribute, or <see langword="null"/> when it has none (XML output is opt-in)</param>
 			/// <param name="wireProfile">The container's resolved JSON wire profile, which the default XML profile derives from</param>
-			/// <param name="caseInsensitiveNames">The container's <c>PropertyNameCaseInsensitive</c> option</param>
 			/// <param name="propertyNamingPolicy">The container's <c>PropertyNamingPolicy</c> option, or <see langword="null"/> for the declared names</param>
 			/// <returns>The resolved profile name and dictionary format name, or <c>(null, null)</c> when the container produces no XML</returns>
-			private (string? Profile, string? DictionaryFormat) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? wireProfile, bool caseInsensitiveNames, string? propertyNamingPolicy)
+			/// <remarks><c>PropertyNameCaseInsensitive</c> is deliberately not an input: it is a deserialization option, and this overlay never reads XML.</remarks>
+			private (string? Profile, string? DictionaryFormat) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? wireProfile, string? propertyNamingPolicy)
 			{
 				if (xmlOutputAttribute is null)
 				{ // no opt-in: the container is JSON-only, and nothing else about it changes
@@ -445,14 +445,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 						? (wireProfile == WireProfileDataContractCompat ? XmlProfileDataContract : XmlProfileModern)
 						: explicitProfile;
 
-				if (profile == XmlProfileDataContract && (caseInsensitiveNames || propertyNamingPolicy != null))
-				{ // the DataContract wire names its elements after the data contract: a naming option next to it cannot be honored, and honoring neither silently is worse
+				if (profile == XmlProfileDataContract && propertyNamingPolicy != null)
+				{ // the DataContract wire names its elements after the data contract: a NAMING POLICY next to it cannot be honored, and honoring neither silently is worse
 					//note: this is only reachable through an EXPLICIT profile: the derived one requires the DCJS JSON profile, which already refuses naming options (CJSON0013)
+					//note: PropertyNameCaseInsensitive is deliberately NOT a trigger. It decides how an INCOMING name is matched
+					// when READING JSON, and CrystalXml is write-only: it names nothing on this wire, so there is no element name
+					// for the data contract to disagree with. Refusing it here only cost the author a container they could not write.
 					ReportDiagnostic(
 						new(
 							"CXML0001",
-							"The DataContract XML wire cannot be combined with a naming option",
-							"The container '{0}' produces the DataContract XML wire, whose element names come from the data contract; combining it with a camelCase or case-insensitive naming option is refused. Remove the naming option, use the Modern XML wire (which follows the naming policy), or produce the DataContract wire from a separate container (the dual-container pattern).",
+							"The DataContract XML wire cannot be combined with a naming policy",
+							"The container '{0}' produces the DataContract XML wire, whose element names come from the data contract; combining it with a camelCase (or other) naming policy is refused. Remove the naming policy, use the Modern XML wire (which follows the naming policy), or produce the DataContract wire from a separate container (the dual-container pattern).",
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Error,
 							isEnabledByDefault: true
@@ -598,7 +601,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// a self-serializable type hosts its own generated code, so it can opt into XML output the same way a
 				// container does; it declares no JSON wire profile, so an unspecified profile derives the Modern wire
-				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), wireProfile: null, caseInsensitiveNames: false, propertyNamingPolicy: null);
+				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), wireProfile: null, propertyNamingPolicy: null);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				var includedTypes = new List<CrystalJsonTypeMetadata>();

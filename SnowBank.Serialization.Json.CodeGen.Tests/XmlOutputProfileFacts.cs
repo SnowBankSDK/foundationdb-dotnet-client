@@ -247,9 +247,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		private void AssertNamingPolicyRefusal(ImmutableArray<Diagnostic> diagnostics)
 		{
 			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CXML0001");
-			Assert.That(refusal, Is.Not.Null, "the DataContract XML wire next to a naming option must be refused at build time");
+			Assert.That(refusal, Is.Not.Null, "the DataContract XML wire next to a naming policy must be refused at build time");
 			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "a silently wrong wire is worse than a build failure");
-			Assert.That(refusal.GetMessage(), Does.Contain("DataContract"), "the message names the XML wire that cannot honor the naming option");
+			Assert.That(refusal.GetMessage(), Does.Contain("DataContract"), "the message names the XML wire that cannot honor the naming policy");
 		}
 
 		[Test]
@@ -266,11 +266,28 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_CaseInsensitive_Names_Plus_Explicit_DataContract_Xml_Is_A_Build_Error()
+		public void Test_CaseInsensitive_Names_Alone_Plus_Explicit_DataContract_Xml_Is_Accepted()
 		{
-			// the second trigger shape: case-insensitive matching is just as incompatible with the contract names
-			var (_, diagnostics) = RunOn(Probe("""
+			// PropertyNameCaseInsensitive governs how INCOMING names are matched when reading JSON: it names
+			// nothing on a write-only XML wire, so there is nothing for the contract names to collide with
+			var (containers, diagnostics) = RunOn(Probe("""
 					[SnowBank.Data.Json.CrystalJsonConverter(PropertyNameCaseInsensitive = true)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.DataContract)]
+				"""));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(diagnostics.Where(static d => d.Id == "CXML0001"), Is.Empty, "a deserialization-only option cannot contradict the write-only XML wire");
+				Assert.That(containers["ProbeConverters"].XmlProfile, Is.EqualTo("DataContract"), "the XML request stands");
+			}
+		}
+
+		[Test]
+		public void Test_CaseInsensitive_Names_Do_Not_Rescue_A_Naming_Policy()
+		{
+			// the narrowing is about the FLAG alone: a naming policy next to it is still the collision CXML0001 exists for
+			var (_, diagnostics) = RunOn(Probe("""
+					[SnowBank.Data.Json.CrystalJsonConverter(PropertyNameCaseInsensitive = true, PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.DataContract)]
 				"""));
 

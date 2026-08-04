@@ -364,6 +364,23 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	{
 	}
 
+	/// <summary>The same compat XML wire, declared next to <c>PropertyNameCaseInsensitive</c></summary>
+	/// <remarks>
+	/// <para>The flag governs how INCOMING JSON names are matched; the XML side is write-only, so it has nothing to act
+	/// on and CXML0001 does not refuse the container. This one exists so that claim is executed, not just asserted on the
+	/// parser's metadata: its documents must be the ones <see cref="LegacySerializers"/> writes, character for character.</para>
+	/// <para>The JSON profile is the STANDARD one, with the compat XML wire asked for explicitly: the DataContractCompat
+	/// JSON profile refuses the flag on its own account (CJSON0013, a rule about the JSON wire and untouched here), so the
+	/// explicit-profile door is the only one through which the narrowed CXML0001 gate is reachable at all.</para>
+	/// </remarks>
+	[CrystalJsonConverter(PropertyNameCaseInsensitive = true)]
+	[CrystalXmlOutput(Profile = XmlOutputProfile.DataContract)]
+	[CrystalJsonSerializable(typeof(Shelf))]
+	[CrystalJsonSerializable(typeof(ScalarProbe))]
+	public static partial class LegacyCaseInsensitiveSerializers
+	{
+	}
+
 	#endregion
 
 }
@@ -393,6 +410,26 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	[Category("Core-JSON")]
 	public sealed class XmlDataContractEmissionFacts : SimpleTest
 	{
+
+		#region PropertyNameCaseInsensitive (the narrowed CXML0001)...
+
+		[Test]
+		public void Test_Case_Insensitive_Names_Leave_The_Compat_Wire_Untouched()
+		{
+			// the container compiled at all, which is half the claim (CXML0001 no longer refuses the flag alone);
+			// the other half is that the flag changed nothing about what gets written
+			var shelf = new Shelf { Label = "novels" };
+			var scalars = new ScalarProbe { TrueBool = true, Decimal = 12.50m, Long = -9007199254740993L, Char = 'A', SpecialChars = "<&>", Uri = new("https://example.org/x") };
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(LegacyCaseInsensitiveSerializers.Shelf.ToXmlText(shelf), Is.EqualTo(LegacySerializers.Shelf.ToXmlText(shelf)));
+				Assert.That(LegacyCaseInsensitiveSerializers.ScalarProbe.ToXmlText(scalars), Is.EqualTo(LegacySerializers.ScalarProbe.ToXmlText(scalars)));
+				Assert.That(LegacyCaseInsensitiveSerializers.Shelf.ToXmlText(shelf, rootName: "data"), Is.EqualTo(LegacySerializers.Shelf.ToXmlText(shelf, rootName: "data")));
+			}
+		}
+
+		#endregion
 
 		#region Nil, order, defaults...
 
