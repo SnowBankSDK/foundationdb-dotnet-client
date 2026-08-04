@@ -43,6 +43,14 @@ namespace SnowBank.Data
 		/// <para>The guard cannot distinguish a genuine reference cycle from an acyclic graph that is simply nested deeper than
 		/// this cap: either shape hits the same counter and raises the same exception. A caller that knows its data has no
 		/// cycles but legitimately needs more than 256 levels should flatten the graph instead.</para>
+		/// <para><b>Not every recursion is counted.</b> On the source-generated JSON <c>Pack</c> path, the counter resets to
+		/// zero whenever a member is packed through the collection/dictionary helper seam (<c>PackObject</c>, <c>PackArray</c>,
+		/// <c>PackList</c>, <c>PackEnumerable</c> in <c>JsonSerializerExtensions</c>): each helper holds only the three-argument
+		/// <c>IJsonPacker&lt;T&gt;.Pack</c> member, with no way to thread the caller's depth through it. A reference cycle that
+		/// runs through a <c>List&lt;T&gt;</c> or <c>Dictionary&lt;TKey,TValue&gt;</c> member is therefore not covered by this
+		/// guard on that path and still overflows the native stack. This is the JSON analogue of the XML wire's own uncovered
+		/// seam, documented on <see cref="SnowBank.Data.Xml.CrystalXml.MaxDepth"/>: a call into a custom member converter or a
+		/// self-writing type also resets the XML counter to zero on the other side of the call.</para>
 		/// <para><b>One value for every wire.</b> The exception TYPE differs per wire (<c>JsonSerializationException</c> on the
 		/// JSON wires, <c>CrystalXmlCycleException</c> on the XML ones) but the boundary does not: a document that serializes on
 		/// one wire must not be refused by another purely because they disagreed on where "too deep" starts.</para>

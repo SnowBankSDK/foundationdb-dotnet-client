@@ -3032,7 +3032,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				sb.NewLine();
 				sb.Comment("a reference cycle has no JSON representation here, and an unguarded recursion would die on a StackOverflowException that no caller can catch: the writer counts the levels and raises the same typed error the reflection path raises");
-				sb.AppendLine("writer.EnterDepth(instance);");
+				if (typeDef.Type.IsValueType())
+				{
+					// passing typeof(T) instead of the instance avoids boxing the struct on the happy path just to name it in a
+					// failure message that never differs from the static type anyway, since a struct cannot be further derived
+					sb.AppendLine($"writer.EnterDepth(typeof({typeDef.Type.FullyQualifiedName}));");
+				}
+				else
+				{
+					// reference types are not boxed by the object-typed overload, and instance.GetType() can be more derived than
+					// the static type here (a sealed/non-polymorphic reference type still reaches this body), so keep the instance
+					// to preserve that fidelity in the failure message
+					sb.AppendLine("writer.EnterDepth(instance);");
+				}
 				sb.AppendLine("var state = writer.BeginObject();");
 
 				if (hasPolymorphicDefinition)

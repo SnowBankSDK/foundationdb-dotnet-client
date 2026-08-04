@@ -216,6 +216,15 @@ deeper acyclic graph, and its message says so. The depth counter cannot cross a 
 `ICrystalXmlSerializer<T>.WriteXml` or `ICrystalXmlSerializable.WriteXml`: a cycle running
 entirely through such hooks is not covered by the guard.
 
+The generated JSON wires share the same cap, `CrystalSerialization.MaxDepth` (`CrystalXml.MaxDepth`
+is an alias for it), and the same shape of exception on their own hook seam. The generated `Pack`
+path has an additional seam of its own: the depth counter also resets to zero across the
+collection/dictionary helpers (`PackObject`/`PackArray`/`PackList`/`PackEnumerable` in
+`JsonSerializerExtensions`), because each one holds only the three-argument `IJsonPacker<T>.Pack`
+member and has no way to carry the caller's depth through it. A cycle running through a
+`List<T>` or `Dictionary<TKey, TValue>` member is therefore not covered by the guard on that path
+either.
+
 Serialization lifecycle callbacks (`[OnSerializing]` / `[OnSerialized]`) **are** invoked on the
 XML path, in the same place and through the same generated call as on the JSON path: the two
 formats are two renderings of one serialization, so a callback that prepares the members runs

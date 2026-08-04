@@ -1966,6 +1966,10 @@ namespace SnowBank.Data.Json
 			[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 			public static JsonSerializationException Serialization_FailTooDeep(int depth, object? current) => new($"Reached maximum depth of {depth} while serializing child object of type '{current?.GetType().GetFriendlyName() ?? "<null>"}'. Top object is too complex to be serialized this way!");
 
+			/// <summary>Same message as <see cref="Serialization_FailTooDeep(int,object)"/>, for callers that only have the static <see cref="Type"/> of the offending value (typically a value type, to avoid boxing it just to name it)</summary>
+			[Pure, MethodImpl(MethodImplOptions.NoInlining)]
+			public static JsonSerializationException Serialization_FailTooDeep(int depth, Type? current) => new($"Reached maximum depth of {depth} while serializing child object of type '{current?.GetFriendlyName() ?? "<null>"}'. Top object is too complex to be serialized this way!");
+
 			[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 			public static JsonSerializationException Serialization_ObjectRecursionIsNotAllowed(IEnumerable<object?> visited, object? value, int depth) => new($"Object of type '{value?.GetType().FullName}' at depth {depth} already serialized before! Recursive object graphs not supported. Visited path: {string.Join(" <- ", visited.Select(v => v?.GetType().FullName ?? "<null>"))}");
 

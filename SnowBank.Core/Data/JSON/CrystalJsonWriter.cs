@@ -1356,6 +1356,29 @@ namespace SnowBank.Data.Json
 			++m_objectGraphDepth;
 		}
 
+		/// <summary>Enters one level of the object graph without boxing a value-type instance, WITHOUT pushing anything onto the visited-objects stack</summary>
+		/// <param name="type">Static type of the instance about to be written; used only to name the offending type if the cap is reached</param>
+		/// <exception cref="JsonSerializationException">If the object graph is nested deeper than <see cref="CrystalSerialization.MaxDepth"/></exception>
+		/// <remarks>
+		/// <para>Same depth-only guard as <see cref="EnterDepth(object?)"/>, for source-generated converters over a value type. A
+		/// struct passed to the <see cref="object"/> overload would be boxed on every call just to be able to name it in a
+		/// failure message that is reached only once in 256 levels; this overload takes the static <see cref="Type"/> instead, which
+		/// costs nothing on the happy path and loses no information, because a value type cannot be further derived, so
+		/// <c>value.GetType()</c> and <c>typeof(T)</c> always agree for a struct.</para>
+		/// <para>Reference types keep using the <see cref="object"/> overload: they are never boxed by it, and
+		/// <c>instance.GetType()</c> can be more derived than the generated converter's static type (a base-class field holding a
+		/// derived instance), so passing the instance there preserves that fidelity in the failure message.</para>
+		/// <para>The caller must pair this with <see cref="LeaveDepth"/>.</para>
+		/// </remarks>
+		public void EnterDepth(Type? type)
+		{
+			if (m_objectGraphDepth >= MaximumObjectGraphDepth)
+			{ // protect against very deep object graphs, and against cycles that no visited-objects stack is watching
+				throw CrystalJson.Errors.Serialization_FailTooDeep(m_objectGraphDepth, type);
+			}
+			++m_objectGraphDepth;
+		}
+
 		/// <summary>Leaves the level entered by the matching call to <see cref="EnterDepth"/></summary>
 		public void LeaveDepth()
 		{

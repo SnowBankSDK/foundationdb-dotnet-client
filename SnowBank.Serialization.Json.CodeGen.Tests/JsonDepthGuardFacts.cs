@@ -121,6 +121,30 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
+		public void Test_A_Deep_Acyclic_Compat_Chain_Up_To_The_Cap_Is_Packed_In_Full()
+		{
+			// same boundary pair as the modern Chain, restated on the DataContractCompat container: the compat Pack body has
+			// its own emitted guard, and this pins WHERE its line sits, not just that a cycle is refused somewhere
+			var obj = (JsonObject) LegacySerializers.CycleNode.Pack(MakeCompatChain(CrystalSerialization.MaxDepth));
+
+			int levels = 0;
+			for (JsonValue? cursor = obj; cursor is JsonObject o; cursor = o[LegacySerializers.CycleNode.PropertyNames.Next])
+			{
+				++levels;
+			}
+			Assert.That(levels, Is.EqualTo(CrystalSerialization.MaxDepth), "one packed object per node of the chain");
+		}
+
+		[Test]
+		public void Test_A_Deep_Acyclic_Compat_Chain_Past_The_Cap_Throws_The_Same_Typed_Exception()
+		{
+			// one node deeper than the cap, on the compat container: still the same typed exception, not a crash
+			Assert.That(
+				() => LegacySerializers.CycleNode.Pack(MakeCompatChain(CrystalSerialization.MaxDepth + 1)),
+				Throws.InstanceOf<JsonSerializationException>());
+		}
+
+		[Test]
 		public void Test_A_Deep_Acyclic_Chain_Up_To_The_Cap_Is_Packed_In_Full()
 		{
 			// the guard must not eat a legitimate (if absurd) deep document: a chain exactly as deep as the cap allows still
@@ -173,6 +197,21 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			Assert.That(
 				() => AcmeSerializers.Chain.ToJsonText(a),
+				Throws.InstanceOf<JsonSerializationException>().With.Message.Contains(CrystalSerialization.MaxDepth.ToString(CultureInfo.InvariantCulture)));
+		}
+
+		[Test]
+		public void Test_A_Reference_Cycle_Through_Generated_Serialize_Throws_On_The_Compat_Profile_Too()
+		{
+			// the DataContractCompat container emits its own Serialize body too: same requirement as the Pack side, restated
+			// on the text path
+			var a = new CycleNode { Label = "a" };
+			var b = new CycleNode { Label = "b" };
+			a.Next = b;
+			b.Next = a;
+
+			Assert.That(
+				() => LegacySerializers.CycleNode.ToJsonText(a),
 				Throws.InstanceOf<JsonSerializationException>().With.Message.Contains(CrystalSerialization.MaxDepth.ToString(CultureInfo.InvariantCulture)));
 		}
 
