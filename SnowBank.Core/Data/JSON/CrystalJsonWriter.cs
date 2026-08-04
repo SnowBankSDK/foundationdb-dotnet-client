@@ -52,7 +52,11 @@ namespace SnowBank.Data.Json
 	[DebuggerNonUserCode]
 	public sealed class CrystalJsonWriter : IDisposable
 	{
-		private const int MaximumObjectGraphDepth = 16;
+		/// <summary>Maximum nesting depth this writer will descend into before refusing to go deeper</summary>
+		/// <remarks>Shared with every other serialization wire (see <see cref="CrystalSerialization.MaxDepth"/>): a document that
+		/// serializes through the source-generated path must not be refused here purely because the two disagreed on where "too
+		/// deep" starts.</remarks>
+		private const int MaximumObjectGraphDepth = CrystalSerialization.MaxDepth;
 
 		public enum NodeType
 		{
@@ -1328,6 +1332,35 @@ namespace SnowBank.Data.Json
 				buffer[cursor] = null!;
 				return obj;
 			}
+		}
+
+		/// <summary>Enters one level of the object graph, WITHOUT pushing the instance onto the visited-objects stack</summary>
+		/// <param name="value">Instance about to be written; used only to name the offending type if the cap is reached</param>
+		/// <exception cref="JsonSerializationException">If the object graph is nested deeper than <see cref="CrystalSerialization.MaxDepth"/></exception>
+		/// <remarks>
+		/// <para>The depth half of <see cref="MarkVisited"/>, and nothing else. Source-generated converters call this around the
+		/// body they write so that a reference cycle running through generated code raises a typed, catchable exception instead
+		/// of a <see cref="StackOverflowException"/>, which .NET cannot catch and which takes the whole process down.</para>
+		/// <para>Deliberately NOT the visited-objects stack: that is true cycle detection, it allocates and scans per level, and
+		/// it stays a reflection-path feature that a caller opts out of with <see cref="CrystalJsonSettings.WithoutObjectTracking"/>.
+		/// The generated path only pays for the counter.</para>
+		/// <para>The caller must pair this with <see cref="LeaveDepth"/>. Like <see cref="MarkVisited"/>/<see cref="Leave"/>, the
+		/// pairing is not exception-safe by design: a writer whose serialization threw is not reusable anyway.</para>
+		/// </remarks>
+		public void EnterDepth(object? value)
+		{
+			if (m_objectGraphDepth >= MaximumObjectGraphDepth)
+			{ // protect against very deep object graphs, and against cycles that no visited-objects stack is watching
+				throw CrystalJson.Errors.Serialization_FailTooDeep(m_objectGraphDepth, value);
+			}
+			++m_objectGraphDepth;
+		}
+
+		/// <summary>Leaves the level entered by the matching call to <see cref="EnterDepth"/></summary>
+		public void LeaveDepth()
+		{
+			if (m_objectGraphDepth == 0) throw CrystalJson.Errors.Serialization_InternalDepthInconsistent();
+			--m_objectGraphDepth;
 		}
 
 		#region Basic Type Serializers...

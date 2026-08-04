@@ -73,8 +73,11 @@ namespace SnowBank.Data.Xml
 		/// even if a future emission spends several frames per level, runs in a DEBUG build where nothing inlines, or runs
 		/// on a thread with a smaller stack. Documents nested deeper than 256 elements are not a shape this serializer
 		/// supports; a graph that legitimately needs it should be flattened instead.</para>
+		/// <para>This is an alias for <see cref="CrystalSerialization.MaxDepth"/>, which every serialization wire in this
+		/// library shares: the exception type differs per wire, the boundary does not. The alias remains because the XML
+		/// emission's own documentation, diagnostics and boundary tests all speak of it by this name.</para>
 		/// </remarks>
-		public const int MaxDepth = 256;
+		public const int MaxDepth = CrystalSerialization.MaxDepth;
 
 		#region Byte-exact wire (CrystalXmlWriter)...
 
