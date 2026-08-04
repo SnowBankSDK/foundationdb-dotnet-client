@@ -51,6 +51,7 @@ namespace SnowBank.Data.Xml
 		/// <param name="value">Value to write, or <see langword="null"/> to write the empty/self-closing form of the root element</param>
 		/// <param name="settings">Optional settings controlling the output (for example, which lexical profile - <c>Dcs</c> or <c>Modern</c> - scalar members use)</param>
 		/// <param name="rootName">Optional override for the name of the root element written by this call, in place of the type's own default name</param>
+		/// <remarks>The generated emission's cycle/depth guard (<see cref="CrystalXml.MaxDepth"/>) cannot see across this call: the depth counter resets to zero on the other side of it. A reference cycle that runs through this method's own recursion is not caught by that guard and overflows the native stack instead.</remarks>
 		void WriteXml<TEmitter>(ref TEmitter emitter, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
 			where TEmitter : struct, IXmlEmitter;
 
@@ -68,6 +69,7 @@ namespace SnowBank.Data.Xml
 		/// <summary>Writes this instance to <paramref name="emitter"/></summary>
 		/// <typeparam name="TEmitter">Concrete emitter type, reached through the <see cref="IXmlEmitter"/> constraint so every call devirtualizes</typeparam>
 		/// <param name="emitter">Destination emitter, passed by <see langword="ref"/> per the <see cref="IXmlEmitter"/> contract</param>
+		/// <remarks>The generated emission's cycle/depth guard (<see cref="CrystalXml.MaxDepth"/>) cannot see across this call: the depth counter resets to zero on the other side of it. A reference cycle that runs through this method's own recursion is not caught by that guard and overflows the native stack instead.</remarks>
 		void WriteXml<TEmitter>(ref TEmitter emitter)
 			where TEmitter : struct, IXmlEmitter;
 

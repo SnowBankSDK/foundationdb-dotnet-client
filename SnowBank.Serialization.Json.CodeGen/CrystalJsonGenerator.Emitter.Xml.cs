@@ -447,7 +447,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// WriteXmlElement(...): the nested entry point, so a parent can name the child element without re-validating a name
 				sb.XmlComment("<summary>Writes this value as an element of the given name</summary>");
 				sb.XmlComment("<remarks>The nested entry point: a parent converter writing this type as one of its members passes its own cached member name here, so no name is validated or transcoded at write time.</remarks>");
-				sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one. Every nested call adds one, and reaching <c>CrystalXml.MaxDepth</c> raises <c>CrystalXmlCycleException</c> instead of recursing into a stack overflow.</param>");
+				sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one. Every nested call within this generated recursion adds one, and reaching <c>CrystalXml.MaxDepth</c> raises <c>CrystalXmlCycleException</c> instead of recursing into a stack overflow; a cycle running through a custom <c>ICrystalXmlSerializer{{T}}.WriteXml</c> or <c>ICrystalXmlSerializable.WriteXml</c> hook is not covered, since the counter resets to zero across that call.</param>");
 				sb.AppendLine($"public void WriteXmlElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, int {XmlDepthParameterName} = 0) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXmlElement");
 

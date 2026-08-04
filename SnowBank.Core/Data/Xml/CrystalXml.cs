@@ -56,10 +56,17 @@ namespace SnowBank.Data.Xml
 		/// <summary>Maximum nesting depth a generated XML emission may reach before it refuses to go deeper</summary>
 		/// <remarks>
 		/// <para>An object graph containing a reference cycle has no XML representation (neither profile has a
-		/// <c>z:Id</c>/<c>z:Ref</c> form), so the generated emission must stop instead of recursing forever. It counts the
-		/// elements it has opened and raises <see cref="CrystalXmlCycleException"/> once this cap is reached: a typed,
-		/// catchable error rather than a <see cref="StackOverflowException"/>, which .NET cannot catch and which takes the
-		/// whole process down.</para>
+		/// <c>z:Id</c>/<c>z:Ref</c> form), so the generated emission must stop instead of recursing forever. It counts
+		/// levels of generated recursion and raises <see cref="CrystalXmlCycleException"/> once this cap is reached: a
+		/// typed, catchable error rather than a <see cref="StackOverflowException"/>, which .NET cannot catch and which
+		/// takes the whole process down.</para>
+		/// <para>The guard cannot distinguish a genuine reference cycle from an acyclic graph that is simply nested deeper
+		/// than this cap: either shape hits the same counter and raises the same exception. A caller that knows its data
+		/// has no cycles but legitimately needs more than 256 levels should flatten the graph instead.</para>
+		/// <para>The counter only tracks generated recursion: it cannot cross a call into <see cref="ICrystalXmlSerializer{T}.WriteXml{TEmitter}"/>
+		/// (a custom member converter) or <see cref="ICrystalXmlSerializable.WriteXml{TEmitter}"/> (a self-writing type),
+		/// because it resets to zero on the other side of either call. A cycle that runs through one of those hooks is not
+		/// covered by this guard and still overflows the native stack.</para>
 		/// <para>The value is a deliberate compromise between "no legitimate document is this deep" and "the native stack
 		/// is still nowhere near exhausted". The measured overflow point of the generated recursion is around 2300 nested
 		/// <c>WriteXmlElement</c> frames (one frame per level); 256 leaves roughly a nine-fold margin, which still holds

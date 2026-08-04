@@ -116,7 +116,10 @@ namespace SnowBank.Data.Xml
 	}
 
 	/// <summary>Error thrown when a reference cycle is detected while serializing an object graph to XML</summary>
-	/// <remarks>Unlike <see cref="System.Runtime.Serialization.DataContractSerializer"/>, which duplicates a shared, non-cyclic graph in its entirety on the compat wire, a genuine cycle has no representation in either XML profile: it is always a typed error, never <c>z:Id</c>/<c>z:Ref</c> references.</remarks>
+	/// <remarks>
+	/// <para>Unlike <see cref="System.Runtime.Serialization.DataContractSerializer"/>, which duplicates a shared, non-cyclic graph in its entirety on the compat wire, a genuine cycle has no representation in either XML profile: it is always a typed error, never <c>z:Id</c>/<c>z:Ref</c> references.</para>
+	/// <para>The generated emission cannot tell a genuine cycle apart from an acyclic graph that is simply nested deeper than <see cref="CrystalXml.MaxDepth"/>: both hit the same depth guard and raise this exception.</para>
+	/// </remarks>
 	[Serializable]
 	public sealed class CrystalXmlCycleException : InvalidOperationException
 	{
@@ -126,7 +129,7 @@ namespace SnowBank.Data.Xml
 
 		/// <summary>Reports that a reference cycle was detected while serializing an instance of <paramref name="type"/></summary>
 		public CrystalXmlCycleException(Type type)
-			: base($"A reference cycle was detected while serializing an instance of type '{type.GetFriendlyName()}' to XML.")
+			: base($"Cannot write an instance of type '{type.GetFriendlyName()}' to XML: the object graph either contains a reference cycle or is nested deeper than this serializer supports.")
 		{
 			this.Type = type;
 		}
