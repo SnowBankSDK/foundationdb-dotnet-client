@@ -121,6 +121,25 @@ namespace SnowBank.Serialization.Json.CodeGen
 				this.PolymorphicMap = polymorphicMap;
 			}
 
+			#region Sample member (documentation only)...
+
+			// The "How to use" blocks of the generated proxy helpers quote ONE member of the type as an example. A type with
+			// no serialized member at all is legal (an ISerializable wrapper on the DataContract XML wire is exactly that),
+			// and indexing the member list for those comments used to crash the whole emission for such a type. The three
+			// helpers below answer with a placeholder instead: the sample is documentation, and documentation must never be
+			// the thing that decides whether a type can be generated.
+
+			/// <summary>Name of the member the generated documentation quotes as an example, or a placeholder when the type has none</summary>
+			private static string GetSampleMemberName(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].MemberName : "SomeMember";
+
+			/// <summary>Wire name of that same example member</summary>
+			private static string GetSampleMemberWireName(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].Name : "someMember";
+
+			/// <summary>Type of that same example member</summary>
+			private static string GetSampleMemberType(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].Type.FullyQualifiedName : "global::System.Object";
+
+			#endregion
+
 			/// <summary>Returns the member's default-value literal, ready to embed in a value position of the generated code</summary>
 			/// <remarks>The generated files force <c>#nullable enable</c> on themselves while the member's declared type may be non-nullable or oblivious, so a bare <c>null</c> default must be null-forgiving (<c>null!</c>): the <c>[NotNullIfNotNull]</c> contract on the <c>Get(name, defaultValue)</c> family then keeps the returned flow-state aligned with the declared member type.</remarks>
 			private static string GetForgivingDefaultLiteral(CrystalJsonMemberMetadata member) => member.DefaultLiteral == "null" ? "null!" : member.DefaultLiteral;
@@ -591,7 +610,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
-				sb.AppendLine($"public static string[] GetAllNames() => new [] {{ {string.Join(", ", typeDef.Members.Select(this.GetLocalPropertyNameRef))} }};"); //TODO: PERF!
+				// a type with no serialized member at all is legal (an ISerializable wrapper on the DataContract XML wire is
+				// exactly that), and `new [] { }` does not compile: the empty case needs the typed form
+				sb.AppendLine(typeDef.Members.Count > 0
+					? $"public static string[] GetAllNames() => new [] {{ {string.Join(", ", typeDef.Members.Select(this.GetLocalPropertyNameRef))} }};" //TODO: PERF!
+					: "public static string[] GetAllNames() => [ ];");
 				sb.NewLine();
 
 				sb.LeaveBlock("properties");
@@ -1587,8 +1610,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(value);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1607,8 +1630,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(value);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1623,11 +1646,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<para>How to use:<code>");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 					sb.XmlComment("// ...");
 					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1641,11 +1664,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<para>How to use:<code>");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 					sb.XmlComment("// ...");
 					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1662,8 +1685,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // change the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1680,8 +1703,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // change the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1698,8 +1721,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // change the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1711,11 +1734,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as writable properties.</returns>");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue;");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue;");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public static {GetLocalWritableProxyRef(typeDef)} ToMutable({typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalWritableProxyRef(typeDef)}.Create(instance);");
@@ -1726,11 +1749,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as writable properties.</returns>");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue;");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue;");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public static {GetLocalWritableProxyRef(typeDef)} ToMutable({KnownTypeSymbols.IMutableJsonContextFullName} ctx, {typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalWritableProxyRef(typeDef)}.Create(ctx, instance);");
@@ -1786,8 +1809,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(json);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1806,8 +1829,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(json);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1822,11 +1845,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<para>How to use:<code>");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 					sb.XmlComment("// ...");
 					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1840,11 +1863,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<para>How to use:<code>");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 					sb.XmlComment("// ...");
 					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1861,8 +1884,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1879,8 +1902,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1897,8 +1920,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1910,11 +1933,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as writable properties.</returns>\r\n");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue;");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue;");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public {GetLocalWritableProxyRef(typeDef)} ToMutable({typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalWritableProxyRef(typeDef)}.Create(instance);");
@@ -1925,11 +1948,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as writable properties.</returns>\r\n");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue;");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue;");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public {GetLocalWritableProxyRef(typeDef)} ToMutable({KnownTypeSymbols.IMutableJsonContextFullName} ctx, {typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalWritableProxyRef(typeDef)}.Create(ctx, instance);");
