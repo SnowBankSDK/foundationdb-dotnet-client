@@ -375,11 +375,12 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	#region Test container...
 
 	// note: the spike's "List<Shelf> as root" and "string as root" families (a bare collection or scalar type passed
-	// directly to [CrystalJsonSerializable], with no declaring DTO) are excluded here. Both were tried and produce
-	// generator output that fails to compile (CS0106/CS0720/CS0548/CS1551 on a nameless indexer inside a nested
-	// "PropertyEncodedNames" helper) -- a pre-existing limitation of [CrystalJsonSerializable] itself, unrelated to
-	// the DataContract XML profile this task is porting the oracle for. Not exercised, not weakened: recorded as a
-	// finding for the main session instead.
+	// directly to [CrystalJsonSerializable], with no declaring DTO) are excluded here, and stay excluded by design:
+	// CrystalJson serializes collections, dictionaries and scalars natively, root included, so the generator emits no
+	// converter for such an enrolment at all (it reports the CJSON0019 guidance instead, see NativeEnrolmentGuardFacts).
+	// There is therefore no generated wire for these two families to compare against the oracle. Enrolling them used to
+	// emit code that did not compile (CS0106/CS0720/CS0548/CS1551 on a nameless indexer inside a nested
+	// "PropertyEncodedNames" helper); that is the defect the guard closed.
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
 	[CrystalJsonSerializable(typeof(NilProbe))]

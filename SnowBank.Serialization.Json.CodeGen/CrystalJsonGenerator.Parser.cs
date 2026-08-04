@@ -200,6 +200,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 								continue;
 							}
 
+							if (IsNativelySerializedType(TypeMetadata.Create(type), out var nativeKind))
+							{ // CrystalJson serializes collections, dictionaries and scalars natively, root included: there is nothing for a generated converter to add, and enumerating such a type as a POCO produces code that does not compile
+								ReportNativelySerializedEnrolment(typeAttribute, symbol, type, nativeKind);
+								continue;
+							}
+
 							work.Enqueue(type);
 							break;
 						}
@@ -331,6 +337,77 @@ namespace SnowBank.Serialization.Json.CodeGen
 					XmlProfile = xmlProfile,
 					XmlDictionaryFormat = xmlDictionaryFormat,
 				};
+			}
+
+			/// <summary>Shapes that CrystalJson already serializes natively, and for which no converter is ever source-generated</summary>
+			private enum NativeShape
+			{
+				/// <summary>A scalar or built-in type (<c>string</c>, <c>int</c>, <c>Guid</c>, <c>DateTime</c>, ...), or a <see cref="Nullable{T}"/> of one</summary>
+				Scalar,
+
+				/// <summary>A sequence (array, <c>List&lt;T&gt;</c>, <c>IEnumerable&lt;T&gt;</c>, ...)</summary>
+				Collection,
+
+				/// <summary>An associative container (<c>Dictionary&lt;TKey, TValue&gt;</c>, <c>IDictionary&lt;TKey, TValue&gt;</c>, ...)</summary>
+				Dictionary,
+			}
+
+			/// <summary>Tests whether an ENROLLED type is one CrystalJson serializes natively, root included, and which therefore gets no generated converter</summary>
+			/// <param name="metadata">Metadata of the type named by a <c>[CrystalJsonSerializable]</c> attribute</param>
+			/// <param name="shape">Receives the shape that made the type native, when the method returns <see langword="true"/></param>
+			/// <remarks>
+			/// <para>The generator emits converters for POCO types ONLY. Enumerating a collection, a dictionary or a scalar as if it were a POCO walks its indexer as a member, and the emitted holder ends up declaring a nameless indexer that does not compile.</para>
+			/// <para>This governs the ENROLMENT decision only. Types reached transitively as MEMBERS never take this route: <see cref="MaybeAddLinkedType"/> already descends through a collection or dictionary member to its element / key / value types and never enqueues the container type itself, so member paths are unaffected.</para>
+			/// <para>Enums are deliberately NOT part of this set: they are user-declared types whose generated label tables are the reflection-free lookup the runtime path would otherwise pay for.</para>
+			/// </remarks>
+			private static bool IsNativelySerializedType(TypeMetadata metadata, out NativeShape shape)
+			{
+				// scalars first: 'string' is both a built-in and an IEnumerable<char>, and it is the former that names it best
+				if (metadata.IsPrimitive || (metadata.NullableOfType is { IsPrimitive: true }))
+				{
+					shape = NativeShape.Scalar;
+					return true;
+				}
+
+				if (metadata.ValueType is not null)
+				{
+					shape = NativeShape.Dictionary;
+					return true;
+				}
+
+				if (metadata.ElementType is not null)
+				{
+					shape = NativeShape.Collection;
+					return true;
+				}
+
+				shape = default;
+				return false;
+			}
+
+			/// <summary>Reports <c>CJSON0019</c> on a <c>[CrystalJsonSerializable]</c> attribute that enrolls a natively serialized type</summary>
+			/// <remarks>A WARNING rather than an error: the enrollment is harmless but inert, and the application still serializes the type correctly through the native path. Silence is the wrong answer though, since the author asked for a converter that is not there (the same reasoning that makes <c>CJSON0007</c> a warning).</remarks>
+			private void ReportNativelySerializedEnrolment(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type, NativeShape shape)
+			{
+				var (what, remedy) = shape switch
+				{
+					NativeShape.Dictionary => ("dictionaries", "Enroll the key and value types instead of the dictionary type."),
+					NativeShape.Collection => ("collections", "Enroll the element type instead of the collection type."),
+					_ => ("scalars", "Remove the enrollment."),
+				};
+
+				ReportDiagnostic(
+					new(
+						"CJSON0019",
+						"Enrolled type is serialized natively",
+						"The type '{0}' is enrolled in container '{1}', but it is not needed: CrystalJson serializes {2} natively, root included. No converter is source-generated for it. {3}",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Warning,
+						isEnabledByDefault: true
+					),
+					attribute.ApplicationSyntaxReference?.GetSyntax().GetLocation() ?? this.ContextClassLocation,
+					[ type.ToDisplayString(), container.ToDisplayString(), what, remedy ]
+				);
 			}
 
 			/// <summary>Resolves the XML wire of a container from its <c>[CrystalXmlOutput]</c> attribute, reporting <c>CXML0001</c> when the resolved wire cannot honor the container's naming options</summary>
