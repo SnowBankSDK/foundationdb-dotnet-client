@@ -415,6 +415,21 @@ namespace SnowBank.Data.Xml.Tests
 				"the family is not reproduced: CrystalXml refuses the undeclared runtime shape instead of guessing its wire name");
 		}
 
+		[Test]
+		public void Test_Collection_Of_Object_Items_Are_AnyType()
+		{
+			// UNTESTED CORNER (coverage ledger gap 5): a declared List<object> member. Each ITEM goes through the same
+			// per-item anyType switch already exercised by PolymorphicProbe.AsObjectString/AsObjectInt (both boxed
+			// built-ins, both already reproduced), not the "undeclared runtime type" refusal pinned above -- that one
+			// fires only when the OBJECT SLOT ITSELF holds an unregistered collection/composed type (List<string>
+			// needing "ArrayOfstring"). Here the outer type (List<object>) is declared; only its items are object-typed,
+			// null items nil, non-null items carrying a type= discriminator (string/int), item element named anyType.
+			AssertSameWire(new AnyTypeCollectionProbe
+			{
+				Results = [null, "s1", 42],
+			}, v => DcsProbeSerializers.AnyTypeCollectionProbe.ToXmlText(v));
+		}
+
 		#endregion
 
 		#region Root name override and control-character sanitization (acted deviation 2)...

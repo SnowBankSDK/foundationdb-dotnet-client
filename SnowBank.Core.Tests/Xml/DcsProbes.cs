@@ -359,6 +359,15 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		[DataMember] public KeyedBag<string>? Properties;
 	}
 
+	/// <summary>Measured corpus shape: a declared <c>List&lt;object&gt;</c> collection member, item element named
+	/// <c>anyType</c>, null items carrying <c>nil="true"</c>, non-null items carrying a <c>type=</c> discriminator
+	/// for their boxed runtime type (matrix: <c>&lt;Results&gt;&lt;anyType nil="true" /&gt;...&lt;/Results&gt;</c>).</summary>
+	[DataContract]
+	public sealed class AnyTypeCollectionProbe
+	{
+		[DataMember] public List<object?>? Results;
+	}
+
 	#endregion
 
 	#region Test container...
@@ -394,6 +403,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[CrystalJsonSerializable(typeof(PrivateMemberProbe))]
 	[CrystalJsonSerializable(typeof(NamedGenericProbe<bool>))]
 	[CrystalJsonSerializable(typeof(KeyedBagProbe))]
+	[CrystalJsonSerializable(typeof(AnyTypeCollectionProbe))]
 	public static partial class DcsProbeSerializers
 	{
 	}
