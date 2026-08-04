@@ -242,7 +242,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Returns the wire label of one enum member: the custom token if it declares one, else its C# name</summary>
-			/// <remarks>The same order as the JSON side's runtime cache (the System.Text.Json spelling wins over the DataContract one), so a value renders identically on both wires.</remarks>
+			/// <remarks>
+			/// <para>The same order as the JSON side's runtime cache (the System.Text.Json spelling wins over the DataContract one), so a value renders identically on both wires.</para>
+			/// <para>The label is decided HERE, at generation time, so it does not follow the RUNTIME naming settings: a call that asks
+			/// the JSON side for camel-cased enum labels (<c>CrystalJsonSettings.UseCamelCasingForEnums</c>, as
+			/// <c>WithEnumAsStrings(camelCased: true)</c> sets it) gets <c>sciFi</c> in JSON and <c>SciFi</c> in XML from the same value.
+			/// Honoring it would mean emitting a second label table per enum; use <c>[JsonStringEnumMemberName]</c> or
+			/// <c>[EnumMember(Value = ...)]</c> to pin one spelling for both wires.</para>
+			/// </remarks>
 			private static string GetXmlEnumLabel(EnumMemberMetadata member) => member.JsonStringEnumMemberName ?? member.EnumMemberValue ?? member.Name;
 
 			/// <summary>Emits the generated label lookup of every enum this converter writes</summary>
@@ -394,6 +401,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// WriteXml(...): the interface entry point, which owns the rootName override
 				sb.InheritDoc();
 				sb.XmlComment("<remarks>The serialization lifecycle callbacks of this type (<c>OnSerializing</c>, <c>OnSerialized</c>) are NOT invoked on the XML path: they are part of the JSON contract, and whether writing a second format should re-fire them has not been decided. Do not rely on them running here.</remarks>");
+				sb.XmlComment("<remarks>Enum labels are baked in at generation time, so they do NOT follow <c>CrystalJsonSettings.UseCamelCasingForEnums</c>: one call can render <c>sciFi</c> in JSON and <c>SciFi</c> in XML. Pin one spelling for both wires with <c>[JsonStringEnumMemberName]</c> or <c>[EnumMember(Value = ...)]</c>.</remarks>");
 				sb.AppendLine($"public void WriteXml<TEmitter>(ref TEmitter emitter, {valueType} value, {settingsType}? settings = default, string? rootName = default) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXml");
 				sb.AppendLine("if (rootName is null)");
@@ -545,8 +553,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>The XML name is the JSON discriminator property with its leading <c>'$'</c> removed (<c>$type</c> becomes <c>type</c>): the JSON default is not a legal XML name, and the two formats each keep their own convention for the same concept.</remarks>
 			private void WriteXmlDiscriminator(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef, (CrystalJsonTypeMetadata Parent, object? Discriminator) polymorphicMetadata)
 			{
+				// resolved through the parser's own helper, so that the collision check (CXML0005) and this write site cannot
+				// guard and emit two different names
 				string declared = polymorphicMetadata.Parent.TypeDiscriminatorPropertyName ?? "$type";
-				string name = declared.StartsWith("$", StringComparison.Ordinal) ? declared.Substring(1) : declared;
+				string name = Parser.GetXmlDiscriminatorName(polymorphicMetadata.Parent.TypeDiscriminatorPropertyName);
 
 				string? value = polymorphicMetadata.Discriminator switch
 				{
@@ -614,15 +624,28 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Writes one member projected as an XML ATTRIBUTE of the element currently open</summary>
-			/// <remarks>A null value makes the attribute ABSENT, whatever the null policy of the member says: an attribute has no
-			/// nil form (there is no attribute of an attribute), so "present but null" is not a state this wire can express.</remarks>
+			/// <remarks>
+			/// <para>A null value makes the attribute ABSENT, whatever the null policy of the member says: an attribute has no
+			/// nil form (there is no attribute of an attribute), so "present but null" is not a state this wire can express.</para>
+			/// <para>A custom converter has no say here: its XML facet writes an ELEMENT and structurally cannot produce an attribute
+			/// value, which is why the pair is refused at generation time (CXML0009) rather than silently bypassed.</para>
+			/// </remarks>
 			private void WriteXmlAttributeMember(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member)
 			{
+				sb.NewLine();
+				sb.Comment($"{member.Type.Name} {member.MemberName} => @{GetXmlMemberName(member)}{(member.IgnoreCondition != null ? $" [{member.IgnoreCondition}]" : "")}");
+
+				if (member.CustomConverterType is not null)
+				{ // CXML0009 already reported this at generation time: emit something that compiles and fails loudly, and do NOT
+				  // fall through to the scalar path, which would write the attribute the converter was supposed to own
+					this.XmlNeedsNotSupportedHelper = true;
+					sb.AppendLine($"FailXmlNotSupported(typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)}); // attribute-projected member with a custom converter (see CXML0009)");
+					return;
+				}
+
 				string nameRef = names.Ref(GetXmlMemberName(member));
 				string local = "__x_" + member.MemberName;
 
-				sb.NewLine();
-				sb.Comment($"{member.Type.Name} {member.MemberName} => @{GetXmlMemberName(member)}{(member.IgnoreCondition != null ? $" [{member.IgnoreCondition}]" : "")}");
 				sb.AppendLine($"var {local} = {GetXmlMemberReadExpr(typeDef, member)};");
 
 				// CXML0003 already refused any attribute-projected member with no lexical form, so this cannot fail to resolve
@@ -743,8 +766,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// 2) a scalar is text inside the element
 				// the member's EnumFormat applies to the member's OWN value: an item of a collection, or an entry of a
-				// dictionary, is not the member, and carries none of the member's vocabulary
-				var text = GetXmlScalarText(type, valueExpr, ReferenceEquals(type, member?.Type) ? member!.EnumFormat : null);
+				// dictionary, is not the member, and carries none of the member's vocabulary.
+				// TypeMetadata is a value-equality record, so the test is value equality and not identity: the metadata of one
+				// type is not guaranteed to be the same INSTANCE everywhere it is described. It stays exact all the same,
+				// because an item type (or a dictionary value type) is never equal to the collection member's own type.
+				var text = GetXmlScalarText(type, valueExpr, type == member?.Type ? member.EnumFormat : null);
 				if (text is not null)
 				{
 					sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");

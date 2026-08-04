@@ -1276,7 +1276,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Reports <c>CXML0005</c> when two members of a type resolve to the same effective XML name, once the <c>'@'</c> sugar has been normalized</summary>
 			/// <remarks>
 			/// <para>Elements and attributes are checked SEPARATELY, because in XML they do not share a namespace: an attribute and a child element may legitimately carry the same name, and refusing that pair would be a false positive on a perfectly readable document.</para>
-			/// <para>Only member-versus-member: a collision with a polymorphic type's discriminator is not checked here, because the XML name of the discriminator is an emission decision this step deliberately does not pre-empt.</para>
+			/// <para>Only member-versus-member: a collision with a polymorphic type's discriminator cannot be seen from here, because a derived type does not know its own hierarchy. It is checked over the whole container instead, by <see cref="ReportDiscriminatorXmlNameCollisions"/>, and reported under the same id.</para>
 			/// <para>The REMEDY is profile-aware, because the obvious one is not available on both: on the DataContract wire an <c>[XmlProperty]</c> rename is itself refused (CXML0004), so the fix has to point at the <c>[DataMember(Name = ...)]</c> that owns the colliding name.</para>
 			/// </remarks>
 			private void ReportDuplicateXmlNames(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members, string xmlProfile)
@@ -1320,6 +1320,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 			}
 
+			/// <summary>Returns the XML name the type discriminator of a polymorphic root occupies: its JSON property name, with the leading <c>'$'</c> removed</summary>
+			/// <param name="declaredPropertyName">The root's <c>TypeDiscriminatorPropertyName</c>, or <see langword="null"/> when it declares none (the JSON default, <c>$type</c>)</param>
+			/// <returns>The attribute name, which may be EMPTY when the declared name is nothing but the <c>'$'</c> (a shape the emitter refuses with a <c>#error</c>)</returns>
+			/// <remarks><b>Shared with the emitter</b> (hence <c>internal</c>): the collision check below and <c>Emitter.WriteXmlDiscriminator</c> must resolve the SAME name, or the check would guard a name the document never carries. Spelling the rule twice is what would let them drift.</remarks>
+			internal static string GetXmlDiscriminatorName(string? declaredPropertyName)
+			{
+				string declared = declaredPropertyName ?? "$type";
+				return declared.StartsWith("$", StringComparison.Ordinal) ? declared.Substring(1) : declared;
+			}
+
 			/// <summary>Reports <c>CXML0005</c> when a member of a derived type resolves to the XML name the type discriminator will occupy</summary>
 			/// <remarks>
 			/// <para>MODERN wire only: this is the wire that writes the discriminator as an XML ATTRIBUTE on every derived element,
@@ -1340,12 +1350,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 					byRef[includedType.Type.Ref] = includedType;
 				}
 
+				// This pass and the EMITTER must cover the same set, or the document would carry an attribute nothing checked.
+				// The emitter annotates every type its PolymorphicMap has an entry for; that map is built (Emitter's ctor) by
+				// walking the DerivedTypes of every included type, which is exactly what this loop walks. The IsPolymorphicRoot
+				// guard below costs nothing today because the two are equivalent by construction: the flag is set by the very
+				// [JsonDerivedType] parse that fills DerivedTypes, so a non-empty DerivedTypes implies the flag and vice-versa.
+				// If either side ever stops implying the other (a derived-type list built from something other than that
+				// attribute, or a root flagged without one), THIS is the pair to re-align.
 				foreach (var root in includedTypes)
 				{
 					if (!root.IsPolymorphicRoot || root.DerivedTypes.Count == 0) continue;
 
-					string declared = root.TypeDiscriminatorPropertyName ?? "$type";
-					string name = declared.StartsWith("$", StringComparison.Ordinal) ? declared.Substring(1) : declared;
+					string name = GetXmlDiscriminatorName(root.TypeDiscriminatorPropertyName);
 					if (name.Length == 0) continue; // the emitter refuses that shape on its own
 
 					foreach (var (_, derivedType, _) in root.DerivedTypes)
@@ -1408,6 +1424,30 @@ namespace SnowBank.Serialization.Json.CodeGen
 					),
 					member.Locations.Length > 0 ? member.Locations[0] : null,
 					member.ToDisplayString(), converterType, (type.NullableOfType ?? type).FullName);
+			}
+
+			/// <summary>Reports <c>CXML0009</c> when a member is projected as an XML ATTRIBUTE and also carries a custom converter</summary>
+			/// <remarks>
+			/// <para>A refusal by CONSTRUCTION, not a missing feature: the XML facet's only entry point (<c>WriteXml</c>) writes an
+			/// ELEMENT, so there is no call a generated body could make that would turn a converter into an attribute value. The
+			/// attribute path would therefore format the member with the very rules the converter was declared to replace, and the
+			/// two wires would disagree with nothing in the source saying so - exactly what CXML0008 refuses, one door further on.</para>
+			/// <para>Reported for ANY converter, including one that does implement the XML facet: having the facet is what makes the
+			/// bypass silent rather than merely wrong, since the author has every reason to believe it is being used.</para>
+			/// </remarks>
+			private void ReportConvertedAttributeMember(ISymbol member, string converterType)
+			{
+				ReportDiagnostic(
+					new(
+						"CXML0009",
+						"A member projected as an XML attribute cannot go through a custom converter",
+						"The member '{0}' is projected as an XML attribute and is written through the custom converter '{1}': the XML facet of a converter writes an ELEMENT, so it cannot produce an attribute value, and the attribute would be written by the rules the converter replaced - the JSON and the XML of this member would disagree with nothing in the source saying so. Keep one of the two: drop the '@' projection, or drop the converter.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString(), converterType);
 			}
 
 			/// <summary>Returns whether a converter type implements the XML facet for the member's type, and whether it took the <c>Nullable&lt;T&gt;</c> form itself</summary>
@@ -2129,7 +2169,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (customConverterType is not null)
 					{ // the converter took the member's wire form over; on an XML container it has to answer for BOTH wires
 						(customConverterHasXmlSerializer, customConverterXmlFacetDeclaredForNullable) = GetXmlConverterFacet(customConverterSymbol, typeSymbol);
-						if (!customConverterHasXmlSerializer)
+						if (xmlIsAttribute)
+						{ // no converter can answer for an ATTRIBUTE, facet or not: reported instead of the missing-facet rule,
+						  // because one member gets one error, and fixing the facet would not make this shape work
+							ReportConvertedAttributeMember(member, customConverterType);
+						}
+						else if (!customConverterHasXmlSerializer)
 						{
 							ReportMissingXmlConverterFacet(member, type, customConverterType);
 						}

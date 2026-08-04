@@ -221,6 +221,49 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 	}
 
+	/// <summary>The member's enum vocabulary held against a member whose value is a COLLECTION (or a dictionary) of enums</summary>
+	public sealed record Route
+	{
+
+		[JsonProperty(EnumFormat = JsonEnumFormat.Number)]
+		[XmlProperty(ItemName = "hop")]
+		public List<Courier>? Hops { get; init; }
+
+		[JsonProperty(EnumFormat = JsonEnumFormat.Number)]
+		public Dictionary<string, Courier>? Legs { get; init; }
+
+	}
+
+	/// <summary>An enum backed by a byte: its numeric form must go through the byte family, not a forced cast to int</summary>
+	public enum Weight : byte
+	{
+		Light = 1,
+		Heavy = 200,
+	}
+
+	/// <summary>An enum backed by a long, whose declared value does not fit in an int at all</summary>
+	public enum Distance : long
+	{
+		Near = 1,
+		Far = 9007199254740993,
+	}
+
+	/// <summary>The two non-int-backed enums, in both wire forms (the label, and the numeric override)</summary>
+	public sealed record Parcel
+	{
+
+		public Weight Heft { get; init; }
+
+		[JsonProperty(EnumFormat = JsonEnumFormat.Number)]
+		public Weight Code { get; init; }
+
+		public Distance Reach { get; init; }
+
+		[JsonProperty(EnumFormat = JsonEnumFormat.Number)]
+		public Distance Span { get; init; }
+
+	}
+
 	/// <summary>The per-member overrides of the null rule, in the JSON vocabulary the XML wire reuses as-is</summary>
 	public sealed record Flags
 	{
@@ -310,6 +353,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	[CrystalJsonSerializable(typeof(Switchboard))]
 	[CrystalJsonSerializable(typeof(Exotic))]
 	[CrystalJsonSerializable(typeof(Dispatch))]
+	[CrystalJsonSerializable(typeof(Route))]
+	[CrystalJsonSerializable(typeof(Parcel))]
 	public static partial class AcmeSerializers
 	{
 	}
@@ -652,6 +697,40 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(
 				() => AcmeSerializers.Dispatch.ToXmlText(new Dispatch { Rights = (Access) 5 }),
 				Throws.InstanceOf<CrystalXmlNotSupportedException>().With.Message.Contains("Access"));
+		}
+
+		[Test]
+		public void Test_The_Members_EnumFormat_Does_Not_Leak_To_The_Items_Of_A_Collection()
+		{
+			var route = new Route { Hops = [ Courier.Foot, Courier.Bike ], Legs = new() { ["first"] = Courier.Bike } };
+
+			string xml = AcmeSerializers.Route.ToXmlText(route);
+			Log($"XML : {xml}");
+
+			// [JsonProperty(EnumFormat = Number)] is MEMBER vocabulary, and the member here is the COLLECTION, not its items:
+			// an item (or a dictionary value) carries none of it, so it keeps the label form
+			Assert.That(xml, Is.EqualTo("<route><hops><hop>on-foot</hop><hop>Bike</hop></hops><legs><first>Bike</first></legs></route>"));
+		}
+
+		[Test]
+		public void Test_An_Enum_That_Is_Not_Int_Backed_Renders_Through_Its_Own_Underlying_Family()
+		{
+			var parcel = new Parcel { Heft = Weight.Heavy, Code = Weight.Heavy, Reach = Distance.Far, Span = Distance.Far };
+
+			string xml = AcmeSerializers.Parcel.ToXmlText(parcel);
+			Log($"XML : {xml}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				// a long-backed value forced through the int family would not survive the cast, and a byte-backed one would
+				// be widened for no reason: both go through the family their own underlying type names
+				Assert.That(xml, Is.EqualTo("<parcel><heft>Heavy</heft><code>200</code><reach>Far</reach><span>9007199254740993</span></parcel>"));
+
+				// and the UNDECLARED fallback arm of the generated switch takes the same family
+				Assert.That(
+					AcmeSerializers.Parcel.ToXmlText(new Parcel { Heft = (Weight) 250, Reach = (Distance) 5000000000L }),
+					Is.EqualTo("<parcel><heft>250</heft><code>0</code><reach>5000000000</reach><span>0</span></parcel>"));
+			}
 		}
 
 		#endregion

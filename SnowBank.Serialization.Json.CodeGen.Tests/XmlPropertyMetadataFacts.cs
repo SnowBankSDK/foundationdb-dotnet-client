@@ -29,8 +29,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.Collections.Immutable;
 	using Microsoft.CodeAnalysis;
 
-	/// <summary>Pins how the generator reads the MEMBER-level XML vocabulary: <c>[XmlProperty]</c> (including the <c>@</c> name sugar), the DCS ordering and default-emission flags of <c>[DataMember]</c>, the data contract's own name values, and the five member-level refusals (<c>CXML0003</c> to <c>CXML0007</c>)</summary>
-	/// <remarks>Parsing only: nothing is emitted for XML yet, so every assertion reads the metadata the parser resolved (through the driver's tracked steps) or the diagnostics it reported.</remarks>
+	/// <summary>Pins how the generator reads the MEMBER-level XML vocabulary: <c>[XmlProperty]</c> (including the <c>@</c> name sugar), the DCS ordering and default-emission flags of <c>[DataMember]</c>, the data contract's own name values, and the member-level refusals (<c>CXML0003</c> to <c>CXML0009</c>)</summary>
+	/// <remarks>Parsing, plus the two shapes whose refusal is only visible in what the emitter does NOT write: every assertion reads the metadata the parser resolved (through the driver's tracked steps), the diagnostics it reported, or the emitted source itself.</remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -865,16 +865,30 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the discriminator is written as an attribute on every derived element, BEFORE the members: a member attribute
 			// of the same name would emit the attribute twice on one element, which is not even a well-formed document
-			var refusal = AssertRefusal(PolymorphicProbe("""
+			string probe = PolymorphicProbe("""
 						[SnowBank.Data.Xml.XmlProperty("@type")]
 						public string? Kind { get; set; }
-				"""), "CXML0005");
+				""");
+			var refusal = AssertRefusal(probe, "CXML0005");
 
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(refusal.GetMessage(), Does.Contain("type"), "the message names the attribute written twice");
 				Assert.That(refusal.GetMessage(), Does.Contain("Kind"), "and the member that has to move");
+				// the location is resolved by matching DISPLAY STRINGS against the crawled symbols, and it silently degrades
+				// to the container's own location when no symbol matches: pin that it really lands on the offending derived
+				// type, or that degradation would send the author to the wrong declaration with no test saying so
+				Assert.That(LineAt(probe, refusal.Location), Does.Contain("ProbeEbook"), "the diagnostic must point at the derived type that carries the colliding member");
 			}
+		}
+
+		/// <summary>Returns the line of <paramref name="source"/> that a diagnostic points at, so a location is asserted without hard-coding a line number</summary>
+		/// <remarks>The source text is passed in rather than read off <c>Location.SourceTree</c>, which is <see langword="null"/> here: the generator caches its diagnostics as file/span pairs (so that nothing holds on to a compilation), and the location it recreates carries no tree.</remarks>
+		private static string LineAt(string source, Location location)
+		{
+			var lines = source.Replace("\r\n", "\n").Split('\n');
+			int index = location.GetLineSpan().StartLinePosition.Line;
+			return index >= 0 && index < lines.Length ? lines[index] : "";
 		}
 
 		[Test]
@@ -1008,7 +1022,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		#region CXML0008: a member converter with no XML facet...
 
 		/// <summary>Wraps a converter for <c>bool</c> implementing the facets named in <paramref name="interfaces"/>, applied to a member of the probe's DTO</summary>
-		private static string ConverterProbe(string interfaces, string containerAttributes = ModernContainer) => $$"""
+		/// <param name="memberAttributes">Extra attributes on the converted member, written at the member's own indentation (this is how the attribute-projected shape is built)</param>
+		private static string ConverterProbe(string interfaces, string containerAttributes = ModernContainer, string memberAttributes = "") => $$"""
 			namespace Probe
 			{
 
@@ -1033,6 +1048,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 				public sealed record ProbeDto
 				{
+			{{memberAttributes}}
 					[SnowBank.Data.Json.JsonConvertWith(typeof(ProbeBoolConverter))]
 					public bool Live { get; set; }
 				}
@@ -1072,6 +1088,81 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the rule exists because the container publishes TWO wires: with only one of them, the converter owns all of it
 			AssertNotReported(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>", JsonOnlyContainer), "CXML0008");
+		}
+
+		#endregion
+
+		#region CXML0009: an attribute-projected member with a custom converter...
+
+		/// <summary>The <c>[XmlProperty]</c> line that projects the probe's converted member as an XML attribute</summary>
+		private const string AttributeProjection = "\t\t[SnowBank.Data.Xml.XmlProperty(\"@live\")]";
+
+		/// <summary>Both facets, so the refusal cannot be mistaken for the missing-facet one</summary>
+		private const string BothFacets = "SnowBank.Data.Json.IJsonMemberConverter<bool>, SnowBank.Data.Xml.ICrystalXmlSerializer<bool>";
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_With_A_Custom_Converter_Is_A_Build_Error()
+		{
+			// the XML facet's only entry point writes an ELEMENT: it structurally cannot produce an attribute value, so an
+			// attribute-projected member would silently bypass the converter and be written by the rules it replaced
+			var refusal = AssertRefusal(ConverterProbe(BothFacets, memberAttributes: AttributeProjection), "CXML0009");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("Live"), "the message names the member");
+				Assert.That(refusal.GetMessage(), Does.Contain("ProbeBoolConverter"), "and the converter that would be bypassed");
+				Assert.That(refusal.GetMessage(), Does.Contain("drop the '@' projection, or drop the converter"), "and the two ways out");
+			}
+		}
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_With_A_Converter_Reports_Only_That_Refusal()
+		{
+			// the same shape with a converter that has NO XML facet either: one member, one error, and it is the more
+			// specific one (fixing the facet would not make the projection work)
+			var (_, diagnostics) = RunOn(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>", memberAttributes: AttributeProjection));
+
+			var reported = diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)).Select(static d => d.Id).ToList();
+			Assert.That(reported, Is.EqualTo((string[]) [ "CXML0009" ]), "CXML0008 must not stack on top of the projection refusal");
+		}
+
+		[Test]
+		public void Test_An_Element_Projected_Member_With_A_Converter_Is_Not_Reported()
+		{
+			// the element path is the one the facet can answer for: nothing to refuse there
+			AssertNotReported(ConverterProbe(BothFacets), "CXML0009");
+		}
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_Without_A_Converter_Is_Not_Reported()
+		{
+			// the rule is about the PAIR: an attribute-projected scalar with no converter is the ordinary shape
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@id")]
+						public int Id { get; set; }
+				"""), "CXML0009");
+		}
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_With_A_Converter_Is_Not_Reported_On_A_Json_Only_Container()
+		{
+			// no XML wire, no XML projection: the whole member-level vocabulary is inert there
+			AssertNotReported(ConverterProbe(BothFacets, JsonOnlyContainer, AttributeProjection), "CXML0009");
+		}
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_With_A_Converter_Emits_No_Attribute()
+		{
+			// the refusal is a generation-time one, so the emitted body must not carry the attribute either: a build that
+			// somehow ignored the error must still not produce a document where the converter was skipped
+			var (output, _) = GeneratorProbeHarness.RunGenerator(GeneratorProbeHarness.Compile(ConverterProbe(BothFacets, memberAttributes: AttributeProjection)));
+			string generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(generated, Does.Not.Contain("__xml_live"), "the attribute name is never even cached");
+				Assert.That(generated, Does.Contain("CXML0009"), "and the member's write site says why it fails instead");
+			}
 		}
 
 		#endregion
