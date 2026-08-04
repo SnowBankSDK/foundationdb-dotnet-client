@@ -340,6 +340,55 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
+		#region CXML0012: a container option the resolved profile ignores...
+
+		[Test]
+		public void Test_A_DictionaryFormat_On_A_DataContract_Container_Is_Reported_As_Inert()
+		{
+			// DictionaryFormat picks between the modern profile's dictionary shapes. The compat wire has exactly ONE
+			// (KeyValueOfKV), so the option is read, resolved, and then never consulted: the member-level twin of this
+			// is already a hard refusal (CXML0004), and the container level deserves at least to be said out loud.
+			var (containers, diagnostics) = RunOn(Probe("""
+					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueElements)]
+				"""));
+
+			var note = diagnostics.SingleOrDefault(static d => d.Id == "CXML0012");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(note, Is.Not.Null, "the inert container option must be reported");
+				Assert.That(note?.Severity, Is.EqualTo(DiagnosticSeverity.Info), "the wire it produces is correct: a note, never a refusal");
+				Assert.That(note?.GetMessage(), Does.Contain("DictionaryFormat"), "the message names the setting");
+				Assert.That(containers["ProbeConverters"].XmlProfile, Is.EqualTo("DataContract"), "and the container is otherwise untouched");
+			}
+		}
+
+		[Test]
+		public void Test_An_Explicit_Default_DictionaryFormat_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// spelling 'Default' asks to INHERIT, which every profile can honor: there is nothing inert about it
+			var (_, diagnostics) = RunOn(Probe("""
+					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.Default)]
+				"""));
+
+			Assert.That(diagnostics.Where(static d => d.Id == "CXML0012"), Is.Empty);
+		}
+
+		[Test]
+		public void Test_A_DictionaryFormat_On_A_Modern_Container_Is_Not_Reported()
+		{
+			// the profile the option was designed for
+			var (_, diagnostics) = RunOn(Probe("""
+					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueElements)]
+				"""));
+
+			Assert.That(diagnostics.Where(static d => d.Id == "CXML0012"), Is.Empty);
+		}
+
+		#endregion
+
 		#region CXML0002: [CrystalXmlOutput] on a class that hosts no generated serializer...
 
 		[Test]

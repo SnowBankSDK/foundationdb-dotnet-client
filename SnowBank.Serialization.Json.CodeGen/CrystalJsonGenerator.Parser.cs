@@ -469,6 +469,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return (null, null);
 				}
 
+				if (profile == XmlProfileDataContract && dictionaryFormat is not (null or XmlDictionaryFormatDefault))
+				{ // an explicitly spelled 'Default' asks to INHERIT, which every profile honors: only a real choice is inert here
+					ReportInertXmlSetting(
+						this.ContextClassLocation,
+						symbol.ToDisplayString(),
+						"DictionaryFormat = " + dictionaryFormat,
+						"the DataContract XML wire has exactly one dictionary shape (the KeyValueOfKV entries the reference serializer writes), so there is nothing for this option to select between. Its member-level twin is refused outright on this wire (CXML0004)");
+				}
+
 				Kenobi($"Resolved XML output for container {symbol.Name}: profile={profile}; dictionaryFormat={dictionaryFormat ?? XmlDictionaryFormatDefault}");
 
 				return (profile, dictionaryFormat ?? XmlDictionaryFormatDefault);
@@ -856,6 +865,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{ // a name collision can only be seen once every member of the type has resolved its own XML name
 					ReportDuplicateXmlNames(type, members, memberSymbols, xmlProfile);
 					ReportInvalidRootXmlName(type, dataContract.Name, xmlProfile);
+					// same reason it runs here: what makes a setting inert is the member's RESOLVED projection, not the attribute as written
+					ReportInertXmlMemberSettings(members, memberSymbols);
 				}
 
 				return new()
@@ -1461,6 +1472,80 @@ namespace SnowBank.Serialization.Json.CodeGen
 					),
 					member.Locations.Length > 0 ? member.Locations[0] : null,
 					member.ToDisplayString(), format, valueType.FullName);
+			}
+
+			/// <summary>Reports <c>CXML0012</c>: a setting that was written explicitly, resolved, and then never consulted by the wire the container produces</summary>
+			/// <param name="location">Where the setting was written (the member, or the container's own declaration)</param>
+			/// <param name="owner">Display name of the member or container carrying the setting</param>
+			/// <param name="setting">The setting as written, ex: <c>ItemName = "tag"</c></param>
+			/// <param name="why">Why the wire never consults it, and what would make it meaningful; phrased as a sentence with no trailing period</param>
+			/// <remarks>
+			/// <para>INFO, deliberately, and the only member of the CXML range that is not an error. Every other CXML diagnostic
+			/// refuses a shape whose document would be wrong or unwritable; an inert setting produces a document that is entirely
+			/// correct, and only the DECLARATION is misleading. Failing a build over a correct wire would be the wrong trade, and a
+			/// warning would land in the build log of consumers who did nothing wrong (a container inherited from a template, a
+			/// setting that stopped applying when a member's type changed).</para>
+			/// <para>It exists because the no-silent-configuration doctrine of this overlay cuts both ways: a setting that changes
+			/// the wire without being asked for is refused, and a setting that asks for something the wire never delivers should not
+			/// pass unmentioned either. It is the same reasoning that made CXML0004 refuse an inert member-level option on the compat
+			/// wire, applied where the resulting document is right and only the author's expectation is not.</para>
+			/// </remarks>
+			private void ReportInertXmlSetting(Location? location, string owner, string setting, string why)
+			{
+				ReportDiagnostic(
+					new(
+						"CXML0012",
+						"An XML setting has no effect here",
+						"The XML setting '{1}' declared on '{0}' has no effect: {2}. The document produced is correct; the setting simply does nothing, so remove it (or change what makes it inert).",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Info,
+						isEnabledByDefault: true
+					),
+					location,
+					owner, setting, why);
+			}
+
+			/// <summary>Reports <c>CXML0012</c> on the member-level settings a type's resolved wire will never consult</summary>
+			/// <remarks>
+			/// <para>Run once every member of the type has resolved, for the same reason <see cref="ReportDuplicateXmlNames"/> is: what
+			/// makes a setting inert is the member's RESOLVED projection (attribute versus element, scalar versus sequence), not the
+			/// attribute as written.</para>
+			/// <para>The compat wire needs no case of its own here: <c>ResolveXmlMember</c> refuses the whole member-level vocabulary
+			/// on it (CXML0004) and hands back empty settings, so nothing this method reads is ever set on that profile.</para>
+			/// </remarks>
+			private void ReportInertXmlMemberSettings(List<CrystalJsonMemberMetadata> members, Dictionary<string, ISymbol> memberSymbols)
+			{
+				foreach (var member in members)
+				{
+					if (!memberSymbols.TryGetValue(member.MemberName, out var symbol)) continue;
+					var location = symbol.Locations.Length > 0 ? symbol.Locations[0] : null;
+
+					if (member.XmlItemName is not null && !HasXmlItems(member.Type))
+					{ // ItemName names the ITEMS of a sequence, or the ENTRIES of a dictionary: a member that has neither has nothing to name
+						ReportInertXmlSetting(
+							location,
+							symbol.ToDisplayString(),
+							"ItemName = \"" + member.XmlItemName + "\"",
+							$"the member's type '{member.Type.FullName}' is written as a single value, not as items: there is nothing for this name to apply to");
+					}
+
+					if (member.XmlIsAttribute && member.IgnoreCondition == "Never")
+					{ // an attribute has no nil form (there is no attribute of an attribute), so a null one is absent whatever was asked
+						ReportInertXmlSetting(
+							location,
+							symbol.ToDisplayString(),
+							"JsonIgnore(Condition = Never)",
+							"the member is projected as an XML attribute, and an attribute has no nil form: a null value makes it absent whatever the condition asks for. Project the member as a nested element to get the explicit nil the condition is asking for (it stays honored on the JSON wire either way)");
+					}
+				}
+			}
+
+			/// <summary>Tests whether a member's type is written as a series of ITEMS on the XML wire (a sequence's items, or a dictionary's entries), which is what an <c>ItemName</c> can name</summary>
+			/// <remarks>Deliberately built on the same two predicates the emitter dispatches on, so that a member this reports as having no items is one the emitter writes as a single value.</remarks>
+			private static bool HasXmlItems(TypeMetadata type)
+			{
+				var actual = type.NullableOfType ?? type;
+				return (actual.KeyType is not null && actual.ValueType is not null) || IsBareXmlSequence(actual, out _);
 			}
 
 			/// <summary>Reports <c>CXML0005</c> when two members of a type resolve to the same effective XML name, once the <c>'@'</c> sugar has been normalized</summary>

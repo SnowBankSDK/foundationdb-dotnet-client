@@ -189,7 +189,7 @@ Three refusal mechanisms, and which one applies is a rule, not a case-by-case ch
 
 | Mechanism | When |
 |---|---|
-| **CXML diagnostic** | the refusal is decidable at generation time from the DECLARATIONS alone (an attribute, a type, a contract name). It points at the offending declaration and carries a remedy. |
+| **CXML diagnostic** | the refusal is decidable at generation time from the DECLARATIONS alone (an attribute, a type, a contract name). It points at the offending declaration and carries a remedy. One member of the range, CXML0012, is an Info instead: it does not refuse anything, it names a setting the resolved wire never consults. |
 | **`#error` in the emitted source** | a structural impossibility discovered inside emission, which no declaration could have predicted. Also kept as an unreachable backstop under a diagnostic that already covers the case. |
 | **typed exception** | the refusal is DATA-dependent: only the value being written can decide it (a runtime type outside the graph, a non-NCName dictionary key, an undeclared enum value, a graph deeper than the cap). |
 
@@ -208,6 +208,7 @@ Build-time diagnostics live in the CXML range:
 | CXML0009 | an attribute-projected member with a custom converter |
 | CXML0010 | `[CollectionDataContract]` on a compat member's type |
 | CXML0011 | a dictionary whose resolved shape carries the value as text (`KeyAttribute`, `KeyValueAttributes`) while the value type has no lexical form |
+| CXML0012 | **Info, not an error** - a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way), and a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape) |
 
 At run time, graphs deeper than `CrystalXml.MaxDepth` (256 levels of generated recursion) raise
 `CrystalXmlCycleException` - the guard cannot distinguish a genuine cycle from a legitimately

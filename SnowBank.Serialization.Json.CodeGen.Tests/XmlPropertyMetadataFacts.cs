@@ -156,6 +156,133 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			}
 		}
 
+		/// <summary>Asserts that a probe drew the inert-configuration NOTE, and returns it</summary>
+		/// <remarks>Info, not a refusal: the document a container with an inert setting produces is perfectly correct, it is just not the one the setting reads as if it were asking for. Anything louder would break a build over a wire that is right.</remarks>
+		private Diagnostic AssertInert(string source, params string[] expectedFragments)
+		{
+			var (_, diagnostics) = RunOn(source);
+
+			var note = diagnostics.SingleOrDefault(static d => d.Id == "CXML0012");
+			Assert.That(note, Is.Not.Null, "the inert setting must be reported as CXML0012");
+			Assert.That(note!.Severity, Is.EqualTo(DiagnosticSeverity.Info), "an inert setting produces a CORRECT document: it is a note, never a refusal");
+
+			string message = note.GetMessage();
+			foreach (var fragment in expectedFragments)
+			{
+				Assert.That(message, Does.Contain(fragment), "the message has to name the member, the setting, and why it does nothing");
+			}
+			return note;
+		}
+
+		#region CXML0012: settings that are silently inert...
+
+		[Test]
+		public void Test_An_ItemName_On_A_Scalar_Member_Is_Reported_As_Inert()
+		{
+			// ItemName names the ITEMS of a collection (or the entries of a dictionary). A scalar has none, so the
+			// setting reads as configuration and changes nothing at all.
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "tag")]
+							public string? Label { get; set; }
+					"""),
+				"Label",
+				"ItemName");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Byte_Array_Is_Reported_As_Inert()
+		{
+			// a byte[] is base64 TEXT on this wire, not a sequence of items, however enumerable C# considers it
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "b")]
+							public byte[]? Blob { get; set; }
+					"""),
+				"Blob",
+				"ItemName");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Collection_Member_Is_Not_Reported()
+		{
+			// the shape ItemName exists for
+			AssertNotReported(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "tag")]
+							public System.Collections.Generic.List<string>? Tags { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Dictionary_Member_Is_Not_Reported()
+		{
+			// a dictionary has entries, which the entry-naming shapes name with exactly this setting
+			AssertNotReported(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "score", DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyAttribute)]
+							public System.Collections.Generic.Dictionary<string, int>? Scores { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_A_JsonIgnore_Never_On_An_Attribute_Member_Is_Reported_As_Inert()
+		{
+			// Condition = Never means "present even as an explicit null". An XML attribute has no nil form (there is no
+			// attribute of an attribute), so a null attribute is absent whatever the condition says.
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty("@id")]
+							[System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+							public string? Id { get; set; }
+					"""),
+				"Id",
+				"Never");
+		}
+
+		[Test]
+		public void Test_A_JsonIgnore_Never_On_An_Element_Member_Is_Not_Reported()
+		{
+			// an element CAN carry nil, so the condition is honored there
+			AssertNotReported(
+				Probe("""
+							[System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+							public string? Label { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_A_Plain_Attribute_Member_Is_Not_Reported()
+		{
+			// the attribute projection on its own says nothing about null handling: nothing inert here
+			AssertNotReported(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty("@id")]
+							public string? Id { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_The_Inert_Note_Does_Not_Fire_On_A_Json_Only_Container()
+		{
+			// no XML is produced at all, so the XML vocabulary is inert WHOLESALE, which CXML0002 and the container-level
+			// rules already answer for: repeating it per member would be noise on a shape nobody is being misled by
+			AssertNotReported(
+				Probe(
+					"""
+								[SnowBank.Data.Xml.XmlProperty(ItemName = "tag")]
+								public string? Label { get; set; }
+						""",
+					containerAttributes: JsonOnlyContainer),
+				"CXML0012");
+		}
+
+		#endregion
+
 		#region The new metadata fields...
 
 		[Test]
