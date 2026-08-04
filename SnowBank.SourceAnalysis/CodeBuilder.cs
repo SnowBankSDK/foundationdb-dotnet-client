@@ -30,6 +30,7 @@
 namespace SnowBank.SourceAnalysis
 {
 	using System.Collections.Generic;
+	using System.Globalization;
 	using System.Runtime.InteropServices;
 	using System.Text;
 	using Microsoft.CodeAnalysis.CSharp;
@@ -102,6 +103,27 @@ namespace SnowBank.SourceAnalysis
 
 		/// <summary>Encodes a value into the corresponding C# boolean literal</summary>
 		public static string Constant(bool literal) => literal ? "true" : "false";
+
+		/// <summary>Encodes the UTF-8 form of a string into a C# <c>byte[]</c> array-creation expression</summary>
+		/// <remarks>
+		/// <para>This is the language-version-neutral spelling of <c>"..."u8.ToArray()</c>: UTF-8 string literals are a C# 11 feature, and the emitted code must also compile in a consumer that sits on the generator's supported language floor (C# 9). Roslyn folds a byte-array initializer of constants into the same <c>RuntimeHelpers.InitializeArray</c> blob copy the <c>u8</c> form produces, so the two spellings cost the same at run time and produce the same bytes.</para>
+		/// <para>The bytes are computed here, by the generator, so the wire cannot depend on how the consumer's compiler encodes literals.</para>
+		/// </remarks>
+		public static string Utf8Constant(string literal)
+		{
+			var bytes = Encoding.UTF8.GetBytes(literal);
+			if (bytes.Length == 0) return "global::System.Array.Empty<byte>()";
+
+			var sb = new StringBuilder(bytes.Length * 6 + 16);
+			sb.Append("new byte[] { ");
+			for (int i = 0; i < bytes.Length; i++)
+			{
+				if (i != 0) sb.Append(", ");
+				sb.Append("0x").Append(bytes[i].ToString("X2", CultureInfo.InvariantCulture));
+			}
+			sb.Append(" }");
+			return sb.ToString();
+		}
 
 		/// <summary>Encodes a value into the corresponding C# char literal, with quotes and proper escaping</summary>
 		public static string Constant(char c) => SymbolDisplay.FormatLiteral(c, quote: true);

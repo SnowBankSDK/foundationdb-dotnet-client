@@ -333,6 +333,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					PropertyNameCaseInsensitive = caseInsensitiveNames,
 					PropertyNamingPolicy = propertyNamingPolicy,
 					SupportsUnsafeAccessors = this.KnownSymbols.HasUnsafeAccessor,
+					SupportsJsonProxies = this.KnownSymbols.SupportsJsonProxies,
+					SupportsDynamicallyAccessedMembers = this.KnownSymbols.HasDynamicallyAccessedMembers,
 					WireProfile = wireProfile,
 					XmlProfile = xmlProfile,
 					XmlDictionaryFormat = xmlDictionaryFormat,
@@ -663,6 +665,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					PropertyNamingPolicy = null,
 					IsSelfContained = true,
 					SupportsUnsafeAccessors = this.KnownSymbols.HasUnsafeAccessor,
+					SupportsJsonProxies = this.KnownSymbols.SupportsJsonProxies,
+					SupportsDynamicallyAccessedMembers = this.KnownSymbols.HasDynamicallyAccessedMembers,
 					XmlProfile = xmlProfile,
 					XmlDictionaryFormat = xmlDictionaryFormat,
 				};

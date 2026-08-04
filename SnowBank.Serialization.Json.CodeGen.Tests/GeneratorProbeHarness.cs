@@ -46,18 +46,36 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		public static readonly CSharpParseOptions ParseOptions = new(LanguageVersion.Latest);
 
+		/// <summary>Parse options of a consumer sitting exactly on the generator's supported language floor (C# 9, enforced by <c>SYSLIB1221</c>)</summary>
+		/// <remarks>Used by the "lite consumer" hygiene fact: a legacy application migrating to the <c>netstandard2.0</c>/<c>net472</c> path only has to raise <c>LangVersion</c> to the floor, and the emitted code (JSON <b>and</b> XML) must compile there.</remarks>
+		public static readonly CSharpParseOptions FloorParseOptions = new(LanguageVersion.CSharp9);
+
+		/// <summary>Parse options of an old-style (non-SDK) .NET Framework project that never opted into a newer language version: the C# 7.3 default, BELOW the generator's floor</summary>
+		public static readonly CSharpParseOptions BelowFloorParseOptions = new(LanguageVersion.CSharp7_3);
+
 		/// <summary>Parses a probe source into a compilation with NO global usings and nullable enabled</summary>
 		public static CSharpCompilation Compile(string source, string assemblyName = "ProbeAssembly")
+			=> Compile(source, ParseOptions, assemblyName);
+
+		/// <summary>Parses a probe source into a compilation with NO global usings, at an explicit language version</summary>
+		/// <remarks>Nullable is only turned on when the language version supports it: <c>NullableContextOptions.Enable</c> is rejected outright (<c>CS8630</c>) below C# 8.</remarks>
+		public static CSharpCompilation Compile(string source, CSharpParseOptions parseOptions, string assemblyName = "ProbeAssembly")
 			=> CSharpCompilation.Create(
 				assemblyName,
-				syntaxTrees: [ CSharpSyntaxTree.ParseText(source, ParseOptions) ],
+				syntaxTrees: [ CSharpSyntaxTree.ParseText(source, parseOptions) ],
 				references: References,
-				options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+				options: new CSharpCompilationOptions(
+					OutputKind.DynamicallyLinkedLibrary,
+					nullableContextOptions: parseOptions.LanguageVersion.MapSpecifiedToEffectiveVersion() >= LanguageVersion.CSharp8 ? NullableContextOptions.Enable : NullableContextOptions.Disable));
 
 		/// <summary>Runs the generator over the compilation, returning the updated compilation and the generator's own diagnostics</summary>
 		public static (Compilation Output, ImmutableArray<Diagnostic> GeneratorDiagnostics) RunGenerator(CSharpCompilation compilation)
+			=> RunGenerator(compilation, ParseOptions);
+
+		/// <summary>Runs the generator over the compilation, parsing its output with the consumer's own parse options</summary>
+		public static (Compilation Output, ImmutableArray<Diagnostic> GeneratorDiagnostics) RunGenerator(CSharpCompilation compilation, CSharpParseOptions parseOptions)
 		{
-			var driver = CSharpGeneratorDriver.Create([ new CrystalJsonSourceGenerator().AsSourceGenerator() ], parseOptions: ParseOptions);
+			var driver = CSharpGeneratorDriver.Create([ new CrystalJsonSourceGenerator().AsSourceGenerator() ], parseOptions: parseOptions);
 			driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
 			return (output, diagnostics);
 		}

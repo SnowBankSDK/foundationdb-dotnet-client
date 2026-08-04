@@ -194,10 +194,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// free to drift from it.</remarks>
 			private static void WriteXmlNameFields(CSharpCodeBuilder sb, XmlNameTable names)
 			{
-				sb.Comment("Cached element and attribute names, in both representations: the char core copies the string, the byte core copies the frozen UTF-8 literal");
+				sb.Comment("Cached element and attribute names, in both representations: the char core copies the string, the byte core copies the frozen UTF-8 blob");
 				foreach (var entry in names.Entries)
 				{
-					sb.AppendLine($"private static readonly {XmlNameFullName} {entry.Key} = new({CSharpCodeBuilder.Constant(entry.Value)}, {CSharpCodeBuilder.Constant(entry.Value)}u8.ToArray());");
+					// the bytes are spelled out rather than written as "..."u8.ToArray(): UTF-8 string literals are a C# 11 feature,
+					// and XML output must not cost a consumer more language than JSON output does (the generator's floor is C# 9).
+					// The two forms compile to the same blob copy, and the string right before them keeps the line readable.
+					sb.AppendLine($"private static readonly {XmlNameFullName} {entry.Key} = new({CSharpCodeBuilder.Constant(entry.Value)}, {CSharpCodeBuilder.Utf8Constant(entry.Value)});");
 				}
 			}
 

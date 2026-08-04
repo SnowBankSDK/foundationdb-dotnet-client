@@ -190,6 +190,124 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(diagnostics, Is.Empty, "generated code must compile without ImplicitUsings, and without warnings under '#nullable enable'");
 		}
 
+		/// <summary>A legacy consumer's DTO graph, written in plain C# 7.3 style: no records, no <c>init</c>, no <c>required</c>, no nullable annotations, no target-typed <c>new</c></summary>
+		/// <remarks>This is what an old-style .NET Framework project being migrated looks like. It publishes the same graph as JSON and as XML, so the facts below cover BOTH emitters.</remarks>
+		private const string LegacyProbeSource = """
+			namespace Probe.Legacy
+			{
+
+				public enum LegacyKind
+				{
+					None = 0,
+					Alpha = 1,
+				}
+
+				public sealed class LegacyItem
+				{
+					public string Id { get; set; }
+					public int Level { get; set; }
+					public bool? Disabled { get; set; }
+				}
+
+				[System.Runtime.Serialization.DataContract]
+				public sealed class LegacyAccount
+				{
+					[System.Runtime.Serialization.DataMember(Order = 1)] public string Id { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 2)] public LegacyKind Kind { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 3)] public System.DateTime Created { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 4)] public decimal Balance { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 5)] public System.Guid Ticket { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 6)] public byte[] Blob { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 7)] public System.Collections.Generic.List<LegacyItem> Items { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 8)] public System.Collections.Generic.Dictionary<string, LegacyItem> Index { get; set; }
+					[SnowBank.Data.Xml.XmlProperty(Attribute = true)] [System.Runtime.Serialization.DataMember(Order = 9)] public int Revision { get; set; }
+				}
+
+				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(LegacyAccount))]
+				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(LegacyItem))]
+				public static partial class LegacyXmlConverters
+				{
+				}
+
+			}
+			""";
+
+		/// <summary>The emitted code must compile in a consumer sitting on the generator's language floor (C# 9), XML members included</summary>
+		/// <remarks>
+		/// <para>The <c>netstandard2.0</c>/<c>net472</c> "lite" path is in scope for CrystalXml exactly as it is for CrystalJson (see this repo's CLAUDE.md), and its whole point is a legacy application that has not been modernized yet. Such an application raises <c>LangVersion</c> to the generator's floor and no further, so a modern-only construct in the EMITTED source (UTF-8 string literals, collection expressions, raw strings) would make XML output cost strictly more language than JSON output does, for no functional reason.</para>
+		/// <para>The floor itself is C# 9 and is enforced by the parser (<c>SYSLIB1221</c>, pinned by the fact below); this one pins that XML emission does not raise it.</para>
+		/// <para>This fact fails on errors only: warnings are covered by the modern hygiene fact above, and an older-language compilation legitimately reports informational noise the modern one does not.</para>
+		/// </remarks>
+		[Test]
+		public void Test_Generated_Code_Compiles_At_The_Supported_Language_Floor()
+		{
+			var compilation = GeneratorProbeHarness.Compile(LegacyProbeSource, GeneratorProbeHarness.FloorParseOptions);
+
+			// the probe source itself must be valid at the floor BEFORE the generator runs, so any error below is the generator's
+			Assert.That(
+				compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error),
+				Is.Empty,
+				"the legacy probe source must be valid at the supported language floor on its own");
+
+			var (outputCompilation, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation, GeneratorProbeHarness.FloorParseOptions);
+
+			foreach (var diagnostic in generatorDiagnostics)
+			{
+				Log($"generator: {diagnostic}");
+			}
+			Assert.That(generatorDiagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "the generator must not report diagnostics for the legacy probe types");
+
+			var generatedTrees = outputCompilation.SyntaxTrees.Skip(1).ToList();
+			Assert.That(generatedTrees, Is.Not.Empty, "the generator must emit sources for the legacy probe container");
+			Assert.That(generatedTrees.Any(static tree => tree.ToString().Contains("WriteXml")), Is.True, "the emitted code must include the container's XML members");
+
+			var errors = outputCompilation.GetDiagnostics()
+				.Where(static d => d.Severity == DiagnosticSeverity.Error)
+				.ToList();
+			foreach (var diagnostic in errors)
+			{
+				Log(diagnostic.ToString());
+				if (diagnostic.Location.SourceTree is { } tree)
+				{
+					var span = diagnostic.Location.GetLineSpan();
+					var text = tree.GetText();
+					if (span.StartLinePosition.Line < text.Lines.Count)
+					{
+						Log($"    | {text.Lines[span.StartLinePosition.Line].ToString().Trim()}");
+					}
+				}
+			}
+			Assert.That(errors, Is.Empty, "generated code must compile in a consumer project sitting on the supported language floor");
+		}
+
+		/// <summary>Below the floor, the generator refuses with <c>SYSLIB1221</c> instead of emitting code the consumer cannot compile</summary>
+		/// <remarks>The floor is inherited from the System.Text.Json generator (same diagnostic id, same message shape) and applies to the container as a whole: enabling XML output on a container does not change it, and a consumer below the floor gets no JSON serializer either.</remarks>
+		[Test]
+		public void Test_Generator_Refuses_Below_The_Supported_Language_Floor()
+		{
+			var compilation = GeneratorProbeHarness.Compile(LegacyProbeSource, GeneratorProbeHarness.BelowFloorParseOptions);
+
+			var (outputCompilation, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation, GeneratorProbeHarness.BelowFloorParseOptions);
+
+			foreach (var diagnostic in generatorDiagnostics)
+			{
+				Log($"generator: {diagnostic}");
+			}
+
+			Assert.That(
+				generatorDiagnostics.Select(static d => d.Id),
+				Does.Contain("SYSLIB1221"),
+				"a consumer below the language floor must be told so, by the same diagnostic System.Text.Json uses");
+
+			// and the refusal must be total: no half-emitted container that would then fail to compile
+			Assert.That(
+				outputCompilation.SyntaxTrees.Skip(1).Where(static tree => tree.ToString().Contains("WriteXml")),
+				Is.Empty,
+				"a refused container must not emit XML members");
+		}
+
 	}
 
 }

@@ -95,6 +95,28 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private Dictionary<TypeRef, (CrystalJsonTypeMetadata Parent, object? Discriminator)> PolymorphicMap { get; }
 
+			/// <summary>The container gets its <c>ReadOnly</c>/<c>Writable</c> proxy surface</summary>
+			/// <remarks>False on the lite path (<c>netstandard2.0</c>/<c>net472</c>, where the proxy interfaces do not exist) and below C# 11 (where the static abstract members they implement cannot be written). Everything else the container emits is unaffected.</remarks>
+			private bool WritesProxies => this.Metadata.SupportsJsonProxies;
+
+			/// <summary>Returns the expression that builds an empty instance of a collection type</summary>
+			/// <remarks>
+			/// <para>This is the language-version-neutral spelling of the <c>[ ]</c> collection expression (C# 12): the emitted code must also compile in a consumer sitting on the generator's language floor, and the result is the same empty instance in both spellings (an empty array target lowers to <c>Array.Empty&lt;T&gt;()</c>, a concrete collection target to its parameterless constructor).</para>
+			/// <para>A concrete collection type with no parameterless constructor has no empty form here, exactly as it had none with a collection expression.</para>
+			/// </remarks>
+			private static string GetEmptyCollectionExpr(TypeMetadata type)
+				=> type.IsArray(out var elementType) || type.IsEnumerableInterface(out elementType)
+					? $"global::System.Array.Empty<{elementType.FullyQualifiedName}>()"
+					: $"new {type.FullyQualifiedName}()";
+
+			/// <summary>Emits the <c>[DynamicallyAccessedMembers(All)]</c> trimming annotation, when the consumer can see the attribute</summary>
+			/// <remarks>The annotation only matters to a trimming/AOT publish, which the lite path (the only place where the attribute is out of reach) does not support anyway.</remarks>
+			private void WriteTrimmingAnnotation(CSharpCodeBuilder sb)
+			{
+				if (!this.Metadata.SupportsDynamicallyAccessedMembers) return;
+				sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
+			}
+
 			public Emitter(SourceProductionContext ctx, CrystalJsonContainerMetadata metadata)
 			{
 				this.Context = ctx;
@@ -179,7 +201,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						// note: in self mode, no XML doc or attribute is emitted on the entity's partial (they would apply
 						// to the whole entity type, which is user code); they go on the nested Json scope instead
 						sb.XmlComment("<summary>Generated source code for JSON operations on application types</summary>");
-						sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
+						WriteTrimmingAnnotation(sb);
 						sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
 						sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");
 						sb.AppendLine($"[{ExcludeFromCodeCoverageAttributeFullName}]");
@@ -222,10 +244,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 						sb.AppendLine($"this.ConvertersByType = {FrozenDictionaryFullName}.ToFrozenDictionary(map);");
 						// extended maps that also includes the generated proxies
-						foreach (var type in includedTypes)
+						// (when the container has no proxy surface, the extended map is simply the plain one: the resolver
+						// contract is unchanged, there is just nothing extra to resolve)
+						if (this.WritesProxies)
 						{
-							sb.AppendLine($"map[typeof({GetReadOnlyProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
-							sb.AppendLine($"map[typeof({GetWritableProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
+							foreach (var type in includedTypes)
+							{
+								sb.AppendLine($"map[typeof({GetReadOnlyProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
+								sb.AppendLine($"map[typeof({GetWritableProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
+							}
 						}
 						sb.AppendLine($"this.ConvertersByTypeExtended = {FrozenDictionaryFullName}.ToFrozenDictionary(map);");
 						sb.LeaveBlock("ctor");
@@ -475,7 +502,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (emitAttributes)
 				{
 					sb.XmlComment("<summary>Source-generated JSON converters and proxies for this type</summary>");
-					sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
+					WriteTrimmingAnnotation(sb);
 					sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
 					sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");
 					sb.AppendLine($"[{ExcludeFromCodeCoverageAttributeFullName}]");
@@ -519,9 +546,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				var readOnlyProxyTypeName = GetReadOnlyProxyName(typeDef.Type);
 				var writableProxyTypeName = GetWritableProxyName(typeDef.Type);
-
-				var readOnlyProxyInterfaceName = $"{KnownTypeSymbols.IJsonReadOnlyProxyFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>";
-				var writableProxyInterfaceName = $"{KnownTypeSymbols.IJsonWritableProxyFullName}<{typeFullName}, {writableProxyTypeName}>";
 
 				bool hasPolymorphicDefinition = this.PolymorphicMap.TryGetValue(typeDef.Type.Ref, out var polymorphicMetadata);
 #if FULL_DEBUG
@@ -663,7 +687,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// when the container also produces XML, the SAME instance carries the XML facet: passing Default to code that
 				// wants an ICrystalXmlSerializer<T> resolves statically, with no second converter to keep in sync
-				sb.AppendLine($"public sealed class JsonConverter : {KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>{(this.WritesXml ? $", {ICrystalXmlSerializerFullName}<{typeFullName}>" : "")}"); //TODO: implements!
+				// without a proxy surface, the converter implements the plain IJsonConverter<T>: the three-argument form
+				// names the proxy types, and does not exist on the lite path in the first place
+				var converterInterface = this.WritesProxies
+					? $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>"
+					: $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}>";
+				sb.AppendLine($"public sealed class JsonConverter : {converterInterface}{(this.WritesXml ? $", {ICrystalXmlSerializerFullName}<{typeFullName}>" : "")}"); //TODO: implements!
 				sb.EnterBlock("JsonConverter");
 
 				// custom converters attached to members ([JsonConverter(typeof(...))] or [JsonBooleanLiterals])
@@ -763,6 +792,36 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 
 				#endregion
+
+				// the proxy surface is optional: a consumer on the lite path (netstandard2.0/net472) has no proxy interfaces,
+				// and one below C# 11 cannot implement their static abstract members. Everything above is emitted either way.
+				if (this.WritesProxies)
+				{
+					GenerateProxiesForType(sb, typeDef);
+				}
+
+				if (!selfType)
+				{
+					sb.LeaveBlock();
+				}
+				sb.NewLine();
+
+			}
+
+			/// <summary>Generates the optional <c>ReadOnly</c>/<c>Writable</c> proxy surface of one type</summary>
+			/// <remarks>Split out of <see cref="GenerateCodeForType"/> because it is conditional: see <see cref="WritesProxies"/>. The locals it needs are recomputed here rather than threaded through, so the two halves stay independent.</remarks>
+			private void GenerateProxiesForType(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
+			{
+				var typeName = typeDef.Type.Name;
+				var typeFullName = typeDef.Type.FullyQualifiedName;
+				var typeCref = CSharpCodeBuilder.EscapeCref(typeFullName);
+
+				var readOnlyProxyTypeName = GetReadOnlyProxyName(typeDef.Type);
+				var writableProxyTypeName = GetWritableProxyName(typeDef.Type);
+
+				var jsonConverterInterfaceName = $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}>";
+				var readOnlyProxyInterfaceName = $"{KnownTypeSymbols.IJsonReadOnlyProxyFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>";
+				var writableProxyInterfaceName = $"{KnownTypeSymbols.IJsonWritableProxyFullName}<{typeFullName}, {writableProxyTypeName}>";
 
 				#region Read-Only Proxy...
 
@@ -1536,13 +1595,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 				);
 
 				#endregion
-
-				if (!selfType)
-				{
-					sb.LeaveBlock();
-				}
-				sb.NewLine();
-
 			}
 
 			private void WriteProxyStaticHelpers(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef, string typeCref)
@@ -1598,6 +1650,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<summary>Deserializes a JSON value into an instance of type <see cref=\"{typeCref}\" /></summary>");
 				sb.AppendLine($"public static {typeDef.Type.FullyQualifiedNameAnnotated} Unpack({KnownTypeSymbols.JsonValueFullName} value, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Default.Unpack(value, resolver);");
 				sb.NewLine();
+
+				// everything below wraps the ReadOnly/Writable proxies, which the container does not always have
+				if (!this.WritesProxies) return;
 
 				// ToReadOnly(JsonValue)
 				sb.XmlComment($"<summary>Returns a read-only JSON Proxy that wraps a <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/> into a type-safe emulation of type <see cref=\"{typeCref}\"/></summary>");
@@ -1798,6 +1853,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.LeaveBlock();
 				sb.NewLine();
 
+				// everything below wraps the ReadOnly/Writable proxies, which the container does not always have
+				if (!this.WritesProxies) return;
+
 				// ToReadOnly(JsonValue)
 				sb.XmlComment($"<summary>Returns a read-only JSON Proxy that wraps a <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/> into a type-safe emulation of type <see cref=\"{typeCref}\"/></summary>");
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that wraps <paramref name=\"value\"/> and exposes all the original members of <see cref=\"{typeCref}\"/> as getter-only properties.</returns>");
@@ -1972,8 +2030,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock();
 
 				sb.BeginRegion("Members...");
-				sb.AppendLine($"{KnownTypeSymbols.CrystalJsonMemberDefinitionFullName}[] members =");
-				sb.EnterCollection();
+				// spelled as an explicit array creation rather than a collection expression: the emitted code must also
+				// compile in a consumer sitting on the generator's language floor (C# 9), and both forms produce the same array
+				sb.AppendLine($"{KnownTypeSymbols.CrystalJsonMemberDefinitionFullName}[] members = new {KnownTypeSymbols.CrystalJsonMemberDefinitionFullName}[]");
+				sb.EnterBlock("members");
 				List<string> flags = [ ];
 				foreach (var member in typeDef.Members)
 				{
@@ -2038,8 +2098,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 							tag = "not-null-string";
 						}
 						else if (member.IsNotNull && member.Type.IsEnumerable(out _))
-						{ // not-null collection type without a default value, we will inject a default empty collection expression
-							valueExpr = $"value is not null ? ({member.Type.FullyQualifiedName}) value : [ ]";
+						{ // not-null collection type without a default value, we will inject a default empty collection
+							valueExpr = $"value is not null ? ({member.Type.FullyQualifiedName}) value : {GetEmptyCollectionExpr(member.Type)}";
 							tag = "not-null-collection";
 						}
 						else
@@ -2103,7 +2163,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					sb.LeaveBlock(suffix: ',');
 				}
-				sb.LeaveCollection(suffix: ';');
+				sb.LeaveBlock("members", suffix: ';');
 				sb.EndRegion();
 
 				sb.AppendLine($"{KnownTypeSymbols.CrystalJsonTypeVisitorFullName} visitor = (({KnownTypeSymbols.IJsonConverterInterfaceFullName}) {GetLocalSerializerRef(typeDef)}).Serialize;");

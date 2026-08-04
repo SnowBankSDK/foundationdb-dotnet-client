@@ -53,6 +53,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>The consuming compilation defines <c>[UnsafeAccessor]</c> (net8+): non-public members are reached through zero-cost accessor thunks; otherwise the generated code falls back to reflection-based accessors</summary>
 		public bool SupportsUnsafeAccessors { get; init; }
 
+		/// <summary>The consuming compilation can host the generated JSON proxies (the proxy interfaces are visible, and the language version supports the static abstract members they implement)</summary>
+		/// <remarks>False on the <c>netstandard2.0</c>/<c>net472</c> "lite" path, and in any consumer below C# 11: the container then gets its converters, its <c>TypeMapper</c> and its XML output, but no <c>ReadOnly</c>/<c>Writable</c> proxy types.</remarks>
+		public bool SupportsJsonProxies { get; init; }
+
+		/// <summary>The consuming compilation can see a usable <c>[DynamicallyAccessedMembers]</c>; when false the trimming annotations are left out of the generated code</summary>
+		public bool SupportsDynamicallyAccessedMembers { get; init; }
+
 		/// <summary>Name of the wire profile baked into the container's generated entry points (<c>"DataContractCompat"</c>), or <see langword="null"/> for the standard wire</summary>
 		/// <remarks>The profile only replaces the "caller passed no settings" fallback of the generated entry points; explicitly passed settings always win entirely.</remarks>
 		public string? WireProfile { get; init; }
