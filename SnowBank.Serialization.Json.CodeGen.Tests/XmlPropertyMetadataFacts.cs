@@ -508,6 +508,138 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				"""), "CXML0007");
 		}
 
+		[Test]
+		public void Test_A_Json_Name_That_Is_Not_An_Xml_Name_Is_A_Build_Error()
+		{
+			// the member declares NOTHING for XML, so its XML name falls back to the JSON one: "$id" is a perfectly good
+			// JSON property name and produces "<$id>", which no XML parser accepts. Nothing else on the modern wire
+			// escapes or encodes it, so this is the only place it can be caught
+			var refusal = AssertRefusal(Probe("""
+						[System.Text.Json.Serialization.JsonPropertyName("$id")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("$id"), "the message quotes the name that would land in the document");
+				Assert.That(refusal.GetMessage(), Does.Contain("XmlProperty"), "and names the remedy, which is an XML-only rename");
+			}
+		}
+
+		[Test]
+		public void Test_A_Json_Name_That_Is_A_Valid_Xml_Name_Is_Not_Reported()
+		{
+			// the non-trigger: a JSON-derived name that happens to be a legal NCName is accepted verbatim, with no
+			// [XmlProperty] needed. This is the overwhelmingly common case, and it must stay silent
+			AssertNotReported(Probe("""
+						[System.Text.Json.Serialization.JsonPropertyName("legacy_id")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+		}
+
+		[Test]
+		public void Test_A_Json_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Wire()
+		{
+			// the DataContract wire runs every name through XmlConvert.EncodeLocalName, which has a legal spelling for
+			// any input: refusing there would block a legacy DTO that DataContractSerializer serializes today
+			AssertNotReported(Probe("""
+						[System.Runtime.Serialization.DataMember(Name = "2fa_enabled")]
+						public bool TwoFactor { get; set; }
+				""", DataContractContainer, "[System.Runtime.Serialization.DataContract]"), "CXML0007");
+		}
+
+		#endregion
+
+		#region CXML0007: a [DataContract(Name = ...)] that cannot name the root element...
+
+		[Test]
+		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Is_A_Build_Error()
+		{
+			// the root name is the one name no [XmlProperty] can override, and it is decidable from the declaration
+			// alone: a diagnostic on the type, not an #error buried in the emitted source
+			var refusal = AssertRefusal(Probe("""
+						public int Id { get; set; }
+				""", ModernContainer, "[System.Runtime.Serialization.DataContract(Name = \"not a name\")]"), "CXML0007");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("not a name"), "the message quotes the offending name");
+				Assert.That(refusal.GetMessage(), Does.Contain("root"), "and says which element it would have named");
+			}
+		}
+
+		[Test]
+		public void Test_A_DataContract_Name_That_Is_A_Valid_Xml_Name_Is_Not_Reported()
+		{
+			AssertNotReported(Probe("""
+						public int Id { get; set; }
+				""", ModernContainer, "[System.Runtime.Serialization.DataContract(Name = \"Account\")]"), "CXML0007");
+		}
+
+		[Test]
+		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Wire()
+		{
+			// same asymmetry as the member names: the compat wire encodes what it cannot spell
+			AssertNotReported(Probe("""
+						[System.Runtime.Serialization.DataMember]
+						public int Id { get; set; }
+				""", DataContractContainer, "[System.Runtime.Serialization.DataContract(Name = \"not a name\")]"), "CXML0007");
+		}
+
+		#endregion
+
+		#region CXML0011: an attribute-shaped dictionary whose value has no lexical form...
+
+		[Test]
+		public void Test_An_Attribute_Shaped_Dictionary_With_A_Non_Scalar_Value_Is_A_Build_Error()
+		{
+			// the two attribute shapes carry the value as TEXT: a value type with no lexical form has nothing to put
+			// there. The shape is picked in the source, so the answer belongs in a diagnostic, not in an emitted #error
+			var refusal = AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueAttributes)]
+						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
+				"""), "CXML0011");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("KeyValueAttributes"), "the message names the shape that cannot hold the value");
+				Assert.That(refusal.GetMessage(), Does.Contain("KeyValueElements"), "and the ones that can");
+			}
+		}
+
+		[Test]
+		public void Test_A_Container_Default_Attribute_Shape_With_A_Non_Scalar_Value_Is_A_Build_Error()
+		{
+			// the shape does not have to be declared on the member: a container-level default reaches exactly the same
+			// text position, and the emitted document would be exactly as mangled
+			AssertRefusal(Probe("""
+						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
+				""", """
+				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyAttribute)]
+			"""), "CXML0011");
+		}
+
+		[Test]
+		public void Test_An_Attribute_Shaped_Dictionary_With_A_Scalar_Value_Is_Not_Reported()
+		{
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueAttributes)]
+						public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
+				"""), "CXML0011");
+		}
+
+		[Test]
+		public void Test_An_Element_Shaped_Dictionary_With_A_Non_Scalar_Value_Is_Not_Reported()
+		{
+			// the non-trigger that matters: the very same value type is perfectly projectable in a shape whose value
+			// position is an ELEMENT, which is what the remedy tells the author to switch to
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueElements)]
+						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
+				"""), "CXML0011");
+		}
+
 		#endregion
 
 		#region CXML0003: Attribute=true on a member the XML wire cannot render as an attribute...

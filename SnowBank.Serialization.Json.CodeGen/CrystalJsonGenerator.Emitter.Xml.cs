@@ -143,9 +143,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				private readonly Dictionary<string, string> Fields = new(StringComparer.Ordinal);
 
 				/// <summary>Identifiers already handed out, so that resolving a collision is a lookup and not a scan of every field declared so far</summary>
-				private readonly HashSet<string> Taken = new(StringComparer.Ordinal);
+				/// <remarks>SHARED with the <see cref="XmlEnumTable"/> of the same converter: the two prefixes are not disjoint (a name spelling out to <c>__xml_enum_Color</c> collides with the lookup method of an enum named <c>Color</c>), and two members of the same generated class carrying one identifier is CS0102.</remarks>
+				private readonly HashSet<string> Taken;
 
 				private readonly List<KeyValuePair<string, string>> Order = [ ];
+
+				public XmlNameTable(HashSet<string> taken) => this.Taken = taken;
 
 				/// <summary>Returns the name of the field holding <paramref name="text"/>, declaring one if this is its first use</summary>
 				public string Ref(string text)
@@ -214,9 +217,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				private readonly Dictionary<string, string> Methods = new(StringComparer.Ordinal);
 
 				/// <summary>Identifiers already handed out (two enums of the same simple name live in different namespaces)</summary>
-				private readonly HashSet<string> Taken = new(StringComparer.Ordinal);
+				/// <inheritdoc cref="XmlNameTable.Taken" path="/remarks"/>
+				private readonly HashSet<string> Taken;
 
 				private readonly List<KeyValuePair<string, TypeMetadata>> Order = [ ];
+
+				public XmlEnumTable(HashSet<string> taken) => this.Taken = taken;
 
 				/// <summary>Returns the name of the lookup method for <paramref name="type"/>, declaring one if this is its first use</summary>
 				public string Ref(TypeMetadata type)
@@ -324,7 +330,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private bool XmlNeedsFlagsHelper { get; set; }
 
 			/// <summary>Table of the enum lookups of the converter currently being emitted</summary>
-			private XmlEnumTable XmlEnums { get; set; } = new();
+			private XmlEnumTable XmlEnums { get; set; } = new(new(StringComparer.Ordinal));
 
 			/// <summary>Returns the C# keyword of the underlying integer type of an enum</summary>
 			private static string GetXmlEnumUnderlyingKeyword(TypeMetadata type) => type.EnumUnderlyingSpecialType switch
@@ -414,8 +420,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
-				var names = new XmlNameTable();
-				this.XmlEnums = new();
+				// ONE taken-identifier set for both tables: they declare members of the SAME generated class
+				var taken = new HashSet<string>(StringComparer.Ordinal);
+				var names = new XmlNameTable(taken);
+				this.XmlEnums = new(taken);
 				this.XmlNeedsNotSupportedHelper = false;
 				this.XmlNeedsFlagsHelper = false;
 				this.XmlNeedsCycleHelper = false;
@@ -567,7 +575,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Resolves the name of the root element of a type: the data contract's own name, else the type name through the container's naming policy</summary>
-			/// <remarks>Emits a <c>#error</c> when the resolved name is not a legal XML name (a <c>[DataContract(Name = ...)]</c> written for another wire), because a generated document carrying it would not parse.</remarks>
+			/// <remarks>BACKSTOP only: a <c>[DataContract(Name = ...)]</c> that is not a legal XML name is refused by the parser with <c>CXML0007</c>, which points at the declaration itself. The <c>#error</c> below stays so that a name reaching here through some future path still cannot produce a document that does not parse.</remarks>
 			private string ResolveXmlRootName(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
 				string name = typeDef.DataContractName ?? Parser.FormatName(typeDef.Type.Name, this.Metadata.PropertyNamingPolicy);
@@ -717,7 +725,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{ // CXML0009 already reported this at generation time: emit something that compiles and fails loudly, and do NOT
 				  // fall through to the scalar path, which would write the attribute the converter was supposed to own
 					this.XmlNeedsNotSupportedHelper = true;
-					sb.AppendLine($"FailXmlNotSupported(typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)}); // attribute-projected member with a custom converter (see CXML0009)");
+					sb.AppendLine($"FailXmlNotSupported(typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)}, \"an attribute-projected member cannot be written by a custom converter, whose XML facet produces an element\"); // see CXML0009");
 					return;
 				}
 
@@ -731,7 +739,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (text is null)
 				{
 					this.XmlNeedsNotSupportedHelper = true;
-					sb.AppendLine($"FailXmlNotSupported(typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)});");
+					sb.AppendLine($"FailXmlNotSupported(typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)}, \"an XML attribute value is text, and this type has no lexical form\"); // see CXML0003");
 					return;
 				}
 
@@ -914,7 +922,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (!member.CustomConverterHasXmlSerializer)
 				{ // CXML0008 already reported this at generation time: emit something that compiles and fails loudly
 					this.XmlNeedsNotSupportedHelper = true;
-					sb.AppendLine($"FailXmlNotSupported(typeof({facetType.FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)}); // member-converter (missing XML facet, see CXML0008)");
+					sb.AppendLine($"FailXmlNotSupported(typeof({facetType.FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)}, \"the custom converter declared for this member does not implement the ICrystalXmlSerializer<T> facet\"); // see CXML0008");
 					return;
 				}
 
@@ -1007,7 +1015,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				// the two attribute shapes carry the VALUE as text, so only a scalar value has a projection there: a nested
-				// element inside an entry, or a mangled value, would both be a shape nobody asked for
+				// element inside an entry, or a mangled value, would both be a shape nobody asked for.
+				// BACKSTOP only: the parser already refused this pair with CXML0011, at the declaration that picked the shape
 				var entryValueText = GetXmlScalarText(valueType, entry + ".Value");
 				if (entryValueText is null)
 				{
@@ -1048,7 +1057,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
-				sb.AppendLine($"#error Unknown XML dictionary format '{dictionaryFormat}'");
+				sb.AppendLine($"#error Unknown XML dictionary format '{dictionaryFormat}': this emitter handles Direct, KeyValueElements, KeyAttribute and KeyValueAttributes. A member added to the XmlDictionaryFormat enum needs its own branch in WriteXmlDictionaryContent (CrystalJsonGenerator.Emitter.Xml.cs), and a name for the entries it produces.");
 			}
 
 			/// <summary>Writes the value of a dictionary entry in one of the attribute shapes: as text content, or as an attribute</summary>
@@ -1080,7 +1089,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private void WriteXmlNotSupported(CSharpCodeBuilder sb, TypeMetadata type, string scope)
 			{
 				this.XmlNeedsNotSupportedHelper = true;
-				sb.AppendLine($"FailXmlNotSupported(typeof({type.FullyQualifiedName}), {CSharpCodeBuilder.Constant(scope)});");
+				sb.AppendLine($"FailXmlNotSupported(typeof({type.FullyQualifiedName}), {CSharpCodeBuilder.Constant(scope)}, \"no XML projection exists for this type: it has no lexical form, no generated serializer in this container, and does not implement ICrystalXmlSerializable\");");
 			}
 
 			/// <summary>Whether the converter currently being emitted needs the "no XML projection" helper</summary>
@@ -1091,10 +1100,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// compiler and the generated body carries no unreachable-code warning.</remarks>
 			private static void WriteXmlNotSupportedHelper(CSharpCodeBuilder sb)
 			{
-				sb.Comment("no XML projection exists for this member's type: fail at the exact member, rather than write a document nobody asked for");
-				sb.AppendLine($"private static void FailXmlNotSupported({SystemTypeFullName} type, string member)");
+				sb.Comment("this member has no XML projection: fail at the exact member, rather than write a document nobody asked for");
+				sb.Comment("the REASON is passed in: the same helper backstops several distinct refusals, and a message naming only the most common one would be a lie on the others");
+				sb.AppendLine($"private static void FailXmlNotSupported({SystemTypeFullName} type, string member, string reason)");
 				sb.EnterBlock();
-				sb.AppendLine($"throw new {CrystalXmlNotSupportedExceptionFullName}(type, \"Cannot write member '\" + member + \"' to XML: no XML projection exists for type '\" + type.Name + \"' (it has no lexical form, no generated serializer in this container, and does not implement ICrystalXmlSerializable).\");");
+				sb.AppendLine($"throw new {CrystalXmlNotSupportedExceptionFullName}(type, \"Cannot write member '\" + member + \"' to XML: \" + reason + \" (type '\" + type.Name + \"').\");");
 				sb.LeaveBlock();
 				sb.NewLine();
 			}

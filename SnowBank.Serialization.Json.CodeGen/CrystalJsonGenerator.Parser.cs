@@ -96,12 +96,26 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Member of <c>XmlDictionaryFormat</c> meaning "not overridden by this container"</summary>
 			private const string XmlDictionaryFormatDefault = "Default";
 
+			/// <summary>Members of <c>XmlDictionaryFormat</c> that carry the entry VALUE as text (an attribute, or the entry's own text content)</summary>
+			/// <remarks>Mirrors the emitter's own constants: a shape named here is one whose value position has no room for a nested element.</remarks>
+			private const string XmlDictionaryFormatKeyAttribute = "KeyAttribute";
+
+			/// <inheritdoc cref="XmlDictionaryFormatKeyAttribute"/>
+			private const string XmlDictionaryFormatKeyValueAttributes = "KeyValueAttributes";
+
+			/// <summary>The dictionary shape of the modern profile when neither the member nor the container overrides it</summary>
+			private const string XmlDictionaryFormatDirect = "Direct";
+
 			/// <summary>Table of known symbols from this compilation</summary>
 			private KnownTypeSymbols KnownSymbols { get; }
 
 			public List<DiagnosticInfo> Diagnostics { get; } = [ ];
-			
+
 			private Location? ContextClassLocation { get; set; }
+
+			/// <summary>The container's <c>[CrystalXmlOutput(DictionaryFormat = ...)]</c>, for the whole crawl of that container</summary>
+			/// <remarks>Carried as parser state rather than threaded through every parse signature, exactly like <see cref="ContextClassLocation"/>: the member-level rules that need it (the attribute-shaped dictionary refusal) sit four calls below the container, and none of the intermediate steps has any business knowing about it.</remarks>
+			private string? ContextXmlDictionaryFormat { get; set; }
 
 			public Parser(KnownTypeSymbols knownSymbols)
 			{
@@ -272,6 +286,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, xmlOutputAttribute, wireProfile, caseInsensitiveNames, propertyNamingPolicy);
+				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				Kenobi($"Found {work.Count} root types to include");
 
@@ -507,6 +522,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// a self-serializable type hosts its own generated code, so it can opt into XML output the same way a
 				// container does; it declares no JSON wire profile, so an unspecified profile derives the Modern wire
 				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), wireProfile: null, caseInsensitiveNames: false, propertyNamingPolicy: null);
+				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
 				var mappedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default) { symbol };
@@ -654,6 +670,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 				List<(INamedTypeSymbol, TypeMetadata, object?)>? derivedTypes = null;
 
 				var members = new List<CrystalJsonMemberMetadata>();
+				// kept beside the metadata, which carries no symbol (it must stay equatable for the incremental pipeline): the
+				// type-level XML rules below report ON the member, and a diagnostic pointing at the container instead of at the
+				// offending property is one the author has to go hunting for
+				var memberSymbols = new Dictionary<string, ISymbol>(StringComparer.Ordinal);
 				foreach (var attribute in type.GetAttributes())
 				{
 					var attributeType = attribute.AttributeClass;
@@ -727,6 +747,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 									indexOfId = members.Count;
 								}
 								members.Add(memberDef);
+								// a member shadowed by a 'new' one appears twice: the most derived wins, which is the one that lands in the document
+								memberSymbols[memberDef.MemberName] = member;
 							}
 							else
 							{
@@ -752,7 +774,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				if (xmlProfile is not null)
 				{ // a name collision can only be seen once every member of the type has resolved its own XML name
-					ReportDuplicateXmlNames(type, members, xmlProfile);
+					ReportDuplicateXmlNames(type, members, memberSymbols, xmlProfile);
+					ReportInvalidRootXmlName(type, dataContract.Name, xmlProfile);
 				}
 
 				return new()
@@ -1228,19 +1251,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>Uses the same probe as <c>XmlName.Create</c>, so that a name accepted at compile time cannot be refused at runtime: <c>XmlConvert.VerifyNCName</c> throws instead of returning, so it is caught and translated here (an exception escaping the parser would surface as the generic CJSON0001 crash instead of a message the author can act on).</remarks>
 			private bool ValidateXmlName(ISymbol member, string name, string role)
 			{
-				string? why = null;
-				try
-				{
-					System.Xml.XmlConvert.VerifyNCName(name);
-				}
-				catch (Exception ex) when (ex is System.Xml.XmlException or ArgumentException)
-				{
-					// XmlException for a malformed name (space, leading digit, colon, ...); ArgumentException for an
-					// empty one specifically. Either way, forward VerifyNCName's own message so the diagnostic says WHY.
-					why = ex.Message;
-				}
-
-				if (why is null) return true;
+				if (IsValidXmlName(name, out var why)) return true;
 
 				ReportDiagnostic(
 					new(
@@ -1254,6 +1265,67 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.Locations.Length > 0 ? member.Locations[0] : null,
 					member.ToDisplayString(), role, name, why);
 				return false;
+			}
+
+			/// <summary>Probes whether <paramref name="name"/> is a legal XML NCName, returning the reason it is not</summary>
+			/// <remarks>The same probe <c>XmlName.Create</c> uses at run time, so a name accepted at compile time cannot be refused later. <c>XmlConvert.VerifyNCName</c> throws instead of returning, so the exception is caught and translated here: one escaping the parser would surface as the generic CJSON0001 crash instead of a message the author can act on.</remarks>
+			private static bool IsValidXmlName(string name, out string? why)
+			{
+				try
+				{
+					System.Xml.XmlConvert.VerifyNCName(name);
+					why = null;
+					return true;
+				}
+				catch (Exception ex) when (ex is System.Xml.XmlException or ArgumentException)
+				{
+					// XmlException for a malformed name (space, leading digit, colon, ...); ArgumentException for an
+					// empty one specifically. Either way, forward VerifyNCName's own message so the diagnostic says WHY.
+					why = ex.Message;
+					return false;
+				}
+			}
+
+			/// <summary>Reports <c>CXML0007</c> when a member's XML name was DERIVED from its JSON name and is not a legal XML NCName</summary>
+			/// <remarks>Its own message, under the same id: the remedy differs from the declared-name case (which is "fix the name you wrote"), because here nothing was written for XML at all and the author has to be told that adding <c>[XmlProperty]</c> is what separates the two wires.</remarks>
+			private void ValidateDerivedXmlName(ISymbol member, string name)
+			{
+				if (IsValidXmlName(name, out var why)) return;
+
+				ReportDiagnostic(
+					new(
+						"CXML0007",
+						"An XML name is not valid",
+						"The member '{0}' has no XML name of its own, so it takes its JSON name '{1}', which is not a legal XML name: {2}. Give it one with [XmlProperty(\"...\")], which leaves the JSON name untouched.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString(), name, why);
+			}
+
+			/// <summary>Reports <c>CXML0007</c> when a type's <c>[DataContract(Name = ...)]</c> would name the ROOT element with something no XML parser accepts</summary>
+			/// <remarks>
+			/// <para>MODERN wire only, and only for a contract name: the compat wire runs every name through <c>XmlConvert.EncodeLocalName</c>, and a name derived from the C# type name is a legal NCName by construction.</para>
+			/// <para>Decidable from the declaration alone, which is why it is a diagnostic and not the <c>#error</c> the emitter used to carry (the member-level equivalent has been CXML0007 all along, and the two shapes deserve the same treatment). The emitter keeps its <c>#error</c> as an unreachable backstop.</para>
+			/// </remarks>
+			private void ReportInvalidRootXmlName(INamedTypeSymbol type, string? dataContractName, string xmlProfile)
+			{
+				if (xmlProfile != XmlProfileModern || dataContractName is null) return;
+				if (IsValidXmlName(dataContractName, out var why)) return;
+
+				ReportDiagnostic(
+					new(
+						"CXML0007",
+						"An XML name is not valid",
+						"The type '{0}' declares [DataContract(Name = \"{1}\")], which names its XML root element and is not a legal XML name: {2}. Rename the contract, or drop the Name so the root takes the type name.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					type.Locations.Length > 0 ? type.Locations[0] : null,
+					type.ToDisplayString(), dataContractName, why);
 			}
 
 			/// <summary>Reports <c>CXML0006</c> on a sequence whose items are themselves bare sequences, with no intermediate type to name the inner items</summary>
@@ -1279,13 +1351,46 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.ToDisplayString(), type.FullName);
 			}
 
+			/// <summary>Reports <c>CXML0011</c> on a dictionary member whose resolved shape carries the VALUE as text, when the value type has no lexical form</summary>
+			/// <remarks>
+			/// <para>MODERN wire only: the compat wire has exactly one dictionary shape (<c>KeyValueOfXY</c> with <c>Key</c>/<c>Value</c> child ELEMENTS), which always has room for a nested value.</para>
+			/// <para>Decidable from the declarations alone (the member's <c>DictionaryFormat</c>, else the container's, else the profile default), which is why it is a diagnostic and not the <c>#error</c> the emitter used to carry. The <c>#error</c> stays in the emitter as an unreachable backstop, so a future shape that forgets this check still cannot emit a mangled document.</para>
+			/// <para>The KEY position is NOT checked here: a key's lexical form is fixed by the key type, and a key that has none is already refused elsewhere; what varies per shape is only where the VALUE lands.</para>
+			/// </remarks>
+			private void ReportUnprojectableDictionaryValue(ISymbol member, TypeMetadata type, string? memberDictionaryFormat)
+			{
+				var actual = type.NullableOfType ?? type;
+				if (actual.KeyType is null || actual.ValueType is not { } valueType) return;
+
+				string format =
+					memberDictionaryFormat is not (null or XmlDictionaryFormatDefault) ? memberDictionaryFormat
+					: this.ContextXmlDictionaryFormat is { } containerFormat && containerFormat != XmlDictionaryFormatDefault ? containerFormat
+					: XmlDictionaryFormatDirect;
+
+				if (format is not (XmlDictionaryFormatKeyAttribute or XmlDictionaryFormatKeyValueAttributes)) return;
+				if (IsXmlScalar(valueType)) return;
+
+				ReportDiagnostic(
+					new(
+						"CXML0011",
+						"A dictionary value has no lexical form for the shape that was asked for",
+						"The member '{0}' asks for the {1} dictionary shape, which carries the entry VALUE as text, but its value type '{2}' has no lexical form: only scalars (booleans, numbers, strings, enums, dates, durations, GUIDs, URIs, byte arrays) can land in a text position. Use the Direct or KeyValueElements shape instead, which hold the value as a nested element.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString(), format, valueType.FullName);
+			}
+
 			/// <summary>Reports <c>CXML0005</c> when two members of a type resolve to the same effective XML name, once the <c>'@'</c> sugar has been normalized</summary>
 			/// <remarks>
 			/// <para>Elements and attributes are checked SEPARATELY, because in XML they do not share a namespace: an attribute and a child element may legitimately carry the same name, and refusing that pair would be a false positive on a perfectly readable document.</para>
 			/// <para>Only member-versus-member: a collision with a polymorphic type's discriminator cannot be seen from here, because a derived type does not know its own hierarchy. It is checked over the whole container instead, by <see cref="ReportDiscriminatorXmlNameCollisions"/>, and reported under the same id.</para>
 			/// <para>The REMEDY is profile-aware, because the obvious one is not available on both: on the DataContract wire an <c>[XmlProperty]</c> rename is itself refused (CXML0004), so the fix has to point at the <c>[DataMember(Name = ...)]</c> that owns the colliding name.</para>
+			/// <para>This is also where the EFFECTIVE XML name of every member is validated on the modern wire (CXML0007). <c>ResolveXmlMember</c> only sees the names an <c>[XmlProperty]</c> declares, so a member that inherits its XML name from its JSON one (<c>[JsonPropertyName("$id")]</c>, or a raw member name the naming policy leaves alone) would otherwise reach the emitter unchecked and land in the document verbatim. The compat wire is immune: it runs every name through <c>XmlConvert.EncodeLocalName</c>, which has a legal spelling for any input.</para>
 			/// </remarks>
-			private void ReportDuplicateXmlNames(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members, string xmlProfile)
+			private void ReportDuplicateXmlNames(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members, Dictionary<string, ISymbol> memberSymbols, string xmlProfile)
 			{
 				// naming the remedy the OTHER wire uses would send the author straight into CXML0004
 				string remedy =
@@ -1301,6 +1406,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					// the JSON name is the fallback: it is what the XML name derives from when the member does not override it
 					string effective = member.XmlName ?? member.Name;
 					var seen = member.XmlIsAttribute ? attributes : elements;
+
+					if (xmlProfile == XmlProfileModern && member.XmlName is null && memberSymbols.TryGetValue(member.MemberName, out var symbol))
+					{ // the name was NOT declared for XML: it fell back to the JSON one, which nothing has validated yet
+						ValidateDerivedXmlName(symbol, effective);
+					}
 
 					if (!seen.TryGetValue(effective, out var previous))
 					{
@@ -2208,6 +2318,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (!xmlRefused && xmlProfile == XmlProfileModern)
 					{
 						ReportBareNestedCollection(member, type);
+						ReportUnprojectableDictionaryValue(member, type, xmlDictionaryFormat);
 					}
 
 					if (!xmlRefused && xmlProfile == XmlProfileDataContract)

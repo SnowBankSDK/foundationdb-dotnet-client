@@ -380,8 +380,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Emits the <c>ICrystalXmlSerializer&lt;T&gt;</c> facet of one converter, on the DataContract wire</summary>
 			private void WriteXmlDcsSerializer(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
-				var names = new XmlNameTable();
-				this.XmlEnums = new();
+				// ONE taken-identifier set for both tables: they declare members of the SAME generated class
+				var taken = new HashSet<string>(StringComparer.Ordinal);
+				var names = new XmlNameTable(taken);
+				this.XmlEnums = new(taken);
 				this.XmlNeedsNotSupportedHelper = false;
 				this.XmlNeedsFlagsHelper = false;
 				this.XmlNeedsUndeclaredEnumHelper = false;
@@ -430,7 +432,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<summary>Writes this value as an element of the given name, annotated with its contract name when the caller's declared type is a different contract</summary>");
 				sb.XmlComment("<param name=\"declaredContractName\">Contract name of the type the call site DECLARED. The reference wire writes a <c>type</c> annotation exactly when the runtime contract differs from it; <see langword=\"null\"/> suppresses the annotation entirely.</param>");
 				sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one; see the same parameter on <c>WriteXmlElement</c>.</param>");
-				sb.AppendLine($"public void WriteXmlDcsElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, string? declaredContractName, int {XmlDepthParameterName} = 0) where TEmitter : struct, {IXmlEmitterFullName}");
+				// INTERNAL, unlike its WriteXmlElement twin: that one is public because it implements ICrystalXmlSerializer<T>,
+				// while this one is part of no interface. Every caller is another generated serializer of the SAME container
+				// (GetLocalSerializerRef never leaves it), so nothing outside the assembly has any use for it.
+				sb.AppendLine($"internal void WriteXmlDcsElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, string? declaredContractName, int {XmlDepthParameterName} = 0) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXmlDcsElement");
 				sb.AppendLine($"settings ??= {XmlDcsDefaultSettings};");
 				sb.NewLine();
