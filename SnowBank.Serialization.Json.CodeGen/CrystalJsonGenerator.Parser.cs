@@ -1659,13 +1659,42 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (!memberSymbols.TryGetValue(member.MemberName, out var symbol)) continue;
 					var location = symbol.Locations.Length > 0 ? symbol.Locations[0] : null;
 
-					if (member.XmlItemName is not null && !HasXmlItems(member.Type))
-					{ // ItemName names the ITEMS of a sequence, or the ENTRIES of a dictionary: a member that has neither has nothing to name
+					// the three reasons an ItemName can be inert are mutually exclusive, and the most specific one is the useful
+					// one: a self-writing type is ALSO "not written as items", and reporting it as such would send the author
+					// looking for a collection to add rather than at the WriteXml that owns the content
+					if (member.XmlItemName is not null)
+					{
+						string setting = "ItemName = \"" + member.XmlItemName + "\"";
+
+						if (WritesItsOwnXmlContent(member.Type))
+						{
+							ReportInertXmlSetting(location, symbol.ToDisplayString(), setting, SelfWritingReason(member.Type));
+						}
+						else if (!HasXmlItems(member.Type))
+						{ // ItemName names the ITEMS of a sequence, or the ENTRIES of a dictionary: a member that has neither has nothing to name
+							ReportInertXmlSetting(
+								location,
+								symbol.ToDisplayString(),
+								setting,
+								$"the member's type '{member.Type.FullName}' is written as a single value, not as items: there is nothing for this name to apply to");
+						}
+						else if (IsXmlDictionary(member.Type) && ResolveXmlDictionaryFormat(member.XmlDictionaryFormat) == XmlDictionaryFormatDirect)
+						{ // the Direct shape spells each entry with its own key, so it never asks for an entry name
+							ReportInertXmlSetting(
+								location,
+								symbol.ToDisplayString(),
+								setting,
+								"the dictionary resolves to the Direct shape, whose entries are named after their own key: there is no entry name for this setting to supply. Pick one of the entry-naming shapes (KeyAttribute, KeyValueAttributes, KeyValueElements) if the entries should carry this name instead");
+						}
+					}
+
+					if (member.XmlDictionaryFormat is not (null or XmlDictionaryFormatDefault) && WritesItsOwnXmlContent(member.Type))
+					{ // the other half of the CONTENT vocabulary, inert for exactly the same reason
 						ReportInertXmlSetting(
 							location,
 							symbol.ToDisplayString(),
-							"ItemName = \"" + member.XmlItemName + "\"",
-							$"the member's type '{member.Type.FullName}' is written as a single value, not as items: there is nothing for this name to apply to");
+							"DictionaryFormat = " + member.XmlDictionaryFormat,
+							SelfWritingReason(member.Type));
 					}
 
 					if (member.XmlIsAttribute && member.IgnoreCondition == "Never")
@@ -1677,6 +1706,35 @@ namespace SnowBank.Serialization.Json.CodeGen
 							"the member is projected as an XML attribute, and an attribute has no nil form: a null value makes it absent whatever the condition asks for. Project the member as a nested element to get the explicit nil the condition is asking for (it stays honored on the JSON wire either way)");
 					}
 				}
+			}
+
+			/// <summary>Tests whether a member's type writes its OWN XML content, which is what puts the content out of the member's reach</summary>
+			/// <remarks>The emitter opens the element (under the member's name) and hands everything inside it to the type's
+			/// <c>ICrystalXmlSerializable.WriteXml</c>. This branch wins over the collection and dictionary shapes in
+			/// <c>WriteXmlValueContent</c>, so a self-writing type that is also a collection is NOT written as items, whatever its C#
+			/// shape suggests. The member's NAME still applies, since the shell is the parent's to write.</remarks>
+			private static bool WritesItsOwnXmlContent(TypeMetadata type) => (type.NullableOfType ?? type).IsCrystalXmlSerializable();
+
+			/// <summary>The <c>why</c> of an option a self-writing type puts out of reach</summary>
+			private static string SelfWritingReason(TypeMetadata type)
+				=> $"the member's type '{type.FullName}' writes its own XML content (it implements ICrystalXmlSerializable), so only the element NAME comes from this member; everything inside the element is that type's own business";
+
+			/// <summary>Tests whether a member's type is written as a dictionary on the XML wire</summary>
+			private static bool IsXmlDictionary(TypeMetadata type)
+			{
+				var actual = type.NullableOfType ?? type;
+				return actual.KeyType is not null && actual.ValueType is not null;
+			}
+
+			/// <summary>Returns the dictionary shape a member RESOLVES to: its own override, else the container's, else the profile's default</summary>
+			/// <remarks>Deliberately the same three-step walk as the emitter's <c>Emitter.ResolveXmlDictionaryFormat</c>: what makes a
+			/// setting inert is the shape the document is actually written in, so a diagnostic resolving it differently from the
+			/// emitter would be reporting on a shape nobody produces.</remarks>
+			private string ResolveXmlDictionaryFormat(string? memberFormat)
+			{
+				if (memberFormat is not (null or XmlDictionaryFormatDefault)) return memberFormat;
+				if (this.ContextXmlDictionaryFormat is { } containerFormat && containerFormat != XmlDictionaryFormatDefault) return containerFormat;
+				return XmlDictionaryFormatDirect;
 			}
 
 			/// <summary>Tests whether a member's type is written as a series of ITEMS on the XML wire (a sequence's items, or a dictionary's entries), which is what an <c>ItemName</c> can name</summary>

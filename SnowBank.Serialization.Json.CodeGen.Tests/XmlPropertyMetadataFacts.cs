@@ -72,6 +72,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					public int Value { get; set; }
 				}
 
+				/// <summary>A type that writes its own XML content, and that is ALSO a sequence: the parent writes the element shell,
+				/// this type writes everything inside it, so nothing a member says about the content can reach in</summary>
+				public sealed class ProbeStampList : System.Collections.Generic.List<string>, SnowBank.Data.Xml.ICrystalXmlSerializable
+				{
+					public void WriteXml<TEmitter>(ref TEmitter emitter)
+						where TEmitter : struct, SnowBank.Data.Xml.IXmlEmitter
+						=> emitter.WriteText("stamp");
+				}
+
 			{{dtoAttributes}}
 				public sealed record ProbeDto
 				{
@@ -218,9 +227,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_An_ItemName_On_A_Dictionary_Member_Is_Not_Reported()
+		public void Test_An_ItemName_On_A_KeyAttribute_Shaped_Dictionary_Member_Is_Not_Reported()
 		{
-			// a dictionary has entries, which the entry-naming shapes name with exactly this setting
+			// a dictionary has entries, which the entry-naming shapes name with exactly this setting (the RESOLVED shape is
+			// what decides: the same attribute on the same type IS inert once the shape resolves to Direct)
 			AssertNotReported(
 				Probe("""
 							[SnowBank.Data.Xml.XmlProperty(ItemName = "score", DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyAttribute)]
@@ -265,6 +275,86 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 							[SnowBank.Data.Xml.XmlProperty("@id")]
 							public string? Id { get; set; }
 					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Self_Writing_Member_Is_Reported_As_Inert()
+		{
+			// the type implements ICrystalXmlSerializable, so the emitter opens the element and hands the INSIDE to the
+			// type's own WriteXml. It is a sequence too, which is what makes this its own case: the "no items" rule sees a
+			// collection here and stays quiet, yet the item name still names nothing, because the items are never written
+			// by the emitter at all.
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "stamp")]
+							public ProbeStampList? Stamps { get; set; }
+					"""),
+				"Stamps",
+				"ItemName",
+				"writes its own XML content");
+		}
+
+		[Test]
+		public void Test_A_DictionaryFormat_On_A_Self_Writing_Member_Is_Reported_As_Inert()
+		{
+			// same reason, other half of the content vocabulary: the shape of what goes inside the element is the type's
+			// business, and a member-level shape cannot reach past its WriteXml
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyAttribute)]
+							public ProbeStampList? Stamps { get; set; }
+					"""),
+				"Stamps",
+				"DictionaryFormat",
+				"writes its own XML content");
+		}
+
+		[Test]
+		public void Test_A_Name_On_A_Self_Writing_Member_Is_Not_Reported()
+		{
+			// the NAME is the one member-level option that still applies to a self-writing type: the element shell is
+			// written by the PARENT, and only its content comes from the type's own WriteXml
+			AssertNotReported(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty("stamps")]
+							public ProbeStampList? Stamps { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Direct_Shaped_Dictionary_Is_Reported_As_Inert()
+		{
+			// Direct names each entry after its KEY, so there is no entry name left for ItemName to supply. Direct is also
+			// the shape a member that names none resolves to, which is what makes this worth reporting: the setting reads
+			// as if it named the entries, and the document ignores it.
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "score")]
+							public System.Collections.Generic.Dictionary<string, int>? Scores { get; set; }
+					"""),
+				"Scores",
+				"ItemName",
+				"named after their own key");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Dictionary_Is_Not_Reported_When_The_Container_Picks_The_Shape()
+		{
+			// the resolved shape walks up to the CONTAINER when the member names none, so an ItemName here is consulted
+			// even though the member itself says nothing about the shape
+			AssertNotReported(
+				Probe(
+					"""
+								[SnowBank.Data.Xml.XmlProperty(ItemName = "score")]
+								public System.Collections.Generic.Dictionary<string, int>? Scores { get; set; }
+						""",
+					containerAttributes: """
+							[SnowBank.Data.CrystalConverter]
+							[SnowBank.Data.Json.CrystalJsonOutput]
+							[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueElements)]
+						"""),
 				"CXML0012");
 		}
 
