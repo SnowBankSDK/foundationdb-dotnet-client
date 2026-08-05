@@ -47,6 +47,29 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_Create_Refuses_A_File_That_Is_Not_Blank()
+		{
+			// a foreign file has garbage where the snapshot headers live: the old blank test (both header
+			// checksums fail) called exactly that "blank", and Create clobbered the file's head. Blank must
+			// mean genuinely unwritten - all-zero.
+			var geometry = FdbLiteGeometry.Default;
+			using var pager = new FdbLiteHeapPager(geometry);
+			pager.Grow(3);
+			var block = new byte[geometry.BlockSize];
+			"This is somebody else's file, not a store"u8.CopyTo(block);
+			pager.WriteBlocks(0, block);
+
+			Assert.That(() => FdbLiteEngine.Create(pager), Throws.Exception, "Create must refuse a non-blank file");
+			Assert.That(pager.ReadBlocks(0, 1).SequenceEqual(block), Is.True, "the refusal must leave the file untouched");
+
+			// a genuinely blank (all-zero) preallocation is still accepted
+			using var blank = new FdbLiteHeapPager(geometry);
+			blank.Grow(64);
+			using var engine = FdbLiteEngine.Create(blank);
+			Assert.That(engine.Durable.Generation, Is.EqualTo(1UL));
+		}
+
+		[Test]
 		public void Test_Snapshot_Header_Codec_And_Torn_Detection()
 		{
 			var header = new FdbLiteSnapshotHeader(42, 0xfdb1337000123, 100, 2048, 77, 501, 12345, 40);

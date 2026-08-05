@@ -98,7 +98,18 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Retention policy: the reclaimer never promotes a freed-at generation above this floor.</summary>
 		/// <remarks>The default (<see cref="ulong.MaxValue"/>) is the PRODUCTION policy - reclamation is bounded only by the live read pins and the backup generation (self-limiting: freed blocks come back as soon as no reader can see them). Drop it to <c>0</c> to RETAIN every generation - nothing freed is ever reclaimed - which is the retain-all-in-memory / inspection policy. This is deliberately one explicit knob, defaulted open: the production reclamation path can never silently inherit the retain-all assumption, it has to be asked for.</remarks>
-		public ulong RetainFloor { get; set; } = ulong.MaxValue;
+		public ulong RetainFloor
+		{
+			get => field;
+			set
+			{
+				// lowering (retaining more) is always safe; RAISING re-enables promotion of generations the old
+				// floor retained - and readers of a retain-all store hold no engine pins at all, so their pages
+				// would be reused under them. A raise is therefore only legal while nothing is retained yet.
+				Contract.Requires(value <= field || this.FreeSpace.PendingBlockCount == 0, "raising RetainFloor over retained generations would reclaim blocks readers can still see");
+				field = value;
+			}
+		} = ulong.MaxValue;
 
 		/// <summary>Read pins per generation (guarded by <see cref="PinLock"/>)</summary>
 		private SortedDictionary<ulong, int> Pins { get; } = new();
@@ -148,11 +159,18 @@ namespace FoundationDB.Storage.FdbLite
 
 		private static bool IsBlank(IFdbLitePager pager)
 		{
-			if (pager.BlockCount < 3)
+			// blank means genuinely UNWRITTEN: a fresh file or a preallocation reads all-zero. Anything else -
+			// a valid store, a store with torn headers, or a FOREIGN file - must never be overwritten by Create
+			// (the old header-checksum test called a foreign file "blank", and Create clobbered its head)
+			uint probe = Math.Min(pager.BlockCount, 3u);
+			for (uint i = 0; i < probe; i++)
 			{
-				return true;
+				if (pager.ReadBlocks(i, 1).ContainsAnyExcept((byte) 0))
+				{
+					return false;
+				}
 			}
-			return !FdbLiteSnapshotHeader.TryRead(pager.ReadBlocks(1, 1), 1, out _) && !FdbLiteSnapshotHeader.TryRead(pager.ReadBlocks(2, 1), 2, out _);
+			return true;
 		}
 
 		/// <summary>Opens an existing store from a pager: picks the newest VALID snapshot header (a torn commit's header fails its checksum and loses) and reloads the free-space state it references.</summary>
@@ -538,6 +556,8 @@ namespace FoundationDB.Storage.FdbLite
 		/// so - unlike <see cref="VacuumStep"/>, which republishes the current version because it changes nothing
 		/// logically - reusing the previous version would make that generation unreachable through
 		/// <see cref="TryBeginReadAtVersion"/>.</para>
+		/// <para>Serialized under the single-writer model like any write generation: never call it while another
+		/// writer is open - it opens (and commits) its own.</para>
 		/// </remarks>
 		/// <exception cref="ArgumentException">The range is empty or its upper bound is too long, or the run is not in strictly ascending key order, or it holds a key outside <c>[begin, end)</c>, an oversized key, or an oversized value.</exception>
 		public int Import(IEnumerable<KeyValuePair<Slice, Slice>> run, Slice begin, Slice end, FdbLiteImportOptions options, ulong databaseVersion)
@@ -641,7 +661,16 @@ namespace FoundationDB.Storage.FdbLite
 		#endregion
 
 		/// <inheritdoc />
-		public void Dispose() => this.Pager.Dispose();
+		/// <remarks>Disposing unmaps the store: a reader still holding a pinned snapshot would then dereference
+		/// unmapped memory - a native fault, not a managed exception - so live pins fail this loudly instead.</remarks>
+		public void Dispose()
+		{
+			lock (this.PinLock)
+			{
+				Contract.Requires(this.Pins.Count == 0, "the engine still has pinned readers: disposing would unmap memory a reader can still touch");
+			}
+			this.Pager.Dispose();
+		}
 
 	}
 

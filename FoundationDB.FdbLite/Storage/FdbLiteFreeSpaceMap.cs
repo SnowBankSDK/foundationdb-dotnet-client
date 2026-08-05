@@ -63,16 +63,11 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
-		/// <summary>Total blocks retained only because their generation has not been promoted yet (the FL-21 slow-reader observability number)</summary>
-		public long PendingBlockCount
-		{
-			get
-			{
-				long sum = 0;
-				foreach (var p in this.Pending) { sum += p.Count; }
-				return sum;
-			}
-		}
+		/// <summary>Running total of the blocks in <see cref="Pending"/>, maintained by <see cref="Free"/>/<see cref="Promote"/> so <see cref="PendingBlockCount"/> never walks the queue - a monitoring thread reads it while the writer mutates the queue, and an enumeration there would tear.</summary>
+		private long PendingBlocks;
+
+		/// <summary>Total blocks retained only because their generation has not been promoted yet (the FL-21 slow-reader observability number). Safe to read from any thread.</summary>
+		public long PendingBlockCount => Volatile.Read(ref this.PendingBlocks);
 
 		/// <summary>Records a range freed while building <paramref name="generation"/> (not reusable yet).</summary>
 		public void Free(uint start, uint count, ulong generation)
@@ -80,6 +75,7 @@ namespace FoundationDB.Storage.FdbLite
 			Contract.Requires(count > 0);
 			Contract.Debug.Requires(this.Pending.Count == 0 || this.Pending.Last().Generation <= generation, "generations are monotonic");
 			this.Pending.Enqueue((generation, start, count));
+			Volatile.Write(ref this.PendingBlocks, this.PendingBlocks + count);
 		}
 
 		/// <summary>Records a range that is immediately reusable (never referenced by any retained tree: allocation waste, startup-sweep finds).</summary>
@@ -95,6 +91,7 @@ namespace FoundationDB.Storage.FdbLite
 			while (this.Pending.TryPeek(out var head) && head.Generation <= reusableUpToInclusive)
 			{
 				this.Pending.Dequeue();
+				Volatile.Write(ref this.PendingBlocks, this.PendingBlocks - head.Count);
 				InsertReusable(head.Start, head.Count);
 			}
 		}

@@ -385,6 +385,10 @@ namespace FoundationDB.Storage.FdbLite
 			// write the value as a headerless contiguous extent, zero-padding the last block
 			int blockSize = this.Pager.Geometry.BlockSize;
 			int blockCount = (value.Length + blockSize - 1) / blockSize;
+			// the descriptor's block count is a u16: with a mapping region above 65,535 blocks the region-size
+			// ceiling checked at Insert stops binding first, and an unchecked cast would truncate the count
+			// SILENTLY on disk (the store corrupts here and faults only at the read, far from the cause)
+			Contract.Requires(blockCount <= ushort.MaxValue, "value exceeds the maximum extent length (65,535 blocks)");
 			uint start = this.Allocator.AllocateExtent((uint) blockCount);
 			this.ShadowExtents.Add(start);
 
@@ -402,7 +406,7 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			ulong checksum = System.IO.Hashing.XxHash3.HashToUInt64(value, unchecked((long) start));
-			FdbLiteTreePage.BuildExtentDescriptor(scratch.AsSpan(key.Length), start, (ushort) blockCount, (uint) value.Length, checksum);
+			FdbLiteTreePage.BuildExtentDescriptor(scratch.AsSpan(key.Length), start, checked((ushort) blockCount), (uint) value.Length, checksum);
 			return CellRef.OfLeafBuffer(scratch, key.Length, FdbLiteTreePage.ExtentDescriptorSize, FdbLiteTreePage.FlagValueIsExtent);
 		}
 

@@ -130,7 +130,15 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 			var internalIds = new List<uint>();
 			var leafIds = new List<uint>();
-			CollectPageIds(pager, engine.BeginRead().RootPageId, internalIds, leafIds);
+			var pin = engine.BeginRead();
+			try
+			{
+				CollectPageIds(pager, pin.RootPageId, internalIds, leafIds);
+			}
+			finally
+			{
+				engine.EndRead(in pin);
+			}
 
 			Assert.That(internalIds, Is.Not.Empty, "the tree must have internal pages for this to mean anything");
 			Assert.That(leafIds.Count, Is.GreaterThan(internalIds.Count), "leaves must dominate the page population");
@@ -161,6 +169,48 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			{
 				CollectPageIds(pager, FdbLiteTreePage.GetChild(page, i), internalIds, leafIds);
 			}
+		}
+
+		[Test]
+		public void Test_RetainFloor_Cannot_Be_Raised_Over_Retained_Generations()
+		{
+			// raising the floor re-enables promotion of generations the old floor retained - and readers of a
+			// retain-all store hold no engine pins, so their pages would be reused under them, silently
+			var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			using var cleanup = engine;
+			engine.RetainFloor = 0; // fresh store, nothing retained yet: the change is legal
+
+			for (int gen = 0; gen < 2; gen++)
+			{ // overwrite the same keys so the second commit frees (and retains) the first generation's pages
+				var writer = engine.BeginWrite();
+				for (int i = 0; i < 40; i++)
+				{
+					var key = new byte[8];
+					System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(key, i);
+					writer.Insert(key, new byte[300]);
+				}
+				engine.Commit(writer, (ulong) (gen + 1));
+			}
+			Assume.That(engine.GetStats().PendingReclaimBlocks, Is.GreaterThan(0), "the churn must have left retained blocks");
+
+			Assert.That(() => engine.RetainFloor = ulong.MaxValue, Throws.Exception, "raising over retained generations must fail");
+			Assert.That(() => engine.RetainFloor = 0, Throws.Nothing, "restating (or lowering) stays legal");
+		}
+
+		[Test]
+		public void Test_Dispose_Refuses_While_A_Reader_Is_Pinned()
+		{
+			// disposing unmaps the store: a pinned reader's spans would dereference unmapped memory, a native
+			// fault rather than a managed exception, so the pinned dispose must be the thing that fails
+			var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			var writer = engine.BeginWrite();
+			writer.Insert("hello"u8, "world"u8);
+			engine.Commit(writer, 1);
+
+			var pin = engine.BeginRead();
+			Assert.That(() => engine.Dispose(), Throws.Exception, "dispose must refuse while a reader is pinned");
+			engine.EndRead(in pin);
+			Assert.That(() => engine.Dispose(), Throws.Nothing, "the last unpin makes dispose legal");
 		}
 
 		[Test]
