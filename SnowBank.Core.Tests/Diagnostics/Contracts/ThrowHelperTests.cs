@@ -159,7 +159,8 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		public void Test_ThrowObjectDisposedException()
 		{
 			var x0 = Assert.Throws<ObjectDisposedException>(() => ThrowHelper.ThrowObjectDisposedException(new MemoryStream(), "He's dead, Jim!"));
-			Assert.That(x0.Message, Is.EqualTo("He's dead, Jim!\r\nObject name: 'MemoryStream'."));
+			// ObjectDisposedException.Message joins the message and "Object name: ..." with Environment.NewLine (\n on macOS/Linux, not CRLF)
+			Assert.That(x0.Message, Is.EqualTo("He's dead, Jim!" + Environment.NewLine + "Object name: 'MemoryStream'."));
 			Assert.That(x0.InnerException, Is.Null);
 
 			var x1 = Assert.Throws<ObjectDisposedException>(() => ThrowHelper.ThrowObjectDisposedException("He's dead, Jim!", new InvalidOperationException("I'm dead, Jim!")));

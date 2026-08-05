@@ -33,6 +33,8 @@ namespace SnowBank.Networking.Tests
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Parallelizable(ParallelScope.All)]
+	// traceroute needs raw ICMP sockets (privileged on macOS/Linux) and a specific reachable LAN, so it cannot run unattended: opt-in only
+	[Explicit("Requires raw ICMP socket privileges and a specific LAN; run manually")]
 	public class TraceRouteFacts : SimpleTest
 	{
 

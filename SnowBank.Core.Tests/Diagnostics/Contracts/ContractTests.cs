@@ -49,7 +49,8 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		/// <summary>Formats the expected message of an <see cref="ArgumentOutOfRangeException"/> (the .NET Framework orders the parts differently).</summary>
 		private static string WithParamNameAndValue(string message, string paramName, string actualValue)
 #if NET5_0_OR_GREATER
-			=> $"{message} (Parameter '{paramName}')" + "\r\n" + $"Actual value was {actualValue}.";
+			// the framework inserts Environment.NewLine before "Actual value was ...", so this must not hardcode CRLF (it is \n on macOS/Linux)
+			=> $"{message} (Parameter '{paramName}')" + Environment.NewLine + $"Actual value was {actualValue}.";
 #else
 			=> message + Environment.NewLine + "Parameter name: " + paramName + Environment.NewLine + "Actual value was " + actualValue + ".";
 #endif

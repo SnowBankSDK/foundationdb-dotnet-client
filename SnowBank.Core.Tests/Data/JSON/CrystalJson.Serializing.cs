@@ -309,6 +309,11 @@ namespace SnowBank.Data.Json.Tests
 		{
 			settings ??= CrystalJsonSettings.Json;
 
+			// CrystalJson always emits CRLF line endings in indented output, but the newlines in the raw string literal passed as
+			// "expected" depend on this source file's checkout EOL (git autocrlf): CRLF on Windows, LF on macOS/Linux. Normalize to
+			// CRLF so both the string and the byte-level (expectedSlice) assertions below hold on every platform.
+			expected = expected.Replace("\r\n", "\n").Replace("\n", "\r\n");
+
 			string? expr = value?.ToString();
 			if (string.IsNullOrEmpty(expr))
 			{
@@ -1535,19 +1540,19 @@ namespace SnowBank.Data.Json.Tests
 			x.Size = 123456789;
 			x.Height = 1.8f;
 			x.Amount = 0.07d;
-			x.Created = new DateTime(1968, 5, 8);
+			x.Created = new DateTime(1968, 5, 8, 0, 0, 0, DateTimeKind.Utc); // Utc, so the serialized epoch does not depend on the machine timezone
 			x.State = DummyJsonEnum.Foo;
 
 			CheckSerialize(
 				x,
 				default,
-				"""{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08", "State": "Foo", "RatioOfStuff": 8641975.23 }""",
+				"""{ "Valid": true, "Name": "James Bond", "Index": 7, "Size": 123456789, "Height": 1.8, "Amount": 0.07, "Created": "1968-05-08T00:00:00Z", "State": "Foo", "RatioOfStuff": 8641975.23 }""",
 				"Serialize(BOND, JSON)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript,
-				"{ Valid: true, Name: 'James Bond', Index: 7, Size: 123456789, Height: 1.8, Amount: 0.07, Created: new Date(-52106400000), State: 'Foo', RatioOfStuff: 8641975.23 }",
+				"{ Valid: true, Name: 'James Bond', Index: 7, Size: 123456789, Height: 1.8, Amount: 0.07, Created: new Date(-52099200000), State: 'Foo', RatioOfStuff: 8641975.23 }",
 				"Serialize(BOND, JS)"
 			);
 
@@ -1555,13 +1560,13 @@ namespace SnowBank.Data.Json.Tests
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.Json.Compacted(),
-				"""{"Valid":true,"Name":"James Bond","Index":7,"Size":123456789,"Height":1.8,"Amount":0.07,"Created":"1968-05-08","State":"Foo","RatioOfStuff":8641975.23}""",
+				"""{"Valid":true,"Name":"James Bond","Index":7,"Size":123456789,"Height":1.8,"Amount":0.07,"Created":"1968-05-08T00:00:00Z","State":"Foo","RatioOfStuff":8641975.23}""",
 				"Serialize(BOND, JSON+Compact)"
 			);
 			CheckSerialize(
 				x,
 				CrystalJsonSettings.JavaScript.Compacted(),
-				"{Valid:true,Name:'James Bond',Index:7,Size:123456789,Height:1.8,Amount:0.07,Created:new Date(-52106400000),State:'Foo',RatioOfStuff:8641975.23}",
+				"{Valid:true,Name:'James Bond',Index:7,Size:123456789,Height:1.8,Amount:0.07,Created:new Date(-52099200000),State:'Foo',RatioOfStuff:8641975.23}",
 				"Serialize(BOND, JS+Compact)"
 			);
 		}
