@@ -64,6 +64,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks>The profile only replaces the "caller passed no settings" fallback of the generated entry points; explicitly passed settings always win entirely.</remarks>
 		public string? WireProfile { get; init; }
 
+		/// <summary>The container produces the JSON wire: the entry points (<c>Serialize</c>, <c>Pack</c>, <c>Unpack</c>, <c>ToJsonText</c>, ...), the <c>IJsonConverter</c> facet, the type definition, the proxies and the container's <c>TypeMapper</c></summary>
+		/// <remarks>
+		/// <para>False for an XML-only container (<c>[CrystalXmlConverter]</c>, or <c>[CrystalConverter]</c> with only <c>[CrystalXmlOutput]</c>): its holders keep their <c>Default</c> singleton and their XML output, and carry no JSON surface at all.</para>
+		/// <para>A self-serializable type always produces JSON (its marker is a JSON one), so this is <c>true</c> on that path.</para>
+		/// </remarks>
+		public bool GeneratesJson { get; init; } = true;
+
 		/// <summary>Name of the resolved XML wire profile of this container (<c>"Modern"</c> or <c>"DataContract"</c>), or <see langword="null"/> when the container produces no XML output</summary>
 		/// <remarks>
 		/// <para>XML output is strictly opt-in: only a container decorated with <c>[CrystalXmlOutput]</c> gets a non-null profile. The value is already RESOLVED: an explicit <c>Profile</c> wins, otherwise it is derived from <see cref="WireProfile"/> (the DCJS JSON wire derives the DataContract XML wire, anything else derives the Modern one).</para>

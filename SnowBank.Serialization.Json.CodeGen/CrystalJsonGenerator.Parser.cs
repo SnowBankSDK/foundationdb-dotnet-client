@@ -139,32 +139,36 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			}
 
-			public CrystalJsonContainerMetadata? ParseContainerMetadata(ClassDeclarationSyntax contextClassDeclaration, SemanticModel semanticModel, ImmutableArray<AttributeData> attributes, CancellationToken cancellationToken)
+			public CrystalJsonContainerMetadata? ParseContainerMetadata(ClassDeclarationSyntax contextClassDeclaration, SemanticModel semanticModel, string containerMarker, CancellationToken cancellationToken)
 			{
 				// we are inspecting the "container" type that will host all the generated serialization code
 				// - the container should be a partial class
-				// - it should have the [CrystalJsonConverter] attribute applied to it (which is the marker for triggering this code generator)
-				// - it should have one or more [CrystalJsonSerializable(typeof(...))] attributes for each of the "root" application types to serialize
-				
+				// - it should have a container marker applied to it ([CrystalConverter], or one of the two mono-format aliases)
+				// - it should name at least one output format, either through the alias it used, or with explicit [Crystal<Format>Output] attributes
+				// - it should have one or more [CrystalSerializable(typeof(...))] attributes for each of the "root" application types to serialize
+
 				var symbol = semanticModel.GetDeclaredSymbol(contextClassDeclaration, cancellationToken);
 				if (symbol == null) return null;
 
 				this.ContextClassLocation = contextClassDeclaration.GetLocation();
 
-				Kenobi($"ParseContainerMetadata({symbol.Name}, [{attributes.Length}])");
+				Kenobi($"ParseContainerMetadata({symbol.Name}, {containerMarker})");
 
 				if (!EnsureSupportedLanguageVersion())
 				{
 					return null;
 				}
 
-				var converterAttribute = attributes[0];
-				//TODO: extract some settings from this?
+				if (!ResolveOutputFormats(symbol, containerMarker, out var formats))
+				{
+					this.ContextClassLocation = null;
+					return null;
+				}
 
 				bool caseInsensitiveNames = false;
 				string? propertyNamingPolicy = null;
 				string? wireProfile = null;
-				AttributeData? xmlOutputAttribute = null;
+				AttributeData? xmlOutputAttribute = formats.XmlOutput;
 
 				// key: fullyQualifiedName
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
@@ -183,6 +187,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					switch (ac.ToDisplayString())
 					{
 						case CrystalJsonSerializableAttributeFullName:
+						case KnownTypeSymbols.CrystalSerializableAttributeFullName:
 						{
 							if (typeAttribute.ConstructorArguments.Length < 1)
 							{
@@ -209,70 +214,65 @@ namespace SnowBank.Serialization.Json.CodeGen
 							work.Enqueue(type);
 							break;
 						}
-						case CrystalJsonConverterAttributeFullName:
+					}
+				}
+
+				if (formats.JsonOutput is { } jsonOutputAttribute)
+				{
+					// we want to extract the generation defaults (like property naming policy, etc...)
+					// => they can be specified by the CrystalJsonSerializerDefaults (General or Web), or by overriding specific named properties
+					// the attribute is either the [CrystalJsonOutput] of a neutral container, or the [CrystalJsonConverter] alias, which carries the very same parameters
+
+					if (jsonOutputAttribute.ConstructorArguments.Length > 0)
+					{
+						var defaults = (int) jsonOutputAttribute.ConstructorArguments[0].Value!;
+						Kenobi($"Found defaults for container {symbol.Name}: {jsonOutputAttribute.ConstructorArguments[0].Value} => {defaults}");
+
+						// 0 == General
+						// 1 == Web
+						// 2 == DataContractCompat
+						switch (defaults)
 						{
-							// we want to extract the generation defaults (like property naming policy, etc...)
-							// => they can be specified by the CrystalJsonSerializerDefaults (General or Web), or by overriding specific named properties
-
-							if (typeAttribute.ConstructorArguments.Length > 0)
+							case 1: // CrystalJsonSerializerDefaults.Web
 							{
-								var defaults = (int) typeAttribute.ConstructorArguments[0].Value!;
-								Kenobi($"Found defaults for container {symbol.Name}: {typeAttribute.ConstructorArguments[0].Value} => {defaults}");
-
-								// 0 == General
-								// 1 == Web
-								// 2 == DataContractCompat
-								switch (defaults)
-								{
-									case 1: // CrystalJsonSerializerDefaults.Web
-									{
-										caseInsensitiveNames = true;
-										propertyNamingPolicy = "camel";
-										break;
-									}
-									case 2: // CrystalJsonSerializerDefaults.DataContractCompat
-									{ // the profile governs value formats only: the DCJS wire uses the declared member names
-										wireProfile = WireProfileDataContractCompat;
-										break;
-									}
-								}
+								caseInsensitiveNames = true;
+								propertyNamingPolicy = "camel";
+								break;
 							}
-
-							foreach (var kv in typeAttribute.NamedArguments)
-							{
-								if (kv.Key == "PropertyNameCaseInsensitive")
-								{
-									caseInsensitiveNames = (bool) kv.Value.Value!;
-								}
-								else if (kv.Key == "PropertyNamingPolicy")
-								{
-									switch (kv.Value.Value)
-									{
-										case 0: // CrystalJsonKnownNamingPolicy.Unspecified
-										{
-											propertyNamingPolicy = null;
-											break;
-										}
-										case 1: // CrystalJsonKnownNamingPolicy.CamelCase
-										{
-											propertyNamingPolicy = "camel";
-											break;
-										}
-										// others?
-									}
-								}
+							case 2: // CrystalJsonSerializerDefaults.DataContractCompat
+							{ // the profile governs value formats only: the DCJS wire uses the declared member names
+								wireProfile = WireProfileDataContractCompat;
+								break;
 							}
-
-							Kenobi($"Using defaults for container {symbol.Name}: caseInsensitive={caseInsensitiveNames}; namingPolicy={propertyNamingPolicy}");
-
-							break;
-						}
-						case KnownTypeSymbols.CrystalXmlOutputAttributeFullName:
-						{ // XML output is opt-in; the wire it resolves to depends on the JSON profile, which is only known once the whole attribute list has been read
-							xmlOutputAttribute = typeAttribute;
-							break;
 						}
 					}
+
+					foreach (var kv in jsonOutputAttribute.NamedArguments)
+					{
+						if (kv.Key == "PropertyNameCaseInsensitive")
+						{
+							caseInsensitiveNames = (bool) kv.Value.Value!;
+						}
+						else if (kv.Key == "PropertyNamingPolicy")
+						{
+							switch (kv.Value.Value)
+							{
+								case 0: // CrystalJsonKnownNamingPolicy.Unspecified
+								{
+									propertyNamingPolicy = null;
+									break;
+								}
+								case 1: // CrystalJsonKnownNamingPolicy.CamelCase
+								{
+									propertyNamingPolicy = "camel";
+									break;
+								}
+								// others?
+							}
+						}
+					}
+
+					Kenobi($"Using defaults for container {symbol.Name}: caseInsensitive={caseInsensitiveNames}; namingPolicy={propertyNamingPolicy}");
 				}
 
 				if (wireProfile != null && propertyNamingPolicy != null)
@@ -313,7 +313,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						new(
 							"CJSON0002",
 							"At least one type must be included",
-							"The container type {0} must specify at least one type to include, using the [CrystalJsonSerializable] attribute",
+							"The container type {0} must specify at least one type to include, using the [CrystalSerializable] attribute",
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Warning,
 							isEnabledByDefault: true
@@ -327,7 +327,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				var containerName = symbol.Name;
 
-				MaybeReportProxySurfaceNotGenerated(symbol);
+				if (formats.GeneratesJson)
+				{ // an XML-only container never had a proxy surface to lose
+					MaybeReportProxySurfaceNotGenerated(symbol);
+				}
 
 				this.ContextClassLocation = null;
 
@@ -342,9 +345,133 @@ namespace SnowBank.Serialization.Json.CodeGen
 					SupportsJsonProxies = this.KnownSymbols.SupportsJsonProxies,
 					SupportsDynamicallyAccessedMembers = this.KnownSymbols.HasDynamicallyAccessedMembers,
 					WireProfile = wireProfile,
+					GeneratesJson = formats.GeneratesJson,
 					XmlProfile = xmlProfile,
 					XmlDictionaryFormat = xmlDictionaryFormat,
 				};
+			}
+
+			/// <summary>The output formats a container asks for, and the attribute that carries the parameters of each</summary>
+			/// <remarks>An alias is its own parameter carrier: <c>[CrystalJsonConverter(Web)]</c> lands in <see cref="JsonOutput"/> exactly as <c>[CrystalJsonOutput(Web)]</c> would, since the two declare the same parameters.</remarks>
+			private readonly struct OutputFormats
+			{
+
+				/// <summary>Whether the container produces the JSON wire (entry points, proxies, and the <c>IJsonConverter</c> facet)</summary>
+				public bool GeneratesJson { get; init; }
+
+				/// <summary>The attribute carrying the JSON parameters, or <see langword="null"/> when the container produces no JSON</summary>
+				public AttributeData? JsonOutput { get; init; }
+
+				/// <summary>The attribute carrying the XML parameters, or <see langword="null"/> when the container produces no XML</summary>
+				public AttributeData? XmlOutput { get; init; }
+
+			}
+
+			/// <summary>Resolves which output formats a container asks for, refusing the combinations that have no meaning</summary>
+			/// <param name="symbol">Container being parsed</param>
+			/// <param name="containerMarker">Full name of the marker that owns this container (see <see cref="ContainerMarkerAttributeFullNames"/>)</param>
+			/// <param name="formats">Receives the resolved formats when the method returns <see langword="true"/></param>
+			/// <returns><see langword="false"/> when the container was refused, and nothing at all should be generated for it</returns>
+			/// <remarks>
+			/// <para>Three rules, all of them about the container as a whole rather than about one wire, which is why they carry neutral (<c>CRYS</c>) ids:</para>
+			/// <para><c>CRYS0001</c>: a neutral marker naming no output format would generate nothing.</para>
+			/// <para><c>CRYS0002</c>: a mono-format alias next to an output attribute. The alias IS a format choice, so the pair is either redundant or contradictory, and the author is asking for something the alias cannot express.</para>
+			/// <para><c>CRYS0003</c>: several container markers on one class, which is two answers to the "what does this container produce?" question.</para>
+			/// </remarks>
+			private bool ResolveOutputFormats(INamedTypeSymbol symbol, string containerMarker, out OutputFormats formats)
+			{
+				formats = default;
+
+				AttributeData? neutralMarker = null;
+				AttributeData? jsonAlias = null;
+				AttributeData? xmlAlias = null;
+				AttributeData? jsonOutput = null;
+				AttributeData? xmlOutput = null;
+
+				foreach (var attribute in symbol.GetAttributes())
+				{
+					switch (attribute.AttributeClass?.ToDisplayString())
+					{
+						case KnownTypeSymbols.CrystalConverterAttributeFullName: neutralMarker = attribute; break;
+						case CrystalJsonConverterAttributeFullName: jsonAlias = attribute; break;
+						case KnownTypeSymbols.CrystalXmlConverterAttributeFullName: xmlAlias = attribute; break;
+						case KnownTypeSymbols.CrystalJsonOutputAttributeFullName: jsonOutput = attribute; break;
+						case KnownTypeSymbols.CrystalXmlOutputAttributeFullName: xmlOutput = attribute; break;
+					}
+				}
+
+				int markerCount = (neutralMarker is not null ? 1 : 0) + (jsonAlias is not null ? 1 : 0) + (xmlAlias is not null ? 1 : 0);
+				if (markerCount > 1)
+				{
+					ReportDiagnostic(
+						new(
+							"CRYS0003",
+							"A container declares several container markers",
+							"The container '{0}' carries several container markers ([CrystalConverter], [CrystalJsonConverter], [CrystalXmlConverter]), which do not combine: each of them answers the same question on its own. Keep [CrystalConverter] with one [Crystal<Format>Output] attribute per output format, or exactly one of the mono-format aliases.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						symbol.ToDisplayString());
+					return false;
+				}
+
+				if (containerMarker == CrystalJsonConverterAttributeFullName || containerMarker == KnownTypeSymbols.CrystalXmlConverterAttributeFullName)
+				{
+					bool isJsonAlias = containerMarker == CrystalJsonConverterAttributeFullName;
+
+					if (jsonOutput is not null || xmlOutput is not null)
+					{ // the alias already IS the format choice: the pair cannot be honored without picking which of the two spellings wins
+						ReportDiagnostic(
+							new(
+								"CRYS0002",
+								"A mono-format container alias cannot be combined with an output format",
+								"The container '{0}' combines the mono-format alias [{1}] with [{2}], which the alias does not support: it produces {3} and nothing else. Use [CrystalConverter] with one explicit [Crystal<Format>Output] attribute per output format.",
+								"SnowBank.Serialization.Json.CodeGen",
+								DiagnosticSeverity.Error,
+								isEnabledByDefault: true
+							),
+							this.ContextClassLocation,
+							symbol.ToDisplayString(),
+							isJsonAlias ? "CrystalJsonConverter" : "CrystalXmlConverter",
+							jsonOutput is not null && xmlOutput is not null ? "[CrystalJsonOutput] and [CrystalXmlOutput]" : jsonOutput is not null ? "CrystalJsonOutput" : "CrystalXmlOutput",
+							isJsonAlias ? "JSON" : "XML");
+						return false;
+					}
+
+					formats = new()
+					{
+						GeneratesJson = isJsonAlias,
+						JsonOutput = isJsonAlias ? jsonAlias : null,
+						XmlOutput = isJsonAlias ? null : xmlAlias,
+					};
+					return true;
+				}
+
+				if (jsonOutput is null && xmlOutput is null)
+				{ // a container that produces nothing is never what the author meant
+					ReportDiagnostic(
+						new(
+							"CRYS0001",
+							"A container must declare at least one output format",
+							"The container '{0}' is decorated with [CrystalConverter] but names no output format, and would generate nothing. Add [CrystalJsonOutput], [CrystalXmlOutput], or both; a container that only ever produces one wire can use the [CrystalJsonConverter] / [CrystalXmlConverter] aliases instead.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						this.ContextClassLocation,
+						symbol.ToDisplayString());
+					return false;
+				}
+
+				formats = new()
+				{
+					GeneratesJson = jsonOutput is not null,
+					JsonOutput = jsonOutput,
+					XmlOutput = xmlOutput,
+				};
+				return true;
 			}
 
 			/// <summary>Shapes that CrystalJson already serializes natively, and for which no converter is ever source-generated</summary>
@@ -361,7 +488,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Tests whether an ENROLLED type is one CrystalJson serializes natively, root included, and which therefore gets no generated converter</summary>
-			/// <param name="metadata">Metadata of the type named by a <c>[CrystalJsonSerializable]</c> attribute</param>
+			/// <param name="metadata">Metadata of the type named by a <c>[CrystalSerializable]</c> attribute</param>
 			/// <param name="shape">Receives the shape that made the type native, when the method returns <see langword="true"/></param>
 			/// <remarks>
 			/// <para>The generator emits converters for POCO types ONLY. Enumerating a collection, a dictionary or a scalar as if it were a POCO walks its indexer as a member, and the emitted holder ends up declaring a nameless indexer that does not compile.</para>
@@ -393,7 +520,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return false;
 			}
 
-			/// <summary>Reports <c>CJSON0019</c> on a <c>[CrystalJsonSerializable]</c> attribute that enrolls a natively serialized type</summary>
+			/// <summary>Reports <c>CJSON0019</c> on a <c>[CrystalSerializable]</c> attribute that enrolls a natively serialized type</summary>
 			/// <remarks>A WARNING rather than an error: the enrollment is harmless but inert, and the application still serializes the type correctly through the native path. Silence is the wrong answer though, since the author asked for a converter that is not there (the same reasoning that makes <c>CJSON0007</c> a warning).</remarks>
 			private void ReportNativelySerializedEnrolment(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type, NativeShape shape)
 			{
@@ -534,7 +661,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					new(
 						"CXML0002",
 						"XML output requires a serializer container",
-						"The type '{0}' is decorated with [CrystalXmlOutput], but hosts no generated serializer: no XML output is produced for it. Add [CrystalJsonConverter] (with one [CrystalJsonSerializable] per type to serialize), or decorate the type with a self-serializable attribute.",
+						"The type '{0}' is decorated with [CrystalXmlOutput], but hosts no generated serializer: no XML output is produced for it. Add [CrystalConverter] (with one [CrystalSerializable] per type to serialize), use the [CrystalXmlConverter] alias, or decorate the type with a self-serializable attribute.",
 						"SnowBank.Serialization.Json.CodeGen",
 						DiagnosticSeverity.Error,
 						isEnabledByDefault: true

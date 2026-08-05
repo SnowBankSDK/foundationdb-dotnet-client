@@ -96,8 +96,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			const string Probe = """
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(Shelf))]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(System.Collections.Generic.List<global::Probe.Shelf>))]
+					[SnowBank.Data.CrystalSerializable(typeof(Shelf))]
+					[SnowBank.Data.CrystalSerializable(typeof(System.Collections.Generic.List<global::Probe.Shelf>))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -123,8 +123,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			const string Probe = """
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(Shelf))]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(System.Collections.Generic.Dictionary<string, global::Probe.Shelf>))]
+					[SnowBank.Data.CrystalSerializable(typeof(Shelf))]
+					[SnowBank.Data.CrystalSerializable(typeof(System.Collections.Generic.Dictionary<string, global::Probe.Shelf>))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -147,8 +147,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			const string Probe = """
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(Shelf))]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(string))]
+					[SnowBank.Data.CrystalSerializable(typeof(Shelf))]
+					[SnowBank.Data.CrystalSerializable(typeof(string))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -171,7 +171,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var (generator, output, compilation) = RunOn(ShelfDto + """
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(Shelf))]
+					[SnowBank.Data.CrystalSerializable(typeof(Shelf))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -198,7 +198,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(Aisle))]
+					[SnowBank.Data.CrystalSerializable(typeof(Aisle))]
 					public static partial class ProbeConverters
 					{
 					}

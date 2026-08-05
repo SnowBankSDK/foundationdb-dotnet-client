@@ -182,14 +182,15 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 
 	#region Test container...
 
-	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
-	[CrystalJsonSerializable(typeof(ClientAccount))]
-	[CrystalJsonSerializable(typeof(Address))]
-	[CrystalJsonSerializable(typeof(Loan))]
-	[CrystalJsonSerializable(typeof(Service))]
-	[CrystalJsonSerializable(typeof(Subscription))]
-	[CrystalJsonSerializable(typeof(InsuranceService))]
+	[CrystalSerializable(typeof(ClientAccount))]
+	[CrystalSerializable(typeof(Address))]
+	[CrystalSerializable(typeof(Loan))]
+	[CrystalSerializable(typeof(Service))]
+	[CrystalSerializable(typeof(Subscription))]
+	[CrystalSerializable(typeof(InsuranceService))]
 	public static partial class AcmeAccountSerializers
 	{
 	}

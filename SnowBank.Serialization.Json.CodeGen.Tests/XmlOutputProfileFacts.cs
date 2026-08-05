@@ -48,7 +48,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				}
 
 			{{containerAttributes}}
-				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 				public static partial class {{containerName}}
 				{
 				}
@@ -108,7 +108,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// the derivation that makes the attribute worth having: a container that already serves the DCJS
 			// wire gets the matching XML wire, with nothing else to say
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
 				"""));
 
@@ -124,7 +125,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the standard container: no JSON profile, so the XML follows the JSON a modern reader predicts
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
 				"""));
 
@@ -141,7 +143,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// the Web defaults are a naming policy, not a wire profile: the XML stays Modern (and the
 			// camelCase names it will use are exactly the ones its JSON uses)
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
 				"""));
 
@@ -157,7 +160,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the override that exists for the portage: keep serving the legacy JSON, publish modern XML
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.Modern)]
 				"""));
 
@@ -173,7 +177,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the other direction: modern JSON, but an XML consumer that reads the DataContractSerializer wire
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.DataContract)]
 				"""));
 
@@ -189,7 +194,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// spelling out the default must not become a third behavior
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.Default)]
 				"""));
 
@@ -206,7 +212,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// the container carries 'Default', not the profile's resolved shape: the per-profile default and the
 			// per-member override both resolve later, and flattening them here would lose the "unset" state
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
 				"""));
 
@@ -217,7 +224,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Explicit_DictionaryFormat_Is_Carried_Through_As_Its_Enum_Member_Name()
 		{
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueAttributes)]
 				"""));
 
@@ -229,7 +237,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the two named arguments are read independently: setting one must not reset the other
 			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.DataContract, DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueElements)]
 				"""));
 
@@ -257,7 +266,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the DataContract wire uses the data contract names: a camelCase policy next to it is a contradiction
 			var (containers, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.DataContract)]
 				"""));
 
@@ -271,7 +281,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// PropertyNameCaseInsensitive governs how INCOMING names are matched when reading JSON: it names
 			// nothing on a write-only XML wire, so there is nothing for the contract names to collide with
 			var (containers, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(PropertyNameCaseInsensitive = true)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(PropertyNameCaseInsensitive = true)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.DataContract)]
 				"""));
 
@@ -287,7 +298,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the narrowing is about the FLAG alone: a naming policy next to it is still the collision CXML0001 exists for
 			var (_, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(PropertyNameCaseInsensitive = true, PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(PropertyNameCaseInsensitive = true, PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.DataContract)]
 				"""));
 
@@ -299,7 +311,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the shape a caller actually writes: the Web defaults bring the naming policy along
 			var (_, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.DataContract)]
 				"""));
 
@@ -311,7 +324,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the non-triggering shape that matters most: the derived DataContract wire is the normal case
 			var (containers, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
 				"""));
 
@@ -327,7 +341,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the Modern wire follows the naming policy instead of fighting it: nothing to refuse
 			var (containers, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.XmlOutputProfile.Modern)]
 				"""));
 
@@ -349,7 +364,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// (KeyValueOfKV), so the option is read, resolved, and then never consulted: the member-level twin of this
 			// is already a hard refusal (CXML0004), and the container level deserves at least to be said out loud.
 			var (containers, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueElements)]
 				"""));
 
@@ -368,7 +384,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// spelling 'Default' asks to INHERIT, which every profile can honor: there is nothing inert about it
 			var (_, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 					[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.Default)]
 				"""));
 
@@ -380,7 +397,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the profile the option was designed for
 			var (_, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyValueElements)]
 				"""));
 
@@ -416,14 +434,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CXML0002");
 			Assert.That(refusal, Is.Not.Null, "an inert [CrystalXmlOutput] must be reported, not ignored");
 			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(refusal.GetMessage(), Does.Contain("CrystalJsonConverter"), "the remedy names the marker the class is missing");
+			Assert.That(refusal.GetMessage(), Does.Contain("CrystalConverter"), "the remedy names the marker the class is missing");
 		}
 
 		[Test]
 		public void Test_Xml_Output_On_A_Converter_Container_Is_Not_Reported()
 		{
 			var (_, diagnostics) = RunOn(Probe("""
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
 				"""));
 

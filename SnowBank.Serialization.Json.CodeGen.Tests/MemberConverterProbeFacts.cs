@@ -173,12 +173,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	}
 
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(ProbeConvertedDto))]
-	[CrystalJsonSerializable(typeof(ProbePackOnlyDto))]
-	[CrystalJsonSerializable(typeof(ProbeUnpackOnlyDto))]
-	[CrystalJsonSerializable(typeof(ProbeNullableFormDto))]
-	[CrystalJsonSerializable(typeof(ProbeOmitWhenFalseDto))]
-	[CrystalJsonSerializable(typeof(ProbeRequiredNullableFormDto))]
+	[CrystalSerializable(typeof(ProbeConvertedDto))]
+	[CrystalSerializable(typeof(ProbePackOnlyDto))]
+	[CrystalSerializable(typeof(ProbeUnpackOnlyDto))]
+	[CrystalSerializable(typeof(ProbeNullableFormDto))]
+	[CrystalSerializable(typeof(ProbeOmitWhenFalseDto))]
+	[CrystalSerializable(typeof(ProbeRequiredNullableFormDto))]
 	public static partial class ProbeConverterHost
 	{
 		// generated code goes here!

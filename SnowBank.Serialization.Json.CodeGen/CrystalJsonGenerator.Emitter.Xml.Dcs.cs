@@ -1018,7 +1018,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.Comment("an anyType slot names its value after the value's own contract, and the set of contracts this container can name is closed at generation time");
 				sb.AppendLine($"private static void FailXmlAnyType({SystemTypeFullName} type, string slot)");
 				sb.EnterBlock();
-				sb.AppendLine($"throw new {CrystalXmlNotSupportedExceptionFullName}(type, \"Cannot write a value of type '\" + type.Name + \"' into the object-typed slot '\" + slot + \"': the DataContract XML wire names it after its own contract, and this container can only name the built-in lexical types and its own serialized types. Declare the value's type in this container with [CrystalJsonSerializable], or change the member to a concrete type.\");");
+				sb.AppendLine($"throw new {CrystalXmlNotSupportedExceptionFullName}(type, \"Cannot write a value of type '\" + type.Name + \"' into the object-typed slot '\" + slot + \"': the DataContract XML wire names it after its own contract, and this container can only name the built-in lexical types and its own serialized types. Declare the value's type in this container with [CrystalSerializable], or change the member to a concrete type.\");");
 				sb.LeaveBlock();
 				sb.NewLine();
 			}

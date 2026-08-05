@@ -162,19 +162,19 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	}
 
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(MxIgnoreDto))]
-	[CrystalJsonSerializable(typeof(MxIgnoreConditionsDto))]
-	[CrystalJsonSerializable(typeof(MxStjRenameDto))]
-	[CrystalJsonSerializable(typeof(MxSnowRenameDto))]
-	[CrystalJsonSerializable(typeof(MxEnumDto))]
-	[CrystalJsonSerializable(typeof(MxStjTokenDto))]
-	[CrystalJsonSerializable(typeof(MxEmTokenDto))]
-	[CrystalJsonSerializable(typeof(MxEnumFormatDto))]
-	[CrystalJsonSerializable(typeof(MxDualShapeDto))]
-	[CrystalJsonSerializable(typeof(MxRung3Dto))]
-	[CrystalJsonSerializable(typeof(MxNativeDto))]
-	[CrystalJsonSerializable(typeof(MxBoolLiteralsDto))]
-	[CrystalJsonSerializable(typeof(MxCamelDto))]
+	[CrystalSerializable(typeof(MxIgnoreDto))]
+	[CrystalSerializable(typeof(MxIgnoreConditionsDto))]
+	[CrystalSerializable(typeof(MxStjRenameDto))]
+	[CrystalSerializable(typeof(MxSnowRenameDto))]
+	[CrystalSerializable(typeof(MxEnumDto))]
+	[CrystalSerializable(typeof(MxStjTokenDto))]
+	[CrystalSerializable(typeof(MxEmTokenDto))]
+	[CrystalSerializable(typeof(MxEnumFormatDto))]
+	[CrystalSerializable(typeof(MxDualShapeDto))]
+	[CrystalSerializable(typeof(MxRung3Dto))]
+	[CrystalSerializable(typeof(MxNativeDto))]
+	[CrystalSerializable(typeof(MxBoolLiteralsDto))]
+	[CrystalSerializable(typeof(MxCamelDto))]
 	public static partial class ParityHost
 	{
 		// generated code goes here!

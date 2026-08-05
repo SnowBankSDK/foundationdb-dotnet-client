@@ -59,7 +59,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	}
 
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(ProbeIncludeDto))]
+	[CrystalSerializable(typeof(ProbeIncludeDto))]
 	public static partial class IncludeProbeConverters
 	{
 		// generated code goes here!

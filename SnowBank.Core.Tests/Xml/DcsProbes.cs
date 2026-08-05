@@ -281,7 +281,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	// note: the spike's read-only property (public string ReadOnlyIgnored => "never";) is dropped here: registering it
 	// makes the generated JSON deserializer (unconditionally emitted alongside the XML writer by the same
-	// [CrystalJsonConverter]/[CrystalJsonSerializable] container, even though this profile never calls it) try to
+	// [CrystalConverter]/[CrystalSerializable] container, even though this profile never calls it) try to
 	// assign a get-only property in its object-initializer form, which fails to compile (CS0200). That gap is in the
 	// shared JSON member enumeration for POCO (non-[DataContract]) types, not in the DataContract XML profile this
 	// task is porting the oracle for; reported to the main session as a finding, not fixed here.
@@ -374,38 +374,39 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	#region Test container...
 
 	// note: the spike's "List<Shelf> as root" and "string as root" families (a bare collection or scalar type passed
-	// directly to [CrystalJsonSerializable], with no declaring DTO) are excluded here, and stay excluded by design:
+	// directly to [CrystalSerializable], with no declaring DTO) are excluded here, and stay excluded by design:
 	// CrystalJson serializes collections, dictionaries and scalars natively, root included, so the generator emits no
 	// converter for such an enrolment at all (it reports the CJSON0019 guidance instead, see NativeEnrolmentGuardFacts).
 	// There is therefore no generated wire for these two families to compare against the oracle. Enrolling them used to
 	// emit code that did not compile (CS0106/CS0720/CS0548/CS1551 on a nameless indexer inside a nested
 	// "PropertyEncodedNames" helper); that is the defect the guard closed.
-	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
-	[CrystalJsonSerializable(typeof(NilProbe))]
-	[CrystalJsonSerializable(typeof(Shelf))]
-	[CrystalJsonSerializable(typeof(OrderDefaultProbe))]
-	[CrystalJsonSerializable(typeof(OrderExplicitProbe))]
-	[CrystalJsonSerializable(typeof(OrderDerivedProbe))]
-	[CrystalJsonSerializable(typeof(EmitDefaultProbe))]
-	[CrystalJsonSerializable(typeof(CollectionProbe))]
-	[CrystalJsonSerializable(typeof(DictionaryProbe))]
-	[CrystalJsonSerializable(typeof(HashedDictionaryProbe))]
-	[CrystalJsonSerializable(typeof(CatalogItem))]
-	[CrystalJsonSerializable(typeof(AudioBook))]
-	[CrystalJsonSerializable(typeof(PrintedBook))]
-	[CrystalJsonSerializable(typeof(PolymorphicProbe))]
-	[CrystalJsonSerializable(typeof(RenameProbe))]
-	[CrystalJsonSerializable(typeof(ScalarProbe))]
-	[CrystalJsonSerializable(typeof(Node))]
-	[CrystalJsonSerializable(typeof(SelfRefProbe))]
-	[CrystalJsonSerializable(typeof(EmptyContractProbe))]
-	[CrystalJsonSerializable(typeof(PocoProbe))]
-	[CrystalJsonSerializable(typeof(IgnoreProbe))]
-	[CrystalJsonSerializable(typeof(PrivateMemberProbe))]
-	[CrystalJsonSerializable(typeof(NamedGenericProbe<bool>))]
-	[CrystalJsonSerializable(typeof(KeyedBagProbe))]
-	[CrystalJsonSerializable(typeof(AnyTypeCollectionProbe))]
+	[CrystalSerializable(typeof(NilProbe))]
+	[CrystalSerializable(typeof(Shelf))]
+	[CrystalSerializable(typeof(OrderDefaultProbe))]
+	[CrystalSerializable(typeof(OrderExplicitProbe))]
+	[CrystalSerializable(typeof(OrderDerivedProbe))]
+	[CrystalSerializable(typeof(EmitDefaultProbe))]
+	[CrystalSerializable(typeof(CollectionProbe))]
+	[CrystalSerializable(typeof(DictionaryProbe))]
+	[CrystalSerializable(typeof(HashedDictionaryProbe))]
+	[CrystalSerializable(typeof(CatalogItem))]
+	[CrystalSerializable(typeof(AudioBook))]
+	[CrystalSerializable(typeof(PrintedBook))]
+	[CrystalSerializable(typeof(PolymorphicProbe))]
+	[CrystalSerializable(typeof(RenameProbe))]
+	[CrystalSerializable(typeof(ScalarProbe))]
+	[CrystalSerializable(typeof(Node))]
+	[CrystalSerializable(typeof(SelfRefProbe))]
+	[CrystalSerializable(typeof(EmptyContractProbe))]
+	[CrystalSerializable(typeof(PocoProbe))]
+	[CrystalSerializable(typeof(IgnoreProbe))]
+	[CrystalSerializable(typeof(PrivateMemberProbe))]
+	[CrystalSerializable(typeof(NamedGenericProbe<bool>))]
+	[CrystalSerializable(typeof(KeyedBagProbe))]
+	[CrystalSerializable(typeof(AnyTypeCollectionProbe))]
 	public static partial class DcsProbeSerializers
 	{
 	}

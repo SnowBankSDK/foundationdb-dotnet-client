@@ -73,7 +73,7 @@ namespace SnowBank.Data.Xml
 	}
 
 	/// <summary>Error thrown when the runtime type of a value is not part of the XML serialization graph known at generation time</summary>
-	/// <remarks>Mirrors the check the JSON generator already performs for polymorphic members: a concrete type encountered at write time that was not declared (ex: via <c>[CrystalJsonSerializable(typeof(...))]</c> or a <c>DerivedTypes</c> declaration) has no generated <c>WriteXml</c> body to call into.</remarks>
+	/// <remarks>Mirrors the check the JSON generator already performs for polymorphic members: a concrete type encountered at write time that was not declared (ex: via <c>[CrystalSerializable(typeof(...))]</c> or a <c>DerivedTypes</c> declaration) has no generated <c>WriteXml</c> body to call into.</remarks>
 	[Serializable]
 	public sealed class CrystalXmlUnknownTypeException : InvalidOperationException
 	{

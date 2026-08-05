@@ -45,7 +45,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	/// <summary>The legacy-wire container: serves an unchanged DCJS reader, one endpoint at a time (the not-yet-ported services of a WCF portage)</summary>
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
-	[CrystalJsonSerializable(typeof(ProfiledOrder))]
+	[CrystalSerializable(typeof(ProfiledOrder))]
 	public static partial class LegacyWireConverters
 	{
 		// generated code goes here!
@@ -53,7 +53,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	/// <summary>The modern container over the SAME types: the target state once a service is ported (delete the legacy container when the portage completes)</summary>
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(ProfiledOrder))]
+	[CrystalSerializable(typeof(ProfiledOrder))]
 	public static partial class ModernWireConverters
 	{
 		// generated code goes here!
@@ -139,7 +139,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat, PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}

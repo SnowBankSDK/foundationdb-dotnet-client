@@ -429,40 +429,42 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 	}
 
-	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]
 	[CrystalXmlOutput]
-	[CrystalJsonSerializable(typeof(Rehearsal))]
-	[CrystalJsonSerializable(typeof(Chassis))]
-	[CrystalJsonSerializable(typeof(Sedan))]
-	[CrystalJsonSerializable(typeof(Estate))]
-	[CrystalJsonSerializable(typeof(Appliance))]
-	[CrystalJsonSerializable(typeof(Amplifier))]
-	[CrystalJsonSerializable(typeof(Book))]
-	[CrystalJsonSerializable(typeof(Shelf))]
-	[CrystalJsonSerializable(typeof(Ledger))]
-	[CrystalJsonSerializable(typeof(Sample))]
-	[CrystalJsonSerializable(typeof(Marker))]
-	[CrystalJsonSerializable(typeof(Wrapper))]
-	[CrystalJsonSerializable(typeof(Flags))]
-	[CrystalJsonSerializable(typeof(Media))]
-	[CrystalJsonSerializable(typeof(Ebook))]
-	[CrystalJsonSerializable(typeof(Paper))]
-	[CrystalJsonSerializable(typeof(Vehicle))]
-	[CrystalJsonSerializable(typeof(Coupe))]
-	[CrystalJsonSerializable(typeof(Switchboard))]
-	[CrystalJsonSerializable(typeof(Exotic))]
-	[CrystalJsonSerializable(typeof(Chain))]
-	[CrystalJsonSerializable(typeof(Dispatch))]
-	[CrystalJsonSerializable(typeof(Route))]
-	[CrystalJsonSerializable(typeof(Parcel))]
+	[CrystalSerializable(typeof(Rehearsal))]
+	[CrystalSerializable(typeof(Chassis))]
+	[CrystalSerializable(typeof(Sedan))]
+	[CrystalSerializable(typeof(Estate))]
+	[CrystalSerializable(typeof(Appliance))]
+	[CrystalSerializable(typeof(Amplifier))]
+	[CrystalSerializable(typeof(Book))]
+	[CrystalSerializable(typeof(Shelf))]
+	[CrystalSerializable(typeof(Ledger))]
+	[CrystalSerializable(typeof(Sample))]
+	[CrystalSerializable(typeof(Marker))]
+	[CrystalSerializable(typeof(Wrapper))]
+	[CrystalSerializable(typeof(Flags))]
+	[CrystalSerializable(typeof(Media))]
+	[CrystalSerializable(typeof(Ebook))]
+	[CrystalSerializable(typeof(Paper))]
+	[CrystalSerializable(typeof(Vehicle))]
+	[CrystalSerializable(typeof(Coupe))]
+	[CrystalSerializable(typeof(Switchboard))]
+	[CrystalSerializable(typeof(Exotic))]
+	[CrystalSerializable(typeof(Chain))]
+	[CrystalSerializable(typeof(Dispatch))]
+	[CrystalSerializable(typeof(Route))]
+	[CrystalSerializable(typeof(Parcel))]
 	public static partial class AcmeSerializers
 	{
 	}
 
 	/// <summary>A second container over the same DTO, whose CONTAINER default picks another dictionary shape</summary>
-	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]
 	[CrystalXmlOutput(DictionaryFormat = XmlDictionaryFormat.KeyValueElements)]
-	[CrystalJsonSerializable(typeof(Book))]
+	[CrystalSerializable(typeof(Book))]
 	public static partial class AcmeLegacySerializers
 	{
 	}
@@ -1200,9 +1202,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
 					}
 
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -1225,9 +1228,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public int Id { get; set; }
 					}
 
-					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}

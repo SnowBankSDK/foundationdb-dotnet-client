@@ -414,40 +414,41 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 
 	}
 
-	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
-	[CrystalJsonSerializable(typeof(Chassis))]
-	[CrystalJsonSerializable(typeof(Sedan))]
-	[CrystalJsonSerializable(typeof(Estate))]
-	[CrystalJsonSerializable(typeof(ChassisProbe))]
-	[CrystalJsonSerializable(typeof(RehearsalProbe))]
-	[CrystalJsonSerializable(typeof(RehearsalBag))]
-	[CrystalJsonSerializable(typeof(CycleNode))]
-	[CrystalJsonSerializable(typeof(NilProbe))]
-	[CrystalJsonSerializable(typeof(Shelf))]
-	[CrystalJsonSerializable(typeof(OrderExplicitProbe))]
-	[CrystalJsonSerializable(typeof(OrderDerivedProbe))]
-	[CrystalJsonSerializable(typeof(EmitDefaultProbe))]
-	[CrystalJsonSerializable(typeof(CollectionProbe))]
-	[CrystalJsonSerializable(typeof(DictionaryProbe))]
-	[CrystalJsonSerializable(typeof(HashedDictionaryProbe))]
-	[CrystalJsonSerializable(typeof(CatalogItem))]
-	[CrystalJsonSerializable(typeof(AudioBook))]
-	[CrystalJsonSerializable(typeof(PrintedBook))]
-	[CrystalJsonSerializable(typeof(PolymorphicProbe))]
-	[CrystalJsonSerializable(typeof(RenameProbe))]
-	[CrystalJsonSerializable(typeof(ScalarProbe))]
-	[CrystalJsonSerializable(typeof(NamedGenericProbe<bool>))]
-	[CrystalJsonSerializable(typeof(KeyedBagProbe))]
-	[CrystalJsonSerializable(typeof(RenamedEnumProbe))]
-	[CrystalJsonSerializable(typeof(Outer.Inner))]
-	[CrystalJsonSerializable(typeof(SpacedName))]
-	[CrystalJsonSerializable(typeof(Box<string>))]
+	[CrystalSerializable(typeof(Chassis))]
+	[CrystalSerializable(typeof(Sedan))]
+	[CrystalSerializable(typeof(Estate))]
+	[CrystalSerializable(typeof(ChassisProbe))]
+	[CrystalSerializable(typeof(RehearsalProbe))]
+	[CrystalSerializable(typeof(RehearsalBag))]
+	[CrystalSerializable(typeof(CycleNode))]
+	[CrystalSerializable(typeof(NilProbe))]
+	[CrystalSerializable(typeof(Shelf))]
+	[CrystalSerializable(typeof(OrderExplicitProbe))]
+	[CrystalSerializable(typeof(OrderDerivedProbe))]
+	[CrystalSerializable(typeof(EmitDefaultProbe))]
+	[CrystalSerializable(typeof(CollectionProbe))]
+	[CrystalSerializable(typeof(DictionaryProbe))]
+	[CrystalSerializable(typeof(HashedDictionaryProbe))]
+	[CrystalSerializable(typeof(CatalogItem))]
+	[CrystalSerializable(typeof(AudioBook))]
+	[CrystalSerializable(typeof(PrintedBook))]
+	[CrystalSerializable(typeof(PolymorphicProbe))]
+	[CrystalSerializable(typeof(RenameProbe))]
+	[CrystalSerializable(typeof(ScalarProbe))]
+	[CrystalSerializable(typeof(NamedGenericProbe<bool>))]
+	[CrystalSerializable(typeof(KeyedBagProbe))]
+	[CrystalSerializable(typeof(RenamedEnumProbe))]
+	[CrystalSerializable(typeof(Outer.Inner))]
+	[CrystalSerializable(typeof(SpacedName))]
+	[CrystalSerializable(typeof(Box<string>))]
 	// note: qualified, because inside this class body the generated nested holder LegacySerializers.SpacedName shadows the probe type
-	[CrystalJsonSerializable(typeof(Box<SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy.SpacedName>))]
-	[CrystalJsonSerializable(typeof(DigestedProbe<string>))]
-	[CrystalJsonSerializable(typeof(DigestedProbe<RenamedMedium>))]
-	[CrystalJsonSerializable(typeof(CompositionProbe))]
+	[CrystalSerializable(typeof(Box<SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy.SpacedName>))]
+	[CrystalSerializable(typeof(DigestedProbe<string>))]
+	[CrystalSerializable(typeof(DigestedProbe<RenamedMedium>))]
+	[CrystalSerializable(typeof(CompositionProbe))]
 	public static partial class LegacySerializers
 	{
 	}
@@ -461,10 +462,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// XW-Q11, which later narrowed CJSON0013 so the DataContractCompat JSON profile itself also tolerates the flag
 	/// alone (see <see cref="LegacyCaseInsensitiveWireSerializers"/> and <see cref="LegacyCaseInsensitiveDualSerializers"/>).</para>
 	/// </remarks>
-	[CrystalJsonConverter(PropertyNameCaseInsensitive = true)]
+	[CrystalConverter]
+	[CrystalJsonOutput(PropertyNameCaseInsensitive = true)]
 	[CrystalXmlOutput(Profile = XmlOutputProfile.DataContract)]
-	[CrystalJsonSerializable(typeof(Shelf))]
-	[CrystalJsonSerializable(typeof(ScalarProbe))]
+	[CrystalSerializable(typeof(Shelf))]
+	[CrystalSerializable(typeof(ScalarProbe))]
 	public static partial class LegacyCaseInsensitiveSerializers
 	{
 	}
@@ -478,8 +480,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// metadata: its JSON must be the one <see cref="LegacySerializers"/> writes, character for character.</para>
 	/// </remarks>
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
-	[CrystalJsonSerializable(typeof(Shelf))]
-	[CrystalJsonSerializable(typeof(ScalarProbe))]
+	[CrystalSerializable(typeof(Shelf))]
+	[CrystalSerializable(typeof(ScalarProbe))]
 	public static partial class LegacyCaseInsensitiveWireSerializers
 	{
 	}
@@ -490,10 +492,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// tripped the same trigger as a genuine naming-policy contradiction). Both its JSON and its derived DataContract
 	/// XML must be byte-identical to <see cref="LegacySerializers"/>, which carries the same types without the flag.
 	/// </remarks>
-	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
 	[CrystalXmlOutput]
-	[CrystalJsonSerializable(typeof(Shelf))]
-	[CrystalJsonSerializable(typeof(ScalarProbe))]
+	[CrystalSerializable(typeof(Shelf))]
+	[CrystalSerializable(typeof(ScalarProbe))]
 	public static partial class LegacyCaseInsensitiveDualSerializers
 	{
 	}
@@ -1119,9 +1122,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public T? Payload { get; set; }
 					}
 
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto<System.Collections.Generic.List<string>>))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto<System.Collections.Generic.List<string>>))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -1162,11 +1166,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public object? Slot { get; set; }
 					}
 
-					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeBase))]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDerived))]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeBase))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDerived))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}

@@ -45,7 +45,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		private const string CommonFooter = """
 
 				[SnowBank.Data.Json.CrystalJsonConverter]
-				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 				public static partial class ProbeConverters
 				{
 				}

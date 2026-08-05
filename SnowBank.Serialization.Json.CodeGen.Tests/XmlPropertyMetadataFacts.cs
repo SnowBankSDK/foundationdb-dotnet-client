@@ -39,13 +39,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		/// <summary>The container attributes of a probe that produces the Modern XML wire (the default shape these facts exercise)</summary>
 		private const string ModernContainer = """
-				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
 				[SnowBank.Data.Xml.CrystalXmlOutput]
 			""";
 
 		/// <summary>The container attributes of a probe that produces the DataContract XML wire</summary>
 		private const string DataContractContainer = """
-				[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 				[SnowBank.Data.Xml.CrystalXmlOutput]
 			""";
 
@@ -77,7 +79,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				}
 
 			{{containerAttributes}}
-				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 				public static partial class ProbeConverters
 				{
 				}
@@ -742,7 +744,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			AssertRefusal(Probe("""
 						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
 				""", """
-				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
 				[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.XmlDictionaryFormat.KeyAttribute)]
 			"""), "CXML0011");
 		}
@@ -1108,10 +1111,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			{{derivedMembers}}
 				}
 
-				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
 				[SnowBank.Data.Xml.CrystalXmlOutput]
-				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeMedia))]
-				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeEbook))]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeMedia))]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeEbook))]
 				public static partial class ProbeConverters
 				{
 				}
@@ -1313,7 +1317,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				}
 
 			{{containerAttributes}}
-				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 				public static partial class ProbeConverters
 				{
 				}

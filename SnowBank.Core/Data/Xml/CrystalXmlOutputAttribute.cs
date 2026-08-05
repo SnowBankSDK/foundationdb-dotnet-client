@@ -26,15 +26,17 @@
 
 namespace SnowBank.Data.Xml
 {
+	using SnowBank.Data;
 
-	/// <summary>Marker attribute that enables source-generated XML output for every type declared in the annotated serializer container</summary>
+	/// <summary>Requests <b>XML</b> output from a <see cref="CrystalConverterAttribute"/> container, and carries the parameters of that wire</summary>
 	/// <remarks>
-	/// <para>Applied on the same partial container class that already carries <c>[CrystalJsonConverter]</c> and one or more <c>[CrystalJsonSerializable(...)]</c> attributes. When present, the generator emits, in addition to the JSON reader/writer, a <c>WriteXml&lt;TEmitter&gt;</c> body and the XML output methods (<c>ToXmlText</c>, <c>ToXmlSlice</c>, <c>ToXmlBytes</c>, <c>WriteXmlTo</c>, <c>ToXDocument</c>) for each generated type.</para>
-	/// <para>Without this attribute, a container only produces JSON: the XML vocabulary is strictly opt-in.</para>
+	/// <para>Applied on the same partial container class that carries <c>[CrystalConverter]</c> and one or more <c>[CrystalSerializable(...)]</c> attributes. When present, the generator emits a <c>WriteXml&lt;TEmitter&gt;</c> body and the XML output methods (<c>ToXmlText</c>, <c>ToXmlSlice</c>, <c>ToXmlBytes</c>, <c>WriteXmlTo</c>, <c>ToXDocument</c>) for each generated type.</para>
+	/// <para>Combine it with <c>[CrystalJsonOutput]</c> on the same container to produce both wires from one set of enrolled types; alone, the container produces XML and nothing else. It does not combine with the mono-format <c>[CrystalJsonConverter]</c> alias (<c>CRYS0002</c>).</para>
+	/// <para>The XML vocabulary is strictly opt-in: a container that never names this attribute produces no XML.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]
 	[PublicAPI]
-	public sealed class CrystalXmlOutputAttribute : Attribute
+	public sealed class CrystalXmlOutputAttribute : CrystalOutputAttribute
 	{
 
 		/// <summary>Enables XML output for this serializer container, deriving all defaults from the container's JSON profile</summary>
@@ -46,6 +48,36 @@ namespace SnowBank.Data.Xml
 		public XmlOutputProfile Profile { get; set; }
 
 		/// <summary>Default representation for dictionary-like members of this container that do not override it with <see cref="XmlPropertyAttribute.DictionaryFormat"/></summary>
+		public XmlDictionaryFormat DictionaryFormat { get; set; }
+
+	}
+
+	/// <summary>Mono-format alias that marks a partial class as a container of source-generated <b>XML</b> serializers</summary>
+	/// <remarks>
+	/// <para>Exactly equivalent to <c>[CrystalConverter]</c> plus <c>[CrystalXmlOutput(...)]</c> with the same parameters, and the shortest spelling for a container that only ever produces XML: no JSON entry point, no JSON proxy and no JSON facet is generated for its types.</para>
+	/// <para>Being mono-format, it does not combine with another output format: pairing it with <c>[CrystalJsonOutput]</c> is refused (<c>CRYS0002</c>). A container that produces both wires spells out <c>[CrystalConverter]</c>, <c>[CrystalJsonOutput]</c> and <c>[CrystalXmlOutput]</c>.</para>
+	/// <para>Sample: <code>
+	/// [CrystalXmlConverter(Profile = XmlOutputProfile.DataContract)]
+	/// [CrystalSerializable(typeof(LegacyOrder))]
+	/// public static partial class LegacyRenderSerializers
+	/// {
+	///		// generated code will be inserted here
+	/// }
+	/// </code></para>
+	/// </remarks>
+	[AttributeUsage(AttributeTargets.Class)]
+	[PublicAPI]
+	public sealed class CrystalXmlConverterAttribute : CrystalConverterAttribute
+	{
+
+		/// <summary>Use this class as a container for source-generated XML serializers</summary>
+		public CrystalXmlConverterAttribute() { }
+
+		/// <inheritdoc cref="CrystalXmlOutputAttribute.Profile"/>
+		/// <remarks>An XML-only container derives no JSON profile: an unspecified profile resolves to <see cref="XmlOutputProfile.Modern"/>.</remarks>
+		public XmlOutputProfile Profile { get; set; }
+
+		/// <inheritdoc cref="CrystalXmlOutputAttribute.DictionaryFormat"/>
 		public XmlDictionaryFormat DictionaryFormat { get; set; }
 
 	}

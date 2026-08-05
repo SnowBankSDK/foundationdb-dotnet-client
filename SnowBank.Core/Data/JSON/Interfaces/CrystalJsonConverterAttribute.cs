@@ -26,15 +26,18 @@
 
 namespace SnowBank.Data.Json
 {
+	using SnowBank.Data;
 
-	/// <summary>Marker attribute to enable JSON source code generation</summary>
+	/// <summary>Mono-format alias that marks a partial class as a container of source-generated <b>JSON</b> converters</summary>
 	/// <remarks>
 	/// <para>This attribute should be applied on a partial class, that will act as a container for all generated types.</para>
-	/// <para>All "root" data types should be included via the <see cref="CrystalJsonSerializableAttribute"/> attribute</para>
+	/// <para>It is exactly equivalent to <c>[CrystalConverter]</c> plus <c>[CrystalJsonOutput(...)]</c> with the same parameters, and is the shortest spelling for the common case of a container that only ever produces JSON.</para>
+	/// <para>Being mono-format, it does not combine with another output format: pairing it with <c>[CrystalXmlOutput]</c> is refused (<c>CRYS0002</c>). A container that produces several wires spells out <c>[CrystalConverter]</c> and one <c>[Crystal&lt;Format&gt;Output]</c> per wire.</para>
+	/// <para>All "root" data types should be included via the <see cref="CrystalSerializableAttribute"/> attribute</para>
 	/// <para>Sample: <code>
 	/// [CrystalJsonConverter]
-	/// [CrystalJsonSerializable(typeof(User))]
-	/// [CrystalJsonSerializable(typeof(Product))]
+	/// [CrystalSerializable(typeof(User))]
+	/// [CrystalSerializable(typeof(Product))]
 	/// // ... one for each "top level" type, nested/linked types are automatically discovered
 	/// public static partial class ApplicationSerializers
 	/// {
@@ -43,7 +46,7 @@ namespace SnowBank.Data.Json
 	/// </code></para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]
-	public sealed class CrystalJsonConverterAttribute : Attribute
+	public sealed class CrystalJsonConverterAttribute : CrystalConverterAttribute
 	{
 
 		/// <summary>Use this class as a container for source-generated JSON converters</summary>
@@ -71,6 +74,44 @@ namespace SnowBank.Data.Json
 		public bool PropertyNameCaseInsensitive { get; set; }
 
 		/// <summary>Gets or sets a built-in naming policy to convert JSON property names with.</summary>
+		public CrystalJsonKnownNamingPolicy PropertyNamingPolicy { get; set; }
+
+	}
+
+	/// <summary>Requests <b>JSON</b> output from a <see cref="CrystalConverterAttribute"/> container, and carries the parameters of that wire</summary>
+	/// <remarks>
+	/// <para>Applied on the same partial container class that carries <c>[CrystalConverter]</c> and one or more <c>[CrystalSerializable(...)]</c> attributes. The generated JSON surface is exactly the one the <c>[CrystalJsonConverter]</c> alias produces: the alias is this attribute plus the neutral marker.</para>
+	/// <para>Combine it with <c>[CrystalXmlOutput]</c> on the same container to produce both wires from one set of enrolled types.</para>
+	/// </remarks>
+	[AttributeUsage(AttributeTargets.Class)]
+	[PublicAPI]
+	public sealed class CrystalJsonOutputAttribute : CrystalOutputAttribute
+	{
+
+		/// <summary>Enables JSON output for this serializer container</summary>
+		public CrystalJsonOutputAttribute() { }
+
+		/// <summary>Enables JSON output for this serializer container</summary>
+		/// <param name="defaults">Defaults settings used for the generated converters</param>
+		public CrystalJsonOutputAttribute(CrystalJsonSerializerDefaults defaults)
+		{
+			if (defaults == CrystalJsonSerializerDefaults.Web)
+			{
+				this.PropertyNameCaseInsensitive = true;
+				this.PropertyNamingPolicy = CrystalJsonKnownNamingPolicy.CamelCase;
+			}
+			else if (defaults is not (CrystalJsonSerializerDefaults.General or CrystalJsonSerializerDefaults.DataContractCompat))
+			{
+				throw new ArgumentOutOfRangeException(nameof(defaults));
+			}
+			// DataContractCompat: no naming change (the DCJS wire uses the declared member names); the profile
+			// governs the VALUE formats of the generated entry points, and is applied by the source generator
+		}
+
+		/// <inheritdoc cref="CrystalJsonConverterAttribute.PropertyNameCaseInsensitive"/>
+		public bool PropertyNameCaseInsensitive { get; set; }
+
+		/// <inheritdoc cref="CrystalJsonConverterAttribute.PropertyNamingPolicy"/>
 		public CrystalJsonKnownNamingPolicy PropertyNamingPolicy { get; set; }
 
 	}
@@ -134,27 +175,26 @@ namespace SnowBank.Data.Json
 	}
 
 	/// <summary>Attribute that adds a custom JSON converter for one or more types</summary>
-	/// <remarks>Any derived type, nested type, or types referenced by the members of these types will also be included in the source code generation.</remarks>
+	/// <remarks>
+	/// <para>Any derived type, nested type, or types referenced by the members of these types will also be included in the source code generation.</para>
+	/// <para>This is the former, JSON-flavored spelling of the format-neutral <see cref="CrystalSerializableAttribute"/>: enrollment never was JSON-specific, and a container that produces XML enrolls its types the same way. It keeps working (and generates the same code) but new code should use <see cref="CrystalSerializableAttribute"/>.</para>
+	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-	public sealed class CrystalJsonSerializableAttribute : Attribute
+	[Obsolete("Use [CrystalSerializable(typeof(...))] instead: type enrollment is format-neutral, and the same attribute serves every output format of the container.")]
+	public sealed class CrystalJsonSerializableAttribute : CrystalSerializableAttribute
 	{
 
 		/// <summary>Generate a custom converters for instances of this type</summary>
 		/// <param name="type">Type that will have a source-generated converter added to this container.</param>
 		public CrystalJsonSerializableAttribute(Type type)
-		{
-			this.Types = [ type ];
-		}
+			: base(type)
+		{ }
 
 		/// <summary>Generate a custom converters for instances of for the following types</summary>
 		/// <param name="types">List of types that will have a source-generated converter added to this container.</param>
 		public CrystalJsonSerializableAttribute(params Type[] types)
-		{
-			this.Types = types;
-		}
-
-		/// <summary>List of types to include in this container</summary>
-		public Type[] Types { get; set; }
+			: base(types)
+		{ }
 
 	}
 

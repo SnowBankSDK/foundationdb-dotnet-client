@@ -139,7 +139,7 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		// note: the spike's "List<Shelf> as root" and "string as root" families are not exercised here: registering a
-		// bare collection or scalar type directly with [CrystalJsonSerializable] (no declaring DTO) produces generator
+		// bare collection or scalar type directly with [CrystalSerializable] (no declaring DTO) produces generator
 		// output that fails to compile. See the note above DcsProbeSerializers in DcsProbes.cs; reported to the main
 		// session as a finding, not fixed here, and not a Task 9 DataContract-XML-specific defect (nothing in that
 		// generated, broken code is profile-specific).
