@@ -1784,17 +1784,21 @@ namespace SnowBank.Runtime.Converters
 					}
 				}
 				else if (char.IsLetter(date[0]))
-				{ // let's try a ParseExact for weird localized dates (ex: "Vendredi, 37 Trumaire 1789 à 3 heures moins le quart")
+				{ // localized long dates (ex: "Vendredi 22 Septembre 1978"): try the strict culture patterns first, then fall through to
+				  // the lenient parser below. ParseExact is picky about the exact whitespace, and CLDR/ICU differs across platforms (ex:
+				  // en-US uses the narrow no-break space U+202F before AM/PM on macOS/Linux but a regular space on Windows/NLS).
 #if NET5_0_OR_GREATER
-					result = DateTime.ParseExact(date, [ "D", "F", "f" ], culture ?? CultureInfo.InvariantCulture);
+					if (DateTime.TryParseExact(date, [ "D", "F", "f" ], culture ?? CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
 #else
 					// span-based ParseExact is not on netstandard2.0
-					result = DateTime.ParseExact(date.ToString(), [ "D", "F", "f" ], culture ?? CultureInfo.InvariantCulture, DateTimeStyles.None);
+					if (DateTime.TryParseExact(date.ToString(), [ "D", "F", "f" ], culture ?? CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
 #endif
-					return true;
+					{
+						return true;
+					}
 				}
 
-				// Fallback to standard parsing...
+				// Fallback to standard parsing (also catches localized dates whose exact pattern did not match above)...
 #if NET5_0_OR_GREATER
 				result = DateTime.Parse(date, culture ?? CultureInfo.InvariantCulture);
 #else

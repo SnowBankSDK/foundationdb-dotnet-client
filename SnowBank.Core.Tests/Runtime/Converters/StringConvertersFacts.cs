@@ -596,6 +596,26 @@ namespace SnowBank.Runtime.Converters.Tests
 			Assert.That(StringConverters.ToDateTime("Freitag, 22. September 1978", DateTime.MinValue, new CultureInfo("de-DE", false)), Is.EqualTo(new DateTime(1978, 09, 22, 0, 0, 0)), "Freitag, 22. September 1978");
 		}
 
+		[Test]
+		public void Test_ToDateTime_RoundTrips_Localized_Formats()
+		{
+			// Oracle-style test: hardcoding culture-formatted date strings bakes in one platform's CLDR data (ex: en-US uses the narrow
+			// no-break space U+202F before AM/PM on macOS/Linux but a regular space on Windows). Instead, format a known instant with the
+			// RUNNING platform's own culture, then assert ToDateTime parses it back to the same value the BCL itself parses. The BCL parse
+			// is an independent reference (ToDateTime has its own ParseExact-first logic), and the whole thing self-adjusts to any OS.
+			var when = new DateTime(1978, 9, 22, 13, 30, 45);
+			foreach (var name in new[] { "en-US", "fr-FR", "de-DE" })
+			{
+				var culture = CultureInfo.GetCultureInfo(name);
+				foreach (var fmt in new[] { "F", "f", "D", "G", "g" })
+				{
+					string text = when.ToString(fmt, culture);
+					var oracle = DateTime.Parse(text, culture); // independent reference for what this exact string should parse to
+					Assert.That(StringConverters.ToDateTime(text, DateTime.MinValue, culture), Is.EqualTo(oracle), $"{name}/{fmt}: '{text}'");
+				}
+			}
+		}
+
 	}
 
 }
