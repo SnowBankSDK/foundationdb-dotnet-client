@@ -52,7 +52,16 @@ namespace SnowBank.Data.Json
 	[DebuggerNonUserCode]
 	public sealed class CrystalJsonWriter : IDisposable
 	{
-		private const int MaximumObjectGraphDepth = 16;
+		/// <summary>Maximum nesting depth of a serialized object graph, on every JSON path (reflection, source-generated, and the parser)</summary>
+		/// <remarks>
+		/// <para>64 is the default maximum depth of both System.Text.Json and Newtonsoft.Json, reading and writing; the parser
+		/// enforces this same constant, so anything this library writes, it can read back. <see cref="SnowBank.Data.Xml.CrystalXml.MaxDepth"/>
+		/// is locked to this value too.</para>
+		/// <para>The guard cannot tell a reference cycle from an acyclic graph that is simply deeper than the cap: both raise the
+		/// same error. On the source-generated <c>Pack</c> path the counter resets across the collection pack helpers
+		/// (<c>IJsonPacker&lt;T&gt;.Pack</c> has no depth parameter), so a cycle through a collection member is not covered there.</para>
+		/// </remarks>
+		public const int MaxDepth = 64;
 
 		public enum NodeType
 		{
@@ -1260,13 +1269,13 @@ namespace SnowBank.Data.Json
 		/// <remarks>The caller should call <see cref="Leave"/> once this instance has been handled. Failure to do so will leak memory, and also prevent from serializing the same object multiple times (cached singletons, ...)</remarks>
 		public void MarkVisited(object? value)
 		{
-			if (m_objectGraphDepth >= MaximumObjectGraphDepth)
+			if (m_objectGraphDepth >= MaxDepth)
 			{ // protect against very deep object graphs
 				throw CrystalJson.Errors.Serialization_FailTooDeep(m_objectGraphDepth, value);
 			}
 			if (value != null && m_markVisited)
 			{ // protect against loops in the object graph that would cause a stack overflow
-				if (m_visitedCursor > 0 && AlreadyVisited(m_visitedObjects.AsSpan(0, m_visitedCursor), m_visitedCursor))
+				if (m_visitedCursor > 0 && AlreadyVisited(m_visitedObjects.AsSpan(0, m_visitedCursor), value))
 				{
 					if (!TypeSafeForRecursion(value.GetType()))
 					{
@@ -1293,7 +1302,7 @@ namespace SnowBank.Data.Json
 			{
 				if (cursor >= buffer.Length)
 				{
-					Array.Resize(ref buffer, checked(buffer.Length + 4));
+					Array.Resize(ref buffer, Math.Max(buffer.Length * 2, 4));
 				}
 				buffer[cursor++] = value;
 			}
@@ -1328,6 +1337,56 @@ namespace SnowBank.Data.Json
 				buffer[cursor] = null!;
 				return obj;
 			}
+		}
+
+		/// <summary>Enters one level of the object graph, WITHOUT pushing the instance onto the visited-objects stack</summary>
+		/// <param name="value">Instance about to be written; used only to name the offending type if the cap is reached</param>
+		/// <exception cref="JsonSerializationException">If the object graph is nested deeper than <see cref="MaxDepth"/></exception>
+		/// <remarks>
+		/// <para>The depth half of <see cref="MarkVisited"/>, and nothing else: source-generated converters call this around the
+		/// body they write, so a reference cycle running through generated code raises a typed exception instead of an
+		/// uncatchable <see cref="StackOverflowException"/> (see <see cref="MaxDepth"/>).</para>
+		/// <para>Deliberately NOT the visited-objects stack: true cycle detection allocates and scans per level, and stays a
+		/// reflection-path feature (<see cref="CrystalJsonSettings.WithoutObjectTracking"/>); the generated path only pays for
+		/// the counter.</para>
+		/// <para>The caller must pair this with <see cref="LeaveDepth"/>. Like <see cref="MarkVisited"/>/<see cref="Leave"/>, the
+		/// pairing is not exception-safe by design: a writer whose serialization threw is not reusable anyway.</para>
+		/// </remarks>
+		public void EnterDepth(object? value)
+		{
+			if (m_objectGraphDepth >= MaxDepth)
+			{ // protect against very deep object graphs, and against cycles that no visited-objects stack is watching
+				throw CrystalJson.Errors.Serialization_FailTooDeep(m_objectGraphDepth, value);
+			}
+			++m_objectGraphDepth;
+		}
+
+		/// <summary>Enters one level of the object graph without boxing a value-type instance, WITHOUT pushing anything onto the visited-objects stack</summary>
+		/// <param name="type">Static type of the instance about to be written; used only to name the offending type if the cap is reached</param>
+		/// <exception cref="JsonSerializationException">If the object graph is nested deeper than <see cref="MaxDepth"/></exception>
+		/// <remarks>
+		/// <para>Same depth-only guard as <see cref="EnterDepth(object?)"/>, for source-generated converters over a value type: a
+		/// struct passed to the <see cref="object"/> overload would be boxed on every call just to name it in the failure
+		/// message. The static <see cref="Type"/> loses no information, because <c>value.GetType()</c> and <c>typeof(T)</c>
+		/// always agree for a struct.</para>
+		/// <para>Reference types keep using the <see cref="object"/> overload: it never boxes, and <c>instance.GetType()</c> can
+		/// be more derived than the converter's static type, which the failure message preserves.</para>
+		/// <para>The caller must pair this with <see cref="LeaveDepth"/>.</para>
+		/// </remarks>
+		public void EnterDepth(Type? type)
+		{
+			if (m_objectGraphDepth >= MaxDepth)
+			{ // protect against very deep object graphs, and against cycles that no visited-objects stack is watching
+				throw CrystalJson.Errors.Serialization_FailTooDeep(m_objectGraphDepth, type);
+			}
+			++m_objectGraphDepth;
+		}
+
+		/// <summary>Leaves the level entered by the matching call to <see cref="EnterDepth"/></summary>
+		public void LeaveDepth()
+		{
+			if (m_objectGraphDepth == 0) throw CrystalJson.Errors.Serialization_InternalDepthInconsistent();
+			--m_objectGraphDepth;
 		}
 
 		#region Basic Type Serializers...
@@ -2140,7 +2199,7 @@ namespace SnowBank.Data.Json
 		public void WriteEnumString<TEnum>(TEnum value)
 			where TEnum: struct, System.Enum
 		{
-			// the cache renders exactly like ToString("G"), plus any custom wire tokens declared on the enum's fields
+			// the cache renders exactly like ToString("G"), plus any custom format tokens declared on the enum's fields
 			WriteValue(CrystalJsonEnumCache.GetLiteral(typeof(TEnum), value, m_enumCamelCased).Value);
 		}
 
@@ -2153,7 +2212,7 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
-			// the cache renders exactly like ToString("G"), plus any custom wire tokens declared on the enum's fields
+			// the cache renders exactly like ToString("G"), plus any custom format tokens declared on the enum's fields
 			WriteValue(CrystalJsonEnumCache.GetLiteral(value.GetType(), value, m_enumCamelCased).Value);
 		}
 
@@ -2656,7 +2715,7 @@ namespace SnowBank.Data.Json
 		public void WriteValue(TimeSpan value)
 		{
 			if (m_settings.Iso8601Durations)
-			{ // the legacy DataContractJsonSerializer wire form ("P1DT2H3M4.005S"), which XmlConvert produces
+			{ // the legacy DataContractJsonSerializer format form ("P1DT2H3M4.005S"), which XmlConvert produces
 				WriteValue(System.Xml.XmlConvert.ToString(value));
 			}
 			else if (value == TimeSpan.Zero)
@@ -6129,7 +6188,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (this.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS format shape was requested
 				VisitDictionaryAsPairs(items, serializer);
 				return;
 			}
@@ -6169,7 +6228,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (this.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS format shape was requested
 				VisitDictionaryAsPairs(items, serializer);
 				return;
 			}
@@ -6193,7 +6252,7 @@ namespace SnowBank.Data.Json
 
 		private static readonly JsonEncodedPropertyName s_pairValueName = new("Value");
 
-		/// <summary>Writes a dictionary using the legacy DataContractJsonSerializer wire shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
+		/// <summary>Writes a dictionary using the legacy DataContractJsonSerializer format shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
 		private void VisitDictionaryAsPairs<TValue>(ICollection<KeyValuePair<string, TValue>> items, IJsonSerializer<TValue> serializer)
 		{
 			var state = BeginArray();

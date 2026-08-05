@@ -947,7 +947,11 @@ namespace SnowBank.Data.Json
 
 		#region Copy/Pasta from CrystalJsonWriter
 
-		private const int MaximumObjectGraphDepth = 16;
+		/// <summary>Maximum nesting depth this writer will descend into before refusing to go deeper</summary>
+		/// <remarks>Shared with every other serialization wire (see <see cref="CrystalJsonWriter.MaxDepth"/>). This is the
+		/// shallowest of the recursions that cap protects (three frames per level), so it is the one whose stack margin the
+		/// shared value is chosen against.</remarks>
+		private const int MaximumObjectGraphDepth = CrystalJsonWriter.MaxDepth;
 
 		/// <summary>Test if an instance as already been visited before, to protect against cycles in the object graph</summary>
 		/// <exception cref="JsonSerializationException">If this instance has already been visited before, or if the object graph is too deep</exception>

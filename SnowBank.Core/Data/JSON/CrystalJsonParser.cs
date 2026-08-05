@@ -971,7 +971,8 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Maximum nesting depth (objects and arrays) allowed while parsing a JSON document.</summary>
 		/// <remarks>Protects against a <see cref="StackOverflowException"/> (which cannot be caught and would crash the process) when parsing hostile deeply-nested input.</remarks>
-		internal const int MaximumDepth = 64;
+		// same constant as every writer: anything this library writes, it can read back
+		internal const int MaximumDepth = CrystalJsonWriter.MaxDepth;
 
 		private static JsonValue? ParseJsonValue(ref CrystalJsonTokenizer<TReader> reader, int depth)
 		{

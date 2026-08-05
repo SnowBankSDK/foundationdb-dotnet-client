@@ -1957,20 +1957,24 @@ namespace SnowBank.Data.Json
 			/// <remarks>Format placeholder <c>{0}</c> is the offending method's name. Duplicated in the source generator, and pinned equal by a test, for the same reason as <see cref="CallbackStreamingContextNotSupported"/>.</remarks>
 			public const string CallbackSignatureNotSupported = "Serialization callback '{0}' must be parameterless, or take a single JsonValue, JsonObject or JsonArray parameter.";
 
-			/// <summary>Message used when a <c>[JsonBooleanLiterals]</c> argument has a type with no JSON wire form</summary>
+			/// <summary>Message used when a <c>[JsonBooleanLiterals]</c> argument has a type with no JSON representation</summary>
 			/// <remarks>Format placeholders: <c>{0}</c> the parameter name, <c>{1}</c> the offending type. The source generator reports the same text at compile time, and a test pins the two copies equal: moving these arguments to <c>object</c> moved type checking off the compiler and onto us, so the two checks have to say the same thing.</remarks>
-			public const string BooleanLiteralTypeNotSupported = "The [JsonBooleanLiterals] argument '{0}' is of type {1}, which has no JSON wire form: use a string, a bool, or a numeric value.";
+			public const string BooleanLiteralTypeNotSupported = "The [JsonBooleanLiterals] argument '{0}' is of type {1}, which has no JSON representation: use a string, a bool, or a numeric value.";
 
 			#region Serialization Errors...
 
 			[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 			public static JsonSerializationException Serialization_FailTooDeep(int depth, object? current) => new($"Reached maximum depth of {depth} while serializing child object of type '{current?.GetType().GetFriendlyName() ?? "<null>"}'. Top object is too complex to be serialized this way!");
 
+			/// <summary>Same message as <see cref="Serialization_FailTooDeep(int,object)"/>, for callers that only have the static <see cref="Type"/> of the offending value (typically a value type, to avoid boxing it just to name it)</summary>
+			[Pure, MethodImpl(MethodImplOptions.NoInlining)]
+			public static JsonSerializationException Serialization_FailTooDeep(int depth, Type? current) => new($"Reached maximum depth of {depth} while serializing child object of type '{current?.GetFriendlyName() ?? "<null>"}'. Top object is too complex to be serialized this way!");
+
 			[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 			public static JsonSerializationException Serialization_ObjectRecursionIsNotAllowed(IEnumerable<object?> visited, object? value, int depth) => new($"Object of type '{value?.GetType().FullName}' at depth {depth} already serialized before! Recursive object graphs not supported. Visited path: {string.Join(" <- ", visited.Select(v => v?.GetType().FullName ?? "<null>"))}");
 
 			[Pure, MethodImpl(MethodImplOptions.NoInlining)]
-			public static JsonSerializationException Serialization_InternalDepthInconsistent() => new("public depth is inconsistent.");
+			public static JsonSerializationException Serialization_InternalDepthInconsistent() => new("object depth is inconsistent.");
 
 			[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 			public static JsonSerializationException Serialization_LeaveNotSameThanMark(int depth, object? current) => new($"De-synchronization of the visited object stack: Leave() was called with a different value of type '{current?.GetType().GetFriendlyName() ?? "<null>"}' than MarkVisited() at depth {depth}.");

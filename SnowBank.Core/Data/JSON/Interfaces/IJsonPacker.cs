@@ -37,7 +37,10 @@ namespace SnowBank.Data.Json
 		/// <param name="instance">Value to convert</param>
 		/// <param name="settings">Serialization settings</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
-		/// <remarks>Most types will produce a <see cref="JsonObject"/>, but some simple types may return a packed <see cref="JsonString"/>, or as a tuple represented by a <see cref="JsonArray"/></remarks>
+		/// <remarks>
+		/// Most types will produce a <see cref="JsonObject"/>, but some simple types may return a packed <see cref="JsonString"/>, or as a tuple represented by a <see cref="JsonArray"/>.
+		/// <para>This three-argument member is the only one a caller holding an <see cref="IJsonPacker{T}"/> through a generic constraint (e.g. the collection helpers in <c>JsonSerializerExtensions</c>) can call: it carries no ambient recursion depth, so a source-generated caller crossing this seam cannot thread its own nesting counter through it. A reference cycle that runs through such a call is not covered by <see cref="SnowBank.Data.CrystalJsonWriter.MaxDepth"/> and can still overflow the native stack.</para>
+		/// </remarks>
 		JsonValue Pack(T instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null);
 
 	}
