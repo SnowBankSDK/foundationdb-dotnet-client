@@ -43,6 +43,7 @@ namespace SnowBank.Data
 	/// }
 	/// </code></para>
 	/// <para>The mono-format aliases <c>[CrystalJsonConverter]</c> and <c>[CrystalXmlConverter]</c> bundle this marker with a single output format, for the common case of a container that only ever produces one wire.</para>
+	/// <para>Do not subclass: the source generator matches exact attribute metadata names, a derived attribute is invisible to it.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]
 	[PublicAPI]
@@ -57,7 +58,7 @@ namespace SnowBank.Data
 	/// <summary>Base class of the attributes that request one output format from a <see cref="CrystalConverterAttribute"/> container</summary>
 	/// <remarks>
 	/// <para>Each format contributes one derived attribute carrying its own parameters (<c>[CrystalJsonOutput]</c> for the JSON wire, <c>[CrystalXmlOutput]</c> for the XML one). A container generates exactly the formats it names, and nothing else.</para>
-	/// <para>This base exists so that the source generator can ask "does this container request any output at all?" without enumerating the formats it happens to know about.</para>
+	/// <para>This base exists purely for documentation and discoverability (it groups the output attributes under a common ancestor so a reader can find them all from one place). The source generator does not walk this hierarchy: it matches each output attribute by its exact metadata name, so deriving a new output attribute from this base does not enroll it as a recognized format - the generator would never see it.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]
 	[PublicAPI]
@@ -73,6 +74,7 @@ namespace SnowBank.Data
 	/// <remarks>
 	/// <para>The enrollment is format-neutral: the enrolled type gets a generated serializer for every output format the container requests.</para>
 	/// <para>Any derived type, nested type, or type referenced by the members of these types is also included in the source code generation.</para>
+	/// <para>Do not subclass: the source generator matches exact attribute metadata names, a derived attribute is invisible to it.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 	[PublicAPI]

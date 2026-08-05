@@ -203,7 +203,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					// note: in self mode, no XML doc or attribute is emitted on the entity's partial (they would apply
 					// to the whole entity type, which is user code); they go on the nested Json scope instead
-					sb.XmlComment("<summary>Generated source code for JSON operations on application types</summary>");
+					sb.XmlComment($"<summary>Generated source code for {(this.WritesJson && this.WritesXml ? "JSON and XML" : this.WritesXml ? "XML" : "JSON")} operations on application types</summary>");
 					WriteTrimmingAnnotation(sb);
 					sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
 					sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");

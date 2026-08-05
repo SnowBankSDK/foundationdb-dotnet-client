@@ -260,6 +260,23 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
+		public void Test_Json_Alias_With_Both_Outputs_Is_Refused()
+		{
+			var (_, diagnostics) = RunOn("""
+					[SnowBank.Data.Json.CrystalJsonConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
+					[SnowBank.Data.Xml.CrystalXmlOutput]
+				""");
+
+			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0002");
+			Assert.That(refusal, Is.Not.Null, "a mono-format alias cannot host either output attribute, let alone both");
+			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(refusal.GetMessage(), Does.Contain("[CrystalJsonOutput] and [CrystalXmlOutput]"), "both names are reported, each bracketed on its own, not one pair of brackets wrapped around both");
+			Assert.That(refusal.GetMessage(), Does.Not.Contain("[[").And.Not.Contain("]]"), "the message must never double up brackets around the pair");
+			Assert.That(refusal.GetMessage(), Does.Contain("[CrystalConverter]"), "the remedy names the marker that does combine");
+		}
+
+		[Test]
 		public void Test_Neutral_Marker_Without_Any_Output_Is_Refused()
 		{
 			var (_, diagnostics) = RunOn("""

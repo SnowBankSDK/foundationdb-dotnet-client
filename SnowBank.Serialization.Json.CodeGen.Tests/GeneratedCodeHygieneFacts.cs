@@ -320,6 +320,62 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(proxyDiagnostics[0].Severity, Is.EqualTo(DiagnosticSeverity.Info), "the nudge is informational: the container still gets its converter, TypeMapper and XML output");
 		}
 
+		/// <summary>An XML-only container, below the C# 11 proxy floor</summary>
+		/// <remarks>Same graph as <see cref="LegacyProbeSource"/>, but the container only ever asks for the XML wire, via the <c>[CrystalXmlConverter]</c> alias.</remarks>
+		private const string LegacyXmlOnlyProbeSource = """
+			namespace Probe.LegacyXmlOnly
+			{
+
+				public enum LegacyKind
+				{
+					None = 0,
+					Alpha = 1,
+				}
+
+				public sealed class LegacyItem
+				{
+					public string Id { get; set; }
+					public int Level { get; set; }
+					public bool? Disabled { get; set; }
+				}
+
+				[System.Runtime.Serialization.DataContract]
+				public sealed class LegacyAccount
+				{
+					[System.Runtime.Serialization.DataMember(Order = 1)] public string Id { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 2)] public LegacyKind Kind { get; set; }
+					[System.Runtime.Serialization.DataMember(Order = 3)] public System.Collections.Generic.List<LegacyItem> Items { get; set; }
+				}
+
+				[SnowBank.Data.Xml.CrystalXmlConverter]
+				[SnowBank.Data.CrystalSerializable(typeof(LegacyAccount))]
+				[SnowBank.Data.CrystalSerializable(typeof(LegacyItem))]
+				public static partial class LegacyXmlOnlyConverters
+				{
+				}
+
+			}
+			""";
+
+		/// <summary>An XML-only container never had a proxy surface to lose, so the CJSON0020 nudge must stay silent for it even below the C# 11 proxy floor</summary>
+		/// <remarks>Pins the guard in the parser that only calls into the CJSON0020 reporter when the container generates JSON (<c>formats.GeneratesJson</c>): a regression that re-enables the call unconditionally would make an XML-only container get a nudge about a surface (<c>ToReadOnly</c>/<c>ToMutable</c>, the proxy types) that is meaningless for it, since it never generates JSON at all.</remarks>
+		[Test]
+		public void Test_Proxy_Surface_Loss_Is_Not_Reported_For_An_Xml_Only_Container_Below_The_Proxy_Floor()
+		{
+			var compilation = GeneratorProbeHarness.Compile(LegacyXmlOnlyProbeSource, GeneratorProbeHarness.FloorParseOptions);
+			var (_, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation, GeneratorProbeHarness.FloorParseOptions);
+
+			foreach (var diagnostic in generatorDiagnostics)
+			{
+				Log(diagnostic.ToString());
+			}
+
+			Assert.That(
+				generatorDiagnostics.Select(static d => d.Id),
+				Does.Not.Contain("CJSON0020"),
+				"an XML-only container never had a JSON proxy surface, so its absence below the proxy floor must not be reported");
+		}
+
 		/// <summary>Below the floor, the generator refuses with <c>SYSLIB1221</c> instead of emitting code the consumer cannot compile</summary>
 		/// <remarks>The floor is inherited from the System.Text.Json generator (same diagnostic id, same message shape) and applies to the container as a whole: enabling XML output on a container does not change it, and a consumer below the floor gets no JSON serializer either.</remarks>
 		[Test]

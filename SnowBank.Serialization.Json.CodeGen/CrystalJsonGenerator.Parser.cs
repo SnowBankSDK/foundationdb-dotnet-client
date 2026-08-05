@@ -427,7 +427,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							new(
 								"CRYS0002",
 								"A mono-format container alias cannot be combined with an output format",
-								"The container '{0}' combines the mono-format alias [{1}] with [{2}], which the alias does not support: it produces {3} and nothing else. Use [CrystalConverter] with one explicit [Crystal<Format>Output] attribute per output format.",
+								"The container '{0}' combines the mono-format alias [{1}] with {2}, which the alias does not support: it produces {3} and nothing else. Use [CrystalConverter] with one explicit [Crystal<Format>Output] attribute per output format.",
 								"SnowBank.Serialization.Json.CodeGen",
 								DiagnosticSeverity.Error,
 								isEnabledByDefault: true
@@ -435,7 +435,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							this.ContextClassLocation,
 							symbol.ToDisplayString(),
 							isJsonAlias ? "CrystalJsonConverter" : "CrystalXmlConverter",
-							jsonOutput is not null && xmlOutput is not null ? "[CrystalJsonOutput] and [CrystalXmlOutput]" : jsonOutput is not null ? "CrystalJsonOutput" : "CrystalXmlOutput",
+							jsonOutput is not null && xmlOutput is not null ? "[CrystalJsonOutput] and [CrystalXmlOutput]" : jsonOutput is not null ? "[CrystalJsonOutput]" : "[CrystalXmlOutput]",
 							isJsonAlias ? "JSON" : "XML");
 						return false;
 					}
