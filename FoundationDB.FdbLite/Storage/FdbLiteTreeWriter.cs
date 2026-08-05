@@ -128,6 +128,9 @@ namespace FoundationDB.Storage.FdbLite
 			public void PunchHole(uint firstBlock, uint count) => this.Inner.PunchHole(firstBlock, count);
 
 			/// <inheritdoc />
+			public void Prefetch(uint firstBlock, uint count) => this.Inner.Prefetch(firstBlock, count);
+
+			/// <inheritdoc />
 			public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count)
 			{
 				// only whole-page reads can hit a buffered image: value extents are block-granular, written
@@ -739,6 +742,9 @@ namespace FoundationDB.Storage.FdbLite
 				}
 				long removed = 0;
 				var freed = default(FreedRunBatcher);
+				// the doomed children are about to be read (leaves for their extents, subtree roots to recurse):
+				// announce the whole run first so the faults overlap at the drive instead of paying QD1 each
+				PrefetchPages(doomed.AsSpan(0, to - from));
 				for (int i = 0; i < to - from; i++)
 				{
 					removed += DropSubtree(doomed[i], ref freed);
@@ -761,8 +767,16 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Frees a whole subtree without rebuilding anything in it: internal pages are read to
 		/// enumerate children, leaves are read only to release their extents, and no page is rewritten.
 		/// Returns the number of keys the subtree held.</summary>
+		/// <remarks>Two accelerations on the leaf tier. A CLEAN leaf-parent whose subtree carries ZERO extent
+		/// blocks (the format-3 aggregate) frees its leaves by id without reading one - nothing inside them
+		/// needs releasing beyond the pages themselves, and a parent knows its children are leaves when its
+		/// leaf count equals its child count. When leaves must be read (extents to release), they are
+		/// prefetched as a batch first, so the faults overlap at the drive instead of paying QD1 latency each.
+		/// Only CLEAN pages get either treatment: a dirty internal page's aggregate block is stale until the
+		/// flush-time stamp pass, so a dirty subtree root falls back to the plain recursion.</remarks>
 		private long DropSubtree(uint pageId, ref FreedRunBatcher freed)
 		{
+			bool dirty = this.Dirty.ContainsKey(pageId);
 			var page = ReadPage(pageId);
 			long removed;
 			if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
@@ -777,6 +791,7 @@ namespace FoundationDB.Storage.FdbLite
 			else
 			{
 				int children = FdbLiteTreePage.GetChildCount(page);
+				bool leafParent = FdbLitePageHeader.GetLeafCount(page) == (uint) children;
 				var ids = ArrayPool<uint>.Shared.Rent(children);
 				try
 				{
@@ -784,10 +799,26 @@ namespace FoundationDB.Storage.FdbLite
 					{
 						ids[i] = FdbLiteTreePage.GetChild(page, i);
 					}
-					removed = 0;
-					for (int i = 0; i < children; i++)
+
+					if (!dirty && leafParent && FdbLitePageHeader.GetExtentBlocks(page) == 0)
+					{ // nothing inside the leaves needs releasing: free them by id, unread
+						removed = (long) FdbLitePageHeader.GetEntryCount(page);
+						for (int i = 0; i < children; i++)
+						{
+							FreeSubtreePage(ids[i], ref freed);
+						}
+					}
+					else
 					{
-						removed += DropSubtree(ids[i], ref freed);
+						if (!dirty && leafParent)
+						{ // the leaves must be read (extents to release): overlap the faults
+							PrefetchPages(ids.AsSpan(0, children));
+						}
+						removed = 0;
+						for (int i = 0; i < children; i++)
+						{
+							removed += DropSubtree(ids[i], ref freed);
+						}
 					}
 				}
 				finally
@@ -796,6 +827,13 @@ namespace FoundationDB.Storage.FdbLite
 				}
 			}
 
+			FreeSubtreePage(pageId, ref freed);
+			return removed;
+		}
+
+		/// <summary>Frees one subtree page by id (never reads it), through the same ownership routing as <see cref="FreePage"/>.</summary>
+		private void FreeSubtreePage(uint pageId, ref FreedRunBatcher freed)
+		{
 			this.UnderflowCandidates.Remove(pageId);
 			if (this.Dirty.Remove(pageId, out var released))
 			{
@@ -809,7 +847,31 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				freed.Add(pageId, (uint) this.Pager.Geometry.BlocksPerPage, this);
 			}
-			return removed;
+		}
+
+		/// <summary>Issues prefetch advice for a set of pages, coalescing contiguous ids into single runs.</summary>
+		private void PrefetchPages(ReadOnlySpan<uint> pageIds)
+		{
+			uint blocksPerPage = (uint) this.Pager.Geometry.BlocksPerPage;
+			uint start = 0, count = 0;
+			foreach (uint id in pageIds)
+			{
+				if (count > 0 && id == start + count)
+				{
+					count += blocksPerPage;
+					continue;
+				}
+				if (count > 0)
+				{
+					this.Pager.Prefetch(start, count);
+				}
+				start = id;
+				count = blocksPerPage;
+			}
+			if (count > 0)
+			{
+				this.Pager.Prefetch(start, count);
+			}
 		}
 
 		/// <summary>Coalesces adjacent delayed frees into single ranges: a subtree drop releases pages in id
@@ -3104,10 +3166,10 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Sums of one subtree's aggregate block, as carried up the stamp pass.</summary>
-		private readonly record struct SubtreeAggregates(ulong Entries, ulong KeyBytes, ulong ValueBytes, ulong LeafLiveBytes, uint Leaves)
+		private readonly record struct SubtreeAggregates(ulong Entries, ulong KeyBytes, ulong ValueBytes, ulong LeafLiveBytes, uint Leaves, ulong ExtentBlocks)
 		{
 			public static SubtreeAggregates operator +(SubtreeAggregates a, SubtreeAggregates b)
-				=> new(a.Entries + b.Entries, a.KeyBytes + b.KeyBytes, a.ValueBytes + b.ValueBytes, a.LeafLiveBytes + b.LeafLiveBytes, a.Leaves + b.Leaves);
+				=> new(a.Entries + b.Entries, a.KeyBytes + b.KeyBytes, a.ValueBytes + b.ValueBytes, a.LeafLiveBytes + b.LeafLiveBytes, a.Leaves + b.Leaves, a.ExtentBlocks + b.ExtentBlocks);
 		}
 
 		/// <summary>Stamps the subtree aggregates into every dirty INTERNAL page, bottom-up, before the images are sealed.</summary>
@@ -3131,7 +3193,7 @@ namespace FoundationDB.Storage.FdbLite
 				var image = buffered.AsSpan();
 				if (FdbLitePageHeader.GetPageType(image) == FdbLitePageType.Leaf)
 				{
-					return new(FdbLitePageHeader.GetEntryCount(image), FdbLitePageHeader.GetLogicalKeyBytes(image), FdbLitePageHeader.GetLogicalValueBytes(image), (ulong) FdbLiteTreePage.LeafLiveBytes(image), 1);
+					return new(FdbLitePageHeader.GetEntryCount(image), FdbLitePageHeader.GetLogicalKeyBytes(image), FdbLitePageHeader.GetLogicalValueBytes(image), (ulong) FdbLiteTreePage.LeafLiveBytes(image), 1, FdbLitePageHeader.GetExtentBlocks(image));
 				}
 
 				var sum = default(SubtreeAggregates);
@@ -3145,6 +3207,7 @@ namespace FoundationDB.Storage.FdbLite
 				FdbLitePageHeader.SetLogicalValueBytes(image, sum.ValueBytes);
 				FdbLitePageHeader.SetSubtreeLiveBytes(image, sum.LeafLiveBytes);
 				FdbLitePageHeader.SetLeafCount(image, sum.Leaves);
+				FdbLitePageHeader.SetExtentBlocks(image, sum.ExtentBlocks);
 				return sum;
 			}
 
@@ -3153,9 +3216,9 @@ namespace FoundationDB.Storage.FdbLite
 			var page = this.Pager.ReadBlocks(pageId, this.Pager.Geometry.BlocksPerPage);
 			if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
 			{
-				return new(FdbLitePageHeader.GetEntryCount(page), FdbLitePageHeader.GetLogicalKeyBytes(page), FdbLitePageHeader.GetLogicalValueBytes(page), (ulong) FdbLiteTreePage.LeafLiveBytes(page), 1);
+				return new(FdbLitePageHeader.GetEntryCount(page), FdbLitePageHeader.GetLogicalKeyBytes(page), FdbLitePageHeader.GetLogicalValueBytes(page), (ulong) FdbLiteTreePage.LeafLiveBytes(page), 1, FdbLitePageHeader.GetExtentBlocks(page));
 			}
-			return new(FdbLitePageHeader.GetEntryCount(page), FdbLitePageHeader.GetLogicalKeyBytes(page), FdbLitePageHeader.GetLogicalValueBytes(page), FdbLitePageHeader.GetSubtreeLiveBytes(page), FdbLitePageHeader.GetLeafCount(page));
+			return new(FdbLitePageHeader.GetEntryCount(page), FdbLitePageHeader.GetLogicalKeyBytes(page), FdbLitePageHeader.GetLogicalValueBytes(page), FdbLitePageHeader.GetSubtreeLiveBytes(page), FdbLitePageHeader.GetLeafCount(page), FdbLitePageHeader.GetExtentBlocks(page));
 		}
 
 		/// <summary>Seals and writes every page image this generation is holding, then releases them.</summary>

@@ -195,6 +195,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			public bool TrackFirstTouch { get => inner.TrackFirstTouch; set => inner.TrackFirstTouch = value; }
 			public bool MarkTouched(uint firstBlock) => inner.MarkTouched(firstBlock);
 			public void PunchHole(uint firstBlock, uint count) => inner.PunchHole(firstBlock, count);
+			public void Prefetch(uint firstBlock, uint count) => inner.Prefetch(firstBlock, count);
 			public void Dispose() => inner.Dispose();
 		}
 

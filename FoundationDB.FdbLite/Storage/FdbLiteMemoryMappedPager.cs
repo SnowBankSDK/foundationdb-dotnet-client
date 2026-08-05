@@ -152,6 +152,32 @@ namespace FoundationDB.Storage.FdbLite
 			_ = fallocate(this.Handle, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, offset, length);
 		}
 
+		/// <inheritdoc />
+		/// <remarks><c>madvise(MADV_WILLNEED)</c> on macOS and Linux (it is NOT variadic, unlike fcntl, so the P/Invoke is sound on arm64); no-op elsewhere. Mapping a region is cheap and faults nothing by itself, so prefetching a cold region only maps it and hands the kernel the read-ahead hint.</remarks>
+		public void Prefetch(uint firstBlock, uint count)
+		{
+			ObjectDisposedException.ThrowIf(this.Disposed, this);
+			if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
+			{
+				return;
+			}
+			while (count > 0)
+			{
+				uint region = firstBlock >> this.RegionSizeInBlocksLog2;
+				uint offsetInRegion = firstBlock & (this.RegionSizeInBlocks - 1);
+				uint run = Math.Min(count, this.RegionSizeInBlocks - offsetInRegion);
+				var mapped = GetOrMapRegion((int) region);
+				_ = madvise(mapped.Pointer + ((long) offsetInRegion << this.Geometry.BlockSizeLog2), (nuint) ((long) run << this.Geometry.BlockSizeLog2), MADV_WILLNEED);
+				firstBlock += run;
+				count -= run;
+			}
+		}
+
+		private const int MADV_WILLNEED = 3;
+
+		[LibraryImport("libc", SetLastError = true)]
+		private static partial int madvise(byte* address, nuint length, int advice);
+
 		private const int FALLOC_FL_KEEP_SIZE = 0x01;
 
 		private const int FALLOC_FL_PUNCH_HOLE = 0x02;

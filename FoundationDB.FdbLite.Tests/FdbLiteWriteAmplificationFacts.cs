@@ -71,6 +71,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			public bool TrackFirstTouch { get => this.Inner.TrackFirstTouch; set => this.Inner.TrackFirstTouch = value; }
 			public bool MarkTouched(uint firstBlock) => this.Inner.MarkTouched(firstBlock);
 			public void PunchHole(uint firstBlock, uint count) => this.Inner.PunchHole(firstBlock, count);
+			public void Prefetch(uint firstBlock, uint count) => this.Inner.Prefetch(firstBlock, count);
 			public void Dispose() => this.Inner.Dispose();
 			public void ResetCounters() { this.BytesWritten = 0; this.FlushCount = 0; this.DirtyBlocks.Clear(); this.FlushedUniqueBytes = 0; }
 		}

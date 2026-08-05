@@ -300,6 +300,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			public void Grow(uint minimumBlockCount) => inner.Grow(minimumBlockCount);
 			public void Truncate(uint newBlockCount) => inner.Truncate(newBlockCount);
 			public void PunchHole(uint firstBlock, uint count) { this.Punched.Add((firstBlock, count)); inner.PunchHole(firstBlock, count); }
+			public void Prefetch(uint firstBlock, uint count) => inner.Prefetch(firstBlock, count);
 			public bool TrackFirstTouch { get => inner.TrackFirstTouch; set => inner.TrackFirstTouch = value; }
 			public bool MarkTouched(uint firstBlock) => inner.MarkTouched(firstBlock);
 			public void Dispose() => inner.Dispose();

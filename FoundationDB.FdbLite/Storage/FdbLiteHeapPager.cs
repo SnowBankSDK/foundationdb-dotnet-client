@@ -72,6 +72,12 @@ namespace FoundationDB.Storage.FdbLite
 		{
 		}
 
+		/// <inheritdoc />
+		/// <remarks>No-op: heap memory has nothing to fetch ahead of.</remarks>
+		public void Prefetch(uint firstBlock, uint count)
+		{
+		}
+
 		/// <summary>Log2 of <see cref="RegionSizeInBlocks"/>, so the hot path shifts instead of dividing.</summary>
 		private int RegionSizeInBlocksLog2 { get; }
 

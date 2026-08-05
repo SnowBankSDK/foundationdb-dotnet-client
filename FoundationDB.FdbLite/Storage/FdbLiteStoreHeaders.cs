@@ -35,8 +35,8 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>ASCII <c>SBKV01\r\n</c>: the newline canary catches ASCII-mode mangling (no working-name bake-in, per the format ruling)</summary>
 		public static ReadOnlySpan<byte> Magic => "SBKV01\r\n"u8;
 
-		/// <summary>Format 2 widened the universal page header to 128 bytes (the aggregate block plus its reserve); the format is Experimental, so there is no migration path from format 1.</summary>
-		public const ushort FormatVersion = 2;
+		/// <summary>Format 2 widened the universal page header to 128 bytes (the aggregate block plus its reserve); format 3 claimed reserve bytes 72..80 for the subtree extent-blocks aggregate (an older file would read 0 there and let a range clear silently leak its extents, which is why there is no migration path). The format is Experimental: older files fail loudly at open.</summary>
+		public const ushort FormatVersion = 3;
 
 		public const ushort MinReaderVersion = 2;
 

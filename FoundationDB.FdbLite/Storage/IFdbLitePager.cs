@@ -63,6 +63,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Advisory: tells the storage that this block run holds nothing and its physical space may be released (a filesystem hole punch / device deallocate). Best effort - a pager or platform without the capability does nothing, and the bytes simply stay. The caller guarantees the run is unreferenced by every retained generation and pin.</summary>
 		void PunchHole(uint firstBlock, uint count);
 
+		/// <summary>Advisory: the caller is about to read this block run; start fetching it (read-ahead / <c>madvise(WILLNEED)</c>). Best effort - a pager without the capability does nothing. Turns a chain of one-at-a-time demand faults into overlapped device reads, which is the difference between QD1 latency per page and the drive's actual bandwidth.</summary>
+		void Prefetch(uint firstBlock, uint count);
+
 		/// <summary>Enables the first-touch tracking behind <see cref="MarkTouched"/> (on by default). Turn off to measure the raw read path: readers then skip checksum verification entirely.</summary>
 		bool TrackFirstTouch { get; set; }
 

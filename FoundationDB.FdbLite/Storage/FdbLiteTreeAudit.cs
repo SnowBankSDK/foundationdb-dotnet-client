@@ -77,19 +77,21 @@ namespace FoundationDB.Storage.FdbLite
 
 				// the stored aggregate block against a recount from the cells: the aggregates are maintained
 				// incrementally by every mutation path, so a drift here names the path that miscounted
-				long keyBytes = 0, valueBytes = 0;
+				long keyBytes = 0, valueBytes = 0, extentBlocks = 0;
 				for (int i = 0; i < count; i++)
 				{
 					keyBytes += FdbLitePageHeader.GetPrefixLength(page) + FdbLiteTreePage.LeafKeyExtent(page, i).Length;
 					valueBytes += FdbLiteTreePage.LeafLogicalValueLength(FdbLiteTreePage.GetLeafStoredValue(page, i), FdbLiteTreePage.GetLeafFlags(page, i));
+					extentBlocks += FdbLiteTreePage.ExtentBlocksOfCell(page, i);
 				}
 				if (FdbLitePageHeader.GetEntryCount(page) != (ulong) count
 				 || FdbLitePageHeader.GetLogicalKeyBytes(page) != (ulong) keyBytes
 				 || FdbLitePageHeader.GetLogicalValueBytes(page) != (ulong) valueBytes
 				 || FdbLitePageHeader.GetLeafCount(page) != 1
-				 || FdbLitePageHeader.GetSubtreeLiveBytes(page) != 0)
+				 || FdbLitePageHeader.GetSubtreeLiveBytes(page) != 0
+				 || FdbLitePageHeader.GetExtentBlocks(page) != (ulong) extentBlocks)
 				{
-					problems.Add($"leaf {pageId} AGGREGATES DRIFTED: stored entries={FdbLitePageHeader.GetEntryCount(page)} keyBytes={FdbLitePageHeader.GetLogicalKeyBytes(page)} valueBytes={FdbLitePageHeader.GetLogicalValueBytes(page)} leafCount={FdbLitePageHeader.GetLeafCount(page)} subtreeLive={FdbLitePageHeader.GetSubtreeLiveBytes(page)}, recounted entries={count} keyBytes={keyBytes} valueBytes={valueBytes}");
+					problems.Add($"leaf {pageId} AGGREGATES DRIFTED: stored entries={FdbLitePageHeader.GetEntryCount(page)} keyBytes={FdbLitePageHeader.GetLogicalKeyBytes(page)} valueBytes={FdbLitePageHeader.GetLogicalValueBytes(page)} leafCount={FdbLitePageHeader.GetLeafCount(page)} subtreeLive={FdbLitePageHeader.GetSubtreeLiveBytes(page)} extentBlocks={FdbLitePageHeader.GetExtentBlocks(page)}, recounted entries={count} keyBytes={keyBytes} valueBytes={valueBytes} extentBlocks={extentBlocks}");
 				}
 
 				byte[]? previous = null;
@@ -131,7 +133,7 @@ namespace FoundationDB.Storage.FdbLite
 			// the stored subtree sums against the children's own headers: exactness across generations rests on
 			// the dirty-chain invariant, so a drift here means a path changed a child without dirtying its chain
 			{
-				ulong entries = 0, keyBytes = 0, valueBytes = 0, liveBytes = 0;
+				ulong entries = 0, keyBytes = 0, valueBytes = 0, liveBytes = 0, extentBlocks = 0;
 				uint leaves = 0;
 				int childCount = FdbLiteTreePage.GetChildCount(page);
 				for (int i = 0; i < childCount; i++)
@@ -142,14 +144,16 @@ namespace FoundationDB.Storage.FdbLite
 					valueBytes += agg.LogicalValueBytes;
 					liveBytes += agg.LeafLiveBytes;
 					leaves += agg.LeafCount;
+					extentBlocks += agg.ExtentBlocks;
 				}
 				if (FdbLitePageHeader.GetEntryCount(page) != entries
 				 || FdbLitePageHeader.GetLogicalKeyBytes(page) != keyBytes
 				 || FdbLitePageHeader.GetLogicalValueBytes(page) != valueBytes
 				 || FdbLitePageHeader.GetSubtreeLiveBytes(page) != liveBytes
-				 || FdbLitePageHeader.GetLeafCount(page) != leaves)
+				 || FdbLitePageHeader.GetLeafCount(page) != leaves
+				 || FdbLitePageHeader.GetExtentBlocks(page) != extentBlocks)
 				{
-					problems.Add($"internal {pageId} AGGREGATES DRIFTED: stored entries={FdbLitePageHeader.GetEntryCount(page)} keyBytes={FdbLitePageHeader.GetLogicalKeyBytes(page)} valueBytes={FdbLitePageHeader.GetLogicalValueBytes(page)} subtreeLive={FdbLitePageHeader.GetSubtreeLiveBytes(page)} leafCount={FdbLitePageHeader.GetLeafCount(page)}, children sum to entries={entries} keyBytes={keyBytes} valueBytes={valueBytes} subtreeLive={liveBytes} leafCount={leaves}");
+					problems.Add($"internal {pageId} AGGREGATES DRIFTED: stored entries={FdbLitePageHeader.GetEntryCount(page)} keyBytes={FdbLitePageHeader.GetLogicalKeyBytes(page)} valueBytes={FdbLitePageHeader.GetLogicalValueBytes(page)} subtreeLive={FdbLitePageHeader.GetSubtreeLiveBytes(page)} leafCount={FdbLitePageHeader.GetLeafCount(page)} extentBlocks={FdbLitePageHeader.GetExtentBlocks(page)}, children sum to entries={entries} keyBytes={keyBytes} valueBytes={valueBytes} subtreeLive={liveBytes} leafCount={leaves} extentBlocks={extentBlocks}");
 				}
 			}
 

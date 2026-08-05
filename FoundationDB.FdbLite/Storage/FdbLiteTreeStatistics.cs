@@ -147,7 +147,8 @@ namespace FoundationDB.Storage.FdbLite
 		ulong LogicalKeyBytes,
 		ulong LogicalValueBytes,
 		ulong LeafLiveBytes,
-		uint LeafCount)
+		uint LeafCount,
+		ulong ExtentBlocks = 0)
 	{
 
 		/// <summary>Reads the aggregates of the generation rooted at <paramref name="root"/> from its root page's header (0 = empty tree, all zeroes).</summary>
@@ -171,7 +172,8 @@ namespace FoundationDB.Storage.FdbLite
 				LogicalKeyBytes: FdbLitePageHeader.GetLogicalKeyBytes(page),
 				LogicalValueBytes: FdbLitePageHeader.GetLogicalValueBytes(page),
 				LeafLiveBytes: leaf ? (ulong) FdbLiteTreePage.LeafLiveBytes(page) : FdbLitePageHeader.GetSubtreeLiveBytes(page),
-				LeafCount: leaf ? 1u : FdbLitePageHeader.GetLeafCount(page));
+				LeafCount: leaf ? 1u : FdbLitePageHeader.GetLeafCount(page),
+				ExtentBlocks: FdbLitePageHeader.GetExtentBlocks(page));
 		}
 
 	}

@@ -162,10 +162,12 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 		}
 
-		/// <summary>Pager decorator counting reads, for asserting what a range clear must NOT touch.</summary>
+		/// <summary>Pager decorator counting reads (and recording prefetches), for asserting what a range clear must NOT touch.</summary>
 		private sealed class ReadCountingPager(IFdbLitePager inner) : IFdbLitePager
 		{
 			public int ReadCalls;
+
+			public long PrefetchedBlocks;
 
 			public FdbLiteGeometry Geometry => inner.Geometry;
 			public uint BlockCount => inner.BlockCount;
@@ -176,51 +178,55 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			public void Grow(uint minimumBlockCount) => inner.Grow(minimumBlockCount);
 			public void Truncate(uint newBlockCount) => inner.Truncate(newBlockCount);
 			public void PunchHole(uint firstBlock, uint count) => inner.PunchHole(firstBlock, count);
+			public void Prefetch(uint firstBlock, uint count) { this.PrefetchedBlocks += count; inner.Prefetch(firstBlock, count); }
 			public bool TrackFirstTouch { get => inner.TrackFirstTouch; set => inner.TrackFirstTouch = value; }
 			public bool MarkTouched(uint firstBlock) => inner.MarkTouched(firstBlock);
 			public void Dispose() => inner.Dispose();
+		}
+
+		/// <summary>A 64-byte key: fat separators cap the internal fan-out (~230 at 16 KiB), so a store of a few
+		/// hundred thousand keys has ENOUGH leaf-parents for a big range to doom whole subtrees, not just
+		/// leaf-sibling runs under one parent.</summary>
+		private static byte[] WideKey(long i)
+		{
+			var key = new byte[64];
+			BinaryPrimitives.WriteInt64BigEndian(key.AsSpan(56), i);
+			return key;
 		}
 
 		[Test]
 		public void Test_RemoveRange_Big_Interior_Range_Drops_Subtrees_Without_Rebuilding_Them()
 		{
 			// the purge shape: a large contiguous interior range dies. Interior subtrees must be DROPPED -
-			// leaves read once (extents), internal pages read to enumerate, nothing in them rebuilt - and the
-			// walk must not pay a root descent per doomed leaf. 16 KiB pages force a three-level tree, so the
-			// harvest exercises multi-level sibling runs, not just leaf runs under one root.
+			// leaves read once (their extents), internal pages read to enumerate, nothing in them rebuilt -
+			// and the walk must not pay a root descent per doomed leaf.
 			var geometry = FdbLiteGeometry.Uniform(14);
 			var counting = new ReadCountingPager(new FdbLiteHeapPager(geometry));
 			using var engine = FdbLiteEngine.Create(counting);
 
-			const int N = 150_000;
+			const int N = 400_000;
 			var value = new byte[100];
 			var writer = engine.BeginWrite();
 			for (int i = 0; i < N; i++)
 			{
-				var key = new byte[8];
-				BinaryPrimitives.WriteInt64BigEndian(key, i);
 				value[0] = (byte) i;
-				writer.Insert(key, value);
+				writer.Insert(WideKey(i), value);
 			}
-			// a few extent values INSIDE the doomed range: the drop must release their blocks (the
-			// conservation check below is what catches a leaked extent)
+			// extent values INSIDE the doomed range (replacing existing keys): the drop must release their
+			// blocks, and the conservation check below is what catches a leaked extent
 			var big = new byte[60_000];
 			for (int i = 0; i < 4; i++)
 			{
-				var key = new byte[8];
-				BinaryPrimitives.WriteInt64BigEndian(key, 50_000 + (i * 10_000));
-				writer.Insert(key, big);
+				writer.Insert(WideKey(100_000 + (i * 50_000)), big);
 			}
 			engine.Commit(writer, 1);
 
 			var stats = engine.MeasureTreeStatistics();
 			Log($"# leaves={stats.LeafPages}");
-			Assume.That(stats.LeafPages, Is.GreaterThan(900), "the tree must be deep enough for multi-level harvests to exist");
+			Assume.That(stats.LeafPages, Is.GreaterThan(2_000), "the tree must have enough leaf-parents for whole subtrees to be doomed");
 
-			var begin = new byte[8];
-			var end = new byte[8];
-			BinaryPrimitives.WriteInt64BigEndian(begin, 20_000);
-			BinaryPrimitives.WriteInt64BigEndian(end, 130_000);
+			var begin = WideKey(40_000);
+			var end = WideKey(340_000);
 
 			writer = engine.BeginWrite();
 			counting.ReadCalls = 0;
@@ -229,25 +235,68 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			engine.Commit(writer, 2);
 
 			// the extent carriers REPLACED four existing keys, so the key population is still N
-			Assert.That(removed, Is.EqualTo(110_000), "every key in [20k, 130k)");
+			Assert.That(removed, Is.EqualTo(300_000), "every key in [40k, 340k)");
 			Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) (N - removed)));
 
-			// the read bound is the point of the drop design: about one read per doomed leaf (extent release)
-			// plus the internals and the boundary work. The per-leaf-root-reseek shape this replaced paid a
-			// descent (depth reads) per leaf on top, several times this bound.
-			long doomedLeaves = (110_000L * 108 / (geometry.PageSize * 90 / 100)) + 8;
-			Log($"# removed={removed} readsDuringClear={readsDuringClear} doomedLeaves~{doomedLeaves}");
-			Assert.That(readsDuringClear, Is.LessThan(doomedLeaves * 3 / 2 + 200), "a range clear must not walk the doomed interior more than about once");
+			// the read bound is the point of the drop design: at MOST about one read per doomed leaf (the
+			// extent-release worst case) plus internals and boundary work; extent-free subtrees go unread.
+			// The per-leaf-root-reseek shape this replaced paid a descent per leaf on top, several times this.
+			long doomedLeaves = stats.LeafPages * 300L / 400;
+			Log($"# removed={removed} readsDuringClear={readsDuringClear} doomedLeaves~{doomedLeaves} prefetchedBlocks={counting.PrefetchedBlocks}");
+			Assert.That(readsDuringClear, Is.LessThan(doomedLeaves + 300), "a range clear must not walk the doomed interior more than once");
+
+			// doomed leaf runs and extent-bearing subtrees announce their reads first, so the faults overlap
+			Assert.That(counting.PrefetchedBlocks, Is.GreaterThan(0), "doomed runs must be prefetched before they are read");
 
 			// structure, content, and accounting all still hold
 			Assert.That(FdbLiteTreeAudit.Check(engine.Pager, engine.Durable.RootPageId), Is.Empty, "structural audit");
 			FdbLiteFreeSpaceFacts.AssertConservation(engine, "after the interior clear");
 			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, begin, out _), Is.False);
-			var probe = new byte[8];
-			BinaryPrimitives.WriteInt64BigEndian(probe, 19_999);
-			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, probe, out _), Is.True, "the key just below the range survives");
-			BinaryPrimitives.WriteInt64BigEndian(probe, 130_000);
-			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, probe, out _), Is.True, "the key at the exclusive bound survives");
+			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, WideKey(39_999), out _), Is.True, "the key just below the range survives");
+			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, WideKey(340_000), out _), Is.True, "the key at the exclusive bound survives");
+		}
+
+		[Test]
+		public void Test_RemoveRange_Inline_Only_Interior_Is_Freed_Unread()
+		{
+			// the format-3 payoff: a clean leaf-parent whose subtree aggregates ZERO extent blocks frees its
+			// leaves BY ID - the doomed interior under it is never read at all. Only the two boundary
+			// leaf-parents' own sibling runs still pay a read per leaf (their per-leaf counts must be exact).
+			var geometry = FdbLiteGeometry.Uniform(14);
+			var counting = new ReadCountingPager(new FdbLiteHeapPager(geometry));
+			using var engine = FdbLiteEngine.Create(counting);
+
+			const int N = 400_000;
+			var value = new byte[100];
+			var writer = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				writer.Insert(WideKey(i), value);
+			}
+			engine.Commit(writer, 1);
+
+			var stats = engine.MeasureTreeStatistics();
+			var aggregates = engine.GetTreeAggregates();
+			Log($"# leaves={stats.LeafPages} extentBlocks={aggregates.ExtentBlocks}");
+			Assume.That(aggregates.ExtentBlocks, Is.Zero, "an inline-only store must aggregate zero extent blocks");
+			Assume.That(stats.LeafPages, Is.GreaterThan(2_000), "the tree must have enough leaf-parents for whole subtrees to be doomed");
+
+			writer = engine.BeginWrite();
+			counting.ReadCalls = 0;
+			int removed = writer.RemoveRange(WideKey(40_000), WideKey(340_000));
+			int readsDuringClear = counting.ReadCalls;
+			engine.Commit(writer, 2);
+
+			Assert.That(removed, Is.EqualTo(300_000));
+			long doomedLeaves = stats.LeafPages * 300L / 400;
+			Log($"# removed={removed} readsDuringClear={readsDuringClear} doomedLeaves~{doomedLeaves}");
+			// the interior parents' subtrees (the bulk of the doomed set) are freed unread: reads collapse to
+			// the boundary parents' sibling runs plus the internals, well under half the doomed leaves
+			Assert.That(readsDuringClear, Is.LessThan(doomedLeaves / 2), "an extent-free interior must be freed mostly unread");
+
+			Assert.That(FdbLiteTreeAudit.Check(engine.Pager, engine.Durable.RootPageId), Is.Empty, "structural audit");
+			FdbLiteFreeSpaceFacts.AssertConservation(engine, "after the unread interior clear");
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) (N - removed)));
 		}
 
 		[Test]
