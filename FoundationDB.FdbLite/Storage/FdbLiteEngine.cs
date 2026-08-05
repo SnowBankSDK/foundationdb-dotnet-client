@@ -111,6 +111,19 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		} = ulong.MaxValue;
 
+		/// <summary>Releases the physical space of freed block runs back to the filesystem at promotion time (on by default; a hole punch is advisory, and pagers or platforms without the capability no-op). Runs smaller than one tree page are kept - shredding the file's extent map with tiny holes costs more than the bytes.</summary>
+		public bool PunchFreedSpace { get; set; } = true;
+
+		private Action<uint, uint>? PunchPromotedRange;
+
+		private void PunchPromotedRangeCore(uint firstBlock, uint count)
+		{
+			if (count >= (uint) this.Pager.Geometry.BlocksPerPage)
+			{
+				this.Pager.PunchHole(firstBlock, count);
+			}
+		}
+
 		/// <summary>Read pins per generation (guarded by <see cref="PinLock"/>)</summary>
 		private SortedDictionary<ulong, int> Pins { get; } = new();
 
@@ -346,8 +359,10 @@ namespace FoundationDB.Storage.FdbLite
 				this.DurableSlot = slot;
 			}
 
-			// blocks freed by generations nothing can see anymore become reusable
-			this.FreeSpace.Promote(ComputePromoteLimit(this.Durable.Generation + 1));
+			// blocks freed by generations nothing can see anymore become reusable - and, page-sized runs and up,
+			// hole-punched: promotion is the first moment neither retained header nor any pin can reference them,
+			// so releasing the physical space is safe by the same fence that makes reuse safe
+			this.FreeSpace.Promote(ComputePromoteLimit(this.Durable.Generation + 1), this.PunchFreedSpace ? this.PunchPromotedRange ??= PunchPromotedRangeCore : null);
 
 			UpdateCommitEma(commitStart);
 		}

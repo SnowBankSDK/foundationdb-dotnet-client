@@ -162,6 +162,94 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 		}
 
+		/// <summary>Pager decorator counting reads, for asserting what a range clear must NOT touch.</summary>
+		private sealed class ReadCountingPager(IFdbLitePager inner) : IFdbLitePager
+		{
+			public int ReadCalls;
+
+			public FdbLiteGeometry Geometry => inner.Geometry;
+			public uint BlockCount => inner.BlockCount;
+			public uint RegionSizeInBlocks => inner.RegionSizeInBlocks;
+			public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count) { this.ReadCalls++; return inner.ReadBlocks(firstBlock, count); }
+			public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data) => inner.WriteBlocks(firstBlock, data);
+			public void Flush() => inner.Flush();
+			public void Grow(uint minimumBlockCount) => inner.Grow(minimumBlockCount);
+			public void Truncate(uint newBlockCount) => inner.Truncate(newBlockCount);
+			public void PunchHole(uint firstBlock, uint count) => inner.PunchHole(firstBlock, count);
+			public bool TrackFirstTouch { get => inner.TrackFirstTouch; set => inner.TrackFirstTouch = value; }
+			public bool MarkTouched(uint firstBlock) => inner.MarkTouched(firstBlock);
+			public void Dispose() => inner.Dispose();
+		}
+
+		[Test]
+		public void Test_RemoveRange_Big_Interior_Range_Drops_Subtrees_Without_Rebuilding_Them()
+		{
+			// the purge shape: a large contiguous interior range dies. Interior subtrees must be DROPPED -
+			// leaves read once (extents), internal pages read to enumerate, nothing in them rebuilt - and the
+			// walk must not pay a root descent per doomed leaf. 16 KiB pages force a three-level tree, so the
+			// harvest exercises multi-level sibling runs, not just leaf runs under one root.
+			var geometry = FdbLiteGeometry.Uniform(14);
+			var counting = new ReadCountingPager(new FdbLiteHeapPager(geometry));
+			using var engine = FdbLiteEngine.Create(counting);
+
+			const int N = 150_000;
+			var value = new byte[100];
+			var writer = engine.BeginWrite();
+			for (int i = 0; i < N; i++)
+			{
+				var key = new byte[8];
+				BinaryPrimitives.WriteInt64BigEndian(key, i);
+				value[0] = (byte) i;
+				writer.Insert(key, value);
+			}
+			// a few extent values INSIDE the doomed range: the drop must release their blocks (the
+			// conservation check below is what catches a leaked extent)
+			var big = new byte[60_000];
+			for (int i = 0; i < 4; i++)
+			{
+				var key = new byte[8];
+				BinaryPrimitives.WriteInt64BigEndian(key, 50_000 + (i * 10_000));
+				writer.Insert(key, big);
+			}
+			engine.Commit(writer, 1);
+
+			var stats = engine.MeasureTreeStatistics();
+			Log($"# leaves={stats.LeafPages}");
+			Assume.That(stats.LeafPages, Is.GreaterThan(900), "the tree must be deep enough for multi-level harvests to exist");
+
+			var begin = new byte[8];
+			var end = new byte[8];
+			BinaryPrimitives.WriteInt64BigEndian(begin, 20_000);
+			BinaryPrimitives.WriteInt64BigEndian(end, 130_000);
+
+			writer = engine.BeginWrite();
+			counting.ReadCalls = 0;
+			int removed = writer.RemoveRange(begin, end);
+			int readsDuringClear = counting.ReadCalls;
+			engine.Commit(writer, 2);
+
+			// the extent carriers REPLACED four existing keys, so the key population is still N
+			Assert.That(removed, Is.EqualTo(110_000), "every key in [20k, 130k)");
+			Assert.That(engine.Durable.KeyCount, Is.EqualTo((ulong) (N - removed)));
+
+			// the read bound is the point of the drop design: about one read per doomed leaf (extent release)
+			// plus the internals and the boundary work. The per-leaf-root-reseek shape this replaced paid a
+			// descent (depth reads) per leaf on top, several times this bound.
+			long doomedLeaves = (110_000L * 108 / (geometry.PageSize * 90 / 100)) + 8;
+			Log($"# removed={removed} readsDuringClear={readsDuringClear} doomedLeaves~{doomedLeaves}");
+			Assert.That(readsDuringClear, Is.LessThan(doomedLeaves * 3 / 2 + 200), "a range clear must not walk the doomed interior more than about once");
+
+			// structure, content, and accounting all still hold
+			Assert.That(FdbLiteTreeAudit.Check(engine.Pager, engine.Durable.RootPageId), Is.Empty, "structural audit");
+			FdbLiteFreeSpaceFacts.AssertConservation(engine, "after the interior clear");
+			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, begin, out _), Is.False);
+			var probe = new byte[8];
+			BinaryPrimitives.WriteInt64BigEndian(probe, 19_999);
+			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, probe, out _), Is.True, "the key just below the range survives");
+			BinaryPrimitives.WriteInt64BigEndian(probe, 130_000);
+			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, probe, out _), Is.True, "the key at the exclusive bound survives");
+		}
+
 		[Test]
 		public void Test_RemoveRange_Whole_Keyspace()
 		{

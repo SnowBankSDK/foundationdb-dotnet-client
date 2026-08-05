@@ -135,6 +135,30 @@ namespace FoundationDB.Storage.FdbLite
 		/// <inheritdoc />
 		public bool MarkTouched(uint firstBlock) => this.TrackFirstTouch && this.Touched.MarkTouched(firstBlock);
 
+		/// <inheritdoc />
+		/// <remarks>
+		/// <para>Real on Linux (the production target): <c>fallocate(FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE)</c> makes the file sparse over the run and lets the filesystem deallocate the underlying device blocks (TRIM), while the logical length and every mapping stay untouched - a punched hole reads as zeros. Failures are swallowed: the operation is advisory and a filesystem without hole support just keeps the bytes.</para>
+		/// <para>No-op on macOS: the only API is <c>fcntl(F_PUNCHHOLE)</c>, and fcntl is VARIADIC - on Apple arm64 a P/Invoke passes the argument struct where a variadic callee will not look for it, and a garbage-range punch is data loss. macOS is a development platform; do not wire it without a native shim. No-op on Windows (dev platform; would need SET_SPARSE + SET_ZERO_DATA).</para>
+		/// </remarks>
+		public void PunchHole(uint firstBlock, uint count)
+		{
+			ObjectDisposedException.ThrowIf(this.Disposed, this);
+			if (!OperatingSystem.IsLinux())
+			{
+				return;
+			}
+			long offset = (long) firstBlock << this.Geometry.BlockSizeLog2;
+			long length = (long) count << this.Geometry.BlockSizeLog2;
+			_ = fallocate(this.Handle, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, offset, length);
+		}
+
+		private const int FALLOC_FL_KEEP_SIZE = 0x01;
+
+		private const int FALLOC_FL_PUNCH_HOLE = 0x02;
+
+		[LibraryImport("libc", SetLastError = true)]
+		private static partial int fallocate(SafeFileHandle fd, int mode, long offset, long length);
+
 		/// <summary>Log2 of <see cref="RegionSizeInBlocks"/>, so the hot path shifts instead of dividing.</summary>
 		private int RegionSizeInBlocksLog2 { get; }
 

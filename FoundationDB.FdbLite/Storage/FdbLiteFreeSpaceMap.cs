@@ -86,13 +86,15 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Moves every pending range freed at or before <paramref name="reusableUpToInclusive"/> into the reusable set.</summary>
-		public void Promote(ulong reusableUpToInclusive)
+		/// <param name="promoted">Invoked once per promoted range (start, count), AFTER it entered the reusable set: the hook the engine hangs the hole punch on.</param>
+		public void Promote(ulong reusableUpToInclusive, Action<uint, uint>? promoted = null)
 		{
 			while (this.Pending.TryPeek(out var head) && head.Generation <= reusableUpToInclusive)
 			{
 				this.Pending.Dequeue();
 				Volatile.Write(ref this.PendingBlocks, this.PendingBlocks - head.Count);
 				InsertReusable(head.Start, head.Count);
+				promoted?.Invoke(head.Start, head.Count);
 			}
 		}
 

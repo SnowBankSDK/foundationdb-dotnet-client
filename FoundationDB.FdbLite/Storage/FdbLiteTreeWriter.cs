@@ -125,6 +125,9 @@ namespace FoundationDB.Storage.FdbLite
 			public bool MarkTouched(uint firstBlock) => false;
 
 			/// <inheritdoc />
+			public void PunchHole(uint firstBlock, uint count) => this.Inner.PunchHole(firstBlock, count);
+
+			/// <inheritdoc />
 			public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count)
 			{
 				// only whole-page reads can hit a buffered image: value extents are block-granular, written
@@ -607,45 +610,272 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Removes every key in <c>[begin, end)</c>; returns the number removed.</summary>
+		/// <remarks>Interior subtrees whose separator bounds sit wholly inside the range are DROPPED, not walked:
+		/// their internal pages are read to enumerate children, their leaves are read only to release extents,
+		/// and nothing in them is rebuilt or rewritten. Only the (at most two) boundary leaves pay a rebuild.
+		/// Each step re-descends from the root because a drop patches ancestors and stales any recorded path;
+		/// the step count is bounded by the boundary structure, not by the number of doomed leaves.</remarks>
 		public int RemoveRange(ReadOnlySpan<byte> begin, ReadOnlySpan<byte> end)
+		{
+			if (end.SequenceCompareTo(begin) <= 0)
+			{
+				return 0;
+			}
+			long total = 0;
+			while (this.Root != 0)
+			{
+				long removed = RemoveRangeStep(begin, end);
+				if (removed == 0)
+				{
+					break;
+				}
+				total += removed;
+			}
+			return checked((int) total);
+		}
+
+		/// <summary>One unit of range-clearing work: the begin-boundary leaf's in-range cells, or one doomed
+		/// sibling run harvested off the begin path, or the single trailing straddler leaf. Returns 0 when the
+		/// range holds nothing more.</summary>
+		private long RemoveRangeStep(ReadOnlySpan<byte> begin, ReadOnlySpan<byte> end)
 		{
 			Span<uint> pathPages = stackalloc uint[MaxDepth];
 			Span<int> pathChildren = stackalloc int[MaxDepth];
 
-			int total = 0;
-			while (this.Root != 0)
+			uint leafId = DescendToLeaf(begin, pathPages, pathChildren, out int depth);
+			var page = ReadPage(leafId);
+			int cellCount = FdbLitePageHeader.GetCellCount(page);
+			int first = FdbLiteTreePage.FindLeafSlot(page, begin, out _);
+			int last = first;
+			// compares against the WHOLE key: the stored key is only a suffix once the page strips a prefix
+			while (last < cellCount && FdbLiteTreePage.CompareLeafKey(page, last, end) < 0)
 			{
-				// the first key at/above 'begin' pins the leaf to clear next (over the overlay: earlier passes of
-				// this loop have already modified pages that are still only in the writer's buffers)
-				var cursor = new FdbLiteTreeCursor(this.PagerView, this.Root);
-				if (!cursor.SeekCeiling(begin))
-				{
-					break;
-				}
-				if (cursor.CurrentKey.SequenceCompareTo(end) >= 0)
-				{
-					break;
-				}
-				// the rebuild below invalidates cursor memory: the descent key must be a copy
-				var target = cursor.CurrentKey.ToArray();
-
-				uint leafId = DescendToLeaf(target, pathPages, pathChildren, out int depth);
-				var page = ReadPage(leafId);
-				int cellCount = FdbLitePageHeader.GetCellCount(page);
-				int first = FdbLiteTreePage.FindLeafSlot(page, begin, out _);
-				int last = first;
-				// compares against the WHOLE key: the stored key is only a suffix once the page strips a prefix
-				while (last < cellCount && FdbLiteTreePage.CompareLeafKey(page, last, end) < 0)
-				{
-					last++;
-				}
-				Contract.Debug.Assert(last > first, "the ceiling key lives in this leaf, so at least one cell is in range");
-
-				total += last - first;
+				last++;
+			}
+			if (last > first)
+			{
 				DropLeafSlots(leafId, page, first, last, pathPages, pathChildren, depth);
 				CollapseRoot();
+				return last - first;
 			}
-			return total;
+
+			// the begin leaf holds nothing in range: harvest ONE run of fully-doomed siblings off the path.
+			// A right sibling's lower bound is at/above the separator that routed the descent, so it is >= begin
+			// by construction; it is doomed when its own upper separator is <= end. Deepest level first, so
+			// leaf-level runs (the common case) go without touching the grandparents.
+			for (int level = depth - 1; level >= 0; level--)
+			{
+				var parent = ReadPage(pathPages[level]);
+				int separators = FdbLitePageHeader.GetCellCount(parent);
+				int from = pathChildren[level] + 1;
+				int to = from;
+				while (to < separators && FdbLiteTreePage.GetSeparator(parent, to).SequenceCompareTo(end) <= 0)
+				{ // child `to` is bounded above by separator `to`: wholly inside the range
+					to++;
+				}
+				if (to > from)
+				{
+					return DropChildRun(pathPages, pathChildren, level, parent, from, to);
+				}
+			}
+
+			// no boundary work and no doomed run: the only candidate left is the next leaf to the right, which
+			// can STRADDLE end (all its keys below end, its separator above). Its lower bound is the separator
+			// that precedes it, which is a key we can descend by.
+			for (int level = depth - 1; level >= 0; level--)
+			{
+				var parent = ReadPage(pathPages[level]);
+				int separators = FdbLitePageHeader.GetCellCount(parent);
+				int next = pathChildren[level];
+				if (next >= separators)
+				{
+					continue;
+				}
+				var separator = FdbLiteTreePage.GetSeparator(parent, next);
+				if (separator.SequenceCompareTo(end) >= 0)
+				{
+					return 0; // everything to the right starts at/after end
+				}
+				var scratch = ArrayPool<byte>.Shared.Rent(separator.Length);
+				try
+				{ // the descent reads pages and the separator span points into one: descend by a copy
+					separator.CopyTo(scratch);
+					uint straddler = DescendToLeaf(scratch.AsSpan(0, separator.Length), pathPages, pathChildren, out depth);
+					var image = ReadPage(straddler);
+					int cells = FdbLitePageHeader.GetCellCount(image);
+					int drop = 0;
+					while (drop < cells && FdbLiteTreePage.CompareLeafKey(image, drop, end) < 0)
+					{
+						drop++;
+					}
+					if (drop == 0)
+					{
+						return 0;
+					}
+					DropLeafSlots(straddler, image, 0, drop, pathPages, pathChildren, depth);
+					CollapseRoot();
+					return drop;
+				}
+				finally
+				{
+					ArrayPool<byte>.Shared.Return(scratch);
+				}
+			}
+			return 0;
+		}
+
+		/// <summary>Drops children [<paramref name="from"/>, <paramref name="to"/>) of the internal page at path
+		/// <paramref name="level"/>: frees every subtree wholesale, rebuilds the parent once, patches the
+		/// ancestors once. Returns the number of keys removed.</summary>
+		private long DropChildRun(ReadOnlySpan<uint> pathPages, ReadOnlySpan<int> pathChildren, int level, ReadOnlySpan<byte> parent, int from, int to)
+		{
+			uint parentId = pathPages[level];
+			var doomed = ArrayPool<uint>.Shared.Rent(to - from);
+			try
+			{
+				for (int i = from; i < to; i++)
+				{ // ids copied out first: the subtree drops below read other pages while we still hold `parent`
+					doomed[i - from] = FdbLiteTreePage.GetChild(parent, i);
+				}
+				long removed = 0;
+				var freed = default(FreedRunBatcher);
+				for (int i = 0; i < to - from; i++)
+				{
+					removed += DropSubtree(doomed[i], ref freed);
+				}
+				freed.Flush(this);
+				this.KeyCountDelta -= removed;
+				this.CursorLeaf = 0; // the drop and the parent rebuild below invalidate any covered-leaf claim
+
+				var outcome = RebuildInternalRemoveChildRun(parentId, parent, from, to);
+				AscendPatch(pathPages, pathChildren, level - 1, parentId, outcome);
+				CollapseRoot();
+				return removed;
+			}
+			finally
+			{
+				ArrayPool<uint>.Shared.Return(doomed);
+			}
+		}
+
+		/// <summary>Frees a whole subtree without rebuilding anything in it: internal pages are read to
+		/// enumerate children, leaves are read only to release their extents, and no page is rewritten.
+		/// Returns the number of keys the subtree held.</summary>
+		private long DropSubtree(uint pageId, ref FreedRunBatcher freed)
+		{
+			var page = ReadPage(pageId);
+			long removed;
+			if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
+			{
+				int cells = FdbLitePageHeader.GetCellCount(page);
+				for (int i = 0; i < cells; i++)
+				{
+					FreeExtentOfCell(page, i);
+				}
+				removed = cells;
+			}
+			else
+			{
+				int children = FdbLiteTreePage.GetChildCount(page);
+				var ids = ArrayPool<uint>.Shared.Rent(children);
+				try
+				{
+					for (int i = 0; i < children; i++)
+					{
+						ids[i] = FdbLiteTreePage.GetChild(page, i);
+					}
+					removed = 0;
+					for (int i = 0; i < children; i++)
+					{
+						removed += DropSubtree(ids[i], ref freed);
+					}
+				}
+				finally
+				{
+					ArrayPool<uint>.Shared.Return(ids);
+				}
+			}
+
+			this.UnderflowCandidates.Remove(pageId);
+			if (this.Dirty.Remove(pageId, out var released))
+			{
+				ReturnPageBuffer(released);
+			}
+			if (this.Shadow.Remove(pageId))
+			{
+				this.Allocator.FreeSpace.FreeImmediately(pageId, (uint) this.Pager.Geometry.BlocksPerPage);
+			}
+			else
+			{
+				freed.Add(pageId, (uint) this.Pager.Geometry.BlocksPerPage, this);
+			}
+			return removed;
+		}
+
+		/// <summary>Coalesces adjacent delayed frees into single ranges: a subtree drop releases pages in id
+		/// order, and per-page entries would flood the pending queue and the per-commit free-list chain - and
+		/// starve the hole punch, which only fires on ranges worth punching.</summary>
+		private struct FreedRunBatcher
+		{
+			private uint Start;
+			private uint Count;
+
+			public void Add(uint firstBlock, uint blocks, FdbLiteTreeWriter writer)
+			{
+				if (this.Count > 0 && firstBlock == this.Start + this.Count)
+				{
+					this.Count += blocks;
+					return;
+				}
+				if (this.Count > 0 && firstBlock + blocks == this.Start)
+				{
+					this.Start = firstBlock;
+					this.Count += blocks;
+					return;
+				}
+				Flush(writer);
+				this.Start = firstBlock;
+				this.Count = blocks;
+			}
+
+			public void Flush(FdbLiteTreeWriter writer)
+			{
+				if (this.Count > 0)
+				{
+					writer.Allocator.Free(this.Start, this.Count, writer.Generation);
+					this.Count = 0;
+				}
+			}
+		}
+
+		/// <summary>Rebuilds an internal page without the children in [<paramref name="from"/>, <paramref name="to"/>)
+		/// (never splits: it only shrinks). The run must not include child 0, which anchors the descent.</summary>
+		private RebuildResult RebuildInternalRemoveChildRun(uint pageId, ReadOnlySpan<byte> page, int from, int to)
+		{
+			Contract.Debug.Requires(from >= 1 && to > from);
+			int cellCount = FdbLitePageHeader.GetCellCount(page);
+			Contract.Debug.Requires(to <= cellCount + 1);
+
+			int survivors = cellCount - (to - from);
+			var cells = ArrayPool<CellRef>.Shared.Rent(Math.Max(survivors, 1));
+			try
+			{
+				int w = 0;
+				for (int i = 0; i < cellCount; i++)
+				{ // child k rides cell k-1: dropping children [from, to) drops cells [from-1, to-1)
+					if (i >= from - 1 && i < to - 1)
+					{
+						continue;
+					}
+					cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
+				}
+				Contract.Debug.Assert(w == survivors);
+				return WriteCells(pageId, isInternal: true, FdbLiteTreePage.GetLeftmostChild(page), page, cells.AsSpan(0, survivors));
+			}
+			finally
+			{
+				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
+			}
 		}
 
 		/// <summary>Drops leaf cells [<paramref name="first"/>, <paramref name="last"/>): releases their extents, rebuilds the leaf, or unlinks it entirely when it empties.</summary>

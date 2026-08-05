@@ -66,6 +66,12 @@ namespace FoundationDB.Storage.FdbLite
 		/// <inheritdoc />
 		public bool MarkTouched(uint firstBlock) => this.TrackFirstTouch && this.Touched.MarkTouched(firstBlock);
 
+		/// <inheritdoc />
+		/// <remarks>No-op: heap memory has no physical backing to release; freed ranges are recycled by the allocator.</remarks>
+		public void PunchHole(uint firstBlock, uint count)
+		{
+		}
+
 		/// <summary>Log2 of <see cref="RegionSizeInBlocks"/>, so the hot path shifts instead of dividing.</summary>
 		private int RegionSizeInBlocksLog2 { get; }
 

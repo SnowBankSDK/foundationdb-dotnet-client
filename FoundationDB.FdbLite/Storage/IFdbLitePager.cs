@@ -60,6 +60,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Shrinks the store to the requested number of blocks (the caller guarantees nothing above is referenced by any retained generation or pin).</summary>
 		void Truncate(uint newBlockCount);
 
+		/// <summary>Advisory: tells the storage that this block run holds nothing and its physical space may be released (a filesystem hole punch / device deallocate). Best effort - a pager or platform without the capability does nothing, and the bytes simply stay. The caller guarantees the run is unreferenced by every retained generation and pin.</summary>
+		void PunchHole(uint firstBlock, uint count);
+
 		/// <summary>Enables the first-touch tracking behind <see cref="MarkTouched"/> (on by default). Turn off to measure the raw read path: readers then skip checksum verification entirely.</summary>
 		bool TrackFirstTouch { get; set; }
 

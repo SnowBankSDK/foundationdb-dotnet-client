@@ -242,7 +242,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>Asserts the conservation equation of one committed generation, in blocks: frontier = 3 headers + tree pages + extent blocks + chain blocks + reusable + pending.</summary>
-		private static void AssertConservation(FdbLiteEngine engine, string site)
+		internal static void AssertConservation(FdbLiteEngine engine, string site)
 		{
 			var durable = engine.Durable;
 			var geometry = engine.Pager.Geometry;
@@ -284,6 +284,91 @@ namespace FoundationDB.Storage.FdbLite.Tests
 				extents += e;
 			}
 			return (pages, extents);
+		}
+
+		/// <summary>Pager decorator recording hole punches, so the promotion-time punch is assertable without a filesystem.</summary>
+		private sealed class PunchRecordingPager(IFdbLitePager inner) : IFdbLitePager
+		{
+			public List<(uint Start, uint Count)> Punched { get; } = [ ];
+
+			public FdbLiteGeometry Geometry => inner.Geometry;
+			public uint BlockCount => inner.BlockCount;
+			public uint RegionSizeInBlocks => inner.RegionSizeInBlocks;
+			public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count) => inner.ReadBlocks(firstBlock, count);
+			public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data) => inner.WriteBlocks(firstBlock, data);
+			public void Flush() => inner.Flush();
+			public void Grow(uint minimumBlockCount) => inner.Grow(minimumBlockCount);
+			public void Truncate(uint newBlockCount) => inner.Truncate(newBlockCount);
+			public void PunchHole(uint firstBlock, uint count) { this.Punched.Add((firstBlock, count)); inner.PunchHole(firstBlock, count); }
+			public bool TrackFirstTouch { get => inner.TrackFirstTouch; set => inner.TrackFirstTouch = value; }
+			public bool MarkTouched(uint firstBlock) => inner.MarkTouched(firstBlock);
+			public void Dispose() => inner.Dispose();
+		}
+
+		[Test]
+		public void Test_Promotion_Punches_Freed_Page_Runs()
+		{
+			// the punch rides promotion because that is the first moment neither retained header nor any pin
+			// can reference the blocks: the same fence that makes REUSE safe makes releasing the space safe
+			var recording = new PunchRecordingPager(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			using var engine = FdbLiteEngine.Create(recording);
+			uint blocksPerPage = (uint) engine.Pager.Geometry.BlocksPerPage;
+
+			var writer = engine.BeginWrite();
+			for (int i = 0; i < 5_000; i++)
+			{
+				var key = new byte[8];
+				System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(key, i);
+				writer.Insert(key, new byte[200]);
+			}
+			engine.Commit(writer, 1);
+
+			writer = engine.BeginWrite();
+			var begin = new byte[8];
+			var end = new byte[8];
+			System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(begin, 500);
+			System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(end, 4_500);
+			Assert.That(writer.RemoveRange(begin, end), Is.EqualTo(4_000));
+			engine.Commit(writer, 2);
+			Assert.That(recording.Punched, Is.Empty, "freed blocks are still pending: the backup header can reference them");
+
+			// two more (empty) generations move the promote limit past the clear's frees
+			engine.Commit(engine.BeginWrite(), 3);
+			engine.Commit(engine.BeginWrite(), 4);
+
+			Assert.That(recording.Punched, Is.Not.Empty, "promotion must punch the freed page runs");
+			long punchedBlocks = 0;
+			foreach (var (start, count) in recording.Punched)
+			{
+				Assert.That(count, Is.GreaterThanOrEqualTo(blocksPerPage), "sub-page fragments are kept, not punched");
+				Assert.That(start, Is.GreaterThanOrEqualTo(3u), "the header blocks are never punched");
+				Assert.That((long) start + count, Is.LessThanOrEqualTo(engine.Durable.AllocationFrontier), "punches stay below the frontier");
+				punchedBlocks += count;
+			}
+			Log($"# punched {recording.Punched.Count} run(s), {punchedBlocks} blocks");
+			Assert.That(punchedBlocks * engine.Pager.Geometry.BlockSize, Is.GreaterThan(700L << 10), "clearing 4,000 x 200 B (~830 KB live) must release most of it, coalesced into runs");
+			FdbLiteFreeSpaceFacts.AssertConservation(engine, "after promotion punched");
+
+			// the knob: a store that opts out must never see a punch
+			var silent = new PunchRecordingPager(new FdbLiteHeapPager(FdbLiteGeometry.Default));
+			using var optOut = FdbLiteEngine.Create(silent);
+			optOut.PunchFreedSpace = false;
+			writer = optOut.BeginWrite();
+			for (int i = 0; i < 2_000; i++)
+			{
+				var key = new byte[8];
+				System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(key, i);
+				writer.Insert(key, new byte[200]);
+			}
+			optOut.Commit(writer, 1);
+			writer = optOut.BeginWrite();
+			System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(begin, 0);
+			System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(end, 2_000);
+			writer.RemoveRange(begin, end);
+			optOut.Commit(writer, 2);
+			optOut.Commit(optOut.BeginWrite(), 3);
+			optOut.Commit(optOut.BeginWrite(), 4);
+			Assert.That(silent.Punched, Is.Empty, "PunchFreedSpace=false must suppress every punch");
 		}
 
 		[Test]
