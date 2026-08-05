@@ -1523,6 +1523,107 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
+		#region CXML0013 - a read-only [DataMember] PROPERTY on a [DataContract] container...
+
+		[Test]
+		public void Test_A_GetOnly_DataMember_Property_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the reference serializer's no-set-method check is property-only: a get-only [DataMember] property on a
+			// [DataContract] type is not a valid contract at all (InvalidDataContractException, "No set method for
+			// property"), so there is no wire to reproduce
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int ReadOnlyProperty => 42;
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("ReadOnlyProperty"), "the message names the offending member");
+		}
+
+		[Test]
+		public void Test_A_PrivateSetter_DataMember_Property_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// [DataMember] pins the intent on a [DataContract] type: the private setter is unlocked through a
+			// thunk (same as the reference serializer, which reaches non-public setters via reflection), so this
+			// property is NOT read-only and does not hit the get-only refusal
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int WithPrivateSetter { get; private set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+		}
+
+		[Test]
+		public void Test_A_GetOnly_DataMember_Property_On_A_Poco_Container_Is_Not_Reported()
+		{
+			// no [DataContract] on the type: the member is silently omitted from the wire instead (pinned on the
+			// wire side by Test_Poco_Mode_ReadOnly_Member_Is_Absent in DcsWireFidelityFacts)
+			AssertNotReported(
+				Probe(
+					"""
+								public int ReadOnlyProperty => 42;
+						"""),
+				"CXML0013");
+		}
+
+		[Test]
+		public void Test_An_InitOnly_DataMember_Property_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// init-only is a SEPARATE flag (IsInitOnly): IsReadOnly is false for it, DCS emits it, and this
+			// diagnostic must not fire on it
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int InitOnlyProperty { get; init; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+		}
+
+		[Test]
+		public void Test_A_ReadOnly_DataMember_Field_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// the no-set-method check DCS applies is property-only: a readonly FIELD is a different, valid shape,
+			// and DCS emits it (pinned on the wire side by Test_ReadOnly_DataMember_Field_Is_On_The_Wire in
+			// DcsWireFidelityFacts)
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public readonly int ReadOnlyField = 42;
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+		}
+
+		[Test]
+		public void Test_A_GetOnly_DataMember_Property_On_A_DataContract_Type_With_A_Modern_Container_Is_Not_Reported()
+		{
+			// the modern wire carries no read-only restriction at all: CXML0013 is compat-only, and does not fire
+			// merely because the TYPE carries [DataContract] - only the container's resolved XML profile matters
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int ReadOnlyProperty => 42;
+						""",
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+		}
+
+		#endregion
+
 	}
 
 }

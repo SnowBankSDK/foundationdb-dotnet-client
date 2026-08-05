@@ -135,6 +135,13 @@ oracle (`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`; coverage ledger next 
   `XmlConvert.EncodeLocalName` applied.
 - Member order: base class first (recursive), members without `Order=` in ordinal-alphabetical
   order of the wire name, then `Order=` groups ascending with alphabetical ties.
+- Read-only members: a get-only property, or a property with a private setter and no opt-in,
+  never reaches the wire - matching what the reference serializer's reflection path takes on a
+  plain POCO. On a `[DataContract]` type that same shape carrying `[DataMember]` is refused at
+  generation time instead (CXML0013): the reference serializer's no-set-method check rejects it
+  outright (`InvalidDataContractException`, "No set method for property"), so there is no wire to
+  match either way. A `readonly` `[DataMember]` **field** is a different shape - that check is
+  property-only - and DOES reach the wire, byte for byte with the live oracle.
 - Null members: `<X nil="true" />` by default; `[DataMember(EmitDefaultValue = false)]` makes the
   member absent when at its CLR default.
 - Collections: the item element is named after the item type's contract name (`<string>`,
@@ -185,6 +192,11 @@ An instance of a CONCRETE polymorphic root is refused here with
 matches the JSON side, which carries no discriminator for that value either: a reader could not
 tell it from a subtype whose annotation went missing, so it is refused rather than written under
 a shape nobody can interpret.
+
+Unlike the compat profile, the modern wire carries no read-only restriction at all: a get-only
+property, a `readonly` field, and an init-only member are all emitted, mirroring the JSON wire
+(which never filters by read-only-ness either - only the generated deserializer skips assigning
+one back).
 
 ## Example
 
@@ -253,6 +265,7 @@ Build-time diagnostics about the XML wire itself live in the CXML range:
 | CXML0010 | `[CollectionDataContract]` on a compat member's type |
 | CXML0011 | a dictionary whose resolved shape carries the value as text (`KeyAttribute`, `KeyValueAttributes`) while the value type has no lexical form |
 | CXML0012 | **Info, not an error** - a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way), and a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape) |
+| CXML0013 | compat profile only - a read-only (get-only, or non-public-setter with no opt-in) PROPERTY carrying `[DataMember]` on a `[DataContract]` type: the reference serializer rejects that contract outright (`InvalidDataContractException`, "No set method for property"), so there is no wire to reproduce. Does not fire on a `readonly` `[DataMember]` FIELD (DCS's check is property-only) or on an init-only member (a different flag; DCS emits it) |
 
 At run time, graphs deeper than `CrystalXml.MaxDepth` (256 levels of generated recursion) raise
 `CrystalXmlCycleException` - the guard cannot distinguish a genuine cycle from a legitimately

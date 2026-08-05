@@ -363,15 +363,20 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <para>Base level first (recursively), then, inside each level, the members with no declared <c>Order</c> sorted by
 			/// their WIRE name in ordinal order, then the <c>Order</c> groups ascending with ordinal ties. Ordering by the wire name
 			/// and not by the C# name matters: <c>[DataMember(Name = "renamed_member")]</c> sorts where the wire spells it.</para>
-			/// <para>Get-only (read-only) members are dropped: the DataContract wire never carries one. On a POCO the reference
-			/// serializer only takes public get+set members, so it omits them; on a <c>[DataContract]</c> type a read-only
-			/// <c>[DataMember]</c> is not a valid contract at all (<c>InvalidDataContractException</c>, "No set method for
-			/// property"), so there is no wire to match either way.</para>
+			/// <para>Read-only (get-only, or non-public-setter with no opt-in) PROPERTIES are dropped: the reference serializer's
+			/// no-set-method check is property-only. On a POCO it just omits them (only public get+set members are taken); on a
+			/// <c>[DataContract]</c> type a read-only <c>[DataMember]</c> PROPERTY is not a valid contract at all
+			/// (<c>InvalidDataContractException</c>, "No set method for property"), which <c>CrystalJsonSourceGenerator.Parser.ReportReadOnlyDataMemberProperty</c>
+			/// refuses with <c>CXML0013</c> at generation time; this filter is only the emission-side backstop for that refusal.
+			/// A read-only FIELD is a different shape: that check does
+			/// not look at fields, so DCS emits one, and this filter keeps it in for a <c>[DataContract]</c> type. Init-only members
+			/// are unaffected either way, because <see cref="CrystalJsonMemberMetadata.IsReadOnly"/> is <see langword="false"/> for
+			/// them (a separate <see cref="CrystalJsonMemberMetadata.IsInitOnly"/> flag), matching DCS emitting them.</para>
 			/// </remarks>
 			private static List<(CrystalJsonMemberMetadata Member, string WireName)> GetXmlDcsOrderedMembers(CrystalJsonTypeMetadata typeDef)
 			{
 				return typeDef.Members
-					.Where(m => !m.IsReadOnly)
+					.Where(m => !m.IsReadOnly || (m.IsField && typeDef.HasDataContract))
 					.Select(m => (Member: m, WireName: GetXmlDcsMemberName(m)))
 					.OrderBy(x => x.Member.InheritanceLevel)
 					.ThenBy(x => x.Member.DataMemberOrder.HasValue ? 1 : 0)

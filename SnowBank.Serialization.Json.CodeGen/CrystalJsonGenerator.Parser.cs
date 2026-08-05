@@ -1908,6 +1908,35 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.ToDisplayString(), named.ToDisplayString());
 			}
 
+			/// <summary>Reports <c>CXML0013</c> on a read-only (get-only, or non-public-setter with no opt-in) <c>[DataMember]</c> PROPERTY on a <c>[DataContract]</c> type</summary>
+			/// <remarks>
+			/// <para>Compat-only. The reference serializer's no-set-method check is property-only: a get-only (or otherwise
+			/// setter-less) property carrying <c>[DataMember]</c> on a <c>[DataContract]</c> type is not a valid contract at all
+			/// (<c>InvalidDataContractException</c>, "No set method for property..."), so there is no reference wire to match. A
+			/// <c>readonly</c> FIELD is a different shape: that check does not look at fields, so DCS emits it, and this diagnostic
+			/// does not fire for one.</para>
+			/// <para>On a plain POCO (no <c>[DataContract]</c>) a get-only property is a legal, common shape: the reference
+			/// serializer's reflection path just never sees a setter and omits the member, which <see
+			/// cref="GetXmlDcsOrderedMembers"/> already reproduces by dropping it from emission. This diagnostic exists because that
+			/// silent-omission behavior is wrong for a <c>[DataContract]</c> type: there, <c>[DataMember]</c> is the one membership
+			/// signal the author wrote, and DCS refuses the contract outright rather than silently dropping the member. Emitting
+			/// nothing here would print a document that hides the author's mistake instead of failing the build over it.</para>
+			/// </remarks>
+			private void ReportReadOnlyDataMemberProperty(ISymbol member)
+			{
+				ReportDiagnostic(
+					new(
+						"CXML0013",
+						"A read-only property cannot carry [DataMember] on a [DataContract] type",
+						"The member '{0}' has no accessible set method (get-only, init-only excepted, or a non-public setter with no opt-in) and carries [DataMember] on a [DataContract] type: the reference serializer rejects this contract (InvalidDataContractException: \"No set method for property...\"), so there is no wire to reproduce. Add a setter (a private or init-only one is enough), remove [DataMember] from this member, or drop the type to POCO mode (no [DataContract]), where a read-only member is silently omitted instead.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString());
+			}
+
 			/// <summary>Returns whether a converter type implements the XML facet for the member's type, and whether it took the <c>Nullable&lt;T&gt;</c> form itself</summary>
 			/// <remarks>The same probe order as <see cref="GetConverterFacets"/> on the JSON side: the EXACT form first (a converter declared for <c>T?</c> answers for the absent case itself), then the nullable-unwrapped lift.</remarks>
 			private static (bool Serializer, bool NullableForm) GetXmlConverterFacet(INamedTypeSymbol? converterType, ITypeSymbol memberType)
@@ -2653,6 +2682,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (!xmlRefused && xmlProfile == XmlProfileDataContract)
 					{ // structural, and compat-only: the modern wire never reads [CollectionDataContract] in the first place
 						ReportUnsupportedCollectionDataContract(member, typeSymbol);
+
+						if (hasDataContract && isReadOnly && !isField)
+						{ // the no-set-method check DCS applies is property-only: a readonly FIELD is a different, valid shape
+							ReportReadOnlyDataMemberProperty(member);
+						}
 					}
 
 					if (customConverterType is not null)

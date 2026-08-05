@@ -258,6 +258,11 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		[DataMember] public string? Newlines;
 		[DataMember] public string? Unicode;
 		[DataMember] public string? ControlChars;
+
+		// MINOR pin: init-only member oracle probe. IsReadOnly is false for an init-only member (a separate
+		// IsInitOnly flag), so it is never dropped by the compat filter; measured against the live oracle here rather
+		// than assumed, alongside the rest of this family's scalar forms.
+		[DataMember] public string? InitOnlyMember { get; init; }
 	}
 
 	[DataContract]
@@ -308,6 +313,24 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		[DataMember] public string? Visible;
 
 		public void SetSecret(string? value) => this.secret = value;
+	}
+
+	/// <summary>Pins the CRITICAL fix: a <c>readonly</c> <c>[DataMember]</c> FIELD, constructor-assigned. The reference
+	/// serializer's no-set-method check is property-only (it never looks at fields), so it emits this member; the
+	/// generator's own read-only filter used to drop it regardless of field-vs-property, which silently dropped it from
+	/// the compat wire. See <c>DcsWireFidelityFacts.Test_ReadOnly_DataMember_Field_Is_On_The_Wire</c>.</summary>
+	[DataContract]
+	public sealed class ReadOnlyFieldProbe
+	{
+		[DataMember] public string? Normal;
+		[DataMember] public readonly string ReadOnlyField;
+
+		public ReadOnlyFieldProbe() : this("default") { }
+
+		public ReadOnlyFieldProbe(string readOnlyField)
+		{
+			this.ReadOnlyField = readOnlyField;
+		}
 	}
 
 	[DataContract(Name = "Envelope{0}")]
@@ -409,6 +432,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[CrystalSerializable(typeof(NamedGenericProbe<bool>))]
 	[CrystalSerializable(typeof(KeyedBagProbe))]
 	[CrystalSerializable(typeof(AnyTypeCollectionProbe))]
+	[CrystalSerializable(typeof(ReadOnlyFieldProbe))]
 	public static partial class DcsProbeSerializers
 	{
 	}

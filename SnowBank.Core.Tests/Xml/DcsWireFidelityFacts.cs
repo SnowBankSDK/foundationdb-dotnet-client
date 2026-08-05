@@ -259,6 +259,7 @@ namespace SnowBank.Data.Xml.Tests
 				Newlines = "line1\r\nline2\ttab",
 				Unicode = "café, éèê, 中文, emoji 😀",
 				ControlChars = "beforeafter", // note: kept inert here; the real control chars are pinned in the dedicated Shelf-based deviation 2 tests below
+				InitOnlyMember = "init-value", // MINOR pin: init-only is a different flag from read-only; DCS emits it, and so does the generated wire
 			}, v => DcsProbeSerializers.ScalarProbe.ToXmlText(v));
 		}
 
@@ -365,6 +366,16 @@ namespace SnowBank.Data.Xml.Tests
 			var probe = new PrivateMemberProbe { Visible = "v" };
 			probe.SetSecret("s3cr3t");
 			AssertSameWire(probe, v => DcsProbeSerializers.PrivateMemberProbe.ToXmlText(v));
+		}
+
+		[Test]
+		public void Test_ReadOnly_DataMember_Field_Is_On_The_Wire()
+		{
+			// CRITICAL FIX: the reference serializer's no-set-method check is property-only (it never looks at
+			// fields), so a readonly [DataMember] FIELD on a [DataContract] type IS on the wire. The generator's own
+			// read-only filter used to drop every read-only member regardless of field-vs-property, which silently
+			// dropped this member from the compat wire.
+			AssertSameWire(new ReadOnlyFieldProbe("fixed-value") { Normal = "n" }, v => DcsProbeSerializers.ReadOnlyFieldProbe.ToXmlText(v));
 		}
 
 		[Test]
