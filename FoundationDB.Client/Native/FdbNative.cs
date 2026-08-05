@@ -1256,7 +1256,8 @@ namespace FoundationDB.Client.Native
 				FdbError.InvalidOption => new ArgumentException("Option not valid in this context"),
 				FdbError.ApiVersionUnset => new InvalidOperationException("Api version must be set"),
 				//TODO: add more custom mappings?
-				_ => new FdbException(code)
+				// the managed table answers for every code it knows; only a code newer than this build costs the interop call
+				_ => new FdbException(code, FdbErrorMessages.TryGetMessage(code) ?? GetErrorMessage(code) ?? $"{code} ({(int) code})")
 			};
 		}
 

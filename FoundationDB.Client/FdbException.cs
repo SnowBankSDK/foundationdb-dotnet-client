@@ -36,8 +36,10 @@ namespace FoundationDB.Client
 	{
 
 		/// <summary>Creates a new exception with a given code</summary>
+		/// <remarks>The message comes from the managed <see cref="FdbErrorMessages"/> table, never from the native client:
+		/// this constructor works identically on every backend, including a process without <c>fdb_c</c> deployed.</remarks>
 		public FdbException(FdbError errorCode)
-			: this(errorCode, FdbNative.GetErrorMessage(errorCode) ?? $"Unexpected error code {(int) errorCode}", null)
+			: this(errorCode, FdbErrorMessages.TryGetMessage(errorCode) ?? $"{errorCode} ({(int) errorCode})", null)
 		{ }
 
 		/// <summary>Creates a new exception with a given code, message</summary>
