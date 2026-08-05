@@ -433,7 +433,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// WriteXmlElement(...): the nested entry point, for a parent that already knows the element name
 				sb.XmlComment("<summary>Writes this value as an element of the given name</summary>");
 				sb.XmlComment("<remarks>The nested entry point: a parent converter writing this type as one of its members passes its own cached member name here, so no name is validated or transcoded at write time. The declared type IS this type here, so no type annotation is written.</remarks>");
-				sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one. Every nested call within this generated recursion adds one, and reaching <c>CrystalXml.MaxDepth</c> raises <c>CrystalXmlCycleException</c> instead of recursing into a stack overflow; a cycle running through a custom <c>ICrystalXmlSerializer{{T}}.WriteXml</c> or <c>ICrystalXmlSerializable.WriteXml</c> hook is not covered, since the counter resets to zero across that call.</param>");
+				WriteXmlDepthParameterDoc(sb);
 				sb.AppendLine($"public void WriteXmlElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, int {XmlDepthParameterName} = 0) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXmlElement");
 				sb.AppendLine($"WriteXmlDcsElement(ref emitter, in name, value, settings, {CSharpCodeBuilder.Constant(contractName)}, {XmlDepthParameterName});");
@@ -458,17 +458,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (!type.IsValueType())
 				{
 					sb.NewLine();
-					sb.Comment("a null value still produces the element (a document needs a root), marked nil unless the settings dropped null members");
-					sb.AppendLine("if (value is null)");
-					sb.EnterBlock();
-					sb.AppendLine("emitter.WriteStartElement(in name);");
-					sb.AppendLine($"if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
-					sb.EnterBlock();
-					sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
-					sb.LeaveBlock();
-					sb.AppendLine("emitter.WriteEndElement(in name);");
-					sb.AppendLine("return;");
-					sb.LeaveBlock();
+					WriteXmlNullRootElement(sb, names, "a null value still produces the element (a document needs a root), marked nil unless the settings dropped null members");
 				}
 
 				if (typeDef.IsPolymorphicRoot)
@@ -665,12 +655,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.EnterBlock();
 				}
 
-				var policy = member.IgnoreCondition switch
-				{
-					"Never" => XmlNullPolicy.Nil,
-					"WhenWritingNull" => XmlNullPolicy.Omit,
-					_ => XmlNullPolicy.NilWhenSettingsAsk,
-				};
+				var policy = ResolveXmlNullPolicy(member);
 
 				WriteXmlDcsValueElement(sb, names, member, member.Type, local, nameRef, member.MemberName, policy);
 
@@ -694,25 +679,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				WriteXmlDcsValueContent(sb, names, member, type, valueExpr, nameRef, scope);
 				sb.LeaveBlock();
 
-				switch (policy)
-				{
-					case XmlNullPolicy.Nil:
-					{
-						sb.AppendLine("else");
-						sb.EnterBlock("else");
-						WriteXmlNilElement(sb, names, nameRef);
-						sb.LeaveBlock("else");
-						break;
-					}
-					case XmlNullPolicy.NilWhenSettingsAsk:
-					{
-						sb.AppendLine($"else if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
-						sb.EnterBlock("else");
-						WriteXmlNilElement(sb, names, nameRef);
-						sb.LeaveBlock("else");
-						break;
-					}
-				}
+				WriteXmlNullPolicyBranch(sb, names, nameRef, policy);
 			}
 
 			/// <summary>Writes the element of a value known to be non-null: the one place that decides between the shapes of this wire</summary>
@@ -1051,33 +1018,28 @@ namespace SnowBank.Serialization.Json.CodeGen
 			{
 				string fullName = type.FullyQualifiedName;
 
-				sb.Comment($"Labels of {type.Name} on the DataContract wire, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache");
-				sb.AppendLine($"private static string {methodName}({fullName} value) => value switch");
-				sb.EnterBlock("switch");
-
-				// a duplicate constant value would be a duplicate case label, and the first declared member is the one the
-				// reference serializer keeps
-				var seen = new HashSet<string>(StringComparer.Ordinal);
-				foreach (var member in type.EnumMembers)
-				{
-					if (type.IsDataContractEnum && !member.HasEnumMemberAttribute) continue;
-					if (!seen.Add(member.Value)) continue;
-					sb.AppendLine($"{fullName}.{member.Name} => {CSharpCodeBuilder.Constant(member.EnumMemberValue ?? member.Name)},");
-				}
-
-				if (type.IsFlagsEnum)
-				{
-					this.XmlNeedsFlagsHelper = true;
-					sb.AppendLine($"_ => {methodName}__flags(value),");
-				}
-				else
-				{
-					this.XmlNeedsUndeclaredEnumHelper = true;
-					sb.AppendLine($"_ => FailXmlUndeclaredEnum(typeof({fullName}), {FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value")}),");
-				}
-
-				sb.LeaveBlock("switch", ';');
-				sb.NewLine();
+				WriteXmlEnumLabelSwitch(
+					sb,
+					methodName,
+					type,
+					$"Labels of {type.Name} on the DataContract wire, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache",
+					// on a [DataContract] enum only the [EnumMember]-annotated members are serializable: the others get no case at
+					// all, and land in the refusal arm exactly as the reference serializer refuses them
+					member => !type.IsDataContractEnum || member.HasEnumMemberAttribute,
+					static member => member.EnumMemberValue ?? member.Name,
+					() =>
+					{
+						if (type.IsFlagsEnum)
+						{
+							this.XmlNeedsFlagsHelper = true;
+							sb.AppendLine($"_ => {methodName}__flags(value),");
+						}
+						else
+						{
+							this.XmlNeedsUndeclaredEnumHelper = true;
+							sb.AppendLine($"_ => FailXmlUndeclaredEnum(typeof({fullName}), {FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value")}),");
+						}
+					});
 
 				if (type.IsFlagsEnum)
 				{
@@ -1120,7 +1082,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("if (__rest != 0 || __sb.Length == 0)");
 				sb.EnterBlock();
 				this.XmlNeedsFlagsHelper = true;
-				sb.AppendLine($"FailXmlUndeclaredFlags(typeof({fullName}), {FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value")});");
+				sb.AppendLine($"{XmlDcsUndeclaredFlagsHelperName}(typeof({fullName}), {FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value")});");
 				sb.LeaveBlock();
 				sb.AppendLine("return __sb.ToString();");
 				sb.LeaveBlock();
@@ -1141,11 +1103,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 			}
 
+			/// <summary>Name of the emitted undeclared-flags refusal of THIS wire</summary>
+			/// <remarks>Deliberately not the modern wire's <c>FailXmlUndeclaredFlags</c>, which carries the same concept under an
+			/// INCOMPATIBLE signature (it returns the <c>string</c> a switch arm evaluates to, where this one is a statement that
+			/// returns nothing). No generated class holds both today - a container resolves to exactly one profile - but two same-named
+			/// helpers with different signatures is a collision waiting for the first piece of code that emits both.</remarks>
+			private const string XmlDcsUndeclaredFlagsHelperName = "FailXmlDcsUndeclaredFlags";
+
 			/// <summary>Emits the helper that refuses a combination of <c>[Flags]</c> the declared members do not cover</summary>
 			private static void WriteXmlDcsFlagsHelper(CSharpCodeBuilder sb)
 			{
 				sb.Comment("a [Flags] value with a bit no declared member covers has no label the reference wire would produce either");
-				sb.AppendLine($"private static void FailXmlUndeclaredFlags({SystemTypeFullName} type, string value)");
+				sb.AppendLine($"private static void {XmlDcsUndeclaredFlagsHelperName}({SystemTypeFullName} type, string value)");
 				sb.EnterBlock();
 				sb.AppendLine($"throw new {CrystalXmlNotSupportedExceptionFullName}(type, \"Cannot write the value '\" + value + \"' of enum '\" + type.Name + \"' to XML: it combines bits that the declared members of this [Flags] enum do not cover, so the data contract has no label for it. Declare the missing member.\");");
 				sb.LeaveBlock();

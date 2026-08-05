@@ -280,42 +280,77 @@ namespace SnowBank.Serialization.Json.CodeGen
 			{
 				foreach (var entry in enums.Entries)
 				{
-					var type = entry.Value;
-					string fullName = type.FullyQualifiedName;
-
 					if (this.WritesXmlDcs)
 					{ // the compat wire spells labels, filters members and combines flags by its own rules
-						WriteXmlDcsEnumHelper(sb, entry.Key, type);
-						continue;
-					}
-
-					sb.Comment($"Labels of {type.Name}, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache");
-					sb.AppendLine($"private static string {entry.Key}({fullName} value) => value switch");
-					sb.EnterBlock("switch");
-
-					// a duplicate constant value would be a duplicate case label (and the first declared name is the one
-					// ToString() itself returns), so only the FIRST member of each value gets a case
-					var seen = new HashSet<string>(StringComparer.Ordinal);
-					foreach (var member in type.EnumMembers)
-					{
-						if (!seen.Add(member.Value)) continue;
-						sb.AppendLine($"{fullName}.{member.Name} => {CSharpCodeBuilder.Constant(GetXmlEnumLabel(member))},");
-					}
-
-					string numeric = FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value");
-					if (type.IsFlagsEnum)
-					{ // an undeclared combination has no label of its own, and composing one would mean inventing a separator
-						this.XmlNeedsFlagsHelper = true;
-						sb.AppendLine($"_ => FailXmlUndeclaredFlags(typeof({fullName}), {numeric}),");
+						WriteXmlDcsEnumHelper(sb, entry.Key, entry.Value);
 					}
 					else
-					{ // an undeclared value renders as its underlying integer, exactly like Enum.ToString() does
-						sb.AppendLine($"_ => {numeric},");
+					{
+						WriteXmlModernEnumHelper(sb, entry.Key, entry.Value);
 					}
-
-					sb.LeaveBlock("switch", ';');
-					sb.NewLine();
 				}
+			}
+
+			/// <summary>Emits the shell of one enum's generated label lookup, which is the same on both wires</summary>
+			/// <param name="methodName">Name of the generated lookup method, handed out by the <see cref="XmlEnumTable"/></param>
+			/// <param name="type">The enum being described</param>
+			/// <param name="comment">The leading comment of the emitted method, which each wire words for itself</param>
+			/// <param name="include">Which declared members get a case at all (the compat wire drops the ones its data contract does not declare)</param>
+			/// <param name="label">The wire label of one member</param>
+			/// <param name="writeDefaultArm">Emits the <c>_ =&gt;</c> arm, which is where the two wires disagree the most (a number, a refusal, or a flags combiner)</param>
+			/// <remarks>Shared by both profiles so that the shape of the lookup - a switch expression over the FIRST member of each
+			/// distinct constant value - has one spelling: a duplicate constant would otherwise be a duplicate case label, and getting
+			/// that wrong on one wire only is a build failure the other wire's tests cannot see.</remarks>
+			private static void WriteXmlEnumLabelSwitch(CSharpCodeBuilder sb, string methodName, TypeMetadata type, string comment, Func<EnumMemberMetadata, bool> include, Func<EnumMemberMetadata, string> label, Action writeDefaultArm)
+			{
+				string fullName = type.FullyQualifiedName;
+
+				sb.Comment(comment);
+				sb.AppendLine($"private static string {methodName}({fullName} value) => value switch");
+				sb.EnterBlock("switch");
+
+				// a duplicate constant value would be a duplicate case label, and the first declared member is the one both
+				// Enum.ToString() and the reference serializer keep, so only the FIRST member of each value gets a case
+				var seen = new HashSet<string>(StringComparer.Ordinal);
+				foreach (var member in type.EnumMembers)
+				{
+					if (!include(member)) continue;
+					if (!seen.Add(member.Value)) continue;
+					sb.AppendLine($"{fullName}.{member.Name} => {CSharpCodeBuilder.Constant(label(member))},");
+				}
+
+				writeDefaultArm();
+
+				sb.LeaveBlock("switch", ';');
+				sb.NewLine();
+			}
+
+			/// <summary>Emits the label lookup of one enum, on the modern wire</summary>
+			private void WriteXmlModernEnumHelper(CSharpCodeBuilder sb, string methodName, TypeMetadata type)
+			{
+				string fullName = type.FullyQualifiedName;
+				string numeric = FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value");
+
+				WriteXmlEnumLabelSwitch(
+					sb,
+					methodName,
+					type,
+					$"Labels of {type.Name}, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache",
+					// every declared member is on the wire here: the modern profile has no membership rule of its own
+					static _ => true,
+					GetXmlEnumLabel,
+					() =>
+					{
+						if (type.IsFlagsEnum)
+						{ // an undeclared combination has no label of its own, and composing one would mean inventing a separator
+							this.XmlNeedsFlagsHelper = true;
+							sb.AppendLine($"_ => FailXmlUndeclaredFlags(typeof({fullName}), {numeric}),");
+						}
+						else
+						{ // an undeclared value renders as its underlying integer, exactly like Enum.ToString() does
+							sb.AppendLine($"_ => {numeric},");
+						}
+					});
 			}
 
 			/// <summary>Emits the helper that refuses an undeclared combination of a <c>[Flags]</c> enum</summary>
@@ -458,7 +493,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// WriteXmlElement(...): the nested entry point, so a parent can name the child element without re-validating a name
 				sb.XmlComment("<summary>Writes this value as an element of the given name</summary>");
 				sb.XmlComment("<remarks>The nested entry point: a parent converter writing this type as one of its members passes its own cached member name here, so no name is validated or transcoded at write time.</remarks>");
-				sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one. Every nested call within this generated recursion adds one, and reaching <c>CrystalXml.MaxDepth</c> raises <c>CrystalXmlCycleException</c> instead of recursing into a stack overflow; a cycle running through a custom <c>ICrystalXmlSerializer{{T}}.WriteXml</c> or <c>ICrystalXmlSerializable.WriteXml</c> hook is not covered, since the counter resets to zero across that call.</param>");
+				WriteXmlDepthParameterDoc(sb);
 				sb.AppendLine($"public void WriteXmlElement<TEmitter>(ref TEmitter emitter, in {XmlNameFullName} name, {valueType} value, {settingsType}? settings, int {XmlDepthParameterName} = 0) where TEmitter : struct, {IXmlEmitterFullName}");
 				sb.EnterBlock("WriteXmlElement");
 
@@ -469,17 +504,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				if (!type.IsValueType())
 				{
-					sb.Comment("a null value still produces the element (a document needs a root), marked nil under the same rule as a null member: only when the settings ask for null members");
-					sb.AppendLine("if (value is null)");
-					sb.EnterBlock();
-					sb.AppendLine("emitter.WriteStartElement(in name);");
-					sb.AppendLine($"if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
-					sb.EnterBlock();
-					sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
-					sb.LeaveBlock();
-					sb.AppendLine("emitter.WriteEndElement(in name);");
-					sb.AppendLine("return;");
-					sb.LeaveBlock();
+					WriteXmlNullRootElement(sb, names, "a null value still produces the element (a document needs a root), marked nil under the same rule as a null member: only when the settings ask for null members");
 					sb.NewLine();
 				}
 
@@ -663,6 +688,31 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// guard measures is the GENERATED one, so the generated code is what must carry the counter.</remarks>
 			private const string XmlDepthParameterName = "__depth";
 
+			/// <summary>Emits the <c>&lt;param&gt;</c> documentation of the depth counter, on the nested entry point of either wire</summary>
+			/// <remarks>ONE spelling for both profiles: the counter means exactly the same thing on either wire (including what it
+			/// deliberately does NOT cover), and a 350-character sentence kept in two copies is one that ends up saying two things.</remarks>
+			private static void WriteXmlDepthParameterDoc(CSharpCodeBuilder sb)
+				=> sb.XmlComment($"<param name=\"{XmlDepthParameterName}\">Number of elements already open above this one. Every nested call within this generated recursion adds one, and reaching <c>CrystalXml.MaxDepth</c> raises <c>CrystalXmlCycleException</c> instead of recursing into a stack overflow; a cycle running through a custom <c>ICrystalXmlSerializer{{T}}.WriteXml</c> or <c>ICrystalXmlSerializable.WriteXml</c> hook is not covered, since the counter resets to zero across that call.</param>");
+
+			/// <summary>Emits the null handling at the top of a nested entry point: the element is produced all the same, marked <c>nil</c> when the settings keep null members</summary>
+			/// <param name="comment">The wire's own wording of the rule, which is all that differs between the two profiles</param>
+			/// <remarks>Shared by both wires: a document needs a root, so a null instance is an element and never nothing at all, and
+			/// the two profiles that agree on that must not be free to drift apart in separate copies of the same nine statements.</remarks>
+			private static void WriteXmlNullRootElement(CSharpCodeBuilder sb, XmlNameTable names, string comment)
+			{
+				sb.Comment(comment);
+				sb.AppendLine("if (value is null)");
+				sb.EnterBlock();
+				sb.AppendLine("emitter.WriteStartElement(in name);");
+				sb.AppendLine($"if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+				sb.EnterBlock();
+				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
+				sb.LeaveBlock();
+				sb.AppendLine("emitter.WriteEndElement(in name);");
+				sb.AppendLine("return;");
+				sb.LeaveBlock();
+			}
+
 			/// <summary>Emits the depth guard at the top of a generated element-writing body</summary>
 			/// <remarks>
 			/// <para>A cycle in the object graph has no XML representation on either profile, and the generated emission has no
@@ -731,6 +781,42 @@ namespace SnowBank.Serialization.Json.CodeGen
 				Nil,
 			}
 
+			/// <summary>Returns the null policy of a member: its own <c>[JsonIgnore(Condition = ...)]</c> when it declares one, else the settings-level rule</summary>
+			/// <remarks>The SAME vocabulary as the JSON side, and the same on both XML wires: a member pinned there is pinned here, a
+			/// member omitted there is omitted here. Shared so that a third spelling of this three-row table cannot appear.</remarks>
+			private static XmlNullPolicy ResolveXmlNullPolicy(CrystalJsonMemberMetadata member) => member.IgnoreCondition switch
+			{
+				"Never" => XmlNullPolicy.Nil,
+				"WhenWritingNull" => XmlNullPolicy.Omit,
+				_ => XmlNullPolicy.NilWhenSettingsAsk,
+			};
+
+			/// <summary>Emits what a nullable value writes when it IS null, per its resolved <paramref name="policy"/>: nothing, a nil element, or a nil element only when the settings ask</summary>
+			/// <remarks>Emitted as the <c>else</c> of the non-null branch its two callers already opened, and identical on both wires:
+			/// the profiles differ in how they write a VALUE, not in what they do with its absence.</remarks>
+			private static void WriteXmlNullPolicyBranch(CSharpCodeBuilder sb, XmlNameTable names, string nameRef, XmlNullPolicy policy)
+			{
+				switch (policy)
+				{
+					case XmlNullPolicy.Nil:
+					{
+						sb.AppendLine("else");
+						sb.EnterBlock("else");
+						WriteXmlNilElement(sb, names, nameRef);
+						sb.LeaveBlock("else");
+						break;
+					}
+					case XmlNullPolicy.NilWhenSettingsAsk:
+					{
+						sb.AppendLine($"else if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+						sb.EnterBlock("else");
+						WriteXmlNilElement(sb, names, nameRef);
+						sb.LeaveBlock("else");
+						break;
+					}
+				}
+			}
+
 			/// <summary>Writes one member projected as an XML ATTRIBUTE of the element currently open</summary>
 			/// <remarks>
 			/// <para>A null value makes the attribute ABSENT, whatever the null policy of the member says: an attribute has no
@@ -796,14 +882,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.Comment($"{member.Type.Name} {member.MemberName} => <{name}>{(member.IgnoreCondition != null ? $" [{member.IgnoreCondition}]" : "")}");
 				sb.AppendLine($"var {local} = {GetXmlMemberReadExpr(typeDef, member)};");
 
-				// [JsonIgnore(Condition = ...)] is the per-member override of the settings-level rule, and it is the SAME
-				// vocabulary as the JSON side: a member pinned there is pinned here, a member omitted there is omitted here
-				var policy = member.IgnoreCondition switch
-				{
-					"Never" => XmlNullPolicy.Nil,
-					"WhenWritingNull" => XmlNullPolicy.Omit,
-					_ => XmlNullPolicy.NilWhenSettingsAsk,
-				};
+				var policy = ResolveXmlNullPolicy(member);
 
 				bool guarded = OpenXmlDefaultGuard(sb, member, local);
 
@@ -839,25 +918,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				WriteXmlValueContent(sb, names, member, type, valueExpr, nameRef, itemName, dictionaryFormat, scope);
 				sb.LeaveBlock();
 
-				switch (policy)
-				{
-					case XmlNullPolicy.Nil:
-					{
-						sb.AppendLine("else");
-						sb.EnterBlock("else");
-						WriteXmlNilElement(sb, names, nameRef);
-						sb.LeaveBlock("else");
-						break;
-					}
-					case XmlNullPolicy.NilWhenSettingsAsk:
-					{
-						sb.AppendLine($"else if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
-						sb.EnterBlock("else");
-						WriteXmlNilElement(sb, names, nameRef);
-						sb.LeaveBlock("else");
-						break;
-					}
-				}
+				WriteXmlNullPolicyBranch(sb, names, nameRef, policy);
 			}
 
 			/// <summary>Writes the element of a value known to be non-null: the one place that decides between the shapes (scalar text, nested type, sequence, dictionary)</summary>
