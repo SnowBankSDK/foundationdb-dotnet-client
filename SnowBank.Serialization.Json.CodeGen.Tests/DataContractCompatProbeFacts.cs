@@ -109,10 +109,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	}
 
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(ProbeDictDto))]
-	[CrystalJsonSerializable(typeof(ProbeKvpDto))]
-	[CrystalJsonSerializable(typeof(ProbeContractDto))]
-	[CrystalJsonSerializable(typeof(ProbeCallbackDto))]
+	[CrystalSerializable(typeof(ProbeDictDto))]
+	[CrystalSerializable(typeof(ProbeKvpDto))]
+	[CrystalSerializable(typeof(ProbeContractDto))]
+	[CrystalSerializable(typeof(ProbeCallbackDto))]
 	public static partial class ProbeConverters
 	{
 		// generated code goes here!

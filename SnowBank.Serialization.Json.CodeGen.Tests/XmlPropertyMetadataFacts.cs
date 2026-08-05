@@ -1,0 +1,1719 @@
+#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+// All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+// 	* Redistributions of source code must retain the above copyright
+// 	  notice, this list of conditions and the following disclaimer.
+// 	* Redistributions in binary form must reproduce the above copyright
+// 	  notice, this list of conditions and the following disclaimer in the
+// 	  documentation and/or other materials provided with the distribution.
+// 	* Neither the name of SnowBank nor the
+// 	  names of its contributors may be used to endorse or promote products
+// 	  derived from this software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL SNOWBANK SAS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#endregion
+
+namespace SnowBank.Serialization.Json.CodeGen.Tests
+{
+	using System.Collections.Immutable;
+	using Microsoft.CodeAnalysis;
+
+	/// <summary>Pins how the generator reads the MEMBER-level XML vocabulary: <c>[XmlProperty]</c> (including the <c>@</c> name sugar), the DCS ordering and default-emission flags of <c>[DataMember]</c>, the data contract's own name values, and the member-level refusals (<c>CXML0003</c> to <c>CXML0009</c>)</summary>
+	/// <remarks>Parsing, plus the two shapes whose refusal is only visible in what the emitter does NOT write: every assertion reads the metadata the parser resolved (through the driver's tracked steps), the diagnostics it reported, or the emitted source itself.</remarks>
+	[TestFixture]
+	[Category("Core-SDK")]
+	[Category("Core-JSON")]
+	public sealed class XmlPropertyMetadataFacts : SimpleTest
+	{
+
+		/// <summary>The container attributes of a probe that produces the Modern XML format (the default shape these facts exercise)</summary>
+		private const string ModernContainer = """
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+			""";
+
+		/// <summary>The container attributes of a probe that produces the DataContract XML format</summary>
+		private const string DataContractContainer = """
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+			""";
+
+		/// <summary>The container attributes of a probe that produces NO XML at all (where the whole XML vocabulary must stay inert)</summary>
+		private const string JsonOnlyContainer = """
+				[SnowBank.Data.Json.CrystalJsonConverter]
+			""";
+
+		/// <summary>Wraps a set of DTO members into a compilable probe (the DTO, a couple of satellite types, and the container that enrols it)</summary>
+		private static string Probe(string members, string containerAttributes = ModernContainer, string dtoAttributes = "") => $$"""
+			namespace Probe
+			{
+
+				public enum ProbeColor
+				{
+					Red = 0,
+					Blue = 1,
+				}
+
+				public sealed record ProbePart
+				{
+					public int Value { get; set; }
+				}
+
+				/// <summary>A type that writes its own XML content, and that is ALSO a sequence: the parent writes the element shell,
+				/// this type writes everything inside it, so nothing a member says about the content can reach in</summary>
+				public sealed class ProbeStampList : System.Collections.Generic.List<string>, SnowBank.Data.Xml.ICrystalXmlSerializable
+				{
+					public void WriteXml<TEmitter>(ref TEmitter emitter)
+						where TEmitter : struct, SnowBank.Data.Xml.ICrystalXmlEmitter
+						=> emitter.WriteText("stamp");
+				}
+
+			{{dtoAttributes}}
+				public sealed record ProbeDto
+				{
+			{{members}}
+				}
+
+			{{containerAttributes}}
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
+				public static partial class ProbeConverters
+				{
+				}
+
+			}
+			""";
+
+		private (Dictionary<string, CrystalJsonContainerMetadata> Containers, ImmutableArray<Diagnostic> Diagnostics) RunOn(string source)
+		{
+			var compilation = GeneratorProbeHarness.Compile(source);
+			Assert.That(
+				compilation.GetDiagnostics().Where(static d => d.Severity >= DiagnosticSeverity.Warning),
+				Is.Empty,
+				"the probe source must compile clean on its own");
+
+			var (containers, diagnostics) = GeneratorProbeHarness.RunGeneratorAndCaptureContainers(compilation);
+			foreach (var d in diagnostics)
+			{
+				Log($"generator: [{d.Severity}] {d}");
+			}
+			foreach (var (name, metadata) in containers)
+			{
+				Log($"container: {name}: XmlProfile={metadata.XmlProfile ?? "<null>"}; CrystalXmlDictionaryFormat={metadata.CrystalXmlDictionaryFormat ?? "<null>"}");
+				foreach (var includedType in metadata.IncludedTypes)
+				{
+					Log($"  type {includedType.Name}: DataContractName={includedType.DataContractName ?? "<null>"}; DataContractNamespace={includedType.DataContractNamespace ?? "<null>"}");
+					foreach (var member in includedType.Members)
+					{
+						Log($"    member {member.MemberName}: Name={member.Name}; CrystalXmlName={member.CrystalXmlName ?? "<null>"}; XmlIsAttribute={member.XmlIsAttribute}; XmlItemName={member.XmlItemName ?? "<null>"}; CrystalXmlDictionaryFormat={member.CrystalXmlDictionaryFormat ?? "<null>"}; DataMemberOrder={member.DataMemberOrder?.ToString() ?? "<null>"}; EmitDefaultValue={member.EmitDefaultValue}");
+					}
+				}
+			}
+			return (containers, diagnostics);
+		}
+
+		/// <summary>Reads back the parsed type metadata of the probe's DTO, asserting the parser accepted the whole probe</summary>
+		private CrystalJsonTypeMetadata TypeOf(string source)
+		{
+			var (containers, diagnostics) = RunOn(source);
+			Assert.That(diagnostics.Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty, "the probe must not be refused by the generator");
+			Assert.That(containers.ContainsKey("ProbeConverters"), Is.True, "the parser must have produced metadata for the probe's container");
+
+			var dto = containers["ProbeConverters"].IncludedTypes.SingleOrDefault(static t => t.Name == "ProbeDto");
+			Assert.That(dto, Is.Not.Null, "the parser must have produced metadata for the probe's DTO");
+			return dto!;
+		}
+
+		/// <summary>Reads back the parsed metadata of one member of the probe's DTO</summary>
+		private CrystalJsonMemberMetadata MemberOf(string source, string memberName)
+		{
+			var dto = TypeOf(source);
+			var member = dto.Members.SingleOrDefault(m => m.MemberName == memberName);
+			Assert.That(member, Is.Not.Null, $"the parser must have produced metadata for member '{memberName}'");
+			return member!;
+		}
+
+		/// <summary>Asserts that a probe was refused with the expected diagnostic, and returns it (a refusal of the whole format is worse than a build failure, so all five are errors)</summary>
+		private Diagnostic AssertRefusal(string source, string id)
+		{
+			var (_, diagnostics) = RunOn(source);
+			var refusal = diagnostics.FirstOrDefault(d => d.Id == id);
+			Assert.That(refusal, Is.Not.Null, $"the probe must have been refused with {id}");
+			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "a silently wrong format is worse than a build failure");
+			return refusal;
+		}
+
+		/// <summary>Asserts that a probe was NOT refused with a given diagnostic, and that NO other XML diagnostic fired either (the non-trigger side of every rule)</summary>
+		/// <remarks>The second half is what makes these tests worth having: a probe that dodges the rule under test only to trip a neighbouring one is not an accepted shape, and asserting on a single id would let that through.</remarks>
+		private void AssertNotReported(string source, string id)
+		{
+			var (_, diagnostics) = RunOn(source);
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(diagnostics.Where(d => d.Id == id), Is.Empty, $"{id} must not fire on this shape");
+				Assert.That(diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)), Is.Empty, "and the shape must be accepted whole: no other XML diagnostic either");
+			}
+		}
+
+		/// <summary>Asserts that a probe drew the inert-configuration NOTE, and returns it</summary>
+		/// <remarks>Info, not a refusal: the document a container with an inert setting produces is perfectly correct, it is just not the one the setting reads as if it were asking for. Anything louder would break a build over a format that is right.</remarks>
+		private Diagnostic AssertInert(string source, params string[] expectedFragments)
+		{
+			var (_, diagnostics) = RunOn(source);
+
+			var note = diagnostics.SingleOrDefault(static d => d.Id == "CXML0012");
+			Assert.That(note, Is.Not.Null, "the inert setting must be reported as CXML0012");
+			Assert.That(note!.Severity, Is.EqualTo(DiagnosticSeverity.Info), "an inert setting produces a CORRECT document: it is a note, never a refusal");
+
+			string message = note.GetMessage();
+			foreach (var fragment in expectedFragments)
+			{
+				Assert.That(message, Does.Contain(fragment), "the message has to name the member, the setting, and why it does nothing");
+			}
+			return note;
+		}
+
+		#region CXML0012: settings that are silently inert...
+
+		[Test]
+		public void Test_An_ItemName_On_A_Scalar_Member_Is_Reported_As_Inert()
+		{
+			// ItemName names the ITEMS of a collection (or the entries of a dictionary). A scalar has none, so the
+			// setting reads as configuration and changes nothing at all.
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "tag")]
+							public string? Label { get; set; }
+					"""),
+				"Label",
+				"ItemName");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Byte_Array_Is_Reported_As_Inert()
+		{
+			// a byte[] is base64 TEXT on this format, not a sequence of items, however enumerable C# considers it
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "b")]
+							public byte[]? Blob { get; set; }
+					"""),
+				"Blob",
+				"ItemName");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Collection_Member_Is_Not_Reported()
+		{
+			// the shape ItemName exists for
+			AssertNotReported(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "tag")]
+							public System.Collections.Generic.List<string>? Tags { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_KeyAttribute_Shaped_Dictionary_Member_Is_Not_Reported()
+		{
+			// a dictionary has entries, which the entry-naming shapes name with exactly this setting (the RESOLVED shape is
+			// what decides: the same attribute on the same type IS inert once the shape resolves to Direct)
+			AssertNotReported(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "score", DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyAttribute)]
+							public System.Collections.Generic.Dictionary<string, int>? Scores { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_A_JsonIgnore_Never_On_An_Attribute_Member_Is_Reported_As_Inert()
+		{
+			// Condition = Never means "present even as an explicit null". An XML attribute has no nil form (there is no
+			// attribute of an attribute), so a null attribute is absent whatever the condition says.
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty("@id")]
+							[System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+							public string? Id { get; set; }
+					"""),
+				"Id",
+				"Never");
+		}
+
+		[Test]
+		public void Test_A_JsonIgnore_Never_On_An_Element_Member_Is_Not_Reported()
+		{
+			// an element CAN carry nil, so the condition is honored there
+			AssertNotReported(
+				Probe("""
+							[System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)]
+							public string? Label { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_A_Plain_Attribute_Member_Is_Not_Reported()
+		{
+			// the attribute projection on its own says nothing about null handling: nothing inert here
+			AssertNotReported(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty("@id")]
+							public string? Id { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Self_Writing_Member_Is_Reported_As_Inert()
+		{
+			// the type implements ICrystalXmlSerializable, so the emitter opens the element and hands the INSIDE to the
+			// type's own WriteXml. It is a sequence too, which is what makes this its own case: the "no items" rule sees a
+			// collection here and stays quiet, yet the item name still names nothing, because the items are never written
+			// by the emitter at all.
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "stamp")]
+							public ProbeStampList? Stamps { get; set; }
+					"""),
+				"Stamps",
+				"ItemName",
+				"writes its own XML content");
+		}
+
+		[Test]
+		public void Test_A_DictionaryFormat_On_A_Self_Writing_Member_Is_Reported_As_Inert()
+		{
+			// same reason, other half of the content vocabulary: the shape of what goes inside the element is the type's
+			// business, and a member-level shape cannot reach past its WriteXml
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyAttribute)]
+							public ProbeStampList? Stamps { get; set; }
+					"""),
+				"Stamps",
+				"DictionaryFormat",
+				"writes its own XML content");
+		}
+
+		[Test]
+		public void Test_A_Name_On_A_Self_Writing_Member_Is_Not_Reported()
+		{
+			// the NAME is the one member-level option that still applies to a self-writing type: the element shell is
+			// written by the PARENT, and only its content comes from the type's own WriteXml
+			AssertNotReported(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty("stamps")]
+							public ProbeStampList? Stamps { get; set; }
+					"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Direct_Shaped_Dictionary_Is_Reported_As_Inert()
+		{
+			// Direct names each entry after its KEY, so there is no entry name left for ItemName to supply. Direct is also
+			// the shape a member that names none resolves to, which is what makes this worth reporting: the setting reads
+			// as if it named the entries, and the document ignores it.
+			AssertInert(
+				Probe("""
+							[SnowBank.Data.Xml.XmlProperty(ItemName = "score")]
+							public System.Collections.Generic.Dictionary<string, int>? Scores { get; set; }
+					"""),
+				"Scores",
+				"ItemName",
+				"named after their own key");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_Dictionary_Is_Not_Reported_When_The_Container_Picks_The_Shape()
+		{
+			// the resolved shape walks up to the CONTAINER when the member names none, so an ItemName here is consulted
+			// even though the member itself says nothing about the shape
+			AssertNotReported(
+				Probe(
+					"""
+								[SnowBank.Data.Xml.XmlProperty(ItemName = "score")]
+								public System.Collections.Generic.Dictionary<string, int>? Scores { get; set; }
+						""",
+					containerAttributes: """
+							[SnowBank.Data.CrystalConverter]
+							[SnowBank.Data.Json.CrystalJsonOutput]
+							[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueElements)]
+						"""),
+				"CXML0012");
+		}
+
+		[Test]
+		public void Test_The_Inert_Note_Does_Not_Fire_On_A_Json_Only_Container()
+		{
+			// no XML is produced at all, so the XML vocabulary is inert WHOLESALE, which CXML0002 and the container-level
+			// rules already answer for: repeating it per member would be noise on a shape nobody is being misled by
+			AssertNotReported(
+				Probe(
+					"""
+								[SnowBank.Data.Xml.XmlProperty(ItemName = "tag")]
+								public string? Label { get; set; }
+						""",
+					containerAttributes: JsonOnlyContainer),
+				"CXML0012");
+		}
+
+		#endregion
+
+		#region The new metadata fields...
+
+		[Test]
+		public void Test_XmlProperty_Name_Is_Carried_As_The_Xml_Name()
+		{
+			// the plain rename: the XML name is carried SEPARATELY from the JSON one, which stays untouched
+			var member = MemberOf(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("identifier")]
+						public int Id { get; set; }
+				"""), "Id");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(member.CrystalXmlName, Is.EqualTo("identifier"));
+				Assert.That(member.Name, Is.EqualTo("Id"), "the JSON name is never touched by the XML vocabulary");
+				Assert.That(member.XmlIsAttribute, Is.False, "a plain name projects an element");
+			}
+		}
+
+		[Test]
+		public void Test_XmlProperty_Name_Can_Also_Be_Given_As_A_Named_Argument()
+		{
+			// the attribute has both a constructor and a settable property: the two spellings must resolve identically
+			var member = MemberOf(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(Name = "identifier")]
+						public int Id { get; set; }
+				"""), "Id");
+
+			Assert.That(member.CrystalXmlName, Is.EqualTo("identifier"));
+		}
+
+		[Test]
+		public void Test_XmlProperty_Attribute_Flag_Is_Carried()
+		{
+			var member = MemberOf(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
+						public int Id { get; set; }
+				"""), "Id");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(member.XmlIsAttribute, Is.True);
+				Assert.That(member.CrystalXmlName, Is.Null, "no name was given: the XML name still falls back to the JSON one downstream");
+			}
+		}
+
+		[Test]
+		public void Test_XmlProperty_ItemName_Is_Carried()
+		{
+			var member = MemberOf(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("tags", ItemName = "tag")]
+						public System.Collections.Generic.List<string>? Tags { get; set; }
+				"""), "Tags");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(member.CrystalXmlName, Is.EqualTo("tags"));
+				Assert.That(member.XmlItemName, Is.EqualTo("tag"));
+			}
+		}
+
+		[Test]
+		public void Test_XmlProperty_DictionaryFormat_Is_Carried_As_Its_Enum_Member_Name()
+		{
+			// same convention as the container-level format: the NAME is stored, so reordering the runtime enum cannot
+			// silently change what the generator resolved
+			var member = MemberOf(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueAttributes)]
+						public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
+				"""), "Map");
+
+			Assert.That(member.CrystalXmlDictionaryFormat, Is.EqualTo("KeyValueAttributes"));
+		}
+
+		[Test]
+		public void Test_A_Member_Without_XmlProperty_Carries_No_Xml_Metadata()
+		{
+			// the whole vocabulary is per-member opt-in: an un-annotated member of an XML container carries nothing,
+			// and everything it needs is derived downstream from its JSON name
+			var member = MemberOf(Probe("""
+						public int Id { get; set; }
+				"""), "Id");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(member.CrystalXmlName, Is.Null);
+				Assert.That(member.XmlIsAttribute, Is.False);
+				Assert.That(member.XmlItemName, Is.Null);
+				Assert.That(member.CrystalXmlDictionaryFormat, Is.Null);
+			}
+		}
+
+		#endregion
+
+		#region [DataMember] Order and EmitDefaultValue...
+
+		[Test]
+		public void Test_DataMember_Order_Is_Carried()
+		{
+			var dto = TypeOf(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember(Order = 2)]
+							public int Second { get; set; }
+
+							[System.Runtime.Serialization.DataMember(Order = 0)]
+							public int First { get; set; }
+					""",
+				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(dto.Members.Single(static m => m.MemberName == "Second").DataMemberOrder, Is.EqualTo(2));
+				Assert.That(dto.Members.Single(static m => m.MemberName == "First").DataMemberOrder, Is.EqualTo(0), "order zero is a real order, not an absent one");
+			}
+		}
+
+		[Test]
+		public void Test_Absent_DataMember_Order_Is_Carried_As_Unset()
+		{
+			var member = MemberOf(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember]
+							public int Id { get; set; }
+					""",
+				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"), "Id");
+
+			Assert.That(member.DataMemberOrder, Is.Null, "an unordered member sorts by name, which is a different rule from ordering at zero");
+		}
+
+		[Test]
+		public void Test_Negative_DataMember_Order_Is_Carried_As_Unset()
+		{
+			// DataContractSerializer treats a negative order exactly like an absent one
+			var member = MemberOf(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember(Order = -1)]
+							public int Id { get; set; }
+					""",
+				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"), "Id");
+
+			Assert.That(member.DataMemberOrder, Is.Null);
+		}
+
+		[Test]
+		public void Test_EmitDefaultValue_Defaults_To_True()
+		{
+			// the DCS default: only an explicit EmitDefaultValue = false flips it, so the flag cannot be inverted by accident
+			var dto = TypeOf(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember]
+							public int Annotated { get; set; }
+					""",
+				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"));
+
+			Assert.That(dto.Members.Single(static m => m.MemberName == "Annotated").EmitDefaultValue, Is.True);
+		}
+
+		[Test]
+		public void Test_EmitDefaultValue_False_Is_Carried()
+		{
+			var member = MemberOf(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember(EmitDefaultValue = false)]
+							public int Id { get; set; }
+					""",
+				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"), "Id");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(member.EmitDefaultValue, Is.False);
+				Assert.That(member.IgnoreCondition, Is.Null, "the raw flag is carried as-is: how it interacts with the JSON ignore conditions is resolved downstream");
+			}
+		}
+
+		[Test]
+		public void Test_A_Member_Without_DataMember_Emits_Its_Default_Value()
+		{
+			var member = MemberOf(Probe("""
+						public int Id { get; set; }
+				"""), "Id");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(member.EmitDefaultValue, Is.True);
+				Assert.That(member.DataMemberOrder, Is.Null);
+			}
+		}
+
+		#endregion
+
+		#region The data contract's own name values...
+
+		[Test]
+		public void Test_DataContract_Name_And_Namespace_Values_Are_Carried()
+		{
+			// the DataContract XML format names the root element after the contract, so the VALUES have to reach the metadata
+			// (until now only the attribute's presence was read, which was all the JSON format needed)
+			var dto = TypeOf(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember]
+							public int Id { get; set; }
+					""",
+				dtoAttributes: """	[System.Runtime.Serialization.DataContract(Name = "Widget", Namespace = "http://acme.example/contracts")]"""));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(dto.DataContractName, Is.EqualTo("Widget"));
+				Assert.That(dto.DataContractNamespace, Is.EqualTo("http://acme.example/contracts"));
+			}
+		}
+
+		[Test]
+		public void Test_A_Bare_DataContract_Carries_No_Name_Values()
+		{
+			var dto = TypeOf(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember]
+							public int Id { get; set; }
+					""",
+				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(dto.DataContractName, Is.Null, "the contract name defaults to the type name, which is derived downstream");
+				Assert.That(dto.DataContractNamespace, Is.Null);
+			}
+		}
+
+		[Test]
+		public void Test_A_Type_Without_DataContract_Carries_No_Name_Values()
+		{
+			var dto = TypeOf(Probe("""
+						public int Id { get; set; }
+				"""));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(dto.DataContractName, Is.Null);
+				Assert.That(dto.DataContractNamespace, Is.Null);
+			}
+		}
+
+		#endregion
+
+		#region The '@' name sugar...
+
+		[Test]
+		public void Test_Leading_At_Is_Normalized_Into_A_Name_Plus_The_Attribute_Flag()
+		{
+			// the sugar exists so that the common case reads like the XML it produces; it is resolved HERE, so nothing
+			// downstream ever sees a '@' in a name
+			var member = MemberOf(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@id")]
+						public int Id { get; set; }
+				"""), "Id");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(member.CrystalXmlName, Is.EqualTo("id"), "the '@' is stripped at parse time");
+				Assert.That(member.XmlIsAttribute, Is.True);
+			}
+		}
+
+		[Test]
+		public void Test_Leading_At_Plus_An_Explicit_Attribute_True_Is_Redundant_But_Legal()
+		{
+			// both spellings say the same thing: saying it twice is noise, not a contradiction
+			var member = MemberOf(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@id", Attribute = true)]
+						public int Id { get; set; }
+				"""), "Id");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(member.CrystalXmlName, Is.EqualTo("id"));
+				Assert.That(member.XmlIsAttribute, Is.True);
+			}
+		}
+
+		[Test]
+		public void Test_Leading_At_Plus_An_Explicit_Attribute_False_Is_A_Build_Error()
+		{
+			// the two spellings genuinely disagree, and picking either silently gives a format the author did not ask for
+			var refusal = AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@id", Attribute = false)]
+						public int Id { get; set; }
+				"""), "CXML0007");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("Attribute = false"), "the message names the contradiction, not just the name");
+		}
+
+		[Test]
+		public void Test_An_At_On_Its_Own_Is_A_Build_Error()
+		{
+			var refusal = AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("Id"), "the message names the member the author has to fix");
+		}
+
+		[Test]
+		public void Test_A_Name_That_Is_Invalid_After_Stripping_The_At_Is_A_Build_Error()
+		{
+			// the validation applies to what is LEFT: "@1st" strips to "1st", which no XML parser accepts as a name
+			AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@1st")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+		}
+
+		[Test]
+		public void Test_An_Invalid_Plain_Name_Is_A_Build_Error()
+		{
+			// a space in an element name produces unparseable XML: refusing at build time is the only place it can be caught
+			AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("not a name")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+		}
+
+		[Test]
+		public void Test_A_Name_With_A_Colon_Is_A_Build_Error()
+		{
+			// a colon is the namespace-prefix separator: a member cannot invent a prefix, so an NCName is required
+			AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("ns:id")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+		}
+
+		[Test]
+		public void Test_An_Invalid_ItemName_Is_A_Build_Error()
+		{
+			// the item name lands in the document exactly like the member name does, so it gets the same validation
+			AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("tags", ItemName = "not a name")]
+						public System.Collections.Generic.List<string>? Tags { get; set; }
+				"""), "CXML0007");
+		}
+
+		[Test]
+		public void Test_A_Valid_Name_Is_Not_Reported()
+		{
+			// the non-triggering shape: names that are legal NCNames, including the underscore and dash forms
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("_private-id.v2")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+		}
+
+		[Test]
+		public void Test_A_Json_Name_That_Is_Not_An_Xml_Name_Is_A_Build_Error()
+		{
+			// the member declares NOTHING for XML, so its XML name falls back to the JSON one: "$id" is a perfectly good
+			// JSON property name and produces "<$id>", which no XML parser accepts. Nothing else on the modern format
+			// escapes or encodes it, so this is the only place it can be caught
+			var refusal = AssertRefusal(Probe("""
+						[System.Text.Json.Serialization.JsonPropertyName("$id")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("$id"), "the message quotes the name that would land in the document");
+				Assert.That(refusal.GetMessage(), Does.Contain("XmlProperty"), "and names the remedy, which is an XML-only rename");
+			}
+		}
+
+		[Test]
+		public void Test_A_Json_Name_That_Is_A_Valid_Xml_Name_Is_Not_Reported()
+		{
+			// the non-trigger: a JSON-derived name that happens to be a legal NCName is accepted verbatim, with no
+			// [XmlProperty] needed. This is the overwhelmingly common case, and it must stay silent
+			AssertNotReported(Probe("""
+						[System.Text.Json.Serialization.JsonPropertyName("legacy_id")]
+						public int Id { get; set; }
+				"""), "CXML0007");
+		}
+
+		[Test]
+		public void Test_A_Json_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Wire()
+		{
+			// the DataContract format runs every name through XmlConvert.EncodeLocalName, which has a legal spelling for
+			// any input: refusing there would block a legacy DTO that DataContractSerializer serializes today
+			AssertNotReported(Probe("""
+						[System.Runtime.Serialization.DataMember(Name = "2fa_enabled")]
+						public bool TwoFactor { get; set; }
+				""", DataContractContainer, "[System.Runtime.Serialization.DataContract]"), "CXML0007");
+		}
+
+		#endregion
+
+		#region CXML0007: a [DataContract(Name = ...)] that cannot name the root element...
+
+		[Test]
+		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Is_A_Build_Error()
+		{
+			// the root name is the one name no [XmlProperty] can override, and it is decidable from the declaration
+			// alone: a diagnostic on the type, not an #error buried in the emitted source
+			var refusal = AssertRefusal(Probe("""
+						public int Id { get; set; }
+				""", ModernContainer, "[System.Runtime.Serialization.DataContract(Name = \"not a name\")]"), "CXML0007");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("not a name"), "the message quotes the offending name");
+				Assert.That(refusal.GetMessage(), Does.Contain("root"), "and says which element it would have named");
+			}
+		}
+
+		[Test]
+		public void Test_A_DataContract_Name_That_Is_A_Valid_Xml_Name_Is_Not_Reported()
+		{
+			AssertNotReported(Probe("""
+						public int Id { get; set; }
+				""", ModernContainer, "[System.Runtime.Serialization.DataContract(Name = \"Account\")]"), "CXML0007");
+		}
+
+		[Test]
+		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Wire()
+		{
+			// same asymmetry as the member names: the compat format encodes what it cannot spell
+			AssertNotReported(Probe("""
+						[System.Runtime.Serialization.DataMember]
+						public int Id { get; set; }
+				""", DataContractContainer, "[System.Runtime.Serialization.DataContract(Name = \"not a name\")]"), "CXML0007");
+		}
+
+		#endregion
+
+		#region CXML0011: an attribute-shaped dictionary whose value has no lexical form...
+
+		[Test]
+		public void Test_An_Attribute_Shaped_Dictionary_With_A_Non_Scalar_Value_Is_A_Build_Error()
+		{
+			// the two attribute shapes carry the value as TEXT: a value type with no lexical form has nothing to put
+			// there. The shape is picked in the source, so the answer belongs in a diagnostic, not in an emitted #error
+			var refusal = AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueAttributes)]
+						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
+				"""), "CXML0011");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("KeyValueAttributes"), "the message names the shape that cannot hold the value");
+				Assert.That(refusal.GetMessage(), Does.Contain("KeyValueElements"), "and the ones that can");
+			}
+		}
+
+		[Test]
+		public void Test_A_Container_Default_Attribute_Shape_With_A_Non_Scalar_Value_Is_A_Build_Error()
+		{
+			// the shape does not have to be declared on the member: a container-level default reaches exactly the same
+			// text position, and the emitted document would be exactly as mangled
+			AssertRefusal(Probe("""
+						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
+				""", """
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
+				[SnowBank.Data.Xml.CrystalXmlOutput(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyAttribute)]
+			"""), "CXML0011");
+		}
+
+		[Test]
+		public void Test_An_Attribute_Shaped_Dictionary_With_A_Scalar_Value_Is_Not_Reported()
+		{
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueAttributes)]
+						public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
+				"""), "CXML0011");
+		}
+
+		[Test]
+		public void Test_An_Element_Shaped_Dictionary_With_A_Non_Scalar_Value_Is_Not_Reported()
+		{
+			// the non-trigger that matters: the very same value type is perfectly projectable in a shape whose value
+			// position is an ELEMENT, which is what the remedy tells the author to switch to
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueElements)]
+						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
+				"""), "CXML0011");
+		}
+
+		#endregion
+
+		#region CXML0003: Attribute=true on a member the XML format cannot render as an attribute...
+
+		[Test]
+		public void Test_Attribute_On_A_Scalar_Member_Is_Accepted()
+		{
+			// the whole scalar family the XML formatters cover, plus the two the profile adds (string and enums):
+			// every one of them has a lexical form, which is what an attribute value is
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@i")] public int Number { get; set; }
+						[SnowBank.Data.Xml.XmlProperty("@s")] public string? Text { get; set; }
+						[SnowBank.Data.Xml.XmlProperty("@e")] public ProbeColor Color { get; set; }
+						[SnowBank.Data.Xml.XmlProperty("@g")] public System.Guid Key { get; set; }
+						[SnowBank.Data.Xml.XmlProperty("@d")] public System.DateTime When { get; set; }
+						[SnowBank.Data.Xml.XmlProperty("@t")] public System.TimeSpan Duration { get; set; }
+						[SnowBank.Data.Xml.XmlProperty("@u")] public System.Uri? Link { get; set; }
+						[SnowBank.Data.Xml.XmlProperty("@b")] public byte[]? Blob { get; set; }
+						[SnowBank.Data.Xml.XmlProperty("@n")] public int? Optional { get; set; }
+				"""), "CXML0003");
+		}
+
+		[Test]
+		public void Test_Attribute_On_A_Collection_Is_A_Build_Error()
+		{
+			var refusal = AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
+						public System.Collections.Generic.List<string>? Tags { get; set; }
+				"""), "CXML0003");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("Tags"), "the message names the member");
+		}
+
+		[Test]
+		public void Test_Attribute_On_A_Dictionary_Is_A_Build_Error()
+		{
+			AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
+						public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
+				"""), "CXML0003");
+		}
+
+		[Test]
+		public void Test_Attribute_On_A_Complex_Type_Is_A_Build_Error()
+		{
+			// a nested object has no lexical form at all: an attribute could only ever hold a mangled rendering of it
+			AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
+						public ProbePart? Part { get; set; }
+				"""), "CXML0003");
+		}
+
+		[Test]
+		public void Test_Attribute_Resolved_Through_The_At_Sugar_Is_Checked_Too()
+		{
+			// the check runs on the RESOLVED flag, so the sugar cannot be used to sneak past it
+			AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@tags")]
+						public System.Collections.Generic.List<string>? Tags { get; set; }
+				"""), "CXML0003");
+		}
+
+		[Test]
+		public void Test_A_Collection_Without_The_Attribute_Flag_Is_Not_Reported()
+		{
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("tags", ItemName = "tag")]
+						public System.Collections.Generic.List<string>? Tags { get; set; }
+				"""), "CXML0003");
+		}
+
+		#endregion
+
+		#region CXML0004: the member-level XML vocabulary on a DataContract-profile container...
+
+		[Test]
+		public void Test_At_Sugar_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the DataContract format has no notion of a user-data attribute: everything is an element named by the contract
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								[SnowBank.Data.Xml.XmlProperty("@id")]
+								public int Id { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("DataContract"), "the message names the output that cannot honor the request");
+		}
+
+		[Test]
+		public void Test_Attribute_True_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
+								public int Id { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+		}
+
+		[Test]
+		public void Test_An_Xml_Name_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the contract already decides the element name: a second, XML-only name would silently lose
+			AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								[SnowBank.Data.Xml.XmlProperty("identifier")]
+								public int Id { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+		}
+
+		[Test]
+		public void Test_An_ItemName_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the compat format derives item names from the contract too ("ArrayOfstring" / "string"), so an override
+			// would break the very compatibility the profile exists for
+			AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								[SnowBank.Data.Xml.XmlProperty(ItemName = "tag")]
+								public System.Collections.Generic.List<string>? Tags { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+		}
+
+		[Test]
+		public void Test_The_Same_Vocabulary_On_A_Modern_Container_Is_Not_Reported()
+		{
+			// the non-triggering shape: exactly what the Modern format exists to honor
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@id")]
+						public int Id { get; set; }
+
+						[SnowBank.Data.Xml.XmlProperty("tags", ItemName = "tag")]
+						public System.Collections.Generic.List<string>? Tags { get; set; }
+				"""), "CXML0004");
+		}
+
+		[Test]
+		public void Test_An_Explicit_DictionaryFormat_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the compat format has exactly ONE dictionary shape: a format override there changes nothing, and a setting
+			// that silently changes nothing is the failure mode this whole family of diagnostics exists to prevent
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueAttributes)]
+								public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("KeyValueAttributes"), "the message names the setting that cannot be honored");
+		}
+
+		[Test]
+		public void Test_An_Explicitly_Default_DictionaryFormat_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// spelling out 'Default' asks to INHERIT, which the compat format honors perfectly: it is not an override
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.Default)]
+								public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+		}
+
+		[Test]
+		public void Test_Several_Refused_Settings_Are_Named_In_One_Diagnostic()
+		{
+			// an author who wrote two refused settings has to see BOTH: fixing the first only to rebuild into the second
+			// is the kind of drip-feed that makes a build error feel arbitrary
+			var (_, diagnostics) = RunOn(Probe(
+				"""
+							[System.Runtime.Serialization.DataMember]
+							[SnowBank.Data.Xml.XmlProperty("tags", ItemName = "tag")]
+							public System.Collections.Generic.List<string>? Tags { get; set; }
+					""",
+				containerAttributes: DataContractContainer,
+				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"));
+
+			var refusals = diagnostics.Where(static d => d.Id == "CXML0004").ToList();
+			Assert.That(refusals, Has.Count.EqualTo(1), "the two refused settings belong to one member, so they belong to one diagnostic");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusals[0].GetMessage(), Does.Contain("Name = \"tags\""));
+				Assert.That(refusals[0].GetMessage(), Does.Contain("ItemName = \"tag\""));
+			}
+		}
+
+		[Test]
+		public void Test_A_DataContract_Container_Without_Any_XmlProperty_Is_Not_Reported()
+		{
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int Id { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0004");
+		}
+
+		#endregion
+
+		#region CXML0005: two members resolving to one XML name...
+
+		[Test]
+		public void Test_Two_Members_Resolving_To_The_Same_Element_Name_Is_A_Build_Error()
+		{
+			// two elements with one name is not an error in XML, which is exactly the problem: the document parses,
+			// and the consumer silently reads one of the two
+			var refusal = AssertRefusal(Probe("""
+						public int Alpha { get; set; }
+
+						[SnowBank.Data.Xml.XmlProperty("Alpha")]
+						public int Other { get; set; }
+				"""), "CXML0005");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("Alpha"), "the message names the collision");
+		}
+
+		[Test]
+		public void Test_Two_Attributes_Resolving_To_The_Same_Name_Is_A_Build_Error()
+		{
+			// duplicated attributes, unlike duplicated elements, would make the document itself unparseable
+			AssertRefusal(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@id")]
+						public int Id { get; set; }
+
+						[SnowBank.Data.Xml.XmlProperty("@id")]
+						public int Other { get; set; }
+				"""), "CXML0005");
+		}
+
+		[Test]
+		public void Test_An_Attribute_And_An_Element_Sharing_A_Name_Is_Not_Reported()
+		{
+			// an attribute and a child element live in different namespaces in XML: refusing this pair would be a
+			// false positive on a perfectly readable document
+			AssertNotReported(Probe("""
+						public int Alpha { get; set; }
+
+						[SnowBank.Data.Xml.XmlProperty("@Alpha")]
+						public int Other { get; set; }
+				"""), "CXML0005");
+		}
+
+		[Test]
+		public void Test_The_Collision_Remedy_Points_At_XmlProperty_On_A_Modern_Container()
+		{
+			var refusal = AssertRefusal(Probe("""
+						public int Alpha { get; set; }
+
+						[SnowBank.Data.Xml.XmlProperty("Alpha")]
+						public int Other { get; set; }
+				"""), "CXML0005");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("XmlProperty"), "the Modern format honors an XML-only rename, so that is the remedy to name");
+		}
+
+		[Test]
+		public void Test_The_Collision_Remedy_Points_At_DataMember_On_A_DataContract_Container()
+		{
+			// the remedy has to be one the author can actually apply: an [XmlProperty] rename on this format is itself
+			// refused by CXML0004, so suggesting it would send them from one build error straight into another
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember(Name = "same")]
+								public int Alpha { get; set; }
+
+								[System.Runtime.Serialization.DataMember(Name = "same")]
+								public int Other { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0005");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("DataMember"), "on the compat format the names come from the contract, so that is where the fix goes");
+				Assert.That(refusal.GetMessage(), Does.Not.Contain("XmlProperty"), "and the remedy CXML0004 would refuse must not be suggested");
+			}
+		}
+
+		[Test]
+		public void Test_Distinct_Xml_Names_Are_Not_Reported()
+		{
+			AssertNotReported(Probe("""
+						public int Alpha { get; set; }
+
+						[SnowBank.Data.Xml.XmlProperty("beta")]
+						public int Other { get; set; }
+				"""), "CXML0005");
+		}
+
+		#endregion
+
+		#region CXML0005: a member colliding with the type discriminator...
+
+		/// <summary>Builds a polymorphic probe: one base, one derived type carrying <paramref name="derivedMembers"/>, and a container that enrols both</summary>
+		private static string PolymorphicProbe(string derivedMembers, string polymorphicAttributes = "") => $$"""
+			namespace Probe
+			{
+
+			{{polymorphicAttributes}}
+				[System.Text.Json.Serialization.JsonDerivedType(typeof(ProbeEbook), "ebook")]
+				public abstract record ProbeMedia
+				{
+					public string? Title { get; set; }
+				}
+
+				public sealed record ProbeEbook : ProbeMedia
+				{
+			{{derivedMembers}}
+				}
+
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeMedia))]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeEbook))]
+				public static partial class ProbeConverters
+				{
+				}
+
+			}
+			""";
+
+		[Test]
+		public void Test_An_Attribute_Member_Colliding_With_The_Discriminator_Is_A_Build_Error()
+		{
+			// the discriminator is written as an attribute on every derived element, BEFORE the members: a member attribute
+			// of the same name would emit the attribute twice on one element, which is not even a well-formed document
+			string probe = PolymorphicProbe("""
+						[SnowBank.Data.Xml.XmlProperty("@type")]
+						public string? Kind { get; set; }
+				""");
+			var refusal = AssertRefusal(probe, "CXML0005");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("type"), "the message names the attribute written twice");
+				Assert.That(refusal.GetMessage(), Does.Contain("Kind"), "and the member that has to move");
+				// the location is resolved by matching DISPLAY STRINGS against the crawled symbols, and it silently degrades
+				// to the container's own location when no symbol matches: pin that it really lands on the offending derived
+				// type, or that degradation would send the author to the wrong declaration with no test saying so
+				Assert.That(LineAt(probe, refusal.Location), Does.Contain("ProbeEbook"), "the diagnostic must point at the derived type that carries the colliding member");
+			}
+		}
+
+		/// <summary>Returns the line of <paramref name="source"/> that a diagnostic points at, so a location is asserted without hard-coding a line number</summary>
+		/// <remarks>The source text is passed in rather than read off <c>Location.SourceTree</c>, which is <see langword="null"/> here: the generator caches its diagnostics as file/span pairs (so that nothing holds on to a compilation), and the location it recreates carries no tree.</remarks>
+		private static string LineAt(string source, Location location)
+		{
+			var lines = source.Replace("\r\n", "\n").Split('\n');
+			int index = location.GetLineSpan().StartLinePosition.Line;
+			return index >= 0 && index < lines.Length ? lines[index] : "";
+		}
+
+		[Test]
+		public void Test_A_Member_Colliding_With_A_Renamed_Discriminator_Is_A_Build_Error()
+		{
+			// the name to check is the RESOLVED one: [JsonPolymorphic] renames it, and the XML form drops the leading '$'
+			AssertRefusal(
+				PolymorphicProbe(
+					"""
+								[SnowBank.Data.Xml.XmlProperty("@kind")]
+								public string? Kind { get; set; }
+						""",
+					polymorphicAttributes: "	[System.Text.Json.Serialization.JsonPolymorphic(TypeDiscriminatorPropertyName = \"$kind\")]"),
+				"CXML0005");
+		}
+
+		[Test]
+		public void Test_An_Element_Member_Named_Like_The_Discriminator_Is_Not_Reported()
+		{
+			// the discriminator is an ATTRIBUTE: a child element of the same name shares no namespace with it, exactly like
+			// the member-versus-member case
+			AssertNotReported(PolymorphicProbe("""
+						[SnowBank.Data.Xml.XmlProperty("type")]
+						public string? Kind { get; set; }
+				"""), "CXML0005");
+		}
+
+		#endregion
+
+		#region CXML0006: a bare nested collection...
+
+		[Test]
+		public void Test_A_List_Of_Lists_Is_A_Build_Error()
+		{
+			// the inner sequence has no name to give its own items: the shape is undecidable, not merely awkward
+			var refusal = AssertRefusal(Probe("""
+						public System.Collections.Generic.List<System.Collections.Generic.List<int>>? Matrix { get; set; }
+				"""), "CXML0006");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("Matrix"), "the message names the member");
+		}
+
+		[Test]
+		public void Test_A_Jagged_Array_Is_A_Build_Error()
+		{
+			AssertRefusal(Probe("""
+						public string[][]? Rows { get; set; }
+				"""), "CXML0006");
+		}
+
+		[Test]
+		public void Test_An_Array_Of_Byte_Arrays_Is_Not_Reported()
+		{
+			// a byte[] is a scalar on this format (base64 text), so an array of them is a plain collection of scalars
+			AssertNotReported(Probe("""
+						public byte[][]? Blobs { get; set; }
+				"""), "CXML0006");
+		}
+
+		[Test]
+		public void Test_A_List_Of_Strings_Is_Not_Reported()
+		{
+			// a string is enumerable in C# but scalar in the output: the check must not confuse the two
+			AssertNotReported(Probe("""
+						public System.Collections.Generic.List<string>? Tags { get; set; }
+				"""), "CXML0006");
+		}
+
+		[Test]
+		public void Test_A_List_Of_A_Complex_Type_Is_Not_Reported()
+		{
+			// the intermediate type is exactly the remedy the diagnostic asks for
+			AssertNotReported(Probe("""
+						public System.Collections.Generic.List<ProbePart>? Parts { get; set; }
+				"""), "CXML0006");
+		}
+
+		[Test]
+		public void Test_A_List_Of_Dictionaries_Is_Not_Reported()
+		{
+			// a dictionary is a sequence too, but not a BARE one: the resolved dictionary format names its entries, so
+			// the inner items are not nameless, which is the only thing this diagnostic is about
+			AssertNotReported(Probe("""
+						public System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, int>>? Maps { get; set; }
+				"""), "CXML0006");
+		}
+
+		[Test]
+		public void Test_A_List_Of_Lists_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// the compat format DOES have a name for every level (an inner sequence of ints becomes 'ArrayOfint' holding
+			// 'int' items), so the shape is decidable there: refusing it would block porting a legacy DTO that
+			// DataContractSerializer serializes today, which is the one thing this profile exists to avoid
+			AssertNotReported(
+				Probe(
+					"""
+								public System.Collections.Generic.List<System.Collections.Generic.List<int>>? Matrix { get; set; }
+						""",
+					containerAttributes: DataContractContainer),
+				"CXML0006");
+		}
+
+		[Test]
+		public void Test_A_Refused_Member_Does_Not_Also_Collect_The_Nested_Sequence_Refusal()
+		{
+			// one member, one error: a bad name on a shape that is ALSO a bare nested sequence must not report twice,
+			// because the second message would be noise until the first is fixed
+			var (_, diagnostics) = RunOn(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("not a name")]
+						public System.Collections.Generic.List<System.Collections.Generic.List<int>>? Matrix { get; set; }
+				"""));
+
+			var reported = diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)).Select(static d => d.Id).ToList();
+			Assert.That(reported, Is.EqualTo((string[]) [ "CXML0007" ]), "the name refusal is the one to report; CXML0006 must not stack on top of it");
+		}
+
+		[Test]
+		public void Test_A_JsonArray_Member_Is_Not_Reported()
+		{
+			// the near-miss worth pinning: a JsonArray is a list of JsonValue, and a JsonValue is not itself enumerable,
+			// so the DOM types must not read as nested sequences
+			AssertNotReported(Probe("""
+						public SnowBank.Data.Json.JsonArray? Items { get; set; }
+
+						public SnowBank.Data.Json.JsonObject? Extra { get; set; }
+				"""), "CXML0006");
+		}
+
+		#endregion
+
+		#region CXML0008: a member converter with no XML facet...
+
+		/// <summary>Wraps a converter for <c>bool</c> implementing the facets named in <paramref name="interfaces"/>, applied to a member of the probe's DTO</summary>
+		/// <param name="memberAttributes">Extra attributes on the converted member, written at the member's own indentation (this is how the attribute-projected shape is built)</param>
+		private static string ConverterProbe(string interfaces, string containerAttributes = ModernContainer, string memberAttributes = "") => $$"""
+			namespace Probe
+			{
+
+				public sealed class ProbeBoolConverter : {{interfaces}}
+				{
+
+					public SnowBank.Data.Json.JsonValue Pack(bool instance, SnowBank.Data.Json.CrystalJsonSettings? settings = null, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver = null)
+						=> SnowBank.Data.Json.JsonString.Return(instance ? "1" : "0");
+
+					public bool Unpack(SnowBank.Data.Json.JsonValue value, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver) => value.ToBoolean();
+
+					public void WriteXml<TEmitter>(ref TEmitter emitter, bool value, SnowBank.Data.Json.CrystalJsonSettings? settings = null, string? rootName = null)
+						where TEmitter : struct, SnowBank.Data.Xml.ICrystalXmlEmitter
+					{
+						var name = SnowBank.Data.Xml.CrystalXmlName.Create(rootName ?? "bit");
+						emitter.WriteStartElement(in name);
+						emitter.WriteRawAscii(value ? "1" : "0");
+						emitter.WriteEndElement(in name);
+					}
+
+				}
+
+				public sealed record ProbeDto
+				{
+			{{memberAttributes}}
+					[SnowBank.Data.Json.JsonConvertWith(typeof(ProbeBoolConverter))]
+					public bool Live { get; set; }
+				}
+
+			{{containerAttributes}}
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
+				public static partial class ProbeConverters
+				{
+				}
+
+			}
+			""";
+
+		[Test]
+		public void Test_A_Member_Converter_Without_An_Xml_Facet_Is_A_Build_Error()
+		{
+			// the converter owns the member's JSON form; its XML form would be written by the very rules the converter
+			// was declared to replace, so the two formats would disagree with nothing in the source saying so
+			var refusal = AssertRefusal(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>"), "CXML0008");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("ProbeBoolConverter"), "the message names the converter");
+				Assert.That(refusal.GetMessage(), Does.Contain("ICrystalXmlSerializer<bool>"), "and the facet it is missing, for the member's own type");
+			}
+		}
+
+		[Test]
+		public void Test_A_Member_Converter_With_An_Xml_Facet_Is_Not_Reported()
+		{
+			// the same converter, now answering for both formats: nothing is left to be decided behind the author's back
+			AssertNotReported(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>, SnowBank.Data.Xml.ICrystalXmlSerializer<bool>"), "CXML0008");
+		}
+
+		[Test]
+		public void Test_A_Member_Converter_Without_An_Xml_Facet_Is_Not_Reported_On_A_Json_Only_Container()
+		{
+			// the rule exists because the container publishes TWO formats: with only one of them, the converter owns all of it
+			AssertNotReported(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>", JsonOnlyContainer), "CXML0008");
+		}
+
+		#endregion
+
+		#region CXML0009: an attribute-projected member with a custom converter...
+
+		/// <summary>The <c>[XmlProperty]</c> line that projects the probe's converted member as an XML attribute</summary>
+		private const string AttributeProjection = "\t\t[SnowBank.Data.Xml.XmlProperty(\"@live\")]";
+
+		/// <summary>Both facets, so the refusal cannot be mistaken for the missing-facet one</summary>
+		private const string BothFacets = "SnowBank.Data.Json.IJsonMemberConverter<bool>, SnowBank.Data.Xml.ICrystalXmlSerializer<bool>";
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_With_A_Custom_Converter_Is_A_Build_Error()
+		{
+			// the XML facet's only entry point writes an ELEMENT: it structurally cannot produce an attribute value, so an
+			// attribute-projected member would silently bypass the converter and be written by the rules it replaced
+			var refusal = AssertRefusal(ConverterProbe(BothFacets, memberAttributes: AttributeProjection), "CXML0009");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(refusal.GetMessage(), Does.Contain("Live"), "the message names the member");
+				Assert.That(refusal.GetMessage(), Does.Contain("ProbeBoolConverter"), "and the converter that would be bypassed");
+				Assert.That(refusal.GetMessage(), Does.Contain("drop the '@' projection, or drop the converter"), "and the two ways out");
+			}
+		}
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_With_A_Converter_Reports_Only_That_Refusal()
+		{
+			// the same shape with a converter that has NO XML facet either: one member, one error, and it is the more
+			// specific one (fixing the facet would not make the projection work)
+			var (_, diagnostics) = RunOn(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>", memberAttributes: AttributeProjection));
+
+			var reported = diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)).Select(static d => d.Id).ToList();
+			Assert.That(reported, Is.EqualTo((string[]) [ "CXML0009" ]), "CXML0008 must not stack on top of the projection refusal");
+		}
+
+		[Test]
+		public void Test_An_Element_Projected_Member_With_A_Converter_Is_Not_Reported()
+		{
+			// the element path is the one the facet can answer for: nothing to refuse there
+			AssertNotReported(ConverterProbe(BothFacets), "CXML0009");
+		}
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_Without_A_Converter_Is_Not_Reported()
+		{
+			// the rule is about the PAIR: an attribute-projected scalar with no converter is the ordinary shape
+			AssertNotReported(Probe("""
+						[SnowBank.Data.Xml.XmlProperty("@id")]
+						public int Id { get; set; }
+				"""), "CXML0009");
+		}
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_With_A_Converter_Is_Not_Reported_On_A_Json_Only_Container()
+		{
+			// no XML format, no XML projection: the whole member-level vocabulary is inert there
+			AssertNotReported(ConverterProbe(BothFacets, JsonOnlyContainer, AttributeProjection), "CXML0009");
+		}
+
+		[Test]
+		public void Test_An_Attribute_Projected_Member_With_A_Converter_Emits_No_Attribute()
+		{
+			// the refusal is a generation-time one, so the emitted body must not carry the attribute either: a build that
+			// somehow ignored the error must still not produce a document where the converter was skipped
+			var (output, _) = GeneratorProbeHarness.RunGenerator(GeneratorProbeHarness.Compile(ConverterProbe(BothFacets, memberAttributes: AttributeProjection)));
+			string generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(generated, Does.Not.Contain("__xml_live"), "the attribute name is never even cached");
+				Assert.That(generated, Does.Contain("CXML0009"), "and the member's write site says why it fails instead");
+			}
+		}
+
+		#endregion
+
+		#region A JSON-only container never sees a CXML diagnostic...
+
+		[Test]
+		public void Test_The_Whole_Xml_Vocabulary_Is_Inert_On_A_Json_Only_Container()
+		{
+			// the attribute is a no-op without the container's opt-in, and a no-op must not produce build errors:
+			// every shape below would be refused on an XML container, and all of them are silent here
+			var (containers, diagnostics) = RunOn(Probe(
+				"""
+							[SnowBank.Data.Xml.XmlProperty("@")]
+							public int Bad { get; set; }
+
+							[SnowBank.Data.Xml.XmlProperty("Alpha")]
+							public int Other { get; set; }
+
+							public int Alpha { get; set; }
+
+							[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
+							public System.Collections.Generic.List<string>? Tags { get; set; }
+
+							public System.Collections.Generic.List<System.Collections.Generic.List<int>>? Matrix { get; set; }
+					""",
+				containerAttributes: JsonOnlyContainer));
+
+			Assert.That(diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)), Is.Empty, "a JSON-only container must never see an XML diagnostic");
+
+			var dto = containers["ProbeConverters"].IncludedTypes.Single(static t => t.Name == "ProbeDto");
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(containers["ProbeConverters"].XmlProfile, Is.Null, "sanity: the container really produces no XML");
+				Assert.That(dto.Members.Where(static m => m.CrystalXmlName is not null), Is.Empty, "nothing is parsed out of an inert attribute");
+				Assert.That(dto.Members.Where(static m => m.XmlIsAttribute), Is.Empty);
+			}
+		}
+
+		#endregion
+
+		#region CXML0010 - [CollectionDataContract] on the compat format...
+
+		/// <summary>A collection type carrying <c>[CollectionDataContract]</c>, declared next to the DTO</summary>
+		private const string NamedCollectionType = """
+				[System.Runtime.Serialization.CollectionDataContract(Name = "TheItems", ItemName = "TheItem")]
+				public sealed class ProbeItems : System.Collections.Generic.List<string> { }
+			""";
+
+		[Test]
+		public void Test_A_CollectionDataContract_Member_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the generated compat format derives the element names of a collection from its ITEM type; a member whose type
+			// renames them would come out under names that differ from the ones DataContractSerializer produces, which is
+			// exactly the silent divergence this profile exists to prevent
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public ProbeItems? Items { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: NamedCollectionType + Environment.NewLine + "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0010");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("ProbeItems"), "the message names the annotated type");
+		}
+
+		[Test]
+		public void Test_A_Plain_Collection_Member_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public System.Collections.Generic.List<string>? Items { get; set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0010");
+		}
+
+		[Test]
+		public void Test_A_CollectionDataContract_Member_On_A_Modern_Container_Is_Not_Reported()
+		{
+			// the modern format never reads that attribute in the first place: its names come from the member vocabulary
+			AssertNotReported(
+				Probe(
+					"""
+								public ProbeItems? Items { get; set; }
+						""",
+					dtoAttributes: NamedCollectionType),
+				"CXML0010");
+		}
+
+		#endregion
+
+		#region CXML0013 - a read-only [DataMember] PROPERTY on a [DataContract] container...
+
+		[Test]
+		public void Test_A_GetOnly_DataMember_Property_On_A_DataContract_Container_Is_A_Build_Error()
+		{
+			// the reference serializer's no-set-method check is property-only: a get-only [DataMember] property on a
+			// [DataContract] type is not a valid contract at all (InvalidDataContractException, "No set method for
+			// property"), so there is no format to reproduce
+			var refusal = AssertRefusal(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int ReadOnlyProperty => 42;
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+
+			Assert.That(refusal.GetMessage(), Does.Contain("ReadOnlyProperty"), "the message names the offending member");
+		}
+
+		[Test]
+		public void Test_A_PrivateSetter_DataMember_Property_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// [DataMember] pins the intent on a [DataContract] type: the private setter is unlocked through a
+			// thunk (same as the reference serializer, which reaches non-public setters via reflection), so this
+			// property is NOT read-only and does not hit the get-only refusal
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int WithPrivateSetter { get; private set; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+		}
+
+		[Test]
+		public void Test_A_GetOnly_DataMember_Property_On_A_Poco_Container_Is_Not_Reported()
+		{
+			// no [DataContract] on the type: the member is silently omitted from the output instead (pinned on the
+			// format side by Test_Poco_Mode_ReadOnly_Member_Is_Absent in DcsWireFidelityFacts)
+			AssertNotReported(
+				Probe(
+					"""
+								public int ReadOnlyProperty => 42;
+						"""),
+				"CXML0013");
+		}
+
+		[Test]
+		public void Test_An_InitOnly_DataMember_Property_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// init-only is a SEPARATE flag (IsInitOnly): IsReadOnly is false for it, DCS emits it, and this
+			// diagnostic must not fire on it
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int InitOnlyProperty { get; init; }
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+		}
+
+		[Test]
+		public void Test_A_ReadOnly_DataMember_Field_On_A_DataContract_Container_Is_Not_Reported()
+		{
+			// the no-set-method check DCS applies is property-only: a readonly FIELD is a different, valid shape,
+			// and DCS emits it (pinned in the output side by Test_ReadOnly_DataMember_Field_Is_On_The_Wire in
+			// DcsWireFidelityFacts)
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public readonly int ReadOnlyField = 42;
+						""",
+					containerAttributes: DataContractContainer,
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+		}
+
+		[Test]
+		public void Test_A_GetOnly_DataMember_Property_On_A_DataContract_Type_With_A_Modern_Container_Is_Not_Reported()
+		{
+			// the modern format carries no read-only restriction at all: CXML0013 is compat-only, and does not fire
+			// merely because the TYPE carries [DataContract] - only the container's resolved XML profile matters
+			AssertNotReported(
+				Probe(
+					"""
+								[System.Runtime.Serialization.DataMember]
+								public int ReadOnlyProperty => 42;
+						""",
+					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
+				"CXML0013");
+		}
+
+		#endregion
+
+	}
+
+}

@@ -33,7 +33,7 @@
 	-->
 
 	<ItemGroup>
-		<!-- in-process compilation harness (GeneratedCodeHygieneFacts drives the generator through CSharpGeneratorDriver) -->
+		<!-- in-process compilation harness (GeneratedCodeLanguageFloorFacts drives the generator through CSharpGeneratorDriver) -->
 		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" />
 		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
@@ -53,7 +53,7 @@
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
-		<!-- both the analyzer (generates code for THIS project) and a plain reference (the hygiene facts instantiate the generator in-process) -->
+		<!-- both the analyzer (generates code for THIS project) and a plain reference (the language-floor facts instantiate the generator in-process) -->
 		<ProjectReference Include="..\SnowBank.Serialization.Json.CodeGen\SnowBank.Serialization.Json.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="true" />
 	</ItemGroup>
 

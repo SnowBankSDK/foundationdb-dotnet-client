@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-//
+// 
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-//
+// 
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -45,7 +45,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	/// <summary>The legacy-wire container: serves an unchanged DCJS reader, one endpoint at a time (the not-yet-ported services of a WCF portage)</summary>
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
-	[CrystalJsonSerializable(typeof(ProfiledOrder))]
+	[CrystalSerializable(typeof(ProfiledOrder))]
 	public static partial class LegacyWireConverters
 	{
 		// generated code goes here!
@@ -53,7 +53,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	/// <summary>The modern container over the SAME types: the target state once a service is ported (delete the legacy container when the portage completes)</summary>
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(ProfiledOrder))]
+	[CrystalSerializable(typeof(ProfiledOrder))]
 	public static partial class ModernWireConverters
 	{
 		// generated code goes here!
@@ -139,7 +139,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat, PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}

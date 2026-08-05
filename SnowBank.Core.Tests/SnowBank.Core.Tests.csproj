@@ -28,6 +28,8 @@
 	<ItemGroup>
 		<!-- the Acme DCJS sample zoo: per-case metadata + the wire captured from the real DataContractJsonSerializer -->
 		<EmbeddedResource Include="Data\JSON\AcmeZoo\zoo.json" />
+		<!-- Task 11: the stage-A Acme end-to-end simulation's back-office export stylesheet -->
+		<EmbeddedResource Include="Xml\AcmeSimulation\account-export.xslt" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -73,6 +75,8 @@
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+		<!-- analyzer only: generates the XML holders for the stage-A DCS-equivalence oracle suite (Xml/DcsProbes.cs) -->
+		<ProjectReference Include="..\SnowBank.Serialization.Json.CodeGen\SnowBank.Serialization.Json.CodeGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
 </Project>

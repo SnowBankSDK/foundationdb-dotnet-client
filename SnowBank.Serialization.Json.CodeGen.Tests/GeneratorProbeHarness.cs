@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-//
+// 
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-//
+// 
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -30,6 +30,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.IO;
 	using Microsoft.CodeAnalysis;
 	using Microsoft.CodeAnalysis.CSharp;
+	using SnowBank.SourceAnalysis;
 
 	/// <summary>Drives the source generator in-process over a probe source, the way a consumer project's compilation would</summary>
 	internal static class GeneratorProbeHarness
@@ -45,20 +46,87 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		public static readonly CSharpParseOptions ParseOptions = new(LanguageVersion.Latest);
 
+		/// <summary>Parse options of a consumer sitting exactly on the generator's supported language floor (C# 9, enforced by <c>SYSLIB1221</c>)</summary>
+		/// <remarks>Used by the "lite consumer" language-floor fact: a legacy application migrating to the <c>netstandard2.0</c>/<c>net472</c> path only has to raise <c>LangVersion</c> to the floor, and the emitted code (JSON <b>and</b> XML) must compile there.</remarks>
+		public static readonly CSharpParseOptions FloorParseOptions = new(LanguageVersion.CSharp9);
+
+		/// <summary>Parse options of an old-style (non-SDK) .NET Framework project that never opted into a newer language version: the C# 7.3 default, BELOW the generator's floor</summary>
+		public static readonly CSharpParseOptions BelowFloorParseOptions = new(LanguageVersion.CSharp7_3);
+
 		/// <summary>Parses a probe source into a compilation with NO global usings and nullable enabled</summary>
 		public static CSharpCompilation Compile(string source, string assemblyName = "ProbeAssembly")
+			=> Compile(source, ParseOptions, assemblyName);
+
+		/// <summary>Parses a probe source into a compilation with NO global usings, at an explicit language version</summary>
+		/// <remarks>Nullable is only turned on when the language version supports it: <c>NullableContextOptions.Enable</c> is rejected outright (<c>CS8630</c>) below C# 8.</remarks>
+		public static CSharpCompilation Compile(string source, CSharpParseOptions parseOptions, string assemblyName = "ProbeAssembly")
 			=> CSharpCompilation.Create(
 				assemblyName,
-				syntaxTrees: [ CSharpSyntaxTree.ParseText(source, ParseOptions) ],
+				syntaxTrees: [ CSharpSyntaxTree.ParseText(source, parseOptions) ],
 				references: References,
-				options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+				options: new CSharpCompilationOptions(
+					OutputKind.DynamicallyLinkedLibrary,
+					nullableContextOptions: parseOptions.LanguageVersion.MapSpecifiedToEffectiveVersion() >= LanguageVersion.CSharp8 ? NullableContextOptions.Enable : NullableContextOptions.Disable));
 
 		/// <summary>Runs the generator over the compilation, returning the updated compilation and the generator's own diagnostics</summary>
 		public static (Compilation Output, ImmutableArray<Diagnostic> GeneratorDiagnostics) RunGenerator(CSharpCompilation compilation)
+			=> RunGenerator(compilation, ParseOptions);
+
+		/// <summary>Runs the generator over the compilation, parsing its output with the consumer's own parse options</summary>
+		public static (Compilation Output, ImmutableArray<Diagnostic> GeneratorDiagnostics) RunGenerator(CSharpCompilation compilation, CSharpParseOptions parseOptions)
 		{
-			var driver = CSharpGeneratorDriver.Create([ new CrystalJsonSourceGenerator().AsSourceGenerator() ], parseOptions: ParseOptions);
+			var driver = CSharpGeneratorDriver.Create([ new CrystalJsonSourceGenerator().AsSourceGenerator() ], parseOptions: parseOptions);
 			driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
 			return (output, diagnostics);
+		}
+
+		/// <summary>Names of the generator's tracked parsing steps: one output per container (converter containers and self-serializable types)</summary>
+		private static readonly string[] ContainerTrackingNames = [ "CrystalJsonSpec", "CrystalJsonSelfSpec" ];
+
+		/// <summary>Runs the generator, returning the container metadata the parser produced for each container of the probe, keyed by container name</summary>
+		/// <remarks>Reads the driver's tracked incremental steps: this observes what the parser RESOLVED, which is the contract of a parsing-only change, before any of it reaches the emitted source.</remarks>
+		public static (Dictionary<string, CrystalJsonContainerMetadata> Containers, ImmutableArray<Diagnostic> GeneratorDiagnostics) RunGeneratorAndCaptureContainers(CSharpCompilation compilation)
+		{
+			GeneratorDriver driver = CSharpGeneratorDriver.Create(
+				[ new CrystalJsonSourceGenerator().AsSourceGenerator() ],
+				additionalTexts: null,
+				parseOptions: ParseOptions,
+				optionsProvider: null,
+				//note: 'None' disables NO output (the diagnostics are reported through the source output, so they must stay enabled)
+				driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
+
+			driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var diagnostics);
+
+			var containers = new Dictionary<string, CrystalJsonContainerMetadata>(StringComparer.Ordinal);
+			foreach (var generatorResult in driver.GetRunResult().Results)
+			{
+				foreach (var trackingName in ContainerTrackingNames)
+				{
+					if (!generatorResult.TrackedSteps.TryGetValue(trackingName, out var steps)) continue;
+
+					foreach (var step in steps)
+					{
+						foreach (var output in step.Outputs)
+						{
+							// the step emits the (Metadata, Diagnostics) tuple produced by the parser; the metadata is null when the container was refused
+							if (output.Value is ValueTuple<CrystalJsonContainerMetadata?, ImmutableEquatableArray<DiagnosticInfo>> { Item1: { } metadata })
+							{
+								// the key is the container's SIMPLE name: two probe containers sharing one must fail here, instead of silently overwriting the entry the test then asserts on
+								if (containers.TryGetValue(metadata.Name, out var previous))
+								{
+									if (previous != metadata) throw new InvalidOperationException($"The probe declares two different containers named '{metadata.Name}'; give them distinct names, since this harness keys them by simple name.");
+								}
+								else
+								{
+									containers.Add(metadata.Name, metadata);
+								}
+							}
+						}
+					}
+				}
+			}
+
+			return (containers, diagnostics);
 		}
 
 	}

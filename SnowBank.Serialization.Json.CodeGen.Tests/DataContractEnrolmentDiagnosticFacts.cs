@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-//
+// 
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-//
+// 
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -73,7 +73,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var diagnostics = RunOn(DataContractDto + """
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -93,7 +93,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(HostDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(HostDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -137,7 +137,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -160,7 +160,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -187,7 +187,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -212,7 +212,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -231,7 +231,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -253,7 +253,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -270,7 +270,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -292,13 +292,13 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
 				""");
 			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0017");
-			Assert.That(refusal, Is.Not.Null, "a literal type with no JSON wire form is refused at compile time");
+			Assert.That(refusal, Is.Not.Null, "a literal type with no JSON representation is refused at compile time");
 			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
 			Assert.That(refusal.GetMessage(), Is.EqualTo(string.Format(SnowBank.Data.Json.CrystalJson.Errors.BooleanLiteralTypeNotSupported, "whenFalse", "DayOfWeek")), "and with the same message the runtime guard throws");
 		}
@@ -317,7 +317,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -342,7 +342,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -364,7 +364,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -400,7 +400,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var diagnostics = RunOn(DataContractDto + """
 
 					[SnowBank.Data.Json.CrystalJsonConverter(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}

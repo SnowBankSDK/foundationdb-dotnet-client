@@ -215,11 +215,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	}
 
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
-	[CrystalJsonSerializable(typeof(Person))]
-	[CrystalJsonSerializable(typeof(MyAwesomeUser))]
-	[CrystalJsonSerializable(typeof(Animal))]
-	[CrystalJsonSerializable(typeof(LegacyBag))]
-	[CrystalJsonSerializable(typeof(RequiredProbeDto))]
+	[CrystalSerializable(typeof(Person))]
+	[CrystalSerializable(typeof(MyAwesomeUser))]
+	[CrystalSerializable(typeof(Animal))]
+	[CrystalSerializable(typeof(LegacyBag))]
+	[CrystalSerializable(typeof(RequiredProbeDto))]
 	public static partial class GeneratedConverters
 	{
 		// generated code goes here!

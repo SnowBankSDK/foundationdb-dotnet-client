@@ -40,6 +40,8 @@ namespace SnowBank.Data.Json.Tests
 {
 	using System.Collections.Immutable;
 	using System.IO.Compression;
+	using System.Reflection;
+	using SnowBank.Diagnostics.Contracts;
 #if !NETFRAMEWORK
 	// System.Text.Json interop is disabled on the netstandard2.0 build of SnowBank.Core
 	using System.Text.Json;
@@ -3364,6 +3366,135 @@ namespace SnowBank.Data.Json.Tests
 			// FromValue<T>
 			Assert.That(() => JsonValue.FromValue(foo), Throws.Nothing);
 			Assert.That(() => JsonValue.FromValue(taskFoo), Throws.InstanceOf<JsonSerializationException>().With.Message.Contains("'await'"));
+		}
+
+		[Test]
+		public void Test_Cannot_Serialize_Object_Graph_With_Cycle()
+		{
+			// two nodes referencing each other must be detected as a cycle, and rejected with a dedicated
+			// exception, instead of being caught (much later) by the "too deep" guard, or overflowing the stack.
+
+			var a = new DummyCyclicNode { Name = "A" };
+			var b = new DummyCyclicNode { Name = "B" };
+			a.Next = b;
+			b.Next = a;
+
+			// object tracking is ON by default (CrystalJsonSettings.DoNotTrackVisitedObjects is false unless opted-in)
+			Assert.That(CrystalJsonSettings.Json.DoNotTrackVisitedObjects, Is.False);
+
+			var ex = Assert.Throws<JsonSerializationException>(() => CrystalJson.Serialize(a, CrystalJsonSettings.Json));
+			Assert.That(ex, Is.Not.Null);
+			// must be rejected by the object-recursion guard (a shallow 2-node cycle), not by the unrelated max-depth guard:
+			// the two guards throw the same exception type, so the distinguishing signal has to be the message shape,
+			// since JsonSerializationException does not carry a dedicated error-code/kind property.
+			Assert.That(ex!.Message, Does.Not.Contain("maximum depth"), "A 2-node cycle must be caught well before the max-depth guard kicks in");
+			Assert.That(ex.Message, Does.Contain("Recursive object graphs not supported"));
+			Assert.That(ex.Message, Does.Contain(nameof(DummyCyclicNode)));
+		}
+
+		[Test]
+		public void Test_Can_Serialize_Object_Graph_With_Shared_Non_Cyclic_Reference()
+		{
+			// the SAME instance referenced twice as siblings (a "diamond", not a cycle) must serialize fine:
+			// the recursion guard only tracks the currently open (still being visited) ancestors, not every
+			// instance ever seen, so a shared reference that is not an ancestor of itself is not a cycle.
+
+			var shared = new DummyCyclicNode { Name = "Shared" };
+			var root = new DummyDiamondNode { Name = "Root", Left = shared, Right = shared };
+
+			string json = null!;
+			Assert.That(() => json = CrystalJson.Serialize(root, CrystalJsonSettings.Json), Throws.Nothing);
+
+			// the shared instance must have been written out in full, twice (once per reference)
+			var obj = JsonObject.Parse(json);
+			Assert.That(obj["Left"]["Name"], IsJson.EqualTo("Shared"));
+			Assert.That(obj["Right"]["Name"], IsJson.EqualTo("Shared"));
+		}
+
+		/// <summary>Builds a linear (acyclic) chain of <paramref name="length"/> nodes: node #1 -&gt; node #2 -&gt; ... -&gt; node #<paramref name="length"/> -&gt; null</summary>
+		private static DummyCyclicNode BuildLinearChain(int length)
+		{
+			Contract.Positive(length);
+			DummyCyclicNode? next = null;
+			for (int i = length; i >= 1; i--)
+			{
+				next = new DummyCyclicNode { Name = "Node#" + i.ToString(CultureInfo.InvariantCulture), Next = next };
+			}
+			return next!;
+		}
+
+		[Test]
+		public void Test_Can_Serialize_Object_Graph_At_Maximum_Depth()
+		{
+			// a linear (acyclic) chain whose length is EXACTLY the depth cap must serialize successfully:
+			// the guard must reject graphs that are TOO deep, not merely deep.
+
+			int cap = CrystalJsonWriter.MaxDepth;
+			var chain = BuildLinearChain(cap);
+
+			string json = null!;
+			Assert.That(() => json = CrystalJson.Serialize(chain, CrystalJsonSettings.Json), Throws.Nothing);
+
+			// walk down to the last node to confirm the whole chain was actually serialized, not silently truncated
+			var obj = JsonValue.Parse(json).AsObject();
+			for (int i = 1; i < cap; i++)
+			{
+				Assert.That(obj["Name"], IsJson.EqualTo("Node#" + i.ToString(CultureInfo.InvariantCulture)));
+				obj = obj["Next"].AsObject();
+			}
+			Assert.That(obj["Name"], IsJson.EqualTo("Node#" + cap.ToString(CultureInfo.InvariantCulture)));
+			Assert.That(obj["Next"], IsJson.Null);
+		}
+
+		[Test]
+		public void Test_Cannot_Serialize_Object_Graph_Deeper_Than_Maximum_Depth()
+		{
+			// a linear (acyclic) chain one node deeper than the cap must be rejected by the max-depth guard,
+			// distinctly from the (unrelated) object-recursion guard that catches actual cycles.
+
+			int cap = CrystalJsonWriter.MaxDepth;
+			var chain = BuildLinearChain(cap + 1);
+
+			var ex = Assert.Throws<JsonSerializationException>(() => CrystalJson.Serialize(chain, CrystalJsonSettings.Json));
+			Assert.That(ex, Is.Not.Null);
+			Assert.That(ex!.Message, Does.Contain("maximum depth"));
+			Assert.That(ex.Message, Does.Not.Contain("Recursive object graphs not supported"), "An acyclic chain must be caught by the max-depth guard, not mistaken for a cycle");
+		}
+
+		[Test]
+		public void Test_Can_Serialize_Object_Graph_At_Maximum_Depth_Via_DomWriter()
+		{
+			// same boundary, but through the DOM path (CrystalJsonDomWriter, via JsonValue.FromValue) instead of the text writer
+
+			int cap = CrystalJsonWriter.MaxDepth;
+			var chain = BuildLinearChain(cap);
+
+			JsonValue? value = null;
+			Assert.That(() => value = JsonValue.FromValue(chain), Throws.Nothing);
+
+			var obj = value!.AsObject();
+			for (int i = 1; i < cap; i++)
+			{
+				Assert.That(obj["Name"], IsJson.EqualTo("Node#" + i.ToString(CultureInfo.InvariantCulture)));
+				obj = obj["Next"].AsObject();
+			}
+			Assert.That(obj["Name"], IsJson.EqualTo("Node#" + cap.ToString(CultureInfo.InvariantCulture)));
+			Assert.That(obj["Next"], IsJson.Null);
+		}
+
+		[Test]
+		public void Test_Cannot_Serialize_Object_Graph_Deeper_Than_Maximum_Depth_Via_DomWriter()
+		{
+			// same boundary as the text-writer version, but through the DOM path (CrystalJsonDomWriter, via JsonValue.FromValue):
+			// its VisitingContext has its own tracking machinery, but must enforce the same cap and throw the same guard.
+
+			int cap = CrystalJsonWriter.MaxDepth;
+			var chain = BuildLinearChain(cap + 1);
+
+			var ex = Assert.Throws<JsonSerializationException>(() => JsonValue.FromValue(chain));
+			Assert.That(ex, Is.Not.Null);
+			Assert.That(ex!.Message, Does.Contain("maximum depth"));
+			Assert.That(ex.Message, Does.Not.Contain("Recursive object graphs not supported"), "An acyclic chain must be caught by the max-depth guard, not mistaken for a cycle");
 		}
 
 	}

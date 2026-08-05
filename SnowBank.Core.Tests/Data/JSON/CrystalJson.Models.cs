@@ -482,4 +482,22 @@ namespace SnowBank.Data.Json.Tests
 		public string? Foo { get; set; }
 	}
 
+	/// <summary>Simple linked-list style POCO, used to build reference cycles (or shared, non-cyclic references) for the object-recursion guard tests</summary>
+	public sealed class DummyCyclicNode
+	{
+		public string? Name { get; set; }
+
+		public DummyCyclicNode? Next { get; set; }
+	}
+
+	/// <summary>POCO with two members that can point to the same shared (but non-cyclic) child instance, used to test that "diamond" object graphs do not false-positive as cycles</summary>
+	public sealed class DummyDiamondNode
+	{
+		public string? Name { get; set; }
+
+		public DummyCyclicNode? Left { get; set; }
+
+		public DummyCyclicNode? Right { get; set; }
+	}
+
 }

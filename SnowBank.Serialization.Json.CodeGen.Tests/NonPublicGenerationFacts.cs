@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-//
+// 
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-//
+// 
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -51,7 +51,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				}
 
 				[SnowBank.Data.Json.CrystalJsonConverter]
-				[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 				public static partial class ProbeConverters
 				{
 				}
@@ -89,7 +89,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -129,7 +129,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[SnowBank.Data.Json.CrystalJsonConverter]
-					[SnowBank.Data.Json.CrystalJsonSerializable(typeof(ProbeDto))]
+					[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 					public static partial class ProbeConverters
 					{
 					}
@@ -144,10 +144,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Downlevel_Targets_Fall_Back_To_Reflection_Accessors()
 		{
 			// a netstandard2.0 compilation has no [UnsafeAccessor]: the generator must emit the reflection
-			// flavor instead of refusing (CJ3-6). Only the FLAVOR SELECTION is pinned here: the full generated
-			// output does not compile against the lite build of SnowBank.Core (the proxy surface is excluded
-			// there), so downlevel consumers stay on the reflection path today and this pin protects the
-			// mechanism for the day a downlevel target grows the full surface.
+			// flavor instead of refusing (CJ3-6). Since Q9, the proxy surface (ToReadOnly/ToMutable, the
+			// ReadOnly/Writable proxy types) is gated off by SupportsJsonProxies when the consumer cannot
+			// see it, which is exactly the case here (the lite netstandard2.0 build of SnowBank.Core has no
+			// proxy interfaces): so the FULL generated output is expected to compile clean against the lite
+			// reference set, not just the reflection-accessor flavor selection pinned below.
 			var references = TryBuildNetStandard20References();
 			Assume.That(references, Is.Not.Null, "needs the netstandard2.0 reference pack in the nuget cache AND a SnowBank.Core netstandard2.0 build in artifacts (run the lite-target gate first)");
 
@@ -178,9 +179,19 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(generated, Does.Contain("TypeMapper"), "the generator must have produced the container code");
 			Assert.That(generated, Does.Contain("BindingFlags"), "no [UnsafeAccessor] in the core library: the thunks use reflection accessors");
 			Assert.That(generated, Does.Not.Contain("UnsafeAccessor"), "the zero-cost flavor must not be emitted where the attribute does not exist");
+
+			// the CodeGen-level lite assertion: the FULL generated output (not just the accessor flavor) must
+			// actually compile against the lite netstandard2.0 build, proxy surface excluded
+			var errors = output.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error).ToList();
+			foreach (var diagnostic in errors)
+			{
+				Log(diagnostic.ToString());
+			}
+			Assert.That(errors, Is.Empty, "the full generated output must compile against the lite netstandard2.0 build of SnowBank.Core, with the proxy surface excluded");
 		}
 
-		/// <summary>Builds a netstandard2.0 reference set (the SDK's bundled `ref/netstandard.dll` facade + the lite build of SnowBank.Core), or <see langword="null"/> when either is absent</summary>
+		/// <summary>Builds a netstandard2.0 reference set (the SDK's bundled `ref/netstandard.dll` facade + the lite build of SnowBank.Core and its own dependency closure), or <see langword="null"/> when either is absent</summary>
+		/// <remarks>The whole output directory is referenced, not just <c>SnowBank.Core.dll</c>: its netstandard2.0 build pulls in <c>System.Memory</c>, <c>System.Buffers</c> and <c>System.Runtime.CompilerServices.Unsafe</c> (the BCL polyfill packages), and the generated code (spans, <c>ArrayPool</c>, <c>Unsafe</c>) resolves the same types from those assemblies exactly as a real consumer project would.</remarks>
 		private static IReadOnlyList<MetadataReference>? TryBuildNetStandard20References()
 		{
 			// the SDK bundles the flattened netstandard2.0 reference facade at sdk/<version>/ref/netstandard.dll;
@@ -197,14 +208,13 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			if (facade is null) return null;
 
 			// artifacts/bin/<TestProject>/debug_net10.0 -> artifacts/bin/SnowBank.Core/debug_netstandard2.0
-			var corePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "SnowBank.Core", "debug_netstandard2.0", "SnowBank.Core.dll"));
+			var coreDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "SnowBank.Core", "debug_netstandard2.0"));
+			var corePath = Path.Combine(coreDir, "SnowBank.Core.dll");
 			if (!File.Exists(corePath)) return null;
 
-			return
-			[
-				MetadataReference.CreateFromFile(facade),
-				MetadataReference.CreateFromFile(corePath),
-			];
+			var references = new List<MetadataReference> { MetadataReference.CreateFromFile(facade) };
+			references.AddRange(Directory.GetFiles(coreDir, "*.dll").Select(static path => (MetadataReference) MetadataReference.CreateFromFile(path)));
+			return references;
 		}
 
 	}
