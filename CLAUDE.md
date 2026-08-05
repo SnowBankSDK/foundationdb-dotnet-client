@@ -76,7 +76,7 @@ public sealed class FooFakeDbFacts : FooFacts
 public sealed class FooRealClusterFacts : FooFacts { } // inherits the real-cluster FdbTest behavior
 ```
 
-**Workflow**: iterate against the `*FakeDbFacts` fixtures (Docker-free, instant); then run the `*RealClusterFacts` fixtures (opt-in via the `RealCluster` category or the Unit Test Sessions UI) to validate against a real cluster. Real-cluster runs require Docker and the native `fdb_c` client (one-time `FoundationDB.Client.Native/DownloadBinaries.ps1` per worktree). The same suites double as a ready-made realistic test bed for a future FdbLite backend (a third `*FdbLiteFacts` subclass).
+**Workflow**: iterate against the `*FakeDbFacts` fixtures (Docker-free, instant); then run the `*RealClusterFacts` fixtures (opt-in via the `RealCluster` category or the Unit Test Sessions UI) to validate against a real cluster. Real-cluster runs require Docker and the native `fdb_c` client (one-time per worktree: `FoundationDB.Client.Native/DownloadBinaries.ps1` on Windows, or `DownloadBinaries.sh` on macOS/Linux, which needs `curl` + `python3`; pass `--rid osx-arm64` to fetch only the current platform's binaries). The same suites double as a ready-made realistic test bed for a future FdbLite backend (a third `*FdbLiteFacts` subclass).
 
 ### The netstandard2.0 / net472 "lite" targets
 
