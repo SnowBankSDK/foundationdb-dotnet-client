@@ -337,6 +337,22 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		[Test]
+		public void Test_Poco_Mode_ReadOnly_Member_Is_Absent()
+		{
+			// POCO mode is "public get+set only": PocoProbe.ReadOnlyIgnored is get-only, so neither wire carries it.
+			// (On a [DataContract] type the same shape is not even a valid contract: the reference serializer raises
+			// InvalidDataContractException, "No set method for property".)
+			var probe = new PocoProbe { Zulu = "z", Alpha = "a", Number = 5, Items = ["i1"] };
+
+			string actual = DcsProbeSerializers.PocoProbe.ToXmlText(probe);
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(actual, Is.EqualTo(ReferenceDcsWire.Serialize(probe, typeof(PocoProbe))));
+				Assert.That(actual, Does.Not.Contain("ReadOnlyIgnored"), "a get-only member is never on the DataContract wire");
+			}
+		}
+
+		[Test]
 		public void Test_IgnoreDataMember_And_Unannotated_Are_Absent()
 		{
 			AssertSameWire(new IgnoreProbe { Kept = "k", Ignored = "i", NotAnnotated = "n" }, v => DcsProbeSerializers.IgnoreProbe.ToXmlText(v));

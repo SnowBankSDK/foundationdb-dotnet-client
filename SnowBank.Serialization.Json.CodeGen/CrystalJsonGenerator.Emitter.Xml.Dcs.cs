@@ -359,12 +359,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 			#region Member order...
 
 			/// <summary>Returns the members of a type in the exact order the DataContract wire writes them</summary>
-			/// <remarks>Base level first (recursively), then, inside each level, the members with no declared <c>Order</c> sorted by
+			/// <remarks>
+			/// <para>Base level first (recursively), then, inside each level, the members with no declared <c>Order</c> sorted by
 			/// their WIRE name in ordinal order, then the <c>Order</c> groups ascending with ordinal ties. Ordering by the wire name
-			/// and not by the C# name matters: <c>[DataMember(Name = "renamed_member")]</c> sorts where the wire spells it.</remarks>
+			/// and not by the C# name matters: <c>[DataMember(Name = "renamed_member")]</c> sorts where the wire spells it.</para>
+			/// <para>Get-only (read-only) members are dropped: the DataContract wire never carries one. On a POCO the reference
+			/// serializer only takes public get+set members, so it omits them; on a <c>[DataContract]</c> type a read-only
+			/// <c>[DataMember]</c> is not a valid contract at all (<c>InvalidDataContractException</c>, "No set method for
+			/// property"), so there is no wire to match either way.</para>
+			/// </remarks>
 			private static List<(CrystalJsonMemberMetadata Member, string WireName)> GetXmlDcsOrderedMembers(CrystalJsonTypeMetadata typeDef)
 			{
 				return typeDef.Members
+					.Where(m => !m.IsReadOnly)
 					.Select(m => (Member: m, WireName: GetXmlDcsMemberName(m)))
 					.OrderBy(x => x.Member.InheritanceLevel)
 					.ThenBy(x => x.Member.DataMemberOrder.HasValue ? 1 : 0)

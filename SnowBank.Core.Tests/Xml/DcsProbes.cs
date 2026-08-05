@@ -279,18 +279,18 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[DataContract]
 	public sealed class EmptyContractProbe;
 
-	// note: the spike's read-only property (public string ReadOnlyIgnored => "never";) is dropped here: registering it
-	// makes the generated JSON deserializer (unconditionally emitted alongside the XML writer by the same
-	// [CrystalConverter]/[CrystalSerializable] container, even though this profile never calls it) try to
-	// assign a get-only property in its object-initializer form, which fails to compile (CS0200). That gap is in the
-	// shared JSON member enumeration for POCO (non-[DataContract]) types, not in the DataContract XML profile this
-	// task is porting the oracle for; reported to the main session as a finding, not fixed here.
 	public sealed class PocoProbe
 	{
 		public string? Zulu { get; set; }
 		public string? Alpha { get; set; }
 		public int Number { get; set; }
 		public List<string>? Items { get; set; }
+
+		// get-only property: POCO mode is "public get+set only", so the live oracle omits this member entirely.
+		// It used to be dropped from this probe because the generated JSON deserializer (emitted alongside the XML
+		// writer by the same container, even though this profile never calls it) assigned it in its object-initializer
+		// form, which does not compile (CS0200). The generator now skips read-only members on deserialization.
+		public string ReadOnlyIgnored => "never";
 	}
 
 	[DataContract]
@@ -313,10 +313,9 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[DataContract(Name = "Envelope{0}")]
 	public sealed class NamedGenericProbe<T>
 	{
-		// note: T (not T?): a T? member on an unconstrained T is a shape the generated JSON emission does not handle
-		// (a value-type instantiation turns T? into Nullable<T>, and the generated assignment does not unwrap it,
-		// CS0266) -- the same pre-existing gap Task 9's own probe of this family already worked around.
-		[DataMember] public T Payload = default!;
+		// T? on an unconstrained T is "defaultable T", NOT Nullable<T>: a value-type instantiation (here bool) keeps a
+		// plain bool member. The emission used to spell the substituted type "bool?" and fail to assign it (CS0266).
+		[DataMember] public T? Payload;
 	}
 
 	/// <summary>
@@ -364,8 +363,11 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[DataContract]
 	public sealed class AnyTypeCollectionProbe
 	{
-		// List<object>, not List<object?>: the generated deserializer materializes List<object> and the
-		// nullability mismatch is a CS8619 in generated code; null items go in via null!, like WithNullItem.
+		// List<object>, not List<object?>: the generated deserializer materializes a List<object> and assigns it to the
+		// member, so the annotated form is a CS8619 in generated code ("Nullability of reference types in value of type
+		// 'List<object>' doesn't match target type 'List<object?>'"). Re-checked after the upstream member-form fixes,
+		// which cover value-type T? and read-only members but not this collection-element annotation; still open.
+		// Null items go in via null!, like WithNullItem.
 		[DataMember] public List<object>? Results;
 	}
 

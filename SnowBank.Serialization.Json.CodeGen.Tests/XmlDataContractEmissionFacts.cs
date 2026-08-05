@@ -230,7 +230,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	[DataContract(Name = "Envelope{0}")]
 	public sealed class NamedGenericProbe<T>
 	{
-		[DataMember] public T Payload = default!;
+		// T? on an unconstrained T is "defaultable T", NOT Nullable<T>: the bool instantiation keeps a plain bool member
+		[DataMember] public T? Payload;
 	}
 
 	/// <summary>Clean-room equivalent of the measured key-flattening wrapper: each dictionary KEY becomes a
@@ -294,8 +295,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	[DataContract]
 	public sealed class Box<T>
 	{
-		// note: T (not T?), like NamedGenericProbe above: a T? member on an unconstrained T is a shape the JSON emission does not handle
-		[DataMember] public T Payload = default!;
+		[DataMember] public T? Payload;
 	}
 
 	/// <summary>A contract name that needs escaping, so composing it into a generic name must not escape it TWICE</summary>
@@ -309,7 +309,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	[DataContract(Name = "Digested{0}{#}")]
 	public sealed class DigestedProbe<T>
 	{
-		[DataMember] public T Payload = default!;
+		// T? on an unconstrained T: the RenamedMedium (enum) instantiation keeps a plain enum member
+		[DataMember] public T? Payload;
 	}
 
 	/// <summary>Every composed contract name, as the ITEM name of a collection (the one place a composed name reaches the wire)</summary>

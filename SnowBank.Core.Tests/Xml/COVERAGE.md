@@ -76,6 +76,7 @@ hidden hole.
 | `IsRequired=true` changes nothing on write | inside `Test_Renamed_Contract_And_Members` (the `Required` member) |
 | private `[DataMember]` serialized (UnsafeAccessor thunks) | `DcsWireFidelityFacts.Test_Private_DataMember_Is_Serialized` |
 | POCO mode (no `[DataContract]`): public read/write, alphabetical | `DcsWireFidelityFacts.Test_Poco_Mode_Public_ReadWrite_Alphabetical`, `.Test_Poco_Mode_Null_Member` |
+| POCO mode omits a get-only property (family 20) | `DcsWireFidelityFacts.Test_Poco_Mode_ReadOnly_Member_Is_Absent` |
 | `[DataContract]` with no members self-closes | `DcsWireFidelityFacts.Test_Empty_Contract_Self_Closes` |
 | root name override | `DcsWireFidelityFacts.Test_Root_Name_Override`; `XmlDataContractEmissionFacts.Test_The_Root_Name_Can_Be_Overridden` |
 | ISerializable dialect: keys become element names, non-NCName keys encoded | `DcsWireFidelityFacts.Test_ISerializable_Dialect_Keys_Become_Element_Names`, `.Test_ISerializable_Dialect_Non_NCName_Key` |
@@ -115,10 +116,14 @@ Named, with owners:
    harness will quantify the need; a native XML root path (composing the item type's
    `ICrystalXmlSerializer<T>` facet under an `ArrayOfX` root) is the natural follow-up if the
    captures demand it - parked as an owner question.
-   (b) DEFECT-GATED - the POCO read-only-property trait (`ReadOnlyIgnored`, family 20): the JSON
-   deserializer emission fails to compile (CS0200) before the XML overlay is reached. Restored
-   by the upstream fix `d14b5dd1` (integrated by the owner via PR); re-enabling that probe on
-   this branch is a named follow-up of this stream.
+   (b) COVERED - the POCO read-only-property trait (`ReadOnlyIgnored`, family 20). It was
+   defect-gated: the JSON deserializer emission failed to compile (CS0200) before the XML overlay
+   was reached. Upstream commit `8ce07e52` makes a get-only member serialization-only (skipped on
+   deserialization), so `PocoProbe.ReadOnlyIgnored` is back, and the DataContract XML profile drops
+   read-only members too - measured, not assumed: the reference serializer omits them on a POCO,
+   and rejects a read-only `[DataMember]` on a `[DataContract]` type outright
+   (`InvalidDataContractException`, "No set method for property"). Pinned by
+   `DcsWireFidelityFacts.Test_Poco_Mode_ReadOnly_Member_Is_Absent`.
 4. REDUCED - the ISerializable family lost its `KeyedBag<List<string>>` half (gap 1's shape);
    `type="ArrayOfstring"` on an ISerializable value is pinned by the deviation-3 fact instead.
 5. COVERED (this ledger's own probe) - `List<object>` as a collection member (matrix:
@@ -145,12 +150,18 @@ Named, with owners:
    `ICrystalXmlSerializable.WriteXml` is UNGUARDED: the depth counter is a generated parameter and
    does not cross a hook call, so it resets to 0 on the other side and `CrystalXmlCycleException`
    never fires. Stated in the runtime docs; no test pins it either way.
-10. REDUCED BY A PRE-EXISTING JSON-GENERATOR DEFECT - `NamedGenericProbe<T>.Payload` is declared
-   `T` and not `T?` (the nullable-generic form fails to compile, CS0266), and
-   `AnyTypeCollectionProbe` holds a `List<object>` and not a `List<object?>` (CS8619). The probes
-   therefore cover the composed-name and `anyType` traits, but the nullable-generic and
-   nullable-item traits they were meant to carry are silently dropped. Recoverable once the JSON
-   generator handles those two shapes.
+10. PARTLY RECOVERED - this entry used to name two probe reductions forced by the same JSON
+   generator; one is fixed, one is still open.
+   (a) RECOVERED - `NamedGenericProbe<T>.Payload` is declared `T?` again (likewise `Box<T>` and
+   `DigestedProbe<T>` in `XmlDataContractEmissionFacts`). Upstream commit `8ce07e52` stops
+   spelling an unconstrained `T?` as `Nullable<T>` when the substitution is a value type, so the
+   value-type instantiations (`NamedGenericProbe<bool>`, `DigestedProbe<RenamedMedium>`) compile
+   and the nullable-generic trait is carried again.
+   (b) STILL OPEN - `AnyTypeCollectionProbe` holds a `List<object>` and not a `List<object?>`.
+   Re-checked after the upstream fix: the generated deserializer still materializes a
+   `List<object>` and assigns it to the annotated member, which is a CS8619 in generated code
+   ("Nullability of reference types in value of type `List<object>` doesn't match target type
+   `List<object?>`"). The `anyType` trait is covered; the nullable-item annotation is not.
 11. GAP, DISCLOSED - `GetXmlDcsContractNameOfArgument`'s fallback uses the argument's plain type
    name, dropping a non-enum `[DataContract(Name = ...)]` and the declaring-type chain of a nested
    type. It is only reachable through one narrow escape, and needs ALL THREE conditions at once:
