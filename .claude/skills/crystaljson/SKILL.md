@@ -4,7 +4,7 @@ description: >-
   How to use CrystalJson, the custom JSON library in SnowBank.Core (namespace SnowBank.Data.Json). Covers the JsonValue
   DOM (JsonObject / JsonArray / JsonString / JsonNumber / JsonBoolean / JsonNull / JsonDateTime), the read-only vs mutable
   model, the CrystalJson static API (Serialize / Parse / Deserialize) and CrystalJsonSettings, the Roslyn source generator
-  for fast reflection-free serializers and read-only/writable proxies ([CrystalJsonConverter] / [CrystalJsonSerializable]),
+  for fast reflection-free serializers and read-only/writable proxies ([CrystalJsonConverter] / [CrystalSerializable]),
   the IJsonSerializable / IJsonPackable / IJsonDeserializable interfaces, MutableJsonValue / ObservableJsonValue and
   JsonPath. Use whenever code parses, builds, reads, mutates, or serializes JSON with these types, reads optional fields
   with defaults, declares a generated JSON converter/proxy, or implements custom JSON (de)serialization. Use it even when
@@ -23,7 +23,7 @@ There are **two layers**, used together:
 
 1. **The DOM** - `JsonValue` and its subtypes. A mutable-or-immutable tree you build, parse, navigate, and serialize.
    Use it for schemaless / dynamic JSON (config, arbitrary documents, change records).
-2. **The source generator** - `[CrystalJsonConverter]` + `[CrystalJsonSerializable(typeof(T))]` generate fast,
+2. **The source generator** - `[CrystalJsonConverter]` + `[CrystalSerializable(typeof(T))]` generate fast,
    reflection-free, AOT-friendly converters for your POCOs, plus typed **read-only / writable proxies** over the DOM.
    Use it for your domain types.
 
@@ -243,7 +243,7 @@ read-only/writable proxies. (This is how DocStore documents work.)
 
 ### Declare
 
-Put `[CrystalJsonSerializable(typeof(T))]` (one per root type) on a `public static partial class` marked
+Put `[CrystalSerializable(typeof(T))]` (one per root type) on a `public static partial class` marked
 `[CrystalJsonConverter]`. Nested types are discovered automatically. Use `[JsonProperty("name")]` to rename a field.
 
 ```csharp
@@ -258,9 +258,40 @@ public sealed record Book
 }
 
 [CrystalJsonConverter]                       // or [CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)] for camelCase + ignore-case
-[CrystalJsonSerializable(typeof(Book))]
+[CrystalSerializable(typeof(Book))]
 public static partial class MyJson { }       // generated members land here
 ```
+
+#### The container vocabulary *(7.4.4+)*
+
+`[CrystalJsonConverter]` is a **mono-format alias**: it means "this class hosts generated code" **plus**
+"produce the JSON format, with these parameters". The two halves also exist separately, which is what a
+container producing several formats needs:
+
+| Attribute | Namespace | Role |
+|---|---|---|
+| `[CrystalConverter]` | `SnowBank.Data` | the container marker; says nothing about the formats |
+| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrolls a root type; repeatable; feeds every output format |
+| `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | requests the JSON format (profile, naming policy, case-insensitivity) |
+| `[CrystalXmlOutput(...)]` | `SnowBank.Data.Xml` | requests the XML format (see `Documentation/CrystalXml.md`) |
+| `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias: `[CrystalConverter]` + `[CrystalJsonOutput]`, JSON only |
+| `[CrystalXmlConverter(...)]` | `SnowBank.Data.Xml` | alias: `[CrystalConverter]` + `[CrystalXmlOutput]`, XML only |
+
+Rules the compiler enforces: a `[CrystalConverter]` naming no output format is refused (`CRYS0001`);
+a mono-format alias next to an output attribute is refused (`CRYS0002` - use `[CrystalConverter]` with
+explicit output attributes instead); several container markers on one class are refused (`CRYS0003`).
+
+```csharp
+// a container that produces BOTH formats from one set of enrolled types
+[CrystalConverter]
+[CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]
+[CrystalXmlOutput]
+[CrystalSerializable(typeof(Book))]
+public static partial class MyWires { }
+```
+
+`[CrystalJsonSerializable(typeof(T))]` is the former spelling of `[CrystalSerializable]`: still working
+and byte-identical, but `[Obsolete]` (enrollment never was JSON-specific).
 
 ### Self-serializable types: the entity IS its own container *(7.4.3+)*
 
@@ -277,7 +308,7 @@ every type decorated with that attribute is opted into generation.
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public sealed class MyEntityAttribute : Attribute { }
 
-// the application just declares an entity - no container, no [CrystalJsonSerializable]
+// the application just declares an entity - no container, no [CrystalSerializable]
 [MyEntity]
 public sealed partial record Widget
 {
@@ -324,7 +355,7 @@ Things to know before you use it:
   still works, just without a generated converter.
 - Hint names are namespace-qualified in this mode, because entity names collide across namespaces far more
   often than container names do.
-- The `[CrystalJsonConverter]` + `[CrystalJsonSerializable]` container path is untouched and still correct.
+- The `[CrystalJsonConverter]` + `[CrystalSerializable]` container path is untouched and still correct.
   Prefer the container when you are enrolling third-party types you cannot annotate, or a set of unrelated
   types; prefer self mode when the type is yours and a layer already marks it.
 
@@ -458,7 +489,7 @@ public bool Enabled { get; set; }
 
 A **null** first argument means the member is **not emitted at all** when the value is false, for a consumer that
 expects either the member absent or the true literal. `[JsonBooleanLiterals(null, true)]` is the idiom for
-"emit true, or emit nothing": the wire stays ordinary JSON booleans and the only thing the attribute changes is
+"emit true, or emit nothing": the output stays ordinary JSON booleans and the only thing the attribute changes is
 the omission, which says the intent in C# better than a condition whose "default" the reader has to decode as
 false. It is exactly equivalent to `[JsonBooleanLiterals("0","1")]` plus
 `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]` (pinned byte-identical by a test), and
@@ -466,7 +497,7 @@ false. It is exactly equivalent to `[JsonBooleanLiterals("0","1")]` plus
 is legal and does nothing: both literals are what a `bool` serializes to anyway.
 
 Arguments accept a **string, a bool, or a numeric value**, and the two do not have to match
-(`[JsonBooleanLiterals("0", 1)]` is legal, because legacy wires are not always consistent). Anything else is
+(`[JsonBooleanLiterals("0", 1)]` is legal, because legacy formats are not always consistent). Anything else is
 refused: the reflection path throws when the contract is built, the generator reports **`CJSON0017`**, same
 message. The parameters are typed `object` so that `null` can carry the omit meaning, which is why that check
 exists at all: it replaces the compiler check the old typed constructors gave you.
@@ -517,7 +548,7 @@ whole-type converter can be named on a member with no adapter.
 both paths, so a `T?` declaration takes over every **present** value and can answer "no value" for a
 present-but-unreadable input (`""`, an unparseable token) - distinctly from `default(T)`, which stays a real value, and
 from JSON null/missing, which stay the pipeline's on both sides. The `T?` declaration transfers the **read side only**:
-`Pack` still never sees null, and the null-member wire follows the settings (`WithNullMembers()` etc.), so *a member
+`Pack` still never sees null, and the null-member format follows the settings (`WithNullMembers()` etc.), so *a member
 converter cannot represent absence for a nullable member whose absent form is not JSON null, unless it is declared for
 the nullable type itself - and even then only when reading*. A `T?` converter named on a NON-nullable member is refused
 loudly (reflection: at metadata build; generator: `CJSON0010`).
@@ -548,9 +579,9 @@ type-level converter wins over the duck-typed `JsonSerialize`/`JsonPack` methods
 | `CJSON0012` | warning (suppressible) | an `internal` member with no include/exclude signal: serialized by generated converters, invisible to reflection; pin the intent with `[JsonInclude]` or `[JsonIgnore]` |
 | `CJSON0015` | error | a serialization callback (`[OnSerializing]` and friends) declares the legacy `StreamingContext` parameter; drop it, or replace it with `JsonValue`/`JsonObject`/`JsonArray`. The reflection path throws the same message at contract build |
 | `CJSON0016` | error | a type declares `[OnDeserializing]` alongside a `required` or `init`-only member. The pre-populate callback must observe an unpopulated instance, so members are assigned after construction, which neither of those allows; the message names the member and the remedy for its specific construct |
-| `CJSON0017` | error | a `[JsonBooleanLiterals]` argument has a type with no JSON wire form; use a string, a bool, or a numeric value. The reflection path throws the same message when the contract is built |
+| `CJSON0017` | error | a `[JsonBooleanLiterals]` argument has a type with no JSON format form; use a string, a bool, or a numeric value. The reflection path throws the same message when the contract is built |
 | `CJSON0018` | warning (suppressible) | `StrictLiterals` combined with a null false literal: strict mode enforces the configured literals, and with no false literal there is nothing on the false side to enforce. Generator-only on purpose, because it changes no behaviour (see below) |
-| `CJSON0013` | error | a wire profile (`DataContractCompat`) combined with a camelCase/case-insensitive naming option; use the dual-container pattern instead |
+| `CJSON0013` | error | a format profile (`DataContractCompat`) combined with a naming policy (camelCase and friends); use the dual-container pattern instead. `PropertyNameCaseInsensitive` is NOT a trigger: it is a read-side tolerance for incoming member names and changes nothing about what the profile writes |
 
 ---
 
@@ -576,7 +607,7 @@ silently changes the output, so check the matrix before annotating a DTO:
 
 - **Reflection** (`CrystalJsonTypeResolver`) - what `CrystalJson.Serialize` / `Deserialize<T>` / `JsonValue.FromValue`
   use for a type with no generated converter.
-- **Source generator** - what `[CrystalJsonConverter]` + `[CrystalJsonSerializable(typeof(T))]` emit.
+- **Source generator** - what `[CrystalJsonConverter]` + `[CrystalSerializable(typeof(T))]` emit.
 
 | Attribute | Reflection | Source generator |
 |---|---|---|
@@ -584,7 +615,7 @@ silently changes the output, so check the matrix before annotating a DTO:
 | STJ `[JsonPropertyName("x")]` | YES | YES |
 | STJ `[JsonIgnore]` / `[JsonIgnore(Condition = ...)]` | YES, full STJ semantics *(7.4.3+)* | YES, full STJ semantics *(7.4.3+)* |
 | `[IgnoreDataMember]` | YES *(7.4.3+)* - excludes the member on a non-`[DataContract]` type; on a `[DataContract]` type the `[DataMember]` opt-in still governs (DCJS's own precedence) | counts as an ignore signal *(7.4.3+)* |
-| STJ `[JsonInclude]` (non-public members/accessors) | YES *(7.4.3+)*, a superset of STJ | YES *(7.4.3+)* - reached through accessor thunks (`[UnsafeAccessor]` where the TFM has it, reflection accessors downlevel); `SYSLIB1038` is retired. An `internal` member with NO include/exclude signal still diverges (generated-only inclusion, kept for wire compatibility) and gets the suppressible warning `CJSON0012` nudging an explicit `[JsonInclude]` or `[JsonIgnore]` |
+| STJ `[JsonInclude]` (non-public members/accessors) | YES *(7.4.3+)*, a superset of STJ | YES *(7.4.3+)* - reached through accessor thunks (`[UnsafeAccessor]` where the TFM has it, reflection accessors downlevel); `SYSLIB1038` is retired. An `internal` member with NO include/exclude signal still diverges (generated-only inclusion, kept for format compatibility) and gets the suppressible warning `CJSON0012` nudging an explicit `[JsonInclude]` or `[JsonIgnore]` |
 | STJ `[JsonPolymorphic]` + `[JsonDerivedType]` | YES (discriminator name **and** values are free-form) | YES |
 | `[JsonConvertWith(typeof(X))]` (SnowBank), members **and** types | YES *(7.4.3+)* | YES *(7.4.3+)* |
 | `[JsonBooleanLiterals]` (SnowBank) | YES *(7.4.3+)* | YES *(7.4.3+)* |
@@ -597,7 +628,7 @@ silently changes the output, so check the matrix before annotating a DTO:
 | `[DataMember]`'s `Order` / `EmitDefaultValue` | no | no |
 | `[OnSerializing]` / `[OnSerialized]` / `[OnDeserializing]` / `[OnDeserialized]` | YES *(7.4.3+)*, `void M()` on all four and `void M(JsonValue\|JsonObject\|JsonArray)` on the deserialize pair; the legacy `void M(StreamingContext)` throws at contract build | same shapes accepted; the legacy `StreamingContext` form is build error `CJSON0015` at the callsite |
 | STJ `IJsonOnSerializing` / `IJsonOnSerialized` / `IJsonOnDeserializing` / `IJsonOnDeserialized` interfaces | no, deliberately (see *Lifecycle* below) | no, deliberately |
-| `[CollectionDataContract]`'s `Name` / `ItemName` / `KeyName` / `ValueName` | no, and **neither does DCJS**: those four names shape the XML wire only, so there is nothing to reproduce (see below) | no |
+| `[CollectionDataContract]`'s `Name` / `ItemName` / `KeyName` / `ValueName` | no, and **neither does DCJS**: those four names shape the XML format only, so there is nothing to reproduce (see below) | no |
 | Newtonsoft `[JsonProperty]` (name only) | YES | no |
 | `[XmlIgnore]` / `[XmlElement]` / `[XmlAttribute]` | YES (non-`[DataContract]` types) | no |
 | STJ `[JsonPropertyOrder]`, `[JsonNumberHandling]`, `[JsonExtensionData]`, `[JsonConstructor]` | no | no |
@@ -655,15 +686,15 @@ is now `EnumsAsNumbers`, with inverted meaning. The `EnumsAsString` *property* a
 
 **Migrating a legacy `[DataContract]` DTO** (e.g. from `DataContractJsonSerializer`): the reflection path already
 reproduces its member selection and `Name=` renames, so an un-touched DTO keeps its output - **but only on that path**
-(a generated container applies the same model, so enrolling one is supported and produces the same wire). Useful equivalences:
+(a generated container applies the same model, so enrolling one is supported and produces the same format). Useful equivalences:
 
 - `EmitDefaultValue = false` -> `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]`
 - a non-public `[DataMember]` -> nothing *(7.4.3+)*: on a `[DataContract]` type it serializes and binds
   automatically on the reflection path (the interim `[JsonInclude]` opt-in keeps working, now redundant)
 - `[CollectionDataContract(ItemName = "entry", KeyName = "code", ValueName = "label")]` -> **nothing to do**: those
-  names exist in the XML wire only. DCJS itself writes a `List<string>` subclass as `["x","y"]` and a
+  names exist in the XML format only. DCJS itself writes a `List<string>` subclass as `["x","y"]` and a
   `Dictionary<string,string>` subclass as `[{"Key":"c1","Value":"L1"}]`, with the literal `Key`/`Value` and the
-  configured names nowhere on the wire. The attribute's only JSON-visible meaning is "this type is a collection",
+  configured names nowhere in the output. The attribute's only JSON-visible meaning is "this type is a collection",
   which section 10 already covers for subclasses of `List<T>` / `Collection<T>` / `Dictionary<K,V>`: they bind back
   as themselves. Do not go looking for a naming knob to port.
 - `[KnownType]` -> `[JsonPolymorphic(TypeDiscriminatorPropertyName = "__type")]` + `[JsonDerivedType(typeof(X), "Name:Ns")]`
@@ -673,10 +704,10 @@ reproduces its member selection and `Name=` renames, so an un-touched DTO keeps 
 - Never put `[DataMember]` (or `[JsonInclude]`, or a `[JsonProperty]`-style rename) and an unconditional
   `[JsonIgnore]` on the same member: the combination is **refused loudly** on both paths *(7.4.3+)* - the
   reflection path throws when the type's contract is built, and the generator fails the build with error
-  `CJSON0008`. This is the dual-output DTO (one wire carried the member, the other did not), which is not
+  `CJSON0008`. This is the dual-output DTO (one format carried the member, the other did not), which is not
   supported: split the type, one DTO per serializer; if the pair is a slip, remove one of the two attributes.
   Do NOT resolve it by adding a `Condition` - that flips the member to included-with-a-write-rule and ships it
-  onto the second wire. A conditional `[JsonIgnore(Condition = ...)]` next to `[DataMember]` stays legal (it is
+  onto the second format. A conditional `[JsonIgnore(Condition = ...)]` next to `[DataMember]` stays legal (it is
   the `EmitDefaultValue` recipe).
 
 **Settings that restore legacy-reader compatibility** (the recipe column, per construct):
@@ -690,21 +721,23 @@ reproduces its member selection and `Name=` renames, so an un-touched DTO keeps 
 | `"P1DT2H3M4.005S"` ISO 8601 duration strings for `TimeSpan` *(7.4.3+; default is a number of seconds)* | `WithIso8601Durations()` |
 
 **`CrystalJsonSettings.DataContractCompat`** *(7.4.3+)* is the named, cached preset composing all five: an
-endpoint using it reproduces the COMPLETE `DataContractJsonSerializer` wire with one settings reference.
+endpoint using it reproduces the COMPLETE `DataContractJsonSerializer` format with one settings reference.
 Scope it per endpoint (`WithNullMembers()` is pure verbosity for any consumer that is not a frozen legacy
 reader); reading never needs it, every legacy shape is accepted on read by default.
 
 **For teams coming from DCJS: the container-level profile** *(7.4.3+)*. A source-generated container can bake
-the preset as its default wire: `[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]`.
-Its generated entry points then emit the legacy wire when the caller passes no settings; explicitly passed
+the preset as its default format: `[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]`.
+Its generated entry points then emit the legacy format when the caller passes no settings; explicitly passed
 settings always replace the profile ENTIRELY (no merging). The profile governs value formats only and is
 independent of membership: it serves **plain DTOs** (the DCJS POCO opt-out rules) and **`[DataContract]`
 types** (the DataContract model) alike, exactly as an unprofiled container does. For the types it serves, **a DataContractCompat
 container produces what DCJS would have produced, with the documented differences** - member order
 (declaration order here; DCJS wrote POCO members alphabetically and honored `Order=`), no `\/` escaping
 outside `\/Date()\/` literals, `-0.0` serialized as `0`, and the dual-output /
-double-contract shapes DCJS resolved silently are refused loudly. Combining the profile with a camelCase or
-case-insensitive naming option is a build error (`CJSON0013`): the DCJS wire has no naming policy. **The dual-container pattern is the intended
+double-contract shapes DCJS resolved silently are refused loudly. Combining the profile with a camelCase (or
+other) naming policy is a build error (`CJSON0013`): the DCJS format has no naming policy. `PropertyNameCaseInsensitive`
+next to the profile is NOT refused - it only changes how an incoming member name is matched when reading JSON,
+and the profile still writes the declared names untouched: strict on output, lenient on input. **The dual-container pattern is the intended
 shape for a progressive WCF portage**: not-yet-ported services serialize through the compat container,
 modernized services through a default or `Web` container over the SAME types; when the portage completes,
 delete the legacy container.
