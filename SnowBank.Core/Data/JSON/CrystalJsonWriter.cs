@@ -1266,7 +1266,7 @@ namespace SnowBank.Data.Json
 			}
 			if (value != null && m_markVisited)
 			{ // protect against loops in the object graph that would cause a stack overflow
-				if (m_visitedCursor > 0 && AlreadyVisited(m_visitedObjects.AsSpan(0, m_visitedCursor), m_visitedCursor))
+				if (m_visitedCursor > 0 && AlreadyVisited(m_visitedObjects.AsSpan(0, m_visitedCursor), value))
 				{
 					if (!TypeSafeForRecursion(value.GetType()))
 					{
@@ -1293,7 +1293,7 @@ namespace SnowBank.Data.Json
 			{
 				if (cursor >= buffer.Length)
 				{
-					Array.Resize(ref buffer, checked(buffer.Length + 4));
+					Array.Resize(ref buffer, Math.Max(buffer.Length * 2, 4));
 				}
 				buffer[cursor++] = value;
 			}
