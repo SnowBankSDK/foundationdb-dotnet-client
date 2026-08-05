@@ -27,6 +27,7 @@
 namespace SnowBank.SourceAnalysis
 {
 	using System.Collections.Generic;
+	using System.Globalization;
 	using System.Text;
 	using Microsoft.CodeAnalysis;
 
@@ -91,6 +92,42 @@ namespace SnowBank.SourceAnalysis
 			this.FullName = type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
 			this.FullyQualifiedName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 			this.Assembly = type.ContainingAssembly?.Name ?? "";
+
+			if (type.TypeKind == TypeKind.Enum)
+			{ // only enums pay for the attribute walk, see DataContractName
+				this.DataContractName = ReadDataContractName(type);
+			}
+		}
+
+		/// <summary>Value of the <c>[DataContract(Name = ...)]</c> attribute on an ENUM type, if any</summary>
+		/// <remarks>
+		/// <para>An enum is the one kind of type a wire has to be able to name from a reference alone: it is never registered as a
+		/// container type of its own (it has no members to serialize), yet a wire that names types after their data contract has to
+		/// spell it under its renamed contract everywhere that name is composed (a collection item, a <c>KeyValueOfXY</c> entry, a
+		/// generic argument). Every other kind reaches such a wire as a full <see cref="TypeMetadata"/>.</para>
+		/// <para><see langword="null"/> for anything that is not an enum, and for an enum with no declared name: the attribute walk
+		/// is deliberately NOT paid on every type reference.</para>
+		/// </remarks>
+		public string? DataContractName { get; }
+
+		private static string? ReadDataContractName(ITypeSymbol type)
+		{
+			foreach (var attribute in type.GetAttributes())
+			{
+				var attributeClass = attribute.AttributeClass;
+				if (attributeClass?.Name != "DataContractAttribute") continue;
+				if (attributeClass.ContainingNamespace?.ToDisplayString() != "System.Runtime.Serialization") continue;
+
+				foreach (var arg in attribute.NamedArguments)
+				{
+					if (arg.Key == "Name" && arg.Value.Value is string { Length: > 0 } name)
+					{
+						return name;
+					}
+				}
+			}
+
+			return null;
 		}
 
 		public string Name { get; }
@@ -116,6 +153,30 @@ namespace SnowBank.SourceAnalysis
 		public bool IsIEnumerableOf() => this.Name == "IEnumerable" && this.NameSpace == "System.Collections.Generic";
 
 		public bool IsIDictionaryOf() => this.Name == "IDictionary" && this.NameSpace == "System.Collections.Generic";
+
+	}
+
+	/// <summary>Extracted metadata about one declared member of an enum type.</summary>
+	/// <remarks>Captured so that a generator can emit a reflection-free label lookup (a <c>switch</c> over the declared values) instead of calling <c>Enum.ToString()</c>, which resolves names through the runtime's reflection-backed cache.</remarks>
+	[DebuggerDisplay("{Name} = {Value}")]
+	public sealed record EnumMemberMetadata
+	{
+
+		/// <summary>Name of the field, as declared in C#</summary>
+		public required string Name { get; init; }
+
+		/// <summary>Constant value of the field, formatted in the invariant culture (the underlying integer, as text)</summary>
+		public required string Value { get; init; }
+
+		/// <summary>Value of the <c>[EnumMember(Value = ...)]</c> attribute on the field, if any (the DataContract wire token)</summary>
+		public string? EnumMemberValue { get; init; }
+
+		/// <summary>The field carries an <c>[EnumMember]</c> attribute, with or without a <c>Value</c></summary>
+		/// <remarks>Distinct from <see cref="EnumMemberValue"/>, which only records a renaming: on a <c>[DataContract]</c> enum the bare attribute is what makes the member serializable at all, so its PRESENCE has to survive on its own.</remarks>
+		public bool HasEnumMemberAttribute { get; init; }
+
+		/// <summary>Value of the <c>[JsonStringEnumMemberName("...")]</c> attribute on the field, if any (the System.Text.Json 9+ wire token)</summary>
+		public string? JsonStringEnumMemberName { get; init; }
 
 	}
 
@@ -179,6 +240,42 @@ namespace SnowBank.SourceAnalysis
 				{
 					this.Name = "Nullable<" + underlyingType.Name + ">";
 					this.NullableOfType = Create(underlyingType);
+				}
+			}
+
+			if (this.TypeKind == TypeKind.Enum)
+			{
+				CaptureEnumMembers(type, out var enumMembers, out var isFlags, out var underlying, out var dataContractEnum);
+				this.EnumMembers = enumMembers;
+				this.IsFlagsEnum = isFlags;
+				this.EnumUnderlyingSpecialType = underlying;
+				this.IsDataContractEnum = dataContractEnum;
+			}
+			else
+			{
+				this.EnumMembers = ImmutableEquatableArray<EnumMemberMetadata>.Empty;
+			}
+
+			// the chain of types this one is declared inside, outermost first, joined with '.' (null for a top-level type):
+			// a wire that names a type after its DECLARATION (the DataContract wire spells a nested type "Outer.Inner")
+			// cannot rebuild it from Name, which is the simple name only
+			if (type.ContainingType is not null)
+			{
+				var chain = new List<string>();
+				for (var declaring = type.ContainingType; declaring is not null; declaring = declaring.ContainingType)
+				{
+					chain.Add(declaring.Name);
+				}
+				chain.Reverse();
+				this.DeclaringTypeNames = string.Join(".", chain);
+			}
+
+			foreach (var iface in type.AllInterfaces)
+			{
+				if (iface.Name == "ISerializable" && iface.ContainingNamespace?.ToDisplayString() == "System.Runtime.Serialization")
+				{
+					this.ImplementsISerializable = true;
+					break;
 				}
 			}
 
@@ -276,7 +373,80 @@ namespace SnowBank.SourceAnalysis
 					: this.FullyQualifiedName;
 		}
 
+		/// <summary>Collects the declared members of an enum type, with any custom wire token declared on their fields</summary>
+		/// <remarks>Tokens are matched by attribute NAME and namespace, so no reference (and no version floor) on System.Text.Json is required, and a hand-written or injected clone of either attribute is matched too. This mirrors what the runtime enum cache does on the JSON side.</remarks>
+		private static void CaptureEnumMembers(ITypeSymbol type, out ImmutableEquatableArray<EnumMemberMetadata> members, out bool isFlags, out SpecialType underlyingSpecialType, out bool isDataContractEnum)
+		{
+			isFlags = false;
+			isDataContractEnum = false;
+			foreach (var attribute in type.GetAttributes())
+			{
+				var attributeClass = attribute.AttributeClass;
+				string attributeNamespace = attributeClass?.ContainingNamespace?.ToDisplayString() ?? "";
+				if (attributeClass?.Name == "FlagsAttribute" && attributeNamespace == "System")
+				{
+					isFlags = true;
+				}
+				else if (attributeClass?.Name == "DataContractAttribute" && attributeNamespace == "System.Runtime.Serialization")
+				{
+					isDataContractEnum = true;
+				}
+			}
+
+			underlyingSpecialType = (type as INamedTypeSymbol)?.EnumUnderlyingType?.SpecialType ?? SpecialType.System_Int32;
+
+			var list = new List<EnumMemberMetadata>();
+			foreach (var member in type.GetMembers())
+			{
+				if (member is not IFieldSymbol { HasConstantValue: true, IsStatic: true } field) continue;
+
+				string? enumMemberValue = null;
+				string? stjName = null;
+				bool hasEnumMember = false;
+				foreach (var attribute in field.GetAttributes())
+				{
+					var attributeClass = attribute.AttributeClass;
+					if (attributeClass is null) continue;
+					string ns = attributeClass.ContainingNamespace?.ToDisplayString() ?? "";
+					if (attributeClass.Name == "EnumMemberAttribute" && ns == "System.Runtime.Serialization")
+					{ // a bare [EnumMember] (no Value) keeps the declared name, matching DataContract behavior
+						hasEnumMember = true;
+						foreach (var arg in attribute.NamedArguments)
+						{
+							if (arg.Key == "Value" && arg.Value.Value is string { Length: > 0 } value)
+							{
+								enumMemberValue = value;
+							}
+						}
+					}
+					else if (attributeClass.Name == "JsonStringEnumMemberNameAttribute" && ns == "System.Text.Json.Serialization")
+					{
+						if (attribute.ConstructorArguments.Length > 0 && attribute.ConstructorArguments[0].Value is string { Length: > 0 } name)
+						{
+							stjName = name;
+						}
+					}
+				}
+
+				list.Add(new()
+				{
+					Name = field.Name,
+					Value = Convert.ToString(field.ConstantValue, CultureInfo.InvariantCulture) ?? "0",
+					EnumMemberValue = enumMemberValue,
+					HasEnumMemberAttribute = hasEnumMember,
+					JsonStringEnumMemberName = stjName,
+				});
+			}
+
+			members = list.ToImmutableEquatableArray();
+		}
+
 		private ImmutableEquatableArray<TypeRef> Parents { get; }
+
+		/// <summary>Number of base types between this one and the top of its hierarchy (<c>0</c> for a type that derives from nothing but <see cref="object"/>)</summary>
+		/// <remarks>A generator emitting a <c>switch</c> over runtime types needs it: a case on a base type captures every subclass, so
+		/// the case of the more DERIVED type has to come first or it is unreachable (CS8120).</remarks>
+		public int InheritanceDepth => this.Parents.Count;
 
 		public TypeRef Ref { get; }
 
@@ -335,6 +505,18 @@ namespace SnowBank.SourceAnalysis
 		public NullableAnnotation Nullability { get; }
 
 		public ImmutableEquatableArray<TypeRef> Interfaces { get; } //HACKHACK: temporary, while we are debugging this thing!
+
+		/// <summary>Names of the types this one is declared inside, outermost first, joined with <c>'.'</c> (ex: <c>"Outer.Middle"</c> for <c>Outer.Middle.Inner</c>), or <see langword="null"/> for a top-level type</summary>
+		/// <remarks>Captured because a wire can name a type after its DECLARATION rather than after its simple name: the DataContract wire spells a nested type <c>Outer.Inner</c>, which <see cref="Name"/> alone cannot rebuild.</remarks>
+		public string? DeclaringTypeNames { get; }
+
+		/// <summary>The type implements <see cref="System.Runtime.Serialization.ISerializable"/>, directly or through a base type or interface</summary>
+		/// <remarks>Resolved over ALL interfaces, not just the declared ones: a type that inherits the interface from its base class serializes through the same dialect, and missing that would silently produce a different wire.</remarks>
+		public bool ImplementsISerializable { get; }
+
+		/// <summary>This is an enum type carrying <c>[DataContract]</c>, which makes <c>[EnumMember]</c> the opt-in signal of each of its members</summary>
+		/// <remarks>Only ever set for an enum. On such a type the DataContract wire refuses a value whose member carries no <c>[EnumMember]</c>, instead of falling back to the declared name.</remarks>
+		public bool IsDataContractEnum { get; }
 
 		public override string ToString() => $"{{ Name = {this.Name}, Kind = {TypeKind}, Special = {SpecialType}{(IsSealed?", Sealed" : "")}{(IsRecord?", Record" : "")}, FullName = {this.Ref.FullName}}}";
 
@@ -416,6 +598,15 @@ namespace SnowBank.SourceAnalysis
 		public bool IsValueType() => this.TypeKind is TypeKind.Struct or TypeKind.Enum;
 
 		public bool IsEnum() => this.TypeKind is TypeKind.Enum;
+
+		/// <summary>If this is an enum, its declared members in declaration order (with any custom wire token); otherwise empty</summary>
+		public ImmutableEquatableArray<EnumMemberMetadata> EnumMembers { get; }
+
+		/// <summary>If this is an enum, whether it carries <c>[Flags]</c>, so that an undeclared value may be a combination of declared ones</summary>
+		public bool IsFlagsEnum { get; }
+
+		/// <summary>If this is an enum, the <see cref="Microsoft.CodeAnalysis.SpecialType"/> of its underlying integer type</summary>
+		public SpecialType EnumUnderlyingSpecialType { get; }
 
 		public bool IsNullableOfT()
 		{
@@ -577,22 +768,30 @@ namespace SnowBank.SourceAnalysis
 			return false;
 		}
 
-		/// <summary>Tests if the type is exactly the <see cref="IEnumerable{T}"/> interface (and not any derived type)</summary>
+		/// <summary>Tests if the type is exactly one of the "bare" generic collection interfaces (and not any concrete or derived type)</summary>
 		/// <remarks>
+		/// <para>Matches <see cref="IEnumerable{T}"/>, <see cref="IList{T}"/>, <see cref="ICollection{T}"/>, <see cref="IReadOnlyList{T}"/> and <see cref="IReadOnlyCollection{T}"/> in the <c>System.Collections.Generic</c> namespace. Deliberately does NOT match <c>ISet&lt;T&gt;</c> or <c>IDictionary&lt;TKey, TValue&gt;</c>.</para>
 		/// <list type="table">
 		///   <listheader><term>type</term><description>result</description></listheader>
 		///   <item><term>DateTime</term><description>false</description></item>
 		///   <item><term>MyCustomType</term><description>false</description></item>
 		///   <item><term>IEnumerable&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>IList&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>ICollection&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>IReadOnlyList&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>IReadOnlyCollection&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>ISet&lt;char&gt;</term><description>false</description></item>
 		///   <item><term>char[]</term><description>false</description></item>
-		///   <item><term>List&lt;char&gt;</term><description>true</description></item>
+		///   <item><term>List&lt;char&gt;</term><description>false</description></item>
 		///   <item><term>string</term><description>false</description></item>
 		/// </list>
 		/// </remarks>
 		public bool IsEnumerableInterface([MaybeNullWhen(false)] out TypeMetadata elemType)
 		{
 			elemType = this.ElementType;
-			return elemType is not null && this.NameSpace == "System.Collections.Generic" && this.Name == "Enumerable`1";
+			return elemType is not null
+				&& this.NameSpace == "System.Collections.Generic"
+				&& this.Name is ("IEnumerable" or "IList" or "ICollection" or "IReadOnlyList" or "IReadOnlyCollection");
 		}
 
 		/// <summary>Tests if this type implements <see cref="IEnumerable{T}"/></summary>

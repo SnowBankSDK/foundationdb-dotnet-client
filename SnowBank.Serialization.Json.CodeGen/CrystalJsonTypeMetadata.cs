@@ -53,9 +53,34 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>The consuming compilation defines <c>[UnsafeAccessor]</c> (net8+): non-public members are reached through zero-cost accessor thunks; otherwise the generated code falls back to reflection-based accessors</summary>
 		public bool SupportsUnsafeAccessors { get; init; }
 
-		/// <summary>Name of the wire profile baked into the container's generated entry points (<c>"DataContractCompat"</c>), or <see langword="null"/> for the standard wire</summary>
+		/// <summary>The consuming compilation can host the generated JSON proxies (the proxy interfaces are visible, and the language version supports the static abstract members they implement)</summary>
+		/// <remarks>False on the <c>netstandard2.0</c>/<c>net472</c> "lite" path, and in any consumer below C# 11: the container then gets its converters, its <c>TypeMapper</c> and its XML output, but no <c>ReadOnly</c>/<c>Writable</c> proxy types.</remarks>
+		public bool SupportsJsonProxies { get; init; }
+
+		/// <summary>The consuming compilation can see a usable <c>[DynamicallyAccessedMembers]</c>; when false the trimming annotations are left out of the generated code</summary>
+		public bool SupportsDynamicallyAccessedMembers { get; init; }
+
+		/// <summary>Name of the output profile baked into the container's generated entry points (<c>"DataContractCompat"</c>), or <see langword="null"/> for the standard format</summary>
 		/// <remarks>The profile only replaces the "caller passed no settings" fallback of the generated entry points; explicitly passed settings always win entirely.</remarks>
 		public string? WireProfile { get; init; }
+
+		/// <summary>The container produces the JSON format: the entry points (<c>Serialize</c>, <c>Pack</c>, <c>Unpack</c>, <c>ToJsonText</c>, ...), the <c>IJsonConverter</c> facet, the type definition, the proxies and the container's <c>TypeMapper</c></summary>
+		/// <remarks>
+		/// <para>False for an XML-only container (<c>[CrystalXmlConverter]</c>, or <c>[CrystalConverter]</c> with only <c>[CrystalXmlOutput]</c>): its holders keep their <c>Default</c> singleton and their XML output, and carry no JSON surface at all.</para>
+		/// <para>A self-serializable type always produces JSON (its marker is a JSON one), so this is <c>true</c> on that path.</para>
+		/// </remarks>
+		public bool GeneratesJson { get; init; } = true;
+
+		/// <summary>Name of the resolved XML format profile of this container (<c>"Modern"</c> or <c>"DataContract"</c>), or <see langword="null"/> when the container produces no XML output</summary>
+		/// <remarks>
+		/// <para>XML output is strictly opt-in: only a container decorated with <c>[CrystalXmlOutput]</c> gets a non-null profile. The value is already RESOLVED: an explicit <c>Profile</c> wins, otherwise it is derived from <see cref="WireProfile"/> (the DCJS JSON format derives the DataContract XML format, anything else derives the Modern one).</para>
+		/// <para>Typed as a string, like <see cref="WireProfile"/>: the metadata layer stays symbol-free, so the whole record keeps a cheap structural equality for the incremental pipeline.</para>
+		/// </remarks>
+		public string? XmlProfile { get; init; }
+
+		/// <summary>Name of the container's default representation for dictionary-like members (<c>"Default"</c> when the container did not override it), or <see langword="null"/> when the container produces no XML output</summary>
+		/// <remarks><c>"Default"</c> is carried as-is rather than flattened into the profile's shape: the per-profile default and the per-member override both resolve downstream, and collapsing them here would lose the "unset" state.</remarks>
+		public string? CrystalXmlDictionaryFormat { get; init; }
 
 		/// <summary>Specifies whether the container is the serialized type itself (self-serializable mode)</summary>
 		/// <remarks>
@@ -103,6 +128,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		/// <summary>If this type is polymorphic, list of all the known derived types</summary>
 		public required ImmutableEquatableArray<(INamedTypeSymbol Symbol, TypeMetadata Type, object? Discriminator)> DerivedTypes { get; init; }
+
+		/// <summary>The type carries a <c>[DataContract]</c> attribute</summary>
+		/// <remarks>Kept next to <see cref="DataContractName"/>, which only records a renaming: the DataContract XML format needs the PRESENCE on its own, because a data contract outranks every other way of serializing a type (in particular the <c>ISerializable</c> dialect, which only applies to a type that declares no contract).</remarks>
+		public bool HasDataContract { get; init; }
+
+		/// <summary>Value of <c>[DataContract(Name = "...")]</c>, or <see langword="null"/> when the type carries no data contract, or one that does not rename it</summary>
+		/// <remarks>The DataContract XML format names the type's element after the contract, so the VALUE is needed, not just the attribute's presence (which is all the JSON format ever needed). Left <see langword="null"/> rather than defaulted to the type name: the default is a format rule, and resolving it here would make an explicit <c>Name</c> that happens to match indistinguishable from an absent one.</remarks>
+		public string? DataContractName { get; init; }
+
+		/// <summary>Value of <c>[DataContract(Namespace = "...")]</c>, or <see langword="null"/> when the type carries no data contract, or one that does not set a namespace</summary>
+		/// <inheritdoc cref="DataContractName" path="/remarks"/>
+		public string? DataContractNamespace { get; init; }
 
 		public void Explain(StringBuilder sb, string? indent = null)
 		{
@@ -221,6 +258,36 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Per-member enum format from <c>[JsonProperty(EnumFormat = ...)]</c>: <c>"String"</c>, <c>"Number"</c>, or <see langword="null"/> when inherited from the settings</summary>
 		public string? EnumFormat { get; init; }
 
+		/// <summary>XML name of this member from <c>[XmlProperty]</c>, or <see langword="null"/> when the member does not override it (the XML name then derives from <see cref="Name"/>)</summary>
+		/// <remarks>
+		/// <para>Already NORMALIZED: the <c>"@id"</c> sugar has been split into <c>"id"</c> plus <see cref="XmlIsAttribute"/>, so nothing downstream ever sees a <c>'@'</c> in a name, and the value is known to be a legal XML NCName.</para>
+		/// <para>Only ever set when the container produces XML: on a JSON-only container the whole XML vocabulary is inert.</para>
+		/// </remarks>
+		public string? CrystalXmlName { get; init; }
+
+		/// <summary>The member is projected as an XML ATTRIBUTE instead of a nested element (from <c>[XmlProperty(Attribute = true)]</c> or the <c>"@name"</c> sugar)</summary>
+		public bool XmlIsAttribute { get; init; }
+
+		/// <summary>Name given to the items of a collection member, or the entries of a dictionary member, from <c>[XmlProperty(ItemName = "...")]</c>; <see langword="null"/> when not overridden</summary>
+		/// <inheritdoc cref="CrystalXmlName" path="/remarks/para[2]"/>
+		public string? XmlItemName { get; init; }
+
+		/// <summary>Per-member dictionary representation from <c>[XmlProperty(DictionaryFormat = ...)]</c>, as the enum MEMBER NAME (ex: <c>"KeyValueAttributes"</c>); <see langword="null"/> when not overridden</summary>
+		/// <inheritdoc cref="CrystalXmlName" path="/remarks/para[2]"/>
+		public string? CrystalXmlDictionaryFormat { get; init; }
+
+		/// <summary>Value of <c>[DataMember(Order = n)]</c> when <c>n</c> is zero or greater, or <see langword="null"/> when the member declares no order</summary>
+		/// <remarks>A NEGATIVE order is carried as <see langword="null"/>, like <c>DataContractSerializer</c> does: an unordered member sorts by name, which is a different rule from ordering at zero.</remarks>
+		public int? DataMemberOrder { get; init; }
+
+		/// <summary>Depth of the type that DECLARES this member in the inheritance chain, counted from the topmost base (<c>0</c>) down to the type being serialized</summary>
+		/// <remarks>Captured for the DataContract XML format, whose member order is "every member of the base level first, then the next level": the flat member list cannot be regrouped by level once that fact is lost. The JSON format ignores it.</remarks>
+		public int InheritanceLevel { get; init; }
+
+		/// <summary>The member is written even when its value is the type's default (<see langword="false"/> only for <c>[DataMember(EmitDefaultValue = false)]</c>)</summary>
+		/// <remarks>The RAW flag, carried as the attribute spells it: how it combines with <see cref="IgnoreCondition"/> is a format rule resolved downstream, and folding it in here would make the two indistinguishable.</remarks>
+		public bool EmitDefaultValue { get; init; } = true;
+
 		/// <summary>Fully qualified name of a custom converter attached to this member (<c>[JsonConverter(typeof(...))]</c> naming a type with the Pack/Unpack pair, or the built-in converter for <c>[JsonBooleanLiterals]</c>), or <see langword="null"/></summary>
 		public string? CustomConverterType { get; init; }
 
@@ -235,6 +302,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		/// <summary>The custom converter is declared for the member's <c>Nullable&lt;T&gt;</c> form itself (e.g. <c>IJsonDeserializer&lt;DateTime?&gt;</c> on a <c>DateTime?</c> member), so the emitter must call the nullable-form unpack helpers instead of unwrap-then-lift</summary>
 		public bool CustomConverterIsNullableForm { get; init; }
+
+		/// <summary>The custom converter implements the XML facet (<c>ICrystalXmlSerializer&lt;T&gt;</c>) for this member's type</summary>
+		/// <remarks>Only ever resolved when the container produces XML: a converter without the facet is a build error there (CXML0008), because the member's XML form would otherwise be written by rules the converter was declared to replace.</remarks>
+		public bool CustomConverterHasXmlSerializer { get; init; }
+
+		/// <summary>The custom converter's XML facet is declared for the member's <c>Nullable&lt;T&gt;</c> form itself (<c>ICrystalXmlSerializer&lt;DateTime?&gt;</c> on a <c>DateTime?</c> member), which is the form the emitter casts to when it hands the member over</summary>
+		/// <remarks>
+		/// <para>This selects the CAST's type argument (and therefore whether the value is unwrapped before the call), nothing more:
+		/// it does NOT make the converter responsible for the null case. On the XML format a null member is decided by the profile
+		/// before any converter runs (absent, or <c>nil</c> under the settings), so a facet declared for <c>T?</c> is only ever
+		/// called with a value that has one.</para>
+		/// <para>Resolved separately from <see cref="CustomConverterIsNullableForm"/>, which is the JSON side's answer to the same
+		/// question: one converter can perfectly well declare the nullable form on one format and not on the other.</para>
+		/// </remarks>
+		public bool CustomConverterXmlFacetDeclaredForNullable { get; init; }
 
 		/// <summary>C# literal for the expression that represents the default value for this member, when it is missing</summary>
 		/// <remarks>This should be a valid C# constant expression, like <c>123</c>, <c>"hello"</c>, <c>true</c>, <c>global::System.Guid.Empty</c>, ...</remarks>

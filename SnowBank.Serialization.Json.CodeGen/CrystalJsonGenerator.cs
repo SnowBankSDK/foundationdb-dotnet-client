@@ -48,11 +48,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public const string CallbackSignatureNotSupportedMessage = "Serialization callback '{0}' must be parameterless, or take a single JsonValue, JsonObject or JsonArray parameter.";
 
 		/// <summary>Message for <c>CJSON0017</c>, kept identical to <c>CrystalJson.Errors.BooleanLiteralTypeNotSupported</c></summary>
-		public const string BooleanLiteralTypeNotSupportedMessage = "The [JsonBooleanLiterals] argument '{0}' is of type {1}, which has no JSON wire form: use a string, a bool, or a numeric value.";
+		public const string BooleanLiteralTypeNotSupportedMessage = "The [JsonBooleanLiterals] argument '{0}' is of type {1}, which has no JSON representation: use a string, a bool, or a numeric value.";
 
 		private const string CrystalJsonConverterAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonConverterAttribute";
 
 		private const string CrystalJsonSerializableAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSerializableAttribute";
+
+		/// <summary>The container markers, in the order that decides which one owns a container that (wrongly) carries several</summary>
+		/// <remarks>
+		/// <para><see cref="ForAttributeWithMetadataName"/> matches an EXACT metadata name and never a derived attribute, so each marker needs its own registration: the fact that the two aliases derive from <c>CrystalConverterAttribute</c> is documentation for the reader, not something the pipeline can see.</para>
+		/// <para>A container is meant to carry exactly one of them. When it carries several, all of its pipelines match, and each one asks <see cref="GetOwningContainerMarker"/> who owns it: only the owner parses (so the container is emitted once), and the owner is the one that reports <c>CRYS0003</c>.</para>
+		/// </remarks>
+		private static readonly string[] ContainerMarkerAttributeFullNames =
+		[
+			KnownTypeSymbols.CrystalConverterAttributeFullName,
+			CrystalJsonConverterAttributeFullName,
+			KnownTypeSymbols.CrystalXmlConverterAttributeFullName,
+		];
 
 		private const string CrystalJsonSelfSerializableAttributeFullName = KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSelfSerializableAttribute";
 
@@ -101,25 +113,32 @@ namespace SnowBank.Serialization.Json.CodeGen
 				.CompilationProvider
 				.Select((compilation, _) => new KnownTypeSymbols(compilation));
 
-			// find all possible converters (partial classes with a [CrystalJsonConverter] attribute)
-			var converterTypes = context.SyntaxProvider
-				.ForAttributeWithMetadataName(
-					CrystalJsonConverterAttributeFullName,
-					(node, _) => node is ClassDeclarationSyntax,
-					(ctx, _) => (ContextClass: (ClassDeclarationSyntax) ctx.TargetNode, ctx.SemanticModel, ctx.Attributes)
-				)
-				.Combine(knownTypeSymbols)
-				.Select(static (tuple, ct) =>
-				{
-					var parser = new Parser(tuple.Right);
-					var contextGenerationSpec = parser.ParseContainerMetadata(tuple.Left.ContextClass, tuple.Left.SemanticModel, tuple.Left.Attributes, ct);
-					var diagnostics = parser.Diagnostics.ToImmutableEquatableArray();
-					return (Metadata: contextGenerationSpec, Diagnostics: diagnostics);
-				})
-				.WithTrackingName("CrystalJsonSpec")
-				;
+			// find all possible containers (partial classes with a container marker: the neutral one, or one of the two mono-format aliases)
+			foreach (var markerAttributeFullName in ContainerMarkerAttributeFullNames)
+			{
+				var marker = markerAttributeFullName;
+				var converterTypes = context.SyntaxProvider
+					.ForAttributeWithMetadataName(
+						marker,
+						(node, _) => node is ClassDeclarationSyntax,
+						// a container carrying several markers matches several pipelines: only the owning one parses it, and
+						// the answer is computed here so that no symbol travels inside the cached value of the pipeline
+						(ctx, _) => (ContextClass: (ClassDeclarationSyntax) ctx.TargetNode, ctx.SemanticModel, IsOwner: ctx.TargetSymbol is INamedTypeSymbol symbol && GetOwningContainerMarker(symbol) == marker)
+					)
+					.Where(static candidate => candidate.IsOwner)
+					.Combine(knownTypeSymbols)
+					.Select((tuple, ct) =>
+					{
+						var parser = new Parser(tuple.Right);
+						var contextGenerationSpec = parser.ParseContainerMetadata(tuple.Left.ContextClass, tuple.Left.SemanticModel, marker, ct);
+						var diagnostics = parser.Diagnostics.ToImmutableEquatableArray();
+						return (Metadata: contextGenerationSpec, Diagnostics: diagnostics);
+					})
+					.WithTrackingName("CrystalJsonSpec")
+					;
 
-			context.RegisterSourceOutput(converterTypes, EmitSourceCode);
+				context.RegisterSourceOutput(converterTypes, EmitSourceCode);
+			}
 
 			// find all self-serializable types: partial types decorated with an attribute whose class carries the
 			// [CrystalJsonSelfSerializable] meta-marker (the marker cannot be matched by name here, because the
@@ -142,6 +161,79 @@ namespace SnowBank.Serialization.Json.CodeGen
 				;
 
 			context.RegisterSourceOutput(selfSerializableTypes, EmitSourceCode);
+
+			// find the types that ask for XML output without hosting any generated serializer: neither pipeline above
+			// ever sees them, so the attribute would be silently inert (CXML0002)
+			var orphanXmlOutputTypes = context.SyntaxProvider
+				.ForAttributeWithMetadataName(
+					KnownTypeSymbols.CrystalXmlOutputAttributeFullName,
+					static (node, _) => node is TypeDeclarationSyntax,
+					// the answer is computed here so that no symbol travels inside the cached value of the pipeline
+					static (ctx, _) => (TypeDeclaration: (TypeDeclarationSyntax) ctx.TargetNode,
+						IsOrphan: ctx.TargetSymbol is INamedTypeSymbol symbol && !HostsGeneratedSerializer(symbol),
+						DisplayName: ctx.TargetSymbol.ToDisplayString())
+				)
+				.Where(static candidate => candidate.IsOrphan)
+				.Combine(knownTypeSymbols)
+				.Select(static (tuple, _) =>
+				{
+					var parser = new Parser(tuple.Right);
+					parser.ReportOrphanXmlOutput(tuple.Left.TypeDeclaration, tuple.Left.DisplayName);
+					return (Metadata: (CrystalJsonContainerMetadata?) null, Diagnostics: parser.Diagnostics.ToImmutableEquatableArray());
+				})
+				.WithTrackingName("CrystalXmlOrphanSpec")
+				;
+
+			context.RegisterSourceOutput(orphanXmlOutputTypes, EmitSourceCode);
+		}
+
+		/// <summary>Returns the container marker that owns this type, or <see langword="null"/> when it carries none</summary>
+		/// <remarks>A type carrying several markers is refused (<c>CRYS0003</c>), but it must be refused ONCE: the first marker of <see cref="ContainerMarkerAttributeFullNames"/> that it carries is the one that parses it and reports.</remarks>
+		private static string? GetOwningContainerMarker(INamedTypeSymbol symbol)
+		{
+			string? owner = null;
+			int best = int.MaxValue;
+
+			foreach (var attribute in symbol.GetAttributes())
+			{
+				var name = attribute.AttributeClass?.ToDisplayString();
+				if (name is null) continue;
+
+				for (int i = 0; i < ContainerMarkerAttributeFullNames.Length; i++)
+				{
+					if (ContainerMarkerAttributeFullNames[i] == name && i < best)
+					{
+						best = i;
+						owner = name;
+					}
+				}
+			}
+
+			return owner;
+		}
+
+		/// <summary>Tests whether a type hosts source-generated serialization code: a container (any marker), or a self-serializable type</summary>
+		private static bool HostsGeneratedSerializer(INamedTypeSymbol symbol)
+			=> GetOwningContainerMarker(symbol) is not null || IsSelfSerializable(symbol);
+
+		/// <summary>Tests whether a type is self-serializable: one of its attributes carries the <c>[CrystalJsonSelfSerializable]</c> meta-marker</summary>
+		/// <remarks>The decorating attribute belongs to the application or to another layer, not to this generator, so it cannot be matched by name: only the meta-marker it carries can.</remarks>
+		private static bool IsSelfSerializable(INamedTypeSymbol symbol)
+		{
+			foreach (var attribute in symbol.GetAttributes())
+			{
+				var attributeClass = attribute.AttributeClass;
+				if (attributeClass is null) continue;
+
+				foreach (var marker in attributeClass.GetAttributes())
+				{
+					if (marker.AttributeClass?.ToDisplayString() == CrystalJsonSelfSerializableAttributeFullName)
+					{
+						return true;
+					}
+				}
+			}
+			return false;
 		}
 
 		/// <summary>Filters a type declaration, keeping only self-serializable types (one of their attributes carries the meta-marker)</summary>
@@ -154,23 +246,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return default;
 			}
 
-			bool found = false;
-			foreach (var attribute in symbol.GetAttributes())
-			{
-				var attributeClass = attribute.AttributeClass;
-				if (attributeClass is null) continue;
-
-				foreach (var marker in attributeClass.GetAttributes())
-				{
-					if (marker.AttributeClass?.ToDisplayString() == CrystalJsonSelfSerializableAttributeFullName)
-					{
-						found = true;
-						break;
-					}
-				}
-				if (found) break;
-			}
-			if (!found)
+			if (!IsSelfSerializable(symbol))
 			{
 				return default;
 			}

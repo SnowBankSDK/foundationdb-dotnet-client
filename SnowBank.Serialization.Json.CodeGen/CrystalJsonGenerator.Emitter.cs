@@ -37,7 +37,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 	{
 
 		[SuppressMessage("ReSharper", "InconsistentNaming")]
-		internal sealed class Emitter
+		internal sealed partial class Emitter
 		{
 
 			#region Attributes Names ...
@@ -95,6 +95,32 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private Dictionary<TypeRef, (CrystalJsonTypeMetadata Parent, object? Discriminator)> PolymorphicMap { get; }
 
+			/// <summary>The container produces the JSON format</summary>
+			/// <remarks>False for an XML-only container: the holders keep their <c>Default</c> singleton and the XML output built on it, and lose the JSON entry points, the <c>IJsonConverter</c> facet, the type definition, the property-name tables and the container's <c>TypeMapper</c>.</remarks>
+			private bool WritesJson => this.Metadata.GeneratesJson;
+
+			/// <summary>The container gets its <c>ReadOnly</c>/<c>Writable</c> proxy surface</summary>
+			/// <remarks>False on the lite path (<c>netstandard2.0</c>/<c>net472</c>, where the proxy interfaces do not exist), below C# 11 (where the static abstract members they implement cannot be written), and in an XML-only container (the proxies wrap a <c>JsonValue</c>, which such a container never produces). Everything else the container emits is unaffected.</remarks>
+			private bool WritesProxies => this.Metadata.SupportsJsonProxies && this.WritesJson;
+
+			/// <summary>Returns the expression that builds an empty instance of a collection type</summary>
+			/// <remarks>
+			/// <para>This is the language-version-neutral spelling of the <c>[ ]</c> collection expression (C# 12): the emitted code must also compile in a consumer sitting on the generator's language floor, and the result is the same empty instance in both spellings (an empty array target lowers to <c>Array.Empty&lt;T&gt;()</c>, a concrete collection target to its parameterless constructor).</para>
+			/// <para>A concrete collection type with no parameterless constructor has no empty form here, exactly as it had none with a collection expression.</para>
+			/// </remarks>
+			private static string GetEmptyCollectionExpr(TypeMetadata type)
+				=> type.IsArray(out var elementType) || type.IsEnumerableInterface(out elementType)
+					? $"global::System.Array.Empty<{elementType.FullyQualifiedName}>()"
+					: $"new {type.FullyQualifiedName}()";
+
+			/// <summary>Emits the <c>[DynamicallyAccessedMembers(All)]</c> trimming annotation, when the consumer can see the attribute</summary>
+			/// <remarks>The annotation only matters to a trimming/AOT publish, which the lite path (the only place where the attribute is out of reach) does not support anyway.</remarks>
+			private void WriteTrimmingAnnotation(CSharpCodeBuilder sb)
+			{
+				if (!this.Metadata.SupportsDynamicallyAccessedMembers) return;
+				sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
+			}
+
 			public Emitter(SourceProductionContext ctx, CrystalJsonContainerMetadata metadata)
 			{
 				this.Context = ctx;
@@ -120,6 +146,25 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				this.PolymorphicMap = polymorphicMap;
 			}
+
+			#region Sample member (documentation only)...
+
+			// The "How to use" blocks of the generated proxy helpers quote ONE member of the type as an example. A type with
+			// no serialized member at all is legal (an ISerializable wrapper on the DataContract XML format is exactly that),
+			// and indexing the member list for those comments used to crash the whole emission for such a type. The three
+			// helpers below answer with a placeholder instead: the sample is documentation, and documentation must never be
+			// the thing that decides whether a type can be generated.
+
+			/// <summary>Name of the member the generated documentation quotes as an example, or a placeholder when the type has none</summary>
+			private static string GetSampleMemberName(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].MemberName : "SomeMember";
+
+			/// <summary>Wire name of that same example member</summary>
+			private static string GetSampleMemberWireName(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].Name : "someMember";
+
+			/// <summary>Type of that same example member</summary>
+			private static string GetSampleMemberType(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].Type.FullyQualifiedName : "global::System.Object";
+
+			#endregion
 
 			/// <summary>Returns the member's default-value literal, ready to embed in a value position of the generated code</summary>
 			/// <remarks>The generated files force <c>#nullable enable</c> on themselves while the member's declared type may be non-nullable or oblivious, so a bare <c>null</c> default must be null-forgiving (<c>null!</c>): the <c>[NotNullIfNotNull]</c> contract on the <c>Get(name, defaultValue)</c> family then keeps the returned flow-state aligned with the declared member type.</remarks>
@@ -148,150 +193,173 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// first we generated a "primary" file for the container, that will include any static methods (that are not specific to a type)
 
+				var sb = new CSharpCodeBuilder();
+				AddFileHeaders(sb);
+
+				sb.AppendLine($"namespace {symbol.NameSpace}");
+				sb.EnterBlock("namespace");
+
+				if (!this.Metadata.IsSelfContained)
 				{
-					var sb = new CSharpCodeBuilder();
-					AddFileHeaders(sb);
+					// note: in self mode, no XML doc or attribute is emitted on the entity's partial (they would apply
+					// to the whole entity type, which is user code); they go on the nested Json scope instead
+					sb.XmlComment($"<summary>Generated source code for {(this.WritesJson && this.WritesXml ? "JSON and XML" : this.WritesXml ? "XML" : "JSON")} operations on application types</summary>");
+					WriteTrimmingAnnotation(sb);
+					sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
+					sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");
+					sb.AppendLine($"[{ExcludeFromCodeCoverageAttributeFullName}]");
+				}
+				sb.AppendLine(GetContainerDeclaration());
+				sb.EnterBlock("container");
+				sb.NewLine();
 
-					sb.AppendLine($"namespace {symbol.NameSpace}");
-					sb.EnterBlock("namespace");
+				OpenSelfScope(sb, emitAttributes: true);
 
-					if (!this.Metadata.IsSelfContained)
+				// the resolver and its mapper are the JSON entry point of the container: an XML-only container has no
+				// IJsonConverter to map, and the XML output resolves its nested types statically (through the holders)
+				if (this.WritesJson)
+				{
+					WriteContainerResolver(sb, includedTypes);
+				}
+				else
+				{
+					sb.Comment("this container produces XML only: it has no JSON resolver, and every type below carries its XML output alone");
+					sb.NewLine();
+				}
+
+				CloseSelfScope(sb);
+
+				sb.LeaveBlock("container");
+				sb.NewLine();
+
+				sb.LeaveBlock("namespace");
+				sb.NewLine();
+
+				this.Context.AddSource($"{GetContainerHintName()}.g.cs", sb.ToString());
+				GenerateTypeFiles(symbol, includedTypes);
+			}
+
+			/// <summary>Emits the container's JSON resolver: the <c>TypeMapper</c> that bundles every generated converter, and the accessor that exposes it</summary>
+			private void WriteContainerResolver(CSharpCodeBuilder sb, ImmutableEquatableArray<CrystalJsonTypeMetadata> includedTypes)
+			{
+				sb.XmlComment($"<summary>Returns a <see cref=\"{KnownTypeSymbols.ICrystalJsonTypeResolverFullName}\">resolver</see> that exposes all the generated converters in this container</summary>");
+				sb.AppendLine($"public static {KnownTypeSymbols.ICrystalJsonTypeResolverFullName} GetResolver() => TypeMapper.Default;");
+				sb.NewLine();
+
+				// TypeMapper
+				sb.XmlComment("<summary>Mapper that bundles all the types that are managed by this custom serializer context</summary>");
+				sb.AppendLine($"internal sealed class TypeMapper : {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}");
+				sb.EnterBlock("TypeMapper");
+				{
+					sb.NewLine();
+
+					sb.XmlComment("<summary>Default mapper for all types in this container</summary>");
+					sb.AppendLine("public static readonly TypeMapper Default = new();");
+					sb.NewLine();
+
+					sb.AppendLine($"private {FrozenDictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}> ConvertersByType {{ get; }}");
+					sb.NewLine();
+					sb.AppendLine($"private {FrozenDictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}> ConvertersByTypeExtended {{ get; }}");
+					sb.NewLine();
+
+					// ctor()
+					sb.InheritDoc();
+					sb.AppendLine("private TypeMapper()");
+					sb.EnterBlock("ctor");
+					// map of all application types
+					sb.AppendLine($"var map = new {DictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}>();");
+					foreach (var type in includedTypes)
 					{
-						// note: in self mode, no XML doc or attribute is emitted on the entity's partial (they would apply
-						// to the whole entity type, which is user code); they go on the nested Json scope instead
-						sb.XmlComment("<summary>Generated source code for JSON operations on application types</summary>");
-						sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
-						sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
-						sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");
-						sb.AppendLine($"[{ExcludeFromCodeCoverageAttributeFullName}]");
+						sb.AppendLine($"map[typeof({type.Type.FullyQualifiedName})] = {GetLocalSerializerRef(type)};");
 					}
-					sb.AppendLine(GetContainerDeclaration());
-					sb.EnterBlock("container");
-					sb.NewLine();
-
-					OpenSelfScope(sb, emitAttributes: true);
-
-					sb.XmlComment($"<summary>Returns a <see cref=\"{KnownTypeSymbols.ICrystalJsonTypeResolverFullName}\">resolver</see> that exposes all the generated converters in this container</summary>");
-					sb.AppendLine($"public static {KnownTypeSymbols.ICrystalJsonTypeResolverFullName} GetResolver() => TypeMapper.Default;");
-					sb.NewLine();
-
-					// TypeMapper
-					sb.XmlComment("<summary>Mapper that bundles all the types that are managed by this custom serializer context</summary>");
-					sb.AppendLine($"internal sealed class TypeMapper : {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}");
-					sb.EnterBlock("TypeMapper");
+					sb.AppendLine($"this.ConvertersByType = {FrozenDictionaryFullName}.ToFrozenDictionary(map);");
+					// extended maps that also includes the generated proxies
+					// (when the container has no proxy surface, the extended map is simply the plain one: the resolver
+					// contract is unchanged, there is just nothing extra to resolve)
+					if (this.WritesProxies)
 					{
-						sb.NewLine();
-
-						sb.XmlComment("<summary>Default mapper for all types in this container</summary>");
-						sb.AppendLine("public static readonly TypeMapper Default = new();");
-						sb.NewLine();
-
-						sb.AppendLine($"private {FrozenDictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}> ConvertersByType {{ get; }}");
-						sb.NewLine();
-						sb.AppendLine($"private {FrozenDictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}> ConvertersByTypeExtended {{ get; }}");
-						sb.NewLine();
-
-						// ctor()
-						sb.InheritDoc();
-						sb.AppendLine("private TypeMapper()");
-						sb.EnterBlock("ctor");
-						// map of all application types
-						sb.AppendLine($"var map = new {DictionaryFullName}<{SystemTypeFullName}, {KnownTypeSymbols.IJsonConverterInterfaceFullName}>();");
-						foreach (var type in includedTypes)
-						{
-							sb.AppendLine($"map[typeof({type.Type.FullyQualifiedName})] = {GetLocalSerializerRef(type)};");
-						}
-						sb.AppendLine($"this.ConvertersByType = {FrozenDictionaryFullName}.ToFrozenDictionary(map);");
-						// extended maps that also includes the generated proxies
 						foreach (var type in includedTypes)
 						{
 							sb.AppendLine($"map[typeof({GetReadOnlyProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
 							sb.AppendLine($"map[typeof({GetWritableProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
 						}
-						sb.AppendLine($"this.ConvertersByTypeExtended = {FrozenDictionaryFullName}.ToFrozenDictionary(map);");
-						sb.LeaveBlock("ctor");
-						sb.NewLine();
-
-						// TryGetConverterFor(Type)
-						sb.InheritDoc();
-						sb.AppendLine($"public bool TryGetConverterFor({SystemTypeFullName} type, [{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.IJsonConverterInterfaceFullName} converter)");
-						sb.EnterBlock();
-						{
-							sb.AppendLine("return this.ConvertersByTypeExtended.TryGetValue(type, out converter);");
-						}
-						sb.LeaveBlock();
-						sb.NewLine();
-
-						// TryGetConverterFor<T>()
-						sb.InheritDoc();
-						sb.AppendLine($"public bool TryGetConverterFor<T>([{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.IJsonConverterInterfaceFullName}<T> converter)");
-						sb.EnterBlock();
-						{
-							sb.AppendLine("if (!this.ConvertersByType.TryGetValue(typeof(T), out var instance))");
-							sb.EnterBlock();
-							sb.AppendLine("converter = null;");
-							sb.AppendLine("return false;");
-							sb.LeaveBlock();
-							sb.AppendLine($"converter = {UnsafeFullName}.As<{KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>>(instance);");
-							sb.AppendLine("return true;");
-						}
-						sb.LeaveBlock();
-						sb.NewLine();
-
-						// GetConverterFor<T>
-						sb.AppendLine($"public {KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>? GetConverterFor<T>()");
-						sb.EnterBlock();
-						{
-							sb.AppendLine("if (!this.ConvertersByType.TryGetValue(typeof(T), out var instance))");
-							sb.EnterBlock();
-							sb.AppendLine("return null;");
-							sb.LeaveBlock();
-							sb.AppendLine($"return {UnsafeFullName}.As<{KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>>(instance);");
-						}
-						sb.LeaveBlock();
-						sb.NewLine();
-
-						// TryResolveTypeDefinition()
-						sb.AppendLine($"public bool TryResolveTypeDefinition({SystemTypeFullName} type, [{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.CrystalJsonTypeDefinitionFullName} definition)");
-						sb.EnterBlock();
-						sb.AppendLine("if (!TryGetConverterFor(type, out var converter))");
-						sb.EnterBlock();
-						sb.AppendLine("definition = null;");
-						sb.AppendLine("return false;");
-						sb.LeaveBlock();
-						sb.AppendLine("definition = converter.GetDefinition();");
-						sb.AppendLine("return definition != null;");
-						sb.LeaveBlock();
-						sb.NewLine();
-
-						// TryResolveTypeDefinition<T>()
-						sb.AppendLine($"public bool TryResolveTypeDefinition<T>([{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.CrystalJsonTypeDefinitionFullName} definition)");
-						sb.EnterBlock();
-						sb.AppendLine("if (!TryGetConverterFor<T>(out var converter))");
-						sb.EnterBlock();
-						sb.AppendLine("definition = null;");
-						sb.AppendLine("return false;");
-						sb.LeaveBlock();
-						sb.AppendLine("definition = converter.GetDefinition();");
-						sb.AppendLine("return definition != null;");
-						sb.LeaveBlock();
-						sb.NewLine();
 					}
-					sb.LeaveBlock("TypeMapper");
+					sb.AppendLine($"this.ConvertersByTypeExtended = {FrozenDictionaryFullName}.ToFrozenDictionary(map);");
+					sb.LeaveBlock("ctor");
 					sb.NewLine();
 
-					CloseSelfScope(sb);
-
-					sb.LeaveBlock("container");
+					// TryGetConverterFor(Type)
+					sb.InheritDoc();
+					sb.AppendLine($"public bool TryGetConverterFor({SystemTypeFullName} type, [{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.IJsonConverterInterfaceFullName} converter)");
+					sb.EnterBlock();
+					{
+						sb.AppendLine("return this.ConvertersByTypeExtended.TryGetValue(type, out converter);");
+					}
+					sb.LeaveBlock();
 					sb.NewLine();
 
-					sb.LeaveBlock("namespace");
+					// TryGetConverterFor<T>()
+					sb.InheritDoc();
+					sb.AppendLine($"public bool TryGetConverterFor<T>([{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.IJsonConverterInterfaceFullName}<T> converter)");
+					sb.EnterBlock();
+					{
+						sb.AppendLine("if (!this.ConvertersByType.TryGetValue(typeof(T), out var instance))");
+						sb.EnterBlock();
+						sb.AppendLine("converter = null;");
+						sb.AppendLine("return false;");
+						sb.LeaveBlock();
+						sb.AppendLine($"converter = {UnsafeFullName}.As<{KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>>(instance);");
+						sb.AppendLine("return true;");
+					}
+					sb.LeaveBlock();
 					sb.NewLine();
 
-					this.Context.AddSource($"{GetContainerHintName()}.g.cs", sb.ToString());
+					// GetConverterFor<T>
+					sb.AppendLine($"public {KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>? GetConverterFor<T>()");
+					sb.EnterBlock();
+					{
+						sb.AppendLine("if (!this.ConvertersByType.TryGetValue(typeof(T), out var instance))");
+						sb.EnterBlock();
+						sb.AppendLine("return null;");
+						sb.LeaveBlock();
+						sb.AppendLine($"return {UnsafeFullName}.As<{KnownTypeSymbols.IJsonConverterInterfaceFullName}<T>>(instance);");
+					}
+					sb.LeaveBlock();
+					sb.NewLine();
+
+					// TryResolveTypeDefinition()
+					sb.AppendLine($"public bool TryResolveTypeDefinition({SystemTypeFullName} type, [{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.CrystalJsonTypeDefinitionFullName} definition)");
+					sb.EnterBlock();
+					sb.AppendLine("if (!TryGetConverterFor(type, out var converter))");
+					sb.EnterBlock();
+					sb.AppendLine("definition = null;");
+					sb.AppendLine("return false;");
+					sb.LeaveBlock();
+					sb.AppendLine("definition = converter.GetDefinition();");
+					sb.AppendLine("return definition != null;");
+					sb.LeaveBlock();
+					sb.NewLine();
+
+					// TryResolveTypeDefinition<T>()
+					sb.AppendLine($"public bool TryResolveTypeDefinition<T>([{MaybeNullWhenAttributeFullName}(false)] out {KnownTypeSymbols.CrystalJsonTypeDefinitionFullName} definition)");
+					sb.EnterBlock();
+					sb.AppendLine("if (!TryGetConverterFor<T>(out var converter))");
+					sb.EnterBlock();
+					sb.AppendLine("definition = null;");
+					sb.AppendLine("return false;");
+					sb.LeaveBlock();
+					sb.AppendLine("definition = converter.GetDefinition();");
+					sb.AppendLine("return definition != null;");
+					sb.LeaveBlock();
+					sb.NewLine();
 				}
+				sb.LeaveBlock("TypeMapper");
+				sb.NewLine();
+			}
 
-				// then, we generate one file for each of the serialized type
+			/// <summary>Emits one source file per serialized type of the container</summary>
+			private void GenerateTypeFiles(TypeMetadata symbol, ImmutableEquatableArray<CrystalJsonTypeMetadata> includedTypes)
+			{
 				foreach (var typeDef in includedTypes)
 				{
 					Kenobi($"Generating code for {typeDef.Type.FullyQualifiedName}");
@@ -456,7 +524,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (emitAttributes)
 				{
 					sb.XmlComment("<summary>Source-generated JSON converters and proxies for this type</summary>");
-					sb.AppendLine($"[{DynamicallyAccessedMembersAttributeFullName}({DynamicallyAccessedMemberTypesFullName}.All)]");
+					WriteTrimmingAnnotation(sb);
 					sb.AppendLine($"[{GeneratedCodeAttributeFullName}(\"{nameof(CrystalJsonSourceGenerator)}\", \"0.1\")]");
 					sb.AppendLine($"[{DebuggerNonUserCodeAttributeFullName}]");
 					sb.AppendLine($"[{ExcludeFromCodeCoverageAttributeFullName}]");
@@ -496,13 +564,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				var serializerTypeName = GetConverterName(typeDef);
-				var jsonConverterInterfaceName = $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}>";
 
 				var readOnlyProxyTypeName = GetReadOnlyProxyName(typeDef.Type);
 				var writableProxyTypeName = GetWritableProxyName(typeDef.Type);
-
-				var readOnlyProxyInterfaceName = $"{KnownTypeSymbols.IJsonReadOnlyProxyFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>";
-				var writableProxyInterfaceName = $"{KnownTypeSymbols.IJsonWritableProxyFullName}<{typeFullName}, {writableProxyTypeName}>";
 
 				bool hasPolymorphicDefinition = this.PolymorphicMap.TryGetValue(typeDef.Type.Ref, out var polymorphicMetadata);
 #if FULL_DEBUG
@@ -524,19 +588,33 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// note: the self type has no holder class of its own: its members land directly in the enclosing Json scope
 				sb.NewLine();
 
-				sb.XmlComment($"<summary>JSON converter for type <see cref=\"{typeCref}\">{typeName}</see></summary>");
+				sb.XmlComment($"<summary>{(this.WritesJson ? "JSON converter" : "XML serializer")} for type <see cref=\"{typeCref}\">{typeName}</see></summary>");
 				sb.AppendLine($"public static {serializerTypeName} Default => m_cachedSerializer ??= new();");
 				sb.NewLine();
 				sb.AppendLine($"private static {serializerTypeName}? m_cachedSerializer;");
 				sb.NewLine();
 
-				sb.BeginRegion("Proxy Helpers...");
-				sb.NewLine();
+				if (this.WritesJson)
+				{
+					sb.BeginRegion("Proxy Helpers...");
+					sb.NewLine();
 
-				WriteProxyStaticHelpers(sb, typeDef, typeCref);
+					WriteProxyStaticHelpers(sb, typeDef, typeCref);
 
-				sb.EndRegion();
-				sb.NewLine();
+					sb.EndRegion();
+					sb.NewLine();
+				}
+
+				if (this.WritesXml)
+				{ // the eight XML outputs, symmetrical with the JSON ones (emission section: CrystalJsonGenerator.Emitter.Xml.cs)
+					sb.BeginRegion("XML Output...");
+					sb.NewLine();
+
+					WriteXmlStaticHelpers(sb, typeDef, typeCref);
+
+					sb.EndRegion();
+					sb.NewLine();
+				}
 
 				#region Metadata...
 
@@ -580,45 +658,53 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
-				sb.AppendLine($"public static string[] GetAllNames() => new [] {{ {string.Join(", ", typeDef.Members.Select(this.GetLocalPropertyNameRef))} }};"); //TODO: PERF!
+				// a type with no serialized member at all is legal (an ISerializable wrapper on the DataContract XML format is
+				// exactly that), and `new [] { }` does not compile: the empty case needs the typed form
+				sb.AppendLine(typeDef.Members.Count > 0
+					? $"public static string[] GetAllNames() => new [] {{ {string.Join(", ", typeDef.Members.Select(this.GetLocalPropertyNameRef))} }};" //TODO: PERF!
+					: "public static string[] GetAllNames() => global::System.Array.Empty<string>();");
 				sb.NewLine();
 
 				sb.LeaveBlock("properties");
 				sb.NewLine();
 
-				sb.XmlComment("<summary>Cached encoded names for all serialized members for this type</summary>");
-				sb.AppendLine("public static class PropertyEncodedNames");
-				sb.EnterBlock("properties");
-				sb.NewLine();
-				if (typeDef.IsPolymorphicRoot)
+				// the encoded names are the JSON writer's name cache: an XML-only container writes its own CrystalXmlName table instead
+				if (this.WritesJson)
 				{
-					sb.XmlComment($"<summary>Encoded name of the type discriminator property of types that derive from <see cref=\"{typeCref}\"/></summary>");
-					sb.AppendLine($"[{EditorBrowsableAttributeFullName}({EditorBrowsableStateFullName}.Never)]");
-					sb.AppendLine($"public static readonly {KnownTypeSymbols.JsonEncodedPropertyNameFullName} _TypeDiscriminatorProperty_ = new(PropertyNames._TypeDiscriminatorProperty_);");
+					sb.XmlComment("<summary>Cached encoded names for all serialized members for this type</summary>");
+					sb.AppendLine("public static class PropertyEncodedNames");
+					sb.EnterBlock("properties");
+					sb.NewLine();
+					if (typeDef.IsPolymorphicRoot)
+					{
+						sb.XmlComment($"<summary>Encoded name of the type discriminator property of types that derive from <see cref=\"{typeCref}\"/></summary>");
+						sb.AppendLine($"[{EditorBrowsableAttributeFullName}({EditorBrowsableStateFullName}.Never)]");
+						sb.AppendLine($"public static readonly {KnownTypeSymbols.JsonEncodedPropertyNameFullName} _TypeDiscriminatorProperty_ = new(PropertyNames._TypeDiscriminatorProperty_);");
+						sb.NewLine();
+					}
+					else if (hasPolymorphicDefinition)
+					{
+						sb.XmlComment($"<summary>Encoded name of the type discriminator property for type <see cref=\"{typeCref}\"/></summary>");
+						sb.AppendLine($"[{EditorBrowsableAttributeFullName}({EditorBrowsableStateFullName}.Never)]");
+						sb.AppendLine($"public static readonly {KnownTypeSymbols.JsonEncodedPropertyNameFullName} _TypeDiscriminatorProperty_ = new(PropertyNames._TypeDiscriminatorProperty_);");
+						sb.NewLine();
+					}
+					if (polymorphicMetadata.Discriminator is not null)
+					{
+						sb.XmlComment($"<summary>Cached JSON literal of the type discriminator value for type <see cref=\"{typeCref}\"/></summary>");
+						sb.AppendLine($"[{EditorBrowsableAttributeFullName}({EditorBrowsableStateFullName}.Never)]");
+						sb.AppendLine($"public static readonly {KnownTypeSymbols.JsonValueFullName} _TypeDiscriminatorValue_ = {ConvertDiscriminatorValueToJsonLiteral(polymorphicMetadata.Discriminator)};");
+						sb.NewLine();
+					}
+					foreach (var member in typeDef.Members)
+					{
+						sb.XmlComment($"<summary>Encoded name of the <see cref=\"{typeCref}.{member.MemberName}\"/> {(member.IsField ? "field" : "property")} of the <see cref=\"{typeCref}\"/> {(member.Type.IsValueType() ? "struct" : member.Type.IsRecord ? "record" : "class")}</summary>");
+						sb.AppendLine($"public static readonly {KnownTypeSymbols.JsonEncodedPropertyNameFullName} {member.MemberName} = new({GetLocalPropertyNameRef(member)});");
+						sb.NewLine();
+					}
+					sb.LeaveBlock("properties");
 					sb.NewLine();
 				}
-				else if (hasPolymorphicDefinition)
-				{
-					sb.XmlComment($"<summary>Encoded name of the type discriminator property for type <see cref=\"{typeCref}\"/></summary>");
-					sb.AppendLine($"[{EditorBrowsableAttributeFullName}({EditorBrowsableStateFullName}.Never)]");
-					sb.AppendLine($"public static readonly {KnownTypeSymbols.JsonEncodedPropertyNameFullName} _TypeDiscriminatorProperty_ = new(PropertyNames._TypeDiscriminatorProperty_);");
-					sb.NewLine();
-				}
-				if (polymorphicMetadata.Discriminator is not null)
-				{
-					sb.XmlComment($"<summary>Cached JSON literal of the type discriminator value for type <see cref=\"{typeCref}\"/></summary>");
-					sb.AppendLine($"[{EditorBrowsableAttributeFullName}({EditorBrowsableStateFullName}.Never)]");
-					sb.AppendLine($"public static readonly {KnownTypeSymbols.JsonValueFullName} _TypeDiscriminatorValue_ = {ConvertDiscriminatorValueToJsonLiteral(polymorphicMetadata.Discriminator)};");
-					sb.NewLine();
-				}
-				foreach (var member in typeDef.Members)
-				{
-					sb.XmlComment($"<summary>Encoded name of the <see cref=\"{typeCref}.{member.MemberName}\"/> {(member.IsField ? "field" : "property")} of the <see cref=\"{typeCref}\"/> {(member.Type.IsValueType() ? "struct" : member.Type.IsRecord ? "record" : "class")}</summary>");
-					sb.AppendLine($"public static readonly {KnownTypeSymbols.JsonEncodedPropertyNameFullName} {member.MemberName} = new({GetLocalPropertyNameRef(member)});");
-					sb.NewLine();
-				}
-				sb.LeaveBlock("properties");
-				sb.NewLine();
 
 				sb.EndRegion();
 				sb.NewLine();
@@ -627,7 +713,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				#region JsonConverter class...
 
-				sb.AppendLine($"public sealed class JsonConverter : {KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>"); //TODO: implements!
+				// when the container also produces XML, the SAME instance carries the XML facet: passing Default to code that
+				// wants an ICrystalXmlSerializer<T> resolves statically, with no second converter to keep in sync
+				// without a proxy surface, the converter implements the plain IJsonConverter<T>: the three-argument form
+				// names the proxy types, and does not exist on the lite path in the first place
+				// an XML-only container implements the XML facet ALONE: there is no JSON contract for it to answer
+				var facets = new List<string>();
+				if (this.WritesJson)
+				{
+					facets.Add(this.WritesProxies
+						? $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>"
+						: $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}>");
+				}
+				if (this.WritesXml)
+				{
+					facets.Add($"{ICrystalXmlSerializerFullName}<{typeFullName}>");
+				}
+				sb.AppendLine($"public sealed class JsonConverter : {string.Join(", ", facets)}"); //TODO: implements!
 				sb.EnterBlock("JsonConverter");
 
 				// custom converters attached to members ([JsonConverter(typeof(...))] or [JsonBooleanLiterals])
@@ -644,67 +746,87 @@ namespace SnowBank.Serialization.Json.CodeGen
 				EmitNonPublicAccessorThunks(sb, typeDef);
 				EmitCallbackThunks(sb, typeDef);
 
-				#region Type Definition...
+				// everything below, up to the XML facet, answers the JSON contract: the type definition the resolver hands
+				// out, the member/property mapping the proxies read, and the three format methods
+				if (this.WritesJson)
+				{
+					#region Type Definition...
 
-				sb.BeginRegion("Conversion Helpers...");
-				sb.NewLine();
+					sb.BeginRegion("Conversion Helpers...");
+					sb.NewLine();
 
-				WriteTypeDefinitionHelpers(sb, typeDef);
+					WriteTypeDefinitionHelpers(sb, typeDef);
 
-				sb.EndRegion();
-				sb.NewLine();
+					sb.EndRegion();
+					sb.NewLine();
 
-				#endregion
-				
-				#region Helpers...
+					#endregion
 
-				sb.BeginRegion("Conversion Helpers...");
-				sb.NewLine();
+					#region Helpers...
 
-				sb.InheritDoc();
-				sb.AppendLine($"public {SystemTypeFullName} GetTargetType() => typeof({typeDef.Type.FullyQualifiedName});");
-				sb.NewLine();
+					sb.BeginRegion("Conversion Helpers...");
+					sb.NewLine();
 
-				WriteProxyInstanceHelpers(sb, typeDef, typeCref);
+					sb.InheritDoc();
+					sb.AppendLine($"public {SystemTypeFullName} GetTargetType() => typeof({typeDef.Type.FullyQualifiedName});");
+					sb.NewLine();
 
-				sb.EndRegion();
-				sb.NewLine();
+					WriteProxyInstanceHelpers(sb, typeDef, typeCref);
 
-				#endregion
+					sb.EndRegion();
+					sb.NewLine();
 
-				#region Serialize...
+					#endregion
 
-				sb.BeginRegion($"IJsonSerializer<{typeName}>...");
-				sb.NewLine();
+					#region Serialize...
 
-				WriteSerializeMethod(sb, typeDef);
+					sb.BeginRegion($"IJsonSerializer<{typeName}>...");
+					sb.NewLine();
 
-				sb.EndRegion();
-				sb.NewLine();
+					WriteSerializeMethod(sb, typeDef);
 
-				#endregion
+					sb.EndRegion();
+					sb.NewLine();
 
-				#region Pack...
+					#endregion
 
-				sb.BeginRegion($"IJsonPacker<{typeName}>...");
-				sb.NewLine();
+					#region Pack...
 
-				WritePackMethod(sb, typeDef);
+					sb.BeginRegion($"IJsonPacker<{typeName}>...");
+					sb.NewLine();
 
-				sb.EndRegion();
-				sb.NewLine();
+					WritePackMethod(sb, typeDef);
 
-				#endregion
+					sb.EndRegion();
+					sb.NewLine();
 
-				#region UnPack...
+					#endregion
 
-				sb.BeginRegion($"IJsonDeserializer<{typeName}>...");
-				sb.NewLine();
+					#region UnPack...
 
-				WriteUnpackMethod(sb, typeDef, typeCref);
+					sb.BeginRegion($"IJsonDeserializer<{typeName}>...");
+					sb.NewLine();
 
-				sb.EndRegion();
-				sb.NewLine();
+					WriteUnpackMethod(sb, typeDef, typeCref);
+
+					sb.EndRegion();
+					sb.NewLine();
+
+					#endregion
+				}
+
+				#region WriteXml...
+
+				if (this.WritesXml)
+				{
+					sb.BeginRegion($"ICrystalXmlSerializer<{typeName}>...");
+					sb.NewLine();
+
+					WriteXmlSerializer(sb, typeDef);
+
+					sb.EndRegion();
+					sb.NewLine();
+				}
 
 				#endregion
 
@@ -712,6 +834,36 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 
 				#endregion
+
+				// the proxy surface is optional: a consumer on the lite path (netstandard2.0/net472) has no proxy interfaces,
+				// and one below C# 11 cannot implement their static abstract members. Everything above is emitted either way.
+				if (this.WritesProxies)
+				{
+					GenerateProxiesForType(sb, typeDef);
+				}
+
+				if (!selfType)
+				{
+					sb.LeaveBlock();
+				}
+				sb.NewLine();
+
+			}
+
+			/// <summary>Generates the optional <c>ReadOnly</c>/<c>Writable</c> proxy surface of one type</summary>
+			/// <remarks>Split out of <see cref="GenerateCodeForType"/> because it is conditional: see <see cref="WritesProxies"/>. The locals it needs are recomputed here rather than threaded through, so the two halves stay independent.</remarks>
+			private void GenerateProxiesForType(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
+			{
+				var typeName = typeDef.Type.Name;
+				var typeFullName = typeDef.Type.FullyQualifiedName;
+				var typeCref = CSharpCodeBuilder.EscapeCref(typeFullName);
+
+				var readOnlyProxyTypeName = GetReadOnlyProxyName(typeDef.Type);
+				var writableProxyTypeName = GetWritableProxyName(typeDef.Type);
+
+				var jsonConverterInterfaceName = $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}>";
+				var readOnlyProxyInterfaceName = $"{KnownTypeSymbols.IJsonReadOnlyProxyFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>";
+				var writableProxyInterfaceName = $"{KnownTypeSymbols.IJsonWritableProxyFullName}<{typeFullName}, {writableProxyTypeName}>";
 
 				#region Read-Only Proxy...
 
@@ -961,7 +1113,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							string proxyType = member.Type.FullyQualifiedNameAnnotated;
 
 							if (member.CustomConverterType != null)
-							{ // a custom converter takes over the member's wire form; the proxy must decode through it
+							{ // a custom converter takes over the member's format form; the proxy must decode through it
 								var converterRef = $"JsonConverter.{GetMemberConverterRef(member)}";
 								if (!member.CustomConverterHasDeserializer)
 								{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
@@ -1248,7 +1400,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							string? attributeExpr = null;
 
 							if (member.CustomConverterType != null)
-							{ // a custom converter takes over the member's wire form; the proxy must encode and decode through it
+							{ // a custom converter takes over the member's format form; the proxy must encode and decode through it
 								var converterRef = $"JsonConverter.{GetMemberConverterRef(member)}";
 								if (!member.CustomConverterHasDeserializer)
 								{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
@@ -1447,7 +1599,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							}
 
 							if (setterExpr == null && member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
-							{ // [JsonProperty(EnumFormat = ...)] forces the wire form written by the proxy setter as well
+							{ // [JsonProperty(EnumFormat = ...)] forces the output form written by the proxy setter as well
 								var packHelper = $"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackEnum{member.EnumFormat}";
 								setterExpr = member.Type.NullableOfType is null
 									? $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, {packHelper}(value))"
@@ -1485,13 +1637,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 				);
 
 				#endregion
-
-				if (!selfType)
-				{
-					sb.LeaveBlock();
-				}
-				sb.NewLine();
-
 			}
 
 			private void WriteProxyStaticHelpers(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef, string typeCref)
@@ -1548,6 +1693,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"public static {typeDef.Type.FullyQualifiedNameAnnotated} Unpack({KnownTypeSymbols.JsonValueFullName} value, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Default.Unpack(value, resolver);");
 				sb.NewLine();
 
+				// everything below wraps the ReadOnly/Writable proxies, which the container does not always have
+				if (!this.WritesProxies) return;
+
 				// ToReadOnly(JsonValue)
 				sb.XmlComment($"<summary>Returns a read-only JSON Proxy that wraps a <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/> into a type-safe emulation of type <see cref=\"{typeCref}\"/></summary>");
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that wraps <paramref name=\"value\"/> and exposes all the original members of <see cref=\"{typeCref}\"/> as getter-only properties.</returns>");
@@ -1559,8 +1707,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(value);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1579,8 +1727,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(value);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1595,11 +1743,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<para>How to use:<code>");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 					sb.XmlComment("// ...");
 					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1613,11 +1761,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<para>How to use:<code>");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 					sb.XmlComment("// ...");
 					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1634,8 +1782,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // change the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1652,8 +1800,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // change the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1670,8 +1818,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // change the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1683,11 +1831,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as writable properties.</returns>");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue;");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue;");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public static {GetLocalWritableProxyRef(typeDef)} ToMutable({typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalWritableProxyRef(typeDef)}.Create(instance);");
@@ -1698,11 +1846,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as writable properties.</returns>");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue;");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue;");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public static {GetLocalWritableProxyRef(typeDef)} ToMutable({KnownTypeSymbols.IMutableJsonContextFullName} ctx, {typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalWritableProxyRef(typeDef)}.Create(ctx, instance);");
@@ -1747,6 +1895,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.LeaveBlock();
 				sb.NewLine();
 
+				// everything below wraps the ReadOnly/Writable proxies, which the container does not always have
+				if (!this.WritesProxies) return;
+
 				// ToReadOnly(JsonValue)
 				sb.XmlComment($"<summary>Returns a read-only JSON Proxy that wraps a <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/> into a type-safe emulation of type <see cref=\"{typeCref}\"/></summary>");
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that wraps <paramref name=\"value\"/> and exposes all the original members of <see cref=\"{typeCref}\"/> as getter-only properties.</returns>");
@@ -1758,8 +1909,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(json);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1778,8 +1929,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(json);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1794,11 +1945,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<para>How to use:<code>");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 					sb.XmlComment("// ...");
 					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1812,11 +1963,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment("<para>How to use:<code>");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+					sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 					sb.XmlComment("// ...");
 					sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(instance);");
-					sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-					sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = /* ... */; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
@@ -1833,8 +1984,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1851,8 +2002,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1869,8 +2020,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName}; // returns the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field exposed as <see cref=\"{typeDef.Members[0].Type.FullyQualifiedName}\"/>");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(typeDef.Members[0].Name)} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1882,11 +2033,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as writable properties.</returns>\r\n");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue;");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue;");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public {GetLocalWritableProxyRef(typeDef)} ToMutable({typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalWritableProxyRef(typeDef)}.Create(instance);");
@@ -1897,11 +2048,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<returns>An instance of <see cref=\"{GetLocalReadOnlyProxyRef(typeDef)}\"/> that exposes all the original members of <see cref=\"{typeCref}\"/> as writable properties.</returns>\r\n");
 				sb.XmlComment("<remarks>");
 				sb.XmlComment("<para>How to use:<code>");
-				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {typeDef.Members[0].MemberName} = ..., ... }};");
+				sb.XmlComment($"var instance = new {typeDef.Name}() {{ {GetSampleMemberName(typeDef)} = ..., ... }};");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(instance);");
-				sb.XmlComment($"var value = proxy.{typeDef.Members[0].MemberName};");
-				sb.XmlComment($"proxy.{typeDef.Members[0].MemberName} = newValue;");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)};");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue;");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.AppendLine($"public {GetLocalWritableProxyRef(typeDef)} ToMutable({KnownTypeSymbols.IMutableJsonContextFullName} ctx, {typeDef.Type.FullyQualifiedNameAnnotated} instance) => {GetLocalWritableProxyRef(typeDef)}.Create(ctx, instance);");
@@ -1921,8 +2072,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock();
 
 				sb.BeginRegion("Members...");
-				sb.AppendLine($"{KnownTypeSymbols.CrystalJsonMemberDefinitionFullName}[] members =");
-				sb.EnterCollection();
+				// spelled as an explicit array creation rather than a collection expression: the emitted code must also
+				// compile in a consumer sitting on the generator's language floor (C# 9), and both forms produce the same array
+				sb.AppendLine($"{KnownTypeSymbols.CrystalJsonMemberDefinitionFullName}[] members = new {KnownTypeSymbols.CrystalJsonMemberDefinitionFullName}[]");
+				sb.EnterBlock("members");
 				List<string> flags = [ ];
 				foreach (var member in typeDef.Members)
 				{
@@ -1987,8 +2140,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 							tag = "not-null-string";
 						}
 						else if (member.IsNotNull && member.Type.IsEnumerable(out _))
-						{ // not-null collection type without a default value, we will inject a default empty collection expression
-							valueExpr = $"value is not null ? ({member.Type.FullyQualifiedName}) value : [ ]";
+						{ // not-null collection type without a default value, we will inject a default empty collection
+							valueExpr = $"value is not null ? ({member.Type.FullyQualifiedName}) value : {GetEmptyCollectionExpr(member.Type)}";
 							tag = "not-null-collection";
 						}
 						else
@@ -2052,7 +2205,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					sb.LeaveBlock(suffix: ',');
 				}
-				sb.LeaveCollection(suffix: ';');
+				sb.LeaveBlock("members", suffix: ';');
 				sb.EndRegion();
 
 				sb.AppendLine($"{KnownTypeSymbols.CrystalJsonTypeVisitorFullName} visitor = (({KnownTypeSymbols.IJsonConverterInterfaceFullName}) {GetLocalSerializerRef(typeDef)}).Serialize;");
@@ -2202,7 +2355,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 
 					if (member.CustomConverterType != null)
-					{ // a custom converter takes over the member's wire form
+					{ // a custom converter takes over the member's format form
 						var converterRef = GetMemberConverterRef(member);
 						if (!member.CustomConverterHasDeserializer)
 						{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
@@ -2285,7 +2438,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						// note: we have to also know the target enumerable type: array? list? other?
 
-						string sequenceShape = member.Type.IsArray() ? "Array" : member.Type.IsList() ? "List" : member.Type.IsEnumerableInterface(out _) ? "Enumerable" : "Unknown"; //TODO: support more ?
+						// note: a bare interface (IList<T>, ICollection<T>, IReadOnlyList<T>, IReadOnlyCollection<T>, ...) is
+						// deliberately left "Unknown" here: there is no Unpack*Enumerable runtime helper for it (unlike the
+						// empty-instance expression on the write side, GetEmptyCollectionExpr, which Array.Empty<T>() covers),
+						// so it falls through to the generic deserialization fallback below instead of a fast path that does not exist
+						string sequenceShape = member.Type.IsArray() ? "Array" : member.Type.IsList() ? "List" : "Unknown"; //TODO: support more ?
 						if (sequenceShape != "Unknown")
 						{
 							if (IsLocallyGeneratedType(elemType, out target, out isNullableOfT))
@@ -2450,8 +2607,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>Required by <c>[OnDeserializing]</c>, which must run on a constructed but UNPOPULATED instance: an object initializer leaves no point between the two.</remarks>
 			private bool UnpackAsStatements { get; set; }
 
-			/// <summary>Returns the settings expression a generated entry point uses when the caller passed none: the container's baked wire profile, or the standard defaults</summary>
-			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging): a merged wire would be unauditable. Settings the baked names cannot honor are refused by the guard in the Serialize method.</remarks>
+			/// <summary>Returns the settings expression a generated entry point uses when the caller passed none: the container's baked format profile, or the standard defaults</summary>
+			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging): a merged format would be unauditable. Settings the baked names cannot honor are refused by the guard in the Serialize method.</remarks>
 			private string GetSettingsFallbackExpr(string settingsVar, bool compact)
 			{
 				if (this.Metadata.WireProfile == "DataContractCompat")
@@ -2474,8 +2631,25 @@ namespace SnowBank.Serialization.Json.CodeGen
 					? $"__get_{member.MemberName}({(typeDef.Type.IsValueType() ? "ref " : "")}instance)"
 					: $"instance.{member.MemberName}";
 
-			/// <summary>Emits the accessor thunks for members that generated code cannot reach directly (a private/protected member, or a non-public accessor unlocked by <c>[JsonInclude]</c>)</summary>
-			/// <remarks>Two flavors with identical call sites: zero-cost <c>[UnsafeAccessor]</c> thunks when the consuming compilation defines the attribute (net8+), and reflection-based accessors otherwise (correct wire, slower). Internal members never get a thunk: the generated code lives in the same assembly and reaches them directly.</remarks>
+			/// <summary>Returns the CONCRETE registered subtypes of a polymorphic root, MOST DERIVED FIRST: the order a switch over runtime types has to case them in</summary>
+			/// <remarks>
+			/// <para>A <c>case</c> on a base type captures every subclass, so a concrete non-sealed intermediate registered before its
+			/// own registered subclass would make that subclass's case unreachable - CS8120, which is a build FAILURE in the generated
+			/// code, not a wrong format. Registration order cannot be trusted for this, and inheritance depth is the property that fixes it.</para>
+			/// <para>Depth is the only key, and <c>OrderByDescending</c> is stable, so two unrelated subtypes keep their registration
+			/// order and the emission stays deterministic. Abstract types are dropped: they have no instance to match.</para>
+			/// <para>Shared by all four formats (JSON <c>Pack</c> and <c>Serialize</c>, and the two XML profiles), which is the point:
+			/// one ordering rule, spelled once. The same mechanism already orders the compat format's <c>anyType</c> switch.</para>
+			/// </remarks>
+			private static IEnumerable<TypeMetadata> GetPolymorphicDispatchOrder(CrystalJsonTypeMetadata typeDef)
+			{
+				foreach (var (_, derivedType, _) in typeDef.DerivedTypes.OrderByDescending(static x => x.Type.InheritanceDepth))
+				{
+					if (derivedType.IsAbstract) continue;
+					yield return derivedType;
+				}
+			}
+
 			/// <summary>Emits the call to one lifecycle callback, or nothing when the type does not declare it</summary>
 			/// <param name="documentExpr">Expression yielding the document being bound, for the deserialize pair; <see langword="null"/> on the serialize side, which has no document</param>
 			/// <remarks>The parameter shapes were validated at parse time (CJSON0015), so the emitted call needs no runtime test.</remarks>
@@ -2596,7 +2770,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 					}
 					else
-					{ // no [UnsafeAccessor] on this target: reflection-based accessors (correct wire, slower)
+					{ // no [UnsafeAccessor] on this target: reflection-based accessors (correct format, slower)
 						if (member.IsField)
 						{
 							sb.AppendLine($"private static readonly global::System.Reflection.FieldInfo __fi_{member.MemberName} = typeof({typeFullName}).GetField({CSharpCodeBuilder.Constant(member.MemberName)}, global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.NonPublic)!;");
@@ -2657,16 +2831,37 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.EnterBlock();
 					sb.AppendLine($"return {KnownTypeSymbols.JsonNullFullName}.Null;");
 					sb.LeaveBlock();
-					sb.AppendLine("return Pack(instance.Value, settings, resolver);");
+					sb.AppendLine($"return Pack(instance.Value, settings, resolver, 0);");
+					sb.LeaveBlock();
+					sb.NewLine();
+
+					// ... and its depth-carrying twin, so a nullable member of this type keeps the counter running
+					sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/>, at the given nesting depth</summary>");
+					sb.XmlComment($"<param name=\"{PackDepthParameterName}\">See the same parameter on the non-nullable overload.</param>");
+					sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}? instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver, int {PackDepthParameterName})");
+					sb.EnterBlock();
+					sb.AppendLine("if (instance is null)");
+					sb.EnterBlock();
+					sb.AppendLine($"return {KnownTypeSymbols.JsonNullFullName}.Null;");
+					sb.LeaveBlock();
+					sb.AppendLine($"return Pack(instance.Value, settings, resolver, {PackDepthParameterName});");
 					sb.LeaveBlock();
 					sb.NewLine();
 				}
 
+				// the interface entry point: a root call starts the count at zero
 				sb.InheritDoc();
-				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default)");
+				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Pack(instance, settings, resolver, 0);");
+				sb.NewLine();
+
+				// the nested entry point: a parent packing this value as one of its members passes its own depth plus one
+				sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/>, at the given nesting depth</summary>");
+				sb.XmlComment($"<param name=\"{PackDepthParameterName}\">Number of objects already open above this one. Every nested call within this generated recursion adds one, and reaching <c>CrystalJsonWriter.MaxDepth</c> raises <c>JsonSerializationException</c> instead of recursing into a stack overflow; a cycle running through a collection or dictionary member, a custom member converter, or the reflection fallback is not covered, since the counter resets to zero across those calls.</param>");
+				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver, int {PackDepthParameterName})");
 				sb.EnterBlock("Pack");
+
 				if (this.Metadata.WireProfile == "DataContractCompat")
-				{ // the container's baked wire profile is the "no settings" default; explicit settings replace it entirely
+				{ // the container's baked format profile is the "no settings" default; explicit settings replace it entirely
 					sb.AppendLine($"settings ??= {KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat;");
 				}
 
@@ -2679,23 +2874,27 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
+				// AFTER the null check, and not before: the arguments of AddIfNotNull are evaluated eagerly, so the deepest
+				// object of a legal graph still calls this method once more for its own null member, one level past itself
+				WritePackDepthGuard(sb);
+				sb.NewLine();
+
 				// if the type is polymorphic, we have to dispatch to the corresponding serializer
 				if (typeDef.IsPolymorphicRoot)
 				{
 					sb.AppendLine("switch(instance)");
 					sb.EnterBlock();
-					foreach (var (_, derivedType, _) in typeDef.DerivedTypes)
+					foreach (var derivedType in GetPolymorphicDispatchOrder(typeDef))
 					{
-						if (derivedType.IsAbstract) continue; // skip abstract types
-						//BUGBUG: TODO: we may need to sort the types from most specific to less specific, ex: "case Greyhound" then "case Dog", otherwise "case Dog" would match all Greyhound instances if evaluated first!
-						//note: if we compute the "depth" of each type (from the top most abstract class or interface), we could simply sort them from highest to lowest!
-						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: return {GetLocalSerializerRef(derivedType)}.Pack(x, settings, resolver);");
+						// the delegate packs THIS object, so it stands at the same depth: only a nested MEMBER adds a level
+						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: return {GetLocalSerializerRef(derivedType)}.Pack(x, settings, resolver, {PackDepthParameterName});");
 					}
 					sb.AppendLine($"default: throw {KnownTypeSymbols.JsonSerializationExceptionFullName}.CannotPackDerivedTypeWithUnknownTypeDiscriminator(instance.GetType(), typeof({typeDef.Type.FullyQualifiedName}));");
 					sb.LeaveBlock();
 
 					sb.LeaveBlock("Pack");
 					sb.NewLine();
+					WritePackTooDeepHelper(sb);
 					return;
 				}
 
@@ -2706,9 +2905,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (hasPolymorphicDefinition)
 					{ // defer to the parent type which should have all the derived types under this one
 						//PERF: we _could_ optimize by having a smaller switch with only de types under us?
-						sb.AppendLine($"return {GetLocalSerializerRef(polymorphicMetadata.Parent)}.Pack(instance, settings, resolver);");
+						sb.AppendLine($"return {GetLocalSerializerRef(polymorphicMetadata.Parent)}.Pack(instance, settings, resolver, {PackDepthParameterName});");
 						sb.LeaveBlock("Pack");
 						sb.NewLine();
+						WritePackTooDeepHelper(sb);
 						return;
 					}
 				}
@@ -2789,6 +2989,56 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"return settings.IsReadOnly() ? {KnownTypeSymbols.CrystalJsonMarshallFullName}.FreezeTopLevel(obj) : obj;");
 				sb.LeaveBlock("Pack");
 				sb.NewLine();
+
+				WritePackTooDeepHelper(sb);
+			}
+
+			/// <summary>Name of the depth parameter threaded through the generated <c>Pack</c> recursion</summary>
+			/// <remarks>An explicit parameter, mirroring the XML emission: the DOM built by <c>Pack</c> has no writer to hang a
+			/// counter on (unlike the <c>Serialize</c> path, which brackets its body with the writer's own depth machinery), so the
+			/// generated code is what must carry it.</remarks>
+			private const string PackDepthParameterName = "__depth";
+
+			/// <summary>The one nesting cap every format shares (the XML emission reaches the same value through <c>CrystalXml.MaxDepth</c>)</summary>
+			private const string CrystalJsonWriterMaxDepthFullName = "global::SnowBank.Data.Json.CrystalJsonWriter.MaxDepth";
+
+			/// <summary>Emits the depth guard at the top of a generated <c>Pack</c> body</summary>
+			/// <remarks>
+			/// <para>A reference cycle has no JSON representation here (there is no <c>$id</c>/<c>$ref</c> form), and the generated
+			/// packer has no visited-set to detect one with: left unguarded, it recurses until the native stack is exhausted, which
+			/// raises a <c>StackOverflowException</c> that .NET cannot catch and that takes the whole process down. Counting the
+			/// levels costs one comparison against a constant per object on the happy path, allocates nothing, and needs no
+			/// reflection.</para>
+			/// <para>Measured before this guard existed: a two-node cycle overflowed after ~8000 nested <c>Pack</c> frames (one
+			/// frame per level). The cap lives in <c>CrystalJsonWriter.MaxDepth</c>, shared with every other format, whose own
+			/// documentation justifies the value.</para>
+			/// </remarks>
+			private void WritePackDepthGuard(CSharpCodeBuilder sb)
+			{
+				this.PackNeedsTooDeepHelper = true;
+				sb.Comment("a reference cycle has no JSON representation here, and an unguarded recursion would die on a StackOverflowException that no caller can catch: count the levels and fail with the same typed error the reflection path raises");
+				sb.AppendLine($"if ({PackDepthParameterName} >= {CrystalJsonWriterMaxDepthFullName}) FailPackTooDeep({PackDepthParameterName}, instance);");
+			}
+
+			/// <summary>Whether the converter currently being emitted needs the depth-guard helper of the <c>Pack</c> path</summary>
+			private bool PackNeedsTooDeepHelper { get; set; }
+
+			/// <summary>Emits the helper that raises the too-deep error once the depth cap is reached</summary>
+			/// <remarks>A method call rather than an inline <c>throw</c>, so that the statements after the guard stay reachable for
+			/// the compiler and the generated body carries no unreachable-code warning (same shape as the XML profile's
+			/// <c>FailXmlCycle</c>). The exception is the very one the reflection path raises for the same condition, so a caller
+			/// catching <c>JsonSerializationException</c> does not have to know which path produced the document.</remarks>
+			private void WritePackTooDeepHelper(CSharpCodeBuilder sb)
+			{
+				if (!this.PackNeedsTooDeepHelper) return;
+				this.PackNeedsTooDeepHelper = false;
+
+				sb.Comment("the depth cap was reached: the graph either loops back on itself, or is deeper than this serializer supports - either way there is no document to build");
+				sb.AppendLine($"private static void FailPackTooDeep(int depth, object? instance)");
+				sb.EnterBlock();
+				sb.AppendLine($"throw {KnownTypeSymbols.CrystalJsonFullName}.Errors.Serialization_FailTooDeep(depth, instance);");
+				sb.LeaveBlock();
+				sb.NewLine();
 			}
 
 			private void WriteSerializeMethod(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
@@ -2854,9 +3104,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					sb.AppendLine("switch(instance)");
 					sb.EnterBlock();
-					foreach (var (_, derivedType, _) in typeDef.DerivedTypes)
+					foreach (var derivedType in GetPolymorphicDispatchOrder(typeDef))
 					{
-						if (derivedType.IsAbstract) continue;
 						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: {GetLocalSerializerRef(derivedType)}.Serialize(writer, x); break;");
 					}
 					sb.AppendLine($"default: throw {KnownTypeSymbols.JsonSerializationExceptionFullName}.CannotSerializeDerivedTypeWithoutTypeDiscriminator(instance.GetType(), typeof({typeDef.Type.FullyQualifiedName}));");
@@ -2894,6 +3143,20 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				sb.NewLine();
+				sb.Comment("a reference cycle has no JSON representation here, and an unguarded recursion would die on a StackOverflowException that no caller can catch: the writer counts the levels and raises the same typed error the reflection path raises");
+				if (typeDef.Type.IsValueType())
+				{
+					// passing typeof(T) instead of the instance avoids boxing the struct on the happy path just to name it in a
+					// failure message that never differs from the static type anyway, since a struct cannot be further derived
+					sb.AppendLine($"writer.EnterDepth(typeof({typeDef.Type.FullyQualifiedName}));");
+				}
+				else
+				{
+					// reference types are not boxed by the object-typed overload, and instance.GetType() can be more derived than
+					// the static type here (a sealed/non-polymorphic reference type still reaches this body), so keep the instance
+					// to preserve that fidelity in the failure message
+					sb.AppendLine("writer.EnterDepth(instance);");
+				}
 				sb.AppendLine("var state = writer.BeginObject();");
 
 				if (hasPolymorphicDefinition)
@@ -2920,6 +3183,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				EmitCallbackInvocation(sb, typeDef.OnSerialized, "instance", null);
 
 				sb.AppendLine("writer.EndObject(state);");
+				sb.AppendLine("writer.LeaveDepth();");
 				sb.LeaveBlock("Serialize()");
 				sb.NewLine();
 			}
@@ -2927,7 +3191,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private string GetMemberPackerExpression(CrystalJsonMemberMetadata member, string getterExpr)
 			{
 				if (member.CustomConverterType != null)
-				{ // a custom converter takes over the member's wire form
+				{ // a custom converter takes over the member's format form
 					if (!member.CustomConverterHasPacker)
 					{ // asymmetric converter without the packing facet: any attempt to serialize fails loudly
 						return $"/* member-converter (missing packer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingPackerFacet(typeof({member.CustomConverterType}), typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}))";
@@ -2940,7 +3204,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				if (member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
-				{ // [JsonProperty(EnumFormat = ...)] forces the wire form for this member, regardless of the settings
+				{ // [JsonProperty(EnumFormat = ...)] forces the output form for this member, regardless of the settings
 					var packHelper = $"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackEnum{member.EnumFormat}";
 					if (member.Type.NullableOfType is null)
 					{
@@ -2950,8 +3214,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				if (IsLocallyGeneratedType(member.Type, out var target, out _))
-				{
-					return $"/* local-serializer */ {GetLocalSerializerRef(target)}.Pack({getterExpr}, settings, resolver)";
+				{ // one level deeper: this is a nested object, and the callee's own guard is what stops a cycle running through it
+					return $"/* local-serializer */ {GetLocalSerializerRef(target)}.Pack({getterExpr}, settings, resolver, {PackDepthParameterName} + 1)";
 				}
 
 				// unwrap any Nullable<T> (most packing methods handle both!)
@@ -3218,7 +3482,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private void WriteMemberSerializerCore(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member, string propertyName, string getterExpr)
 			{
 				if (member.CustomConverterType != null)
-				{ // a custom converter takes over the member's wire form
+				{ // a custom converter takes over the member's format form
 					if (!member.CustomConverterHasPacker)
 					{ // asymmetric converter without the packing facet: any attempt to serialize fails loudly
 						sb.AppendLine($"writer.WriteField({propertyName}, {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingPackerFacet(typeof({member.CustomConverterType}), typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}))); // member-converter (missing packer facet)");
@@ -3235,7 +3499,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				if (member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
-				{ // [JsonProperty(EnumFormat = ...)] forces the wire form for this member, regardless of the settings
+				{ // [JsonProperty(EnumFormat = ...)] forces the output form for this member, regardless of the settings
 					sb.AppendLine($"writer.WriteFieldEnum{member.EnumFormat}({propertyName}, {getterExpr}); // enum-format");
 					return;
 				}

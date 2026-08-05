@@ -27,6 +27,7 @@
 namespace SnowBank.Serialization.Json.CodeGen
 {
 	using Microsoft.CodeAnalysis;
+	using Microsoft.CodeAnalysis.CSharp;
 
 	[SuppressMessage("ReSharper", "InconsistentNaming")]
 	internal sealed class KnownTypeSymbols
@@ -35,6 +36,29 @@ namespace SnowBank.Serialization.Json.CodeGen
 		#region FullNames constants...
 
 		public const string CrystalJsonNamespace = "SnowBank.Data.Json";
+
+		/// <summary>Namespace of the XML output vocabulary (opt-in: a container only produces XML when it asks for it)</summary>
+		public const string CrystalXmlNamespace = "SnowBank.Data.Xml";
+
+		/// <summary>Namespace of the FORMAT-NEUTRAL container vocabulary (the marker, the output base, the type enrollment)</summary>
+		public const string CrystalNeutralNamespace = "SnowBank.Data";
+
+		/// <summary>The format-neutral container marker: a class carrying it hosts generated code for every output format it names</summary>
+		public const string CrystalConverterAttributeFullName = CrystalNeutralNamespace + ".CrystalConverterAttribute";
+
+		/// <summary>The format-neutral type enrollment (<c>[CrystalJsonSerializable]</c> is the legacy alias that derives from it)</summary>
+		public const string CrystalSerializableAttributeFullName = CrystalNeutralNamespace + ".CrystalSerializableAttribute";
+
+		public const string CrystalXmlOutputAttributeFullName = CrystalXmlNamespace + ".CrystalXmlOutputAttribute";
+
+		/// <summary>Mono-format alias: the neutral marker plus the XML output, with the XML parameters carried by the alias itself</summary>
+		public const string CrystalXmlConverterAttributeFullName = CrystalXmlNamespace + ".CrystalXmlConverterAttribute";
+
+		/// <summary>Requests the JSON format from a neutral container, and carries its parameters</summary>
+		public const string CrystalJsonOutputAttributeFullName = CrystalJsonNamespace + ".CrystalJsonOutputAttribute";
+
+		/// <summary>Member-level XML vocabulary: every XML-only concern lives here, so the JSON attributes are never modified by the XML feature</summary>
+		public const string XmlPropertyAttributeFullName = CrystalXmlNamespace + ".XmlPropertyAttribute";
 
 		public const string CrystalJsonFullName = CrystalJsonNamespace + ".CrystalJson";
 		public const string CrystalJsonConverterAttributeFullName = CrystalJsonNamespace + ".CrystalJsonConverterAttribute";
@@ -125,6 +149,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>The compilation's core library defines <c>[UnsafeAccessor]</c> (net8+): non-public members get zero-cost accessor thunks; otherwise the generated code falls back to reflection-based accessors</summary>
 		public bool HasUnsafeAccessor { get; }
 
+		/// <summary>The consuming compilation can host the generated JSON proxies: the proxy interfaces are visible AND the language version supports the static abstract members they implement (C# 11)</summary>
+		/// <remarks>
+		/// <para>Both halves are real exclusions rather than preferences. <c>IJsonReadOnlyProxy</c> and friends are absent from the <c>netstandard2.0</c> build of <c>SnowBank.Core</c>, because static abstract interface members need runtime support the .NET Framework CLR does not have; and a consumer below C# 11 cannot implement them even when they are visible.</para>
+		/// <para>When this is false, the container still gets its converters, its <c>TypeMapper</c> and (if it asked for it) its XML output: only the proxy surface is left out.</para>
+		/// </remarks>
+		public bool SupportsJsonProxies { get; }
+
+		/// <summary>The consuming compilation can see a usable <c>[DynamicallyAccessedMembers]</c></summary>
+		/// <remarks>On the lite path the attribute only exists as an <c>internal</c> polyfill inside the referenced assembly, so generated code cannot apply it: the trimming annotation is dropped, which costs nothing on a runtime that does not trim.</remarks>
+		public bool HasDynamicallyAccessedMembers { get; }
+
 		#region JSON Serialization Attributes...
 
 		public INamedTypeSymbol? CrystalJsonConverterAttribute { get; }
@@ -157,6 +192,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 			this.CrystalJsonConverterAttribute = compilation.GetBestTypeByMetadataName(CrystalJsonConverterAttributeFullName);
 
 			this.HasUnsafeAccessor = compilation.GetBestTypeByMetadataName("System.Runtime.CompilerServices.UnsafeAccessorAttribute") is not null;
+
+			this.SupportsJsonProxies =
+				compilation.GetBestTypeByMetadataName(IJsonReadOnlyProxyFullName + "`3") is not null
+				&& (compilation as CSharpCompilation)?.LanguageVersion.MapSpecifiedToEffectiveVersion() >= LanguageVersion.CSharp11;
+
+			this.HasDynamicallyAccessedMembers =
+				compilation.GetBestTypeByMetadataName("System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembersAttribute") is { } dam
+				&& compilation.IsSymbolAccessibleWithin(dam, compilation.Assembly);
 
 			this.IJsonPackable = compilation.GetBestTypeByMetadataName(IJsonPackableFullName);
 			this.IJsonSerializable = compilation.GetBestTypeByMetadataName(IJsonSerializableFullName);
