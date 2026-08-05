@@ -334,6 +334,14 @@ namespace FoundationDB.Storage.FdbLite
 			return area != 0 ? area : page.Length;
 		}
 
+		/// <summary>Stores the value-heap frontier, encoding an empty heap (frontier still at the page end) as the 0 sentinel <see cref="LeafValueFrontier"/> decodes.</summary>
+		/// <remarks>The mapping must be explicit on 64 KiB pages, where the page length itself does not fit the u16 field: a leaf holding only zero-length values (the secondary-index shape) keeps its frontier at the page end through every insert.</remarks>
+		private static void SetLeafValueFrontier(Span<byte> page, int frontier)
+		{
+			Contract.Debug.Requires(frontier > FdbLitePageHeader.Size && frontier <= page.Length);
+			FdbLitePageHeader.SetCellAreaOffset(page, frontier == page.Length ? (ushort) 0 : checked((ushort) frontier));
+		}
+
 		/// <summary>Bytes between the two heaps that no cell occupies: the room a splice or a relocation can use without reclaiming anything.</summary>
 		/// <remarks>This is the free GAP only. It deliberately excludes <see cref="FdbLitePageHeader.GetWastedBytes"/>, which is real room but needs a repack to reach.</remarks>
 		public static int LeafFreeGap(ReadOnlySpan<byte> page)
@@ -398,7 +406,7 @@ namespace FoundationDB.Storage.FdbLite
 
 			int landing = LeafValueFrontier(page) - storedValue.Length;
 			storedValue.CopyTo(page.Slice(landing, storedValue.Length));
-			FdbLitePageHeader.SetCellAreaOffset(page, checked((ushort) landing));
+			SetLeafValueFrontier(page, landing);
 
 			int f = ValueOffsetField(page, LeafEntry(page, cellIndex));
 			BinaryPrimitives.WriteUInt16LittleEndian(page[f..], (ushort) landing);
@@ -526,7 +534,7 @@ namespace FoundationDB.Storage.FdbLite
 			// so the append point is the end of the occupied key heap. The old "+ 2" here was the per-insert slide.
 			WriteLeafEntry(page, keyBase + keyUsed, valueAt, keySuffix, storedValue, flags);
 			FdbLitePageHeader.SetKeyAreaLength(page, checked((ushort) (keyUsed + 2 + keySuffix.Length + 5)));
-			FdbLitePageHeader.SetCellAreaOffset(page, checked((ushort) valueAt));
+			SetLeafValueFrontier(page, valueAt);
 			AdjustLeafAggregates(page, +1, wholeKeyLength, LeafLogicalValueLength(storedValue, flags));
 			AssertHeapsIntact(page, "TryInsertLeafCell exit");
 			return true;
@@ -645,7 +653,7 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				FdbLitePageHeader.SetCellCount(this.Image, (ushort) this.Index);
 				FdbLitePageHeader.SetKeyAreaLength(this.Image, (ushort) this.KeyUsed);
-				FdbLitePageHeader.SetCellAreaOffset(this.Image, this.Index > 0 ? (ushort) this.ValueAt : (ushort) 0);
+				SetLeafValueFrontier(this.Image, this.ValueAt);
 
 				// the leaf's own aggregate block: entry count, whole-key bytes (each stored suffix re-expanded by
 				// the page prefix), logical value bytes accumulated extent-aware by Add, and itself as one leaf

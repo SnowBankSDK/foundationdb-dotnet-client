@@ -108,6 +108,41 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_Leaf_Holding_Only_Empty_Values_Accepts_More_Of_Them()
+		{
+			// the secondary-index shape: every value is empty, so a leaf's value heap never leaves the page
+			// end - an offset that does not fit the u16 frontier field on 64 KiB pages, where it must round
+			// through the 0 "empty heap" sentinel instead of overflowing on the second splice
+			foreach (var geometry in TestGeometries.All)
+			{
+				var (pager, allocator) = CreateStore(geometry);
+				using var cleanup = pager;
+				var writer = new FdbLiteTreeWriter(pager, allocator, generation: 1, root: 0);
+
+				const int COUNT = 10_000;
+				var rnd = new Random(4021);
+				var order = Enumerable.Range(0, COUNT).OrderBy(_ => rnd.Next()).ToList();
+
+				Span<byte> key = stackalloc byte[8];
+				foreach (var i in order)
+				{ // scattered arrival, so growth goes through the splice path and not the append path
+					BinaryPrimitives.WriteUInt64BigEndian(key, (ulong) i);
+					writer.Insert(key, ReadOnlySpan<byte>.Empty);
+				}
+
+				var root = Published(writer);
+				for (int i = 0; i < COUNT; i++)
+				{
+					BinaryPrimitives.WriteUInt64BigEndian(key, (ulong) i);
+					Assert.That(FdbLiteTreeReader.TryGetValue(pager, root, key, out var v), Is.True, $"[{geometry}] missing key {i}");
+					Assert.That(v.Length, Is.Zero, $"[{geometry}] key {i} should have an empty value");
+				}
+				Assert.That(ScanForward(pager, root), Has.Count.EqualTo(COUNT), $"[{geometry}] forward scan");
+				Assert.That(FdbLiteTreeAudit.Check(pager, root), Is.Empty, $"[{geometry}] structural audit");
+			}
+		}
+
+		[Test]
 		public void Test_Reference_Model_Random_Inserts_And_Scans()
 		{
 			foreach (var geometry in TestGeometries.All)
