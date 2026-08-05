@@ -2876,8 +2876,14 @@ namespace FoundationDB.Testing
 				return new FdbWatch(node.Future, node.Key);
 			}
 
+			/// <summary>Creates an <see cref="FdbException"/> without the native message lookup: the code-only constructor resolves its text through <c>fdb_get_error</c>, and the emulator must work on machines where the <c>fdb_c</c> library is not installed.</summary>
+			private static FdbException CreateError(FdbError error) => new(error, error.ToString());
+
 			/// <summary>Fails every watch this transaction created but never armed (its commit did not succeed), like the real client does.</summary>
-			private void FailPendingWatches(FdbError error)
+			private void FailPendingWatches(FdbError error) => FailPendingWatches(CreateError(error));
+
+			/// <summary>Fails every watch this transaction created but never armed, with the given cause; a watch must always settle, or its awaiter deadlocks.</summary>
+			private void FailPendingWatches(Exception cause)
 			{
 				List<WatchNode>? pending;
 				lock (this.Lock)
@@ -2888,7 +2894,7 @@ namespace FoundationDB.Testing
 				if (pending is null) return;
 				foreach (var node in pending)
 				{
-					node.Future.TrySetException(new FdbException(error));
+					node.Future.TrySetException(cause);
 				}
 			}
 
@@ -2902,8 +2908,15 @@ namespace FoundationDB.Testing
 				catch (FdbException e)
 				{ // a failed commit (e.g. a conflict) kills the futures it would have settled:
 					// the watches fail with the commit error, the versionstamp with TransactionInvalidVersion (there is no commit version) — both pinned against the real cluster
-					this.StampSignal?.TrySetException(new FdbException(FdbError.TransactionInvalidVersion));
+					this.StampSignal?.TrySetException(CreateError(FdbError.TransactionInvalidVersion));
 					FailPendingWatches(e.Code);
+					throw;
+				}
+				catch (Exception e) when (e is not OperationCanceledException)
+				{ // an unexpected engine failure must still settle the futures with the crash itself: a pending watch would deadlock its awaiter, which hides the failure instead of surfacing it
+					// (cancellation is excluded: the watch futures observe their own token, and Dispose/Reset settle survivors with TransactionCancelled)
+					this.StampSignal?.TrySetException(e);
+					FailPendingWatches(e);
 					throw;
 				}
 				finally
@@ -2957,7 +2970,7 @@ namespace FoundationDB.Testing
 						break;
 					}
 				}
-				throw new FdbException(code);
+				throw CreateError(code);
 			}
 
 			public void Reset()
