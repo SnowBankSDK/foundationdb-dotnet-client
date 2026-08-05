@@ -47,7 +47,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public static readonly CSharpParseOptions ParseOptions = new(LanguageVersion.Latest);
 
 		/// <summary>Parse options of a consumer sitting exactly on the generator's supported language floor (C# 9, enforced by <c>SYSLIB1221</c>)</summary>
-		/// <remarks>Used by the "lite consumer" hygiene fact: a legacy application migrating to the <c>netstandard2.0</c>/<c>net472</c> path only has to raise <c>LangVersion</c> to the floor, and the emitted code (JSON <b>and</b> XML) must compile there.</remarks>
+		/// <remarks>Used by the "lite consumer" language-floor fact: a legacy application migrating to the <c>netstandard2.0</c>/<c>net472</c> path only has to raise <c>LangVersion</c> to the floor, and the emitted code (JSON <b>and</b> XML) must compile there.</remarks>
 		public static readonly CSharpParseOptions FloorParseOptions = new(LanguageVersion.CSharp9);
 
 		/// <summary>Parse options of an old-style (non-SDK) .NET Framework project that never opted into a newer language version: the C# 7.3 default, BELOW the generator's floor</summary>

@@ -35,7 +35,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
-	public sealed class GeneratedCodeHygieneFacts : SimpleTest
+	public sealed class GeneratedCodeLanguageFloorFacts : SimpleTest
 	{
 
 		/// <summary>Probe DTOs covering the emitted surface: converters, proxies (read-only, writable, observable), the TypeMapper, polymorphism, enums, collections, and nullable members</summary>
@@ -259,7 +259,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		/// <remarks>
 		/// <para>The <c>netstandard2.0</c>/<c>net472</c> "lite" path is in scope for CrystalXml exactly as it is for CrystalJson (see this repo's CLAUDE.md), and its whole point is a legacy application that has not been modernized yet. Such an application raises <c>LangVersion</c> to the generator's floor and no further, so a modern-only construct in the EMITTED source (UTF-8 string literals, collection expressions, raw strings) would make XML output cost strictly more language than JSON output does, for no functional reason.</para>
 		/// <para>The floor itself is C# 9 and is enforced by the parser (<c>SYSLIB1221</c>, pinned by the fact below); this one pins that XML emission does not raise it.</para>
-		/// <para>This fact fails on errors only: warnings are covered by the modern hygiene fact above, and an older-language compilation legitimately reports informational noise the modern one does not.</para>
+		/// <para>This fact fails on errors only: warnings are covered by the modern language-floor fact above, and an older-language compilation legitimately reports informational noise the modern one does not.</para>
 		/// </remarks>
 		[Test]
 		public void Test_Generated_Code_Compiles_At_The_Supported_Language_Floor()
