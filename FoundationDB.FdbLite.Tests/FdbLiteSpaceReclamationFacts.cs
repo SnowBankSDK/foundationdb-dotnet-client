@@ -197,6 +197,42 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_A_Freed_Leaf_Does_Not_Stay_A_Consolidation_Candidate()
+		{
+			// a delete-noted leaf that later dies in the same generation must leave the candidate set: its
+			// blocks go straight back to the allocator (shadow pages free through FreeImmediately), so a
+			// stale note would nominate whatever fresh page reuses the id - typically a GROWING leaf, the
+			// one page the arm promises never to touch
+			using var engine = CreateHeapEngine();
+
+			var writer = engine.BeginWrite();
+			for (long i = 0; i < 2_000; i++)
+			{
+				writer.Insert(Key64(i), Value((int) i, 60));
+			}
+			Assert.That(writer.UnderflowCandidateSet, Is.Empty, "growth alone must not note candidates");
+
+			// delete ascending keys until the first leaf shrinks under the threshold and gets noted
+			long next = 0;
+			while (writer.UnderflowCandidateSet.Count == 0)
+			{
+				Assert.That(writer.Remove(Key64(next)), Is.True);
+				++next;
+				Assert.That(next, Is.LessThan(1_000), "a leaf should underflow within the first thousand deletes");
+			}
+			uint noted = writer.UnderflowCandidateSet.First();
+
+			// ...then delete far past that leaf's end, so it empties and dies within the same generation
+			for (; next < 1_200; next++)
+			{
+				Assert.That(writer.Remove(Key64(next)), Is.True);
+			}
+			Assert.That(writer.UnderflowCandidateSet, Does.Not.Contain(noted), "a freed page must not stay noted as a consolidation candidate");
+
+			engine.Commit(writer, 1);
+		}
+
+		[Test]
 		public void Test_PreCommit_Consolidation_Merges_Underflow_Runs()
 		{
 			// the trail shape: a packed store whose region [1000, 5000) loses 80% of its keys, leaving a run

@@ -791,6 +791,11 @@ namespace FoundationDB.Storage.FdbLite
 				ReturnPageBuffer(released);
 			}
 
+			// a dead page's id can be reallocated within this very generation (its blocks go back through
+			// FreeImmediately), and a stale candidacy would then nominate the fresh page - typically a GROWING
+			// leaf, which is exactly what the consolidation arm promises never to touch
+			this.UnderflowCandidates.Remove(pageId);
+
 			if (this.Shadow.Remove(pageId))
 			{
 				this.Allocator.FreeSpace.FreeImmediately(pageId, blocks);
@@ -1865,6 +1870,9 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Leaves this generation noted as consolidation candidates at a delete or shrink site (advisory: each is re-validated at consume time).</summary>
 		private HashSet<uint> UnderflowCandidates { get; } = [ ];
+
+		/// <summary>Test probe over <see cref="UnderflowCandidates"/>: the invariant under test is that a freed page never stays noted (its id can be reallocated within the generation).</summary>
+		internal IReadOnlySet<uint> UnderflowCandidateSet => this.UnderflowCandidates;
 
 		/// <summary>Candidate runs merged by this writer's pre-commit consolidation</summary>
 		public int ConsolidationRunsMerged { get; private set; }
