@@ -172,6 +172,121 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_Every_Allocated_Block_Is_Accounted_For()
+		{
+			// THE conservation invariant: every block below the allocation frontier is in exactly one place -
+			// the three header blocks, the durable tree (pages and extents), the free-list chain, or the free
+			// map (reusable or pending). A leaked free or a double-count is invisible to every structural
+			// check, because the tree itself stays perfectly sound; only this equation sees it.
+			var geometry = FdbLiteGeometry.Hypothesis;
+			var dir = Path.Combine(Path.GetTempPath(), "fdblite-tests");
+			Directory.CreateDirectory(dir);
+			var path = Path.Combine(dir, $"conservation-{Guid.NewGuid():N}.sbkv");
+			try
+			{
+				using (var engine = FdbLiteEngine.Create(FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes: 1 << 20)))
+				{
+					engine.PreCommitConsolidation = FdbLitePreCommitConsolidation.FixedBudget(8);
+
+					var rnd = new Random(9021);
+					for (int gen = 0; gen < 10; gen++)
+					{
+						var writer = engine.BeginWrite();
+						for (int i = 0; i < 400; i++)
+						{ // inserts and overwrites, sizes scattered so pages splice, relocate, split and rebuild
+							writer.Insert(Key(i), Value(gen * 1000 + i, rnd.Next(1, 400)));
+						}
+						for (int i = 0; i < 8; i++)
+						{ // extent values, churned every generation (each overwrite frees the previous extent)
+							writer.Insert(Key(10_000 + i), Value(gen * 100 + i, 60_000 + (i * 5_000)));
+						}
+						for (int i = gen * 30; i < (gen * 30) + 30; i++)
+						{ // a moving delete band, so leaves underflow and the consolidation arm has work
+							Assert.That(writer.Remove(Key(i)), Is.True);
+						}
+						engine.Commit(writer, (ulong) (gen + 1));
+						AssertConservation(engine, $"after commit {gen + 1}");
+					}
+
+					for (int step = 0; step < 8; step++)
+					{ // vacuum conserves at every step, and stops when it stops paying
+						var outcome = engine.VacuumStep(16);
+						AssertConservation(engine, $"after vacuum step {step}");
+						if (outcome.PagesFreed <= 0) { break; }
+					}
+				}
+
+				using (var reopened = FdbLiteEngine.Open(FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes: 1 << 20)))
+				{ // the free-list chain must round-trip the exact same accounting
+					AssertConservation(reopened, "after reopen");
+				}
+			}
+			finally
+			{
+				try { File.Delete(path); } catch { }
+			}
+		}
+
+		private static byte[] Key(int i)
+		{
+			var key = new byte[8];
+			System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(key, i);
+			return key;
+		}
+
+		private static byte[] Value(int seed, int length)
+		{
+			var value = new byte[length];
+			new Random(seed).NextBytes(value);
+			return value;
+		}
+
+		/// <summary>Asserts the conservation equation of one committed generation, in blocks: frontier = 3 headers + tree pages + extent blocks + chain blocks + reusable + pending.</summary>
+		private static void AssertConservation(FdbLiteEngine engine, string site)
+		{
+			var durable = engine.Durable;
+			var geometry = engine.Pager.Geometry;
+			var (treePages, extentBlocks) = MeasureFootprint(engine.Pager, durable.RootPageId);
+			long chainBlocks = FdbLiteFreeListChain.CollectChainBlocks(engine.Pager, durable.FreeListRoot).Count;
+			var (reusableBytes, pendingBytes) = engine.MeasureFreeSpace();
+			long reusable = reusableBytes >> geometry.BlockSizeLog2;
+			long pending = pendingBytes >> geometry.BlockSizeLog2;
+			long accounted = 3 + (treePages * geometry.BlocksPerPage) + extentBlocks + chainBlocks + reusable + pending;
+			Assert.That(accounted, Is.EqualTo((long) durable.AllocationFrontier),
+				$"{site}: conservation broke - frontier {durable.AllocationFrontier} vs 3 header + {treePages} tree pages x {geometry.BlocksPerPage} + {extentBlocks} extent + {chainBlocks} chain + {reusable} reusable + {pending} pending blocks");
+		}
+
+		/// <summary>Pages and extent blocks reachable from <paramref name="pageId"/> (the durable tree's whole footprint).</summary>
+		private static (long Pages, long ExtentBlocks) MeasureFootprint(IFdbLitePager pager, uint pageId)
+		{
+			if (pageId == 0) { return (0, 0); }
+			var page = pager.ReadBlocks(pageId, pager.Geometry.BlocksPerPage);
+			if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
+			{
+				long extentBlocks = 0;
+				int count = FdbLitePageHeader.GetCellCount(page);
+				for (int i = 0; i < count; i++)
+				{
+					if ((FdbLiteTreePage.GetLeafFlags(page, i) & FdbLiteTreePage.FlagValueIsExtent) != 0)
+					{
+						extentBlocks += FdbLiteTreePage.GetLeafExtentDescriptor(page, i).BlockCount;
+					}
+				}
+				return (1, extentBlocks);
+			}
+			long pages = 1;
+			long extents = 0;
+			int children = FdbLiteTreePage.GetChildCount(page);
+			for (int i = 0; i < children; i++)
+			{
+				var (p, e) = MeasureFootprint(pager, FdbLiteTreePage.GetChild(page, i));
+				pages += p;
+				extents += e;
+			}
+			return (pages, extents);
+		}
+
+		[Test]
 		public void Test_RetainFloor_Cannot_Be_Raised_Over_Retained_Generations()
 		{
 			// raising the floor re-enables promotion of generations the old floor retained - and readers of a
