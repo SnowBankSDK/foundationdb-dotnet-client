@@ -93,7 +93,7 @@ jobs:
         dotnet build --no-restore -nowarn:CS1591 -p:CoreSdkRuntimeVersions=net10.0 -p:CloudSdkRuntimeVersions=net10.0 -p:CoreSdkNetStandardEnabled=false
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@e0647621c2984b5ed2f768cb892365bf2a616ad1 # v4.37.2
+      uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
       with:
         category: "/language:${{matrix.language}}"
         upload: false
