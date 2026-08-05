@@ -27,14 +27,15 @@
 namespace FoundationDB.Storage.FdbLite
 {
 	using System.IO.MemoryMappedFiles;
+	using System.Runtime.InteropServices;
 	using Microsoft.Win32.SafeHandles;
 
 	/// <summary>The file pager: memory-mapped read-only region views for reads, positional file I/O for writes (the ruled LMDB-style architecture).</summary>
 	/// <remarks>
-	/// <para>Reads hand out spans straight over the mapped regions; the OS page cache keeps them coherent with the positional writes on every target platform. Nothing is ever written through a mapping, which is what keeps the data-before-header flush ordering enforceable with two plain <see cref="Flush"/> calls (on Apple platforms .NET issues <c>F_FULLFSYNC</c>, so the barrier is real there too).</para>
+	/// <para>Reads hand out spans straight over the mapped regions; the OS page cache keeps them coherent with the positional writes on every target platform. Nothing is ever written through a mapping, which is what keeps the data-before-header flush ordering enforceable with two plain <see cref="Flush"/> calls. On Linux and Windows a flush includes the drive's own cache, so commits are power-loss durable; on macOS (a development platform, not a production target) <see cref="Flush"/> deliberately stops at <c>fsync</c> - see the remarks there.</para>
 	/// <para>The file grows in region multiples (a read-only view cannot extend past the end of file); region views map lazily on first touch and stay mapped - except trailing views, which are unmapped during <see cref="Truncate"/> (a mapped file cannot shrink on Windows), which is safe because truncated blocks are beyond the reclamation horizon by contract.</para>
 	/// </remarks>
-	public sealed unsafe class FdbLiteMemoryMappedPager : IFdbLitePager
+	public sealed unsafe partial class FdbLiteMemoryMappedPager : IFdbLitePager
 	{
 
 		/// <summary>Default region size for file stores (16 MiB: small enough that a fresh store stays reasonable, large enough to keep the view count trivial)</summary>
@@ -155,11 +156,29 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <inheritdoc />
+		/// <remarks>macOS splits the barrier in two: <c>fsync</c> hands data to the drive (durable against an OS
+		/// crash), <c>F_FULLFSYNC</c> also flushes the drive's own cache (durable against power loss) - and .NET's
+		/// <see cref="RandomAccess.FlushToDisk"/> issues the latter, measured at 4 ms against fsync's 21 µs on an
+		/// M4 SSD (193x). macOS is a development platform here, and LMDB, SQLite and RocksDB all stop at
+		/// <c>fsync</c> on it, so this pager does too: the same crash-safety posture as the sibling engines, and
+		/// comparable benchmark numbers. Linux and Windows fold both barriers into one call, so the production
+		/// targets keep full power-loss durability.</remarks>
 		public void Flush()
 		{
 			ObjectDisposedException.ThrowIf(this.Disposed, this);
+			if (OperatingSystem.IsMacOS())
+			{
+				if (fsync(this.Handle) != 0)
+				{
+					throw new IOException($"fsync of the store file failed (errno {Marshal.GetLastPInvokeError()})");
+				}
+				return;
+			}
 			RandomAccess.FlushToDisk(this.Handle);
 		}
+
+		[LibraryImport("libc", SetLastError = true)]
+		private static partial int fsync(SafeFileHandle fd);
 
 		/// <inheritdoc />
 		public void Grow(uint minimumBlockCount)
