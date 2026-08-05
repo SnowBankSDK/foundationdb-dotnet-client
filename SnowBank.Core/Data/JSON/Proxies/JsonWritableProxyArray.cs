@@ -503,28 +503,32 @@ namespace SnowBank.Data.Json
 		/// <param name="items">New elements</param>
 		public void Set(ReadOnlySpan<TValue> items)
 		{
-			m_value.Set(TProxy.Converter.PackSpan(items, CrystalJsonSettings.JsonReadOnly));
+			var context = CrystalJsonPackContext.Create(CrystalJsonSettings.JsonReadOnly, null);
+			m_value.Set(TProxy.Converter.PackSpan(ref context, items));
 		}
 
 		/// <summary>Replaces all the elements of this array</summary>
 		/// <param name="items">New elements</param>
 		public void Set(TValue[] items)
 		{
-			m_value.Set(TProxy.Converter.PackArray(items, CrystalJsonSettings.JsonReadOnly));
+			var context = CrystalJsonPackContext.Create(CrystalJsonSettings.JsonReadOnly, null);
+			m_value.Set(TProxy.Converter.PackArray(ref context, items));
 		}
 
 		/// <summary>Replaces all the elements of this array</summary>
 		/// <param name="items">New elements</param>
 		public void Set(List<TValue> items)
 		{
-			m_value.Set(TProxy.Converter.PackList(items, CrystalJsonSettings.JsonReadOnly));
+			var context = CrystalJsonPackContext.Create(CrystalJsonSettings.JsonReadOnly, null);
+			m_value.Set(TProxy.Converter.PackList(ref context, items));
 		}
 
 		/// <summary>Replaces all the elements of this array</summary>
 		/// <param name="items">New elements</param>
 		public void Set(IEnumerable<TValue> items)
 		{
-			m_value.Set(TProxy.Converter.PackEnumerable(items, CrystalJsonSettings.JsonReadOnly));
+			var context = CrystalJsonPackContext.Create(CrystalJsonSettings.JsonReadOnly, null);
+			m_value.Set(TProxy.Converter.PackEnumerable(ref context, items));
 		}
 
 		/// <summary>Returns the deserialized elements as a <typeparamref name="TValue"/> array.</summary>

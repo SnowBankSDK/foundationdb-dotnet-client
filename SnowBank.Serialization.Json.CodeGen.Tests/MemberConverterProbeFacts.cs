@@ -34,7 +34,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	public sealed class ProbeBitStringConverter : IJsonMemberConverter<bool>
 	{
 
-		public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, bool instance)
 			=> JsonString.Return(instance ? "1" : "0");
 
 		public bool Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
@@ -99,7 +99,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	/// <summary>Asymmetric converter: packing facet only</summary>
 	public sealed class ProbePackOnlyConverter : IJsonPacker<bool>
 	{
-		public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, bool instance)
 			=> JsonString.Return(instance ? "1" : "0");
 	}
 
@@ -132,7 +132,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	public sealed class ProbeNullableFormCountConverter : IJsonMemberConverter<int?>
 	{
 
-		public JsonValue Pack(int? instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, int? instance)
 			// the legacy body wrote "" for a null member; that form must stay unreachable, the pipeline owns the null-member wire
 			=> instance is { } value ? JsonString.Return(value.ToString(System.Globalization.CultureInfo.InvariantCulture)) : throw new InvalidOperationException("Pack must never see a null member");
 
@@ -150,7 +150,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	/// <summary>Converter declared for the underlying value type, applied to a nullable member through the lift</summary>
 	public sealed class ProbeHexCountConverter : IJsonMemberConverter<int>
 	{
-		public JsonValue Pack(int instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, int instance)
 			=> JsonString.Return(instance.ToString("x", System.Globalization.CultureInfo.InvariantCulture));
 
 		public int Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)

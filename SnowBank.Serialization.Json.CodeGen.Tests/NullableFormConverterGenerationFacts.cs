@@ -42,7 +42,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 				public sealed class NullableFormConverter : SnowBank.Data.Json.IJsonMemberConverter<int?>
 				{
-					public SnowBank.Data.Json.JsonValue Pack(int? instance, SnowBank.Data.Json.CrystalJsonSettings? settings = null, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver = null)
+					public SnowBank.Data.Json.JsonValue Pack(ref SnowBank.Data.Json.CrystalJsonPackContext context, int? instance)
 						=> instance is null ? SnowBank.Data.Json.JsonString.Return("") : SnowBank.Data.Json.JsonString.Return(instance.Value.ToString());
 
 					public int? Unpack(SnowBank.Data.Json.JsonValue value, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver)
@@ -51,7 +51,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 				public sealed class LiftedConverter : SnowBank.Data.Json.IJsonMemberConverter<int>
 				{
-					public SnowBank.Data.Json.JsonValue Pack(int instance, SnowBank.Data.Json.CrystalJsonSettings? settings = null, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver = null)
+					public SnowBank.Data.Json.JsonValue Pack(ref SnowBank.Data.Json.CrystalJsonPackContext context, int instance)
 						=> SnowBank.Data.Json.JsonString.Return(instance.ToString());
 
 					public int Unpack(SnowBank.Data.Json.JsonValue value, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver)

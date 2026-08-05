@@ -1383,7 +1383,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				public sealed class ProbeBoolConverter : {{interfaces}}
 				{
 
-					public SnowBank.Data.Json.JsonValue Pack(bool instance, SnowBank.Data.Json.CrystalJsonSettings? settings = null, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver = null)
+					public SnowBank.Data.Json.JsonValue Pack(ref SnowBank.Data.Json.CrystalJsonPackContext context, bool instance)
 						=> SnowBank.Data.Json.JsonString.Return(instance ? "1" : "0");
 
 					public bool Unpack(SnowBank.Data.Json.JsonValue value, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver) => value.ToBoolean();

@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -28,20 +28,22 @@ namespace SnowBank.Data.Json
 {
 
 	/// <summary>Types that implement this interface support packing directly into a <see cref="JsonValue"/></summary>
-	/// <remarks>Types that also support packing to a <see cref="JsonValue"/> should implement <see cref="IJsonDeserializable{T}"/> as well.</remarks>
+	/// <remarks>Types that also support the reverse direction should implement <see cref="IJsonDeserializable{T}"/> as well.</remarks>
 	[PublicAPI]
 	public interface IJsonPacker<in T>
 	{
 
 		/// <summary>Converts an instance of this type into the equivalent <see cref="JsonValue"/></summary>
+		/// <param name="context">State of the walk (settings, resolver, recursion guards), threaded by ref through every nested call</param>
 		/// <param name="instance">Value to convert</param>
-		/// <param name="settings">Serialization settings</param>
-		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
 		/// <remarks>
-		/// Most types will produce a <see cref="JsonObject"/>, but some simple types may return a packed <see cref="JsonString"/>, or as a tuple represented by a <see cref="JsonArray"/>.
-		/// <para>This three-argument member is the only one a caller holding an <see cref="IJsonPacker{T}"/> through a generic constraint (e.g. the collection helpers in <c>JsonSerializerExtensions</c>) can call: it carries no ambient recursion depth, so a source-generated caller crossing this seam cannot thread its own nesting counter through it. A reference cycle that runs through such a call is not covered by <see cref="SnowBank.Data.CrystalJsonWriter.MaxDepth"/> and can still overflow the native stack.</para>
+		/// <para>Most types will produce a <see cref="JsonObject"/>, but some simple types may return a packed <see cref="JsonString"/>, or a tuple represented by a <see cref="JsonArray"/>.</para>
+		/// <para>An implementation brackets its body with <see cref="CrystalJsonPackContext.Enter"/> / <see cref="CrystalJsonPackContext.Leave"/>
+		/// so the depth and cycle guards cover it, and passes the same context to every nested pack call.</para>
+		/// <para>To pack a root value without managing a context, use the <c>Pack(instance, settings, resolver)</c> extension
+		/// in <see cref="JsonSerializerExtensions"/>, which opens a fresh context and forwards here.</para>
 		/// </remarks>
-		JsonValue Pack(T instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null);
+		JsonValue Pack(ref CrystalJsonPackContext context, T instance);
 
 	}
 
@@ -56,9 +58,9 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <inheritdoc />
-		public JsonValue Pack(T instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, T instance)
 		{
-			return this.Handler(instance, settings ?? CrystalJsonSettings.Json, resolver ?? CrystalJson.DefaultResolver);
+			return this.Handler(instance, context.Settings ?? CrystalJsonSettings.Json, context.Resolver ?? CrystalJson.DefaultResolver);
 		}
 
 	}

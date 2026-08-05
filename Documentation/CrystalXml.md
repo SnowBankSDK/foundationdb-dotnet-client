@@ -275,13 +275,11 @@ deeper acyclic graph, and its message says so. The depth counter cannot cross a 
 entirely through such hooks is not covered by the guard.
 
 The generated JSON formats share the same cap, `CrystalJsonWriter.MaxDepth` (`CrystalXml.MaxDepth`
-is an alias for it), and the same shape of exception on their own hook seam. The generated `Pack`
-path has an additional seam of its own: the depth counter also resets to zero across the
+is an alias for it). On the generated `Pack` path the guards travel inside a
+`CrystalJsonPackContext` that `IJsonPacker<T>.Pack` takes by ref, so they survive the
 collection/dictionary helpers (`PackObject`/`PackArray`/`PackList`/`PackEnumerable` in
-`JsonSerializerExtensions`), because each one holds only the three-argument `IJsonPacker<T>.Pack`
-member and has no way to carry the caller's depth through it. A cycle running through a
-`List<T>` or `Dictionary<TKey, TValue>` member is therefore not covered by the guard on that path
-either.
+`JsonSerializerExtensions`) and custom member converters alike: a cycle running through a
+`List<T>` or `Dictionary<TKey, TValue>` member raises the recursion error there too.
 
 Serialization lifecycle callbacks (`[OnSerializing]` / `[OnSerialized]`) **are** invoked on the
 XML path, in the same place and through the same generated call as on the JSON path: the two

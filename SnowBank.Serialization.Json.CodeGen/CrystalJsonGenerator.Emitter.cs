@@ -2822,6 +2822,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private void WritePackMethod(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
+				// the "no settings" default is the container's baked format profile; it is baked into the context at the
+				// root so that a nested converter from another container sees the concrete settings, not the null
+				var defaultSettingsExpr = this.Metadata.WireProfile == "DataContractCompat"
+					? $"settings ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat"
+					: "settings";
+
 				if (typeDef.Type.IsValueType())
 				{
 					sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/></summary>");
@@ -2831,39 +2837,40 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.EnterBlock();
 					sb.AppendLine($"return {KnownTypeSymbols.JsonNullFullName}.Null;");
 					sb.LeaveBlock();
-					sb.AppendLine($"return Pack(instance.Value, settings, resolver, 0);");
+					sb.AppendLine($"var context = {CrystalJsonPackContextFullName}.Create({defaultSettingsExpr}, resolver);");
+					sb.AppendLine($"return Pack(ref context, instance.Value);");
 					sb.LeaveBlock();
 					sb.NewLine();
 
-					// ... and its depth-carrying twin, so a nullable member of this type keeps the counter running
-					sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/>, at the given nesting depth</summary>");
-					sb.XmlComment($"<param name=\"{PackDepthParameterName}\">See the same parameter on the non-nullable overload.</param>");
-					sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}? instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver, int {PackDepthParameterName})");
+					// ... and its context-threading twin, so a nullable member of this type stays inside the walk
+					sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/>, inside an already open packing walk</summary>");
+					sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack(ref {CrystalJsonPackContextFullName} context, {typeDef.Type.FullyQualifiedName}? instance)");
 					sb.EnterBlock();
 					sb.AppendLine("if (instance is null)");
 					sb.EnterBlock();
 					sb.AppendLine($"return {KnownTypeSymbols.JsonNullFullName}.Null;");
 					sb.LeaveBlock();
-					sb.AppendLine($"return Pack(instance.Value, settings, resolver, {PackDepthParameterName});");
+					sb.AppendLine($"return Pack(ref context, instance.Value);");
 					sb.LeaveBlock();
 					sb.NewLine();
 				}
 
-				// the interface entry point: a root call starts the count at zero
-				sb.InheritDoc();
-				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Pack(instance, settings, resolver, 0);");
+				// the root entry point: opens a fresh walk (depth zero, empty visited stack)
+				sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/></summary>");
+				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default)");
+				sb.EnterBlock();
+				sb.AppendLine($"var context = {CrystalJsonPackContextFullName}.Create({defaultSettingsExpr}, resolver);");
+				sb.AppendLine($"return Pack(ref context, instance);");
+				sb.LeaveBlock();
 				sb.NewLine();
 
-				// the nested entry point: a parent packing this value as one of its members passes its own depth plus one
-				sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/>, at the given nesting depth</summary>");
-				sb.XmlComment($"<param name=\"{PackDepthParameterName}\">Number of objects already open above this one. Every nested call within this generated recursion adds one, and reaching <c>CrystalJsonWriter.MaxDepth</c> raises <c>JsonSerializationException</c> instead of recursing into a stack overflow; a cycle running through a collection or dictionary member, a custom member converter, or the reflection fallback is not covered, since the counter resets to zero across those calls.</param>");
-				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver, int {PackDepthParameterName})");
+				// the interface member: a nested caller threads its own walk through, so the depth and cycle guards survive every seam
+				sb.InheritDoc();
+				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack(ref {CrystalJsonPackContextFullName} context, {typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance)");
 				sb.EnterBlock("Pack");
 
-				if (this.Metadata.WireProfile == "DataContractCompat")
-				{ // the container's baked format profile is the "no settings" default; explicit settings replace it entirely
-					sb.AppendLine($"settings ??= {KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat;");
-				}
+				sb.AppendLine($"var settings = context.Settings{(this.Metadata.WireProfile == "DataContractCompat" ? $" ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat" : "")};");
+				sb.AppendLine("var resolver = context.Resolver;");
 
 				if (!typeDef.Type.IsValueType())
 				{ // ref types can be null, we will return JsonNull.Null in this case
@@ -2874,27 +2881,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
-				// AFTER the null check, and not before: the arguments of AddIfNotNull are evaluated eagerly, so the deepest
-				// object of a legal graph still calls this method once more for its own null member, one level past itself
-				WritePackDepthGuard(sb);
-				sb.NewLine();
-
 				// if the type is polymorphic, we have to dispatch to the corresponding serializer
+				// (dispatch BEFORE Enter: the delegate packs THIS object, and its own Pack is what enters it)
 				if (typeDef.IsPolymorphicRoot)
 				{
 					sb.AppendLine("switch(instance)");
 					sb.EnterBlock();
 					foreach (var derivedType in GetPolymorphicDispatchOrder(typeDef))
 					{
-						// the delegate packs THIS object, so it stands at the same depth: only a nested MEMBER adds a level
-						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: return {GetLocalSerializerRef(derivedType)}.Pack(x, settings, resolver, {PackDepthParameterName});");
+						sb.AppendLine($"case {derivedType.FullyQualifiedName} x: return {GetLocalSerializerRef(derivedType)}.Pack(ref context, x);");
 					}
 					sb.AppendLine($"default: throw {KnownTypeSymbols.JsonSerializationExceptionFullName}.CannotPackDerivedTypeWithUnknownTypeDiscriminator(instance.GetType(), typeof({typeDef.Type.FullyQualifiedName}));");
 					sb.LeaveBlock();
 
 					sb.LeaveBlock("Pack");
 					sb.NewLine();
-					WritePackTooDeepHelper(sb);
 					return;
 				}
 
@@ -2905,13 +2906,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (hasPolymorphicDefinition)
 					{ // defer to the parent type which should have all the derived types under this one
 						//PERF: we _could_ optimize by having a smaller switch with only de types under us?
-						sb.AppendLine($"return {GetLocalSerializerRef(polymorphicMetadata.Parent)}.Pack(instance, settings, resolver, {PackDepthParameterName});");
+						sb.AppendLine($"return {GetLocalSerializerRef(polymorphicMetadata.Parent)}.Pack(ref context, instance);");
 						sb.LeaveBlock("Pack");
 						sb.NewLine();
-						WritePackTooDeepHelper(sb);
 						return;
 					}
 				}
+
+				// AFTER the null check, and not before: the arguments of AddIfNotNull are evaluated eagerly, so the deepest
+				// object of a legal graph still calls this method once more for its own null member, one level past itself
+				sb.Comment("a reference cycle has no JSON representation here, and an unguarded recursion would die on a StackOverflowException that no caller can catch: the context counts the levels and tracks the open ancestors");
+				sb.AppendLine(typeDef.Type.IsValueType() ? "context.Enter();" : "context.Enter(instance);");
+				sb.NewLine();
 
 				// if the type is not sealed, we may have a derived type, we must defer serialization to this type!
 				if (!typeDef.Type.IsSealed)
@@ -2986,60 +2992,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 				EmitCallbackInvocation(sb, typeDef.OnSerialized, "instance", null);
 
+				sb.AppendLine(typeDef.Type.IsValueType() ? "context.Leave();" : "context.Leave(instance);");
 				sb.AppendLine($"return settings.IsReadOnly() ? {KnownTypeSymbols.CrystalJsonMarshallFullName}.FreezeTopLevel(obj) : obj;");
 				sb.LeaveBlock("Pack");
 				sb.NewLine();
-
-				WritePackTooDeepHelper(sb);
 			}
 
-			/// <summary>Name of the depth parameter threaded through the generated <c>Pack</c> recursion</summary>
-			/// <remarks>An explicit parameter, mirroring the XML emission: the DOM built by <c>Pack</c> has no writer to hang a
-			/// counter on (unlike the <c>Serialize</c> path, which brackets its body with the writer's own depth machinery), so the
-			/// generated code is what must carry it.</remarks>
-			private const string PackDepthParameterName = "__depth";
-
-			/// <summary>The one nesting cap every format shares (the XML emission reaches the same value through <c>CrystalXml.MaxDepth</c>)</summary>
-			private const string CrystalJsonWriterMaxDepthFullName = "global::SnowBank.Data.Json.CrystalJsonWriter.MaxDepth";
-
-			/// <summary>Emits the depth guard at the top of a generated <c>Pack</c> body</summary>
-			/// <remarks>
-			/// <para>A reference cycle has no JSON representation here (there is no <c>$id</c>/<c>$ref</c> form), and the generated
-			/// packer has no visited-set to detect one with: left unguarded, it recurses until the native stack is exhausted, which
-			/// raises a <c>StackOverflowException</c> that .NET cannot catch and that takes the whole process down. Counting the
-			/// levels costs one comparison against a constant per object on the happy path, allocates nothing, and needs no
-			/// reflection.</para>
-			/// <para>Measured before this guard existed: a two-node cycle overflowed after ~8000 nested <c>Pack</c> frames (one
-			/// frame per level). The cap lives in <c>CrystalJsonWriter.MaxDepth</c>, shared with every other format, whose own
-			/// documentation justifies the value.</para>
-			/// </remarks>
-			private void WritePackDepthGuard(CSharpCodeBuilder sb)
-			{
-				this.PackNeedsTooDeepHelper = true;
-				sb.Comment("a reference cycle has no JSON representation here, and an unguarded recursion would die on a StackOverflowException that no caller can catch: count the levels and fail with the same typed error the reflection path raises");
-				sb.AppendLine($"if ({PackDepthParameterName} >= {CrystalJsonWriterMaxDepthFullName}) FailPackTooDeep({PackDepthParameterName}, instance);");
-			}
-
-			/// <summary>Whether the converter currently being emitted needs the depth-guard helper of the <c>Pack</c> path</summary>
-			private bool PackNeedsTooDeepHelper { get; set; }
-
-			/// <summary>Emits the helper that raises the too-deep error once the depth cap is reached</summary>
-			/// <remarks>A method call rather than an inline <c>throw</c>, so that the statements after the guard stay reachable for
-			/// the compiler and the generated body carries no unreachable-code warning (same shape as the XML profile's
-			/// <c>FailXmlCycle</c>). The exception is the very one the reflection path raises for the same condition, so a caller
-			/// catching <c>JsonSerializationException</c> does not have to know which path produced the document.</remarks>
-			private void WritePackTooDeepHelper(CSharpCodeBuilder sb)
-			{
-				if (!this.PackNeedsTooDeepHelper) return;
-				this.PackNeedsTooDeepHelper = false;
-
-				sb.Comment("the depth cap was reached: the graph either loops back on itself, or is deeper than this serializer supports - either way there is no document to build");
-				sb.AppendLine($"private static void FailPackTooDeep(int depth, object? instance)");
-				sb.EnterBlock();
-				sb.AppendLine($"throw {KnownTypeSymbols.CrystalJsonFullName}.Errors.Serialization_FailTooDeep(depth, instance);");
-				sb.LeaveBlock();
-				sb.NewLine();
-			}
+			/// <summary>The packing walk's context type, threaded by ref through every generated <c>Pack</c> call</summary>
+			private const string CrystalJsonPackContextFullName = "global::SnowBank.Data.Json.CrystalJsonPackContext";
 
 			private void WriteSerializeMethod(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
@@ -3198,9 +3158,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					if (member.Type.IsValueType() && member.Type.NullableOfType is null)
 					{
-						return $"/* member-converter */ {GetMemberConverterRef(member)}.Pack({getterExpr}, settings, resolver)";
+						return $"/* member-converter */ {GetMemberConverterRef(member)}.Pack(ref context, {getterExpr})";
 					}
-					return $"/* member-converter */ {getterExpr} is {{ }} v{member.MemberName} ? {GetMemberConverterRef(member)}.Pack(v{member.MemberName}, settings, resolver) : {KnownTypeSymbols.JsonNullFullName}.Null";
+					return $"/* member-converter */ {getterExpr} is {{ }} v{member.MemberName} ? {GetMemberConverterRef(member)}.Pack(ref context, v{member.MemberName}) : {KnownTypeSymbols.JsonNullFullName}.Null";
 				}
 
 				if (member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
@@ -3215,7 +3175,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				if (IsLocallyGeneratedType(member.Type, out var target, out _))
 				{ // one level deeper: this is a nested object, and the callee's own guard is what stops a cycle running through it
-					return $"/* local-serializer */ {GetLocalSerializerRef(target)}.Pack({getterExpr}, settings, resolver, {PackDepthParameterName} + 1)";
+					return $"/* local-serializer */ {GetLocalSerializerRef(target)}.Pack(ref context, {getterExpr})";
 				}
 
 				// unwrap any Nullable<T> (most packing methods handle both!)
@@ -3259,7 +3219,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (IsLocallyGeneratedType(valueType, out target, out _))
 						{
-							return $"/* local-string-dict */ {GetLocalSerializerRef(target)}.PackObject({getterExpr}, settings, resolver)";
+							return $"/* local-string-dict */ {GetLocalSerializerRef(target)}.PackObject(ref context, {getterExpr})";
 						}
 						if (!valueType.IsValueType())
 						{
@@ -3270,13 +3230,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (IsLocallyGeneratedType(valueType, out target, out _))
 						{
-							return $"/* local-int-dict */ {GetLocalSerializerRef(target)}.PackObject({getterExpr}, settings, resolver)";
+							return $"/* local-int-dict */ {GetLocalSerializerRef(target)}.PackObject(ref context, {getterExpr})";
 						}
 						if (valueType.IsEnumerable(out var elemType))
 						{
 							if (this.IsLocallyGeneratedType(elemType, out target, out _))
 							{
-								return $"/* local-int-dict-of-array */ {this.GetLocalSerializerRef(target)}.PackObject({getterExpr}!, settings, resolver)";
+								return $"/* local-int-dict-of-array */ {this.GetLocalSerializerRef(target)}.PackObject(ref context, {getterExpr}!)";
 							}
 						}
 
@@ -3294,15 +3254,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (concreteType.IsArray())
 						{
-							return $"/* local-pack-array */ {GetLocalSerializerRef(target)}.PackArray({getterExpr}, settings, resolver)";
+							return $"/* local-pack-array */ {GetLocalSerializerRef(target)}.PackArray(ref context, {getterExpr})";
 						}
 						if (concreteType.IsList())
 						{
-							return $"/* local-pack-list */ {GetLocalSerializerRef(target)}.PackList({getterExpr}, settings, resolver)";
+							return $"/* local-pack-list */ {GetLocalSerializerRef(target)}.PackList(ref context, {getterExpr})";
 						}
 						if (!elemType.IsValueType())
 						{
-							return $"/* local-pack-enumerable */ {GetLocalSerializerRef(target)}.PackEnumerable({getterExpr}, settings, resolver)";
+							return $"/* local-pack-enumerable */ {GetLocalSerializerRef(target)}.PackEnumerable(ref context, {getterExpr})";
 						}
 					}
 					else if (elemType.IsPrimitive)

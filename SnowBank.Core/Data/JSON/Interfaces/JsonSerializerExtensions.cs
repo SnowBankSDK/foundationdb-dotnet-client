@@ -691,15 +691,37 @@ namespace SnowBank.Data.Json
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
 		public static JsonArray PackSpan<TValue>(this IJsonPacker<TValue> serializer, ReadOnlySpan<TValue> items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackSpan(serializer, ref context, items);
+		}
+
+		/// <summary>Converts a root value into the equivalent <see cref="JsonValue"/>, opening a fresh packing walk</summary>
+		/// <param name="serializer">Custom serializer</param>
+		/// <param name="instance">Value to convert</param>
+		/// <param name="settings">Serialization settings</param>
+		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
+		/// <remarks>Entry-point form of <see cref="IJsonPacker{T}.Pack"/>: opens a new <see cref="CrystalJsonPackContext"/> at depth 0 and forwards. A nested caller that already holds a context must pass it instead of calling this.</remarks>
+		public static JsonValue Pack<TValue>(this IJsonPacker<TValue> serializer, TValue instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return serializer.Pack(ref context, instance);
+		}
+
+		/// <summary>Converts a span of items into the equivalent <see cref="JsonArray"/>, inside an already open packing walk</summary>
+		/// <param name="serializer">Custom serializer</param>
+		/// <param name="context">State of the walk, threaded into every item's <see cref="IJsonPacker{T}.Pack"/></param>
+		/// <param name="items">Items to convert</param>
+		public static JsonArray PackSpan<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, ReadOnlySpan<TValue> items)
+		{
 			var result = new JsonArray();
 			var span = result.GetSpanAndSetCount(items.Length);
 
 			for (int i = 0; i < items.Length; i++)
 			{
-				span[i] = items[i] is not null ? serializer.Pack(items[i], settings, resolver) : JsonNull.Null;
+				span[i] = items[i] is not null ? serializer.Pack(ref context, items[i]) : JsonNull.Null;
 			}
 
-			if (settings.IsReadOnly())
+			if (context.Settings.IsReadOnly())
 			{
 				result = result.FreezeUnsafe();
 			}
@@ -713,7 +735,6 @@ namespace SnowBank.Data.Json
 		/// <param name="settings">Serialization settings</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
 		/// <returns>Packed JSON Array, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
-		/// <remarks>Calls <paramref name="serializer"/> through the three-argument <see cref="IJsonPacker{T}.Pack"/> member, which carries no ambient recursion depth: a reference cycle running through this array is not covered by <see cref="SnowBank.Data.CrystalJsonWriter.MaxDepth"/> and can still overflow the native stack.</remarks>
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonArray? PackArray<TValue>(this IJsonPacker<TValue> serializer, TValue[]? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
@@ -722,7 +743,15 @@ namespace SnowBank.Data.Json
 				return null;
 			}
 
-			return PackSpan<TValue>(serializer, new ReadOnlySpan<TValue>(items), settings, resolver);
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackSpan<TValue>(serializer, ref context, new ReadOnlySpan<TValue>(items));
+		}
+
+		/// <summary>Converts an array of items into the equivalent <see cref="JsonArray"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonArray? PackArray<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, TValue[]? items)
+		{
+			return items is not null ? PackSpan<TValue>(serializer, ref context, new ReadOnlySpan<TValue>(items)) : null;
 		}
 
 		/// <summary>Converts a list of items into the equivalent <see cref="JsonArray"/></summary>
@@ -731,7 +760,6 @@ namespace SnowBank.Data.Json
 		/// <param name="settings">Serialization settings</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
 		/// <returns>Packed JSON Array, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
-		/// <remarks>Calls <paramref name="serializer"/> through the three-argument <see cref="IJsonPacker{T}.Pack"/> member, which carries no ambient recursion depth: a reference cycle running through this list is not covered by <see cref="SnowBank.Data.CrystalJsonWriter.MaxDepth"/> and can still overflow the native stack.</remarks>
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonArray? PackList<TValue>(this IJsonPacker<TValue> serializer, List<TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
@@ -740,7 +768,15 @@ namespace SnowBank.Data.Json
 				return null;
 			}
 
-			return PackSpan<TValue>(serializer, CollectionsMarshal.AsSpan(items), settings, resolver);
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackSpan<TValue>(serializer, ref context, CollectionsMarshal.AsSpan(items));
+		}
+
+		/// <summary>Converts a list of items into the equivalent <see cref="JsonArray"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonArray? PackList<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, List<TValue>? items)
+		{
+			return items is not null ? PackSpan<TValue>(serializer, ref context, CollectionsMarshal.AsSpan(items)) : null;
 		}
 
 		/// <summary>Converts a sequence of items into the equivalent <see cref="JsonArray"/></summary>
@@ -749,7 +785,6 @@ namespace SnowBank.Data.Json
 		/// <param name="settings">Serialization settings</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
 		/// <returns>Packed JSON Array, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
-		/// <remarks>Calls <paramref name="serializer"/> through the three-argument <see cref="IJsonPacker{T}.Pack"/> member, which carries no ambient recursion depth: a reference cycle running through this sequence is not covered by <see cref="SnowBank.Data.CrystalJsonWriter.MaxDepth"/> and can still overflow the native stack.</remarks>
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonArray? PackEnumerable<TValue>(this IJsonPacker<TValue> serializer, IEnumerable<TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
@@ -758,19 +793,32 @@ namespace SnowBank.Data.Json
 				return null;
 			}
 
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackEnumerable<TValue>(serializer, ref context, items);
+		}
+
+		/// <summary>Converts a sequence of items into the equivalent <see cref="JsonArray"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonArray? PackEnumerable<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, IEnumerable<TValue>? items)
+		{
+			if (items == null)
+			{
+				return null;
+			}
+
 			if (items.TryGetSpan(out var span))
 			{
-				return PackSpan<TValue>(serializer, span, settings, resolver);
+				return PackSpan<TValue>(serializer, ref context, span);
 			}
 
 			_ = items.TryGetNonEnumeratedCount(out var count);
 			var result = new JsonArray(count);
 			foreach (var item in items)
 			{
-				result.Add(item is not null ? serializer.Pack(item, settings, resolver) : JsonNull.Null);
+				result.Add(item is not null ? serializer.Pack(ref context, item) : JsonNull.Null);
 			}
 
-			if (settings.IsReadOnly())
+			if (context.Settings.IsReadOnly())
 			{
 				result = result.FreezeUnsafe();
 			}
@@ -794,6 +842,14 @@ namespace SnowBank.Data.Json
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, Dictionary<string, TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, Dictionary<string, TValue>? items)
+		{
 			if (items == null)
 			{
 				return null;
@@ -801,17 +857,17 @@ namespace SnowBank.Data.Json
 
 			if (items.Count == 0)
 			{
-				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			var result = new Dictionary<string, JsonValue>(items.Count, context.Settings.GetKeyComparer());
 			foreach (var kv in items)
 			{
-				result[kv.Key] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+				result[kv.Key] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -822,6 +878,14 @@ namespace SnowBank.Data.Json
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IDictionary<string, TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, IDictionary<string, TValue>? items)
+		{
 			if (items == null)
 			{
 				return null;
@@ -829,28 +893,28 @@ namespace SnowBank.Data.Json
 
 			if (items.Count == 0)
 			{
-				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			var result = new Dictionary<string, JsonValue>(items.Count, context.Settings.GetKeyComparer());
 			if (items is Dictionary<string, TValue> dict)
 			{
 				// we can skip the IEnumerator<...> allocation for this type
 				foreach (var kv in dict)
 				{
-					result[kv.Key] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+					result[kv.Key] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 				}
 			}
 			else
 			{
 				foreach (var kv in items)
 				{
-					result[kv.Key] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+					result[kv.Key] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 				}
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -861,6 +925,14 @@ namespace SnowBank.Data.Json
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IDictionary<string, TValue[]?>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, IDictionary<string, TValue[]?>? items)
+		{
 			if (items == null)
 			{
 				return null;
@@ -868,28 +940,28 @@ namespace SnowBank.Data.Json
 
 			if (items.Count == 0)
 			{
-				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			var result = new Dictionary<string, JsonValue>(items.Count, context.Settings.GetKeyComparer());
 			if (items is Dictionary<string, TValue[]?> dict)
 			{
 				// we can skip the IEnumerator<...> allocation for this type
 				foreach (var kv in dict)
 				{
-					result[kv.Key] = kv.Value is not null ? serializer.PackArray(kv.Value, settings, resolver) : JsonNull.Null;
+					result[kv.Key] = kv.Value is not null ? serializer.PackArray(ref context, kv.Value) : JsonNull.Null;
 				}
 			}
 			else
 			{
 				foreach (var kv in items)
 				{
-					result[kv.Key] = kv.Value is not null ? serializer.PackArray(kv.Value, settings, resolver) : JsonNull.Null;
+					result[kv.Key] = kv.Value is not null ? serializer.PackArray(ref context, kv.Value) : JsonNull.Null;
 				}
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		/// <summary>Converts a span of key/value pairs into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -899,20 +971,27 @@ namespace SnowBank.Data.Json
 		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
 		public static JsonObject PackObject<TValue>(this IJsonPacker<TValue> serializer, ReadOnlySpan<KeyValuePair<string, TValue>> items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		public static JsonObject PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, ReadOnlySpan<KeyValuePair<string, TValue>> items)
+		{
 			if (items.Length == 0)
 			{
-				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new Dictionary<string, JsonValue>(items.Length, settings.GetKeyComparer());
+			var result = new Dictionary<string, JsonValue>(items.Length, context.Settings.GetKeyComparer());
 
 			foreach (var kv in items)
 			{
-				result[kv.Key] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+				result[kv.Key] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		/// <summary>Converts a sequence of key/value pairs into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -923,6 +1002,14 @@ namespace SnowBank.Data.Json
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IEnumerable<KeyValuePair<string, TValue>>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, IEnumerable<KeyValuePair<string, TValue>>? items)
+		{
 			if (items is null)
 			{
 				return null;
@@ -930,7 +1017,7 @@ namespace SnowBank.Data.Json
 
 			if (items.TryGetSpan(out var span))
 			{
-				return PackObject(serializer, span, settings, resolver);
+				return PackObject(serializer, ref context, span);
 			}
 
 			Dictionary<string, JsonValue> result;
@@ -938,22 +1025,22 @@ namespace SnowBank.Data.Json
 			{
 				if (count == 0)
 				{
-					return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+					return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 				}
-				result = new(count, settings.GetKeyComparer());
+				result = new(count, context.Settings.GetKeyComparer());
 			}
 			else
 			{
-				result = new(settings.GetKeyComparer());
+				result = new(context.Settings.GetKeyComparer());
 			}
 
 			foreach (var kv in items)
 			{
-				result[kv.Key] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+				result[kv.Key] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		#endregion
 
@@ -968,6 +1055,14 @@ namespace SnowBank.Data.Json
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, Dictionary<int, TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, Dictionary<int, TValue>? items)
+		{
 			if (items == null)
 			{
 				return null;
@@ -975,17 +1070,17 @@ namespace SnowBank.Data.Json
 
 			if (items.Count == 0)
 			{
-				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			var result = new Dictionary<string, JsonValue>(items.Count, context.Settings.GetKeyComparer());
 			foreach (var kv in items)
 			{
-				result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+				result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -996,6 +1091,14 @@ namespace SnowBank.Data.Json
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IDictionary<int, TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, IDictionary<int, TValue>? items)
+		{
 			if (items == null)
 			{
 				return null;
@@ -1003,28 +1106,28 @@ namespace SnowBank.Data.Json
 
 			if (items.Count == 0)
 			{
-				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			var result = new Dictionary<string, JsonValue>(items.Count, context.Settings.GetKeyComparer());
 			if (items is Dictionary<int, TValue> dict)
 			{
 				// we can skip the IEnumerator<...> allocation for this type
 				foreach (var kv in dict)
 				{
-					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 				}
 			}
 			else
 			{
 				foreach (var kv in items)
 				{
-					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 				}
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		/// <summary>Converts a dictionary into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -1035,6 +1138,14 @@ namespace SnowBank.Data.Json
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IDictionary<int, TValue[]?>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, IDictionary<int, TValue[]?>? items)
+		{
 			if (items == null)
 			{
 				return null;
@@ -1042,28 +1153,28 @@ namespace SnowBank.Data.Json
 
 			if (items.Count == 0)
 			{
-				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new Dictionary<string, JsonValue>(items.Count, settings.GetKeyComparer());
+			var result = new Dictionary<string, JsonValue>(items.Count, context.Settings.GetKeyComparer());
 			if (items is Dictionary<int, TValue[]?> dict)
 			{
 				// we can skip the IEnumerator<...> allocation for this type
 				foreach (var kv in dict)
 				{
-					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.PackArray(kv.Value, settings, resolver) : JsonNull.Null;
+					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.PackArray(ref context, kv.Value) : JsonNull.Null;
 				}
 			}
 			else
 			{
 				foreach (var kv in items)
 				{
-					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.PackArray(kv.Value, settings, resolver) : JsonNull.Null;
+					result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.PackArray(ref context, kv.Value) : JsonNull.Null;
 				}
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		/// <summary>Converts a span of key/value pairs into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -1073,20 +1184,27 @@ namespace SnowBank.Data.Json
 		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
 		public static JsonObject PackObject<TValue>(this IJsonPacker<TValue> serializer, ReadOnlySpan<KeyValuePair<int, TValue>> items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		public static JsonObject PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, ReadOnlySpan<KeyValuePair<int, TValue>> items)
+		{
 			if (items.Length == 0)
 			{
-				return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+				return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 			}
 
-			var result = new Dictionary<string, JsonValue>(items.Length, settings.GetKeyComparer());
+			var result = new Dictionary<string, JsonValue>(items.Length, context.Settings.GetKeyComparer());
 
 			foreach (var kv in items)
 			{
-				result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+				result[StringConverters.ToString(kv.Key)] = kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		/// <summary>Converts a sequence of key/value pairs into the equivalent <see cref="JsonObject"/></summary>
 		/// <param name="serializer">Custom serializer</param>
@@ -1097,6 +1215,14 @@ namespace SnowBank.Data.Json
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, IEnumerable<KeyValuePair<int, TValue>>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			var context = CrystalJsonPackContext.Create(settings, resolver);
+			return PackObject(serializer, ref context, items);
+		}
+
+		/// <summary>Converts the items into the equivalent <see cref="JsonObject"/>, inside an already open packing walk</summary>
+		[return: NotNullIfNotNull(nameof(items))]
+		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, ref CrystalJsonPackContext context, IEnumerable<KeyValuePair<int, TValue>>? items)
+		{
 			if (items is null)
 			{
 				return null;
@@ -1104,7 +1230,7 @@ namespace SnowBank.Data.Json
 
 			if (items.TryGetSpan(out var span))
 			{
-				return PackObject(serializer, span, settings, resolver);
+				return PackObject(serializer, ref context, span);
 			}
 
 			Dictionary<string, JsonValue> result;
@@ -1112,22 +1238,22 @@ namespace SnowBank.Data.Json
 			{
 				if (count == 0)
 				{
-					return settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
+					return context.Settings.IsReadOnly() ? JsonObject.ReadOnly.Empty : new();
 				}
-				result = new(count, settings.GetKeyComparer());
+				result = new(count, context.Settings.GetKeyComparer());
 			}
 			else
 			{
-				result = new(settings.GetKeyComparer());
+				result = new(context.Settings.GetKeyComparer());
 			}
 
 			foreach (var kv in items)
 			{
-				result[StringConverters.ToString(kv.Key)]= kv.Value is not null ? serializer.Pack(kv.Value, settings, resolver) : JsonNull.Null;
+				result[StringConverters.ToString(kv.Key)]= kv.Value is not null ? serializer.Pack(ref context, kv.Value) : JsonNull.Null;
 			}
 
-			return new(result, settings.IsReadOnly());
-		}
+			return new(result, context.Settings.IsReadOnly());
+				}
 
 		#endregion
 

@@ -254,9 +254,10 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <inheritdoc />
-		public JsonValue Pack(T instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, T instance)
 		{
-			return CrystalJsonDomWriter.Create(settings, resolver).ParseObject<T>(instance);
+			// the DOM writer carries its own depth and visited-object guards for the reflection walk it performs
+			return CrystalJsonDomWriter.Create(context.Settings, context.Resolver).ParseObject<T>(instance);
 		}
 
 		/// <inheritdoc />

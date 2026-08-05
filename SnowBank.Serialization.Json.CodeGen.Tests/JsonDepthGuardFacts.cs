@@ -94,7 +94,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_Reference_Cycle_Through_Generated_Pack_Throws_Instead_Of_Overflowing_The_Stack()
 		{
 			// a cycle has no JSON representation here (there is no $id/$ref form), so the packer must stop with a typed,
-			// CATCHABLE error rather than recursing into a StackOverflowException
+			// CATCHABLE error rather than recursing into a StackOverflowException. The context's visited stack catches
+			// it at first re-entry, same as the reflection path, well before the depth cap.
 			var a = new Chain { Label = "a" };
 			var b = new Chain { Label = "b" };
 			a.Next = b;
@@ -102,8 +103,56 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			Assert.That(
 				() => AcmeSerializers.Chain.Pack(a),
-				Throws.InstanceOf<JsonSerializationException>().With.Message.Contains(CrystalJsonWriter.MaxDepth.ToString(CultureInfo.InvariantCulture)),
-				"the same exception the reflection path raises for the same condition, naming the cap it hit");
+				Throws.InstanceOf<JsonSerializationException>().With.Message.Contains("Recursive object graphs not supported"),
+				"the same exception the reflection path raises for the same condition");
+		}
+
+		[Test]
+		public void Test_A_Reference_Cycle_Through_A_Collection_Member_Throws_Instead_Of_Overflowing_The_Stack()
+		{
+			// THE seam this context exists for: the recursion runs Pack -> PackList -> Pack, and before the context the
+			// collection helpers could not thread the caller's depth, so this exact graph died on the native stack
+			var a = new Cluster { Label = "a" };
+			var b = new Cluster { Label = "b" };
+			a.Members = [ b ];
+			b.Members = [ a ];
+
+			Assert.That(
+				() => AcmeSerializers.Cluster.Pack(a),
+				Throws.InstanceOf<JsonSerializationException>().With.Message.Contains("Recursive object graphs not supported"));
+		}
+
+		[Test]
+		public void Test_A_Deep_Acyclic_Collection_Chain_Past_The_Cap_Is_Refused()
+		{
+			// acyclic but too deep, all the nesting through List<T> members: the depth counter must survive the helper seam
+			var head = new Cluster { Label = "0" };
+			var cursor = head;
+			for (int i = 1; i <= CrystalJsonWriter.MaxDepth; i++)
+			{
+				var next = new Cluster { Label = i.ToString(CultureInfo.InvariantCulture) };
+				cursor.Members = [ next ];
+				cursor = next;
+			}
+
+			Assert.That(
+				() => AcmeSerializers.Cluster.Pack(head),
+				Throws.InstanceOf<JsonSerializationException>().With.Message.Contains(CrystalJsonWriter.MaxDepth.ToString(CultureInfo.InvariantCulture)));
+		}
+
+		[Test]
+		public void Test_A_Shared_Reference_Through_Collections_Is_Not_A_Cycle()
+		{
+			// the same instance referenced from two sibling lists (a diamond) is not a cycle: the visited stack only
+			// tracks the open ancestors, so the shared child packs twice, in full
+			var shared = new Cluster { Label = "shared" };
+			var root = new Cluster { Label = "root", Members = [ new() { Label = "left", Members = [ shared ] }, new() { Label = "right", Members = [ shared ] } ] };
+
+			var obj = (JsonObject) AcmeSerializers.Cluster.Pack(root);
+			var members = AcmeSerializers.Cluster.PropertyNames.Members;
+			var label = AcmeSerializers.Cluster.PropertyNames.Label;
+			Assert.That(obj[members][0][members][0][label], IsJson.EqualTo("shared"));
+			Assert.That(obj[members][1][members][0][label], IsJson.EqualTo("shared"));
 		}
 
 		[Test]
@@ -117,7 +166,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			Assert.That(
 				() => LegacySerializers.CycleNode.Pack(a),
-				Throws.InstanceOf<JsonSerializationException>().With.Message.Contains(CrystalJsonWriter.MaxDepth.ToString(CultureInfo.InvariantCulture)));
+				Throws.InstanceOf<JsonSerializationException>().With.Message.Contains("Recursive object graphs not supported"));
 		}
 
 		[Test]

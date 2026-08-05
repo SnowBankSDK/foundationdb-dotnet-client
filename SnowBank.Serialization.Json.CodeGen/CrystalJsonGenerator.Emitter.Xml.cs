@@ -684,7 +684,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>An explicit parameter, and not state on the emitter, because the emitter is a caller-supplied struct with
 			/// its own contract (an infoset emitter may be handed a writer that is already inside a document): the recursion the
 			/// guard measures is the GENERATED one, so the generated code is what must carry the counter.</remarks>
-			private const string XmlDepthParameterName = "__depth";
+			private const string XmlDepthParameterName = "depth";
 
 			/// <summary>Emits the <c>&lt;param&gt;</c> documentation of the depth counter, on the nested entry point of either format</summary>
 			/// <remarks>ONE spelling for both profiles: the counter means exactly the same thing on either format (including what it

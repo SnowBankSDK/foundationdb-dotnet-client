@@ -57,9 +57,11 @@ namespace SnowBank.Data.Json
 		/// <para>64 is the default maximum depth of both System.Text.Json and Newtonsoft.Json, reading and writing; the parser
 		/// enforces this same constant, so anything this library writes, it can read back. <see cref="SnowBank.Data.Xml.CrystalXml.MaxDepth"/>
 		/// is locked to this value too.</para>
-		/// <para>The guard cannot tell a reference cycle from an acyclic graph that is simply deeper than the cap: both raise the
-		/// same error. On the source-generated <c>Pack</c> path the counter resets across the collection pack helpers
-		/// (<c>IJsonPacker&lt;T&gt;.Pack</c> has no depth parameter), so a cycle through a collection member is not covered there.</para>
+		/// <para>The depth guard cannot tell a reference cycle from an acyclic graph that is simply deeper than the cap: both
+		/// raise the same error. On the source-generated <c>Pack</c> path the guards travel inside the
+		/// <see cref="CrystalJsonPackContext"/> that <see cref="IJsonPacker{T}.Pack"/> takes by ref, so they survive the
+		/// collection pack helpers and custom member converters; a true cycle there raises the recursion error at first
+		/// re-entry, before this cap.</para>
 		/// </remarks>
 		public const int MaxDepth = 64;
 

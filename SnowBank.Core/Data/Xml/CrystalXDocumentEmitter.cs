@@ -120,7 +120,11 @@ namespace SnowBank.Data.Xml
 		/// <inheritdoc />
 		public readonly void WriteRawAscii(ReadOnlySpan<char> ascii)
 		{
+#if NET8_0_OR_GREATER
+			Contract.Debug.Requires(System.Text.Ascii.IsValid(ascii), "Raw content must be pre-validated ASCII");
+#else
 			Contract.Debug.Requires(SnowBank.Buffers.Binary.UnsafeHelpers.IsAsciiString(ascii), "Raw content must be pre-validated ASCII");
+#endif
 			this.OpenElements.Peek().Add(ascii.ToString());
 		}
 

@@ -106,7 +106,7 @@ namespace SnowBank.Data.Json
 			this.StrictLiterals = strictLiterals;
 		}
 
-		public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, bool instance)
 		{
 			// a null false-literal means "do not emit": the writers decide that from the member's flags before asking
 			// this converter what to write, so reaching here with false means something forced the member to be emitted

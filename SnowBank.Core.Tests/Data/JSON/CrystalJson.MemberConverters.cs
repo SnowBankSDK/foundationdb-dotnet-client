@@ -54,7 +54,7 @@ namespace SnowBank.Data.Json.Tests
 		public sealed class BoolAsBitStringConverter : IJsonMemberConverter<bool>
 		{
 
-			public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			public JsonValue Pack(ref CrystalJsonPackContext context, bool instance)
 				=> JsonString.Return(instance ? "1" : "0");
 
 			public bool Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
@@ -90,7 +90,7 @@ namespace SnowBank.Data.Json.Tests
 
 			public static int UnpackCalls;
 
-			public JsonValue Pack(DateTime? instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			public JsonValue Pack(ref CrystalJsonPackContext context, DateTime? instance)
 				// the legacy body wrote "" for a null member; that form must stay unreachable, the pipeline owns the null-member wire
 				=> instance is { } value ? JsonString.Return(value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)) : throw new InvalidOperationException("Pack must never see a null member");
 
@@ -130,7 +130,7 @@ namespace SnowBank.Data.Json.Tests
 		public sealed class TemperatureConverter : IJsonMemberConverter<Temperature>
 		{
 
-			public JsonValue Pack(Temperature instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			public JsonValue Pack(ref CrystalJsonPackContext context, Temperature instance)
 				=> JsonString.Return(instance.Celsius.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "C");
 
 			public Temperature Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
@@ -303,7 +303,7 @@ namespace SnowBank.Data.Json.Tests
 
 		public sealed class NativeTemperatureConverter : IJsonMemberConverter<NativeTemperature>
 		{
-			public JsonValue Pack(NativeTemperature instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			public JsonValue Pack(ref CrystalJsonPackContext context, NativeTemperature instance)
 				=> JsonString.Return(instance.Celsius.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "C");
 
 			public NativeTemperature Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
@@ -353,7 +353,7 @@ namespace SnowBank.Data.Json.Tests
 		/// <summary>Asymmetric converter: this type is only ever written, so the converter only implements the packing facet</summary>
 		public sealed class BitStringPackOnlyConverter : IJsonPacker<bool>
 		{
-			public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+			public JsonValue Pack(ref CrystalJsonPackContext context, bool instance)
 				=> JsonString.Return(instance ? "1" : "0");
 		}
 

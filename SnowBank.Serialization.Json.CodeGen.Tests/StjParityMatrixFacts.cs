@@ -105,7 +105,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	public sealed class MxDualShapeBitConverter : STJ.JsonConverter<bool>, IJsonMemberConverter<bool>
 	{
 		// the CrystalJson facets
-		public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, bool instance)
 			=> JsonString.Return(instance ? "1" : "0");
 
 		public bool Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)

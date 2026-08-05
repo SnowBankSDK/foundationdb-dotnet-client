@@ -89,7 +89,11 @@ namespace SnowBank.Data.Xml
 		/// <inheritdoc />
 		public void WriteRawAscii(ReadOnlySpan<char> ascii)
 		{
+#if NET8_0_OR_GREATER
+			Contract.Debug.Requires(System.Text.Ascii.IsValid(ascii), "Raw content must be pre-validated ASCII");
+#else
 			Contract.Debug.Requires(SnowBank.Buffers.Binary.UnsafeHelpers.IsAsciiString(ascii), "Raw content must be pre-validated ASCII");
+#endif
 			// see the type remarks: WriteString, not WriteRaw, so that an empty value still counts as content
 			this.Writer.WriteString(ascii.ToString());
 		}

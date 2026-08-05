@@ -317,7 +317,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	public sealed class BitFlagConverter : IJsonMemberConverter<bool>, ICrystalXmlSerializer<bool>
 	{
 
-		public JsonValue Pack(bool instance, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		public JsonValue Pack(ref CrystalJsonPackContext context, bool instance)
 			=> JsonString.Return(instance ? "1" : "0");
 
 		public bool Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
@@ -351,6 +351,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	}
 
 	/// <summary>A self-referencing DTO: the shape whose CYCLIC instances have no XML representation at all</summary>
+	/// <summary>Self-referential through a collection: the shape whose recursion runs through the pack helpers</summary>
+	/// <remarks><c>Members</c> is settable on purpose, since building a cycle means assigning it after the fact.</remarks>
+	public sealed record Cluster
+	{
+
+		public string? Label { get; init; }
+
+		public List<Cluster>? Members { get; set; }
+
+	}
+
 	/// <remarks><c>Next</c> is settable (not <c>init</c>) on purpose, since building a cycle means assigning it after the fact.</remarks>
 	public sealed record Chain
 	{
@@ -453,6 +464,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	[CrystalSerializable(typeof(Switchboard))]
 	[CrystalSerializable(typeof(Exotic))]
 	[CrystalSerializable(typeof(Chain))]
+	[CrystalSerializable(typeof(Cluster))]
 	[CrystalSerializable(typeof(Dispatch))]
 	[CrystalSerializable(typeof(Route))]
 	[CrystalSerializable(typeof(Parcel))]
