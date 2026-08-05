@@ -457,15 +457,44 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// <para>The flag governs how INCOMING JSON names are matched; the XML side is write-only, so it has nothing to act
 	/// on and CXML0001 does not refuse the container. This one exists so that claim is executed, not just asserted on the
 	/// parser's metadata: its documents must be the ones <see cref="LegacySerializers"/> writes, character for character.</para>
-	/// <para>The JSON profile is the STANDARD one, with the compat XML wire asked for explicitly: the DataContractCompat
-	/// JSON profile refuses the flag on its own account (CJSON0013, a rule about the JSON wire and untouched here), so the
-	/// explicit-profile door is the only one through which the narrowed CXML0001 gate is reachable at all.</para>
+	/// <para>The JSON profile is the STANDARD one, with the compat XML wire asked for explicitly: this predates
+	/// XW-Q11, which later narrowed CJSON0013 so the DataContractCompat JSON profile itself also tolerates the flag
+	/// alone (see <see cref="LegacyCaseInsensitiveWireSerializers"/> and <see cref="LegacyCaseInsensitiveDualSerializers"/>).</para>
 	/// </remarks>
 	[CrystalJsonConverter(PropertyNameCaseInsensitive = true)]
 	[CrystalXmlOutput(Profile = XmlOutputProfile.DataContract)]
 	[CrystalJsonSerializable(typeof(Shelf))]
 	[CrystalJsonSerializable(typeof(ScalarProbe))]
 	public static partial class LegacyCaseInsensitiveSerializers
+	{
+	}
+
+	/// <summary>The compat WIRE itself (not just the derived XML wire) declared next to <c>PropertyNameCaseInsensitive</c>, with no XML output at all (XW-Q11)</summary>
+	/// <remarks>
+	/// <para>Strict on output, lenient on input: <c>PropertyNameCaseInsensitive</c> is a READ-side tolerance for
+	/// incoming member names, and changes nothing about what the DataContractCompat wire WRITES. CJSON0013 refuses
+	/// a NAMING POLICY next to the profile (that changes the written names, a genuine contradiction), but no longer
+	/// refuses this flag. This container exists so that claim is executed, not just asserted on the parser's
+	/// metadata: its JSON must be the one <see cref="LegacySerializers"/> writes, character for character.</para>
+	/// </remarks>
+	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
+	[CrystalJsonSerializable(typeof(Shelf))]
+	[CrystalJsonSerializable(typeof(ScalarProbe))]
+	public static partial class LegacyCaseInsensitiveWireSerializers
+	{
+	}
+
+	/// <summary>The natural dual-wire container XW-Q11 unlocks: the compat wire, case-insensitive reads, AND its derived XML output, all in one container</summary>
+	/// <remarks>
+	/// Before XW-Q11 this container was refused at build time by CJSON0013 (the flag alone, with no naming policy,
+	/// tripped the same trigger as a genuine naming-policy contradiction). Both its JSON and its derived DataContract
+	/// XML must be byte-identical to <see cref="LegacySerializers"/>, which carries the same types without the flag.
+	/// </remarks>
+	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
+	[CrystalXmlOutput]
+	[CrystalJsonSerializable(typeof(Shelf))]
+	[CrystalJsonSerializable(typeof(ScalarProbe))]
+	public static partial class LegacyCaseInsensitiveDualSerializers
 	{
 	}
 
@@ -514,6 +543,43 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(LegacyCaseInsensitiveSerializers.Shelf.ToXmlText(shelf), Is.EqualTo(LegacySerializers.Shelf.ToXmlText(shelf)));
 				Assert.That(LegacyCaseInsensitiveSerializers.ScalarProbe.ToXmlText(scalars), Is.EqualTo(LegacySerializers.ScalarProbe.ToXmlText(scalars)));
 				Assert.That(LegacyCaseInsensitiveSerializers.Shelf.ToXmlText(shelf, rootName: "data"), Is.EqualTo(LegacySerializers.Shelf.ToXmlText(shelf, rootName: "data")));
+			}
+		}
+
+		#endregion
+
+		#region PropertyNameCaseInsensitive next to the compat WIRE itself (the narrowed CJSON0013, XW-Q11)...
+
+		[Test]
+		public void Test_Case_Insensitive_Names_Leave_The_Compat_Wire_Untouched_On_The_Json_Side()
+		{
+			// the container compiled at all, which is half the claim (CJSON0013 no longer refuses the flag alone
+			// when it is not paired with a naming policy); the other half is that the flag changed nothing about
+			// what gets written: strict on output, lenient on input
+			var shelf = new Shelf { Label = "novels" };
+			var scalars = new ScalarProbe { TrueBool = true, Decimal = 12.50m, Long = -9007199254740993L, Char = 'A', SpecialChars = "<&>", Uri = new("https://example.org/x") };
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(LegacyCaseInsensitiveWireSerializers.Shelf.ToJsonText(shelf), Is.EqualTo(LegacySerializers.Shelf.ToJsonText(shelf)));
+				Assert.That(LegacyCaseInsensitiveWireSerializers.ScalarProbe.ToJsonText(scalars), Is.EqualTo(LegacySerializers.ScalarProbe.ToJsonText(scalars)));
+			}
+		}
+
+		[Test]
+		public void Test_The_Dual_Wire_Container_Compiles_And_Matches_Both_Wires_Byte_For_Byte()
+		{
+			// the natural container from the owner's question: the compat wire, PropertyNameCaseInsensitive, AND
+			// its derived XML output, all on one container - refused before XW-Q11, now compiles with no diagnostic
+			var shelf = new Shelf { Label = "novels" };
+			var scalars = new ScalarProbe { TrueBool = true, Decimal = 12.50m, Long = -9007199254740993L, Char = 'A', SpecialChars = "<&>", Uri = new("https://example.org/x") };
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(LegacyCaseInsensitiveDualSerializers.Shelf.ToJsonText(shelf), Is.EqualTo(LegacySerializers.Shelf.ToJsonText(shelf)));
+				Assert.That(LegacyCaseInsensitiveDualSerializers.ScalarProbe.ToJsonText(scalars), Is.EqualTo(LegacySerializers.ScalarProbe.ToJsonText(scalars)));
+				Assert.That(LegacyCaseInsensitiveDualSerializers.Shelf.ToXmlText(shelf), Is.EqualTo(LegacySerializers.Shelf.ToXmlText(shelf)));
+				Assert.That(LegacyCaseInsensitiveDualSerializers.ScalarProbe.ToXmlText(scalars), Is.EqualTo(LegacySerializers.ScalarProbe.ToXmlText(scalars)));
 			}
 		}
 

@@ -275,13 +275,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
-				if (wireProfile != null && (caseInsensitiveNames || propertyNamingPolicy != null))
-				{ // the DCJS wire has no naming policy: a naming option next to the profile is a contradiction, refused at build time
+				if (wireProfile != null && propertyNamingPolicy != null)
+				{ // the DCJS wire has no naming policy: a NAMING POLICY next to the profile changes the WRITTEN
+					// names, a genuine contradiction with a wire that writes the declared names, refused at build time
+					//note: PropertyNameCaseInsensitive is deliberately NOT a trigger. It is a READ-side tolerance -
+					// it decides how an INCOMING member name is matched when READING JSON - and changes nothing about
+					// what the profile WRITES, so there is no contradiction to refuse. Strict on output, lenient on input.
 					ReportDiagnostic(
 						new(
 							"CJSON0013",
-							"A wire profile cannot be combined with a naming option",
-							"The container '{0}' bakes the {1} profile, whose wire uses the declared member names; combining it with a camelCase or case-insensitive naming option is refused. Remove the naming option, or serialize the modern wire through a separate container (the dual-container pattern).",
+							"A wire profile cannot be combined with a naming policy",
+							"The container '{0}' bakes the {1} profile, whose wire uses the declared member names; combining it with a camelCase (or other) naming policy is refused. Remove the naming policy, or serialize the modern wire through a separate container (the dual-container pattern).",
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Error,
 							isEnabledByDefault: true

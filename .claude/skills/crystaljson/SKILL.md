@@ -550,7 +550,7 @@ type-level converter wins over the duck-typed `JsonSerialize`/`JsonPack` methods
 | `CJSON0016` | error | a type declares `[OnDeserializing]` alongside a `required` or `init`-only member. The pre-populate callback must observe an unpopulated instance, so members are assigned after construction, which neither of those allows; the message names the member and the remedy for its specific construct |
 | `CJSON0017` | error | a `[JsonBooleanLiterals]` argument has a type with no JSON wire form; use a string, a bool, or a numeric value. The reflection path throws the same message when the contract is built |
 | `CJSON0018` | warning (suppressible) | `StrictLiterals` combined with a null false literal: strict mode enforces the configured literals, and with no false literal there is nothing on the false side to enforce. Generator-only on purpose, because it changes no behaviour (see below) |
-| `CJSON0013` | error | a wire profile (`DataContractCompat`) combined with a camelCase/case-insensitive naming option; use the dual-container pattern instead |
+| `CJSON0013` | error | a wire profile (`DataContractCompat`) combined with a naming policy (camelCase and friends); use the dual-container pattern instead. `PropertyNameCaseInsensitive` is NOT a trigger: it is a read-side tolerance for incoming member names and changes nothing about what the profile writes |
 
 ---
 
@@ -703,8 +703,10 @@ types** (the DataContract model) alike, exactly as an unprofiled container does.
 container produces what DCJS would have produced, with the documented differences** - member order
 (declaration order here; DCJS wrote POCO members alphabetically and honored `Order=`), no `\/` escaping
 outside `\/Date()\/` literals, `-0.0` serialized as `0`, and the dual-output /
-double-contract shapes DCJS resolved silently are refused loudly. Combining the profile with a camelCase or
-case-insensitive naming option is a build error (`CJSON0013`): the DCJS wire has no naming policy. **The dual-container pattern is the intended
+double-contract shapes DCJS resolved silently are refused loudly. Combining the profile with a camelCase (or
+other) naming policy is a build error (`CJSON0013`): the DCJS wire has no naming policy. `PropertyNameCaseInsensitive`
+next to the profile is NOT refused - it only changes how an incoming member name is matched when reading JSON,
+and the profile still writes the declared names untouched: strict on output, lenient on input. **The dual-container pattern is the intended
 shape for a progressive WCF portage**: not-yet-ported services serialize through the compat container,
 modernized services through a default or `Web` container over the SAME types; when the portage completes,
 delete the legacy container.
