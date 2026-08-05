@@ -28,16 +28,16 @@ This package will only be used at build time, and should not be redistributed wi
 
 ### Containers
 
-In the shared assembly that contains most of your "data" types, simply create a new static class that will act as a _container_, decorate it with `[CrystalJsonConverter]`, and then add as many `[CrystalJsonSerializable(typeof(...)]` as you have top-level data types.
+In the shared assembly that contains most of your "data" types, simply create a new static class that will act as a _container_, decorate it with `[CrystalJsonConverter]`, and then add as many `[CrystalSerializable(typeof(...)]` as you have top-level data types.
 
 The converter will walk the type dependency graph from all these types, and generate custom converters and proxies for each one. You don't need to mention any nested type or types references by properties, as they should automatically be included.
 
 ```
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(User))]
-	[CrystalJsonSerializable(typeof(Order))]
-	[CrystalJsonSerializable(typeof(Product))]
-	[CrystalJsonSerializable(typeof(Role))]
+	[CrystalSerializable(typeof(User))]
+	[CrystalSerializable(typeof(Order))]
+	[CrystalSerializable(typeof(Product))]
+	[CrystalSerializable(typeof(Role))]
 	// and any other main types
 	public static partial class MyAppConverters
 	{

@@ -14,21 +14,55 @@ There is deliberately no `FromXml`: CrystalXml writes XML, it never reads it.
 
 ## Declarative vocabulary
 
-Three attributes, two levels. The existing JSON vocabulary is not modified.
+Two levels: the container says WHICH wires it produces, the members say how they look on the XML one.
+
+A container is a format-neutral marker plus one attribute per output format. The types it serializes
+are enrolled once, format-neutrally: the same enrollment feeds every wire the container produces.
 
 ```csharp
-// CONTAINER level: one marker attribute per output format
-[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
-[CrystalXmlOutput]                       // opt-in: every type of the container gets XML output
-[CrystalJsonSerializable(typeof(ClientAccount))]
+// CONTAINER level: the neutral marker, then one output attribute per format
+[CrystalConverter]                                    // "this class hosts generated code"
+[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
+[CrystalXmlOutput]                                    // opt-in: every type of the container gets XML output
+[CrystalSerializable(typeof(ClientAccount))]          // format-neutral enrollment
 public static partial class LegacyRenderSerializers { }
 ```
 
-`[CrystalXmlOutput]` options:
+| Attribute | Namespace | Role |
+|---|---|---|
+| `[CrystalConverter]` | `SnowBank.Data` | the container marker; says nothing about the wires |
+| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrolls a root type; repeatable; feeds every output format |
+| `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | requests the JSON wire, and carries its parameters (profile, naming policy, case-insensitivity) |
+| `[CrystalXmlOutput(...)]` | `SnowBank.Data.Xml` | requests the XML wire, and carries its parameters (`Profile`, `DictionaryFormat`) |
+| `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | mono-format alias: `[CrystalConverter]` + `[CrystalJsonOutput]` with the same parameters |
+| `[CrystalXmlConverter(...)]` | `SnowBank.Data.Xml` | mono-format alias: `[CrystalConverter]` + `[CrystalXmlOutput]` with the same parameters |
+
+`[CrystalJsonSerializable(typeof(T))]` is the former spelling of `[CrystalSerializable]`. It still works
+(and generates byte-identical code) but is `[Obsolete]`: enrollment never was JSON-specific.
+
+### The truth table
+
+| Container attributes | Generated |
+|---|---|
+| `[CrystalConverter]` + `[CrystalJsonOutput]` | JSON only |
+| `[CrystalJsonConverter]` | JSON only (alias of the row above) |
+| `[CrystalConverter]` + `[CrystalXmlOutput]` | **XML only**: no `Serialize`/`Pack`/`Unpack`, no JSON proxies, no `IJsonConverter` facet, no `TypeMapper` |
+| `[CrystalXmlConverter]` | XML only (alias of the row above) |
+| `[CrystalConverter]` + both outputs | both wires, from one set of enrolled types |
+| `[CrystalJsonConverter]` + `[CrystalXmlOutput]` | **refused** (CRYS0002): the mono-format aliases do not combine |
+| `[CrystalXmlConverter]` + `[CrystalJsonOutput]` | **refused** (CRYS0002), symmetrically |
+| `[CrystalConverter]` alone | **refused** (CRYS0001): a container that names no output format generates nothing |
+| several container markers on one class | **refused** (CRYS0003) |
+
+An XML-only container has no JSON profile to derive from, so an unspecified `Profile` resolves to the
+modern one, and its element names are the declared member names (the naming policy is a `[CrystalJsonOutput]`
+parameter). A container that needs both a JSON naming policy and its XML mirror declares both outputs.
+
+`[CrystalXmlOutput]` / `[CrystalXmlConverter]` options:
 
 | Option | Meaning |
 |---|---|
-| `Profile` | XML variant; derived from the container's JSON profile by default (`DataContractCompat` gives the DCS wire, standard/Web gives the modern profile); explicit override allowed; an incoherent combination (a naming policy next to the DCS wire) is a build error (CXML0001) |
+| `Profile` | XML variant; derived from the container's JSON profile by default (`DataContractCompat` gives the DCS wire, standard/Web gives the modern profile; no JSON output means the modern profile); explicit override allowed; an incoherent combination (a naming policy next to the DCS wire) is a build error (CXML0001) |
 | `DictionaryFormat` | container default for the dictionary shape (see the modern profile below) |
 
 ```csharp
@@ -155,9 +189,10 @@ a shape nobody can interpret.
 ## Example
 
 ```csharp
-[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]   // camelCase
+[CrystalConverter]
+[CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]      // camelCase
 [CrystalXmlOutput]                                          // derived Profile: modern
-[CrystalJsonSerializable(typeof(Book))]
+[CrystalSerializable(typeof(Book))]
 public static partial class AcmeSerializers { }
 
 public sealed record Book
@@ -193,12 +228,21 @@ Three refusal mechanisms, and which one applies is a rule, not a case-by-case ch
 | **`#error` in the emitted source** | a structural impossibility discovered inside emission, which no declaration could have predicted. Also kept as an unreachable backstop under a diagnostic that already covers the case. |
 | **typed exception** | the refusal is DATA-dependent: only the value being written can decide it (a runtime type outside the graph, a non-NCName dictionary key, an undeclared enum value, a graph deeper than the cap). |
 
-Build-time diagnostics live in the CXML range:
+The rules about the CONTAINER as a whole - which output formats it names, and whether its markers
+combine - are not about either wire, so they carry a neutral id instead:
+
+| Id | Refuses |
+|---|---|
+| CRYS0001 | `[CrystalConverter]` naming no output format: the container would generate nothing |
+| CRYS0002 | a mono-format alias (`[CrystalJsonConverter]`, `[CrystalXmlConverter]`) next to an output attribute: the alias IS the format choice |
+| CRYS0003 | several container markers on one class |
+
+Build-time diagnostics about the XML wire itself live in the CXML range:
 
 | Id | Refuses |
 |---|---|
 | CXML0001 | profile/policy incoherence on the container: a naming policy (camelCase and friends) next to the DataContract XML wire, whose element names come from the data contract. `PropertyNameCaseInsensitive` is NOT a trigger: it decides how an incoming name is matched when reading JSON, and this overlay never reads |
-| CXML0002 | enrollment shape |
+| CXML0002 | enrollment shape: `[CrystalXmlOutput]` on a class that hosts no generated serializer |
 | CXML0003 | attribute projection of a member with no lexical form |
 | CXML0004 | the XML naming vocabulary on the compat profile |
 | CXML0005 | two members resolving to the same XML name, discriminator included |

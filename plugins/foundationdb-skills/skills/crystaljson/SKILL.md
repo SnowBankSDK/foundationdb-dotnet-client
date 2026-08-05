@@ -4,7 +4,7 @@ description: >-
   How to use CrystalJson, the custom JSON library in SnowBank.Core (namespace SnowBank.Data.Json). Covers the JsonValue
   DOM (JsonObject / JsonArray / JsonString / JsonNumber / JsonBoolean / JsonNull / JsonDateTime), the read-only vs mutable
   model, the CrystalJson static API (Serialize / Parse / Deserialize) and CrystalJsonSettings, the Roslyn source generator
-  for fast reflection-free serializers and read-only/writable proxies ([CrystalJsonConverter] / [CrystalJsonSerializable]),
+  for fast reflection-free serializers and read-only/writable proxies ([CrystalJsonConverter] / [CrystalSerializable]),
   the IJsonSerializable / IJsonPackable / IJsonDeserializable interfaces, MutableJsonValue / ObservableJsonValue and
   JsonPath. Use whenever code parses, builds, reads, mutates, or serializes JSON with these types, reads optional fields
   with defaults, declares a generated JSON converter/proxy, or implements custom JSON (de)serialization. Use it even when
@@ -23,7 +23,7 @@ There are **two layers**, used together:
 
 1. **The DOM** - `JsonValue` and its subtypes. A mutable-or-immutable tree you build, parse, navigate, and serialize.
    Use it for schemaless / dynamic JSON (config, arbitrary documents, change records).
-2. **The source generator** - `[CrystalJsonConverter]` + `[CrystalJsonSerializable(typeof(T))]` generate fast,
+2. **The source generator** - `[CrystalJsonConverter]` + `[CrystalSerializable(typeof(T))]` generate fast,
    reflection-free, AOT-friendly converters for your POCOs, plus typed **read-only / writable proxies** over the DOM.
    Use it for your domain types.
 
@@ -243,7 +243,7 @@ read-only/writable proxies. (This is how DocStore documents work.)
 
 ### Declare
 
-Put `[CrystalJsonSerializable(typeof(T))]` (one per root type) on a `public static partial class` marked
+Put `[CrystalSerializable(typeof(T))]` (one per root type) on a `public static partial class` marked
 `[CrystalJsonConverter]`. Nested types are discovered automatically. Use `[JsonProperty("name")]` to rename a field.
 
 ```csharp
@@ -258,9 +258,40 @@ public sealed record Book
 }
 
 [CrystalJsonConverter]                       // or [CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)] for camelCase + ignore-case
-[CrystalJsonSerializable(typeof(Book))]
+[CrystalSerializable(typeof(Book))]
 public static partial class MyJson { }       // generated members land here
 ```
+
+#### The container vocabulary *(7.4.4+)*
+
+`[CrystalJsonConverter]` is a **mono-format alias**: it means "this class hosts generated code" **plus**
+"produce the JSON wire, with these parameters". The two halves also exist separately, which is what a
+container producing several wires needs:
+
+| Attribute | Namespace | Role |
+|---|---|---|
+| `[CrystalConverter]` | `SnowBank.Data` | the container marker; says nothing about the wires |
+| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrolls a root type; repeatable; feeds every output format |
+| `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | requests the JSON wire (profile, naming policy, case-insensitivity) |
+| `[CrystalXmlOutput(...)]` | `SnowBank.Data.Xml` | requests the XML wire (see `Documentation/CrystalXml.md`) |
+| `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias: `[CrystalConverter]` + `[CrystalJsonOutput]`, JSON only |
+| `[CrystalXmlConverter(...)]` | `SnowBank.Data.Xml` | alias: `[CrystalConverter]` + `[CrystalXmlOutput]`, XML only |
+
+Rules the compiler enforces: a `[CrystalConverter]` naming no output format is refused (`CRYS0001`);
+a mono-format alias next to an output attribute is refused (`CRYS0002` - use `[CrystalConverter]` with
+explicit output attributes instead); several container markers on one class are refused (`CRYS0003`).
+
+```csharp
+// a container that produces BOTH wires from one set of enrolled types
+[CrystalConverter]
+[CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]
+[CrystalXmlOutput]
+[CrystalSerializable(typeof(Book))]
+public static partial class MyWires { }
+```
+
+`[CrystalJsonSerializable(typeof(T))]` is the former spelling of `[CrystalSerializable]`: still working
+and byte-identical, but `[Obsolete]` (enrollment never was JSON-specific).
 
 ### Self-serializable types: the entity IS its own container *(7.4.3+)*
 
@@ -277,7 +308,7 @@ every type decorated with that attribute is opted into generation.
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public sealed class MyEntityAttribute : Attribute { }
 
-// the application just declares an entity - no container, no [CrystalJsonSerializable]
+// the application just declares an entity - no container, no [CrystalSerializable]
 [MyEntity]
 public sealed partial record Widget
 {
@@ -324,7 +355,7 @@ Things to know before you use it:
   still works, just without a generated converter.
 - Hint names are namespace-qualified in this mode, because entity names collide across namespaces far more
   often than container names do.
-- The `[CrystalJsonConverter]` + `[CrystalJsonSerializable]` container path is untouched and still correct.
+- The `[CrystalJsonConverter]` + `[CrystalSerializable]` container path is untouched and still correct.
   Prefer the container when you are enrolling third-party types you cannot annotate, or a set of unrelated
   types; prefer self mode when the type is yours and a layer already marks it.
 
@@ -576,7 +607,7 @@ silently changes the output, so check the matrix before annotating a DTO:
 
 - **Reflection** (`CrystalJsonTypeResolver`) - what `CrystalJson.Serialize` / `Deserialize<T>` / `JsonValue.FromValue`
   use for a type with no generated converter.
-- **Source generator** - what `[CrystalJsonConverter]` + `[CrystalJsonSerializable(typeof(T))]` emit.
+- **Source generator** - what `[CrystalJsonConverter]` + `[CrystalSerializable(typeof(T))]` emit.
 
 | Attribute | Reflection | Source generator |
 |---|---|---|

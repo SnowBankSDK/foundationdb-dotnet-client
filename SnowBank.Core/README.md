@@ -75,7 +75,7 @@ For the fast path, declare a partial container that lists the types you want gen
 
 ```c#
 [CrystalJsonConverter]
-[CrystalJsonSerializable(typeof(Person))]
+[CrystalSerializable(typeof(Person))]
 public static partial class GeneratedConverters { }
 
 public sealed record Person
