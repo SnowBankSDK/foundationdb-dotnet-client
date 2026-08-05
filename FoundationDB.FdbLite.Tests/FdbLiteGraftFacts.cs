@@ -192,6 +192,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			public void Flush() => inner.Flush();
 			public void Grow(uint minimumBlockCount) => inner.Grow(minimumBlockCount);
 			public void Truncate(uint newBlockCount) => inner.Truncate(newBlockCount);
+			public bool TrackFirstTouch { get => inner.TrackFirstTouch; set => inner.TrackFirstTouch = value; }
+			public bool MarkTouched(uint firstBlock) => inner.MarkTouched(firstBlock);
 			public void Dispose() => inner.Dispose();
 		}
 

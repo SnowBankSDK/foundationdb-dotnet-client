@@ -68,6 +68,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 			public void Grow(uint minimumBlockCount) => this.Inner.Grow(minimumBlockCount);
 			public void Truncate(uint newBlockCount) => this.Inner.Truncate(newBlockCount);
+			public bool TrackFirstTouch { get => this.Inner.TrackFirstTouch; set => this.Inner.TrackFirstTouch = value; }
+			public bool MarkTouched(uint firstBlock) => this.Inner.MarkTouched(firstBlock);
 			public void Dispose() => this.Inner.Dispose();
 			public void ResetCounters() { this.BytesWritten = 0; this.FlushCount = 0; this.DirtyBlocks.Clear(); this.FlushedUniqueBytes = 0; }
 		}

@@ -47,6 +47,122 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Test_A_Rotten_Page_Fails_Its_First_Read()
+		{
+			// first-touch read verification: a page that rotted on disk while the store was closed must fail
+			// its first read after reopen, loudly and with the block named - not serve garbage
+			var geometry = FdbLiteGeometry.Default;
+			string path = NewStorePath();
+			try
+			{
+				uint root;
+				using (var engine = FdbLiteEngine.Create(FdbLiteMemoryMappedPager.Open(path, geometry)))
+				{
+					var writer = engine.BeginWrite();
+					for (int i = 0; i < 2_000; i++)
+					{
+						var key = new byte[8];
+						System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(key, i);
+						writer.Insert(key, key);
+					}
+					engine.Commit(writer, 1);
+					root = engine.Durable.RootPageId;
+				}
+
+				using (var file = File.Open(path, FileMode.Open, FileAccess.ReadWrite))
+				{ // flip one byte in the middle of the root page
+					long offset = ((long) root << geometry.BlockSizeLog2) + 2_000;
+					file.Position = offset;
+					int b = file.ReadByte();
+					file.Position = offset;
+					file.WriteByte((byte) (b ^ 0x40));
+				}
+
+				using (var engine = FdbLiteEngine.Open(FdbLiteMemoryMappedPager.Open(path, geometry)))
+				{
+					var probe = new byte[8];
+					System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(probe, 42);
+					Assert.That(() => FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, probe, out _),
+						Throws.InstanceOf<InvalidDataException>(), "the rotten root page must fail its first read");
+				}
+			}
+			finally
+			{
+				DeleteQuietly(path);
+			}
+		}
+
+		[Test]
+		public void Test_A_Rotten_Extent_Fails_Its_First_Read()
+		{
+			// same contract for out-of-line values: the extent's checksum lives in the leaf descriptor, and the
+			// first resolve since open must verify the payload against it
+			var geometry = FdbLiteGeometry.Default;
+			string path = NewStorePath();
+			try
+			{
+				uint extentStart;
+				using (var engine = FdbLiteEngine.Create(FdbLiteMemoryMappedPager.Open(path, geometry)))
+				{
+					var writer = engine.BeginWrite();
+					var big = new byte[100_000];
+					new Random(451).NextBytes(big);
+					writer.Insert("big"u8, big);
+					engine.Commit(writer, 1);
+
+					// the single key sits in the root leaf; its descriptor names the extent's first block
+					var leaf = engine.Pager.ReadBlocks(engine.Durable.RootPageId, geometry.BlocksPerPage);
+					(extentStart, _, _, _) = FdbLiteTreePage.GetLeafExtentDescriptor(leaf, 0);
+				}
+
+				using (var file = File.Open(path, FileMode.Open, FileAccess.ReadWrite))
+				{ // flip one byte deep inside the extent payload
+					long offset = ((long) extentStart << geometry.BlockSizeLog2) + 50_000;
+					file.Position = offset;
+					int b = file.ReadByte();
+					file.Position = offset;
+					file.WriteByte((byte) (b ^ 0x40));
+				}
+
+				using (var engine = FdbLiteEngine.Open(FdbLiteMemoryMappedPager.Open(path, geometry)))
+				{
+					Assert.That(() => FdbLiteTreeReader.TryGetValue(engine.Pager, engine.Durable.RootPageId, "big"u8, out _),
+						Throws.InstanceOf<InvalidDataException>(), "the rotten extent must fail its first resolve");
+				}
+			}
+			finally
+			{
+				DeleteQuietly(path);
+			}
+		}
+
+		[Test]
+		public void Test_Read_Verification_Is_First_Touch_Only()
+		{
+			// the documented boundary of the mechanism: a block verifies ONCE per open, so corruption arriving
+			// after its first touch is served without a throw - that is the offline audit's territory, and this
+			// test pins the boundary so a change to it is a decision, not an accident
+			var geometry = FdbLiteGeometry.Default;
+			using var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(geometry));
+			var writer = engine.BeginWrite();
+			writer.Insert("hello"u8, "world"u8);
+			engine.Commit(writer, 1);
+			uint root = engine.Durable.RootPageId;
+
+			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, root, "hello"u8, out _), Is.True, "the first read verifies and serves");
+
+			// flip one byte inside the stored VALUE (the heap grows down from the page end), so the page stays
+			// structurally sound but its checksum no longer matches its bytes
+			var tampered = engine.Pager.ReadBlocks(root, geometry.BlocksPerPage).ToArray();
+			tampered[^3] ^= 0x40;
+			engine.Pager.WriteBlocks(root, tampered);
+
+			Assert.That(FdbLiteTreeReader.TryGetValue(engine.Pager, root, "hello"u8, out var served), Is.True,
+				"a block already touched is never re-verified within one open");
+			Assert.That(served.SequenceEqual("world"u8), Is.False, "the tampered bytes are served as-is: post-first-touch rot is the audit's territory");
+		}
+
+		[Test]
 		public void Test_Create_Refuses_A_File_That_Is_Not_Blank()
 		{
 			// a foreign file has garbage where the snapshot headers live: the old blank test (both header

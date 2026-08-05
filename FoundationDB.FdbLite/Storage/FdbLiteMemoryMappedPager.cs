@@ -127,6 +127,14 @@ namespace FoundationDB.Storage.FdbLite
 		/// <inheritdoc />
 		public uint RegionSizeInBlocks { get; }
 
+		/// <inheritdoc />
+		public bool TrackFirstTouch { get; set; } = true;
+
+		private FdbLiteTouchMap Touched { get; } = new();
+
+		/// <inheritdoc />
+		public bool MarkTouched(uint firstBlock) => this.TrackFirstTouch && this.Touched.MarkTouched(firstBlock);
+
 		/// <summary>Log2 of <see cref="RegionSizeInBlocks"/>, so the hot path shifts instead of dividing.</summary>
 		private int RegionSizeInBlocksLog2 { get; }
 

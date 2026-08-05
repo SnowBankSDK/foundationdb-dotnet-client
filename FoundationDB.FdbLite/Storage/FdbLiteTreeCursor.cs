@@ -28,7 +28,10 @@ namespace FoundationDB.Storage.FdbLite
 {
 
 	/// <summary>Point reads over a committed tree generation.</summary>
-	/// <remarks>Returned spans point into pager memory: valid while the generation stays pinned, engine-internal per the memory-safety contract (what leaves the engine is a copy or a delegate-scoped span).</remarks>
+	/// <remarks>
+	/// <para>Returned spans point into pager memory: valid while the generation stays pinned, engine-internal per the memory-safety contract (what leaves the engine is a copy or a delegate-scoped span).</para>
+	/// <para>Read-path verification is FIRST TOUCH PER OPEN: the first time any read enters a page (or resolves an extent) since the pager opened, its checksum is verified and corruption throws with the block named - gated by <see cref="IFdbLitePager.MarkTouched"/>, so the warm path pays one bitmap test. Rot that develops after a block's first touch is the offline audit's to find.</para>
+	/// </remarks>
 	public static class FdbLiteTreeReader
 	{
 
@@ -44,7 +47,7 @@ namespace FoundationDB.Storage.FdbLite
 			uint pageId = root;
 			while (true)
 			{
-				var page = pager.ReadBlocks(pageId, pager.Geometry.BlocksPerPage);
+				var page = ReadPageVerified(pager, pageId);
 				if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
 				{
 					int slot = FdbLiteTreePage.FindLeafSlot(page, key, out bool exact);
@@ -59,6 +62,17 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Reads a tree page, verifying its checksum on the first touch since the pager opened.</summary>
+		internal static ReadOnlySpan<byte> ReadPageVerified(IFdbLitePager pager, uint pageId)
+		{
+			var page = pager.ReadBlocks(pageId, pager.Geometry.BlocksPerPage);
+			if (pager.MarkTouched(pageId) && !FdbLitePageHeader.Verify(page, pageId))
+			{
+				throw new InvalidDataException($"Tree page {pageId} fails its checksum (on-disk corruption)");
+			}
+			return page;
+		}
+
 		/// <summary>Resolves a leaf cell's value: the inline bytes, or the single contiguous span of its extent.</summary>
 		internal static ReadOnlySpan<byte> ResolveLeafValue(IFdbLitePager pager, ReadOnlySpan<byte> leaf, int slot)
 		{
@@ -68,8 +82,13 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				return leaf.Slice(offset, length);
 			}
-			var (start, blockCount, totalLength, _) = FdbLiteTreePage.GetLeafExtentDescriptor(leaf, slot);
-			return pager.ReadBlocks(start, blockCount)[..(int) totalLength];
+			var (start, blockCount, totalLength, checksum) = FdbLiteTreePage.GetLeafExtentDescriptor(leaf, slot);
+			var payload = pager.ReadBlocks(start, blockCount)[..(int) totalLength];
+			if (pager.MarkTouched(start) && System.IO.Hashing.XxHash3.HashToUInt64(payload, unchecked((long) start)) != checksum)
+			{
+				throw new InvalidDataException($"Extent at block {start} ({totalLength} bytes) fails its checksum (on-disk corruption)");
+			}
+			return payload;
 		}
 
 	}
@@ -174,7 +193,8 @@ namespace FoundationDB.Storage.FdbLite
 			return this.CachedCellCount;
 		}
 
-		private ReadOnlySpan<byte> ReadPage(uint pageId) => this.Pager.ReadBlocks(pageId, this.Pager.Geometry.BlocksPerPage);
+		/// <summary>Reads a page the cursor is ENTERING (seek and sibling steps): first-touch verified. <see cref="ReadLeaf"/> re-reads the already-entered leaf and stays raw, so the per-row paths pay nothing.</summary>
+		private ReadOnlySpan<byte> ReadPage(uint pageId) => FdbLiteTreeReader.ReadPageVerified(this.Pager, pageId);
 
 		/// <summary>Positions on the smallest key of the tree.</summary>
 		public bool SeekFirst() => SeekEdge(first: true);

@@ -60,6 +60,53 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Shrinks the store to the requested number of blocks (the caller guarantees nothing above is referenced by any retained generation or pin).</summary>
 		void Truncate(uint newBlockCount);
 
+		/// <summary>Enables the first-touch tracking behind <see cref="MarkTouched"/> (on by default). Turn off to measure the raw read path: readers then skip checksum verification entirely.</summary>
+		bool TrackFirstTouch { get; set; }
+
+		/// <summary>True exactly once per block since this pager opened; always false when <see cref="TrackFirstTouch"/> is off.</summary>
+		/// <remarks>The gate of read-path verification: the caller that receives <c>true</c> performs the one-time checksum check of the page (or extent) starting at that block. Content the process writes afterwards is its own sealed bytes, so a block never needs re-verification within one open; rot that develops AFTER a block's first touch is the offline audit's job.</remarks>
+		bool MarkTouched(uint firstBlock);
+
+	}
+
+	/// <summary>First-touch bitmap over a pager's block space (1 bit per block), safe for lock-free readers.</summary>
+	/// <remarks>Growth swaps the array under a lock while marks stay lock-free, so a mark racing a growth can be lost - the only consequence is that the block verifies once more, which is benign by design.</remarks>
+	internal sealed class FdbLiteTouchMap
+	{
+
+		private long[] Bits = [ ];
+
+		private readonly object GrowLock = new();
+
+		/// <summary>True exactly once per block (best effort under concurrent growth): the caller that gets <c>true</c> owns the one-time verification.</summary>
+		public bool MarkTouched(uint block)
+		{
+			int index = (int) (block >> 6);
+			var bits = Volatile.Read(ref this.Bits);
+			if (index >= bits.Length)
+			{
+				bits = GrowTo(index + 1);
+			}
+			long mask = 1L << (int) (block & 63);
+			return (Interlocked.Or(ref bits[index], mask) & mask) == 0;
+		}
+
+		private long[] GrowTo(int minimumLength)
+		{
+			lock (this.GrowLock)
+			{
+				var current = Volatile.Read(ref this.Bits);
+				if (minimumLength <= current.Length)
+				{
+					return current;
+				}
+				var grown = new long[Math.Max(minimumLength, current.Length * 2)];
+				current.CopyTo(grown, 0);
+				Volatile.Write(ref this.Bits, grown);
+				return grown;
+			}
+		}
+
 	}
 
 }

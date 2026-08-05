@@ -115,8 +115,8 @@ namespace FoundationDB.Storage.FdbLite
 					previous = key;
 
 					if ((FdbLiteTreePage.GetLeafFlags(page, i) & FdbLiteTreePage.FlagValueIsExtent) != 0)
-					{ // the read path never verifies extent payloads (tree pages are checksummed on first touch,
-					  // extents are raw blocks), so the audit is where payload bit-rot gets caught
+					{ // the read path verifies a page or extent only on its FIRST touch per open; the audit
+					  // re-verifies unconditionally, so it also catches rot that develops after that first touch
 						var (start, blockCount, totalLength, checksum) = FdbLiteTreePage.GetLeafExtentDescriptor(page, i);
 						var payload = pager.ReadBlocks(start, blockCount)[..(int) totalLength];
 						if (System.IO.Hashing.XxHash3.HashToUInt64(payload, unchecked((long) start)) != checksum)

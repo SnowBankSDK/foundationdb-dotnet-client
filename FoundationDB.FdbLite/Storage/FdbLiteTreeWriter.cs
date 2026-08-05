@@ -118,6 +118,13 @@ namespace FoundationDB.Storage.FdbLite
 			public uint RegionSizeInBlocks => this.Inner.RegionSizeInBlocks;
 
 			/// <inheritdoc />
+			/// <remarks>Always off: a buffered image is unsealed mid-generation (its checksum lands at flush), so first-touch verification through this view would reject the writer's own work; clean blocks verify through the REAL pager's map.</remarks>
+			public bool TrackFirstTouch { get => false; set { } }
+
+			/// <inheritdoc />
+			public bool MarkTouched(uint firstBlock) => false;
+
+			/// <inheritdoc />
 			public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count)
 			{
 				// only whole-page reads can hit a buffered image: value extents are block-granular, written
@@ -2822,9 +2829,11 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			var page = this.Pager.ReadBlocks(pageId, this.Pager.Geometry.BlocksPerPage);
-			if (!this.Shadow.Contains(pageId) && !FdbLitePageHeader.Verify(page, pageId))
-			{ // verification is per FIRST TOUCH of a page by this generation, not per read: a shadowed page was
-			  // written by this same writer, so re-hashing it would check our own bytes against our own checksum
+			if (!this.Shadow.Contains(pageId) && this.Pager.MarkTouched(pageId) && !FdbLitePageHeader.Verify(page, pageId))
+			{ // verification is per FIRST TOUCH of a block since the pager opened (the shared MarkTouched gate the
+			  // readers use): a shadowed page was written by this same writer, and a previously touched page was
+			  // either verified then or sealed by this process, so re-hashing would check our own bytes against
+			  // our own checksum - which is also why this stopped hashing EVERY clean read, as it used to
 				throw new InvalidDataException($"Corrupted tree page {pageId}");
 			}
 			return page;
