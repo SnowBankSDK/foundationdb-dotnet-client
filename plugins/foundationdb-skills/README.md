@@ -7,6 +7,11 @@ This plugin packages the repository's [Agent Skills](https://agentskills.io) so 
 /plugin install foundationdb-dotnet-skills@snowbank
 ```
 
+That tracks the repository's default branch, so it gives you the skills for the version under
+development. If you are pinned to an older package, pin the marketplace to the matching git tag
+instead: the repository README has the `extraKnownMarketplaces` snippet, under *Which version of
+the skills you get*.
+
 ## The skills
 
 | Skill | Read it when… |

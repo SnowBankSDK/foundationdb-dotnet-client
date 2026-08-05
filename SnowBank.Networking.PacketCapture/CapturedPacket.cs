@@ -27,7 +27,10 @@
 namespace SnowBank.Networking.PacketCapture
 {
 	using System.Globalization;
+	using System.IO;
+	using System.IO.Compression;
 	using System.Text;
+	using Microsoft.Extensions.Primitives;
 	using Microsoft.Net.Http.Headers;
 	using SnowBank.Text;
 
@@ -166,15 +169,7 @@ namespace SnowBank.Networking.PacketCapture
 			sb.AppendLine();
 			if (includeBody && request.HasBody)
 			{
-				if (/*this.Request.Headers.Headers["Content-Encoding"].Count == 0 &&*/ IsProbablyText(request.GetTypedHeaders().ContentType))
-				{
-					//BUGBUG: encoding?
-					sb.AppendLine(this.RequestBody.ToStringUtf8());
-				}
-				else
-				{
-					sb.Append(HexaDump.Format(this.RequestBody)).AppendLine();
-				}
+				AppendBodyDump(sb, this.RequestBody, request.Headers);
 			}
 
 			sb.AppendLine();
@@ -194,15 +189,7 @@ namespace SnowBank.Networking.PacketCapture
 				sb.AppendLine();
 				if (includeBody && response.HasBody)
 				{
-					if ( /*this.Response.Headers.Headers["Content-Encoding"].Count == 0 &&*/ IsProbablyText(response.GetTypedHeaders().ContentType))
-					{
-						//BUGBUG: encoding?
-						sb.AppendLine(this.ResponseBody.ToStringUtf8());
-					}
-					else
-					{
-						sb.Append(HexaDump.Format(this.ResponseBody)).AppendLine();
-					}
+					AppendBodyDump(sb, this.ResponseBody, response.Headers);
 				}
 			}
 			else
@@ -213,6 +200,141 @@ namespace SnowBank.Networking.PacketCapture
 			sb.AppendLine("# End of Packet");
 
 			return sb.ToString();
+		}
+
+		/// <summary>Fraction of C0 control bytes (excluding common text whitespace) above which a "probably text" body is treated as binary and hex-dumped instead of decoded.</summary>
+		private const double BinaryControlCharThreshold = 0.30;
+
+		/// <summary>Renders a captured body for a human-readable dump. This NEVER throws: whatever the bytes, it appends either decoded text or a hex dump.</summary>
+		/// <remarks>
+		/// Decoding is best-effort and for display only: it decompresses a known <c>Content-Encoding</c> first, honors the declared
+		/// charset but only for UTF-8/ASCII/Latin-1 (no code-page dependency), decodes leniently (invalid bytes become U+FFFD), and
+		/// falls back to hex for compressed-and-unreadable, non-text, or binary-looking bodies.
+		/// </remarks>
+		private static void AppendBodyDump(StringBuilder sb, Slice body, CapturedHttpHeaders headers)
+		{
+			try
+			{
+				var bytes = body;
+
+				// 1. if the captured body is still encoded (e.g. gzip), inflate it first, otherwise the bytes are meaningless as text
+				var contentEncoding = GetFirstToken(headers.GetValue(HeaderNames.ContentEncoding));
+				if (contentEncoding is not null && !contentEncoding.Equals("identity", StringComparison.OrdinalIgnoreCase))
+				{
+					if (!TryDecompress(body, contentEncoding, out bytes))
+					{
+						sb.Append(HexaDump.Format(body)).AppendLine();
+						sb.AppendLineInvariant($"# <Content-Encoding={contentEncoding}, {body.Count:N0} bytes, could not inflate>");
+						return;
+					}
+				}
+
+				// 2. content-type gate: only attempt text for probably-text media types
+				var mediaType = TryGetContentType(headers);
+				if (!IsProbablyText(mediaType))
+				{
+					sb.Append(HexaDump.Format(bytes)).AppendLine();
+					return;
+				}
+
+				// 3. binary guard: a body declared as text but full of control bytes is hex-dumped instead of rendered as line-noise
+				if (ControlCharRatio(bytes.Span) > BinaryControlCharThreshold)
+				{
+					sb.Append(HexaDump.Format(bytes)).AppendLine();
+					return;
+				}
+
+				// 4. decode as text, honoring the declared charset (UTF-8/ASCII/Latin-1 only), leniently
+				sb.AppendLine(DecodeTextForDisplay(bytes, mediaType));
+			}
+			catch (Exception e)
+			{ // absolute guarantee: a diagnostic dump never throws
+				sb.AppendLineInvariant($"# <dump failed: {e.GetType().Name}>");
+				sb.Append(HexaDump.Format(body)).AppendLine();
+			}
+		}
+
+		private static string? GetFirstToken(StringValues values)
+		{
+			if (values.Count == 0) return null;
+			var s = values[0];
+			if (string.IsNullOrEmpty(s)) return null;
+			int comma = s.IndexOf(',');
+			return (comma >= 0 ? s[..comma] : s).Trim();
+		}
+
+		private static MediaTypeHeaderValue? TryGetContentType(CapturedHttpHeaders headers)
+		{
+			var ct = headers.GetValue(HeaderNames.ContentType);
+			return ct.Count > 0 && MediaTypeHeaderValue.TryParse(ct[0], out var mt) ? mt : null;
+		}
+
+		private static bool TryDecompress(Slice body, string encoding, out Slice result)
+		{
+			result = default;
+			if (body.Count == 0) return false;
+			try
+			{
+				var input = new MemoryStream(body.Array!, body.Offset, body.Count, writable: false);
+				Stream? decompressor = encoding.ToLowerInvariant() switch
+				{
+					"gzip" or "x-gzip" => new GZipStream(input, CompressionMode.Decompress),
+					"deflate" => new DeflateStream(input, CompressionMode.Decompress),
+					"br" => new BrotliStream(input, CompressionMode.Decompress),
+					_ => null,
+				};
+				if (decompressor is null)
+				{
+					input.Dispose();
+					return false;
+				}
+				using (decompressor)
+				using (var output = new MemoryStream())
+				{
+					decompressor.CopyTo(output);
+					result = output.ToArray().AsSlice();
+					return true;
+				}
+			}
+			catch
+			{
+				return false;
+			}
+		}
+
+		private static string DecodeTextForDisplay(Slice bytes, MediaTypeHeaderValue? mediaType)
+		{
+			if (IsLatin1Charset(mediaType?.Charset.Value))
+			{ // Latin-1 is in the BCL and dependency-free; it agrees with Windows-1252 on 0xA0..0xFF, so it recovers most Western legacy text
+				return Encoding.Latin1.GetString(bytes.Span);
+			}
+			// utf-8 / us-ascii / unknown -> lenient UTF-8 (strips a BOM, invalid bytes become U+FFFD)
+			return bytes.ToStringUtf8Lenient() ?? string.Empty;
+		}
+
+		private static bool IsLatin1Charset(string? charset)
+		{
+			if (string.IsNullOrEmpty(charset)) return false;
+			return charset.Trim().ToLowerInvariant() switch
+			{
+				"iso-8859-1" or "iso8859-1" or "latin1" or "latin-1" or "windows-1252" or "cp1252" or "x-cp1252" => true,
+				_ => false,
+			};
+		}
+
+		private static double ControlCharRatio(ReadOnlySpan<byte> bytes)
+		{
+			if (bytes.Length == 0) return 0;
+			int control = 0;
+			foreach (var b in bytes)
+			{
+				// C0 control bytes (except tab, LF, CR, FF, VT) and DEL do not belong in text
+				if ((b < 0x20 && b != 0x09 && b != 0x0A && b != 0x0D && b != 0x0C && b != 0x0B) || b == 0x7F)
+				{
+					++control;
+				}
+			}
+			return (double) control / bytes.Length;
 		}
 
 		private const string LOG_TOKEN_EMPTY = "- ";

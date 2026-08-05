@@ -3296,9 +3296,6 @@ namespace System
 						? m_slice.ToHexString(' ')
 						: m_slice.Substring(0, Slice.DefaultPrettyPrintSize).ToHexString(' ') + "[\u2026]";
 
-			/// <summary>Encoding using only for display purpose: we don't want to throw in the 'Text' property if the input is not text!</summary>
-			internal static readonly UTF8Encoding Utf8NoBomEncodingNoThrow = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
-
 		}
 
 	}

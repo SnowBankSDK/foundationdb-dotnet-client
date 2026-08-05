@@ -421,6 +421,32 @@ namespace SnowBank.Buffers.Tests
 		}
 
 		[Test]
+		public void Test_Slice_ToStringUtf8Lenient()
+		{
+			// lenient decoding is for display of arbitrary bytes: it must NEVER throw, and invalid UTF-8 bytes become the replacement char (U+FFFD)
+
+			Assert.That(Slice.Nil.ToStringUtf8Lenient(), Is.Null);
+			Assert.That(Slice.Empty.ToStringUtf8Lenient(), Is.EqualTo(String.Empty));
+
+			// valid input decodes exactly like the strict method
+			Assert.That("ABC"u8.ToArray().AsSlice().ToStringUtf8Lenient(), Is.EqualTo("ABC"));
+			Assert.That("héllô"u8.ToArray().AsSlice().ToStringUtf8Lenient(), Is.EqualTo("héllô"));
+			Assert.That("世界"u8.ToArray().AsSlice().ToStringUtf8Lenient(), Is.EqualTo("世界"));
+
+			// BOM should be removed, same as ToStringUtf8()
+			Assert.That(new byte[] { 0xEF, 0xBB, 0xBF, (byte) 'A', (byte) 'B', (byte) 'C' }.AsSlice().ToStringUtf8Lenient(), Is.EqualTo("ABC"), "BOM should be removed");
+
+			// the reported case: a lone 0xE9 (é in Windows-1252) is not valid UTF-8.
+			// the strict decoder throws here (scope fence, must stay strict); the lenient decoder returns a replacement char.
+			Assert.That(() => new byte[] { (byte) 'H', (byte) 'i', (byte) ' ', 0xE9 }.AsSlice().ToStringUtf8(), Throws.InstanceOf<System.Text.DecoderFallbackException>(), "strict decode must still throw on invalid bytes");
+			Assert.That(new byte[] { (byte) 'H', (byte) 'i', (byte) ' ', 0xE9 }.AsSlice().ToStringUtf8Lenient(), Is.EqualTo("Hi �"), "lenient decode replaces the invalid byte");
+
+			// other malformed sequences must not throw either
+			Assert.That(() => new byte[] { (byte) 'A', 0xc3, 0x28, (byte) 'B' }.AsSlice().ToStringUtf8Lenient(), Throws.Nothing, "invalid 2-byte sequence must not throw");
+			Assert.That(new byte[] { (byte) 'A', 0xc3, 0x28, (byte) 'B' }.AsSlice().ToStringUtf8Lenient(), Does.Contain("�"));
+		}
+
+		[Test]
 		public void Test_Slice_FromStringUtf8WithBom()
 		{
 			Assert.That(Slice.FromStringUtf8WithBom(default(string)).GetBytes(), Is.Null);

@@ -2348,6 +2348,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 				foreach (var member in typeDef.Members)
 				{
+					if (member.IsReadOnly)
+					{ // get-only property (or readonly field): serialization-only, matching DataContract POCO semantics.
+					  // It cannot be assigned in an object initializer (CS0200/CS0191), and its value is recomputed by the type, so skip it on deserialization.
+						continue;
+					}
+
 					if (member.CustomConverterType != null)
 					{ // a custom converter takes over the member's wire form
 						var converterRef = GetMemberConverterRef(member);
