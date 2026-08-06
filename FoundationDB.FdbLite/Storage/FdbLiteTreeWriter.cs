@@ -275,11 +275,24 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		private uint CursorLeaf { get; set; }
 
-		/// <summary>Backing buffers for the two bounds, allocated at most once per generation and overwritten by every descent.</summary>
-		/// <remarks>The bounds used to be a fresh <c>ToArray()</c> per bounded level per descent, which measured as the second-largest <c>byte[]</c> source in the engine. They are copies rather than spans because the mutation that follows the descent can rewrite the very page they point into.</remarks>
-		private byte[]? CursorLowerBuffer { get; set; }
+		/// <summary>Backing buffers for the two bounds, sized to the separators actually seen and overwritten by every descent.</summary>
+		/// <remarks>
+		/// <para>The bounds used to be a fresh <c>ToArray()</c> per bounded level per descent, which measured as the second-largest <c>byte[]</c> source in the engine. They are copies rather than spans because the mutation that follows the descent can rewrite the very page they point into.</para>
+		/// <para>Fields rather than auto-properties so <see cref="GrowScratch"/> can grow them by ref. Sized on demand rather than <c>MaxKeyLength</c>: a writer lives one commit, and two eager 10 KB arrays were 20 of the 22.5 KB/op allocation of a one-commit-per-op range delete.</para>
+		/// </remarks>
+		private byte[]? CursorLowerBuffer;
 
-		private byte[]? CursorUpperBuffer { get; set; }
+		private byte[]? CursorUpperBuffer;
+
+		/// <summary>Returns <paramref name="buffer"/> grown to hold at least <paramref name="needed"/> bytes (existing content need not survive: every caller overwrites from offset 0).</summary>
+		private static byte[] GrowScratch([NotNull] ref byte[]? buffer, int needed)
+		{
+			if (buffer is null || buffer.Length < needed)
+			{
+				buffer = new byte[Math.Max((int) BitOperations.RoundUpToPowerOf2((uint) needed), 64)];
+			}
+			return buffer;
+		}
 
 		/// <summary>Length of the bound held in the matching buffer, or -1 when that side is UNBOUNDED.</summary>
 		private int CursorLowerLength { get; set; } = -1;
@@ -496,13 +509,13 @@ namespace FoundationDB.Storage.FdbLite
 				if (childIndex > 0)
 				{
 					var sep = FdbLiteTreePage.GetSeparator(page, childIndex - 1);
-					sep.CopyTo(this.CursorLowerBuffer ??= new byte[FdbLiteTreePage.MaxKeyLength]);
+					sep.CopyTo(GrowScratch(ref this.CursorLowerBuffer, sep.Length));
 					lowerLength = sep.Length;
 				}
 				if (childIndex < FdbLitePageHeader.GetCellCount(page))
 				{
 					var sep = FdbLiteTreePage.GetSeparator(page, childIndex);
-					sep.CopyTo(this.CursorUpperBuffer ??= new byte[FdbLiteTreePage.MaxKeyLength]);
+					sep.CopyTo(GrowScratch(ref this.CursorUpperBuffer, sep.Length));
 					upperLength = sep.Length;
 				}
 
