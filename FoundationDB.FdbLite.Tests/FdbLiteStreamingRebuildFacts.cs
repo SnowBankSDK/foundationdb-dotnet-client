@@ -149,6 +149,11 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			var baseline = RunMixedWorkload(streaming: false);
 			var streamed = RunMixedWorkload(streaming: true);
 			AssertStoresIdentical(baseline, streamed);
+
+			// the single-pass fast path must carry the non-splitting majority AND the split fallback must still
+			// run: byte-identical output makes either regression invisible without the counters
+			Assert.That(streamed.Writer.StreamedSinglePassRebuilds, Is.GreaterThan(0), "no rebuild took the single-pass fast path: it is dead or its fit accounting always aborts");
+			Assert.That(streamed.Writer.StreamedSinglePassRebuilds, Is.LessThan(streamed.Writer.StreamedLeafRebuilds), "every rebuild took the fast path, so the split fallback never ran and this workload no longer covers it");
 		}
 
 		[Test]

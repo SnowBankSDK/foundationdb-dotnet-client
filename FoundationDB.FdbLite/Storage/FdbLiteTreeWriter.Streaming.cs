@@ -47,6 +47,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Leaf rebuilds taken by the streaming path. Proof of execution: a behavioural test cannot tell a working toggle from an ignored one without it.</summary>
 		public long StreamedLeafRebuilds { get; private set; }
 
+		/// <summary>Streamed rebuilds that completed in the single-pass fast path (no split, one fused measure-and-emit scan). Byte-identical output makes a dead fast path invisible to every behavioural test; this counter is what shows it ran.</summary>
+		public long StreamedSinglePassRebuilds { get; private set; }
+
 		/// <summary>A sorted run of leaf cells, indexable by position. The consumer never learns where a cell lives: on a page, in a scratch buffer, or synthesized on the fly.</summary>
 		/// <remarks>Indexed (not forward-only) because the sizing walk needs first/last keys and re-reads the boundary cell; every rebuild source is a page or a buffer, both O(1) by index.</remarks>
 		internal interface ICellSource
@@ -98,44 +101,100 @@ namespace FoundationDB.Storage.FdbLite
 				? FdbLitePageHeader.GetPrefixLength(sourcePage)
 				: 0;
 
-			// measure scan: the run's shared prefix is what its first and last keys share, then one pass for the sums
-			long totalBytes;
-			{
-				int runLcp = 0;
-				if (count > 1)
-				{
-					var estimateScratch = ArrayPool<byte>.Shared.Rent(2 * FdbLiteTreePage.MaxKeyLength);
-					try
-					{
-						var sp = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
-						var lowest = MaterializeKey(cells[0], sourcePage, sp, estimateScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
-						var highest = MaterializeKey(cells[count - 1], sourcePage, sp, estimateScratch.AsSpan(FdbLiteTreePage.MaxKeyLength, FdbLiteTreePage.MaxKeyLength));
-						runLcp = FdbLiteTreePage.CommonPrefixLength(lowest, highest);
-					}
-					finally
-					{
-						ArrayPool<byte>.Shared.Return(estimateScratch);
-					}
-				}
-
-				long sumWhole = 0, sumValue = 0;
-				for (int i = 0; i < count; i++)
-				{
-					var cell = cells[i];
-					sumWhole += LeafWholeKeyLength(in cell, sourcePrefixLength);
-					sumValue += cell.ValueLength;
-				}
-				totalBytes = LeafRunBytes(count, sumWhole, sumValue, runLcp);
-			}
-
 			byte carriedEpisodes = sourcePage.Length > 0 ? FdbLitePageHeader.GetVolatilityEpisodes(sourcePage) : (byte) 0;
 
 			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
-			var partScratch = ArrayPool<byte>.Shared.Rent(FdbLiteTreePage.MaxKeyLength);
+			// both boundary keys at once: the fast path needs the first key's BYTES (they become the page prefix)
+			// while the last key is probed; the slow path reuses the first half as its per-part scratch
+			var partScratch = ArrayPool<byte>.Shared.Rent(2 * FdbLiteTreePage.MaxKeyLength);
 			byte[]? sourceCopy = null;
 			try
 			{
-				if (totalBytes > usable && !sourcePage.IsEmpty)
+				Contract.Debug.Assert(count > 0);
+				var image = scratch.AsSpan(0, pageSize);
+				var sourcePrefix = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
+
+				// the whole run's shared prefix is what its first and last keys share (they are in key order):
+				// two O(1) probes, no walk
+				var firstKey = MaterializeKey(cells[0], sourcePage, sourcePrefix, partScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
+				int runLcp = 0;
+				if (count > 1)
+				{
+					var lastKey = MaterializeKey(cells[count - 1], sourcePage, sourcePrefix, partScratch.AsSpan(FdbLiteTreePage.MaxKeyLength, FdbLiteTreePage.MaxKeyLength));
+					runLcp = FdbLiteTreePage.CommonPrefixLength(firstKey, lastKey);
+				}
+
+				// FAST PATH: speculative single-page emit, fusing measure and emit into ONE scan. A single-page
+				// rebuild's destination prefix is the run's own LCP, already known from the boundary probe, so
+				// nothing else depends on a cut point. The same LeafRunBytes accounting the split decision uses
+				// runs incrementally alongside the emit; crossing the page size proves this is really a split and
+				// the half-written image is abandoned (nothing escapes: WritePage only runs on a completed image,
+				// and the slow path re-Formats the image, which clears it). "Fits by formula" and "fits by emit"
+				// are the same statement (the two-scan byte-identity invariant), so this takes exactly the
+				// rebuilds the materialized path would emit as one page - the differential suite proves it.
+				{
+					int effective = count > 1 ? runLcp : 0;
+					long total = FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: (effective + 1) & ~1);
+					FdbLitePageHeader.Format(image, FdbLitePageType.Leaf, this.Generation);
+					if (carriedEpisodes != 0) { FdbLitePageHeader.SetVolatilityEpisodes(image, carriedEpisodes); }
+					FdbLiteTreePage.WriteLeafPrefix(image, firstKey[..effective]);
+					var run = new FdbLiteTreePage.LeafRunWriter(image, count);
+					bool fits = true;
+					for (int i = 0; i < count; i++)
+					{
+						var cell = cells[i];
+						total += LeafWholeKeyLength(in cell, sourcePrefixLength) - effective + FdbLiteTreePage.LeafCellOverhead + cell.ValueLength;
+						if (total > pageSize)
+						{
+							fits = false;
+							break;
+						}
+						var stored = cell.ResolveKey(sourcePage);
+						var value = cell.ResolveValue(sourcePage);
+						if (cell.Buffer is not null)
+						{ // a whole key: strip this page's prefix outright
+							run.Add(stored[effective..], value, cell.Flags);
+						}
+						else if (effective >= sourcePrefix.Length)
+						{ // the new prefix reaches into the stored suffix, so the remainder is one slice of it
+							run.Add(stored[(effective - sourcePrefix.Length)..], value, cell.Flags);
+						}
+						else
+						{ // the new prefix is SHORTER, so what is stored gains back the tail of the old one
+							run.Add(sourcePrefix[effective..], stored, value, cell.Flags);
+						}
+					}
+					if (fits)
+					{
+						run.Complete();
+						uint id = WritePage(oldPageId, image);
+						if (OpLog is { } log)
+						{
+							string tag = oldPageId == 0 ? "LEAF+" : "LEAF=";
+							log($"{tag}\t{id}\tfrom={caller}\tpart=0\tcells={count}\tsrc={oldPageId}\tparts=1");
+						}
+						this.StreamedSinglePassRebuilds++;
+						return new(id, null);
+					}
+				}
+
+				// SLOW PATH: a genuine split. Only now do the balance targets need the run's exact total, so the
+				// sums walk runs here, on the minority of rebuilds that split.
+				long totalBytes;
+				{
+					long sumWhole = 0, sumValue = 0;
+					for (int i = 0; i < count; i++)
+					{
+						var cell = cells[i];
+						sumWhole += LeafWholeKeyLength(in cell, sourcePrefixLength);
+						sumValue += cell.ValueLength;
+					}
+					totalBytes = LeafRunBytes(count, sumWhole, sumValue, runLcp);
+				}
+				Contract.Debug.Assert(totalBytes > usable, "the fast path aborted on a run its own accounting says fits one page");
+
+				// NOTE: sourcePrefix and firstKey are DEAD from here: both may point into the pre-snapshot page.
+				if (!sourcePage.IsEmpty)
 				{ // splitting: part 0 may rewrite the source page in place (shadowed), which would clobber the
 				  // memory later parts still resolve their cells from - snapshot the source first, and REBASE the
 				  // source so its own reads move to the snapshot too (with the array this was implicit: the
@@ -145,8 +204,6 @@ namespace FoundationDB.Storage.FdbLite
 					sourcePage = sourceCopy.AsSpan(0, sourcePage.Length);
 					cells.Rebase(sourcePage);
 				}
-
-				var image = scratch.AsSpan(0, pageSize);
 				List<(Slice Separator, uint PageId)>? siblings = null;
 				uint firstId = 0;
 
