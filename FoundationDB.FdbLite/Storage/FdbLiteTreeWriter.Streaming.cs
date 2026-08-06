@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -24,15 +24,14 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// PROTOTYPE (benchmark-first, see the cell-source streaming design note): a leaf rebuild that reads
-// its cells straight off the source page instead of gathering a materialized CellRef[]. net10+ only:
-// the source is a ref struct used as a generic type argument (`allows ref struct`, ref-struct
-// interfaces are C# 13), which the net8 leg cannot express. Off by default; enabled per writer by the
-// differential suite and the KvBench A/B. The algorithm is deliberately a line-for-line clone of the
-// leaf half of WriteCells/LeafPartEnd/AppendCells with the array indexing swapped for source indexing:
-// the two paths must stay byte-identical, and every divergence is a bug in THIS file.
-
-#if NET10_0_OR_GREATER
+// THE rebuild path (see the cell-source streaming design note): rebuilds read their cells straight
+// off the source pages through ref-struct ICellSource implementations instead of gathering a
+// materialized CellRef[]. It replaced the materialized path outright after a bracketed A/B measured
+// it 6-16% faster warm at byte-identical output (the materialized twin served as the differential
+// oracle during the campaign and was then deleted; CellRef itself survives as the graft interchange).
+// Language floor: the sources are ref structs used as generic type arguments (`allows ref struct`,
+// net9+ runtime; ref-struct interfaces are C# 13), so this compiles for net9 consumers that override
+// the TFM set even though the shipped floor is net10.
 
 namespace FoundationDB.Storage.FdbLite
 {
@@ -40,10 +39,7 @@ namespace FoundationDB.Storage.FdbLite
 	public sealed partial class FdbLiteTreeWriter
 	{
 
-		/// <summary>Route rebuilds through the streaming writer instead of the materialized <see cref="CellRef"/> gather. ON by default (owner ruling 2026-08-06, after the bracketed A/B: 6-16% faster warm writes at byte-identical output); off reproduces the materialized path, which the differential suite compares against.</summary>
-		public bool UseStreamingRebuild { get; set; } = true;
-
-		/// <summary>Leaf rebuilds taken by the streaming path. Proof of execution: a behavioural test cannot tell a working toggle from an ignored one without it.</summary>
+		/// <summary>Leaf rebuilds taken through the streaming writer (regression suites assert sites execute; a byte-identical refactor cannot be told from dead code without counters).</summary>
 		public long StreamedLeafRebuilds { get; private set; }
 
 		/// <summary>Streamed rebuilds that completed in the single-pass fast path (no split, one fused measure-and-emit scan). Byte-identical output makes a dead fast path invisible to every behavioural test; this counter is what shows it ran.</summary>
@@ -73,6 +69,12 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Leaf K-to-1 consolidation merges taken by the streaming path (cells re-based on demand from the input pages instead of gathered into whole-key buffers).</summary>
 		public long StreamedMerges { get; private set; }
 
+		/// <summary>Delete-driven leaf rebuilds (a dropped cell range) taken by the streaming path.</summary>
+		public long StreamedLeafDrops { get; private set; }
+
+		/// <summary>Delete-driven internal rebuilds (one child or a child run removed) taken by the streaming path.</summary>
+		public long StreamedChildRemovals { get; private set; }
+
 		/// <summary>A sorted run of leaf cells, indexable by position. The consumer never learns where a cell lives: on a page, in a scratch buffer, or synthesized on the fly.</summary>
 		/// <remarks>Indexed (not forward-only) because the sizing walk needs first/last keys and re-reads the boundary cell; every rebuild source is a page or a buffer, both O(1) by index.</remarks>
 		internal interface ICellSource
@@ -99,6 +101,28 @@ namespace FoundationDB.Storage.FdbLite
 			public int Count { get; }
 
 			public CellRef this[int index] => CellRef.OfLeafPage(this.Page, index);
+
+			public void Rebase(ReadOnlySpan<byte> snapshot) => this.Page = snapshot;
+		}
+
+		/// <summary>The delete-rebuild source: every cell of one page except a dropped range.</summary>
+		internal ref struct LeafDropSource : ICellSource
+		{
+			private ReadOnlySpan<byte> Page;
+			private readonly int First;
+			private readonly int Dropped;
+
+			public LeafDropSource(ReadOnlySpan<byte> page, int first, int last, int resultCount)
+			{
+				this.Page = page;
+				this.First = first;
+				this.Dropped = last - first;
+				this.Count = resultCount;
+			}
+
+			public int Count { get; }
+
+			public CellRef this[int index] => CellRef.OfLeafPage(this.Page, index < this.First ? index : index + this.Dropped);
 
 			public void Rebase(ReadOnlySpan<byte> snapshot) => this.Page = snapshot;
 		}
@@ -853,6 +877,26 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Streamed leaf rebuild without cells [<paramref name="first"/>, <paramref name="last"/>): a strict shrink, so it always fits one page.</summary>
+		private RebuildResult DropLeafRangeStreamed(uint leafId, ReadOnlySpan<byte> page, int cellCount, int first, int last)
+		{
+			this.StreamedLeafDrops++;
+			var outcome = WriteCellsStreamed(leafId, page, new LeafDropSource(page, first, last, cellCount - (last - first)), caller: nameof(DropLeafSlots));
+			Contract.Debug.Assert(!outcome.Split, "dropping cells is a strict shrink and can never split");
+			return outcome;
+		}
+
+		/// <summary>Streamed internal rebuild without the separator cells [<paramref name="dropFrom"/>, <paramref name="dropTo"/>): the delete-path child removals, a strict shrink. The cell before the range rides along verbatim (the generalized source's patched slot), and <paramref name="leftmost"/> is the caller's business (removing child 0 promotes a new leftmost, removing a later run keeps it).</summary>
+		private RebuildResult RemoveInternalRangeStreamed(uint pageId, ReadOnlySpan<byte> page, int cellCount, int dropFrom, int dropTo, uint leftmost, string caller)
+		{
+			this.StreamedChildRemovals++;
+			var patched = dropFrom > 0 ? CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, dropFrom - 1)) : default;
+			var source = new InternalRunSource(page, cellCount, dropFrom, dropTo, in patched, raisedCell: default, hasRaised: false, extraCell: default, hasExtra: false, siblings: default, separatorScratch: [ ]);
+			var outcome = WriteInternalCellsStreamed(pageId, leftmost, page, source, caller);
+			Contract.Debug.Assert(!outcome.Split, "removing children is a strict shrink and can never split");
+			return outcome;
+		}
+
 		/// <summary>Streamed variant of the strip rebuild: the fused single-page emit over the page's own cells. Returns 0 without side effects when the rebuilt run would not fit (the materialized guard's "fail safely" contract).</summary>
 		private uint TryStripStreamed(uint leafId, ReadOnlySpan<byte> page)
 		{
@@ -983,5 +1027,3 @@ namespace FoundationDB.Storage.FdbLite
 	}
 
 }
-
-#endif

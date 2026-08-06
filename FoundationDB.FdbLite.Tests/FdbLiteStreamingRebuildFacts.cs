@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -24,36 +24,30 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// the streaming rebuild is a net10+ prototype (`allows ref struct`); the materialized path is the only one on net8
-#if NET10_0_OR_GREATER
-
 namespace FoundationDB.Storage.FdbLite.Tests
 {
 	using FoundationDB.Storage.FdbLite;
 
-	/// <summary>Differential proof for the streaming leaf rebuild: the streamed writer and the materialized <c>CellRef[]</c> writer must produce BYTE-IDENTICAL stores on the same workload.</summary>
-	/// <remarks>Two separate green suites would never prove the paths agree; this fixture runs both on the same deterministic workload and compares every block of the resulting stores. The counter assert is the execution proof: a toggle that silently routes back to the materialized path would pass the comparison while testing nothing.</remarks>
+	/// <summary>Regression net for the streaming rebuild (the engine's only rebuild path since the materialized <c>CellRef[]</c> twin was deleted): every workload runs TWICE and the two stores must be BYTE-IDENTICAL.</summary>
+	/// <remarks>The twin-run comparison pins determinism and is the detector for the uninitialized-buffer contract (a page image read before being written whole shows up as run-to-run divergence). The counters are the execution proof per site, and the workloads themselves carry the writer's contract tripwires (heap-crossing, split-of-a-shrink) through every rebuild shape: splits, strips, K-way giants, internal splits, vacuum merges and the cross-parent join.</remarks>
 	[TestFixture]
 	[Category("FdbLite")]
 	public class FdbLiteStreamingRebuildFacts : SimpleTest
 	{
 
-		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) CreateStore(FdbLiteGeometry geometry, bool streaming)
+		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) CreateStore(FdbLiteGeometry geometry)
 		{
 			var pager = new FdbLiteHeapPager(geometry);
 			var allocator = new FdbLiteBlockAllocator(pager, new FdbLiteFreeSpaceMap(), frontier: 3);
-			var writer = new FdbLiteTreeWriter(pager, allocator, generation: 1, root: 0)
-			{
-				UseStreamingRebuild = streaming,
-			};
+			var writer = new FdbLiteTreeWriter(pager, allocator, generation: 1, root: 0);
 			return (pager, writer);
 		}
 
 		/// <summary>Split-heavy mixed workload: bucketed random keys (shared prefixes, interior inserts), replaces of both growing and shrinking sizes, and a sprinkle of extent values.</summary>
-		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunMixedWorkload(bool streaming)
+		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunMixedWorkload()
 		{
 			var geometry = FdbLiteGeometry.Uniform(14); // 16 KiB pages: the floor, so splits come fast
-			var (pager, writer) = CreateStore(geometry, streaming);
+			var (pager, writer) = CreateStore(geometry);
 
 			// all randomness flows from one seeded generator, in one call order: both configurations replay
 			// the exact same byte sequences, so any store divergence is the writer's doing
@@ -100,9 +94,9 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>Sequential ASCII keys packed to 100% by the append-avoid path, then interior replaces of varying size rebuilding those packed pages. The shape that caught the fused fast path's fit accounting when the default flipped on (found by the aggregates suite at the default 32 KiB geometry).</summary>
-		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunSequentialPackedWorkload(bool streaming)
+		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunSequentialPackedWorkload()
 		{
-			var (pager, writer) = CreateStore(FdbLiteGeometry.Default, streaming);
+			var (pager, writer) = CreateStore(FdbLiteGeometry.Default);
 
 			var rnd = new Random(20260730);
 			var value = new byte[128];
@@ -131,16 +125,16 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		[Test]
 		public void Streaming_Rebuild_Matches_Materialized_On_Sequential_Packed_Pages()
 		{
-			var baseline = RunSequentialPackedWorkload(streaming: false);
-			var streamed = RunSequentialPackedWorkload(streaming: true);
+			var baseline = RunSequentialPackedWorkload();
+			var streamed = RunSequentialPackedWorkload();
 			AssertStoresIdentical(baseline, streamed);
 		}
 
 		/// <summary>Giant-cell workload: maximum-size keys and near-inline-ceiling values, so a page holds very few cells and the K-way (no legal 2-way cut) split branch is exercised.</summary>
-		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunGiantCellWorkload(bool streaming)
+		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunGiantCellWorkload()
 		{
 			var geometry = FdbLiteGeometry.Uniform(14);
-			var (pager, writer) = CreateStore(geometry, streaming);
+			var (pager, writer) = CreateStore(geometry);
 
 			var rnd = new Random(90125);
 			var key = new byte[FdbLiteTreePage.MaxKeyLength];
@@ -161,9 +155,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			(FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) baseline,
 			(FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) streamed)
 		{
-			// execution proof FIRST: a knob nobody consults would make every assert below pass vacuously
-			Assert.That(streamed.Writer.StreamedLeafRebuilds, Is.GreaterThan(0), "the streaming path never executed: the toggle is dead and the byte comparison proves nothing");
-			Assert.That(baseline.Writer.StreamedLeafRebuilds, Is.Zero, "the baseline store must not stream, or there is no differential");
+			// execution proof FIRST: a workload that stopped rebuilding would make the comparison vacuous
+			Assert.That(streamed.Writer.StreamedLeafRebuilds, Is.GreaterThan(0), "the workload no longer reaches the rebuild path, so the comparison proves nothing");
 
 			Assert.That(streamed.Writer.Root, Is.EqualTo(baseline.Writer.Root), "the two writers placed their roots differently");
 			Assert.That(streamed.Pager.BlockCount, Is.EqualTo(baseline.Pager.BlockCount), "the two stores allocated different amounts");
@@ -183,8 +176,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		[Test]
 		public void Streaming_Rebuild_Matches_Materialized_On_Mixed_Workload()
 		{
-			var baseline = RunMixedWorkload(streaming: false);
-			var streamed = RunMixedWorkload(streaming: true);
+			var baseline = RunMixedWorkload();
+			var streamed = RunMixedWorkload();
 			AssertStoresIdentical(baseline, streamed);
 
 			// the single-pass fast path must carry the non-splitting majority AND the split fallback must still
@@ -206,10 +199,9 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>Delete-heavy build followed by vacuum-until-dry: the only deterministic driver of the replace-run / drop-leading / join family (pre-commit consolidation budgets on wall-clock EMA, so it cannot be byte-compared). Fat keys shrink the internal fan-out, so the tree has several leaf-parents and the cross-parent merge (drop-leading + join) is reachable.</summary>
-		private static (FdbLiteEngine Engine, FdbLiteTreeWriter LastWriter) RunVacuumWorkload(bool streaming, int maxRounds = 200)
+		private static (FdbLiteEngine Engine, FdbLiteTreeWriter LastWriter) RunVacuumWorkload(int maxRounds = 200)
 		{
 			var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Uniform(14)));
-			engine.UseStreamingRebuild = streaming;
 
 			var rnd = new Random(618034);
 			var key = new byte[400];
@@ -278,7 +270,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		[Explicit("diagnostic: dumps the pre-vacuum leaf-parent structure, for calibrating the sparse bands")]
 		public void Diag_Vacuum_Workload_Structure()
 		{
-			var (engine, _) = RunVacuumWorkload(streaming: true, maxRounds: 0);
+			var (engine, _) = RunVacuumWorkload(maxRounds: 0);
 			using var _e = engine;
 			int pageSize = engine.Pager.Geometry.PageSize;
 
@@ -321,8 +313,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		[Test]
 		public void Streaming_Rebuild_Matches_Materialized_On_Vacuum_Merges()
 		{
-			using var baseline = RunVacuumWorkload(streaming: false).Engine;
-			var (streamedEngine, _) = RunVacuumWorkload(streaming: true);
+			using var baseline = RunVacuumWorkload().Engine;
+			var (streamedEngine, _) = RunVacuumWorkload();
 			using var streamed = streamedEngine;
 
 			Assert.That(streamed.Durable.RootPageId, Is.EqualTo(baseline.Durable.RootPageId), "the two vacuums placed their roots differently");
@@ -347,7 +339,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		[Test]
 		public void Vacuum_Merges_Execute_The_Streamed_Family()
 		{
-			using var engine = RunVacuumWorkload(streaming: true).Engine;
+			using var engine = RunVacuumWorkload().Engine;
 
 			Assert.That(engine.LifetimeStreamedMerges, Is.GreaterThan(0), "no leaf run merged through the streamed K-to-1 merge: the site is dead code under the toggle");
 			Assert.That(engine.LifetimeStreamedReplaceRuns, Is.GreaterThan(0), "no vacuum merge rebuilt its parent through the streamed replace-run: the site is dead code under the toggle");
@@ -355,11 +347,58 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(engine.LifetimeStreamedDropLeading, Is.GreaterThan(0), "the cross-parent merge never dropped leading children: the site is dead code under the toggle");
 		}
 
+		/// <summary>Delete-heavy workload: scattered removals thin leaves (dropped cell ranges), and range removals empty whole leaves and subtrees (child and child-run removals in the ancestors).</summary>
+		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunDeleteWorkload()
+		{
+			var (pager, writer) = CreateStore(FdbLiteGeometry.Uniform(14));
+
+			var rnd = new Random(28657);
+			var keys = new List<byte[]>(6_000);
+			var key = new byte[24];
+			var value = new byte[128];
+			for (int i = 0; i < 6_000; i++)
+			{
+				rnd.NextBytes(key);
+				key[0] = 0x51;
+				key[1] = (byte) (i % 8);
+				keys.Add(key.ToArray());
+				int len = rnd.Next(1, 120);
+				rnd.NextBytes(value.AsSpan(0, len));
+				writer.Insert(keys[i], value.AsSpan(0, len));
+			}
+
+			// scattered removals: leaves survive with dropped ranges
+			for (int i = 0; i < keys.Count; i += 3)
+			{
+				writer.Remove(keys[i]);
+			}
+
+			// range removals: whole buckets die, emptying leaves and removing children (and child runs) from
+			// their ancestors
+			Span<byte> begin = [ 0x51, 0x02 ];
+			Span<byte> end = [ 0x51, 0x05 ];
+			writer.RemoveRange(begin, end);
+
+			writer.FlushDirtyPages();
+			return (pager, writer);
+		}
+
+		[Test]
+		public void Delete_Workload_Runs_Are_Byte_Identical_And_Stream_The_Drop_Sites()
+		{
+			var first = RunDeleteWorkload();
+			var second = RunDeleteWorkload();
+			AssertStoresIdentical(first, second);
+
+			Assert.That(second.Writer.StreamedLeafDrops, Is.GreaterThan(0), "no delete rebuilt a leaf through the streamed drop path: the site is dead code");
+			Assert.That(second.Writer.StreamedChildRemovals, Is.GreaterThan(0), "no delete removed a child through the streamed path: the site is dead code");
+		}
+
 		[Test]
 		public void Streaming_Rebuild_Matches_Materialized_On_Giant_Cells()
 		{
-			var baseline = RunGiantCellWorkload(streaming: false);
-			var streamed = RunGiantCellWorkload(streaming: true);
+			var baseline = RunGiantCellWorkload();
+			var streamed = RunGiantCellWorkload();
 			AssertStoresIdentical(baseline, streamed);
 
 			// giant separators overflow internal pages, so this workload is what covers the internal SPLIT
@@ -371,4 +410,3 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 }
 
-#endif

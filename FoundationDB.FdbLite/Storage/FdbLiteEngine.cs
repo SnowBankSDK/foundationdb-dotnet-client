@@ -247,11 +247,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Append policy handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.AvoidSequentialAppendSplits"/>).</summary>
 		public bool AvoidSequentialAppendSplits { get; set; } = true;
 
-#if NET10_0_OR_GREATER
-		/// <summary>Rebuild path handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.UseStreamingRebuild"/>). ON by default; off reproduces the materialized path.</summary>
-		public bool UseStreamingRebuild { get; set; } = true;
-
-		/// <summary>Streamed replace-run rebuilds across every committed generation (per-writer counters die with their writer; the merge family fires rarely, so the differential suite needs the lifetime sums).</summary>
+		/// <summary>Streamed replace-run rebuilds across every committed generation (per-writer counters die with their writer; the merge family fires rarely, so the regression suite needs the lifetime sums).</summary>
 		public long LifetimeStreamedReplaceRuns { get; private set; }
 
 		/// <inheritdoc cref="LifetimeStreamedReplaceRuns"/>
@@ -262,7 +258,6 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <inheritdoc cref="LifetimeStreamedReplaceRuns"/>
 		public long LifetimeStreamedMerges { get; private set; }
-#endif
 
 		/// <summary>Pre-commit consolidation policy (see <see cref="FdbLitePreCommitConsolidation"/>): <see cref="FdbLitePreCommitConsolidation.Off"/> by default, so the emulator and every determinism-sensitive configuration stays deterministic unless explicitly asked otherwise. <see cref="OpenOrCreateFile"/> ships file-backed stores with <see cref="FdbLitePreCommitConsolidation.Adaptive"/>.</summary>
 		public FdbLitePreCommitConsolidation PreCommitConsolidation { get; set; } = FdbLitePreCommitConsolidation.Off;
@@ -297,9 +292,6 @@ namespace FoundationDB.Storage.FdbLite
 		public FdbLiteTreeWriter BeginWrite() => new(this.Pager, this.Allocator, this.Durable.Generation + 1, this.Durable.RootPageId, this.PageBufferPool)
 		{
 			AvoidSequentialAppendSplits = this.AvoidSequentialAppendSplits,
-#if NET10_0_OR_GREATER
-			UseStreamingRebuild = this.UseStreamingRebuild,
-#endif
 		};
 
 		/// <summary>Slots the leaf directory reserves each time a splice exhausts its headroom.</summary>
@@ -329,13 +321,11 @@ namespace FoundationDB.Storage.FdbLite
 			// merging them here removes page writes from the flush instead of adding any
 			RunPreCommitConsolidation(writer);
 
-#if NET10_0_OR_GREATER
 			// AFTER consolidation: its merges rebuild parents through the same streamed sites
 			this.LifetimeStreamedReplaceRuns += writer.StreamedReplaceRuns;
 			this.LifetimeStreamedDropLeading += writer.StreamedDropLeading;
 			this.LifetimeStreamedJoins += writer.StreamedJoins;
 			this.LifetimeStreamedMerges += writer.StreamedMerges;
-#endif
 
 			// the writer holds its modified page images until now, so they must reach the pager before anything
 			// else this commit writes, and well before the first flush barrier below

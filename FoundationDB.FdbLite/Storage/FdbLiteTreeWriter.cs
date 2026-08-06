@@ -418,11 +418,9 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			if (this.Root == 0)
 			{ // first key: a fresh single-cell leaf becomes the root, and covers the whole keyspace
-				var result = WriteCells(0, isInternal: false, leftmostChild: 0, default, [ newCell ]);
-				Contract.Debug.Assert(!result.Split);
-				this.Root = result.FirstId;
+				this.Root = WriteFreshSingleCellPage(in newCell);
 				this.KeyCountDelta++;
-				this.CursorLeaf = result.FirstId;
+				this.CursorLeaf = this.Root;
 				this.CursorLowerLength = -1;
 				this.CursorUpperLength = -1;
 				return;
@@ -909,26 +907,8 @@ namespace FoundationDB.Storage.FdbLite
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			Contract.Debug.Requires(to <= cellCount + 1);
 
-			int survivors = cellCount - (to - from);
-			var cells = ArrayPool<CellRef>.Shared.Rent(Math.Max(survivors, 1));
-			try
-			{
-				int w = 0;
-				for (int i = 0; i < cellCount; i++)
-				{ // child k rides cell k-1: dropping children [from, to) drops cells [from-1, to-1)
-					if (i >= from - 1 && i < to - 1)
-					{
-						continue;
-					}
-					cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
-				}
-				Contract.Debug.Assert(w == survivors);
-				return WriteCells(pageId, isInternal: true, FdbLiteTreePage.GetLeftmostChild(page), page, cells.AsSpan(0, survivors));
-			}
-			finally
-			{
-				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
-			}
+			// child k rides cell k-1: dropping children [from, to) drops cells [from-1, to-1)
+			return RemoveInternalRangeStreamed(pageId, page, cellCount, from - 1, to - 1, FdbLiteTreePage.GetLeftmostChild(page), caller: nameof(RebuildInternalRemoveChildRun));
 		}
 
 		/// <summary>Drops leaf cells [<paramref name="first"/>, <paramref name="last"/>): releases their extents, rebuilds the leaf, or unlinks it entirely when it empties.</summary>
@@ -954,31 +934,10 @@ namespace FoundationDB.Storage.FdbLite
 				return;
 			}
 
-			// POOLED, not `new`: this gather list is one CellRef per surviving cell of a full page, built and
-			// discarded on EVERY delete that reaches the rebuild path. Measured at smoke scale it was 96% of
-			// the engine's total CellRef[] allocation (1.2 GB) - the single largest allocation site there is.
-			// The list is strictly scoped: WriteCells consumes it and nothing retains it past this frame.
-			int survivors = cellCount - (last - first);
-			var cells = ArrayPool<CellRef>.Shared.Rent(survivors);
-			RebuildResult outcome;
 			// a delete the page SURVIVES is an episode (whole-page death, the branch above, never is); the
 			// dedup reads the pre-rebuild stamp, as everywhere the mutation rebuilds its page
 			bool firstMutationThisGeneration = FdbLitePageHeader.GetGeneration(page) != this.Generation;
-			try
-			{
-				int w = 0;
-				for (int i = 0; i < cellCount; i++)
-				{
-					if (i >= first && i < last) { continue; }
-					cells[w++] = CellRef.OfLeafPage(page, i);
-				}
-				Contract.Debug.Assert(w == survivors);
-				outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells.AsSpan(0, survivors));
-			}
-			finally
-			{ // cleared: a CellRef holds a byte[] reference, and a pooled array must not pin a page buffer
-				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
-			}
+			var outcome = DropLeafRangeStreamed(leafId, page, cellCount, first, last);
 			BumpVolatilityEpisodeAfterRebuild(in outcome, episode: true, firstMutationThisGeneration);
 			if (!outcome.Split && this.Dirty.TryGetValue(outcome.FirstId, out var shrunk))
 			{ // delete-driven underflow is exactly what the pre-commit consolidation arm feeds on
@@ -1025,39 +984,11 @@ namespace FoundationDB.Storage.FdbLite
 		private RebuildResult RebuildInternalRemoveChild(uint pageId, ReadOnlySpan<byte> page, int childIndex)
 		{
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
-			uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
-
-			int survivors = cellCount - 1;
-			var cells = ArrayPool<CellRef>.Shared.Rent(survivors);
-			try
-			{
-				int w = 0;
-				if (childIndex == 0)
-				{ // the leftmost child dies: cell 0's child is the new leftmost, and its separator disappears
-					leftmost = FdbLiteTreePage.GetChild(page, 1);
-					for (int i = 1; i < cellCount; i++)
-					{
-						cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
-					}
-				}
-				else
-				{ // cell childIndex-1 carried the dead child
-					for (int i = 0; i < cellCount; i++)
-					{
-						if (i == childIndex - 1) { continue; }
-						cells[w++] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
-					}
-				}
-				Contract.Debug.Assert(w == survivors);
-
-				var outcome = WriteCells(pageId, isInternal: true, leftmost, page, cells.AsSpan(0, survivors));
-				Contract.Debug.Assert(!outcome.Split);
-				return outcome;
-			}
-			finally
-			{
-				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
-			}
+			return childIndex == 0
+				// the leftmost child dies: cell 0's child is the new leftmost, and its separator disappears
+				? RemoveInternalRangeStreamed(pageId, page, cellCount, 0, 1, FdbLiteTreePage.GetChild(page, 1), caller: nameof(RebuildInternalRemoveChild))
+				// cell childIndex-1 carried the dead child
+				: RemoveInternalRangeStreamed(pageId, page, cellCount, childIndex - 1, childIndex, FdbLiteTreePage.GetLeftmostChild(page), caller: nameof(RebuildInternalRemoveChild));
 		}
 
 		/// <summary>Shrinks a degenerate root chain (internal pages with a single child) and clears the empty tree.</summary>
@@ -1415,15 +1346,7 @@ namespace FoundationDB.Storage.FdbLite
 			  // which the ascent hangs off the parent as a right sibling separated by this very key.
 				this.KeyCountDelta++;
 				this.PagesAppended++;
-#if NET10_0_OR_GREATER
-				if (this.UseStreamingRebuild)
-				{
-					return new(leafId, [ (Slice.FromBytes(key), WriteFreshSingleCellPage(in newCell)) ]);
-				}
-#endif
-				var fresh = WriteCells(0, isInternal: false, leftmostChild: 0, default, [ newCell ]);
-				Contract.Debug.Assert(!fresh.Split);
-				return new(leafId, [ (Slice.FromBytes(key), fresh.FirstId) ]);
+				return new(leafId, [ (Slice.FromBytes(key), WriteFreshSingleCellPage(in newCell)) ]);
 			}
 
 			if (replace)
@@ -1440,43 +1363,8 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			int resultCount = cellCount + (replace ? 0 : 1);
-			RebuildResult outcome;
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE (benchmark-first): same rebuild, no materialized cell list; both paths must produce
-			  // byte-identical stores, which the differential suite proves
-				this.StreamedLeafRebuilds++;
-				outcome = WriteCellsStreamed(leafId, page, new LeafInsertSource(page, in newCell, insertAt, replace, resultCount));
-			}
-			else
-#endif
-			{
-			var cells = ArrayPool<CellRef>.Shared.Rent(resultCount); // pooled: one entry per cell of a full page, per rebuild
-			try
-			{
-				int w = 0;
-				for (int i = 0; i < cellCount; i++)
-				{
-					if (i == insertAt)
-					{
-						cells[w++] = newCell;
-						if (replace) { continue; }
-					}
-					cells[w++] = CellRef.OfLeafPage(page, i);
-				}
-				if (insertAt == cellCount)
-				{ // appending past the last key
-					cells[w++] = newCell;
-				}
-				Contract.Debug.Assert(w == resultCount);
-
-				outcome = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, cells.AsSpan(0, resultCount));
-			}
-			finally
-			{ // cleared: a CellRef holds a byte[] reference, and a pooled array must not pin a page buffer
-				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
-			}
-			}
+			this.StreamedLeafRebuilds++;
+			var outcome = WriteCellsStreamed(leafId, page, new LeafInsertSource(page, in newCell, insertAt, replace, resultCount));
 			BumpVolatilityEpisodeAfterRebuild(in outcome, episode, firstMutationThisGeneration);
 			if (replace && !outcome.Split && this.Dirty.TryGetValue(outcome.FirstId, out var replaced))
 			{ // a shrinking replace is a shrink site like any other (an insert or a split is growth, and growth
@@ -1519,57 +1407,14 @@ namespace FoundationDB.Storage.FdbLite
 				return 0;
 			}
 
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE: the fused single-page emit; its incremental accounting IS the strict-shrink guard
-			  // below, and an abort (would split) fails safely before any side effect, exactly like it
-				uint streamedId = TryStripStreamed(leafId, page);
-				if (streamedId == 0)
-				{
-					return 0;
-				}
-				this.PagesStripped++;
-				spliced = TrySpliceInto(streamedId, key, newCell);
-				return streamedId;
-			}
-#endif
-
-			var cells = ArrayPool<CellRef>.Shared.Rent(cellCount); // pooled: one entry per cell of a full page
-			uint rebuiltId;
-			try
+			// the fused single-page emit's incremental accounting IS the strict-shrink guard: an abort (the
+			// rebuilt run would split, which cannot happen while the sizing is exact) fails safely before any
+			// side effect, and the caller's ordinary rebuild-and-split path handles it
+			uint rebuiltId = TryStripStreamed(leafId, page);
+			if (rebuiltId == 0)
 			{
-				var run = cells.AsSpan(0, cellCount);
-				for (int i = 0; i < cellCount; i++)
-				{
-					run[i] = CellRef.OfLeafPage(page, i);
-				}
-
-				// The rebuild is a strict shrink (same cells, strictly longer prefix), so it always fits one
-				// page - but prove it BEFORE calling WriteCells: by the time WriteCells returns, part 0 has
-				// already overwritten or relocated the leaf and any sibling is written, so there is no way to
-				// back out of an unexpected split. Returning 0 after one orphans the sibling's keys, and on the
-				// copy-on-write variant queues the old page for delayed free twice.
-				long stripSumWhole = 0, stripSumValue = 0;
-				foreach (var cell in run)
-				{
-					stripSumWhole += LeafWholeKeyLength(cell, current);
-					stripSumValue += cell.ValueLength;
-				}
-				if (LeafRunBytes(cellCount, stripSumWhole, stripSumValue, shared) > this.Pager.Geometry.PageSize)
-				{ // cannot happen while the sizing is exact; if a future change breaks that, fail SAFELY here
-				  // (no side effects yet) and let the caller's ordinary rebuild-and-split path handle it
-					return 0;
-				}
-
-				var rebuilt = WriteCells(leafId, isInternal: false, leftmostChild: 0, page, run);
-				Contract.Requires(!rebuilt.Split, "a strip rebuild is a strict shrink and can never split");
-				rebuiltId = rebuilt.FirstId;
+				return 0;
 			}
-			finally
-			{ // cleared: a CellRef holds a byte[] reference, and a pooled array must not pin a page buffer
-				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
-			}
-
 			this.PagesStripped++;
 			spliced = TrySpliceInto(rebuiltId, key, newCell);
 			return rebuiltId;
@@ -1622,119 +1467,12 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
-			int inserted = childSiblings.Length;
-
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE: same rebuild without the materialized cell list or the per-sibling scratches
-				return RebuildInternalStreamed(pageId, page, cellCount, childIndex, childFirstId, childSiblings, raiseFollowingSeparator);
-			}
-#endif
-
-			// scratch for the patched cell and each inserted separator cell
-			byte[]? patchScratch = null;
-			byte[]? raiseScratch = null;
-			// `inserted` is 0 on every rebuild that is not following a split, which is the overwhelming majority:
-			// an empty jagged array per call is a pure allocation for a loop that will not run
-			var siblingScratch = inserted == 0 ? [ ] : new byte[inserted][];
-			// POOLED: this is the gather list for the internal page, and at standard scale it measured as 78.6%
-			// of ALL CellRef[] allocation (4.5 GB) - every right-edge page appended by a sorted load rebuilds its
-			// parent through here. Strictly scoped: WriteCells consumes it and nothing retains it past this frame.
-			int cellTotal = cellCount + inserted;
-			var cells = ArrayPool<CellRef>.Shared.Rent(cellTotal);
-			try
-			{
-				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
-
-				var patchedCell = default(CellRef);
-				if (childIndex == 0)
-				{
-					leftmost = childFirstId;
-				}
-				else
-				{
-					var original = FdbLiteTreePage.GetInternalCell(page, childIndex - 1);
-					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
-					original.CopyTo(patchScratch);
-					FdbLiteTreePage.PatchInternalCellChild(patchScratch, childFirstId);
-					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
-				}
-
-				var raisedCell = default(CellRef);
-				if (raiseFollowingSeparator.Length > 0 && childIndex < cellCount)
-				{ // same child, higher key: the cell is rebuilt rather than copied
-					raiseScratch = ArrayPool<byte>.Shared.Rent(6 + raiseFollowingSeparator.Length);
-					int len = FdbLiteTreePage.BuildInternalCell(raiseScratch, FdbLiteTreePage.GetChild(page, childIndex + 1), raiseFollowingSeparator).Length;
-					raisedCell = CellRef.OfInternalBuffer(raiseScratch, len);
-				}
-
-				int w = 0;
-				for (int i = 0; i <= cellCount; i++)
-				{
-					if (i == childIndex)
-					{ // the sibling separators slot in right after the descended child
-						for (int s = 0; s < inserted; s++)
-						{
-							var (separator, siblingId) = childSiblings[s];
-							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Count);
-							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator.Span).Length;
-							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
-						}
-					}
-					if (i < cellCount)
-					{
-						cells[w++] = (i == childIndex - 1) ? patchedCell
-							: (i == childIndex && raiseScratch != null) ? raisedCell
-							: CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
-					}
-				}
-				Contract.Debug.Assert(w == cellTotal);
-
-				return WriteCells(pageId, isInternal: true, leftmost, page, cells.AsSpan(0, cellTotal));
-			}
-			finally
-			{
-				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
-				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
-				if (raiseScratch != null) { ArrayPool<byte>.Shared.Return(raiseScratch); }
-				foreach (var s in siblingScratch)
-				{
-					if (s != null) { ArrayPool<byte>.Shared.Return(s); }
-				}
-			}
+			return RebuildInternalStreamed(pageId, page, cellCount, childIndex, childFirstId, childSiblings, raiseFollowingSeparator);
 		}
 
 		/// <summary>Builds one new root level over a split result (loops in the caller if the new level itself splits).</summary>
 		private RebuildResult BuildRootLevel(uint firstId, ReadOnlySpan<(Slice Separator, uint PageId)> siblings)
-		{
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE: same build without the cell list or the per-sibling scratches
-				return BuildRootLevelStreamed(firstId, siblings);
-			}
-#endif
-
-			var scratches = new byte[siblings.Length][];
-			try
-			{
-				var cells = new CellRef[siblings.Length];
-				for (int i = 0; i < siblings.Length; i++)
-				{
-					var (separator, id) = siblings[i];
-					scratches[i] = ArrayPool<byte>.Shared.Rent(6 + separator.Count);
-					int len = FdbLiteTreePage.BuildInternalCell(scratches[i], id, separator.Span).Length;
-					cells[i] = CellRef.OfInternalBuffer(scratches[i], len);
-				}
-				return WriteCells(0, isInternal: true, leftmostChild: firstId, default, cells);
-			}
-			finally
-			{
-				foreach (var s in scratches)
-				{
-					if (s != null) { ArrayPool<byte>.Shared.Return(s); }
-				}
-			}
-		}
+			=> BuildRootLevelStreamed(firstId, siblings);
 
 		/// <summary>Writes a rebuilt cell list as one page, or as a K-way split when it does not fit (greedy: each page takes the largest prefix that fits).</summary>
 		/// <param name="oldPageId">The ID of the page being replaced</param>
@@ -2467,84 +2205,21 @@ namespace FoundationDB.Storage.FdbLite
 		/// <returns>Pages actually freed (the emission's real part count can differ from the sizing estimate by a page)</returns>
 		private int MergeConsolidationRun(ConsolidationRun run)
 		{
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE: cells re-based on demand straight from the input pages, no whole-key gather buffers
-				var mergedStreamed = MergeConsolidationCellsStreamed(run.InputIds, run.FillCeiling, caller: nameof(MergeConsolidationRun));
-				for (int p = 1; p < run.InputIds.Length; p++)
-				{
-					FreePage(run.InputIds[p]);
-				}
-				var parentStreamed = RebuildInternalReplaceRun(run.ParentId, run.FirstChildIndex, run.LastChildIndex, mergedStreamed);
-				AscendPatch(run.PathPages, run.PathChildren, run.Depth - 1, run.ParentId, parentStreamed);
-				this.CursorLeaf = 0;
-				return run.InputIds.Length - 1 - (mergedStreamed.Siblings?.Count ?? 0);
+			// extent cells travel as their descriptors: the extents themselves do not move and must NOT be
+			// freed - only the emptied leaf pages are
+			var merged = MergeConsolidationCellsStreamed(run.InputIds, run.FillCeiling, caller: nameof(MergeConsolidationRun));
+			for (int p = 1; p < run.InputIds.Length; p++)
+			{ // the emission already handled input 0 (rebuilt in place when dirty, queued for delayed free when cold)
+				FreePage(run.InputIds[p]);
 			}
-#endif
 
-			// gather into owned buffers: inputs mix dirty images and cold pager spans, and part 0 of the
-			// emission rewrites the first input, so nothing may keep pointing into any of them
-			var buffers = new byte[run.InputIds.Length][];
-			try
-			{
-				int cellTotal = 0;
-				foreach (var id in run.InputIds)
-				{
-					cellTotal += FdbLitePageHeader.GetCellCount(ReadPage(id));
-				}
-				var cells = new CellRef[cellTotal];
-				int w = 0;
-				for (int p = 0; p < run.InputIds.Length; p++)
-				{
-					var page = ReadPage(run.InputIds[p]);
-					var prefix = FdbLiteTreePage.GetPagePrefix(page, isInternal: false);
-					int cellCount = FdbLitePageHeader.GetCellCount(page);
-					long need = 0;
-					for (int i = 0; i < cellCount; i++)
-					{
-						var c = FdbLiteTreePage.ReadLeafCell(page, i);
-						need += prefix.Length + c.KeyLength + c.ValueLength;
-					}
-					var buffer = buffers[p] = ArrayPool<byte>.Shared.Rent(checked((int) need));
-					int at = 0;
-					for (int i = 0; i < cellCount; i++)
-					{
-						var c = FdbLiteTreePage.ReadLeafCell(page, i);
-						int keyAt = at;
-						prefix.CopyTo(buffer.AsSpan(at));
-						page.Slice(c.KeyOffset, c.KeyLength).CopyTo(buffer.AsSpan(at + prefix.Length));
-						at += prefix.Length + c.KeyLength;
-						int valueAt = at;
-						page.Slice(c.ValueOffset, c.ValueLength).CopyTo(buffer.AsSpan(at));
-						at += c.ValueLength;
-						cells[w++] = new CellRef(buffer, keyAt, prefix.Length + c.KeyLength, valueAt, c.ValueLength, c.Flags);
-					}
-				}
-				Contract.Debug.Assert(w == cellTotal);
+			var parentOutcome = RebuildInternalReplaceRun(run.ParentId, run.FirstChildIndex, run.LastChildIndex, merged);
+			AscendPatch(run.PathPages, run.PathChildren, run.Depth - 1, run.ParentId, parentOutcome);
 
-				// extent cells travel as their descriptors: the extents themselves do not move and must NOT be
-				// freed - only the emptied leaf pages are
-				var merged = WriteCells(run.InputIds[0], isInternal: false, leftmostChild: 0, default, cells, run.FillCeiling);
-				for (int p = 1; p < run.InputIds.Length; p++)
-				{ // WriteCells already handled input 0 (rebuilt in place when dirty, queued for delayed free when cold)
-					FreePage(run.InputIds[p]);
-				}
+			// leaf identities and ranges under this parent changed; the cursor must not survive that
+			this.CursorLeaf = 0;
 
-				var parentOutcome = RebuildInternalReplaceRun(run.ParentId, run.FirstChildIndex, run.LastChildIndex, merged);
-				AscendPatch(run.PathPages, run.PathChildren, run.Depth - 1, run.ParentId, parentOutcome);
-
-				// leaf identities and ranges under this parent changed; the cursor must not survive that
-				this.CursorLeaf = 0;
-
-				return run.InputIds.Length - 1 - (merged.Siblings?.Count ?? 0);
-			}
-			finally
-			{
-				foreach (var buffer in buffers)
-				{
-					if (buffer is not null) { ArrayPool<byte>.Shared.Return(buffer); }
-				}
-			}
+			return run.InputIds.Length - 1 - (merged.Siblings?.Count ?? 0);
 		}
 
 		/// <summary>Rebuilds an internal page with children [<paramref name="firstChildIndex"/>, <paramref name="lastChildIndex"/>] replaced by a merge outcome's parts.</summary>
@@ -2552,71 +2227,7 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
-			int dropped = lastChildIndex - firstChildIndex; // the run's internal separators: cells first..last-1
-			int inserted = merged.Siblings?.Count ?? 0;
-
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE: same rebuild without the materialized cell list or the per-sibling scratches
-				return RebuildInternalReplaceRunStreamed(pageId, page, cellCount, firstChildIndex, lastChildIndex, in merged);
-			}
-#endif
-
-			byte[]? patchScratch = null;
-			var siblingScratch = new byte[inserted][];
-			try
-			{
-				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
-				var patchedCell = default(CellRef);
-				if (firstChildIndex == 0)
-				{
-					leftmost = merged.FirstId;
-				}
-				else
-				{ // cell firstChildIndex-1 keeps its separator and carries the merged first part
-					var original = FdbLiteTreePage.GetInternalCell(page, firstChildIndex - 1);
-					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
-					original.CopyTo(patchScratch);
-					FdbLiteTreePage.PatchInternalCellChild(patchScratch, merged.FirstId);
-					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
-				}
-
-				var cells = new CellRef[cellCount - dropped + inserted];
-				int w = 0;
-				for (int i = 0; i <= cellCount; i++)
-				{
-					if (i == firstChildIndex)
-					{ // the merge's extra parts slot in right after the first (patched) child
-						for (int s = 0; s < inserted; s++)
-						{
-							var (separator, siblingId) = merged.Siblings![s];
-							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Count);
-							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator.Span).Length;
-							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
-						}
-					}
-					if (i == cellCount)
-					{
-						break;
-					}
-					if (i >= firstChildIndex && i < lastChildIndex)
-					{ // a separator internal to the run: its child was merged away
-						continue;
-					}
-					cells[w++] = (i == firstChildIndex - 1) ? patchedCell : CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
-				}
-				Contract.Debug.Assert(w == cells.Length);
-
-				return WriteCells(pageId, isInternal: true, leftmost, page, cells);
-			}
-			finally
-			{
-				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
-				foreach (var s in siblingScratch)
-				{
-					if (s != null) { ArrayPool<byte>.Shared.Return(s); }
-				}
-			}
+			return RebuildInternalReplaceRunStreamed(pageId, page, cellCount, firstChildIndex, lastChildIndex, in merged);
 		}
 
 		#endregion
@@ -2871,71 +2482,10 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Executes a cross-parent merge: one emission, both leaf-parents rebuilt, and ONE combined bottom-up ascent that rebuilds every ancestor at most once and moves the join separator where the cells went.</summary>
 		private VacuumOutcome ExecuteCrossParentRun(in CrossParentRun run)
 		{
-			RebuildResult merged;
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE: same streamed K-to-1 as the same-parent merge
-				merged = MergeConsolidationCellsStreamed(run.InputIds, run.FillCeiling, caller: nameof(ExecuteCrossParentRun));
-				for (int p = 1; p < run.InputIds.Length; p++)
-				{
-					FreePage(run.InputIds[p]);
-				}
-			}
-			else
-#endif
+			var merged = MergeConsolidationCellsStreamed(run.InputIds, run.FillCeiling, caller: nameof(ExecuteCrossParentRun));
+			for (int p = 1; p < run.InputIds.Length; p++)
 			{
-			// gather exactly like a same-parent merge (owned buffers: part 0 rewrites the first input)
-			var buffers = new byte[run.InputIds.Length][];
-			try
-			{
-				int cellTotal = 0;
-				foreach (var id in run.InputIds)
-				{
-					cellTotal += FdbLitePageHeader.GetCellCount(ReadPage(id));
-				}
-				var cells = new CellRef[cellTotal];
-				int w = 0;
-				for (int p = 0; p < run.InputIds.Length; p++)
-				{
-					var page = ReadPage(run.InputIds[p]);
-					var prefix = FdbLiteTreePage.GetPagePrefix(page, isInternal: false);
-					int cellCount = FdbLitePageHeader.GetCellCount(page);
-					long need = 0;
-					for (int i = 0; i < cellCount; i++)
-					{
-						var c = FdbLiteTreePage.ReadLeafCell(page, i);
-						need += prefix.Length + c.KeyLength + c.ValueLength;
-					}
-					var buffer = buffers[p] = ArrayPool<byte>.Shared.Rent(checked((int) need));
-					int at = 0;
-					for (int i = 0; i < cellCount; i++)
-					{
-						var c = FdbLiteTreePage.ReadLeafCell(page, i);
-						int keyAt = at;
-						prefix.CopyTo(buffer.AsSpan(at));
-						page.Slice(c.KeyOffset, c.KeyLength).CopyTo(buffer.AsSpan(at + prefix.Length));
-						at += prefix.Length + c.KeyLength;
-						int valueAt = at;
-						page.Slice(c.ValueOffset, c.ValueLength).CopyTo(buffer.AsSpan(at));
-						at += c.ValueLength;
-						cells[w++] = new CellRef(buffer, keyAt, prefix.Length + c.KeyLength, valueAt, c.ValueLength, c.Flags);
-					}
-				}
-				Contract.Debug.Assert(w == cellTotal);
-
-				merged = WriteCells(run.InputIds[0], isInternal: false, leftmostChild: 0, default, cells, run.FillCeiling);
-				for (int p = 1; p < run.InputIds.Length; p++)
-				{
-					FreePage(run.InputIds[p]);
-				}
-			}
-			finally
-			{
-				foreach (var buffer in buffers)
-				{
-					if (buffer is not null) { ArrayPool<byte>.Shared.Return(buffer); }
-				}
-			}
+				FreePage(run.InputIds[p]);
 			}
 
 			// both leaf-parents rebuilt against their ORIGINAL images, then one combined ascent
@@ -2959,25 +2509,7 @@ namespace FoundationDB.Storage.FdbLite
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			Contract.Debug.Requires(dropCount >= 1 && dropCount <= cellCount, "the page must keep at least one child");
-
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE: same rebuild without the materialized cell list
-				return RebuildInternalDropLeadingChildrenStreamed(pageId, page, cellCount, dropCount);
-			}
-#endif
-
-			// children 0..dropCount-1 die: cell dropCount-1's child becomes the new leftmost, and cells
-			// 0..dropCount-1 (the separators of the dropped range) disappear
-			uint leftmost = FdbLiteTreePage.GetChild(page, dropCount);
-			var cells = new CellRef[cellCount - dropCount];
-			for (int i = dropCount; i < cellCount; i++)
-			{
-				cells[i - dropCount] = CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
-			}
-			var outcome = WriteCells(pageId, isInternal: true, leftmost, page, cells);
-			Contract.Debug.Assert(!outcome.Split);
-			return outcome;
+			return RebuildInternalDropLeadingChildrenStreamed(pageId, page, cellCount, dropCount);
 		}
 
 		/// <summary>Rebuilds the JOIN ancestor: the left-path child carries the merge's parts, the right-path child is the neighbor's rebuilt remainder, and the separator between them moves to <paramref name="joinSeparator"/> - the bound of the cells that stayed behind.</summary>
@@ -2986,70 +2518,7 @@ namespace FoundationDB.Storage.FdbLite
 			Contract.Debug.Requires(right.Siblings is null, "the right side only shrinks");
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
-			int inserted = left.Siblings?.Count ?? 0;
-
-#if NET10_0_OR_GREATER
-			if (this.UseStreamingRebuild)
-			{ // PROTOTYPE: same rebuild without the materialized cell list or the per-sibling scratches
-				return RebuildInternalJoinStreamed(pageId, page, cellCount, leftChildIndex, in left, in right, joinSeparator);
-			}
-#endif
-
-			byte[]? patchScratch = null;
-			byte[]? joinScratch = null;
-			var siblingScratch = new byte[inserted][];
-			try
-			{
-				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
-				var patchedCell = default(CellRef);
-				if (leftChildIndex == 0)
-				{
-					leftmost = left.FirstId;
-				}
-				else
-				{
-					var original = FdbLiteTreePage.GetInternalCell(page, leftChildIndex - 1);
-					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
-					original.CopyTo(patchScratch);
-					FdbLiteTreePage.PatchInternalCellChild(patchScratch, left.FirstId);
-					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
-				}
-
-				// cell leftChildIndex (the separator between the two paths) is rebuilt outright: new key, new child
-				joinScratch = ArrayPool<byte>.Shared.Rent(6 + joinSeparator.Length);
-				int joinLen = FdbLiteTreePage.BuildInternalCell(joinScratch, right.FirstId, joinSeparator).Length;
-
-				var cells = new CellRef[cellCount + inserted];
-				int w = 0;
-				for (int i = 0; i < cellCount; i++)
-				{
-					if (i == leftChildIndex)
-					{ // the merge's extra parts sit between the left child and the moved separator
-						for (int s = 0; s < inserted; s++)
-						{
-							var (separator, siblingId) = left.Siblings![s];
-							siblingScratch[s] = ArrayPool<byte>.Shared.Rent(6 + separator.Count);
-							int len = FdbLiteTreePage.BuildInternalCell(siblingScratch[s], siblingId, separator.Span).Length;
-							cells[w++] = CellRef.OfInternalBuffer(siblingScratch[s], len);
-						}
-						cells[w++] = CellRef.OfInternalBuffer(joinScratch, joinLen);
-						continue;
-					}
-					cells[w++] = (i == leftChildIndex - 1) ? patchedCell : CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(page, i));
-				}
-				Contract.Debug.Assert(w == cells.Length);
-
-				return WriteCells(pageId, isInternal: true, leftmost, page, cells);
-			}
-			finally
-			{
-				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
-				if (joinScratch != null) { ArrayPool<byte>.Shared.Return(joinScratch); }
-				foreach (var s in siblingScratch)
-				{
-					if (s != null) { ArrayPool<byte>.Shared.Return(s); }
-				}
-			}
+			return RebuildInternalJoinStreamed(pageId, page, cellCount, leftChildIndex, in left, in right, joinSeparator);
 		}
 
 		/// <summary>The two-path ascent of a cross-parent merge: each side climbs to (not including) the join level, the join ancestor is rebuilt ONCE with both sides and the moved separator, and one ordinary ascent continues above it.</summary>
