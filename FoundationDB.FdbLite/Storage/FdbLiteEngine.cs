@@ -247,6 +247,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Append policy handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.AvoidSequentialAppendSplits"/>).</summary>
 		public bool AvoidSequentialAppendSplits { get; set; } = true;
 
+		/// <summary>BENCHMARK-ONLY, DANGEROUS: skips the data barrier so a commit ends in ONE flush. A crash can then persist the header without its pages, corrupting the store UNDETECTABLY. Exists solely to measure the ceiling of the single-fsync commit design (see the 2026-08-06 design note) before its recovery machinery is built; never enable outside a throwaway benchmark store.</summary>
+		public bool UnsafeSingleCommitBarrier { get; set; }
+
 		/// <summary>Streamed replace-run rebuilds across every committed generation (per-writer counters die with their writer; the merge family fires rarely, so the regression suite needs the lifetime sums).</summary>
 		public long LifetimeStreamedReplaceRuns { get; private set; }
 
@@ -342,7 +345,10 @@ namespace FoundationDB.Storage.FdbLite
 			uint freeRoot = FdbLiteFreeListChain.Persist(this.FreeSpace, this.Allocator, this.Pager, writer.Generation);
 
 			// barrier 1: every data and free-list block of this generation is durable before the header moves
-			this.Pager.Flush();
+			if (!this.UnsafeSingleCommitBarrier)
+			{
+				this.Pager.Flush();
+			}
 
 			var header = new FdbLiteSnapshotHeader(
 				Generation: writer.Generation,
