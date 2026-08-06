@@ -99,6 +99,43 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			return (pager, writer);
 		}
 
+		/// <summary>Sequential ASCII keys packed to 100% by the append-avoid path, then interior replaces of varying size rebuilding those packed pages. The shape that caught the fused fast path's fit accounting when the default flipped on (found by the aggregates suite at the default 32 KiB geometry).</summary>
+		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunSequentialPackedWorkload(bool streaming)
+		{
+			var (pager, writer) = CreateStore(FdbLiteGeometry.Default, streaming);
+
+			var rnd = new Random(20260730);
+			var value = new byte[128];
+			for (int i = 0; i < 6_000; i++)
+			{
+				int len = rnd.Next(0, 64);
+				rnd.NextBytes(value.AsSpan(0, len));
+				writer.Insert(System.Text.Encoding.ASCII.GetBytes($"key-{i:D6}"), value.AsSpan(0, len));
+			}
+			// an interior key sharing NO prefix with the packed run: the destination prefix collapses to zero,
+			// every stored suffix re-expands, and the rebuild aborts DEEP into the page with many cells still
+			// to come - the shape that exposed the up-front slot-directory charge in the fused fit accounting
+			writer.Insert(System.Text.Encoding.ASCII.GetBytes("big-blob"), value.AsSpan(0, 64));
+
+			for (int i = 0; i < 6_000; i += 3)
+			{
+				int len = rnd.Next(0, 100);
+				rnd.NextBytes(value.AsSpan(0, len));
+				writer.Insert(System.Text.Encoding.ASCII.GetBytes($"key-{i:D6}"), value.AsSpan(0, len));
+			}
+
+			writer.FlushDirtyPages();
+			return (pager, writer);
+		}
+
+		[Test]
+		public void Streaming_Rebuild_Matches_Materialized_On_Sequential_Packed_Pages()
+		{
+			var baseline = RunSequentialPackedWorkload(streaming: false);
+			var streamed = RunSequentialPackedWorkload(streaming: true);
+			AssertStoresIdentical(baseline, streamed);
+		}
+
 		/// <summary>Giant-cell workload: maximum-size keys and near-inline-ceiling values, so a page holds very few cells and the K-way (no legal 2-way cut) split branch is exercised.</summary>
 		private static (FdbLiteHeapPager Pager, FdbLiteTreeWriter Writer) RunGiantCellWorkload(bool streaming)
 		{

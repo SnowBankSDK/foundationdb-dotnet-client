@@ -40,9 +40,8 @@ namespace FoundationDB.Storage.FdbLite
 	public sealed partial class FdbLiteTreeWriter
 	{
 
-		/// <summary>Route leaf rebuilds through the streaming writer instead of the materialized <see cref="CellRef"/> gather.</summary>
-		/// <remarks>Benchmark knob (same contract as <see cref="AvoidSequentialAppendSplits"/>): both paths must produce byte-identical stores, which the differential suite proves.</remarks>
-		public bool UseStreamingRebuild { get; set; }
+		/// <summary>Route rebuilds through the streaming writer instead of the materialized <see cref="CellRef"/> gather. ON by default (owner ruling 2026-08-06, after the bracketed A/B: 6-16% faster warm writes at byte-identical output); off reproduces the materialized path, which the differential suite compares against.</summary>
+		public bool UseStreamingRebuild { get; set; } = true;
 
 		/// <summary>Leaf rebuilds taken by the streaming path. Proof of execution: a behavioural test cannot tell a working toggle from an ignored one without it.</summary>
 		public long StreamedLeafRebuilds { get; private set; }
@@ -790,7 +789,11 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			int effective = count > 1 ? runLcp : 0;
-			long total = FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: (effective + 1) & ~1);
+			// the slot directory is committed for the WHOLE run the moment the LeafRunWriter is built, so the
+			// running total must carry all count*2 slot bytes up front; charging each cell's slot as it is
+			// added under-counts the real frontier by 2 x (remaining cells) and lets a deep abort write into
+			// directory space (the sum still ends at LeafRunBytes exactly, so the fit verdict is unchanged)
+			long total = FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: (effective + 1) & ~1) + (long) count * 2;
 			FdbLitePageHeader.Format(image, FdbLitePageType.Leaf, this.Generation);
 			if (carriedEpisodes != 0) { FdbLitePageHeader.SetVolatilityEpisodes(image, carriedEpisodes); }
 			FdbLiteTreePage.WriteLeafPrefix(image, firstKey[..effective]);
@@ -798,7 +801,7 @@ namespace FoundationDB.Storage.FdbLite
 			for (int i = 0; i < count; i++)
 			{
 				var cell = cells[i];
-				total += LeafWholeKeyLength(in cell, sourcePrefixLength) - effective + FdbLiteTreePage.LeafCellOverhead + cell.ValueLength;
+				total += LeafWholeKeyLength(in cell, sourcePrefixLength) - effective + (FdbLiteTreePage.LeafCellOverhead - 2) + cell.ValueLength;
 				// the ceiling binds from the SECOND cell on, mirroring LeafPartEnd's first-cell exemption: a
 				// single cell above the merge ceiling but within the page still emits as one page there
 				if (total > image.Length || (i > 0 && total > fillCeiling))

@@ -248,8 +248,8 @@ namespace FoundationDB.Storage.FdbLite
 		public bool AvoidSequentialAppendSplits { get; set; } = true;
 
 #if NET10_0_OR_GREATER
-		/// <summary>Rebuild path handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.UseStreamingRebuild"/>). Benchmark knob, off by default.</summary>
-		public bool UseStreamingRebuild { get; set; }
+		/// <summary>Rebuild path handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.UseStreamingRebuild"/>). ON by default; off reproduces the materialized path.</summary>
+		public bool UseStreamingRebuild { get; set; } = true;
 
 		/// <summary>Streamed replace-run rebuilds across every committed generation (per-writer counters die with their writer; the merge family fires rarely, so the differential suite needs the lifetime sums).</summary>
 		public long LifetimeStreamedReplaceRuns { get; private set; }
