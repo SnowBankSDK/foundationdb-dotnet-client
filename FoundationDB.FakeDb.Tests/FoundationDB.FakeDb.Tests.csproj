@@ -5,7 +5,7 @@
 		     executable, run directly with `dotnet <dll>` (plus the usual filter options) instead of `dotnet test` -->
 		<OutputType>Exe</OutputType>
 		<!-- modern targets only: FoundationDB.FakeDb has no netstandard2.0 build for a net472 leg to consume -->
-		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<TargetFrameworks>$(CoreSdkStorageVersions)</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>

@@ -7,7 +7,7 @@
 		<!-- modern targets only: this suite references FoundationDB.FakeDb unconditionally (every layer suite
 		     runs against the in-memory backend first), and that emulator has no netstandard2.0 build for a
 		     net472 leg to consume -->
-		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
+		<TargetFrameworks>$(CoreSdkStorageVersions)</TargetFrameworks>
 		<LangVersion>preview</LangVersion>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>

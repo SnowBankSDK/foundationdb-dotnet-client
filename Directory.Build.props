@@ -39,6 +39,11 @@
 		<CoreSdkRuntimeVersions Condition="'$(CoreSdkRuntimeVersions)' == ''">$(CoreSdkVersions)</CoreSdkRuntimeVersions>
 		<CoreSdkRuntimeVersions Condition="'$(CoreSdkRuntimeVersions)' == ''">net11.0;net10.0;net8.0</CoreSdkRuntimeVersions>
 		
+		<!-- Framework versions for the storage engine and its consumers (FdbLite, FakeDb, their test suites, Layers.Tests) -->
+		<!-- net10 floor (owner ruling 2026-08-06): the streaming rebuild is the engine's only path going forward, and its ref-struct sources need `allows ref struct` (net9+) with ref-struct interfaces (C# 13); net8 stayed only while the materialized fallback did -->
+		<CoreSdkStorageVersions Condition="'$(CoreSdkStorageVersions)' == ''">$(CoreSdkVersions)</CoreSdkStorageVersions>
+		<CoreSdkStorageVersions Condition="'$(CoreSdkStorageVersions)' == ''">net11.0;net10.0</CoreSdkStorageVersions>
+
 		<!-- Framework versions for tools that are packed (FdbTop, FdbShell, ...) -->
 		<!-- Single TFM by default: these are packed as platform-specific tool packages (one sub-package per RID), which require the .NET 10+ SDK to install anyway, and every extra TFM would inflate all the RID sub-packages -->
 		<CoreSdkToolsVersions Condition="'$(CoreSdkToolsVersions)' == ''">$(CoreSdkVersions)</CoreSdkToolsVersions>

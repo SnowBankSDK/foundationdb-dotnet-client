@@ -108,19 +108,29 @@ namespace FoundationDB.Storage.FdbLite
 			Contract.NotNull(pager);
 			this.Pager = pager;
 			this.Root = root;
-			this.PagePath = new uint[MaxDepth];
-			this.ChildPath = new int[MaxDepth];
 		}
 
 		private IFdbLitePager Pager { get; }
 
 		private uint Root { get; }
 
-		/// <summary>Internal pages of the current path (0..Depth-1)</summary>
-		private uint[] PagePath { get; }
+		[InlineArray(MaxDepth)]
+		private struct PagePathBuffer
+		{
+			private uint Element0;
+		}
+
+		[InlineArray(MaxDepth)]
+		private struct ChildPathBuffer
+		{
+			private int Element0;
+		}
+
+		/// <summary>Internal pages of the current path (0..Depth-1). Inline: a cursor per scan operation is the ordinary usage pattern, and the two path arrays were its whole allocation cost (measured as the dominant allocator of the range/read benchmark legs once page buffers pooled).</summary>
+		private PagePathBuffer PagePath;
 
 		/// <summary>Child index taken in each internal page of the path</summary>
-		private int[] ChildPath { get; }
+		private ChildPathBuffer ChildPath;
 
 		private int Depth;
 
