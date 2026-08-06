@@ -1384,7 +1384,7 @@ namespace SnowBank.Data.Json
 			++m_objectGraphDepth;
 		}
 
-		/// <summary>Leaves the level entered by the matching call to <see cref="EnterDepth"/></summary>
+		/// <summary>Leaves the level entered by the matching call to <see cref="EnterDepth(object?)"/></summary>
 		public void LeaveDepth()
 		{
 			if (m_objectGraphDepth == 0) throw CrystalJson.Errors.Serialization_InternalDepthInconsistent();

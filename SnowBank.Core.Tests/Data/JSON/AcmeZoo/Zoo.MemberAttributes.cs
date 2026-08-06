@@ -355,8 +355,10 @@ namespace Acme.Zoo.Cases.MemberFieldsVersusProperties
 		[DataMember(Name = "publicField")]
 		public string PublicField;
 
+#pragma warning disable CS0414 // assigned but never used: the field is written by the ctor and read reflectively via [DataMember], invisible to the compiler
 		[DataMember(Name = "privateField")]
 		private int privateField;
+#pragma warning restore CS0414
 
 		[DataMember(Name = "readonlyField")]
 		public readonly string ReadonlyField;

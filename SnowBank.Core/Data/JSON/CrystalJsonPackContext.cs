@@ -32,7 +32,7 @@ namespace SnowBank.Data.Json
 	/// <para>A context is opened once per root value (see the <c>Pack</c> extension in <see cref="JsonSerializerExtensions"/>)
 	/// and passed <b>by ref</b> through every nested <see cref="IJsonPacker{T}.Pack"/> call, including the collection and
 	/// dictionary helpers, so the depth and visited-object guards survive every seam of the walk.</para>
-	/// <para>A packer's implementation brackets its body with <see cref="Enter"/> and <see cref="Leave"/>, same contract as
+	/// <para>A packer's implementation brackets its body with <see cref="Enter(object?)"/> and <see cref="Leave(object?)"/>, same contract as
 	/// <see cref="CrystalJsonWriter.MarkVisited"/> / <see cref="CrystalJsonWriter.Leave"/>: the pairing is not
 	/// exception-safe by design, a walk that threw is not resumable.</para>
 	/// </remarks>
@@ -137,8 +137,8 @@ namespace SnowBank.Data.Json
 			}
 		}
 
-		/// <summary>Leaves the value entered by the matching <see cref="Enter"/></summary>
-		/// <param name="instance">Same value that was passed to <see cref="Enter"/></param>
+		/// <summary>Leaves the value entered by the matching <see cref="Enter(object?)"/></summary>
+		/// <param name="instance">Same value that was passed to <see cref="Enter(object?)"/></param>
 		public void Leave(object? instance)
 		{
 			if (m_depth == 0) throw CrystalJson.Errors.Serialization_InternalDepthInconsistent();

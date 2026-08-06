@@ -40,7 +40,7 @@ namespace FoundationDB.Client.Tests
 			var seen = new HashSet<int>();
 			Assert.Multiple(() =>
 			{
-				foreach (var code in Enum.GetValues<FdbError>().OrderBy(c => (int) c))
+				foreach (var code in Enum.GetValues(typeof(FdbError)).Cast<FdbError>().OrderBy(c => (int) c))
 				{
 					if (!seen.Add((int) code)) continue;
 					Assert.That(FdbErrorMessages.TryGetMessage(code), Is.EqualTo(FdbErrorDebugger.GetErrorMessage(code)), $"table entry for {code} ({(int) code})");

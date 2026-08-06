@@ -838,7 +838,7 @@ namespace SnowBank.Data.Json
 		/// <param name="settings">Serialization settings</param>
 		/// <param name="resolver">Custom resolver used to bind the value into a managed type.</param>
 		/// <returns>Packed JSON Object, or <c>null</c> if <paramref name="items"/> is <c>null</c></returns>
-		/// <remarks>Calls <paramref name="serializer"/> through the three-argument <see cref="IJsonPacker{T}.Pack"/> member, which carries no ambient recursion depth: a reference cycle running through this dictionary is not covered by <see cref="SnowBank.Data.CrystalJsonWriter.MaxDepth"/> and can still overflow the native stack.</remarks>
+		/// <remarks>Calls <paramref name="serializer"/> through the three-argument <see cref="IJsonPacker{T}.Pack"/> member, which carries no ambient recursion depth: a reference cycle running through this dictionary is not covered by <see cref="SnowBank.Data.Json.CrystalJsonWriter.MaxDepth"/> and can still overflow the native stack.</remarks>
 		[return: NotNullIfNotNull(nameof(items))]
 		public static JsonObject? PackObject<TValue>(this IJsonPacker<TValue> serializer, Dictionary<string, TValue>? items, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{

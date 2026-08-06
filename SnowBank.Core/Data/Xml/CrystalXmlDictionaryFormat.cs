@@ -36,7 +36,7 @@ namespace SnowBank.Data.Xml
 		Default = 0,
 
 		/// <summary>Each entry is a nested element named after the key: <c>&lt;scores&gt;&lt;math&gt;12&lt;/math&gt;&lt;/scores&gt;</c></summary>
-		/// <remarks>The default for the <see cref="CrystalXmlOutputProfile.Modern"/> profile. The key must be a valid XML name (NCName); a key that is not raises <see cref="XmlException"/> at write time.</remarks>
+		/// <remarks>The default for the <see cref="CrystalXmlOutputProfile.Modern"/> profile. The key must be a valid XML name (NCName); a key that is not raises <see cref="System.Xml.XmlException"/> at write time.</remarks>
 		Direct,
 
 		/// <summary>Each entry is an element carrying the key in an attribute, and the value as text content: <c>&lt;score key="math"&gt;12&lt;/score&gt;</c></summary>

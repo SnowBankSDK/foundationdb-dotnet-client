@@ -38,7 +38,7 @@ namespace SnowBank.Data.Json
 		/// <param name="instance">Value to convert</param>
 		/// <remarks>
 		/// <para>Most types will produce a <see cref="JsonObject"/>, but some simple types may return a packed <see cref="JsonString"/>, or a tuple represented by a <see cref="JsonArray"/>.</para>
-		/// <para>An implementation brackets its body with <see cref="CrystalJsonPackContext.Enter"/> / <see cref="CrystalJsonPackContext.Leave"/>
+		/// <para>An implementation brackets its body with <see cref="CrystalJsonPackContext.Enter(object?)"/> / <see cref="CrystalJsonPackContext.Leave(object?)"/>
 		/// so the depth and cycle guards cover it, and passes the same context to every nested pack call.</para>
 		/// <para>To pack a root value without managing a context, use the <c>Pack(instance, settings, resolver)</c> extension
 		/// in <see cref="JsonSerializerExtensions"/>, which opens a fresh context and forwards here.</para>

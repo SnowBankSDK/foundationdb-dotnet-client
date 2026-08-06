@@ -53,7 +53,7 @@ namespace FoundationDB.Client
 			FdbError.TimedOut => "Operation timed out",
 			FdbError.CoordinatedStateConflict => "Conflict occurred while changing coordination information",
 			FdbError.AllAlternativesFailed => "All alternatives failed",
-			FdbError.PastVersion => "Transaction is too old to perform reads or be committed",
+			FdbError.TransactionTooOld => "Transaction is too old to perform reads or be committed",
 			FdbError.NoMoreServers => "Not enough physical servers available",
 			FdbError.FutureVersion => "Request for future version",
 			FdbError.MoveKeysConflict => "Conflicting attempts to change data distribution",

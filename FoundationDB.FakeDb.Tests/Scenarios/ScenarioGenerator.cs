@@ -280,7 +280,7 @@ namespace FoundationDB.Client.Tests
 			// owner actors and their armed watches
 			string[] owners = [ "A", "B" ];
 			var ownerOpen = new bool[owners.Length];
-			var ownerPin = new string?[owners.Length][]; // committed state at the owner's read-version pin (null until pinned)
+			var ownerPin = new string?[]?[owners.Length]; // committed state at the owner's read-version pin (null until pinned)
 			var ownerWatchCount = new int[owners.Length];
 
 			var watches = new List<(int Handle, int KeyIndex, string? Baseline, int Owner, bool Armed, bool Cancelled, bool Fired)>();
@@ -391,9 +391,9 @@ namespace FoundationDB.Client.Tests
 						if (ownerWatchCount[o] < 3 && rnd.Next(3) != 0)
 						{ // arm one more watch (plain key, counter, or the metadata version); the first key-using step pins the owner's read version
 							int k = rnd.Next(committed.Length);
-							ownerPin[o] ??= (string?[]) committed.Clone();
+							var pin = ownerPin[o] ??= (string?[]) committed.Clone();
 							int handle = k == metadataIndex ? b.WatchMetadataVersion(owner) : b.Watch(owner, KeyName(k));
-							watches.Add((handle, k, ownerPin[o][k], o, Armed: false, Cancelled: false, Fired: false));
+							watches.Add((handle, k, pin[k], o, Armed: false, Cancelled: false, Fired: false));
 							ownerWatchCount[o]++;
 							break;
 						}

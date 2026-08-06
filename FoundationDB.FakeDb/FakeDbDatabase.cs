@@ -661,6 +661,7 @@ namespace FoundationDB.Testing
 					if (entry.Begin >= toExclusive) break;
 					if (entry.End <= cursor) continue;
 					var mutation = entry.Value;
+					if (mutation is null) continue; // a gap in the range dictionary carries no mutation
 					if (!mutation.IsKv() && !mutation.IsRange())
 					{
 						// fdb WriteMap OperationStack::isDependent (7.4.6 fdbclient/WriteMap.cpp:49): an own write is

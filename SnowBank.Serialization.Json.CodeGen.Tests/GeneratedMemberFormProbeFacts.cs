@@ -43,8 +43,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	}
 
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(GenericBox<int>))]
-	[CrystalJsonSerializable(typeof(GenericBox<string>))]
+	[CrystalSerializable(typeof(GenericBox<int>))]
+	[CrystalSerializable(typeof(GenericBox<string>))]
 	public static partial class GenericNullableProbeConverters
 	{
 		// generated code goes here!
@@ -65,7 +65,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	}
 
 	[CrystalJsonConverter]
-	[CrystalJsonSerializable(typeof(ProbeReadOnlyDto))]
+	[CrystalSerializable(typeof(ProbeReadOnlyDto))]
 	public static partial class ReadOnlyProbeConverters
 	{
 		// generated code goes here!

@@ -74,7 +74,9 @@ namespace SnowBank.Data.Json.Tests
 			[STJ.JsonConverter(typeof(BoolAsBitStringConverter))]
 			public bool Enabled { get; set; }
 
+#pragma warning disable CS0436 // deliberate: the file's own Newtonsoft.Json.JsonConverterAttribute shadows the package type on purpose, to prove name-based recognition
 			[Newtonsoft.Json.JsonConverter(typeof(BoolAsBitStringConverter))]
+#pragma warning restore CS0436
 			public bool Archived { get; set; }
 
 			[STJ.JsonConverter(typeof(BoolAsBitStringConverter))]
