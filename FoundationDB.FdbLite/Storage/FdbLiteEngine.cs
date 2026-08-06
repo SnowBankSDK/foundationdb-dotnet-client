@@ -247,6 +247,11 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Append policy handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.AvoidSequentialAppendSplits"/>).</summary>
 		public bool AvoidSequentialAppendSplits { get; set; } = true;
 
+#if NET10_0_OR_GREATER
+		/// <summary>Rebuild path handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.UseStreamingRebuild"/>). Benchmark knob, off by default.</summary>
+		public bool UseStreamingRebuild { get; set; }
+#endif
+
 		/// <summary>Pre-commit consolidation policy (see <see cref="FdbLitePreCommitConsolidation"/>): <see cref="FdbLitePreCommitConsolidation.Off"/> by default, so the emulator and every determinism-sensitive configuration stays deterministic unless explicitly asked otherwise. <see cref="OpenOrCreateFile"/> ships file-backed stores with <see cref="FdbLitePreCommitConsolidation.Adaptive"/>.</summary>
 		public FdbLitePreCommitConsolidation PreCommitConsolidation { get; set; } = FdbLitePreCommitConsolidation.Off;
 
@@ -277,7 +282,13 @@ namespace FoundationDB.Storage.FdbLite
 		public TimeSpan CommitDurationEma => Stopwatch.GetElapsedTime(0, (long) this.CommitEmaStopwatchTicks);
 
 		/// <summary>Starts the writable generation (exactly one at a time; commit or abandon it before starting another).</summary>
-		public FdbLiteTreeWriter BeginWrite() => new(this.Pager, this.Allocator, this.Durable.Generation + 1, this.Durable.RootPageId, this.PageBufferPool) { AvoidSequentialAppendSplits = this.AvoidSequentialAppendSplits };
+		public FdbLiteTreeWriter BeginWrite() => new(this.Pager, this.Allocator, this.Durable.Generation + 1, this.Durable.RootPageId, this.PageBufferPool)
+		{
+			AvoidSequentialAppendSplits = this.AvoidSequentialAppendSplits,
+#if NET10_0_OR_GREATER
+			UseStreamingRebuild = this.UseStreamingRebuild,
+#endif
+		};
 
 		/// <summary>Slots the leaf directory reserves each time a splice exhausts its headroom.</summary>
 		/// <remarks>Exposed here because the page layout itself is internal, and a benchmark has to be able to measure this both ways in one window. <b>1 reproduces the pre-headroom behaviour</b>, where the key area slides on every insert; the default is 32. Process-wide, and meant for measurement rather than for tuning a live store.</remarks>
