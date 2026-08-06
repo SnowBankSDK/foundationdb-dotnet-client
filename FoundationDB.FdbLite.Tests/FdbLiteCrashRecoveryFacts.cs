@@ -254,6 +254,25 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		[Test]
+		public void Pages_Written_By_This_Open_Count_As_Touched()
+		{
+			// first-touch checksum verification exists for blocks whose content this process has NOT seen;
+			// a page this open just computed and wrote needs no re-verification, and before this contract a
+			// build-then-scan in one open re-hashed its whole store (measured +2.2 us/op on value scans, the
+			// range-scan regression of 2026-08-06)
+			var pager = new FdbLiteHeapPager(FdbLiteGeometry.Uniform(14));
+			var engine = FdbLiteEngine.Create(pager);
+			var rnd = new Random(1618);
+			var model = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
+			var w = engine.BeginWrite();
+			ApplyGeneration(w, model, rnd, ops: 400);
+			engine.Commit(w, 1);
+			uint root = engine.Durable.RootPageId;
+			Assert.That(root, Is.Not.Zero);
+			Assert.That(pager.MarkTouched(root), Is.False, "the root page was WRITTEN by this open: its first read must not count as a first touch (no pointless re-verification of bytes this process computed)");
+		}
+
+		[Test]
 		public void Diag_Completed_Commit_Images_Are_Identical()
 		{
 			var rnd = new Random(9999);

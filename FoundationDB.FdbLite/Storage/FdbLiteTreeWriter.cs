@@ -413,6 +413,8 @@ namespace FoundationDB.Storage.FdbLite
 				value.CopyTo(span);
 				span[value.Length..].Clear();
 				this.Pager.WriteBlocks(start, span);
+				// same contract as the dirty-page flush: bytes this process computed need no first-read verification
+				this.Pager.MarkTouched(start);
 			}
 			finally
 			{
@@ -2812,6 +2814,10 @@ namespace FoundationDB.Storage.FdbLite
 				FdbLitePageHeader.SetGeneration(image, this.Generation);
 				FdbLitePageHeader.Seal(image, id);
 				this.Pager.WriteBlocks(id, image);
+				// this process computed these bytes, so their first READ needs no checksum verification:
+				// without this, a build-then-scan in one open re-hashes its whole store (measured +2.2 us/op
+				// on value scans - the 2026-08-06 range-scan regression)
+				this.Pager.MarkTouched(id);
 				this.PagesWritten++;
 				// the pager copies the bytes out synchronously, so the image buffer is free the moment it returns
 				ReturnPageBuffer(image);
