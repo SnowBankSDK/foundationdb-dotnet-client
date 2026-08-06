@@ -163,6 +163,9 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			// internal rebuilds must stream too (every leaf split rebuilds its parent through RebuildInternal)
 			Assert.That(streamed.Writer.StreamedInternalRebuilds, Is.GreaterThan(0), "no internal rebuild took the streaming path: the RebuildInternal site is dead code under the toggle");
 			Assert.That(streamed.Writer.StreamedInternalSinglePass, Is.GreaterThan(0), "no internal rebuild completed in the fused single pass: the fast path is dead or always aborts");
+
+			// growing the tree's depth builds a root level; the workload splits the root leaf early on
+			Assert.That(streamed.Writer.StreamedRootBuilds, Is.GreaterThan(0), "no root-level build took the streaming path: the BuildRootLevel site is dead code under the toggle");
 		}
 
 		/// <summary>Delete-heavy build followed by vacuum-until-dry: the only deterministic driver of the replace-run / drop-leading / join family (pre-commit consolidation budgets on wall-clock EMA, so it cannot be byte-compared). Fat keys shrink the internal fan-out, so the tree has several leaf-parents and the cross-parent merge (drop-leading + join) is reachable.</summary>
@@ -309,6 +312,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		{
 			using var engine = RunVacuumWorkload(streaming: true).Engine;
 
+			Assert.That(engine.LifetimeStreamedMerges, Is.GreaterThan(0), "no leaf run merged through the streamed K-to-1 merge: the site is dead code under the toggle");
 			Assert.That(engine.LifetimeStreamedReplaceRuns, Is.GreaterThan(0), "no vacuum merge rebuilt its parent through the streamed replace-run: the site is dead code under the toggle");
 			Assert.That(engine.LifetimeStreamedJoins, Is.GreaterThan(0), "no cross-parent merge ran: the workload no longer covers the join/drop-leading sites");
 			Assert.That(engine.LifetimeStreamedDropLeading, Is.GreaterThan(0), "the cross-parent merge never dropped leading children: the site is dead code under the toggle");

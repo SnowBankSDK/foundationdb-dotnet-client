@@ -259,6 +259,9 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <inheritdoc cref="LifetimeStreamedReplaceRuns"/>
 		public long LifetimeStreamedJoins { get; private set; }
+
+		/// <inheritdoc cref="LifetimeStreamedReplaceRuns"/>
+		public long LifetimeStreamedMerges { get; private set; }
 #endif
 
 		/// <summary>Pre-commit consolidation policy (see <see cref="FdbLitePreCommitConsolidation"/>): <see cref="FdbLitePreCommitConsolidation.Off"/> by default, so the emulator and every determinism-sensitive configuration stays deterministic unless explicitly asked otherwise. <see cref="OpenOrCreateFile"/> ships file-backed stores with <see cref="FdbLitePreCommitConsolidation.Adaptive"/>.</summary>
@@ -330,6 +333,7 @@ namespace FoundationDB.Storage.FdbLite
 			this.LifetimeStreamedReplaceRuns += writer.StreamedReplaceRuns;
 			this.LifetimeStreamedDropLeading += writer.StreamedDropLeading;
 			this.LifetimeStreamedJoins += writer.StreamedJoins;
+			this.LifetimeStreamedMerges += writer.StreamedMerges;
 #endif
 
 			// the writer holds its modified page images until now, so they must reach the pager before anything

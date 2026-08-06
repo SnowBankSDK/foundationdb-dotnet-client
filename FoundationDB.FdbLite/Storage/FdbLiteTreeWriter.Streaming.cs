@@ -68,6 +68,12 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Join-ancestor rebuilds (both sides of a cross-parent merge plus the moved separator) taken by the streaming path.</summary>
 		public long StreamedJoins { get; private set; }
 
+		/// <summary>Root-level builds taken by the streaming path.</summary>
+		public long StreamedRootBuilds { get; private set; }
+
+		/// <summary>Leaf K-to-1 consolidation merges taken by the streaming path (cells re-based on demand from the input pages instead of gathered into whole-key buffers).</summary>
+		public long StreamedMerges { get; private set; }
+
 		/// <summary>A sorted run of leaf cells, indexable by position. The consumer never learns where a cell lives: on a page, in a scratch buffer, or synthesized on the fly.</summary>
 		/// <remarks>Indexed (not forward-only) because the sizing walk needs first/last keys and re-reads the boundary cell; every rebuild source is a page or a buffer, both O(1) by index.</remarks>
 		internal interface ICellSource
@@ -531,12 +537,111 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Streamed variant of <see cref="BuildRootLevel"/>: the sibling separators build on demand, no cell list and no per-sibling scratches.</summary>
+		private RebuildResult BuildRootLevelStreamed(uint firstId, ReadOnlySpan<(Slice Separator, uint PageId)> siblings)
+		{
+			this.StreamedRootBuilds++;
+
+			var separatorScratch = ArrayPool<byte>.Shared.Rent(6 + FdbLiteTreePage.MaxKeyLength);
+			try
+			{
+				var source = new InternalRunSource(default, 0, 0, 0, patchedCell: default, raisedCell: default, hasRaised: false, extraCell: default, hasExtra: false, siblings, separatorScratch);
+				return WriteInternalCellsStreamed(0, firstId, default, source, caller: nameof(BuildRootLevel));
+			}
+			finally
+			{
+				ArrayPool<byte>.Shared.Return(separatorScratch);
+			}
+		}
+
+		/// <summary>The K-to-1 merge source: every cell of every input page in order, re-based to its whole key ON DEMAND into one shared scratch. Input 0 reads from a snapshot taken at construction: part 0 of the emission rewrites that page in place, and inputs 1+ are only freed after the emission, never written during it.</summary>
+		internal ref struct LeafMergeSource : ICellSource
+		{
+			private readonly FdbLiteTreeWriter Owner;
+			private readonly uint[] InputIds;
+			private readonly int[] CumulativeCells;
+			private readonly byte[] CellScratch;
+			private readonly ReadOnlySpan<byte> InputZero;
+
+			public LeafMergeSource(FdbLiteTreeWriter owner, uint[] inputIds, int[] cumulativeCells, int count, ReadOnlySpan<byte> inputZeroSnapshot, byte[] cellScratch)
+			{
+				this.Owner = owner;
+				this.InputIds = inputIds;
+				this.CumulativeCells = cumulativeCells;
+				this.CellScratch = cellScratch;
+				this.InputZero = inputZeroSnapshot;
+				this.Count = count;
+			}
+
+			public int Count { get; }
+
+			public CellRef this[int index]
+			{
+				get
+				{
+					// linear page lookup: K is the merge's small input count, and the copy below dwarfs it.
+					// Pages re-read per access on purpose: emitting a part allocates, an allocation may grow
+					// the pager, and a grow can invalidate previously returned spans.
+					int p = 0;
+					while (index >= this.CumulativeCells[p]) { p++; }
+					int local = p == 0 ? index : index - this.CumulativeCells[p - 1];
+					var page = p == 0 ? this.InputZero : this.Owner.ReadPage(this.InputIds[p]);
+					var prefix = FdbLiteTreePage.GetPagePrefix(page, isInternal: false);
+					var c = FdbLiteTreePage.ReadLeafCell(page, local);
+					var scratch = this.CellScratch;
+					prefix.CopyTo(scratch);
+					page.Slice(c.KeyOffset, c.KeyLength).CopyTo(scratch.AsSpan(prefix.Length));
+					int keyLength = prefix.Length + c.KeyLength;
+					page.Slice(c.ValueOffset, c.ValueLength).CopyTo(scratch.AsSpan(keyLength));
+					return CellRef.OfLeafBuffer(scratch, keyLength, c.ValueLength, c.Flags);
+				}
+			}
+
+			/// <summary>No-op: there is no shared source page to move (cells are owned copies, and the input-0 hazard is covered by the construction-time snapshot).</summary>
+			public void Rebase(ReadOnlySpan<byte> snapshot)
+			{
+			}
+		}
+
+		/// <summary>Streamed variant of the K-to-1 leaf merge shared by <see cref="MergeConsolidationRun"/> and <see cref="ExecuteCrossParentRun"/>: no whole-key gather buffers, no cell list.</summary>
+		private RebuildResult MergeConsolidationCellsStreamed(uint[] inputIds, int fillCeiling, string caller)
+		{
+			this.StreamedMerges++;
+
+			int pageSize = this.Pager.Geometry.PageSize;
+			var cumulative = ArrayPool<int>.Shared.Rent(inputIds.Length);
+			var inputZero = ArrayPool<byte>.Shared.Rent(pageSize);
+			// one whole key plus the stored value bytes (an inline value or an extent descriptor)
+			var cellScratch = ArrayPool<byte>.Shared.Rent(FdbLiteTreePage.MaxKeyLength + Math.Max(this.Pager.Geometry.MaxInlineValueLength, FdbLiteTreePage.ExtentDescriptorSize));
+			try
+			{
+				int total = 0;
+				for (int p = 0; p < inputIds.Length; p++)
+				{
+					total += FdbLitePageHeader.GetCellCount(ReadPage(inputIds[p]));
+					cumulative[p] = total;
+				}
+				ReadPage(inputIds[0]).CopyTo(inputZero);
+
+				var source = new LeafMergeSource(this, inputIds, cumulative, total, inputZero.AsSpan(0, pageSize), cellScratch);
+				return WriteCellsStreamed(inputIds[0], default, source, fillCeiling, caller);
+			}
+			finally
+			{
+				ArrayPool<int>.Shared.Return(cumulative);
+				ArrayPool<byte>.Shared.Return(inputZero);
+				ArrayPool<byte>.Shared.Return(cellScratch);
+			}
+		}
+
 		/// <summary>Streaming twin of the leaf half of <see cref="WriteCells"/>: writes a rebuilt cell run as one page, or as a K-way split when it does not fit, reading each cell from the source on demand.</summary>
-		private RebuildResult WriteCellsStreamed<TSource>(uint oldPageId, ReadOnlySpan<byte> sourcePage, TSource cells, [CallerMemberName] string? caller = null)
+		/// <param name="maxLeafFillBytes">Fill ceiling per emitted page (0 = the page size), same contract as <see cref="WriteCells"/>: a consolidation merge aims each part at its volatility-adaptive target instead of packing to capacity.</param>
+		private RebuildResult WriteCellsStreamed<TSource>(uint oldPageId, ReadOnlySpan<byte> sourcePage, TSource cells, int maxLeafFillBytes = 0, [CallerMemberName] string? caller = null)
 			where TSource : ICellSource, allows ref struct
 		{
 			int pageSize = this.Pager.Geometry.PageSize;
 			int usable = pageSize; // leaf sizing: LeafRunBytes is the FULL page footprint, so capacity is the full page
+			int fillCeiling = maxLeafFillBytes > 0 ? Math.Min(maxLeafFillBytes, usable) : usable;
 			int count = cells.Count;
 
 			int sourcePrefixLength = sourcePage.Length > 0 && FdbLitePageHeader.GetCellCount(sourcePage) > 0
@@ -555,7 +660,7 @@ namespace FoundationDB.Storage.FdbLite
 				Contract.Debug.Assert(count > 0);
 				var image = scratch.AsSpan(0, pageSize);
 
-				uint fastId = TryWriteCellsSinglePage(oldPageId, sourcePage, cells, sourcePrefixLength, carriedEpisodes, image, partScratch, out int runLcp, caller);
+				uint fastId = TryWriteCellsSinglePage(oldPageId, sourcePage, cells, sourcePrefixLength, carriedEpisodes, image, partScratch, fillCeiling, out int runLcp, caller);
 				if (fastId != 0)
 				{
 					this.StreamedSinglePassRebuilds++;
@@ -575,7 +680,7 @@ namespace FoundationDB.Storage.FdbLite
 					}
 					totalBytes = LeafRunBytes(count, sumWhole, sumValue, runLcp);
 				}
-				Contract.Debug.Assert(totalBytes > usable, "the fast path aborted on a run its own accounting says fits one page");
+				Contract.Debug.Assert(totalBytes > fillCeiling, "the fast path aborted on a run its own accounting says fits one page");
 
 				if (!sourcePage.IsEmpty)
 				{ // splitting: part 0 may rewrite the source page in place (shadowed), which would clobber the
@@ -590,7 +695,7 @@ namespace FoundationDB.Storage.FdbLite
 				List<(Slice Separator, uint PageId)>? siblings = null;
 				uint firstId = 0;
 
-				int partCount = (int) ((totalBytes + usable - 1) / usable);
+				int partCount = (int) ((totalBytes + fillCeiling - 1) / fillCeiling);
 
 				long remainingBytes = totalBytes;
 				int remainingParts = partCount;
@@ -599,7 +704,9 @@ namespace FoundationDB.Storage.FdbLite
 				byte[]? partSeparator = null;
 				while (true)
 				{
-					long targetBytes = remainingParts > 1 ? (remainingBytes + remainingParts - 1) / remainingParts : long.MaxValue;
+					long targetBytes = remainingParts > 1 ? (remainingBytes + remainingParts - 1) / remainingParts
+						: maxLeafFillBytes > 0 ? fillCeiling
+						: long.MaxValue;
 
 					int end = LeafPartEndStreamed(cells, start, sourcePage, sourcePrefixLength, targetBytes, pageSize, partScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength), out long bytes);
 
@@ -665,15 +772,16 @@ namespace FoundationDB.Storage.FdbLite
 		/// <remarks>A single-page rebuild's destination prefix is the run's own LCP, known from two O(1) boundary probes, so nothing depends on a cut point. The same <see cref="LeafRunBytes"/> accounting the split decision uses runs incrementally alongside the emit; crossing the page size proves this is really a split. "Fits by formula" and "fits by emit" are the same statement (the two-scan byte-identity invariant), so this takes exactly the rebuilds the materialized path would emit as one page - the differential suite proves it.</remarks>
 		/// <param name="keyScratch">At least 2 x <see cref="FdbLiteTreePage.MaxKeyLength"/> bytes, for the two boundary keys.</param>
 		/// <param name="runLcp">The run's whole-key LCP from the boundary probe, for the split slow path to reuse.</param>
-		private uint TryWriteCellsSinglePage<TSource>(uint oldPageId, ReadOnlySpan<byte> sourcePage, TSource cells, int sourcePrefixLength, byte carriedEpisodes, Span<byte> image, Span<byte> keyScratch, out int runLcp, string? caller)
+		/// <param name="fillCeiling">Bytes this page may take (a consolidation merge aims below capacity; everything else passes the page size).</param>
+		private uint TryWriteCellsSinglePage<TSource>(uint oldPageId, ReadOnlySpan<byte> sourcePage, TSource cells, int sourcePrefixLength, byte carriedEpisodes, Span<byte> image, Span<byte> keyScratch, int fillCeiling, out int runLcp, string? caller)
 			where TSource : ICellSource, allows ref struct
 		{
-			int pageSize = image.Length;
 			int count = cells.Count;
 			var sourcePrefix = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
 
-			// the whole run's shared prefix is what its first and last keys share (they are in key order)
-			var firstKey = MaterializeKey(cells[0], sourcePage, sourcePrefix, keyScratch[..FdbLiteTreePage.MaxKeyLength]);
+			// the whole run's shared prefix is what its first and last keys share (they are in key order);
+			// the FIRST key is held across the last-key access, so it must be materialized STABLE
+			var firstKey = MaterializeKeyStable(cells[0], sourcePage, sourcePrefix, keyScratch[..FdbLiteTreePage.MaxKeyLength]);
 			runLcp = 0;
 			if (count > 1)
 			{
@@ -691,7 +799,9 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				var cell = cells[i];
 				total += LeafWholeKeyLength(in cell, sourcePrefixLength) - effective + FdbLiteTreePage.LeafCellOverhead + cell.ValueLength;
-				if (total > pageSize)
+				// the ceiling binds from the SECOND cell on, mirroring LeafPartEnd's first-cell exemption: a
+				// single cell above the merge ceiling but within the page still emits as one page there
+				if (total > image.Length || (i > 0 && total > fillCeiling))
 				{
 					return 0;
 				}
@@ -733,7 +843,7 @@ namespace FoundationDB.Storage.FdbLite
 					leafId, page, source,
 					FdbLitePageHeader.GetPrefixLength(page),
 					FdbLitePageHeader.GetVolatilityEpisodes(page),
-					scratch.AsSpan(0, pageSize), keyScratch, out _,
+					scratch.AsSpan(0, pageSize), keyScratch, fillCeiling: pageSize, out _,
 					caller: nameof(TryStripAndRetry));
 				if (id != 0) { this.StreamedStrips++; }
 				return id;
@@ -745,12 +855,25 @@ namespace FoundationDB.Storage.FdbLite
 			}
 		}
 
+		/// <summary>Like <see cref="MaterializeKey"/>, but the result is guaranteed to SURVIVE further source accesses: a buffer-backed cell from a streaming source may live in that source's shared scratch (rebuilt on every access), so its key is copied out into <paramref name="scratch"/>. Required for any key held across another <c>cells[i]</c> - the boundary keys of the probe and sizing walks.</summary>
+		private static ReadOnlySpan<byte> MaterializeKeyStable(in CellRef cell, ReadOnlySpan<byte> sourcePage, ReadOnlySpan<byte> sourcePrefix, Span<byte> scratch)
+		{
+			if (cell.Buffer is null)
+			{ // page-backed: resolves against the page (or the snapshot), which no probe mutates
+				return MaterializeKey(in cell, sourcePage, sourcePrefix, scratch);
+			}
+			var stored = cell.Buffer.AsSpan(cell.KeyOffset, cell.KeyLength);
+			stored.CopyTo(scratch);
+			return scratch[..stored.Length];
+		}
+
 		/// <summary>Streaming twin of <see cref="LeafPartEnd"/>: end (exclusive) of the part starting at <paramref name="start"/>, reading each candidate cell from the source.</summary>
 		private static int LeafPartEndStreamed<TSource>(TSource cells, int start, ReadOnlySpan<byte> sourcePage, int sourcePrefixLength, long targetBytes, int pageSize, Span<byte> scratch, out long bytes)
 			where TSource : ICellSource, allows ref struct
 		{
 			var sourcePrefix = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
-			var firstKey = MaterializeKey(cells[start], sourcePage, sourcePrefix, scratch);
+			// held across every candidate access below, so it must be materialized STABLE
+			var firstKey = MaterializeKeyStable(cells[start], sourcePage, sourcePrefix, scratch);
 			int lcp = firstKey.Length;
 			long sumWhole = 0, sumValue = 0;
 
@@ -799,7 +922,8 @@ namespace FoundationDB.Storage.FdbLite
 			int prefixLen;
 			try
 			{
-				var firstKey = MaterializeKey(cells[start], sourcePage, sourcePrefix, keyScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
+				// the first key survives the last-key access AND feeds WriteLeafPrefix after it: STABLE
+				var firstKey = MaterializeKeyStable(cells[start], sourcePage, sourcePrefix, keyScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
 				var lastKey = MaterializeKey(cells[end - 1], sourcePage, sourcePrefix, keyScratch.AsSpan(FdbLiteTreePage.MaxKeyLength, FdbLiteTreePage.MaxKeyLength));
 				prefixLen = count > 1 ? FdbLiteTreePage.CommonPrefixLength(firstKey, lastKey) : 0;
 

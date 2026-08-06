@@ -1710,6 +1710,13 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Builds one new root level over a split result (loops in the caller if the new level itself splits).</summary>
 		private RebuildResult BuildRootLevel(uint firstId, ReadOnlySpan<(Slice Separator, uint PageId)> siblings)
 		{
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE: same build without the cell list or the per-sibling scratches
+				return BuildRootLevelStreamed(firstId, siblings);
+			}
+#endif
+
 			var scratches = new byte[siblings.Length][];
 			try
 			{
@@ -2463,6 +2470,21 @@ namespace FoundationDB.Storage.FdbLite
 		/// <returns>Pages actually freed (the emission's real part count can differ from the sizing estimate by a page)</returns>
 		private int MergeConsolidationRun(ConsolidationRun run)
 		{
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE: cells re-based on demand straight from the input pages, no whole-key gather buffers
+				var mergedStreamed = MergeConsolidationCellsStreamed(run.InputIds, run.FillCeiling, caller: nameof(MergeConsolidationRun));
+				for (int p = 1; p < run.InputIds.Length; p++)
+				{
+					FreePage(run.InputIds[p]);
+				}
+				var parentStreamed = RebuildInternalReplaceRun(run.ParentId, run.FirstChildIndex, run.LastChildIndex, mergedStreamed);
+				AscendPatch(run.PathPages, run.PathChildren, run.Depth - 1, run.ParentId, parentStreamed);
+				this.CursorLeaf = 0;
+				return run.InputIds.Length - 1 - (mergedStreamed.Siblings?.Count ?? 0);
+			}
+#endif
+
 			// gather into owned buffers: inputs mix dirty images and cold pager spans, and part 0 of the
 			// emission rewrites the first input, so nothing may keep pointing into any of them
 			var buffers = new byte[run.InputIds.Length][];
@@ -2852,9 +2874,21 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Executes a cross-parent merge: one emission, both leaf-parents rebuilt, and ONE combined bottom-up ascent that rebuilds every ancestor at most once and moves the join separator where the cells went.</summary>
 		private VacuumOutcome ExecuteCrossParentRun(in CrossParentRun run)
 		{
+			RebuildResult merged;
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE: same streamed K-to-1 as the same-parent merge
+				merged = MergeConsolidationCellsStreamed(run.InputIds, run.FillCeiling, caller: nameof(ExecuteCrossParentRun));
+				for (int p = 1; p < run.InputIds.Length; p++)
+				{
+					FreePage(run.InputIds[p]);
+				}
+			}
+			else
+#endif
+			{
 			// gather exactly like a same-parent merge (owned buffers: part 0 rewrites the first input)
 			var buffers = new byte[run.InputIds.Length][];
-			RebuildResult merged;
 			try
 			{
 				int cellTotal = 0;
@@ -2904,6 +2938,7 @@ namespace FoundationDB.Storage.FdbLite
 				{
 					if (buffer is not null) { ArrayPool<byte>.Shared.Return(buffer); }
 				}
+			}
 			}
 
 			// both leaf-parents rebuilt against their ORIGINAL images, then one combined ascent
