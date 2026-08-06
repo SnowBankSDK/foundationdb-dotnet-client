@@ -312,7 +312,8 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Page-image buffers recycled across generations, so a write workload stops allocating one page per page it touches.</summary>
 		/// <remarks>Owned here rather than by the writer because a writer lives for exactly one generation, which is the interval the buffers have to OUTLIVE to be worth pooling. Single-writer by construction (one writable generation at a time), so no synchronization.</remarks>
-		private Stack<byte[]> PageBufferPool { get; } = new();
+		/// <summary>Process-wide pool for this store's page size: short-lived engines no longer pay the whole peak-dirty-set warm-up in fresh allocations.</summary>
+		private FdbLitePageBufferPool PageBufferPool => FdbLitePageBufferPool.Shared(this.Pager.Geometry.PageSize);
 
 		/// <summary>Publishes a written generation: flush data, then flip the alternate header, then flush again.</summary>
 		public void Commit(FdbLiteTreeWriter writer, ulong databaseVersion)

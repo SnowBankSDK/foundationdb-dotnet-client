@@ -37,8 +37,8 @@ namespace FoundationDB.Storage.FdbLite
 	public sealed partial class FdbLiteTreeWriter
 	{
 
-		/// <param name="pageBufferPool">Page images recycled ACROSS generations, owned by the engine. Optional: without it every generation allocates its own, which measured as the engine's largest remaining <c>byte[]</c> source once the gather lists were pooled (a write workload allocates one page image per page it touches, so the cost is the whole dirty set per commit).</param>
-		public FdbLiteTreeWriter(IFdbLitePager pager, FdbLiteBlockAllocator allocator, ulong generation, uint root, Stack<byte[]>? pageBufferPool = null)
+		/// <param name="pageBufferPool">Page images recycled ACROSS generations (and, via <see cref="FdbLitePageBufferPool.Shared"/>, across engines). Optional: without it every generation allocates its own, which measured as the engine's largest remaining <c>byte[]</c> source once the gather lists were pooled (a write workload allocates one page image per page it touches, so the cost is the whole dirty set per commit).</param>
+		public FdbLiteTreeWriter(IFdbLitePager pager, FdbLiteBlockAllocator allocator, ulong generation, uint root, FdbLitePageBufferPool? pageBufferPool = null)
 		{
 			Contract.NotNull(pager);
 			Contract.NotNull(allocator);
@@ -49,25 +49,16 @@ namespace FoundationDB.Storage.FdbLite
 			this.PageBufferPool = pageBufferPool;
 		}
 
-		/// <summary>Engine-owned free list of page-sized image buffers, or <c>null</c> when this writer allocates its own.</summary>
-		private Stack<byte[]>? PageBufferPool { get; }
+		/// <summary>Free list of page-sized image buffers, or <c>null</c> when this writer allocates its own.</summary>
+		private FdbLitePageBufferPool? PageBufferPool { get; }
 
-		/// <summary>A page-image buffer for a newly dirtied page.</summary>
-		/// <remarks>A recycled buffer needs no clearing: every dirty image is written whole (<see cref="WritePage"/> copies a full page over it) before anything reads it.</remarks>
+		/// <summary>A page-image buffer for a newly dirtied page. UNINITIALIZED either way: every dirty image is written whole (<see cref="WritePage"/> copies a full page over it) before anything reads it, so neither a recycled buffer nor a fresh one needs clearing.</summary>
 		private byte[] RentPageBuffer()
-			=> this.PageBufferPool is { Count: > 0 } pool ? pool.Pop() : new byte[this.Pager.Geometry.PageSize];
+			=> this.PageBufferPool?.Rent() ?? GC.AllocateUninitializedArray<byte>(this.Pager.Geometry.PageSize);
 
-		/// <summary>Hands a page image back for the next generation to reuse.</summary>
-		/// <remarks>
-		/// UNCAPPED on purpose, because it is already bounded by construction: a buffer only enters the pool when
-		/// it LEAVES the dirty set, and every generation drains the pool before allocating, so the pool can never
-		/// exceed the largest single dirty set the engine has ever held - which is exactly the page memory one
-		/// generation legitimately needs, and will need again. An arbitrary ceiling here does not bound anything
-		/// extra; it just makes every generation past the ceiling allocate afresh, which is the shape a first
-		/// attempt at this had (a 256-buffer cap measured as 5.3 GB of page images still being allocated on a
-		/// standard-scale sweep, because a real transaction's dirty set is far larger than the cap).
-		/// </remarks>
-		private void ReturnPageBuffer(byte[] buffer) => this.PageBufferPool?.Push(buffer);
+		/// <summary>Hands a page image back for a later generation (or another engine) to reuse.</summary>
+		/// <remarks>The pool is UNCAPPED on purpose (see <see cref="FdbLitePageBufferPool"/>): a buffer only enters it when it LEAVES a dirty set, so retained memory is bounded by the peak concurrent demand, and a cap below the dirty-set size just moves the allocations past the cap.</remarks>
+		private void ReturnPageBuffer(byte[] buffer) => this.PageBufferPool?.Return(buffer);
 
 		private IFdbLitePager Pager { get; }
 
