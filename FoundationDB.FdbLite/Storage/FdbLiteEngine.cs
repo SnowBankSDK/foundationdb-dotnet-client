@@ -320,8 +320,8 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>BENCHMARK-ONLY, DANGEROUS: skips the data barrier so a commit ends in ONE flush. A crash can then persist the header without its pages, corrupting the store UNDETECTABLY. Exists solely to measure the ceiling of the single-fsync commit design (see the 2026-08-06 design note) before its recovery machinery is built; never enable outside a throwaway benchmark store.</summary>
 		public bool UnsafeSingleCommitBarrier { get; set; }
 
-		/// <summary>PROTOTYPE (2026-08-06 design note, format ruling pending): commit small generations with ONE flush, recording a validated manifest in the commit slot; recovery then verifies the manifest and rolls back one generation on any missing or torn page. Off by default.</summary>
-		public bool SingleFsyncCommits { get; set; }
+		/// <summary>Commit small generations with ONE flush, recording a validated manifest in the commit slot; a crashed-session recovery verifies the manifest and rolls back one generation on any missing or torn page. ON by default (owner format ruling 2026-08-06; measured x1.66-1.76 on small-transaction commits at the crash-consistency the 192-point injection sweep proves); off reproduces the two-barrier protocol.</summary>
+		public bool SingleFsyncCommits { get; set; } = true;
 
 		/// <summary>Largest dirty set (tree pages) a single-fsync commit may carry; beyond it the commit takes the ordinary two-barrier path, which caps the worst-case crash validation by construction.</summary>
 		public int SingleFsyncMaxManifestPages { get; set; } = 512;
