@@ -148,6 +148,9 @@ namespace FoundationDB.Storage.FdbLite
 			public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data) => this.Inner.WriteBlocks(firstBlock, data);
 
 			/// <inheritdoc />
+			public void ResetFirstTouch() => this.Inner.ResetFirstTouch();
+
+			/// <inheritdoc />
 			public void Flush() => this.Inner.Flush();
 
 			/// <inheritdoc />

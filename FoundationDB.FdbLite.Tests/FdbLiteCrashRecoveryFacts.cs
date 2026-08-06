@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -160,6 +160,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			public void Prefetch(uint firstBlock, uint count) => this.Live.Prefetch(firstBlock, count);
 
 			public bool MarkTouched(uint firstBlock) => this.Live.MarkTouched(firstBlock);
+
+			public void ResetFirstTouch() => this.Live.ResetFirstTouch();
 
 			public void Dispose()
 			{

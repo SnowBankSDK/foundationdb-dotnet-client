@@ -69,6 +69,9 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Enables the first-touch tracking behind <see cref="MarkTouched"/> (on by default). Turn off to measure the raw read path: readers then skip checksum verification entirely.</summary>
 		bool TrackFirstTouch { get; set; }
 
+		/// <summary>Forgets every recorded touch, so the next read of ANY block pays first-touch checksum verification again. The measurement counterpart of <see cref="TrackFirstTouch"/>: off = pretend everything is verified, reset = pretend nothing is.</summary>
+		void ResetFirstTouch();
+
 		/// <summary>True exactly once per block since this pager opened; always false when <see cref="TrackFirstTouch"/> is off.</summary>
 		/// <remarks>The gate of read-path verification: the caller that receives <c>true</c> performs the one-time checksum check of the page (or extent) starting at that block. Content the process writes afterwards is its own sealed bytes, so a block never needs re-verification within one open; rot that develops AFTER a block's first touch is the offline audit's job.</remarks>
 		bool MarkTouched(uint firstBlock);
@@ -83,6 +86,15 @@ namespace FoundationDB.Storage.FdbLite
 		private long[] Bits = [ ];
 
 		private readonly object GrowLock = new();
+
+		/// <summary>Forgets every touch, so the next read of ANY block pays first-touch verification again. Measurement aid (the deliberate cold-integrity scan); single-writer context assumed.</summary>
+		public void Reset()
+		{
+			lock (this.GrowLock)
+			{
+				Array.Clear(Volatile.Read(ref this.Bits));
+			}
+		}
 
 		/// <summary>True exactly once per block (best effort under concurrent growth): the caller that gets <c>true</c> owns the one-time verification.</summary>
 		public bool MarkTouched(uint block)
