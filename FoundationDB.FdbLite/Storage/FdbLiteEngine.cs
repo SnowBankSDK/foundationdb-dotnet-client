@@ -160,6 +160,11 @@ namespace FoundationDB.Storage.FdbLite
 					KeyCount: 0,
 					Horizon: 0);
 				initial.Write(block, blockId: 1);
+				// the manifest and inline free-list sections are read on every open (and validated by a
+				// crashed-session recovery), so a fresh slot seals them explicitly empty: zeroed sections
+				// would fail their checksums and read as a torn slot
+				FdbLiteSnapshotHeader.WriteManifest(block, 1, initial.Generation, default, default);
+				FdbLiteSnapshotHeader.WriteInlineFreeList(block, 1, initial.Generation, 0, null);
 				pager.WriteBlocks(1, block);
 				pager.Flush();
 
@@ -223,7 +228,15 @@ namespace FoundationDB.Storage.FdbLite
 				rolledBack = true;
 			}
 
-			var freeSpace = FdbLiteFreeListChain.Load(pager, durable.FreeListRoot, durable.Generation);
+			FdbLiteFreeSpaceMap? freeSpace;
+			if (durable.FreeListRoot != 0)
+			{
+				freeSpace = FdbLiteFreeListChain.Load(pager, durable.FreeListRoot, durable.Generation);
+			}
+			else if (!FdbLiteSnapshotHeader.TryReadInlineFreeList(pager.ReadBlocks(slot, 1), slot, durable.Generation, out freeSpace))
+			{ // a clean-flag open reaching this line is real rot, the same class as a corrupted chain block
+				throw new InvalidDataException($"Corrupted inline free list in commit slot {slot} (generation {durable.Generation})");
+			}
 			var engine = new FdbLiteEngine(pager, freeSpace, durable, slot)
 			{
 				RecoveryValidatedPages = validatedBlocks,
@@ -253,6 +266,10 @@ namespace FoundationDB.Storage.FdbLite
 			if (!FdbLiteSnapshotHeader.TryReadManifest(pager.ReadBlocks(slot, 1), slot, header.Generation, pageIds, chainIds))
 			{
 				return false; // torn or stale manifest: the slot cannot prove itself
+			}
+			if (header.FreeListRoot == 0 && !FdbLiteSnapshotHeader.TryReadInlineFreeList(pager.ReadBlocks(slot, 1), slot, header.Generation, out _))
+			{
+				return false; // the inline free list is part of the slot: torn inside it, the slot loses whole
 			}
 			int blocksPerPage = pager.Geometry.BlocksPerPage;
 			foreach (var id in pageIds)
@@ -328,6 +345,9 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>Commits that took the single-fsync manifest path (execution proof for the crash suite and the A/B).</summary>
 		public long SingleFsyncCommitCount { get; private set; }
+
+		/// <summary>Commits whose free list rode the slot inline instead of a chain block (format 4). A small-commit workload where this stays 0 means every commit is paying a chain block it should not.</summary>
+		public long InlineFreeListCommitCount { get; private set; }
 
 		/// <summary>Pages (and free-list blocks) verified by recovery at open, because the in-use flag showed a crashed session. Zero after a clean shutdown: the flag's whole point.</summary>
 		public long RecoveryValidatedPages { get; private set; }
@@ -437,7 +457,7 @@ namespace FoundationDB.Storage.FdbLite
 			// else this commit writes, and well before the first flush barrier below
 			writer.FlushDirtyPages();
 
-			// the previous generation's free-list chain dies with this commit
+			// the previous generation's free-list chain dies with this commit (an inline list dies with its slot)
 			if (this.Durable.FreeListRoot != 0)
 			{
 				foreach (var block in FdbLiteFreeListChain.CollectChainBlocks(this.Pager, this.Durable.FreeListRoot))
@@ -445,7 +465,12 @@ namespace FoundationDB.Storage.FdbLite
 					this.Allocator.Free(block, 1, writer.Generation);
 				}
 			}
-			uint freeRoot = FdbLiteFreeListChain.Persist(this.FreeSpace, this.Allocator, this.Pager, writer.Generation);
+			// the list rides the slot when its FINAL range count fits next to this commit's manifest ids
+			// (every free of the generation has happened by now, and the inline path allocates nothing, so
+			// the count cannot move after the decision); a list that does not fit chains exactly as before
+			uint freeRoot = this.FreeSpace.TotalRangeCount <= FdbLiteSnapshotHeader.InlineFreeListCapacity(this.Pager.Geometry.BlockSize, manifestPages?.Count ?? 0)
+				? 0
+				: FdbLiteFreeListChain.Persist(this.FreeSpace, this.Allocator, this.Pager, writer.Generation);
 
 			// barrier 1: every data and free-list block of this generation is durable before the header moves.
 			// A manifest commit SKIPS it: the manifest is what makes the missing ordering detectable.
@@ -472,15 +497,24 @@ namespace FoundationDB.Storage.FdbLite
 				var block = buffer.AsSpan(0, blockSize);
 				block.Clear();
 				header.Write(block, slot);
+				int manifestIdsWritten;
 				if (manifestCommit)
 				{
 					var chainIds = freeRoot != 0 ? FdbLiteFreeListChain.CollectChainBlocks(this.Pager, freeRoot) : [ ];
 					FdbLiteSnapshotHeader.WriteManifest(block, slot, header.Generation, CollectionsMarshal.AsSpan(manifestPages!), CollectionsMarshal.AsSpan(chainIds));
+					manifestIdsWritten = manifestPages!.Count + chainIds.Count;
 					this.SingleFsyncCommitCount++;
 				}
 				else
 				{ // an explicit EMPTY manifest, so no stale tenant of this slot can pair with the new header
 					FdbLiteSnapshotHeader.WriteManifest(block, slot, header.Generation, default, default);
+					manifestIdsWritten = 0;
+				}
+				// the free list rides the same slot write when it fit; sealed empty when it chained
+				FdbLiteSnapshotHeader.WriteInlineFreeList(block, slot, header.Generation, manifestIdsWritten, freeRoot == 0 ? this.FreeSpace : null);
+				if (freeRoot == 0)
+				{
+					this.InlineFreeListCommitCount++;
 				}
 				this.Pager.WriteBlocks(slot, block);
 			}

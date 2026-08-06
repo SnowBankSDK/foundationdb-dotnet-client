@@ -227,6 +227,102 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			}
 		}
 
+		[Test]
+		public void Test_Small_Free_List_Rides_The_Slot_And_Round_Trips()
+		{
+			// format 4: a free list that fits the commit slot is serialized inline (FreeListRoot = 0, no
+			// chain block written) and a reopen reloads the exact same map from the slot. The counter
+			// asserts the inline path actually ran: a chain silently taken on every commit passes every
+			// behavioural check and just writes a block per commit it should not.
+			var geometry = FdbLiteGeometry.Default;
+			var dir = Path.Combine(Path.GetTempPath(), "fdblite-tests");
+			Directory.CreateDirectory(dir);
+			var path = Path.Combine(dir, $"inline-freelist-{Guid.NewGuid():N}.sbkv");
+			try
+			{
+				(long Reusable, long Pending) before;
+				long inlineCommits;
+				using (var engine = FdbLiteEngine.Create(FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes: 1 << 20)))
+				{
+					engine.PreCommitConsolidation = FdbLitePreCommitConsolidation.Off;
+					var writer = engine.BeginWrite();
+					for (int i = 0; i < 5_000; i++)
+					{
+						writer.Insert(Key(i), Value(i, 64));
+					}
+					engine.Commit(writer, 1);
+
+					writer = engine.BeginWrite();
+					Assert.That(writer.RemoveRange(Key(1_000), Key(2_000)), Is.EqualTo(1_000));
+					engine.Commit(writer, 2);
+
+					before = engine.MeasureFreeSpace();
+					Assert.That(before.Reusable + before.Pending, Is.GreaterThan(0), "the deletes must have freed something, or the round-trip proves nothing");
+					Assert.That(engine.Durable.FreeListRoot, Is.Zero, "a list this small must ride the slot");
+					inlineCommits = engine.InlineFreeListCommitCount;
+					Assert.That(inlineCommits, Is.EqualTo(2), "both commits must have taken the inline path");
+					AssertConservation(engine, "before reopen");
+				}
+
+				using (var reopened = FdbLiteEngine.Open(FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes: 1 << 20)))
+				{
+					Assert.That(reopened.MeasureFreeSpace(), Is.EqualTo(before), "the inline list must reload the exact same map");
+					AssertConservation(reopened, "after reopen");
+				}
+			}
+			finally
+			{
+				try { File.Delete(path); } catch { }
+			}
+		}
+
+		[Test]
+		public void Test_A_Large_Free_List_Falls_Back_To_The_Chain()
+		{
+			// 16 KiB uniform geometry (the smallest legal) holds 1,014 inline ranges; 2,600 one-block
+			// extents with every other one freed leave ~1,300 non-coalescing ranges, which must take the
+			// chain representation and keep round-tripping unchanged.
+			var geometry = FdbLiteGeometry.Uniform(14);
+			var dir = Path.Combine(Path.GetTempPath(), "fdblite-tests");
+			Directory.CreateDirectory(dir);
+			var path = Path.Combine(dir, $"chain-freelist-{Guid.NewGuid():N}.sbkv");
+			try
+			{
+				(long Reusable, long Pending) before;
+				using (var engine = FdbLiteEngine.Create(FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes: 1 << 20)))
+				{
+					engine.PreCommitConsolidation = FdbLitePreCommitConsolidation.Off;
+					var writer = engine.BeginWrite();
+					for (int i = 0; i < 2_600; i++)
+					{ // above MaxInlineValueLength (4 KiB here): each value is its own one-block extent
+						writer.Insert(Key(i), Value(i, 5_000));
+					}
+					engine.Commit(writer, 1);
+
+					writer = engine.BeginWrite();
+					for (int i = 1; i < 2_600; i += 2)
+					{ // every other extent frees: alternating blocks, so the ranges cannot coalesce
+						Assert.That(writer.Remove(Key(i)), Is.True);
+					}
+					engine.Commit(writer, 2);
+
+					Assert.That(engine.Durable.FreeListRoot, Is.Not.Zero, "a list this fragmented cannot fit the slot: the chain must have been taken");
+					before = engine.MeasureFreeSpace();
+					AssertConservation(engine, "before reopen");
+				}
+
+				using (var reopened = FdbLiteEngine.Open(FdbLiteMemoryMappedPager.Open(path, geometry, regionSizeInBytes: 1 << 20)))
+				{
+					Assert.That(reopened.MeasureFreeSpace(), Is.EqualTo(before), "the chain must reload the exact same map");
+					AssertConservation(reopened, "after reopen");
+				}
+			}
+			finally
+			{
+				try { File.Delete(path); } catch { }
+			}
+		}
+
 		private static byte[] Key(int i)
 		{
 			var key = new byte[8];
