@@ -1443,8 +1443,18 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			int resultCount = cellCount + (replace ? 0 : 1);
-			var cells = ArrayPool<CellRef>.Shared.Rent(resultCount); // pooled: one entry per cell of a full page, per rebuild
 			RebuildResult outcome;
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE (benchmark-first): same rebuild, no materialized cell list; both paths must produce
+			  // byte-identical stores, which the differential suite proves
+				this.StreamedLeafRebuilds++;
+				outcome = WriteCellsStreamed(leafId, page, new LeafInsertSource(page, in newCell, insertAt, replace, resultCount));
+			}
+			else
+#endif
+			{
+			var cells = ArrayPool<CellRef>.Shared.Rent(resultCount); // pooled: one entry per cell of a full page, per rebuild
 			try
 			{
 				int w = 0;
@@ -1468,6 +1478,7 @@ namespace FoundationDB.Storage.FdbLite
 			finally
 			{ // cleared: a CellRef holds a byte[] reference, and a pooled array must not pin a page buffer
 				ArrayPool<CellRef>.Shared.Return(cells, clearArray: true);
+			}
 			}
 			BumpVolatilityEpisodeAfterRebuild(in outcome, episode, firstMutationThisGeneration);
 			if (replace && !outcome.Split && this.Dirty.TryGetValue(outcome.FirstId, out var replaced))
