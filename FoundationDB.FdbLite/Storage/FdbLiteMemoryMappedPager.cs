@@ -27,6 +27,7 @@
 namespace FoundationDB.Storage.FdbLite
 {
 	using System.IO.MemoryMappedFiles;
+	using System.Runtime.CompilerServices;
 	using System.Runtime.InteropServices;
 	using Microsoft.Win32.SafeHandles;
 
@@ -192,6 +193,7 @@ namespace FoundationDB.Storage.FdbLite
 		private int RegionSizeInBlocksLog2 { get; }
 
 		/// <inheritdoc />
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count)
 		{
 			ObjectDisposedException.ThrowIf(this.Disposed, this);
@@ -278,6 +280,7 @@ namespace FoundationDB.Storage.FdbLite
 			this.BlockCount = regionsKept * this.RegionSizeInBlocks;
 		}
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private Region GetOrMapRegion(int index)
 		{
 			var regions = this.Regions;
@@ -285,9 +288,15 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				return mapped;
 			}
+			// the lock's try/finally makes a method un-inlinable, so the cold mapping path lives in its own method
+			return MapRegionSlow(index);
+		}
+
+		private Region MapRegionSlow(int index)
+		{
 			lock (this.RegionsLock)
 			{ // cold first touch: re-check under the lock (another reader may have mapped it first)
-				regions = this.Regions;
+				var regions = this.Regions;
 				if ((uint) index < (uint) regions.Length && regions[index] is { } raced)
 				{
 					return raced;

@@ -74,6 +74,7 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <summary>Resolves a leaf cell's value: the inline bytes, or the single contiguous span of its extent.</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		internal static ReadOnlySpan<byte> ResolveLeafValue(IFdbLitePager pager, ReadOnlySpan<byte> leaf, int slot)
 		{
 			// ONE pass: asking for the flag and then the value walked the cell's whole entry chain twice, per row
@@ -82,6 +83,12 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				return leaf.Slice(offset, length);
 			}
+			// the extent path carries a hash and a throw, big enough to sink the inlining of the inline-value path above
+			return ResolveLeafExtent(pager, leaf, slot);
+		}
+
+		private static ReadOnlySpan<byte> ResolveLeafExtent(IFdbLitePager pager, ReadOnlySpan<byte> leaf, int slot)
+		{
 			var (start, blockCount, totalLength, checksum) = FdbLiteTreePage.GetLeafExtentDescriptor(leaf, slot);
 			var payload = pager.ReadBlocks(start, blockCount)[..(int) totalLength];
 			if (pager.MarkTouched(start) && System.IO.Hashing.XxHash3.HashToUInt64(payload, unchecked((long) start)) != checksum)
@@ -176,6 +183,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Value at the current position (pager memory, valid while the generation is pinned; extent values are one contiguous span)</summary>
 		public ReadOnlySpan<byte> CurrentValue => FdbLiteTreeReader.ResolveLeafValue(this.Pager, ReadLeaf(), this.LeafSlot);
 
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private ReadOnlySpan<byte> ReadLeaf()
 		{
 			Contract.Debug.Requires(this.IsValid);
