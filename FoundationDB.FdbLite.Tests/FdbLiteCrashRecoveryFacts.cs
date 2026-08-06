@@ -163,8 +163,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 			public void Dispose()
 			{
-				this.Live.Dispose();
-				// DurableImage is handed to the reopened engine, which owns it from CrashNow on
+				// deliberate no-op: the harness reopens both images after engine disposal (a clean close
+				// followed by a reopen is itself a scenario under test), so the harness owns their lifetime
 			}
 
 		}
@@ -273,12 +273,13 @@ namespace FoundationDB.Storage.FdbLite.Tests
 		}
 
 		/// <summary>Runs warm generations, then arms a crash at operation offset <paramref name="crashOffset"/> inside one more commit; returns everything the validation needs.</summary>
-		private static (FdbLiteHeapPager Durable, ulong GenCurr, SortedDictionary<string, byte[]> ModelCurr, ulong GenPrev, SortedDictionary<string, byte[]> ModelPrev) RunCrashScenario(int seed, int crashOffset, bool tearOne, bool unsafeSingleBarrier)
+		private static (FdbLiteHeapPager Durable, ulong GenCurr, SortedDictionary<string, byte[]> ModelCurr, ulong GenPrev, SortedDictionary<string, byte[]> ModelPrev, long SingleFsyncCommits) RunCrashScenario(int seed, int crashOffset, bool tearOne, bool unsafeSingleBarrier, bool singleFsync = false)
 		{
 			var rnd = new Random(seed);
 			var pager = new CrashInjectionPager(FdbLiteGeometry.Uniform(14));
 			var engine = FdbLiteEngine.Create(pager);
 			engine.UnsafeSingleCommitBarrier = unsafeSingleBarrier;
+			engine.SingleFsyncCommits = singleFsync;
 
 			var model = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
 			ulong generation = 0;
@@ -303,7 +304,68 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			{
 			}
 			var durable = pager.CrashNow(rnd, tearOne);
-			return (durable, genPrev + 1, model, genPrev, modelPrev);
+			return (durable, genPrev + 1, model, genPrev, modelPrev, engine.SingleFsyncCommitCount);
+		}
+
+		[Test]
+		public void Manifest_Commit_Recovers_From_Every_Crash_Point()
+		{
+			// THE FEATURE'S ACCEPTANCE GATE: with single-fsync commits ON (manifest + in-use flag), every
+			// crash point that corrupts the unsafe knob must instead recover to a valid N or N-1, because the
+			// recovery validates the manifest and falls back. Same sweep as the two-barrier pin.
+			for (int seed = 1; seed <= 8; seed++)
+			{
+				for (int crashOffset = 1; crashOffset <= 24; crashOffset += 1)
+				{
+					var s = RunCrashScenario(seed * 5555, crashOffset, tearOne: (seed + crashOffset) % 3 == 0, unsafeSingleBarrier: false, singleFsync: true);
+					Assert.That(s.SingleFsyncCommits, Is.GreaterThan(0), $"seed {seed}: no commit took the single-fsync path, so this sweep gates nothing");
+					bool clean = TryValidate(s.Durable, s.GenCurr, s.ModelCurr, s.GenPrev, s.ModelPrev, out var reason, out _);
+					Assert.That(clean, Is.True, $"seed {seed} crashOffset {crashOffset}: {reason}");
+				}
+			}
+		}
+
+		[Test]
+		public void Clean_Shutdown_Skips_Recovery_Validation_And_A_Crash_Pays_It()
+		{
+			// the in-use flag's whole point: an orderly close leaves nothing to validate at the next open,
+			// and only a crashed session pays a (bounded) validation pass
+			var rnd = new Random(31337);
+			var pager = new CrashInjectionPager(FdbLiteGeometry.Uniform(14));
+			var model = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
+			ulong generation = 0;
+			var engine = FdbLiteEngine.Create(pager);
+			engine.SingleFsyncCommits = true;
+			for (int g = 0; g < 2; g++)
+			{
+				var w = engine.BeginWrite();
+				ApplyGeneration(w, model, rnd, ops: 300);
+				engine.Commit(w, ++generation);
+			}
+			Assert.That(engine.SingleFsyncCommitCount, Is.GreaterThan(0), "the option is dead: no commit took the single-fsync path");
+			ulong closedGeneration = engine.Durable.Generation;
+			engine.Dispose(); // orderly close: clears the in-use flag (and flushes it)
+
+			// clean reopen: no validation work
+			var reopened = FdbLiteEngine.Open(pager);
+			Assert.That(reopened.RecoveryValidatedPages, Is.Zero, "a cleanly closed store must not pay recovery validation");
+			Assert.That(reopened.Durable.Generation, Is.EqualTo(closedGeneration));
+
+			// now crash a commit and reopen: validation must RUN (the counter is the execution proof)
+			reopened.SingleFsyncCommits = true;
+			var writer = reopened.BeginWrite();
+			ApplyGeneration(writer, model, rnd, ops: 300);
+			pager.CrashAtOperation = pager.OperationCount + 10;
+			try
+			{
+				reopened.Commit(writer, ++generation);
+			}
+			catch (SimulatedCrashException)
+			{
+			}
+			var durable = pager.CrashNow(rnd, tearOne: false);
+			using var recovered = FdbLiteEngine.Open(durable);
+			Assert.That(recovered.RecoveryValidatedPages, Is.GreaterThan(0), "a crashed session must pay the validation pass: zero means the in-use flag never reached the file");
 		}
 
 		[Test]

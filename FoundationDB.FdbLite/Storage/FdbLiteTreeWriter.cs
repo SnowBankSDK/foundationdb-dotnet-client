@@ -80,6 +80,16 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		private Dictionary<uint, byte[]> Dirty { get; } = [ ];
 
+		/// <summary>Ids of the pages this generation has dirtied so far, SORTED (the commit manifest must be deterministic for the twin-run suites). Must run before <see cref="FlushDirtyPages"/> clears the set.</summary>
+		internal void CollectDirtyPageIds(List<uint> ids)
+		{
+			foreach (var id in this.Dirty.Keys)
+			{
+				ids.Add(id);
+			}
+			ids.Sort();
+		}
+
 		/// <summary>The store as THIS generation sees it: its own buffered page images first, the underlying pager for everything else.</summary>
 		/// <remarks>Anything reading the tree while this generation is being built must go through here, not through the pager: the pager does not receive a modified page until <see cref="FlushDirtyPages"/>, so a direct pager read would see the previous generation's bytes (or, for a freshly allocated page, no page at all).</remarks>
 		public IFdbLitePager PagerView => this.View ??= new DirtyOverlayPager(this);

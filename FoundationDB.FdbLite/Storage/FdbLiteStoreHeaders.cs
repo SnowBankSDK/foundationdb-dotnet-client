@@ -28,9 +28,18 @@ namespace FoundationDB.Storage.FdbLite
 {
 	using System.IO.Hashing;
 
-	/// <summary>The static file header at block 0 (written once at creation, never rewritten: it cannot be torn).</summary>
+	/// <summary>The static file header at block 0. Written at creation; the ONLY field ever rewritten afterwards is the session flag at <see cref="SessionFlagOffset"/>, and a rewrite carries byte-identical content everywhere else, so any torn rewrite yields the old or the new flag with the rest of the header unchanged.</summary>
 	public static class FdbLiteFileHeader
 	{
+
+		/// <summary>Byte offset of the session ("in use") flag: 0 = clean shutdown (also every pre-flag file), anything else = a writer session is (or died) in progress and recovery must validate the newest commit manifest. The fail-safe polarity: unreadable or ambiguous reads as in-use.</summary>
+		public const int SessionFlagOffset = 40;
+
+		/// <summary>True when the file records a live (or crashed) writer session.</summary>
+		public static bool ReadInUse(ReadOnlySpan<byte> block) => block[SessionFlagOffset] != 0;
+
+		/// <summary>Stamps the session flag into a block-0 image (the caller writes the whole block back; every other byte must be carried verbatim).</summary>
+		public static void WriteInUse(Span<byte> block, bool inUse) => block[SessionFlagOffset] = inUse ? (byte) 1 : (byte) 0;
 
 		/// <summary>ASCII <c>SBKV01\r\n</c>: the newline canary catches ASCII-mode mangling (no working-name bake-in, per the format ruling)</summary>
 		public static ReadOnlySpan<byte> Magic => "SBKV01\r\n"u8;
@@ -144,6 +153,79 @@ namespace FoundationDB.Storage.FdbLite
 			hash.Append(block[8..Size]);
 			return hash.GetCurrentHashAsUInt64();
 		}
+
+		#region Commit manifest (single-fsync commits)...
+
+		// The manifest lives AFTER the fixed header ([Size..]) in the same slot block: the block ids a
+		// single-fsync generation wrote, split into tree pages (BlocksPerPage each) and free-list chain
+		// blocks (one block each), so recovery can verify every one by its own seal. It carries its OWN
+		// checksum, BOUND TO THE GENERATION: Write() only clears the fixed header region, so without the
+		// binding a stale manifest from an earlier tenant of the slot could pair with a fresh header.
+
+		private const int ManifestOffset = Size;
+		private const int ManifestHeaderSize = 16; // u64 checksum, u32 page count, u32 chain count
+
+		/// <summary>Ids a manifest can carry in one slot block (pages plus chain blocks combined).</summary>
+		public static int ManifestCapacity(int blockSize) => (blockSize - ManifestOffset - ManifestHeaderSize) / 4;
+
+		/// <summary>Writes the manifest section (an empty one for a two-phase commit, so no stale tenant survives).</summary>
+		public static void WriteManifest(Span<byte> block, uint blockId, ulong generation, ReadOnlySpan<uint> pageIds, ReadOnlySpan<uint> chainIds)
+		{
+			Contract.Debug.Requires(pageIds.Length + chainIds.Length <= ManifestCapacity(block.Length));
+			var section = block[ManifestOffset..];
+			BinaryPrimitives.WriteUInt32LittleEndian(section[8..], (uint) pageIds.Length);
+			BinaryPrimitives.WriteUInt32LittleEndian(section[12..], (uint) chainIds.Length);
+			var ids = section[ManifestHeaderSize..];
+			for (int i = 0; i < pageIds.Length; i++)
+			{
+				BinaryPrimitives.WriteUInt32LittleEndian(ids[(i * 4)..], pageIds[i]);
+			}
+			ids = ids[(pageIds.Length * 4)..];
+			for (int i = 0; i < chainIds.Length; i++)
+			{
+				BinaryPrimitives.WriteUInt32LittleEndian(ids[(i * 4)..], chainIds[i]);
+			}
+			BinaryPrimitives.WriteUInt64LittleEndian(section, ComputeManifestChecksum(section, blockId, generation, pageIds.Length + chainIds.Length));
+		}
+
+		/// <summary>Reads and verifies the manifest section for the given generation; false when it is torn, stale, or foreign - in which case the slot CANNOT be trusted by a crashed-session recovery.</summary>
+		public static bool TryReadManifest(ReadOnlySpan<byte> block, uint blockId, ulong generation, List<uint> pageIds, List<uint> chainIds)
+		{
+			var section = block[ManifestOffset..];
+			int pages = (int) BinaryPrimitives.ReadUInt32LittleEndian(section[8..]);
+			int chain = (int) BinaryPrimitives.ReadUInt32LittleEndian(section[12..]);
+			if (pages < 0 || chain < 0 || pages + chain > ManifestCapacity(block.Length))
+			{
+				return false;
+			}
+			if (BinaryPrimitives.ReadUInt64LittleEndian(section) != ComputeManifestChecksum(section, blockId, generation, pages + chain))
+			{
+				return false;
+			}
+			var ids = section[ManifestHeaderSize..];
+			for (int i = 0; i < pages; i++)
+			{
+				pageIds.Add(BinaryPrimitives.ReadUInt32LittleEndian(ids[(i * 4)..]));
+			}
+			ids = ids[(pages * 4)..];
+			for (int i = 0; i < chain; i++)
+			{
+				chainIds.Add(BinaryPrimitives.ReadUInt32LittleEndian(ids[(i * 4)..]));
+			}
+			return true;
+		}
+
+		private static ulong ComputeManifestChecksum(ReadOnlySpan<byte> section, uint blockId, ulong generation, int totalIds)
+		{
+			var hash = new XxHash3(unchecked((long) blockId));
+			Span<byte> seed = stackalloc byte[16];
+			BinaryPrimitives.WriteUInt64LittleEndian(seed, generation);
+			hash.Append(seed[..8]);
+			hash.Append(section.Slice(8, 8 + totalIds * 4));
+			return hash.GetCurrentHashAsUInt64();
+		}
+
+		#endregion
 
 	}
 

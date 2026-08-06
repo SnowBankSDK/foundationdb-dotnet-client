@@ -26,6 +26,7 @@
 
 namespace FoundationDB.Storage.FdbLite
 {
+	using System.Runtime.InteropServices;
 
 	/// <summary>Policy for merging under-full dirty leaves at commit, before the flush (the pre-commit consolidation arm).</summary>
 	/// <remarks>
@@ -204,14 +205,83 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			var (durable, slot) = !bValid || (aValid && a.Generation > b.Generation) ? (a, 1u) : (b, 2u);
 
+			// crashed-session recovery: the in-use flag says a writer died, so a slot is only trustworthy if
+			// its manifest verifies (an empty manifest IS proof for a two-phase commit: its barrier ordering
+			// made the header self-sufficient). On failure, fall back one generation - safe by the COW
+			// invariant: the crashed generation only ever wrote blocks the previous tree does not reference.
+			long validatedBlocks = 0;
+			bool rolledBack = false;
+			bool wasInUse = FdbLiteFileHeader.ReadInUse(pager.ReadBlocks(0, 1));
+			if (wasInUse && !TryValidateSlot(pager, slot, in durable, ref validatedBlocks))
+			{
+				var (otherValid, other, otherSlot) = slot == 1 ? (bValid, b, 2u) : (aValid, a, 1u);
+				if (!otherValid || !TryValidateSlot(pager, otherSlot, in other, ref validatedBlocks))
+				{
+					throw new InvalidDataException($"Crashed-session recovery failed: neither commit slot survives manifest validation (newest was generation {durable.Generation})");
+				}
+				(durable, slot) = (other, otherSlot);
+				rolledBack = true;
+			}
+
 			var freeSpace = FdbLiteFreeListChain.Load(pager, durable.FreeListRoot, durable.Generation);
-			var engine = new FdbLiteEngine(pager, freeSpace, durable, slot);
-			var other = slot == 1 ? (bValid, b) : (aValid, a);
-			if (other.Item1 && other.Item2.Generation == durable.Generation - 1)
-			{ // the backup slot still describes the immediately-previous generation: it remains readable
-				engine.PreviousDurable = other.Item2;
+			var engine = new FdbLiteEngine(pager, freeSpace, durable, slot)
+			{
+				RecoveryValidatedPages = validatedBlocks,
+				RecoveryRolledBack = rolledBack,
+			};
+			if (!rolledBack)
+			{
+				var other = slot == 1 ? (bValid, b) : (aValid, a);
+				if (other.Item1 && other.Item2.Generation == durable.Generation - 1)
+				{ // the backup slot still describes the immediately-previous generation: it remains readable
+					engine.PreviousDurable = other.Item2;
+				}
+			}
+			if (wasInUse)
+			{ // recovery outcome persisted: the next open must not pay the validation again
+				engine.WriteSessionFlag(inUse: false);
+				pager.Flush();
 			}
 			return engine;
+		}
+
+		/// <summary>True when the slot's manifest reads for its generation and every block it lists is present, whole (seal checksum) and stamped by that generation.</summary>
+		private static bool TryValidateSlot(IFdbLitePager pager, uint slot, in FdbLiteSnapshotHeader header, ref long validatedBlocks)
+		{
+			var pageIds = new List<uint>();
+			var chainIds = new List<uint>();
+			if (!FdbLiteSnapshotHeader.TryReadManifest(pager.ReadBlocks(slot, 1), slot, header.Generation, pageIds, chainIds))
+			{
+				return false; // torn or stale manifest: the slot cannot prove itself
+			}
+			int blocksPerPage = pager.Geometry.BlocksPerPage;
+			foreach (var id in pageIds)
+			{
+				if (id + blocksPerPage > pager.BlockCount)
+				{
+					return false;
+				}
+				var page = pager.ReadBlocks(id, blocksPerPage);
+				if (!FdbLitePageHeader.Verify(page, id) || FdbLitePageHeader.GetGeneration(page) != header.Generation)
+				{
+					return false;
+				}
+				validatedBlocks++;
+			}
+			foreach (var id in chainIds)
+			{
+				if (id + 1 > pager.BlockCount)
+				{
+					return false;
+				}
+				var block = pager.ReadBlocks(id, 1);
+				if (!FdbLitePageHeader.Verify(block, id) || FdbLitePageHeader.GetGeneration(block) != header.Generation)
+				{
+					return false;
+				}
+				validatedBlocks++;
+			}
+			return true;
 		}
 
 		/// <summary>Opens (or creates) a file-backed store.</summary>
@@ -249,6 +319,21 @@ namespace FoundationDB.Storage.FdbLite
 
 		/// <summary>BENCHMARK-ONLY, DANGEROUS: skips the data barrier so a commit ends in ONE flush. A crash can then persist the header without its pages, corrupting the store UNDETECTABLY. Exists solely to measure the ceiling of the single-fsync commit design (see the 2026-08-06 design note) before its recovery machinery is built; never enable outside a throwaway benchmark store.</summary>
 		public bool UnsafeSingleCommitBarrier { get; set; }
+
+		/// <summary>PROTOTYPE (2026-08-06 design note, format ruling pending): commit small generations with ONE flush, recording a validated manifest in the commit slot; recovery then verifies the manifest and rolls back one generation on any missing or torn page. Off by default.</summary>
+		public bool SingleFsyncCommits { get; set; }
+
+		/// <summary>Largest dirty set (tree pages) a single-fsync commit may carry; beyond it the commit takes the ordinary two-barrier path, which caps the worst-case crash validation by construction.</summary>
+		public int SingleFsyncMaxManifestPages { get; set; } = 512;
+
+		/// <summary>Commits that took the single-fsync manifest path (execution proof for the crash suite and the A/B).</summary>
+		public long SingleFsyncCommitCount { get; private set; }
+
+		/// <summary>Pages (and free-list blocks) verified by recovery at open, because the in-use flag showed a crashed session. Zero after a clean shutdown: the flag's whole point.</summary>
+		public long RecoveryValidatedPages { get; private set; }
+
+		/// <summary>True when recovery rejected the newest commit slot and mounted its predecessor.</summary>
+		public bool RecoveryRolledBack { get; private set; }
 
 		/// <summary>Streamed replace-run rebuilds across every committed generation (per-writer counters die with their writer; the merge family fires rarely, so the regression suite needs the lifetime sums).</summary>
 		public long LifetimeStreamedReplaceRuns { get; private set; }
@@ -330,6 +415,24 @@ namespace FoundationDB.Storage.FdbLite
 			this.LifetimeStreamedJoins += writer.StreamedJoins;
 			this.LifetimeStreamedMerges += writer.StreamedMerges;
 
+			// the single-fsync manifest path, taken only when the dirty set fits the threshold: the manifest
+			// then lets a crashed-session recovery verify every block this generation wrote and roll back on
+			// any miss, which is what stands in for the ordering the skipped barrier provided
+			bool manifestCommit = this.SingleFsyncCommits
+				&& writer.DirtyPageCount <= this.SingleFsyncMaxManifestPages
+				// hard cap whatever the knob says: the manifest must fit its slot, chain blocks included
+				&& writer.DirtyPageCount <= FdbLiteSnapshotHeader.ManifestCapacity(this.Pager.Geometry.BlockSize) - 64;
+			List<uint>? manifestPages = null;
+			if (manifestCommit)
+			{
+				// the in-use flag must be durable BEFORE this session's first single-fsync batch, or the crash
+				// that matters is exactly the one recovery never hears about; one extra small barrier per
+				// session, not per commit
+				MarkSessionInUse();
+				manifestPages = [ ];
+				writer.CollectDirtyPageIds(manifestPages);
+			}
+
 			// the writer holds its modified page images until now, so they must reach the pager before anything
 			// else this commit writes, and well before the first flush barrier below
 			writer.FlushDirtyPages();
@@ -344,8 +447,9 @@ namespace FoundationDB.Storage.FdbLite
 			}
 			uint freeRoot = FdbLiteFreeListChain.Persist(this.FreeSpace, this.Allocator, this.Pager, writer.Generation);
 
-			// barrier 1: every data and free-list block of this generation is durable before the header moves
-			if (!this.UnsafeSingleCommitBarrier)
+			// barrier 1: every data and free-list block of this generation is durable before the header moves.
+			// A manifest commit SKIPS it: the manifest is what makes the missing ordering detectable.
+			if (!manifestCommit && !this.UnsafeSingleCommitBarrier)
 			{
 				this.Pager.Flush();
 			}
@@ -368,6 +472,16 @@ namespace FoundationDB.Storage.FdbLite
 				var block = buffer.AsSpan(0, blockSize);
 				block.Clear();
 				header.Write(block, slot);
+				if (manifestCommit)
+				{
+					var chainIds = freeRoot != 0 ? FdbLiteFreeListChain.CollectChainBlocks(this.Pager, freeRoot) : [ ];
+					FdbLiteSnapshotHeader.WriteManifest(block, slot, header.Generation, CollectionsMarshal.AsSpan(manifestPages!), CollectionsMarshal.AsSpan(chainIds));
+					this.SingleFsyncCommitCount++;
+				}
+				else
+				{ // an explicit EMPTY manifest, so no stale tenant of this slot can pair with the new header
+					FdbLiteSnapshotHeader.WriteManifest(block, slot, header.Generation, default, default);
+				}
 				this.Pager.WriteBlocks(slot, block);
 			}
 			finally
@@ -712,8 +826,50 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				Contract.Requires(this.Pins.Count == 0, "the engine still has pinned readers: disposing would unmap memory a reader can still touch");
 			}
+			if (this.SessionMarkedInUse)
+			{ // orderly close: the clean flag is what lets the next open skip recovery validation entirely
+				WriteSessionFlag(inUse: false);
+				this.Pager.Flush();
+				this.SessionMarkedInUse = false;
+			}
 			this.Pager.Dispose();
 		}
+
+		#region Session flag (single-fsync commits)...
+
+		private bool SessionMarkedInUse;
+
+		/// <summary>Makes the in-use flag durable BEFORE this session's first single-fsync batch (one extra small barrier per session, not per commit): the crash that matters most is otherwise exactly the one recovery never hears about.</summary>
+		private void MarkSessionInUse()
+		{
+			if (this.SessionMarkedInUse)
+			{
+				return;
+			}
+			WriteSessionFlag(inUse: true);
+			this.Pager.Flush();
+			this.SessionMarkedInUse = true;
+		}
+
+		/// <summary>Rewrites block 0 with byte-identical content except the session flag, so any torn rewrite yields the old or the new flag and nothing else.</summary>
+		private void WriteSessionFlag(bool inUse)
+		{
+			int blockSize = this.Pager.Geometry.BlockSize;
+			var buffer = ArrayPool<byte>.Shared.Rent(blockSize);
+			try
+			{
+				var block = buffer.AsSpan(0, blockSize);
+				this.Pager.ReadBlocks(0, 1).CopyTo(block);
+				FdbLiteFileHeader.WriteInUse(block, inUse);
+				this.Pager.WriteBlocks(0, block);
+			}
+			finally
+			{
+				ArrayPool<byte>.Shared.Return(buffer);
+			}
+		}
+
+		#endregion
 
 	}
 
