@@ -250,6 +250,15 @@ namespace FoundationDB.Storage.FdbLite
 #if NET10_0_OR_GREATER
 		/// <summary>Rebuild path handed to every writer this engine starts (see <see cref="FdbLiteTreeWriter.UseStreamingRebuild"/>). Benchmark knob, off by default.</summary>
 		public bool UseStreamingRebuild { get; set; }
+
+		/// <summary>Streamed replace-run rebuilds across every committed generation (per-writer counters die with their writer; the merge family fires rarely, so the differential suite needs the lifetime sums).</summary>
+		public long LifetimeStreamedReplaceRuns { get; private set; }
+
+		/// <inheritdoc cref="LifetimeStreamedReplaceRuns"/>
+		public long LifetimeStreamedDropLeading { get; private set; }
+
+		/// <inheritdoc cref="LifetimeStreamedReplaceRuns"/>
+		public long LifetimeStreamedJoins { get; private set; }
 #endif
 
 		/// <summary>Pre-commit consolidation policy (see <see cref="FdbLitePreCommitConsolidation"/>): <see cref="FdbLitePreCommitConsolidation.Off"/> by default, so the emulator and every determinism-sensitive configuration stays deterministic unless explicitly asked otherwise. <see cref="OpenOrCreateFile"/> ships file-backed stores with <see cref="FdbLitePreCommitConsolidation.Adaptive"/>.</summary>
@@ -315,6 +324,13 @@ namespace FoundationDB.Storage.FdbLite
 			// consolidation runs BEFORE the flush, while under-full dirty pages are still in-process buffers:
 			// merging them here removes page writes from the flush instead of adding any
 			RunPreCommitConsolidation(writer);
+
+#if NET10_0_OR_GREATER
+			// AFTER consolidation: its merges rebuild parents through the same streamed sites
+			this.LifetimeStreamedReplaceRuns += writer.StreamedReplaceRuns;
+			this.LifetimeStreamedDropLeading += writer.StreamedDropLeading;
+			this.LifetimeStreamedJoins += writer.StreamedJoins;
+#endif
 
 			// the writer holds its modified page images until now, so they must reach the pager before anything
 			// else this commit writes, and well before the first flush barrier below

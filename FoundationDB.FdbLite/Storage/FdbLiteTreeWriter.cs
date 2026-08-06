@@ -2536,6 +2536,13 @@ namespace FoundationDB.Storage.FdbLite
 			int dropped = lastChildIndex - firstChildIndex; // the run's internal separators: cells first..last-1
 			int inserted = merged.Siblings?.Count ?? 0;
 
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE: same rebuild without the materialized cell list or the per-sibling scratches
+				return RebuildInternalReplaceRunStreamed(pageId, page, cellCount, firstChildIndex, lastChildIndex, in merged);
+			}
+#endif
+
 			byte[]? patchScratch = null;
 			var siblingScratch = new byte[inserted][];
 			try
@@ -2921,6 +2928,13 @@ namespace FoundationDB.Storage.FdbLite
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			Contract.Debug.Requires(dropCount >= 1 && dropCount <= cellCount, "the page must keep at least one child");
 
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE: same rebuild without the materialized cell list
+				return RebuildInternalDropLeadingChildrenStreamed(pageId, page, cellCount, dropCount);
+			}
+#endif
+
 			// children 0..dropCount-1 die: cell dropCount-1's child becomes the new leftmost, and cells
 			// 0..dropCount-1 (the separators of the dropped range) disappear
 			uint leftmost = FdbLiteTreePage.GetChild(page, dropCount);
@@ -2941,6 +2955,13 @@ namespace FoundationDB.Storage.FdbLite
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			int inserted = left.Siblings?.Count ?? 0;
+
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE: same rebuild without the materialized cell list or the per-sibling scratches
+				return RebuildInternalJoinStreamed(pageId, page, cellCount, leftChildIndex, in left, in right, joinSeparator);
+			}
+#endif
 
 			byte[]? patchScratch = null;
 			byte[]? joinScratch = null;

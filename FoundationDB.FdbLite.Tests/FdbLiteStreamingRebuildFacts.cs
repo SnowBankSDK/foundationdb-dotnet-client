@@ -165,6 +165,155 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			Assert.That(streamed.Writer.StreamedInternalSinglePass, Is.GreaterThan(0), "no internal rebuild completed in the fused single pass: the fast path is dead or always aborts");
 		}
 
+		/// <summary>Delete-heavy build followed by vacuum-until-dry: the only deterministic driver of the replace-run / drop-leading / join family (pre-commit consolidation budgets on wall-clock EMA, so it cannot be byte-compared). Fat keys shrink the internal fan-out, so the tree has several leaf-parents and the cross-parent merge (drop-leading + join) is reachable.</summary>
+		private static (FdbLiteEngine Engine, FdbLiteTreeWriter LastWriter) RunVacuumWorkload(bool streaming, int maxRounds = 200)
+		{
+			var engine = FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Uniform(14)));
+			engine.UseStreamingRebuild = streaming;
+
+			var rnd = new Random(618034);
+			var key = new byte[400];
+			var value = new byte[100];
+			var keys = new List<byte[]>(2_500);
+			ulong generation = 0;
+
+			{ // build: ~2,500 fat-keyed rows over several leaf-parents
+				var w = engine.BeginWrite();
+				for (int i = 0; i < 2_500; i++)
+				{
+					rnd.NextBytes(key);
+					key[0] = 0x55;
+					keys.Add(key.ToArray());
+					int valueLength = rnd.Next(1, 100);
+					rnd.NextBytes(value.AsSpan(0, valueLength));
+					w.Insert(keys[i], value.AsSpan(0, valueLength));
+				}
+				engine.Commit(w, ++generation);
+			}
+
+			{ // hollow out two NARROW bands of the sorted key space, aimed at the expected leaf-parent
+			  // boundaries (~1/3 and ~2/3 of the leaf order). A cross-parent merge is only taken when it
+			  // strictly BEATS the best same-parent run, so the sparse stretch must straddle a boundary and
+			  // stay short enough that neither same-parent half can match the joined run - blanket sparseness
+			  // makes every same-parent run tie the cross one and the join never fires.
+				var rank = new int[keys.Count];
+				{
+					var sorted = Enumerable.Range(0, keys.Count).OrderBy(i => keys[i], Comparer<byte[]>.Create(static (a, b) => a.AsSpan().SequenceCompareTo(b))).ToArray();
+					for (int r = 0; r < sorted.Length; r++) { rank[sorted[r]] = r; }
+				}
+				int n = keys.Count;
+				// band centers measured from the deterministic build (seed 618034): leaf-parent boundaries sit
+				// at ~26.5% and ~49% of the sorted key space (see Diag_Vacuum_Workload_Structure)
+				bool InBand(int r) => (r >= (int) (0.245 * n) && r < (int) (0.285 * n)) || (r >= (int) (0.47 * n) && r < (int) (0.51 * n));
+
+				var w = engine.BeginWrite();
+				for (int i = 0; i < keys.Count; i++)
+				{
+					if (InBand(rank[i]) && i % 25 != 0)
+					{
+						w.Remove(keys[i]);
+					}
+				}
+				engine.Commit(w, ++generation);
+			}
+
+			// vacuum until dry; the writer of the LAST productive step carries the streaming counters the
+			// asserts read (counters are per writer, and the caller aggregates them)
+			FdbLiteTreeWriter last = null!;
+			for (int round = 0; round < maxRounds; round++)
+			{
+				var w = engine.BeginWrite();
+				var outcome = w.VacuumWorstRegion(maxInputPages: 6);
+				engine.Commit(w, ++generation);
+				if (last is null || outcome.InputPages > 0) { last = w; }
+				if (outcome.InputPages == 0)
+				{
+					break;
+				}
+			}
+			return (engine, last);
+		}
+
+		[Test]
+		[Explicit("diagnostic: dumps the pre-vacuum leaf-parent structure, for calibrating the sparse bands")]
+		public void Diag_Vacuum_Workload_Structure()
+		{
+			var (engine, _) = RunVacuumWorkload(streaming: true, maxRounds: 0);
+			using var _e = engine;
+			int pageSize = engine.Pager.Geometry.PageSize;
+
+			var groups = new List<List<long>>();
+			Walk(engine.Pager, engine.Durable.RootPageId, groups);
+			Log($"groups={groups.Count} leaves={groups.Sum(g => g.Count)} joins={engine.LifetimeStreamedJoins} dropLeading={engine.LifetimeStreamedDropLeading} replaceRuns={engine.LifetimeStreamedReplaceRuns}");
+			for (int g = 0; g < groups.Count; g++)
+			{
+				var flags = string.Concat(groups[g].Select(live => live * 10 < (long) pageSize * 6 ? 'S' : 'D'));
+				Log($"group {g}: {groups[g].Count} leaves [{flags}]");
+			}
+
+			static void Walk(IFdbLitePager pager, uint pageId, List<List<long>> groups)
+			{
+				var page = pager.ReadBlocks(pageId, pager.Geometry.BlocksPerPage).ToArray();
+				if (FdbLitePageHeader.GetPageType(page) == FdbLitePageType.Leaf)
+				{
+					groups.Add([ FdbLiteTreePage.LeafLiveBytes(page) ]);
+					return;
+				}
+				int children = FdbLiteTreePage.GetChildCount(page);
+				var firstChild = pager.ReadBlocks(FdbLiteTreePage.GetChild(page, 0), pager.Geometry.BlocksPerPage);
+				if (FdbLitePageHeader.GetPageType(firstChild) == FdbLitePageType.Leaf)
+				{ // a leaf-parent: one group
+					var group = new List<long>(children);
+					for (int i = 0; i < children; i++)
+					{
+						group.Add(FdbLiteTreePage.LeafLiveBytes(pager.ReadBlocks(FdbLiteTreePage.GetChild(page, i), pager.Geometry.BlocksPerPage)));
+					}
+					groups.Add(group);
+					return;
+				}
+				for (int i = 0; i < children; i++)
+				{
+					Walk(pager, FdbLiteTreePage.GetChild(page, i), groups);
+				}
+			}
+		}
+
+		[Test]
+		public void Streaming_Rebuild_Matches_Materialized_On_Vacuum_Merges()
+		{
+			using var baseline = RunVacuumWorkload(streaming: false).Engine;
+			var (streamedEngine, _) = RunVacuumWorkload(streaming: true);
+			using var streamed = streamedEngine;
+
+			Assert.That(streamed.Durable.RootPageId, Is.EqualTo(baseline.Durable.RootPageId), "the two vacuums placed their roots differently");
+			Assert.That(streamed.Durable.KeyCount, Is.EqualTo(baseline.Durable.KeyCount), "the two stores hold different key counts");
+			Assert.That(streamed.Pager.BlockCount, Is.EqualTo(baseline.Pager.BlockCount), "the two stores allocated different amounts");
+			// blocks 0-2 are the store/commit headers and carry a random file id plus wall-clock stamps, so
+			// they differ between ANY two stores; the tree and data blocks (frontier starts at 3) are the
+			// comparison that means something
+			for (uint block = 3; block < baseline.Pager.BlockCount; block++)
+			{
+				var expected = baseline.Pager.ReadBlocks(block, 1);
+				var actual = streamed.Pager.ReadBlocks(block, 1);
+				if (!expected.SequenceEqual(actual))
+				{
+					int offset = expected.CommonPrefixLength(actual);
+					Assert.Fail($"stores diverge at block {block}, first differing byte at offset {offset} (baseline={expected[offset]:X2}, streamed={actual[offset]:X2})");
+				}
+			}
+		}
+
+		/// <summary>Execution proof for the merge family, per site: aggregated across every vacuum generation of the streamed store.</summary>
+		[Test]
+		public void Vacuum_Merges_Execute_The_Streamed_Family()
+		{
+			using var engine = RunVacuumWorkload(streaming: true).Engine;
+
+			Assert.That(engine.LifetimeStreamedReplaceRuns, Is.GreaterThan(0), "no vacuum merge rebuilt its parent through the streamed replace-run: the site is dead code under the toggle");
+			Assert.That(engine.LifetimeStreamedJoins, Is.GreaterThan(0), "no cross-parent merge ran: the workload no longer covers the join/drop-leading sites");
+			Assert.That(engine.LifetimeStreamedDropLeading, Is.GreaterThan(0), "the cross-parent merge never dropped leading children: the site is dead code under the toggle");
+		}
+
 		[Test]
 		public void Streaming_Rebuild_Matches_Materialized_On_Giant_Cells()
 		{

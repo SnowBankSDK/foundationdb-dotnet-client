@@ -59,6 +59,15 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Streamed internal rebuilds that completed in the fused single pass (internal pages have no prefix, so only a genuine split falls back).</summary>
 		public long StreamedInternalSinglePass { get; private set; }
 
+		/// <summary>Replace-run rebuilds (a merge outcome replacing a child run) taken by the streaming path.</summary>
+		public long StreamedReplaceRuns { get; private set; }
+
+		/// <summary>Drop-leading-children rebuilds (the right side of a cross-parent merge) taken by the streaming path.</summary>
+		public long StreamedDropLeading { get; private set; }
+
+		/// <summary>Join-ancestor rebuilds (both sides of a cross-parent merge plus the moved separator) taken by the streaming path.</summary>
+		public long StreamedJoins { get; private set; }
+
 		/// <summary>A sorted run of leaf cells, indexable by position. The consumer never learns where a cell lives: on a page, in a scratch buffer, or synthesized on the fly.</summary>
 		/// <remarks>Indexed (not forward-only) because the sizing walk needs first/last keys and re-reads the boundary cell; every rebuild source is a page or a buffer, both O(1) by index.</remarks>
 		internal interface ICellSource
@@ -116,27 +125,35 @@ namespace FoundationDB.Storage.FdbLite
 			public void Rebase(ReadOnlySpan<byte> snapshot) => this.Page = snapshot;
 		}
 
-		/// <summary>The internal-rebuild source: the page's cells with the descended child's cell patched, the split siblings' separator cells injected after it, and optionally the following separator raised. Separator cells are BUILT ON DEMAND into one shared scratch, so a returned <see cref="CellRef"/> is valid only until the next access - every consumer in this file resolves and copies before touching another index.</summary>
-		internal ref struct InternalRebuildSource : ICellSource
+		/// <summary>The generalized internal-rebuild source, covering every internal gather site: the page's cells with a DROPPED child range [<c>dropFrom</c>, <c>dropTo</c>), the cell before it patched, an injected run (split-sibling separators, then optionally one extra owned cell - the join's moved separator) in the gap, and optionally the cell at <c>dropTo</c> raised. Separator cells are BUILT ON DEMAND into one shared scratch, so a returned <see cref="CellRef"/> is valid only until the next access - every consumer in this file resolves and copies before touching another index.</summary>
+		/// <remarks>The four sites are points of this one shape: RebuildInternal is an empty drop range at the child index (raise allowed), RebuildInternalReplaceRun drops the merged-away run, RebuildInternalJoin drops the old separator and injects the moved one as the extra cell, and RebuildInternalDropLeadingChildren drops the leading range with nothing injected.</remarks>
+		internal ref struct InternalRunSource : ICellSource
 		{
 			private ReadOnlySpan<byte> Page;
 			private readonly ReadOnlySpan<(Slice Separator, uint PageId)> Siblings;
 			private readonly byte[] SeparatorScratch;
 			private readonly CellRef PatchedCell;
 			private readonly CellRef RaisedCell;
-			private readonly int ChildIndex;
+			private readonly CellRef ExtraCell;
+			private readonly int DropFrom;
+			private readonly int DropTo;
 			private readonly bool HasRaised;
+			private readonly bool HasExtra;
 
-			public InternalRebuildSource(ReadOnlySpan<byte> page, int cellCount, int childIndex, in CellRef patchedCell, in CellRef raisedCell, bool hasRaised, ReadOnlySpan<(Slice Separator, uint PageId)> siblings, byte[] separatorScratch)
+			public InternalRunSource(ReadOnlySpan<byte> page, int cellCount, int dropFrom, int dropTo, in CellRef patchedCell, in CellRef raisedCell, bool hasRaised, in CellRef extraCell, bool hasExtra, ReadOnlySpan<(Slice Separator, uint PageId)> siblings, byte[] separatorScratch)
 			{
+				Contract.Debug.Requires(dropFrom >= 0 && dropTo >= dropFrom && dropTo <= cellCount);
 				this.Page = page;
 				this.Siblings = siblings;
 				this.SeparatorScratch = separatorScratch;
 				this.PatchedCell = patchedCell;
 				this.RaisedCell = raisedCell;
-				this.ChildIndex = childIndex;
+				this.ExtraCell = extraCell;
+				this.DropFrom = dropFrom;
+				this.DropTo = dropTo;
 				this.HasRaised = hasRaised;
-				this.Count = cellCount + siblings.Length;
+				this.HasExtra = hasExtra;
+				this.Count = cellCount - (dropTo - dropFrom) + siblings.Length + (hasExtra ? 1 : 0);
 			}
 
 			public int Count { get; }
@@ -145,24 +162,33 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				get
 				{
-					// output order (same as the materialized gather): page cells below the descended child
-					// (its own cell patched), then the injected sibling separators, then the rest of the page
-					// (the following separator raised when asked)
-					if (index < this.ChildIndex)
+					// output order (same as every materialized gather): page cells below the drop range (the
+					// last one patched), the injected siblings, the extra cell, then the page's tail (its
+					// first cell raised when asked)
+					if (index < this.DropFrom)
 					{
-						return index == this.ChildIndex - 1
+						return index == this.DropFrom - 1
 							? this.PatchedCell
 							: CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(this.Page, index));
 					}
-					int s = index - this.ChildIndex;
+					int s = index - this.DropFrom;
 					if (s < this.Siblings.Length)
 					{
 						var (separator, siblingId) = this.Siblings[s];
 						int len = FdbLiteTreePage.BuildInternalCell(this.SeparatorScratch, siblingId, separator.Span).Length;
 						return CellRef.OfInternalBuffer(this.SeparatorScratch, len);
 					}
-					int i = index - this.Siblings.Length;
-					return (i == this.ChildIndex && this.HasRaised)
+					s -= this.Siblings.Length;
+					if (this.HasExtra)
+					{
+						if (s == 0)
+						{
+							return this.ExtraCell;
+						}
+						s--;
+					}
+					int i = this.DropTo + s;
+					return (i == this.DropTo && this.HasRaised)
 						? this.RaisedCell
 						: CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(this.Page, i));
 				}
@@ -212,13 +238,112 @@ namespace FoundationDB.Storage.FdbLite
 					separatorScratch = ArrayPool<byte>.Shared.Rent(6 + FdbLiteTreePage.MaxKeyLength);
 				}
 
-				var source = new InternalRebuildSource(page, cellCount, childIndex, in patchedCell, in raisedCell, hasRaised, childSiblings, separatorScratch ?? [ ]);
+				var source = new InternalRunSource(page, cellCount, dropFrom: childIndex, dropTo: childIndex, in patchedCell, in raisedCell, hasRaised, extraCell: default, hasExtra: false, childSiblings, separatorScratch ?? [ ]);
 				return WriteInternalCellsStreamed(pageId, leftmost, page, source, caller: nameof(RebuildInternal));
 			}
 			finally
 			{
 				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
 				if (raiseScratch != null) { ArrayPool<byte>.Shared.Return(raiseScratch); }
+				if (separatorScratch != null) { ArrayPool<byte>.Shared.Return(separatorScratch); }
+			}
+		}
+
+		/// <summary>Streamed variant of <see cref="RebuildInternalReplaceRun"/>: the merged-away run's separators drop, the merge outcome's parts inject, no cell list.</summary>
+		private RebuildResult RebuildInternalReplaceRunStreamed(uint pageId, ReadOnlySpan<byte> page, int cellCount, int firstChildIndex, int lastChildIndex, in RebuildResult merged)
+		{
+			this.StreamedReplaceRuns++;
+
+			byte[]? patchScratch = null;
+			byte[]? separatorScratch = null;
+			try
+			{
+				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
+				var patchedCell = default(CellRef);
+				if (firstChildIndex == 0)
+				{
+					leftmost = merged.FirstId;
+				}
+				else
+				{ // cell firstChildIndex-1 keeps its separator and carries the merged first part
+					var original = FdbLiteTreePage.GetInternalCell(page, firstChildIndex - 1);
+					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
+					original.CopyTo(patchScratch);
+					FdbLiteTreePage.PatchInternalCellChild(patchScratch, merged.FirstId);
+					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
+				}
+
+				var siblings = AsSiblingSpan(merged);
+				if (siblings.Length > 0)
+				{
+					separatorScratch = ArrayPool<byte>.Shared.Rent(6 + FdbLiteTreePage.MaxKeyLength);
+				}
+
+				var source = new InternalRunSource(page, cellCount, dropFrom: firstChildIndex, dropTo: lastChildIndex, in patchedCell, raisedCell: default, hasRaised: false, extraCell: default, hasExtra: false, siblings, separatorScratch ?? [ ]);
+				return WriteInternalCellsStreamed(pageId, leftmost, page, source, caller: nameof(RebuildInternalReplaceRun));
+			}
+			finally
+			{
+				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
+				if (separatorScratch != null) { ArrayPool<byte>.Shared.Return(separatorScratch); }
+			}
+		}
+
+		/// <summary>Streamed variant of <see cref="RebuildInternalDropLeadingChildren"/>: the page's tail as-is, nothing injected.</summary>
+		private RebuildResult RebuildInternalDropLeadingChildrenStreamed(uint pageId, ReadOnlySpan<byte> page, int cellCount, int dropCount)
+		{
+			this.StreamedDropLeading++;
+
+			uint leftmost = FdbLiteTreePage.GetChild(page, dropCount);
+			var source = new InternalRunSource(page, cellCount, dropFrom: 0, dropTo: dropCount, patchedCell: default, raisedCell: default, hasRaised: false, extraCell: default, hasExtra: false, siblings: default, separatorScratch: [ ]);
+			var outcome = WriteInternalCellsStreamed(pageId, leftmost, page, source, caller: nameof(RebuildInternalDropLeadingChildren));
+			Contract.Debug.Assert(!outcome.Split);
+			return outcome;
+		}
+
+		/// <summary>Streamed variant of <see cref="RebuildInternalJoin"/>: the old separator between the two paths drops, the left side's parts inject, and the moved separator is the extra owned cell.</summary>
+		private RebuildResult RebuildInternalJoinStreamed(uint pageId, ReadOnlySpan<byte> page, int cellCount, int leftChildIndex, in RebuildResult left, in RebuildResult right, byte[] joinSeparator)
+		{
+			this.StreamedJoins++;
+
+			byte[]? patchScratch = null;
+			byte[]? joinScratch = null;
+			byte[]? separatorScratch = null;
+			try
+			{
+				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
+				var patchedCell = default(CellRef);
+				if (leftChildIndex == 0)
+				{
+					leftmost = left.FirstId;
+				}
+				else
+				{
+					var original = FdbLiteTreePage.GetInternalCell(page, leftChildIndex - 1);
+					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
+					original.CopyTo(patchScratch);
+					FdbLiteTreePage.PatchInternalCellChild(patchScratch, left.FirstId);
+					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
+				}
+
+				// cell leftChildIndex (the separator between the two paths) is rebuilt outright: new key, new child
+				joinScratch = ArrayPool<byte>.Shared.Rent(6 + joinSeparator.Length);
+				int joinLen = FdbLiteTreePage.BuildInternalCell(joinScratch, right.FirstId, joinSeparator).Length;
+				var joinCell = CellRef.OfInternalBuffer(joinScratch, joinLen);
+
+				var siblings = AsSiblingSpan(left);
+				if (siblings.Length > 0)
+				{
+					separatorScratch = ArrayPool<byte>.Shared.Rent(6 + FdbLiteTreePage.MaxKeyLength);
+				}
+
+				var source = new InternalRunSource(page, cellCount, dropFrom: leftChildIndex, dropTo: leftChildIndex + 1, in patchedCell, raisedCell: default, hasRaised: false, in joinCell, hasExtra: true, siblings, separatorScratch ?? [ ]);
+				return WriteInternalCellsStreamed(pageId, leftmost, page, source, caller: nameof(RebuildInternalJoin));
+			}
+			finally
+			{
+				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
+				if (joinScratch != null) { ArrayPool<byte>.Shared.Return(joinScratch); }
 				if (separatorScratch != null) { ArrayPool<byte>.Shared.Return(separatorScratch); }
 			}
 		}
