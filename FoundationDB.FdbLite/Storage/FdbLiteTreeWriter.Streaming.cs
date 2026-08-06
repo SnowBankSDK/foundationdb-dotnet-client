@@ -50,6 +50,15 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Streamed rebuilds that completed in the single-pass fast path (no split, one fused measure-and-emit scan). Byte-identical output makes a dead fast path invisible to every behavioural test; this counter is what shows it ran.</summary>
 		public long StreamedSinglePassRebuilds { get; private set; }
 
+		/// <summary>Prefix-strip rebuilds taken by the streaming path (same execution-proof rationale as <see cref="StreamedSinglePassRebuilds"/>).</summary>
+		public long StreamedStrips { get; private set; }
+
+		/// <summary>Internal-page rebuilds taken by the streaming path.</summary>
+		public long StreamedInternalRebuilds { get; private set; }
+
+		/// <summary>Streamed internal rebuilds that completed in the fused single pass (internal pages have no prefix, so only a genuine split falls back).</summary>
+		public long StreamedInternalSinglePass { get; private set; }
+
 		/// <summary>A sorted run of leaf cells, indexable by position. The consumer never learns where a cell lives: on a page, in a scratch buffer, or synthesized on the fly.</summary>
 		/// <remarks>Indexed (not forward-only) because the sizing walk needs first/last keys and re-reads the boundary cell; every rebuild source is a page or a buffer, both O(1) by index.</remarks>
 		internal interface ICellSource
@@ -60,6 +69,24 @@ namespace FoundationDB.Storage.FdbLite
 
 			/// <summary>Swap the page the cells resolve from. The writer calls this when it snapshots the source: part 0 of a split rewrites the original page in place, so a source still reading it would resolve cells from clobbered memory.</summary>
 			void Rebase(ReadOnlySpan<byte> snapshot);
+		}
+
+		/// <summary>The strip-rebuild source: every cell of one page, unchanged.</summary>
+		internal ref struct LeafPageSource : ICellSource
+		{
+			private ReadOnlySpan<byte> Page;
+
+			public LeafPageSource(ReadOnlySpan<byte> page, int count)
+			{
+				this.Page = page;
+				this.Count = count;
+			}
+
+			public int Count { get; }
+
+			public CellRef this[int index] => CellRef.OfLeafPage(this.Page, index);
+
+			public void Rebase(ReadOnlySpan<byte> snapshot) => this.Page = snapshot;
 		}
 
 		/// <summary>The leaf-rebuild source: every cell of one page, with one injected cell at a known index (an insert makes the run one longer, a replace substitutes in place).</summary>
@@ -89,6 +116,296 @@ namespace FoundationDB.Storage.FdbLite
 			public void Rebase(ReadOnlySpan<byte> snapshot) => this.Page = snapshot;
 		}
 
+		/// <summary>The internal-rebuild source: the page's cells with the descended child's cell patched, the split siblings' separator cells injected after it, and optionally the following separator raised. Separator cells are BUILT ON DEMAND into one shared scratch, so a returned <see cref="CellRef"/> is valid only until the next access - every consumer in this file resolves and copies before touching another index.</summary>
+		internal ref struct InternalRebuildSource : ICellSource
+		{
+			private ReadOnlySpan<byte> Page;
+			private readonly ReadOnlySpan<(Slice Separator, uint PageId)> Siblings;
+			private readonly byte[] SeparatorScratch;
+			private readonly CellRef PatchedCell;
+			private readonly CellRef RaisedCell;
+			private readonly int ChildIndex;
+			private readonly bool HasRaised;
+
+			public InternalRebuildSource(ReadOnlySpan<byte> page, int cellCount, int childIndex, in CellRef patchedCell, in CellRef raisedCell, bool hasRaised, ReadOnlySpan<(Slice Separator, uint PageId)> siblings, byte[] separatorScratch)
+			{
+				this.Page = page;
+				this.Siblings = siblings;
+				this.SeparatorScratch = separatorScratch;
+				this.PatchedCell = patchedCell;
+				this.RaisedCell = raisedCell;
+				this.ChildIndex = childIndex;
+				this.HasRaised = hasRaised;
+				this.Count = cellCount + siblings.Length;
+			}
+
+			public int Count { get; }
+
+			public CellRef this[int index]
+			{
+				get
+				{
+					// output order (same as the materialized gather): page cells below the descended child
+					// (its own cell patched), then the injected sibling separators, then the rest of the page
+					// (the following separator raised when asked)
+					if (index < this.ChildIndex)
+					{
+						return index == this.ChildIndex - 1
+							? this.PatchedCell
+							: CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(this.Page, index));
+					}
+					int s = index - this.ChildIndex;
+					if (s < this.Siblings.Length)
+					{
+						var (separator, siblingId) = this.Siblings[s];
+						int len = FdbLiteTreePage.BuildInternalCell(this.SeparatorScratch, siblingId, separator.Span).Length;
+						return CellRef.OfInternalBuffer(this.SeparatorScratch, len);
+					}
+					int i = index - this.Siblings.Length;
+					return (i == this.ChildIndex && this.HasRaised)
+						? this.RaisedCell
+						: CellRef.OfInternalPage(FdbLiteTreePage.GetInternalCellExtent(this.Page, i));
+				}
+			}
+
+			public void Rebase(ReadOnlySpan<byte> snapshot) => this.Page = snapshot;
+		}
+
+		/// <summary>Streamed variant of <see cref="RebuildInternal(uint,int,uint,ReadOnlySpan{ValueTuple{Slice,uint}},ReadOnlySpan{byte})"/>: same patched/raised construction, but the separators build on demand into ONE scratch and no cell list is materialized.</summary>
+		private RebuildResult RebuildInternalStreamed(uint pageId, ReadOnlySpan<byte> page, int cellCount, int childIndex, uint childFirstId, ReadOnlySpan<(Slice Separator, uint PageId)> childSiblings, ReadOnlySpan<byte> raiseFollowingSeparator)
+		{
+			this.StreamedInternalRebuilds++;
+
+			byte[]? patchScratch = null;
+			byte[]? raiseScratch = null;
+			byte[]? separatorScratch = null;
+			try
+			{
+				uint leftmost = FdbLiteTreePage.GetLeftmostChild(page);
+
+				var patchedCell = default(CellRef);
+				if (childIndex == 0)
+				{
+					leftmost = childFirstId;
+				}
+				else
+				{
+					var original = FdbLiteTreePage.GetInternalCell(page, childIndex - 1);
+					patchScratch = ArrayPool<byte>.Shared.Rent(original.Length);
+					original.CopyTo(patchScratch);
+					FdbLiteTreePage.PatchInternalCellChild(patchScratch, childFirstId);
+					patchedCell = CellRef.OfInternalBuffer(patchScratch, original.Length);
+				}
+
+				var raisedCell = default(CellRef);
+				bool hasRaised = false;
+				if (raiseFollowingSeparator.Length > 0 && childIndex < cellCount)
+				{ // same child, higher key: the cell is rebuilt rather than copied
+					raiseScratch = ArrayPool<byte>.Shared.Rent(6 + raiseFollowingSeparator.Length);
+					int len = FdbLiteTreePage.BuildInternalCell(raiseScratch, FdbLiteTreePage.GetChild(page, childIndex + 1), raiseFollowingSeparator).Length;
+					raisedCell = CellRef.OfInternalBuffer(raiseScratch, len);
+					hasRaised = true;
+				}
+
+				if (childSiblings.Length > 0)
+				{ // ONE scratch serves every injected separator, built on demand (the materialized path rents one per sibling)
+					separatorScratch = ArrayPool<byte>.Shared.Rent(6 + FdbLiteTreePage.MaxKeyLength);
+				}
+
+				var source = new InternalRebuildSource(page, cellCount, childIndex, in patchedCell, in raisedCell, hasRaised, childSiblings, separatorScratch ?? [ ]);
+				return WriteInternalCellsStreamed(pageId, leftmost, page, source, caller: nameof(RebuildInternal));
+			}
+			finally
+			{
+				if (patchScratch != null) { ArrayPool<byte>.Shared.Return(patchScratch); }
+				if (raiseScratch != null) { ArrayPool<byte>.Shared.Return(raiseScratch); }
+				if (separatorScratch != null) { ArrayPool<byte>.Shared.Return(separatorScratch); }
+			}
+		}
+
+		/// <summary>Streaming twin of the INTERNAL half of <see cref="WriteCells"/>: no prefix machinery, so the single-page fast path is a straight fused measure-and-pack, and only a genuine split walks twice.</summary>
+		private RebuildResult WriteInternalCellsStreamed<TSource>(uint oldPageId, uint leftmostChild, ReadOnlySpan<byte> sourcePage, TSource cells, [CallerMemberName] string? caller = null)
+			where TSource : ICellSource, allows ref struct
+		{
+			int pageSize = this.Pager.Geometry.PageSize;
+			int usable = pageSize - FdbLiteTreePage.SlotsOffset(isInternal: true, prefixRegionSize: 0);
+			int count = cells.Count;
+
+			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
+			byte[]? sourceCopy = null;
+			try
+			{
+				var image = scratch.AsSpan(0, pageSize);
+
+				// FAST PATH: fused measure-and-pack; crossing the usable capacity proves a split and abandons
+				// the image (WritePage only sees completed images, Format clears on reuse)
+				{
+					FdbLitePageHeader.Format(image, FdbLitePageType.Internal, this.Generation);
+					FdbLiteTreePage.SetLeftmostChild(image, leftmostChild);
+					long bytes = 0;
+					int tail = image.Length;
+					bool fits = true;
+					for (int i = 0; i < count; i++)
+					{
+						var cell = cells[i];
+						bytes += cell.KeyLength + 2;
+						if (bytes > usable)
+						{
+							fits = false;
+							break;
+						}
+						var body = cell.ResolveKey(sourcePage);
+						tail -= body.Length;
+						body.CopyTo(image[tail..]);
+						FdbLiteTreePage.SetSlot(image, isInternal: true, i, (ushort) tail);
+					}
+					if (fits)
+					{
+						FdbLitePageHeader.SetCellCount(image, (ushort) count);
+						FdbLitePageHeader.SetCellAreaOffset(image, count > 0 ? (ushort) tail : (ushort) 0);
+						uint id = WritePage(oldPageId, image);
+						if (OpLog is { } log)
+						{
+							string tag = oldPageId == 0 ? "NODE+" : "NODE=";
+							log($"{tag}\t{id}\tfrom={caller}\tpart=0\tcells={count}\tsrc={oldPageId}\tparts=1");
+						}
+						this.StreamedInternalSinglePass++;
+						return new(id, null);
+					}
+				}
+
+				// SLOW PATH: a genuine split. Totals for the balance targets, then the same sizing walk,
+				// boundary PROMOTION (the boundary cell's child seeds the next part, its key separates), and
+				// tail-packed emit as the materialized internal path.
+				long totalBytes = 0;
+				for (int i = 0; i < count; i++)
+				{
+					totalBytes += cells[i].KeyLength + 2;
+				}
+				Contract.Debug.Assert(totalBytes > usable, "the fast path aborted on a run its own accounting says fits one page");
+
+				if (!sourcePage.IsEmpty)
+				{ // part 0 may rewrite the source page in place while later parts still resolve from it
+					sourceCopy = ArrayPool<byte>.Shared.Rent(sourcePage.Length);
+					sourcePage.CopyTo(sourceCopy);
+					sourcePage = sourceCopy.AsSpan(0, sourcePage.Length);
+					cells.Rebase(sourcePage);
+				}
+
+				List<(Slice Separator, uint PageId)>? siblings = null;
+				uint firstId = 0;
+
+				int partCount = (int) ((totalBytes + usable - 1) / usable);
+				long remainingBytes = totalBytes;
+				int remainingParts = partCount;
+
+				int start = 0;
+				uint partLeftmost = leftmostChild;
+				byte[]? partSeparator = null;
+				while (true)
+				{
+					long targetBytes = remainingParts > 1 ? (remainingBytes + remainingParts - 1) / remainingParts : long.MaxValue;
+
+					// extend the part up to the balance target, never past the page capacity
+					long bytes = 0;
+					int end = start;
+					while (end < count)
+					{
+						long next = bytes + cells[end].KeyLength + 2;
+						if (next > usable)
+						{
+							break;
+						}
+						if (end > start && next > targetBytes)
+						{ // the boundary cell rides into the next part
+							break;
+						}
+						bytes = next;
+						end++;
+					}
+
+					// on an internal boundary the boundary cell is PROMOTED: its child seeds the next part, its key separates
+					int nextStart;
+					byte[]? nextSeparator = null;
+					uint nextLeftmost = 0;
+					if (end < count)
+					{
+						var boundary = cells[end].ResolveKey(sourcePage);
+						int keyLen = BinaryPrimitives.ReadUInt16LittleEndian(boundary[4..]);
+						nextSeparator = boundary.Slice(6, keyLen).ToArray();
+						nextLeftmost = BinaryPrimitives.ReadUInt32LittleEndian(boundary);
+						nextStart = end + 1;
+					}
+					else
+					{
+						nextStart = end;
+					}
+
+					FdbLitePageHeader.Format(image, FdbLitePageType.Internal, this.Generation);
+					FdbLiteTreePage.SetLeftmostChild(image, partLeftmost);
+					int tail = image.Length;
+					for (int i = start; i < end; i++)
+					{
+						var body = cells[i].ResolveKey(sourcePage);
+						tail -= body.Length;
+						body.CopyTo(image[tail..]);
+						FdbLiteTreePage.SetSlot(image, isInternal: true, i - start, (ushort) tail);
+					}
+					FdbLitePageHeader.SetCellCount(image, (ushort) (end - start));
+					FdbLitePageHeader.SetCellAreaOffset(image, end > start ? (ushort) tail : (ushort) 0);
+					uint reusing = partSeparator == null ? oldPageId : 0;
+					uint id = WritePage(reusing, image);
+					if (OpLog is { } log)
+					{
+						string tag = reusing == 0 ? "NODE+" : "NODE=";
+						log($"{tag}\t{id}\tfrom={caller}\tpart={(partSeparator == null ? 0 : (siblings?.Count ?? 0) + 1)}\tcells={end - start}\tsrc={oldPageId}\tparts={partCount}");
+					}
+					if (partSeparator == null)
+					{
+						firstId = id;
+					}
+					else
+					{
+						(siblings ??= [ ]).Add((partSeparator.AsSlice(), id));
+					}
+
+					if (nextStart >= count && nextSeparator == null)
+					{
+						break;
+					}
+					remainingBytes -= bytes;
+					if (remainingParts > 1) { remainingParts--; }
+
+					start = nextStart;
+					partSeparator = nextSeparator;
+					partLeftmost = nextLeftmost;
+
+					if (start >= count)
+					{ // the last cell got promoted: the final part is a leftmost-only internal page (degenerate but legal)
+						FdbLitePageHeader.Format(image, FdbLitePageType.Internal, this.Generation);
+						FdbLiteTreePage.SetLeftmostChild(image, partLeftmost);
+						FdbLitePageHeader.SetCellCount(image, 0);
+						FdbLitePageHeader.SetCellAreaOffset(image, 0);
+						uint tailId = WritePage(0, image);
+						(siblings ??= [ ]).Add((partSeparator!.AsSlice(), tailId));
+						break;
+					}
+				}
+
+				if (siblings != null)
+				{
+					this.PageSplits++;
+					this.SplitSiblingsCreated += siblings.Count;
+				}
+				return new(firstId, siblings);
+			}
+			finally
+			{
+				ArrayPool<byte>.Shared.Return(scratch);
+				if (sourceCopy != null) { ArrayPool<byte>.Shared.Return(sourceCopy); }
+			}
+		}
+
 		/// <summary>Streaming twin of the leaf half of <see cref="WriteCells"/>: writes a rebuilt cell run as one page, or as a K-way split when it does not fit, reading each cell from the source on demand.</summary>
 		private RebuildResult WriteCellsStreamed<TSource>(uint oldPageId, ReadOnlySpan<byte> sourcePage, TSource cells, [CallerMemberName] string? caller = null)
 			where TSource : ICellSource, allows ref struct
@@ -112,70 +429,12 @@ namespace FoundationDB.Storage.FdbLite
 			{
 				Contract.Debug.Assert(count > 0);
 				var image = scratch.AsSpan(0, pageSize);
-				var sourcePrefix = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
 
-				// the whole run's shared prefix is what its first and last keys share (they are in key order):
-				// two O(1) probes, no walk
-				var firstKey = MaterializeKey(cells[0], sourcePage, sourcePrefix, partScratch.AsSpan(0, FdbLiteTreePage.MaxKeyLength));
-				int runLcp = 0;
-				if (count > 1)
+				uint fastId = TryWriteCellsSinglePage(oldPageId, sourcePage, cells, sourcePrefixLength, carriedEpisodes, image, partScratch, out int runLcp, caller);
+				if (fastId != 0)
 				{
-					var lastKey = MaterializeKey(cells[count - 1], sourcePage, sourcePrefix, partScratch.AsSpan(FdbLiteTreePage.MaxKeyLength, FdbLiteTreePage.MaxKeyLength));
-					runLcp = FdbLiteTreePage.CommonPrefixLength(firstKey, lastKey);
-				}
-
-				// FAST PATH: speculative single-page emit, fusing measure and emit into ONE scan. A single-page
-				// rebuild's destination prefix is the run's own LCP, already known from the boundary probe, so
-				// nothing else depends on a cut point. The same LeafRunBytes accounting the split decision uses
-				// runs incrementally alongside the emit; crossing the page size proves this is really a split and
-				// the half-written image is abandoned (nothing escapes: WritePage only runs on a completed image,
-				// and the slow path re-Formats the image, which clears it). "Fits by formula" and "fits by emit"
-				// are the same statement (the two-scan byte-identity invariant), so this takes exactly the
-				// rebuilds the materialized path would emit as one page - the differential suite proves it.
-				{
-					int effective = count > 1 ? runLcp : 0;
-					long total = FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: (effective + 1) & ~1);
-					FdbLitePageHeader.Format(image, FdbLitePageType.Leaf, this.Generation);
-					if (carriedEpisodes != 0) { FdbLitePageHeader.SetVolatilityEpisodes(image, carriedEpisodes); }
-					FdbLiteTreePage.WriteLeafPrefix(image, firstKey[..effective]);
-					var run = new FdbLiteTreePage.LeafRunWriter(image, count);
-					bool fits = true;
-					for (int i = 0; i < count; i++)
-					{
-						var cell = cells[i];
-						total += LeafWholeKeyLength(in cell, sourcePrefixLength) - effective + FdbLiteTreePage.LeafCellOverhead + cell.ValueLength;
-						if (total > pageSize)
-						{
-							fits = false;
-							break;
-						}
-						var stored = cell.ResolveKey(sourcePage);
-						var value = cell.ResolveValue(sourcePage);
-						if (cell.Buffer is not null)
-						{ // a whole key: strip this page's prefix outright
-							run.Add(stored[effective..], value, cell.Flags);
-						}
-						else if (effective >= sourcePrefix.Length)
-						{ // the new prefix reaches into the stored suffix, so the remainder is one slice of it
-							run.Add(stored[(effective - sourcePrefix.Length)..], value, cell.Flags);
-						}
-						else
-						{ // the new prefix is SHORTER, so what is stored gains back the tail of the old one
-							run.Add(sourcePrefix[effective..], stored, value, cell.Flags);
-						}
-					}
-					if (fits)
-					{
-						run.Complete();
-						uint id = WritePage(oldPageId, image);
-						if (OpLog is { } log)
-						{
-							string tag = oldPageId == 0 ? "LEAF+" : "LEAF=";
-							log($"{tag}\t{id}\tfrom={caller}\tpart=0\tcells={count}\tsrc={oldPageId}\tparts=1");
-						}
-						this.StreamedSinglePassRebuilds++;
-						return new(id, null);
-					}
+					this.StreamedSinglePassRebuilds++;
+					return new(fastId, null);
 				}
 
 				// SLOW PATH: a genuine split. Only now do the balance targets need the run's exact total, so the
@@ -193,7 +452,6 @@ namespace FoundationDB.Storage.FdbLite
 				}
 				Contract.Debug.Assert(totalBytes > usable, "the fast path aborted on a run its own accounting says fits one page");
 
-				// NOTE: sourcePrefix and firstKey are DEAD from here: both may point into the pre-snapshot page.
 				if (!sourcePage.IsEmpty)
 				{ // splitting: part 0 may rewrite the source page in place (shadowed), which would clobber the
 				  // memory later parts still resolve their cells from - snapshot the source first, and REBASE the
@@ -275,6 +533,90 @@ namespace FoundationDB.Storage.FdbLite
 				ArrayPool<byte>.Shared.Return(scratch);
 				ArrayPool<byte>.Shared.Return(partScratch);
 				if (sourceCopy != null) { ArrayPool<byte>.Shared.Return(sourceCopy); }
+			}
+		}
+
+		/// <summary>The FAST PATH: speculative single-page emit, fusing measure and emit into ONE scan. Returns the written page's id, or 0 when the run does not fit one page (in which case NOTHING was written: the caller's image is scratch, and <see cref="FdbLitePageHeader.Format"/> clears it on reuse).</summary>
+		/// <remarks>A single-page rebuild's destination prefix is the run's own LCP, known from two O(1) boundary probes, so nothing depends on a cut point. The same <see cref="LeafRunBytes"/> accounting the split decision uses runs incrementally alongside the emit; crossing the page size proves this is really a split. "Fits by formula" and "fits by emit" are the same statement (the two-scan byte-identity invariant), so this takes exactly the rebuilds the materialized path would emit as one page - the differential suite proves it.</remarks>
+		/// <param name="keyScratch">At least 2 x <see cref="FdbLiteTreePage.MaxKeyLength"/> bytes, for the two boundary keys.</param>
+		/// <param name="runLcp">The run's whole-key LCP from the boundary probe, for the split slow path to reuse.</param>
+		private uint TryWriteCellsSinglePage<TSource>(uint oldPageId, ReadOnlySpan<byte> sourcePage, TSource cells, int sourcePrefixLength, byte carriedEpisodes, Span<byte> image, Span<byte> keyScratch, out int runLcp, string? caller)
+			where TSource : ICellSource, allows ref struct
+		{
+			int pageSize = image.Length;
+			int count = cells.Count;
+			var sourcePrefix = sourcePrefixLength > 0 ? FdbLiteTreePage.GetPagePrefix(sourcePage, isInternal: false) : default;
+
+			// the whole run's shared prefix is what its first and last keys share (they are in key order)
+			var firstKey = MaterializeKey(cells[0], sourcePage, sourcePrefix, keyScratch[..FdbLiteTreePage.MaxKeyLength]);
+			runLcp = 0;
+			if (count > 1)
+			{
+				var lastKey = MaterializeKey(cells[count - 1], sourcePage, sourcePrefix, keyScratch.Slice(FdbLiteTreePage.MaxKeyLength, FdbLiteTreePage.MaxKeyLength));
+				runLcp = FdbLiteTreePage.CommonPrefixLength(firstKey, lastKey);
+			}
+
+			int effective = count > 1 ? runLcp : 0;
+			long total = FdbLiteTreePage.SlotsOffset(isInternal: false, prefixRegionSize: (effective + 1) & ~1);
+			FdbLitePageHeader.Format(image, FdbLitePageType.Leaf, this.Generation);
+			if (carriedEpisodes != 0) { FdbLitePageHeader.SetVolatilityEpisodes(image, carriedEpisodes); }
+			FdbLiteTreePage.WriteLeafPrefix(image, firstKey[..effective]);
+			var run = new FdbLiteTreePage.LeafRunWriter(image, count);
+			for (int i = 0; i < count; i++)
+			{
+				var cell = cells[i];
+				total += LeafWholeKeyLength(in cell, sourcePrefixLength) - effective + FdbLiteTreePage.LeafCellOverhead + cell.ValueLength;
+				if (total > pageSize)
+				{
+					return 0;
+				}
+				var stored = cell.ResolveKey(sourcePage);
+				var value = cell.ResolveValue(sourcePage);
+				if (cell.Buffer is not null)
+				{ // a whole key: strip this page's prefix outright
+					run.Add(stored[effective..], value, cell.Flags);
+				}
+				else if (effective >= sourcePrefix.Length)
+				{ // the new prefix reaches into the stored suffix, so the remainder is one slice of it
+					run.Add(stored[(effective - sourcePrefix.Length)..], value, cell.Flags);
+				}
+				else
+				{ // the new prefix is SHORTER, so what is stored gains back the tail of the old one
+					run.Add(sourcePrefix[effective..], stored, value, cell.Flags);
+				}
+			}
+			run.Complete();
+			uint id = WritePage(oldPageId, image);
+			if (OpLog is { } log)
+			{
+				string tag = oldPageId == 0 ? "LEAF+" : "LEAF=";
+				log($"{tag}\t{id}\tfrom={caller}\tpart=0\tcells={count}\tsrc={oldPageId}\tparts=1");
+			}
+			return id;
+		}
+
+		/// <summary>Streamed variant of the strip rebuild: the fused single-page emit over the page's own cells. Returns 0 without side effects when the rebuilt run would not fit (the materialized guard's "fail safely" contract).</summary>
+		private uint TryStripStreamed(uint leafId, ReadOnlySpan<byte> page)
+		{
+			int pageSize = this.Pager.Geometry.PageSize;
+			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
+			var keyScratch = ArrayPool<byte>.Shared.Rent(2 * FdbLiteTreePage.MaxKeyLength);
+			try
+			{
+				var source = new LeafPageSource(page, FdbLitePageHeader.GetCellCount(page));
+				uint id = TryWriteCellsSinglePage(
+					leafId, page, source,
+					FdbLitePageHeader.GetPrefixLength(page),
+					FdbLitePageHeader.GetVolatilityEpisodes(page),
+					scratch.AsSpan(0, pageSize), keyScratch, out _,
+					caller: nameof(TryStripAndRetry));
+				if (id != 0) { this.StreamedStrips++; }
+				return id;
+			}
+			finally
+			{
+				ArrayPool<byte>.Shared.Return(scratch);
+				ArrayPool<byte>.Shared.Return(keyScratch);
 			}
 		}
 

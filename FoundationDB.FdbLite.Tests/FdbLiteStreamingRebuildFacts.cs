@@ -154,6 +154,15 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			// run: byte-identical output makes either regression invisible without the counters
 			Assert.That(streamed.Writer.StreamedSinglePassRebuilds, Is.GreaterThan(0), "no rebuild took the single-pass fast path: it is dead or its fit accounting always aborts");
 			Assert.That(streamed.Writer.StreamedSinglePassRebuilds, Is.LessThan(streamed.Writer.StreamedLeafRebuilds), "every rebuild took the fast path, so the split fallback never ran and this workload no longer covers it");
+
+			// the strip site must stream too: strips happen on this workload (bucketed keys share prefixes),
+			// and a strip that silently kept materializing would be invisible in the byte comparison
+			Assert.That(streamed.Writer.PagesStripped, Is.GreaterThan(0), "the workload no longer strips any page, so the streamed strip is untested");
+			Assert.That(streamed.Writer.StreamedStrips, Is.GreaterThan(0), "no strip took the streaming path: the strip site is dead code under the toggle");
+
+			// internal rebuilds must stream too (every leaf split rebuilds its parent through RebuildInternal)
+			Assert.That(streamed.Writer.StreamedInternalRebuilds, Is.GreaterThan(0), "no internal rebuild took the streaming path: the RebuildInternal site is dead code under the toggle");
+			Assert.That(streamed.Writer.StreamedInternalSinglePass, Is.GreaterThan(0), "no internal rebuild completed in the fused single pass: the fast path is dead or always aborts");
 		}
 
 		[Test]
@@ -162,6 +171,10 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			var baseline = RunGiantCellWorkload(streaming: false);
 			var streamed = RunGiantCellWorkload(streaming: true);
 			AssertStoresIdentical(baseline, streamed);
+
+			// giant separators overflow internal pages, so this workload is what covers the internal SPLIT
+			// fallback; if every internal rebuild fit one page here, that coverage is gone
+			Assert.That(streamed.Writer.StreamedInternalRebuilds, Is.GreaterThan(streamed.Writer.StreamedInternalSinglePass), "every internal rebuild took the fast path, so the internal split fallback never ran and this workload no longer covers it");
 		}
 
 	}

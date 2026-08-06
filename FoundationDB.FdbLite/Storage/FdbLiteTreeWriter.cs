@@ -1522,6 +1522,21 @@ namespace FoundationDB.Storage.FdbLite
 				return 0;
 			}
 
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE: the fused single-page emit; its incremental accounting IS the strict-shrink guard
+			  // below, and an abort (would split) fails safely before any side effect, exactly like it
+				uint streamedId = TryStripStreamed(leafId, page);
+				if (streamedId == 0)
+				{
+					return 0;
+				}
+				this.PagesStripped++;
+				spliced = TrySpliceInto(streamedId, key, newCell);
+				return streamedId;
+			}
+#endif
+
 			var cells = ArrayPool<CellRef>.Shared.Rent(cellCount); // pooled: one entry per cell of a full page
 			uint rebuiltId;
 			try
@@ -1611,6 +1626,13 @@ namespace FoundationDB.Storage.FdbLite
 			var page = ReadPage(pageId);
 			int cellCount = FdbLitePageHeader.GetCellCount(page);
 			int inserted = childSiblings.Length;
+
+#if NET10_0_OR_GREATER
+			if (this.UseStreamingRebuild)
+			{ // PROTOTYPE: same rebuild without the materialized cell list or the per-sibling scratches
+				return RebuildInternalStreamed(pageId, page, cellCount, childIndex, childFirstId, childSiblings, raiseFollowingSeparator);
+			}
+#endif
 
 			// scratch for the patched cell and each inserted separator cell
 			byte[]? patchScratch = null;
