@@ -1415,6 +1415,12 @@ namespace FoundationDB.Storage.FdbLite
 			  // which the ascent hangs off the parent as a right sibling separated by this very key.
 				this.KeyCountDelta++;
 				this.PagesAppended++;
+#if NET10_0_OR_GREATER
+				if (this.UseStreamingRebuild)
+				{
+					return new(leafId, [ (Slice.FromBytes(key), WriteFreshSingleCellPage(in newCell)) ]);
+				}
+#endif
 				var fresh = WriteCells(0, isInternal: false, leftmostChild: 0, default, [ newCell ]);
 				Contract.Debug.Assert(!fresh.Split);
 				return new(leafId, [ (Slice.FromBytes(key), fresh.FirstId) ]);

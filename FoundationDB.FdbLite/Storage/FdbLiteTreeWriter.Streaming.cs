@@ -833,6 +833,26 @@ namespace FoundationDB.Storage.FdbLite
 			return id;
 		}
 
+		/// <summary>Streamed fresh single-cell page (the sequential-append shortcut): the run is one owned cell, and the page-size floor guarantees it fits.</summary>
+		private uint WriteFreshSingleCellPage(in CellRef cell, [CallerMemberName] string? caller = null)
+		{
+			int pageSize = this.Pager.Geometry.PageSize;
+			var scratch = ArrayPool<byte>.Shared.Rent(pageSize);
+			var keyScratch = ArrayPool<byte>.Shared.Rent(2 * FdbLiteTreePage.MaxKeyLength);
+			try
+			{
+				var source = new LeafInsertSource(default, in cell, insertAt: 0, replace: false, resultCount: 1);
+				uint id = TryWriteCellsSinglePage(0, default, source, sourcePrefixLength: 0, carriedEpisodes: 0, scratch.AsSpan(0, pageSize), keyScratch, fillCeiling: pageSize, out _, caller);
+				Contract.Debug.Assert(id != 0, "a single cell always fits a page (the page-size floor guarantees it)");
+				return id;
+			}
+			finally
+			{
+				ArrayPool<byte>.Shared.Return(scratch);
+				ArrayPool<byte>.Shared.Return(keyScratch);
+			}
+		}
+
 		/// <summary>Streamed variant of the strip rebuild: the fused single-page emit over the page's own cells. Returns 0 without side effects when the rebuilt run would not fit (the materialized guard's "fail safely" contract).</summary>
 		private uint TryStripStreamed(uint leafId, ReadOnlySpan<byte> page)
 		{
