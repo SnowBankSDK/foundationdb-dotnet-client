@@ -233,6 +233,7 @@ namespace FoundationDB.Storage.FdbLite
 				this.KeyCountDelta += run.Length;
 				// the boundary leaf is gone and every emitted page is new, so nothing the cursor remembers survives
 				this.CursorLeaf = 0;
+				this.AppendLeaf = 0;
 				return pages;
 			}
 			finally

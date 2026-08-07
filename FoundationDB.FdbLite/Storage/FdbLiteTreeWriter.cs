@@ -337,11 +337,33 @@ namespace FoundationDB.Storage.FdbLite
 
 		private ReadOnlySpan<byte> CursorUpper => this.CursorUpperLength < 0 ? default : this.CursorUpperBuffer.AsSpan(0, this.CursorUpperLength);
 
-		/// <summary>True when <paramref name="key"/> falls in the range the cached descent proved the cursor leaf covers.</summary>
-		private bool CursorCovers(ReadOnlySpan<byte> key)
-			=> this.CursorLeaf != 0
-			&& (this.CursorLowerLength < 0 || key.SequenceCompareTo(this.CursorLower) >= 0)
-			&& (this.CursorUpperLength < 0 || key.SequenceCompareTo(this.CursorUpper) < 0);
+		/// <summary>The APPEND-EDGE slot: the rightmost leaf, kept beside the roaming slot above so interior updates cannot evict the append cursor.</summary>
+		/// <remarks>
+		/// <para>The ledger shape (append a record, update a few recent ones) alternated between the edge leaf and window leaves, and with ONE slot each op stole the cursor from the next: the round-6 ledger leg measured 388k descents for 400k ops. The rightmost leaf's upper bound is unbounded by definition, so this slot carries no upper buffer.</para>
+		/// <para>Recorded by every descent that lands rightmost; follows its leaf's rebuild by id; cleared wherever the roaming slot is cleared.</para>
+		/// </remarks>
+		private uint AppendLeaf;
+
+		private byte[]? AppendLowerBuffer;
+
+		private int AppendLowerLength = -1;
+
+		/// <summary>The covered leaf that takes <paramref name="key"/> without a descent: the append edge first (append-heavy loads), then the roaming slot; 0 = neither covers it.</summary>
+		private uint CoveredLeaf(ReadOnlySpan<byte> key)
+		{
+			if (this.AppendLeaf != 0
+			 && (this.AppendLowerLength < 0 || key.SequenceCompareTo(this.AppendLowerBuffer.AsSpan(0, this.AppendLowerLength)) >= 0))
+			{
+				return this.AppendLeaf;
+			}
+			if (this.CursorLeaf != 0
+			 && (this.CursorLowerLength < 0 || key.SequenceCompareTo(this.CursorLower) >= 0)
+			 && (this.CursorUpperLength < 0 || key.SequenceCompareTo(this.CursorUpper) < 0))
+			{
+				return this.CursorLeaf;
+			}
+			return 0;
+		}
 
 		/// <summary>Outcome of rebuilding one page: the page (possibly relocated), plus right siblings when it split</summary>
 		private readonly record struct RebuildResult(uint FirstId, List<(Slice Separator, uint PageId)>? Siblings)
@@ -415,8 +437,8 @@ namespace FoundationDB.Storage.FdbLite
 			// EVERY insert - and the splice takes ~99.9% of a sorted load, so that was almost the whole cost.
 			if (this.Root != 0
 			 && value.Length <= this.Pager.Geometry.MaxInlineValueLength
-			 && CursorCovers(key)
-			 && TrySpliceInto(this.CursorLeaf, key, value, flags: 0))
+			 && CoveredLeaf(key) is var covered && covered != 0
+			 && TrySpliceInto(covered, key, value, flags: 0))
 			{
 				return;
 			}
@@ -485,10 +507,12 @@ namespace FoundationDB.Storage.FdbLite
 				this.CursorLeaf = this.Root;
 				this.CursorLowerLength = -1;
 				this.CursorUpperLength = -1;
+				this.AppendLeaf = this.Root;
+				this.AppendLowerLength = -1;
 				return;
 			}
 
-			if (CursorCovers(key) && TrySpliceInto(this.CursorLeaf, key, newCell))
+			if (CoveredLeaf(key) is var covered && covered != 0 && TrySpliceInto(covered, key, newCell))
 			{ // the last descent already proved this leaf takes this key, and its free area had room: no descent,
 			  // and no ancestor to patch, since the page neither moved nor split
 				return;
@@ -514,7 +538,9 @@ namespace FoundationDB.Storage.FdbLite
 
 			// the descent set the cursor on the leaf it landed on: a rebuild may have relocated that leaf (same
 			// keys, same range), a split invalidates the range outright
-			this.CursorLeaf = outcome.Split ? 0 : outcome.FirstId;
+			uint reseated = outcome.Split ? 0 : outcome.FirstId;
+			if (this.AppendLeaf == pageId) { this.AppendLeaf = reseated; }
+			this.CursorLeaf = reseated;
 		}
 
 		/// <summary>Walks from the root to the leaf covering <paramref name="key"/>, recording internal pages and child indexes, and positioning the writer's cursor on the leaf it reaches.</summary>
@@ -532,6 +558,15 @@ namespace FoundationDB.Storage.FdbLite
 					this.CursorLeaf = pageId;
 					this.CursorLowerLength = lowerLength;
 					this.CursorUpperLength = upperLength;
+					if (upperLength < 0)
+					{ // the rightmost leaf: record the append-edge slot too, so interior descents cannot evict it
+						this.AppendLeaf = pageId;
+						this.AppendLowerLength = lowerLength;
+						if (lowerLength > 0)
+						{
+							this.CursorLowerBuffer.AsSpan(0, lowerLength).CopyTo(GrowScratch(ref this.AppendLowerBuffer, lowerLength));
+						}
+					}
 					return pageId;
 				}
 				Contract.Debug.Assert(depth < MaxDepth);
@@ -626,7 +661,7 @@ namespace FoundationDB.Storage.FdbLite
 				return false;
 			}
 
-			if (CursorCovers(key) && TryRemoveInPlace(this.CursorLeaf, key, out bool removedInPlace))
+			if (CoveredLeaf(key) is var covered && covered != 0 && TryRemoveInPlace(covered, key, out bool removedInPlace))
 			{ // the last descent already proved this leaf covers this key, and the page is ours to edit: no
 			  // descent, no rebuild, and no ancestor to patch since the page neither moved nor changed range
 				return removedInPlace;
@@ -803,6 +838,7 @@ namespace FoundationDB.Storage.FdbLite
 				freed.Flush(this);
 				this.KeyCountDelta -= removed;
 				this.CursorLeaf = 0; // the drop and the parent rebuild below invalidate any covered-leaf claim
+				this.AppendLeaf = 0;
 
 				var outcome = RebuildInternalRemoveChildRun(parentId, parent, from, to);
 				AscendPatch(pathPages, pathChildren, level - 1, parentId, outcome);
@@ -987,6 +1023,7 @@ namespace FoundationDB.Storage.FdbLite
 			if (last - first == cellCount)
 			{ // the leaf empties: unlink it from its ancestors, and NO cursor survives that
 				this.CursorLeaf = 0;
+				this.AppendLeaf = 0;
 				FreePage(leafId);
 				if (depth == 0)
 				{
@@ -1012,7 +1049,9 @@ namespace FoundationDB.Storage.FdbLite
 			// descent that got us here already set the cursor's bounds. Only its id changed. Keeping the cursor
 			// is what lets the next delete in this batch take the in-place path instead of descending again -
 			// discarding it here meant the fast path could never engage twice in a row.
-			this.CursorLeaf = outcome.Split ? 0 : outcome.FirstId;
+			uint reseated = outcome.Split ? 0 : outcome.FirstId;
+			if (this.AppendLeaf == leafId) { this.AppendLeaf = reseated; }
+			this.CursorLeaf = reseated;
 		}
 
 		/// <summary>Removes the child at the deepest path level from its parent, cascading upward while parents empty out.</summary>
@@ -2296,6 +2335,7 @@ namespace FoundationDB.Storage.FdbLite
 
 			// leaf identities and ranges under this parent changed; the cursor must not survive that
 			this.CursorLeaf = 0;
+			this.AppendLeaf = 0;
 
 			return run.InputIds.Length - 1 - (merged.Siblings?.Count ?? 0);
 		}
@@ -2577,6 +2617,7 @@ namespace FoundationDB.Storage.FdbLite
 				run.JoinLevel, run.JoinSeparator);
 
 			this.CursorLeaf = 0;
+			this.AppendLeaf = 0;
 			int outputs = 1 + (merged.Siblings?.Count ?? 0);
 			return new(run.InputIds.Length, outputs, CrossedParentBoundary: true);
 		}
