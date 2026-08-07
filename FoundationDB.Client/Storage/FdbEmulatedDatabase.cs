@@ -32,25 +32,22 @@
 
 // ReSharper disable MemberHidesStaticFromOuterClass
 
-namespace FoundationDB.Testing
+namespace FoundationDB.Storage
 {
+	using System.Buffers.Binary;
 	using System.Runtime.InteropServices;
 	using FoundationDB.Client;
 	using FoundationDB.Client.Core;
 	using FoundationDB.Client.Native;
-	using FoundationDB.Storage;
-	using FoundationDB.FdbLite;
 	using SnowBank.Collections.CacheOblivious;
 	using SnowBank.Threading;
-	using static FoundationDB.Testing.FakeDbStore;
-	// the engine's key range (a pair of arena-interned keys) shares its name with the client's public Slice-pair range
-	using KeyRange = FoundationDB.Storage.KeyRange;
+	using static FoundationDB.Storage.FdbEmulatedDatabase;
 
 	/// <summary>Simulates a FoundationDB cluster running in-memory in the local process</summary>
 	/// <remarks>This emulator is currently <b>EXPERIMENTAL</b> and may not accurately reproduce the behavior of an actual fdb cluster, most notably due to the absence of network latency!</remarks>
 	[PublicAPI]
 	[DebuggerDisplay("Version={CurrentSnapshotUnsafe.Version}, Count={CurrentSnapshotUnsafe.Data.Count}")]
-	public class FakeDbStore : IFdbDatabaseHandler
+	public class FdbEmulatedDatabase : IFdbDatabaseHandler
 	{
 
 		[PublicAPI]
@@ -1326,18 +1323,9 @@ namespace FoundationDB.Testing
 		/// <remarks>The per-transaction <c>MaxRetryDelay</c> option, when set, only tightens this cap (it never enables the backoff).</remarks>
 		public TimeSpan RetryDelayMaximum { get; set; } = TimeSpan.Zero;
 
-		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null)
-			: this(CreateInMemoryBackend(), apiVersion, protocolVersion, initialVersion, time)
-		{ }
-
-		/// <summary>Builds the storage an emulator gets when nothing else is asked for: the engine over the heap, keeping every version.</summary>
-		/// <remarks>The in-memory emulator is a CONFIGURATION of the storage engine rather than a separate implementation of it, so the semantics a test relies on - read-your-writes, conflict detection, watches, versionstamps - are exercised over the same storage that a persistent store uses. Retaining every version is what keeps the whole published history inspectable, and costs unbounded growth, which is the right trade for a store that lives as long as a test.</remarks>
-		private static IFdbStorageBackend CreateInMemoryBackend()
-			=> new FdbLiteBackend(FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default)), disposeEngine: true, retainEveryVersion: true);
-
 		/// <summary>Opens a store over a given storage backend.</summary>
 		/// <remarks>The backend supplies the committed state, its durability and its retention window; everything else - read-your-writes, conflict detection, watches, versionstamps - is this class and is identical whichever backend is plugged in.</remarks>
-		protected FakeDbStore(IFdbStorageBackend backend, int apiVersion, int protocolVersion, long initialVersion, TimeProvider? time)
+		protected FdbEmulatedDatabase(IFdbStorageBackend backend, int apiVersion, int protocolVersion, long initialVersion, TimeProvider? time)
 		{
 			Contract.NotNull(backend);
 			if (protocolVersion < MIN_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be less than the minimum supported version");
@@ -1844,13 +1832,13 @@ namespace FoundationDB.Testing
 		public abstract class TransactionHandler
 		{
 
-			protected TransactionHandler(FakeDbStore store)
+			protected TransactionHandler(FdbEmulatedDatabase store)
 			{
 				this.Store = store;
 			}
 
 			/// <summary>Store this transaction runs against</summary>
-			public FakeDbStore Store { get; }
+			public FdbEmulatedDatabase Store { get; }
 
 			/// <summary>Returns the transaction's read-your-writes snapshot, waiting for it if it has not been started yet.</summary>
 			public abstract ReadYourWritesSnapshot GetSnapshotBlocking();
@@ -1869,7 +1857,7 @@ namespace FoundationDB.Testing
 			private readonly object Lock = new();
 #endif
 
-			public TransactionHandler(FakeDbStore store, FdbOperationContext context)
+			public TransactionHandler(FdbEmulatedDatabase store, FdbOperationContext context)
 				: base(store)
 			{
 				this.Context = context;
@@ -2969,7 +2957,7 @@ namespace FoundationDB.Testing
 						// realistic-but-virtual retry backoff: scheduled on the store's TimeProvider, so a fake clock
 						// advances it with everything else (and a real backoff costs ZERO real time under virtual time).
 						// The default policy is no wait (RetryDelayMaximum == 0), so normal tests retry instantly - a
-						// "broken cluster" test raises FakeDbStore.RetryDelayMaximum to emulate recovery timing.
+						// "broken cluster" test raises FdbEmulatedDatabase.RetryDelayMaximum to emulate recovery timing.
 						var maximum = this.Store.RetryDelayMaximum;
 						if (maximum > TimeSpan.Zero)
 						{
@@ -3396,21 +3384,21 @@ namespace FoundationDB.Testing
 		/// change but loses a net-reverted transient forever). By construction a deferred check only loses fires the contract already
 		/// permits losing, so buggify never makes the emulator contract-illegal.</para>
 		/// <para>Every outcome is a pure function of (seed, transaction schedule, virtual clock): <see cref="Chaos"/> draws are
-		/// deterministic hashes of the commit version and key, and <see cref="FireWatchesAfter"/> schedules on <see cref="FakeDbStore.Time"/>,
+		/// deterministic hashes of the commit version and key, and <see cref="FireWatchesAfter"/> schedules on <see cref="FdbEmulatedDatabase.Time"/>,
 		/// so a test driving a fake clock replays exactly.</para>
 		/// <para>The facet is created lazily and stays inert until used; the shipped emulator default is buggify-off (see the store's
-		/// <see cref="FakeDbStore.Buggify"/> property).</para>
+		/// <see cref="FdbEmulatedDatabase.Buggify"/> property).</para>
 		/// </remarks>
 		[PublicAPI]
 		public sealed class FakeDbBuggify
 		{
 
-			internal FakeDbBuggify(FakeDbStore store)
+			internal FakeDbBuggify(FdbEmulatedDatabase store)
 			{
 				this.Store = store;
 			}
 
-			private FakeDbStore Store { get; }
+			private FdbEmulatedDatabase Store { get; }
 
 			/// <summary>Per-key count of pending deferred watch checks (see <see cref="SuppressNextWatchCheck"/>), consumed by the commit-time trigger check.</summary>
 			private Dictionary<Slice, int>? Suppressions { get; set; }
@@ -3503,7 +3491,7 @@ namespace FoundationDB.Testing
 
 			/// <summary>Schedules a spurious fire of the watches on <paramref name="key"/> after <paramref name="delay"/> elapses on the store clock (the timed variant of <see cref="FireWatches"/>, BG-5).</summary>
 			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
-			/// <param name="delay">Delay measured on <see cref="FakeDbStore.Time"/>.</param>
+			/// <param name="delay">Delay measured on <see cref="FdbEmulatedDatabase.Time"/>.</param>
 			/// <remarks>Deterministic only when the store runs on an injectable clock (e.g. a <c>FakeTimeProvider</c>): the test advances
 			/// virtual time and the fire lands exactly then. Under the system clock it degrades to wall-clock timing, the same caveat as
 			/// the retry backoff - reproducible enough for a soak, not for a byte-exact replay.</remarks>
@@ -3906,11 +3894,11 @@ namespace FoundationDB.Testing
 	public static class FakeDbDebugger
 	{
 
-		public static ColaRangeDictionary<Key, Mutation> GetSnapshotMutations(FakeDbStore.ReadYourWritesSnapshot snapshot) => snapshot.Mutations;
+		public static ColaRangeDictionary<Key, Mutation> GetSnapshotMutations(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot) => snapshot.Mutations;
 
-		public static ColaRangeSet<Key> GetSnapshotReadConflicts(FakeDbStore.ReadYourWritesSnapshot snapshot) => snapshot.ReadConflicts;
+		public static ColaRangeSet<Key> GetSnapshotReadConflicts(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot) => snapshot.ReadConflicts;
 
-		public static ColaRangeSet<Key> GetSnapshotWriteConflicts(FakeDbStore.ReadYourWritesSnapshot snapshot) => snapshot.WriteConflicts;
+		public static ColaRangeSet<Key> GetSnapshotWriteConflicts(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot) => snapshot.WriteConflicts;
 
 	}
 

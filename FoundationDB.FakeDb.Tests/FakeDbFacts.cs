@@ -30,6 +30,7 @@
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 namespace FoundationDB.Testing.Tests
 {
+	using FoundationDB.FakeDb;
 	using System.Diagnostics;
 	using System.Text;
 	using FoundationDB.Client;
@@ -62,7 +63,7 @@ namespace FoundationDB.Testing.Tests
 		protected static void Log(ISubspaceLocation? location) => Log(location?.ToString() ?? "<null>");
 
 		[DebuggerNonUserCode]
-		protected void DumpStore(FakeDbStore store, string label)
+		protected void DumpStore(FdbEmulatedDatabase store, string label)
 		{
 			DumpStore(store.CurrentSnapshotUnsafe, label);
 		}

@@ -30,6 +30,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FakeDb;
+	using FoundationDB.Storage;
 	using FoundationDB.Testing;
 
 	/// <summary>Retry-loop conformance suite (db.ReadAsync / WriteAsync / ReadWriteAsync semantics), shared by every backend head below.</summary>

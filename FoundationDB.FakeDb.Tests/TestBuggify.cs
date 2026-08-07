@@ -26,6 +26,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FakeDb;
+	using FoundationDB.Storage;
 	using FoundationDB.Testing;
 
 	/// <summary>Repo test-harness policy for FakeDb watch buggify: the repo's own harness backends are watch-realistic BY DEFAULT.</summary>

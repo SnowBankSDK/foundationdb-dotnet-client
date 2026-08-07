@@ -26,6 +26,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FakeDb;
+	using FoundationDB.Storage;
 	using FoundationDB.Testing;
 
 	/// <summary>Runs a corpus scenario on both backends live (real Testcontainers cluster and FakeDb) and diffs the two traces directly, without goldens.</summary>

@@ -27,6 +27,7 @@
 // ReSharper disable AccessToDisposedClosure
 namespace FoundationDB.Testing.Tests
 {
+	using FoundationDB.FakeDb;
 	using FoundationDB.Client;
 	using FoundationDB.Storage;
 	using Microsoft.Extensions.Time.Testing;

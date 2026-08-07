@@ -26,6 +26,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FakeDb;
+	using FoundationDB.Storage;
 	using FoundationDB.Testing;
 
 	/// <summary>Reusable FakeDb backend for a dual-backend layer fixture. A concrete <c>Xxx</c><c>FakeDbFacts</c> subclass holds

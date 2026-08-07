@@ -26,6 +26,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FakeDb;
+	using FoundationDB.Storage;
 	using FoundationDB.Testing;
 
 	/// <summary>Minimal conformance fixture used to validate the dual-backend plumbing itself.</summary>

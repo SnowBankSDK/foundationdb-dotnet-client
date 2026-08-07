@@ -26,6 +26,7 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FakeDb;
 	using FoundationDB.Storage;
 	using FoundationDB.FdbLite;
 	using FoundationDB.Testing;
@@ -44,7 +45,7 @@ namespace FoundationDB.Client.Tests
 
 		/// <summary>Runs the whole inspection surface over a store, whatever its storage.</summary>
 		/// <remarks>The database is opened here and stays open for the whole verification: a persistent store's snapshots read through its pager, which the database owns.</remarks>
-		private async Task VerifyInspectionSurfaceAsync(FakeDbStore store)
+		private async Task VerifyInspectionSurfaceAsync(FdbEmulatedDatabase store)
 		{
 			using var db = store.OpenDatabase(FdbPath.Root, readOnly: false);
 

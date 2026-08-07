@@ -26,12 +26,13 @@
 
 namespace FoundationDB.FdbLite
 {
+	using FoundationDB.FakeDb;
 	using FoundationDB.Storage;
 	using FoundationDB.Testing;
 
 	/// <summary>A store over the memory-mapped engine: the shared emulator (transaction machinery, watches, conflict checking) with <see cref="FdbLiteBackend"/> as its storage instead of the in-memory one.</summary>
 	/// <remarks>This type is only the opening surface: it chooses the backend and nothing else. Every behaviour difference against an in-memory store is described on <see cref="FdbLiteBackend"/>.</remarks>
-	public class FdbLiteStore : FakeDbStore
+	public class FdbLiteStore : FdbEmulatedDatabase
 	{
 
 		public FdbLiteStore(FdbLiteEngine engine, int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null, bool disposeEngine = true, bool retainEveryVersion = false)

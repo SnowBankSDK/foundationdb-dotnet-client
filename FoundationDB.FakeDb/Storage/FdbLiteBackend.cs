@@ -98,8 +98,8 @@ namespace FoundationDB.FdbLite
 		}
 
 		/// <inheritdoc />
-		public IFdbTransactionHandler CreateTransaction(FakeDbStore store, FdbOperationContext context)
-			=> new FakeDbStore.TransactionHandler<FdbLiteCommittedCursor>(store, context);
+		public IFdbTransactionHandler CreateTransaction(FdbEmulatedDatabase store, FdbOperationContext context)
+			=> new FdbEmulatedDatabase.TransactionHandler<FdbLiteCommittedCursor>(store, context);
 
 		/// <inheritdoc />
 		public IFdbCommittedStore Publish(IFdbCommittedStore committed, long commitVersion)

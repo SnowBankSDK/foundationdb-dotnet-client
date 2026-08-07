@@ -28,11 +28,10 @@ namespace FoundationDB.Storage
 {
 	using FoundationDB.Client;
 	using FoundationDB.Client.Core;
-	using FoundationDB.Testing;
 
 	/// <summary>The storage under a store: what its committed state is made of, how a committed generation becomes durable, and how long a published version stays readable.</summary>
 	/// <remarks>
-	/// <para>Everything a backend does NOT decide is the shared engine: read-your-writes resolution, conflict detection, atomic mutation arithmetic, watches, versionstamps and the whole transaction lifetime all live in <see cref="FakeDbStore"/> and run identically over every backend. That split is the point - the subtle semantics are written once, and a storage change cannot silently fork them.</para>
+	/// <para>Everything a backend does NOT decide is the shared engine: read-your-writes resolution, conflict detection, atomic mutation arithmetic, watches, versionstamps and the whole transaction lifetime all live in <see cref="FdbEmulatedDatabase"/> and run identically over every backend. That split is the point - the subtle semantics are written once, and a storage change cannot silently fork them.</para>
 	/// <para>The store calls <see cref="CreateInitialSnapshot"/> once from its constructor, and <see cref="Publish"/> under its global WRITE lock. <see cref="Pin"/> and <see cref="Release"/> are called by concurrent readers and must be thread-safe.</para>
 	/// </remarks>
 	public interface IFdbStorageBackend : IDisposable
@@ -44,7 +43,7 @@ namespace FoundationDB.Storage
 
 		/// <summary>Opens a transaction handler monomorphized over this backend's cursor type.</summary>
 		/// <remarks>The handler is generic over the cursor so the JIT stamps a dedicated copy per backend and inlines the per-key seam calls in the scan loops. Only the backend knows which concrete cursor closes that generic, which is why this is its job rather than the store's.</remarks>
-		IFdbTransactionHandler CreateTransaction(FakeDbStore store, FdbOperationContext context);
+		IFdbTransactionHandler CreateTransaction(FdbEmulatedDatabase store, FdbOperationContext context);
 
 		/// <summary>Makes a committed generation durable, and returns the committed store the published snapshot reads through.</summary>
 		/// <remarks>A persistent backend flushes here and hands back a readable re-wrap at the new durable root; a backend whose committed state IS the published state returns <paramref name="committed"/> unchanged.</remarks>
