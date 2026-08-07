@@ -72,6 +72,12 @@ namespace FoundationDB.Storage
 		/// <summary>Creates a mutable copy that can be published as the next snapshot</summary>
 		IFdbCommittedStore Copy();
 
+		/// <summary>Releases an UNCOMMITTED copy produced by <see cref="Copy"/> without publishing it.</summary>
+		/// <remarks>A persistent backend rolls its writable generation back (allocations, buffered pages, recorded frees) and releases the single-writer slot; the in-memory store has nothing to release, which is this default. EVERY path that drops a copy without publishing it must call this: a conflicted commit, a failed mutation replay, chaos injection.</remarks>
+		void Discard()
+		{
+		}
+
 		/// <summary>Removes a key</summary>
 		bool Remove(Key key);
 

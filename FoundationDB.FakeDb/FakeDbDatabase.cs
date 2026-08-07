@@ -1062,198 +1062,208 @@ namespace FoundationDB.Testing
 
 				var prevData = snapshot.Data;
 				var newData = prevData.Copy();
-
-				var arena = snapshot.Arena;
-
-				if (this.WriteConflicts.Count > 0)
+				try
 				{
-					conflicts = conflicts.Copy();
-					foreach (var x in this.WriteConflicts)
+
+					var arena = snapshot.Arena;
+
+					if (this.WriteConflicts.Count > 0)
 					{
-						conflicts.Mark(arena.InternKey(x.Begin), arena.InternKey(x.End), commitVersion);
-					}
-				}
-
-				var stamp = MakeVersionStamp(commitVersion, 0);
-				Kenobi($"$ #{this.Id} apply trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}");
-
-				// a versionstamped KEY whose placeholder sat inside a clear-range submitted EARLIER in this same
-				// transaction: the clear was split around the placeholder position, but completing the stamp moves
-				// the key to its final slot, which can land in a remainder of that very clear. Since the clear was
-				// submitted first, the later stamped write must survive it - so defer these completions until after
-				// every clear-range has been applied, out of reach of the remainders. (versionstamp fuzz FDBV-034)
-				List<(Key Key, Value Value)>? deferredStampedKeys = null;
-
-				foreach (var entry in this.Mutations.IterateOrdered())
-				{
-					var mutation = entry.Value!;
-
-					if (mutation.IsKv())
-					{
-						if (mutation.Parameter.IsNull)
-						{ // clear
-							Kenobi($"$$ #{this.Id} clear {entry.Begin:K}");
-							newData.Remove(entry.Begin);
+						conflicts = conflicts.Copy();
+						foreach (var x in this.WriteConflicts)
+						{
+							conflicts.Mark(arena.InternKey(x.Begin), arena.InternKey(x.End), commitVersion);
 						}
-						else
-						{ // set
-							// try to reuse previous key
-							Key k;
-							if (newData.TryGetKeyValue(entry.Begin, out var kv))
-							{
-								if (kv.Value.Equals(mutation.Parameter))
-								{ // value hasn't changed!
-									continue;
+					}
+
+					var stamp = MakeVersionStamp(commitVersion, 0);
+					Kenobi($"$ #{this.Id} apply trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}");
+
+					// a versionstamped KEY whose placeholder sat inside a clear-range submitted EARLIER in this same
+					// transaction: the clear was split around the placeholder position, but completing the stamp moves
+					// the key to its final slot, which can land in a remainder of that very clear. Since the clear was
+					// submitted first, the later stamped write must survive it - so defer these completions until after
+					// every clear-range has been applied, out of reach of the remainders. (versionstamp fuzz FDBV-034)
+					List<(Key Key, Value Value)>? deferredStampedKeys = null;
+
+					foreach (var entry in this.Mutations.IterateOrdered())
+					{
+						var mutation = entry.Value!;
+
+						if (mutation.IsKv())
+						{
+							if (mutation.Parameter.IsNull)
+							{ // clear
+								Kenobi($"$$ #{this.Id} clear {entry.Begin:K}");
+								newData.Remove(entry.Begin);
+							}
+							else
+							{ // set
+								// try to reuse previous key
+								Key k;
+								if (newData.TryGetKeyValue(entry.Begin, out var kv))
+								{
+									if (kv.Value.Equals(mutation.Parameter))
+									{ // value hasn't changed!
+										continue;
+									}
+									k = kv.Key;
 								}
-								k = kv.Key;
+								else
+								{
+									k = arena.InternKey(entry.Begin);
+								}
+
+								var v = arena.InternValue(mutation.Parameter);
+								Kenobi($"$$ #{this.Id} set {k:K} = {v:V}");
+								newData[k] = v;
+							}
+						}
+						else if (mutation.IsRange())
+						{
+							var range = arena.InternKeyRange(entry.Begin, entry.End);
+							Kenobi($"$$ #{this.Id} clearRange {range}");
+
+							_ = newData.RemoveRange(range.Begin, range.End);
+						}
+						else if (mutation.IsAtomic())
+						{
+							if (mutation.Op is (Operation.Set or Operation.Clear)
+							 || !newData.TryGetKeyValue(entry.Begin, out var kv))
+							{
+								kv = new(
+									arena.InternKey(entry.Begin),
+									default
+								);
+							}
+
+							Kenobi($"$$ #{this.Id} atomic {mutation}");
+
+							// apply the WHOLE chain in submission order (api 520+ stamp semantics): a stamped KEY
+							// materializes immediately against the commit stamp (identical placeholders complete to the
+							// same key, so the last submitted wins, like any other mutation), a stamped VALUE completes
+							// into the running value, and everything else coalesces on top. The overlay key of a stamped
+							// KEY (placeholder + offset suffix) is synthetic and never lands in the committed data; the
+							// only non-stamped links such a chain can carry are Clear anchors from a covering range wipe.
+							var value = kv.Value;
+							bool stampedKey = false;
+							// the head op tells us whether this chain was anchored by a clear submitted earlier (a covered
+							// wipe): only those completions need deferring past the clear-range remainders (see the preamble)
+							bool clearHeaded = mutation.Op is Operation.Clear or Operation.ClearRange;
+							Key stampedKeyDst = default;
+							Value stampedKeyVal = default;
+							do
+							{
+								switch (mutation.Op)
+								{
+									case Operation.VersionStampedKey:
+									{
+										// offset in last 32 bits of the overlay key
+										int len = kv.Key.Count - 4;
+										if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedKey");
+										int offset = kv.Key.Slice.Substring(len).ToInt32();
+
+										var tmp = arena.AllocateKey(len);
+										kv.Key.Span[..^4].CopyTo(tmp.UnsafeSpan);
+										stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
+
+										// last identical placeholder wins; the actual store happens after the walk (below)
+										stampedKeyDst = tmp;
+										stampedKeyVal = arena.InternValue(mutation.Parameter);
+										stampedKey = true;
+										break;
+									}
+
+									case Operation.VersionStampedValue:
+									{
+										// offset in last 32 bits of the parameter
+										int len = mutation.Parameter.Count - 4;
+										if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedValue");
+										int offset = mutation.Parameter.Slice.Substring(len).ToInt32();
+
+										var tmp = arena.AllocateValue(len);
+										mutation.Parameter.Span[..^4].CopyTo(tmp.UnsafeSpan);
+										stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
+
+										value = tmp;
+										break;
+									}
+
+									default:
+									{
+										value = CoalesceAtomic(arena, value, mutation);
+										break;
+									}
+								}
+								mutation = mutation.Next;
+							}
+							while (mutation != null);
+
+							if (stampedKey)
+							{
+								// the synthetic overlay key never lands; only the completed key does. If this chain was
+								// anchored by an earlier clear (a covered wipe), that clear was split around the placeholder
+								// and its remainders are still to be applied below - defer the completed key past them so a
+								// remainder cannot re-wipe the relocated slot (FDBV-034). Uncovered stamped keys land now.
+								if (clearHeaded)
+								{
+									(deferredStampedKeys ??= new()).Add((stampedKeyDst, stampedKeyVal));
+								}
+								else
+								{
+									newData[stampedKeyDst] = stampedKeyVal;
+								}
+							}
+							else if (value.IsNull)
+							{
+								newData.Remove(kv.Key);
 							}
 							else
 							{
-								k = arena.InternKey(entry.Begin);
+								// the coalesced value can be a passthrough of a chain anchor's Parameter (backed by
+								// the transaction's recyclable arena): intern it before it becomes committed state
+								newData[kv.Key] = arena.InternValue(value);
 							}
+						}
+						else
+						{
+							throw new NotSupportedException();
+						}
+					}
 
-							var v = arena.InternValue(mutation.Parameter);
-							Kenobi($"$$ #{this.Id} set {k:K} = {v:V}");
+					// completed stamped keys that were covered by an earlier clear land now, after every clear-range
+					// remainder has been applied - so a remainder split off the covering wipe cannot re-wipe them (FDBV-034)
+					if (deferredStampedKeys != null)
+					{
+						foreach (var (k, v) in deferredStampedKeys)
+						{
 							newData[k] = v;
 						}
 					}
-					else if (mutation.IsRange())
+
+					Kenobi($"$ committed trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}: {prevData.Count:N0} keys => {newData.Count:N0} keys");
+
+	#if CHECK_INVARIANTS
+					// invariant checks: all keys & values are using the snapshot's arena (or null)
+					foreach (var kv in newData.IterateOrdered())
 					{
-						var range = arena.InternKeyRange(entry.Begin, entry.End);
-						Kenobi($"$$ #{this.Id} clearRange {range}");
-
-						_ = newData.RemoveRange(range.Begin, range.End);
+						if (kv.Key.Arena != arena & kv.Key.Arena != null) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' uses an unexpected arena!");
+						if (kv.Key.IsNull) throw new InvalidOperationException("Invariant broken: illegal 'null' key!");
+						if (kv.Value.Arena != arena && kv.Value.Arena != null) throw new InvalidOperationException($"Invariant broken: value '{kv.Value}' (of key '{kv.Key}') uses an unexpected arena!");
+						if (kv.Value.IsNull) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' as illegal null value!");
 					}
-					else if (mutation.IsAtomic())
-					{
-						if (mutation.Op is (Operation.Set or Operation.Clear)
-						 || !newData.TryGetKeyValue(entry.Begin, out var kv))
-						{
-							kv = new(
-								arena.InternKey(entry.Begin),
-								default
-							);
-						}
+	#endif
 
-						Kenobi($"$$ #{this.Id} atomic {mutation}");
-
-						// apply the WHOLE chain in submission order (api 520+ stamp semantics): a stamped KEY
-						// materializes immediately against the commit stamp (identical placeholders complete to the
-						// same key, so the last submitted wins, like any other mutation), a stamped VALUE completes
-						// into the running value, and everything else coalesces on top. The overlay key of a stamped
-						// KEY (placeholder + offset suffix) is synthetic and never lands in the committed data; the
-						// only non-stamped links such a chain can carry are Clear anchors from a covering range wipe.
-						var value = kv.Value;
-						bool stampedKey = false;
-						// the head op tells us whether this chain was anchored by a clear submitted earlier (a covered
-						// wipe): only those completions need deferring past the clear-range remainders (see the preamble)
-						bool clearHeaded = mutation.Op is Operation.Clear or Operation.ClearRange;
-						Key stampedKeyDst = default;
-						Value stampedKeyVal = default;
-						do
-						{
-							switch (mutation.Op)
-							{
-								case Operation.VersionStampedKey:
-								{
-									// offset in last 32 bits of the overlay key
-									int len = kv.Key.Count - 4;
-									if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedKey");
-									int offset = kv.Key.Slice.Substring(len).ToInt32();
-
-									var tmp = arena.AllocateKey(len);
-									kv.Key.Span[..^4].CopyTo(tmp.UnsafeSpan);
-									stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
-
-									// last identical placeholder wins; the actual store happens after the walk (below)
-									stampedKeyDst = tmp;
-									stampedKeyVal = arena.InternValue(mutation.Parameter);
-									stampedKey = true;
-									break;
-								}
-
-								case Operation.VersionStampedValue:
-								{
-									// offset in last 32 bits of the parameter
-									int len = mutation.Parameter.Count - 4;
-									if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedValue");
-									int offset = mutation.Parameter.Slice.Substring(len).ToInt32();
-
-									var tmp = arena.AllocateValue(len);
-									mutation.Parameter.Span[..^4].CopyTo(tmp.UnsafeSpan);
-									stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
-
-									value = tmp;
-									break;
-								}
-
-								default:
-								{
-									value = CoalesceAtomic(arena, value, mutation);
-									break;
-								}
-							}
-							mutation = mutation.Next;
-						}
-						while (mutation != null);
-
-						if (stampedKey)
-						{
-							// the synthetic overlay key never lands; only the completed key does. If this chain was
-							// anchored by an earlier clear (a covered wipe), that clear was split around the placeholder
-							// and its remainders are still to be applied below - defer the completed key past them so a
-							// remainder cannot re-wipe the relocated slot (FDBV-034). Uncovered stamped keys land now.
-							if (clearHeaded)
-							{
-								(deferredStampedKeys ??= new()).Add((stampedKeyDst, stampedKeyVal));
-							}
-							else
-							{
-								newData[stampedKeyDst] = stampedKeyVal;
-							}
-						}
-						else if (value.IsNull)
-						{
-							newData.Remove(kv.Key);
-						}
-						else
-						{
-							// the coalesced value can be a passthrough of a chain anchor's Parameter (backed by
-							// the transaction's recyclable arena): intern it before it becomes committed state
-							newData[kv.Key] = arena.InternValue(value);
-						}
-					}
-					else
-					{
-						throw new NotSupportedException();
-					}
+					var updated = new Snapshot(commitVersion, newData, conflicts, stamp, arena);
+					return (updated, stamp);
 				}
-
-				// completed stamped keys that were covered by an earlier clear land now, after every clear-range
-				// remainder has been applied - so a remainder split off the covering wipe cannot re-wipe them (FDBV-034)
-				if (deferredStampedKeys != null)
+				catch
 				{
-					foreach (var (k, v) in deferredStampedKeys)
-					{
-						newData[k] = v;
-					}
+					// a copy that will never publish must not leak its backend generation (with the fdblite
+					// backend, an abandoned engine writer whose allocations roll back); no-op for in-memory data
+					newData.Discard();
+					throw;
 				}
-
-				Kenobi($"$ committed trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}: {prevData.Count:N0} keys => {newData.Count:N0} keys");
-
-#if CHECK_INVARIANTS
-				// invariant checks: all keys & values are using the snapshot's arena (or null)
-				foreach (var kv in newData.IterateOrdered())
-				{
-					if (kv.Key.Arena != arena & kv.Key.Arena != null) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' uses an unexpected arena!");
-					if (kv.Key.IsNull) throw new InvalidOperationException("Invariant broken: illegal 'null' key!");
-					if (kv.Value.Arena != arena && kv.Value.Arena != null) throw new InvalidOperationException($"Invariant broken: value '{kv.Value}' (of key '{kv.Key}') uses an unexpected arena!");
-					if (kv.Value.IsNull) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' as illegal null value!");
-				}
-#endif
-
-				var updated = new Snapshot(commitVersion, newData, conflicts, stamp, arena);
-				return (updated, stamp);
 			}
 
 		}
@@ -1583,157 +1593,168 @@ namespace FoundationDB.Testing
 					updated = null;
 					stamp = default;
 				}
-				Contract.Debug.Assert(snapshot != null && snapshot.Version <= rv);
-
-				using (this.GlobalLock.GetWriteLock())
+				try
 				{
-					ct.ThrowIfCancellationRequested();
+					Contract.Debug.Assert(snapshot != null && snapshot.Version <= rv);
 
-					// keys for watches that have completely triggered in this commit, and should be removed from the active list
-					List<Slice>? deadWatchedKeys = null;
-
-					// buggify: keys whose watch check is deferred (skipped) this commit, so one manual suppression is consumed at most once across the arm branch and the post-commit scan
-					HashSet<Slice>? buggifyDecided = null;
-
-					if (updated != null)
+					using (this.GlobalLock.GetWriteLock())
 					{
-						updated = PublishSnapshot(updated, commitVersion);
-					}
+						ct.ThrowIfCancellationRequested();
 
-					if (handler.Watches != null)
-					{ // the transaction has some watches to add
+						// keys for watches that have completely triggered in this commit, and should be removed from the active list
+						List<Slice>? deadWatchedKeys = null;
 
-						var source = updated ?? ((snapshot.Version < current.Version) ? current : null);
+						// buggify: keys whose watch check is deferred (skipped) this commit, so one manual suppression is consumed at most once across the arm branch and the post-commit scan
+						HashSet<Slice>? buggifyDecided = null;
 
-						foreach (var w in handler.Watches)
+						if (updated != null)
 						{
-							// set the version of the watch
-							w.ReadVersion = snapshot.Version;
-							w.CommitVersion = commitVersion;
-
-							// the watch value _may_ already have changed
-							if (source != null)
-							{
-								var updatedValue = source.Read(new(w.Key));
-								if (!updatedValue.Slice.Equals(w.Value))
-								{ // it was changed in between the creation of the watch and the commit!
-									if (this.BuggifyState is null || !this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
-									{
-										// queue the watch for triggering
-										(watchesToTrigger ??= [ ]).Add(w);
-										continue;
-									}
-									// buggify: deferred check - fall through and register the node with its original baseline (a later real change self-heals it)
-								}
-								// it is still active
-							}
-
-#if NET6_0_OR_GREATER
-							ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.ActiveWatches, w.Key, out var exists);
-							if (!exists)
-							{
-								slot = [ w ];
-							}
-							else
-							{
-								slot!.Add(w);
-							}
-#else
-							// CollectionsMarshal.GetValueRefOrAddDefault is not available: use a regular lookup + insert (which pays for two hash lookups instead of one)
-							if (!this.ActiveWatches.TryGetValue(w.Key, out var slot))
-							{
-								this.ActiveWatches[w.Key] = [ w ];
-							}
-							else
-							{
-								slot.Add(w);
-							}
-#endif
-							Kenobi($"WWW watching key {w.Key} at rv {w.ReadVersion} and cv {w.CommitVersion}");
+							updated = PublishSnapshot(updated, commitVersion);
 						}
 
-						// the store now owns these nodes (registered or queued to trigger): whatever remains on the
-						// handler at dispose/reset/failed-commit time is an unarmed watch and must be failed
-						handler.Watches = null;
-					}
+						if (handler.Watches != null)
+						{ // the transaction has some watches to add
 
-					if (updated != null)
-					{
-						// look for all active watches and check them against the new write conflict map
-						foreach (var kv in this.ActiveWatches)
-						{
-							var ver = updated.Conflicts.GetValueOrDefault(new(kv.Key), 0);
-							Kenobi($"WWW checking watch key {kv.Key} for version {ver} (at rv {snapshot.Version} and cv {commitVersion})");
+							var source = updated ?? ((snapshot.Version < current.Version) ? current : null);
 
-							for (int i = 0; i < kv.Value.Count; i++)
+							foreach (var w in handler.Watches)
 							{
-								var w = kv.Value[i];
-								if (ver > w.ReadVersion)
+								// set the version of the watch
+								w.ReadVersion = snapshot.Version;
+								w.CommitVersion = commitVersion;
+
+								// the watch value _may_ already have changed
+								if (source != null)
 								{
-									// we have to check if the value has changed!
-									var updatedValue = updated.Read(new(w.Key));
-									if (!w.Value.Equals(updatedValue.Slice))
-									{
-										if (this.BuggifyState is not null && this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
-										{ // buggify: the deferred check leaves the node registered with its ORIGINAL baseline and read version, so a later commit still differing from the baseline fires it (self-heal), and only a net-reverted change stays pending
-											Kenobi($"WWW watch({w.Key}) check deferred by buggify at commit {commitVersion}");
+									var updatedValue = source.Read(new(w.Key));
+									if (!updatedValue.Slice.Equals(w.Value))
+									{ // it was changed in between the creation of the watch and the commit!
+										if (this.BuggifyState is null || !this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
+										{
+											// queue the watch for triggering
+											(watchesToTrigger ??= [ ]).Add(w);
 											continue;
 										}
-
-										Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) triggered by commit {commitVersion}, changed to {updatedValue} from {w.Value}");
-
-										// queue the watch for triggering
-										(watchesToTrigger ??= [ ]).Add(w);
-
-										// remove it from this key
-										kv.Value.RemoveAt(i);
-										--i;
+										// buggify: deferred check - fall through and register the node with its original baseline (a later real change self-heals it)
 									}
-									else
-									{
-										Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) idempotent");
-									}
+									// it is still active
+								}
+
+	#if NET6_0_OR_GREATER
+								ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.ActiveWatches, w.Key, out var exists);
+								if (!exists)
+								{
+									slot = [ w ];
 								}
 								else
 								{
-									Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) untouched");
+									slot!.Add(w);
+								}
+	#else
+								// CollectionsMarshal.GetValueRefOrAddDefault is not available: use a regular lookup + insert (which pays for two hash lookups instead of one)
+								if (!this.ActiveWatches.TryGetValue(w.Key, out var slot))
+								{
+									this.ActiveWatches[w.Key] = [ w ];
+								}
+								else
+								{
+									slot.Add(w);
+								}
+	#endif
+								Kenobi($"WWW watching key {w.Key} at rv {w.ReadVersion} and cv {w.CommitVersion}");
+							}
+
+							// the store now owns these nodes (registered or queued to trigger): whatever remains on the
+							// handler at dispose/reset/failed-commit time is an unarmed watch and must be failed
+							handler.Watches = null;
+						}
+
+						if (updated != null)
+						{
+							// look for all active watches and check them against the new write conflict map
+							foreach (var kv in this.ActiveWatches)
+							{
+								var ver = updated.Conflicts.GetValueOrDefault(new(kv.Key), 0);
+								Kenobi($"WWW checking watch key {kv.Key} for version {ver} (at rv {snapshot.Version} and cv {commitVersion})");
+
+								for (int i = 0; i < kv.Value.Count; i++)
+								{
+									var w = kv.Value[i];
+									if (ver > w.ReadVersion)
+									{
+										// we have to check if the value has changed!
+										var updatedValue = updated.Read(new(w.Key));
+										if (!w.Value.Equals(updatedValue.Slice))
+										{
+											if (this.BuggifyState is not null && this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
+											{ // buggify: the deferred check leaves the node registered with its ORIGINAL baseline and read version, so a later commit still differing from the baseline fires it (self-heal), and only a net-reverted change stays pending
+												Kenobi($"WWW watch({w.Key}) check deferred by buggify at commit {commitVersion}");
+												continue;
+											}
+
+											Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) triggered by commit {commitVersion}, changed to {updatedValue} from {w.Value}");
+
+											// queue the watch for triggering
+											(watchesToTrigger ??= [ ]).Add(w);
+
+											// remove it from this key
+											kv.Value.RemoveAt(i);
+											--i;
+										}
+										else
+										{
+											Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) idempotent");
+										}
+									}
+									else
+									{
+										Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) untouched");
+									}
+								}
+
+								if (kv.Value.Count == 0)
+								{
+									(deadWatchedKeys ??= [ ]).Add(kv.Key);
 								}
 							}
 
-							if (kv.Value.Count == 0)
+							if (deadWatchedKeys != null)
 							{
-								(deadWatchedKeys ??= [ ]).Add(kv.Key);
-							}
-						}
-
-						if (deadWatchedKeys != null)
-						{
-							foreach (var k in deadWatchedKeys)
-							{
-								Kenobi($"WWW clearing dead watch key {k:K}");
-								this.ActiveWatches.Remove(k);
+								foreach (var k in deadWatchedKeys)
+								{
+									Kenobi($"WWW clearing dead watch key {k:K}");
+									this.ActiveWatches.Remove(k);
+								}
 							}
 						}
 					}
-				}
 
-				if (stamp != default)
-				{
-					handler.StampSignal?.TrySetResult(stamp);
-				}
-
-				// buggify: after arming and the commit-time scan, chaos may inject a spurious fire on one armed key (no-op unless Buggify.Chaos is set)
-				this.BuggifyState?.MaybeInjectSpuriousFire(commitVersion, ref watchesToTrigger);
-
-				if (watchesToTrigger is not null)
-				{
-					foreach (var watch in watchesToTrigger)
+					if (stamp != default)
 					{
-						watch.Trigger();
+						handler.StampSignal?.TrySetResult(stamp);
 					}
-				}
 
-				return commitVersion;
+					// buggify: after arming and the commit-time scan, chaos may inject a spurious fire on one armed key (no-op unless Buggify.Chaos is set)
+					this.BuggifyState?.MaybeInjectSpuriousFire(commitVersion, ref watchesToTrigger);
+
+					if (watchesToTrigger is not null)
+					{
+						foreach (var watch in watchesToTrigger)
+						{
+							watch.Trigger();
+						}
+					}
+
+					return commitVersion;
+				}
+				catch
+				{
+					// a prepared copy that never published must not leak its backend generation (with the
+					// fdblite backend, an engine writer); Discard is commit-aware, so reaching here AFTER a
+					// successful publish is a no-op on the frozen store
+					updated?.Data.Discard();
+					throw;
+				}
 			}
 
 		}

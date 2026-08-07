@@ -396,11 +396,101 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>The current commit-cost EMA the adaptive budget is a fraction of (zero until the first commit)</summary>
 		public TimeSpan CommitDurationEma => Stopwatch.GetElapsedTime(0, (long) this.CommitEmaStopwatchTicks);
 
+		/// <summary>The one uncommitted writer, when a write is in flight: the guard that turns a second <see cref="BeginWrite"/>, a foreign <see cref="Commit"/>, or a leaked writer from silent shared-state corruption into a loud exception.</summary>
+		private FdbLiteTreeWriter? ActiveWriter;
+
 		/// <summary>Starts the writable generation (exactly one at a time; commit or abandon it before starting another).</summary>
-		public FdbLiteTreeWriter BeginWrite() => new(this.Pager, this.Allocator, this.Durable.Generation + 1, this.Durable.RootPageId, this.PageBufferPool)
+		/// <remarks>The RAW primitive: the caller owns the cleanup, and a writer that is neither committed nor abandoned blocks the engine and leaks its allocations. Prefer <see cref="Write()"/> (a disposable transaction) or the handler forms of <see cref="Write(ulong, Action{FdbLiteTreeWriter})"/>, which cannot leak.</remarks>
+		public FdbLiteTreeWriter BeginWrite()
 		{
-			AvoidSequentialAppendSplits = this.AvoidSequentialAppendSplits,
-		};
+			if (this.ActiveWriter is not null)
+			{
+				throw new InvalidOperationException("A write is already in flight: the engine is single-writer, and the previous writer was neither committed nor abandoned.");
+			}
+			var writer = new FdbLiteTreeWriter(this.Pager, this.Allocator, this.Durable.Generation + 1, this.Durable.RootPageId, this.PageBufferPool)
+			{
+				AvoidSequentialAppendSplits = this.AvoidSequentialAppendSplits,
+			};
+			this.ActiveWriter = writer;
+			return writer;
+		}
+
+		/// <summary>Rolls back an uncommitted writer: its buffered pages, its allocations, and the frees it recorded all revert, and the engine accepts a new writer.</summary>
+		public void Abandon(FdbLiteTreeWriter writer)
+		{
+			Contract.NotNull(writer);
+			Contract.Requires(ReferenceEquals(writer, this.ActiveWriter), "not the writer in flight");
+			TryAbandon(writer);
+		}
+
+		/// <summary>Abandons <paramref name="writer"/> when (and only when) it is the one in flight; false when it was already committed or abandoned, which makes cleanup paths idempotent and safe to run after a successful publish.</summary>
+		public bool TryAbandon(FdbLiteTreeWriter writer)
+		{
+			Contract.NotNull(writer);
+			if (!ReferenceEquals(writer, this.ActiveWriter))
+			{
+				return false;
+			}
+			writer.RollbackAllocations();
+			this.ActiveWriter = null;
+			return true;
+		}
+
+		/// <summary>Starts a write transaction whose DISPOSAL is the safety net: commit it, or everything rolls back.</summary>
+		public FdbLiteWriteTransaction Write() => new(this, BeginWrite());
+
+		/// <summary>Runs <paramref name="handler"/> against a fresh writer and commits at <paramref name="databaseVersion"/>; a throwing handler (or a failing commit) rolls everything back.</summary>
+		public void Write(ulong databaseVersion, Action<FdbLiteTreeWriter> handler)
+		{
+			Contract.NotNull(handler);
+			var writer = BeginWrite();
+			try
+			{
+				handler(writer);
+				Commit(writer, databaseVersion);
+			}
+			catch
+			{
+				if (ReferenceEquals(this.ActiveWriter, writer)) { Abandon(writer); }
+				throw;
+			}
+		}
+
+		/// <inheritdoc cref="Write(ulong, Action{FdbLiteTreeWriter})"/>
+		public TResult Write<TResult>(ulong databaseVersion, Func<FdbLiteTreeWriter, TResult> handler)
+		{
+			Contract.NotNull(handler);
+			var writer = BeginWrite();
+			try
+			{
+				var result = handler(writer);
+				Commit(writer, databaseVersion);
+				return result;
+			}
+			catch
+			{
+				if (ReferenceEquals(this.ActiveWriter, writer)) { Abandon(writer); }
+				throw;
+			}
+		}
+
+		/// <inheritdoc cref="Write(ulong, Action{FdbLiteTreeWriter})"/>
+		/// <remarks>The writer is not thread-safe: the handler may await, but must touch the writer from one logical flow only.</remarks>
+		public async Task WriteAsync(ulong databaseVersion, Func<FdbLiteTreeWriter, Task> handler)
+		{
+			Contract.NotNull(handler);
+			var writer = BeginWrite();
+			try
+			{
+				await handler(writer).ConfigureAwait(false);
+				Commit(writer, databaseVersion);
+			}
+			catch
+			{
+				if (ReferenceEquals(this.ActiveWriter, writer)) { Abandon(writer); }
+				throw;
+			}
+		}
 
 		/// <summary>Slots the leaf directory reserves each time a splice exhausts its headroom.</summary>
 		/// <remarks>Exposed here because the page layout itself is internal, and a benchmark has to be able to measure this both ways in one window. <b>1 reproduces the pre-headroom behaviour</b>, where the key area slides on every insert; the default is 32. Process-wide, and meant for measurement rather than for tuning a live store.</remarks>
@@ -420,6 +510,7 @@ namespace FoundationDB.Storage.FdbLite
 		{
 			Contract.NotNull(writer);
 			Contract.Requires(writer.Generation == this.Durable.Generation + 1, "commit out of order");
+			Contract.Requires(this.ActiveWriter is null || ReferenceEquals(writer, this.ActiveWriter), "not the writer in flight");
 
 			// the EMA measures the TOTAL commit wall time, fsyncs and consolidation included: it is the cost
 			// baseline the adaptive budget takes its fraction of
@@ -541,6 +632,7 @@ namespace FoundationDB.Storage.FdbLite
 			this.FreeSpace.Promote(ComputePromoteLimit(this.Durable.Generation + 1), this.PunchFreedSpace ? this.PunchPromotedRange ??= PunchPromotedRangeCore : null);
 
 			UpdateCommitEma(commitStart);
+			this.ActiveWriter = null; // committed: the engine accepts the next writer (a FAILED commit leaves it in flight, so the caller's Dispose/Abandon still rolls back)
 		}
 
 		/// <summary>Runs the configured pre-commit consolidation on the writer, before its dirty set flushes.</summary>
@@ -707,15 +799,24 @@ namespace FoundationDB.Storage.FdbLite
 		public FdbLiteTreeWriter.VacuumOutcome VacuumStep(int maxInputPages = 16)
 		{
 			var writer = BeginWrite();
-			var outcome = writer.VacuumWorstRegion(maxInputPages);
-			if (outcome.InputPages == 0)
-			{ // nothing viable: the writer allocated and wrote nothing, so abandoning it leaves no trace
+			try
+			{
+				var outcome = writer.VacuumWorstRegion(maxInputPages);
+				if (outcome.InputPages == 0)
+				{ // nothing viable: the writer allocated and wrote nothing, and abandoning it releases the write slot
+					Abandon(writer);
+					return outcome;
+				}
+				Commit(writer, this.Durable.DatabaseVersion);
+				this.VacuumStepsExecuted++;
+				this.VacuumPagesFreed += outcome.PagesFreed;
 				return outcome;
 			}
-			Commit(writer, this.Durable.DatabaseVersion);
-			this.VacuumStepsExecuted++;
-			this.VacuumPagesFreed += outcome.PagesFreed;
-			return outcome;
+			catch
+			{
+				if (ReferenceEquals(this.ActiveWriter, writer)) { Abandon(writer); }
+				throw;
+			}
 		}
 
 		/// <summary>Applies an ordered run of key/value pairs to <c>[begin, end)</c>, grafting whole pages when the run owns the range outright.</summary>
@@ -804,24 +905,31 @@ namespace FoundationDB.Storage.FdbLite
 			// the list IS the backing array: a span over it skips a full copy of the run (~24 MB on a 500k restore)
 			ReadOnlySpan<FdbLiteTreeWriter.CellRef> all = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(cells);
 			var writer = BeginWrite();
-
-			// stopAfter is 1 because the gate is "no survivor at all": once one exists the answer is settled, and
-			// the walk has nothing left to learn. The count IS the density test - a run with survivors in its range
-			// is by definition not the whole of it.
-			if (writer.CountSurvivors(begin.Span, end.Span, all, stopAfter: 1) == 0)
+			try
 			{
-				writer.ImportRun(begin.Span, end.Span, all, options.FillCeiling(this.Pager.Geometry.PageSize), options.Volatility);
-			}
-			else
-			{ // sparse: per-key insertion, which is what the measured curve says is right below about half coverage
-				foreach (ref readonly var cell in all)
+				// stopAfter is 1 because the gate is "no survivor at all": once one exists the answer is settled, and
+				// the walk has nothing left to learn. The count IS the density test - a run with survivors in its range
+				// is by definition not the whole of it.
+				if (writer.CountSurvivors(begin.Span, end.Span, all, stopAfter: 1) == 0)
 				{
-					writer.Insert(cell.ResolveKey(default), cell.ResolveValue(default));
+					writer.ImportRun(begin.Span, end.Span, all, options.FillCeiling(this.Pager.Geometry.PageSize), options.Volatility);
 				}
-			}
+				else
+				{ // sparse: per-key insertion, which is what the measured curve says is right below about half coverage
+					foreach (ref readonly var cell in all)
+					{
+						writer.Insert(cell.ResolveKey(default), cell.ResolveValue(default));
+					}
+				}
 
-			Commit(writer, databaseVersion);
-			return all.Length;
+				Commit(writer, databaseVersion);
+				return all.Length;
+			}
+			catch
+			{
+				if (ReferenceEquals(this.ActiveWriter, writer)) { Abandon(writer); }
+				throw;
+			}
 		}
 
 		/// <summary>Tree-wide totals of the current durable generation, from its root page's aggregate block: O(1), exact, and safe on any thread.</summary>

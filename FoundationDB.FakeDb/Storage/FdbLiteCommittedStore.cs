@@ -195,6 +195,16 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <inheritdoc />
+		/// <remarks>Idempotent, commit-aware (a published writer is no longer in flight, so a late Discard is a no-op), and a no-op on a frozen (writer-less) store; the engine rolls an abandoned generation's allocations, buffered pages, and recorded frees all the way back.</remarks>
+		public void Discard()
+		{
+			if (this.Writer is { } writer)
+			{
+				this.Engine.TryAbandon(writer);
+			}
+		}
+
+		/// <inheritdoc />
 		public bool Remove(Key key)
 		{
 			Contract.Requires(this.Writer != null);

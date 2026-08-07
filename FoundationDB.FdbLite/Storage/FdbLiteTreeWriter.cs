@@ -271,8 +271,8 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		public bool AvoidSequentialAppendSplits { get; set; } = true;
 
-		/// <summary>Extents written by this generation (freed immediately on replace/delete, instead of waiting out the horizon)</summary>
-		private HashSet<uint> ShadowExtents { get; } = [ ];
+		/// <summary>Extents written by this generation, with their block counts (freed immediately on replace/delete instead of waiting out the horizon; the counts are what lets an abandoned generation free them without re-reading a descriptor)</summary>
+		private Dictionary<uint, uint> ShadowExtents { get; } = [ ];
 
 		/// <summary>Net key-count change of this generation (inserts of new keys minus removals), for the snapshot header's exact count</summary>
 		public long KeyCountDelta { get; private set; }
@@ -316,6 +316,38 @@ namespace FoundationDB.Storage.FdbLite
 				return buffered;
 			}
 			return null;
+		}
+
+		/// <summary>Undoes every side effect this UNCOMMITTED generation left in the shared engine state: buffered pages return to the pool, the generation's own allocations (shadow pages and extents) go straight back to free space, and the frees it recorded against the durable tree are erased (that tree still references them).</summary>
+		/// <remarks><see cref="FdbLiteEngine.Abandon"/> is the only caller. Sound even after a failed flush: flushed bytes without an advanced header are dead, and freeing the shadow set immediately is correct because no retained root references it. Extent bytes already written to the pager are likewise dead.</remarks>
+		internal void RollbackAllocations()
+		{
+			foreach (var buffered in this.Dirty.Values)
+			{
+				ReturnPageBuffer(buffered);
+			}
+			this.Dirty.Clear();
+			this.CursorBufferId = 0;
+			this.CursorBuffer = null;
+			this.CursorLeaf = 0;
+			this.AppendLeaf = 0;
+
+			uint blocksPerPage = (uint) this.Pager.Geometry.BlocksPerPage;
+			foreach (var pageId in this.Shadow)
+			{
+				this.Allocator.FreeSpace.FreeImmediately(pageId, blocksPerPage);
+			}
+			this.Shadow.Clear();
+			foreach (var (start, blockCount) in this.ShadowExtents)
+			{
+				this.Allocator.FreeSpace.FreeImmediately(start, blockCount);
+			}
+			this.ShadowExtents.Clear();
+
+			// LAST, after the shadow frees above (which are this generation's own space, not the durable tree's):
+			// erase the delayed frees this generation recorded, or a later commit would hand out pages the
+			// durable tree still references
+			this.Allocator.FreeSpace.RemovePendingFrom(this.Generation);
 		}
 
 		/// <summary>Returns <paramref name="buffer"/> grown to hold at least <paramref name="needed"/> bytes (existing content need not survive: every caller overwrites from offset 0).</summary>
@@ -476,7 +508,7 @@ namespace FoundationDB.Storage.FdbLite
 			// SILENTLY on disk (the store corrupts here and faults only at the read, far from the cause)
 			Contract.Requires(blockCount <= ushort.MaxValue, "value exceeds the maximum extent length (65,535 blocks)");
 			uint start = this.Allocator.AllocateExtent((uint) blockCount);
-			this.ShadowExtents.Add(start);
+			this.ShadowExtents.Add(start, (uint) blockCount);
 
 			var padded = ArrayPool<byte>.Shared.Rent(blockCount * blockSize);
 			try

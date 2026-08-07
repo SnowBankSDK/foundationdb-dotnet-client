@@ -78,11 +78,12 @@ namespace FoundationDB.Storage.FdbLite
 			if (engine.Durable.DatabaseVersion == 0 && engine.Durable.KeyCount == 0)
 			{ // fresh store: seed the same system keys a fresh in-memory store gets
 				var stamp = VersionStamp.Complete((ulong) initialVersion, 0);
-				var writer = engine.BeginWrite();
-				writer.Insert(SpecialKeys.SystemRoot.Span, SpecialKeys.SystemRootSentinelValue.Span);
-				writer.Insert(SpecialKeys.SystemMetadataVersion.Span, stamp.ToSlice().Span);
-				writer.Insert(SpecialKeys.SystemEnd.Span, default);
-				engine.Commit(writer, (ulong) initialVersion);
+				engine.Write((ulong) initialVersion, writer =>
+				{
+					writer.Insert(SpecialKeys.SystemRoot.Span, SpecialKeys.SystemRootSentinelValue.Span);
+					writer.Insert(SpecialKeys.SystemMetadataVersion.Span, stamp.ToSlice().Span);
+					writer.Insert(SpecialKeys.SystemEnd.Span, default);
+				});
 			}
 
 			var durable = engine.Durable;

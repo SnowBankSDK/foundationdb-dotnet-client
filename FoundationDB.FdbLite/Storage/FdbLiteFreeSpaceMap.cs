@@ -161,6 +161,39 @@ namespace FoundationDB.Storage.FdbLite
 			return false;
 		}
 
+		/// <summary>Removes every pending range freed by <paramref name="generation"/> or later: the rollback of an abandoned writer, whose recorded frees would otherwise release pages the durable tree still references.</summary>
+		/// <remarks>Generations are monotonic in the queue, so the removed entries form a contiguous tail; an abandoned generation is never re-entered (the engine hands out strictly increasing generations), so nothing can enqueue behind the removal.</remarks>
+		public void RemovePendingFrom(ulong generation)
+		{
+			if (this.Pending.Count == 0)
+			{
+				return;
+			}
+			long removedBlocks = 0;
+			var kept = new List<(ulong Generation, uint Start, uint Count)>(this.Pending.Count);
+			foreach (var entry in this.Pending)
+			{
+				if (entry.Generation >= generation)
+				{
+					removedBlocks += entry.Count;
+				}
+				else
+				{
+					kept.Add(entry);
+				}
+			}
+			if (removedBlocks == 0)
+			{
+				return;
+			}
+			this.Pending.Clear();
+			foreach (var entry in kept)
+			{
+				this.Pending.Enqueue(entry);
+			}
+			Volatile.Write(ref this.PendingBlocks, this.PendingBlocks - removedBlocks);
+		}
+
 		/// <summary>Enumerates every tracked range, reusable first (generation 0), then pending in freed order.</summary>
 		public IEnumerable<(ulong Generation, uint Start, uint Count)> Enumerate()
 		{
