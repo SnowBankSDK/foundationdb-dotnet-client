@@ -243,6 +243,14 @@ namespace FoundationDB.FdbLite
 			}
 		}
 
+		/// <inheritdoc />
+		/// <remarks>Straight to the writer: the tree copies the caller's bytes into pages, so the default's interning buys nothing, and its no-op-set read descent (plus two heap copies) costs more than the rare redundant splice it would skip.</remarks>
+		public void Set(Key key, Value value, Arena arena)
+		{
+			Contract.Requires(this.Writer != null);
+			this.Writer!.Insert(key.Span, value.Span);
+		}
+
 		#endregion
 
 	}

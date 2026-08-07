@@ -1096,24 +1096,9 @@ namespace FoundationDB.Storage
 							}
 							else
 							{ // set
-								// try to reuse previous key
-								Key k;
-								if (newData.TryGetKeyValue(entry.Begin, out var kv))
-								{
-									if (kv.Value.Equals(mutation.Parameter))
-									{ // value hasn't changed!
-										continue;
-									}
-									k = kv.Key;
-								}
-								else
-								{
-									k = arena.InternKey(entry.Begin);
-								}
-
-								var v = arena.InternValue(mutation.Parameter);
-								Kenobi($"$$ #{this.Id} set {k:K} = {v:V}");
-								newData[k] = v;
+								Kenobi($"$$ #{this.Id} set {entry.Begin:K} = {mutation.Parameter:V}");
+								// the store owns the no-op-skip/interning trade-off: see IFdbCommittedStore.Set
+								newData.Set(entry.Begin, mutation.Parameter, arena);
 							}
 						}
 						else if (mutation.IsRange())

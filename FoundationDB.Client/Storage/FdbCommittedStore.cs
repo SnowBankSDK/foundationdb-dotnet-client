@@ -90,6 +90,27 @@ namespace FoundationDB.Storage
 		/// <summary>Sets the value for a key</summary>
 		Value this[Key key] { set; }
 
+		/// <summary>Sets the value for a key during mutation apply, skipping the write when the stored value is already identical.</summary>
+		/// <param name="arena">Arena of the snapshot being built, for a backend that must intern the bytes into stable memory.</param>
+		/// <remarks>The default is the view-backed store's read-compare-intern dance (reuse the stored key instance, skip no-op sets, intern new bytes). A page-backed backend overrides it: its writer copies caller bytes into pages anyway, so interning and the extra read descent buy nothing.</remarks>
+		void Set(Key key, Value value, Arena arena)
+		{
+			Key k;
+			if (TryGetKeyValue(key, out var kv))
+			{
+				if (kv.Value.Equals(value))
+				{ // value hasn't changed!
+					return;
+				}
+				k = kv.Key;
+			}
+			else
+			{
+				k = arena.InternKey(key);
+			}
+			this[k] = arena.InternValue(value);
+		}
+
 		#endregion
 
 	}
