@@ -51,7 +51,7 @@ namespace FoundationDB.Storage
 	{
 
 		[PublicAPI]
-		[DebuggerDisplay("Id={Id}, Version={Inner.Version}, Mutations={Mutations.Count}, Reads={ReadConflicts.Count}, Writes={WriteConflicts.Count}")]
+		[DebuggerDisplay("Id={Id}, Version={Inner.Version}, Writes={Writes.Count}, Reads={ReadConflicts.Count}")]
 		public sealed record ReadYourWritesSnapshot
 		{
 
@@ -59,11 +59,10 @@ namespace FoundationDB.Storage
 
 			private Snapshot Inner { get; }
 
-			internal ColaRangeDictionary<Key, Mutation> Mutations { get; } = new(Key.Comparer.Default);
+			/// <summary>The transaction's write buffer: mutations and their conflict extents (see <see cref="FdbWriteMap"/>).</summary>
+			internal FdbWriteMap Writes { get; } = new();
 
 			internal ColaRangeSet<Key> ReadConflicts { get; } = new(Key.Comparer.Default);
-
-			internal ColaRangeSet<Key> WriteConflicts { get; } = new(Key.Comparer.Default);
 
 			private Arena Arena { get; }
 
@@ -89,7 +88,7 @@ namespace FoundationDB.Storage
 
 				Value value;
 
-				if (ryw && this.Mutations.FindFirst(key.Begin, key.End, out var mutation))
+				if (ryw && this.Writes.TryFindCovering(key.Begin, out var mutation))
 				{
 					if (mutation.IsKv())
 					{
@@ -126,7 +125,7 @@ namespace FoundationDB.Storage
 							// same result at commit time), and establishes a conflict range on the key IF the value
 							// depended on the database; a SNAPSHOT read observes the value transiently and leaves the
 							// chain to apply over the committed value at commit time (oracle-pinned)
-							this.Mutations.Mark(key.Begin, key.End, Mutation.Set(value));
+							this.Writes.MarkPoint(key.Begin, key.End, Mutation.Set(value));
 							if (readThrough)
 							{
 								this.ReadConflicts.Mark(key.Begin, key.End);
@@ -382,8 +381,7 @@ namespace FoundationDB.Storage
 					throw ErrorCannotAccessSystemKeys();
 				}
 
-				this.Mutations.Mark(key.Begin, key.End, Mutation.Set(value));
-				this.WriteConflicts.Mark(key.Begin, key.End);
+				this.Writes.MarkPoint(key.Begin, key.End, Mutation.Set(value));
 			}
 
 			public void Clear(KeyRange key, bool accessSystemKeys)
@@ -393,8 +391,7 @@ namespace FoundationDB.Storage
 					throw ErrorCannotAccessSystemKeys();
 				}
 
-				this.Mutations.Mark(key.Begin, key.End, Mutation.Clear());
-				this.WriteConflicts.Mark(key.Begin, key.End);
+				this.Writes.MarkPoint(key.Begin, key.End, Mutation.Clear());
 			}
 
 			public void ClearRange(Key beginInclusive, Key endExclusive, bool accessSystemKeys)
@@ -407,8 +404,7 @@ namespace FoundationDB.Storage
 				{
 					throw ErrorCannotAccessSystemKeys();
 				}
-				this.Mutations.Mark(beginInclusive, endExclusive, Mutation.ClearRange());
-				this.WriteConflicts.Mark(beginInclusive, endExclusive);
+				this.Writes.MarkRange(beginInclusive, endExclusive, Mutation.ClearRange());
 			}
 
 			public void Atomic(KeyRange key, Value value, FdbMutationType type, bool accessSystemKeys)
@@ -439,8 +435,7 @@ namespace FoundationDB.Storage
 					mutation = stacked;
 				}
 
-				this.Mutations.Mark(key.Begin, key.End, mutation);
-				this.WriteConflicts.Mark(key.Begin, key.End);
+				this.Writes.MarkPoint(key.Begin, key.End, mutation);
 			}
 
 			public void ReadConflict(Key beginInclusive, Key endExclusive)
@@ -450,13 +445,13 @@ namespace FoundationDB.Storage
 
 			public void WriteConflict(Key beginInclusive, Key endExclusive)
 			{
-				this.WriteConflicts.Mark(beginInclusive, endExclusive);
+				this.Writes.MarkConflictRange(beginInclusive, endExclusive);
 			}
 
 			public Key Resolve<TCursor>(Selector selector, bool ryw, bool snapshotRead, bool accessSystemKeys)
 				where TCursor : struct, IFdbCommittedCursor
 			{
-				if (!ryw || this.WriteConflicts.Count == 0)
+				if (!ryw || !this.Writes.HasMutations)
 				{ // fast path for read-only transactions!
 					var key = this.Inner.Resolve<TCursor>(selector, accessSystemKeys);
 					if (!snapshotRead)
@@ -654,7 +649,7 @@ namespace FoundationDB.Storage
 			private void MarkMergedRangeReadConflict(Key fromInclusive, Key toExclusive)
 			{
 				var cursor = fromInclusive;
-				foreach (var entry in this.Mutations.IterateOrdered())
+				foreach (var entry in this.Writes.GetView())
 				{
 					if (entry.Begin >= toExclusive) break;
 					if (entry.End <= cursor) continue;
@@ -705,15 +700,7 @@ namespace FoundationDB.Storage
 
 			/// <summary>Finds the mutation entry covering a key (its begin at or before the key, its END strictly after), or null.</summary>
 			/// <remarks>Unlike <c>TryGetValue</c>, this never matches a range whose exclusive end equals the key.</remarks>
-			private Mutation? FindCoveringMutation(Key key)
-			{
-				foreach (var entry in this.Mutations.IterateOrdered())
-				{
-					if (entry.Begin > key) break;
-					if (entry.End > key) return entry.Value;
-				}
-				return null;
-			}
+			private Mutation? FindCoveringMutation(Key key) => this.Writes.FindCovering(key);
 
 			/// <summary>Computes the ordered list of keys visible in the merged view (committed snapshot + local mutations), without any side effect on the mutation log or the conflict ranges.</summary>
 			private List<Key> GetMergedVisibleKeys(bool accessSystemKeys)
@@ -724,7 +711,7 @@ namespace FoundationDB.Storage
 					if (!accessSystemKeys && kv.Key.IsSystemKey()) continue;
 					candidates.Add(kv.Key);
 				}
-				foreach (var entry in this.Mutations.IterateOrdered())
+				foreach (var entry in this.Writes.GetView())
 				{
 					var mutation = entry.Value;
 					if (mutation is null || mutation.Op is Operation.Invalid) continue;
@@ -800,7 +787,7 @@ namespace FoundationDB.Storage
 			{
 
 				// if there are no writes, it's the same thing as a snapshot read
-				if (!ryw || this.WriteConflicts.Count == 0)
+				if (!ryw || !this.Writes.HasMutations)
 				{
 					var begin = this.Inner.Resolve<TCursor>(beginInclusive, accessSystemKeys);
 					var end = this.Inner.Resolve<TCursor>(endExclusive, accessSystemKeys);
@@ -834,7 +821,7 @@ namespace FoundationDB.Storage
 						Kenobi($"** #{this.Id} - {kv.Key:K} = {kv.Value:V}");
 					}
 					Kenobi($"** #{this.Id} Mutations: rv {this.Inner.Version}");
-					foreach (var entry in this.Mutations.IterateOrdered())
+					foreach (var entry in this.Writes.GetView())
 					{
 						Kenobi($"** #{this.Id} - {entry.Begin:K} ~ {entry.End:K} = {entry.Value}");
 					}
@@ -926,7 +913,7 @@ namespace FoundationDB.Storage
 								// interning boundary (null means "immutable, safe to keep"), and the committed store
 								// would end up aliasing recycled transaction-arena memory
 								var key = new Key(kv.Key.Copy());
-								this.Mutations.Mark(key, key.GetSuccessor(this.Arena), Mutation.Set(new Value(kv.Value.Copy())));
+								this.Writes.MarkPoint(key, key.GetSuccessor(this.Arena), Mutation.Set(new Value(kv.Value.Copy())));
 							}
 						}
 					}
@@ -954,7 +941,7 @@ namespace FoundationDB.Storage
 				where TCursor : struct, IFdbCommittedCursor
 			{
 				// fast path: no writes => same as a snapshot read, stream directly off the committed store
-				if (!ryw || this.WriteConflicts.Count == 0)
+				if (!ryw || !this.Writes.HasMutations)
 				{
 					var begin = this.Inner.Resolve<TCursor>(beginInclusive, accessSystemKeys);
 					var end = this.Inner.Resolve<TCursor>(endExclusive, accessSystemKeys);
@@ -991,7 +978,7 @@ namespace FoundationDB.Storage
 			public OnionIterator<TCursor> GetIterator<TCursor>()
 				where TCursor : struct, IFdbCommittedCursor
 			{
-				return new OnionIterator<TCursor>((IFdbCommittedStore<TCursor>) this.Inner.Data, this.Mutations, this.Arena, this.Id);
+				return new OnionIterator<TCursor>((IFdbCommittedStore<TCursor>) this.Inner.Data, this.Writes, this.Arena, this.Id);
 			}
 
 			/// <summary>Sums the exact key+value bytes of the committed snapshot over a range (FakeDb's deterministic stand-in for the real sampling estimator).</summary>
@@ -1064,10 +1051,10 @@ namespace FoundationDB.Storage
 
 					var arena = snapshot.Arena;
 
-					if (this.WriteConflicts.Count > 0)
+					if (this.Writes.Count > 0)
 					{
 						conflicts = conflicts.Copy();
-						foreach (var x in this.WriteConflicts)
+						foreach (var x in this.Writes.GetConflictRanges())
 						{
 							conflicts.Mark(arena.InternKey(x.Begin), arena.InternKey(x.End), commitVersion);
 						}
@@ -1083,7 +1070,7 @@ namespace FoundationDB.Storage
 					// every clear-range has been applied, out of reach of the remainders. (versionstamp fuzz FDBV-034)
 					List<(Key Key, Value Value)>? deferredStampedKeys = null;
 
-					foreach (var entry in this.Mutations.IterateOrdered())
+					foreach (var entry in this.Writes.GetView())
 					{
 						var mutation = entry.Value!;
 
@@ -1555,7 +1542,7 @@ namespace FoundationDB.Storage
 				long commitVersion;
 				Snapshot? updated;
 				VersionStamp stamp;
-				if (snapshot.WriteConflicts.Count != 0)
+				if (snapshot.Writes.Count != 0)
 				{
 					commitVersion = rv + 1;
 					(updated, stamp) = snapshot.ApplyMutations(commitVersion, current, handler.OptionReportConflictingKeys);
@@ -3016,7 +3003,7 @@ namespace FoundationDB.Storage
 
 			public KeyValuePair<Key, Value> Current;
 
-			private readonly ColaStore<ColaRangeDictionary<Key, Mutation>.Entry>.Iterator Outer;
+			private readonly FdbWriteMap.Cursor Outer;
 
 			// non-readonly: the cursor is a mutable struct whose position advances in place (copying it would fork the position for a value-state backend cursor)
 			private TCursor Inner;
@@ -3025,11 +3012,11 @@ namespace FoundationDB.Storage
 
 			internal long Id;
 
-			public OnionIterator(IFdbCommittedStore<TCursor> inner, ColaRangeDictionary<Key, Mutation> outer, Arena arena, long id)
+			internal OnionIterator(IFdbCommittedStore<TCursor> inner, FdbWriteMap outer, Arena arena, long id)
 			{
 				this.OuterState = STATE_UNKNOWN;
 				this.InnerState = STATE_UNKNOWN;
-				this.Outer = outer.GetIterator();
+				this.Outer = outer.GetCursor();
 				this.Inner = inner.GetCursor();
 				this.Current = default;
 				this.Arena = arena;
@@ -3080,7 +3067,7 @@ namespace FoundationDB.Storage
 
 				// setup "outer": position at the first entry that can affect keys at/after the pivot.
 				// Clear/ClearRange entries are NEVER skipped: the merge consumes them as masking directives over the inner layer.
-				if (this.Outer.Seek(new(selector.Key, selector.Key, null), selector.OrEqual))
+				if (this.Outer.Seek(selector.Key, selector.OrEqual))
 				{ // positioned at the last entry beginning at/before the pivot
 					this.OuterState = STATE_AVAILABLE;
 					Kenobi($"*** #{this.Id} outer: {this.Outer.Current}");
@@ -3879,11 +3866,29 @@ namespace FoundationDB.Storage
 	public static class FakeDbDebugger
 	{
 
-		public static ColaRangeDictionary<Key, Mutation> GetSnapshotMutations(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot) => snapshot.Mutations;
+		/// <summary>Materializes the transaction's carved write view in the historical cola shape (the write buffer itself is an <see cref="FdbWriteMap"/> now; this keeps inspection call sites stable).</summary>
+		public static ColaRangeDictionary<Key, Mutation> GetSnapshotMutations(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot)
+		{
+			var res = new ColaRangeDictionary<Key, Mutation>(Key.Comparer.Default);
+			foreach (var entry in snapshot.Writes.GetView())
+			{
+				res.Mark(entry.Begin, entry.End, entry.Value!);
+			}
+			return res;
+		}
 
 		public static ColaRangeSet<Key> GetSnapshotReadConflicts(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot) => snapshot.ReadConflicts;
 
-		public static ColaRangeSet<Key> GetSnapshotWriteConflicts(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot) => snapshot.WriteConflicts;
+		/// <summary>Materializes the transaction's write-conflict ranges in the historical cola shape (they ride the <see cref="FdbWriteMap"/> entries now).</summary>
+		public static ColaRangeSet<Key> GetSnapshotWriteConflicts(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot)
+		{
+			var res = new ColaRangeSet<Key>(Key.Comparer.Default);
+			foreach (var (begin, end) in snapshot.Writes.GetConflictRanges())
+			{
+				res.Mark(begin, end);
+			}
+			return res;
+		}
 
 	}
 
