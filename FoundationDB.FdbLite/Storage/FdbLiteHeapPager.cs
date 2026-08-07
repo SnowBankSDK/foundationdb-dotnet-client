@@ -24,7 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
 
 	/// <summary>Heap-backed pager: same layout as the file pager, no file.</summary>

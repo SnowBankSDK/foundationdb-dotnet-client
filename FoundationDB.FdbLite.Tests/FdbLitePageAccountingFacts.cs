@@ -24,10 +24,11 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System.Buffers.Binary;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 
 	/// <summary>Independent page-accounting oracle over the in-place mutation paths (overwrite, relocate, remove).</summary>
 	[TestFixture]

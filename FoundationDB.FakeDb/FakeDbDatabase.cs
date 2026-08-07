@@ -39,7 +39,7 @@ namespace FoundationDB.Testing
 	using FoundationDB.Client.Core;
 	using FoundationDB.Client.Native;
 	using FoundationDB.Storage;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 	using SnowBank.Collections.CacheOblivious;
 	using SnowBank.Threading;
 	using static FoundationDB.Testing.FakeDbStore;

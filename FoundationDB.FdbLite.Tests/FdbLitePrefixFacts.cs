@@ -24,8 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System.Buffers.Binary;
 
 	/// <summary>Page-level prefix stripping: that it HAPPENS, and that nothing observable changes when it does.</summary>

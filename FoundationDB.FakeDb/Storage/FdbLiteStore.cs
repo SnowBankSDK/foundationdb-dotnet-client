@@ -24,8 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
+	using FoundationDB.Storage;
 	using FoundationDB.Testing;
 
 	/// <summary>A store over the memory-mapped engine: the shared emulator (transaction machinery, watches, conflict checking) with <see cref="FdbLiteBackend"/> as its storage instead of the in-memory one.</summary>

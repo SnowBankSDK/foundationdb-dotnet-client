@@ -27,7 +27,7 @@
 namespace FoundationDB.Client.Tests
 {
 	using FoundationDB.Storage;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 	using FoundationDB.Testing;
 	using FoundationDB.Testing.Tests;
 

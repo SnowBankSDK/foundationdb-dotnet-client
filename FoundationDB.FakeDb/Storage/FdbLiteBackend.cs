@@ -24,8 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
+	using FoundationDB.Storage;
 	using FoundationDB.Client;
 	using FoundationDB.Client.Core;
 	using FoundationDB.Testing;

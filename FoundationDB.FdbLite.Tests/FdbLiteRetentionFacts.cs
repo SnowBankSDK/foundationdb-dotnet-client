@@ -26,7 +26,7 @@
 
 namespace FoundationDB.Client.Tests
 {
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 	using FoundationDB.Testing;
 
 	/// <summary>The read-version retention window: which past versions a store still serves, and what a read past the window reports.</summary>

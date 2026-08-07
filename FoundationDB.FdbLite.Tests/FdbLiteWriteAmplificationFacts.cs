@@ -24,11 +24,12 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System.Buffers.Binary;
 	using System.Text;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 	using SnowBank.Data.Tuples;
 
 	/// <summary>Exact write-amplification and occupancy numbers per candidate geometry: the machine-independent axis of the FL-17 decision matrix (bytes written are deterministic; only timings need BenchmarkDotNet).</summary>

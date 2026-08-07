@@ -24,7 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
 
 	/// <summary>Point reads over a committed tree generation.</summary>

@@ -24,9 +24,10 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.Storage;
+	using FoundationDB.FdbLite;
 
 	/// <summary>Regression net for the streaming rebuild (the engine's only rebuild path since the materialized <c>CellRef[]</c> twin was deleted): every workload runs TWICE and the two stores must be BYTE-IDENTICAL.</summary>
 	/// <remarks>The twin-run comparison pins determinism and is the detector for the uninitialized-buffer contract (a page image read before being written whole shows up as run-to-run divergence). The counters are the execution proof per site, and the workloads themselves carry the writer's contract tripwires (heap-crossing, split-of-a-shrink) through every rebuild shape: splits, strips, K-way giants, internal splits, vacuum merges and the cross-parent join.</remarks>

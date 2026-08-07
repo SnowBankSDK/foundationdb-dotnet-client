@@ -24,7 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
 
 	/// <summary>A write generation with deterministic cleanup: commit it, or its disposal rolls every side effect back.</summary>

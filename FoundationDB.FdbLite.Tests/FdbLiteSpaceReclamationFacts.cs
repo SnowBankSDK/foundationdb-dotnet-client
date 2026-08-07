@@ -24,9 +24,10 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.Storage;
+	using FoundationDB.FdbLite;
 
 	/// <summary>Tests of the space-reclamation train: the aggregate block, the volatility counter, pre-commit consolidation, and the background vacuum.</summary>
 	[TestFixture]

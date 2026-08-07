@@ -24,10 +24,11 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System.Buffers.Binary;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 
 	/// <summary>The fast non-regression GATE: fixed-seed workloads whose engine COUNTERS are asserted against pinned budgets.</summary>
 	/// <remarks>

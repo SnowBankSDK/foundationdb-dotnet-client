@@ -24,10 +24,11 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System.Buffers.Binary;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 
 	/// <summary>Diagnostic: how much space would same-parent leaf consolidation reclaim, per workload shape?</summary>
 	/// <remarks>

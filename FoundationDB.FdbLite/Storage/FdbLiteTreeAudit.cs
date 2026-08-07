@@ -24,7 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
 
 	/// <summary>Structural audit of a committed tree generation: checks each page against what its ANCESTORS say it must contain.</summary>

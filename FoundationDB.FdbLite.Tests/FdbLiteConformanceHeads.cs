@@ -26,7 +26,7 @@
 
 namespace FoundationDB.Client.Tests
 {
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 
 	/// <summary>Runs the transaction conformance suite against the persistent backend (heap pager, split geometry).</summary>
 	[TestFixture]

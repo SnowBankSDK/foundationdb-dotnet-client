@@ -24,7 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
 
 	/// <summary>Serializes the free-space map as a fresh chain of free-list blocks on each commit (the ruled v1 representation; a paged FIFO with amortized cost is the planned post-v1 upgrade behind a format-version bump).</summary>

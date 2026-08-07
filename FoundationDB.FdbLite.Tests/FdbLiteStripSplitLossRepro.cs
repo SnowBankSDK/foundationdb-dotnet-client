@@ -24,9 +24,10 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.Storage;
+	using FoundationDB.FdbLite;
 
 	/// <summary>RED repro: the split predictor double-counts the prefix region, and <c>TryStripAndRetry</c> treats an unexpected split of its rebuild as a no-op, orphaning half the leaf.</summary>
 	/// <remarks>

@@ -33,7 +33,7 @@
 // net9+ runtime; ref-struct interfaces are C# 13), so this compiles for net9 consumers that override
 // the TFM set even though the shipped floor is net10.
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
 
 	public sealed partial class FdbLiteTreeWriter

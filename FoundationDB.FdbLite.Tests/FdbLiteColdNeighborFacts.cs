@@ -24,11 +24,12 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System.Buffers.Binary;
 	using System.Diagnostics;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 
 	/// <summary>Diagnostic: what does the cold-neighbor variant of pre-commit consolidation buy, and what does the cold read cost on the FILE pager (OQ-6)?</summary>
 	/// <remarks>

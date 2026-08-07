@@ -24,10 +24,11 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System.Buffers.Binary;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 
 	/// <summary>One committed leaf as the space diagnostics see it: raw-layout aggregates plus its numeric key range.</summary>
 	/// <remarks><see cref="LiveBytes"/> is the page footprint its cells would need freshly compacted (prefix included), which is what candidacy and merge sizing compare against the page size.</remarks>

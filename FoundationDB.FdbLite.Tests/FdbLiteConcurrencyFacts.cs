@@ -24,11 +24,12 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System.Buffers.Binary;
 	using System.Collections.Concurrent;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 
 	/// <summary>Bounded smoke for the documented contract: read pins may be taken from ANY thread, concurrently with commits and with cold region mappings.</summary>
 	/// <remarks>This is a smoke, not a proof: it exercises the torn-header window (the durable header now flips under the pin lock) and the cold first touch of file regions (the region array is an immutable published snapshot), the two places a racing reader used to be able to observe broken state.</remarks>

@@ -24,8 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 
 	/// <summary>Crash-injection harness for the commit protocol (step 1 of the single-fsync commit design note): a simulated crash persists an ARBITRARY SUBSET of the unflushed writes, optionally tearing one, because that is what an unbarriered device may legally do. The two-barrier protocol must recover to a fully valid generation (the crashed one or its predecessor) from EVERY crash point; the unsafe single-barrier bench knob must be OBSERVABLY corruptible by the same harness, which is the hazard the future commit manifest exists to close.</summary>
 	[TestFixture]

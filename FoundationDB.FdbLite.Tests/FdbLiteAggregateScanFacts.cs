@@ -27,7 +27,7 @@
 namespace FoundationDB.Client.Tests
 {
 	using System;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 	using FoundationDB.Testing;
 
 	/// <summary>The owner's acceptance benchmark for the span-first range read (perf-goals.md scenario 1): a read-only aggregate scan over a large range must allocate O(1) in the number of pairs.</summary>

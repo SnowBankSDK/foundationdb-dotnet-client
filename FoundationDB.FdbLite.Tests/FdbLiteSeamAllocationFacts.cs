@@ -24,11 +24,12 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
+	using FoundationDB.Storage;
 	using System;
 	using System.Collections.Generic;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 	using SnowBank.Collections.CacheOblivious;
 
 	/// <summary>Guards the per-cursor-move heap traffic of the span-first committed-store seam, FdbLite vs the ColaStore reference.</summary>

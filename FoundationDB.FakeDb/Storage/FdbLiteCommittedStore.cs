@@ -24,8 +24,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite
+namespace FoundationDB.FdbLite
 {
+	using FoundationDB.Storage;
 	using FoundationDB.Client;
 
 	/// <summary>The persistent backend behind the emulator's committed-store seam: an engine generation seen as an <see cref="IFdbCommittedStore"/>.</summary>

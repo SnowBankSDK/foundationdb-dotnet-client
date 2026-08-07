@@ -27,7 +27,7 @@
 namespace FoundationDB.Client.Tests
 {
 	using System.Text;
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.FdbLite;
 	using FoundationDB.Testing;
 
 	/// <summary>Runs the differential scenario corpus against the persistent backend: it must trace identically to the in-memory backend, and to the recorded real-cluster goldens where they exist.</summary>

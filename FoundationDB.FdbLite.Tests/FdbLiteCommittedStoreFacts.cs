@@ -24,9 +24,10 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Storage.FdbLite.Tests
+namespace FoundationDB.FdbLite.Tests
 {
-	using FoundationDB.Storage.FdbLite;
+	using FoundationDB.Storage;
+	using FoundationDB.FdbLite;
 	using SnowBank.Collections.CacheOblivious;
 
 	/// <summary>Differential conformance of the persistent committed store against the ColaStore-backed reference, through the seam surface only.</summary>
