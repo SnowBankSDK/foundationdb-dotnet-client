@@ -26,7 +26,6 @@
 
 namespace FoundationDB.FakeDb
 {
-	using FoundationDB.FdbLite;
 	using FoundationDB.Storage;
 
 	/// <summary>The in-memory emulated database: the shared <see cref="FdbEmulatedDatabase"/> base over the default heap-engine backend, keeping every published version.</summary>
@@ -38,10 +37,9 @@ namespace FoundationDB.FakeDb
 			: base(CreateInMemoryBackend(), apiVersion, protocolVersion, initialVersion, time)
 		{ }
 
-		/// <summary>Builds the storage an emulator gets when nothing else is asked for: the engine over the heap, keeping every version.</summary>
+		/// <summary>Builds the storage an emulator gets when nothing else is asked for: the COLA in-memory store, keeping every version.</summary>
 		/// <remarks>The in-memory emulator is a CONFIGURATION of the storage engine rather than a separate implementation of it, so the semantics a test relies on - read-your-writes, conflict detection, watches, versionstamps - are exercised over the same storage that a persistent store uses. Retaining every version is what keeps the whole published history inspectable, and costs unbounded growth, which is the right trade for a store that lives as long as a test.</remarks>
-		private static IFdbStorageBackend CreateInMemoryBackend()
-			=> new FdbLiteBackend(FdbLiteEngine.Create(new FdbLiteHeapPager(FdbLiteGeometry.Default)), disposeEngine: true, retainEveryVersion: true);
+		private static IFdbStorageBackend CreateInMemoryBackend() => new ColaBackend();
 
 		/// <summary>Opens a store over an explicit storage backend.</summary>
 		protected FakeDbStore(IFdbStorageBackend backend, int apiVersion, int protocolVersion, long initialVersion, TimeProvider? time)

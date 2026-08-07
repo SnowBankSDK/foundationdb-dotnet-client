@@ -28,7 +28,6 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
-		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />
 		<!-- the "storm" saturation harness reuses the test-container provisioning (same container as FoundationDB.Tests) -->

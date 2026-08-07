@@ -31,6 +31,7 @@
 	<!-- spans over pages and pooled buffers only: this project knows nothing about the emulator that hosts it -->
 	<ItemGroup>
 		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
 	</ItemGroup>
 
 </Project>

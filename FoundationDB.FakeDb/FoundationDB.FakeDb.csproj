@@ -34,7 +34,6 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
-		<ProjectReference Include="..\FoundationDB.FdbLite\FoundationDB.FdbLite.csproj" />
 	</ItemGroup>
 
 </Project>

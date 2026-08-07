@@ -26,6 +26,7 @@
 
 namespace FoundationDB.FdbLite
 {
+	using FoundationDB.Client.Core;
 	using FoundationDB.Storage;
 	using FoundationDB.Client;
 

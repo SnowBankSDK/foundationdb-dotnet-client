@@ -29,7 +29,6 @@ namespace FoundationDB.FdbLite
 	using FoundationDB.Storage;
 	using FoundationDB.Client;
 	using FoundationDB.Client.Core;
-	using FoundationDB.Testing;
 	using SnowBank.Collections.CacheOblivious;
 
 	/// <summary>Persistent storage over the memory-mapped engine: committed state lives in the engine's pages and survives the process for a file-backed store.</summary>
