@@ -108,6 +108,8 @@ namespace FoundationDB.Layers.Documents.Tests
 #endif
 		}
 
+		private static object? BookMetaTypeRegistered;
+
 		[Test]
 		public async Task Test_Can_Insert_And_Retrieve_ProtoBuf_Documents()
 		{
@@ -116,9 +118,14 @@ namespace FoundationDB.Layers.Documents.Tests
 			await CleanLocation(db, location);
 
 			// quickly define the metatype for Books, because I'm too lazy to write a .proto for this, or add [ProtoMember] attributes everywhere
-			var metaType = ProtoBuf.Meta.RuntimeTypeModel.Default.Add(typeof(Book), false);
-			metaType.Add("Id", "Title", "Author", "Published", "Pages");
-			metaType.CompileInPlace();
+			// (once per PROCESS: the model is global and freezes after first use, and this abstract suite runs once per backend head)
+			LazyInitializer.EnsureInitialized(ref BookMetaTypeRegistered, static () =>
+			{
+				var metaType = ProtoBuf.Meta.RuntimeTypeModel.Default.Add(typeof(Book), false);
+				metaType.Add("Id", "Title", "Author", "Published", "Pages");
+				metaType.CompileInPlace();
+				return new object();
+			});
 
 			var docs = new FdbDocumentCollection<Book, int>(
 				location,

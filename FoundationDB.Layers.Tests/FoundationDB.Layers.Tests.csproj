@@ -58,6 +58,7 @@
 		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
 		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
+		<ProjectReference Include="..\FoundationDB.FdbLite\FoundationDB.FdbLite.csproj" />
 		<ProjectReference Include="..\FoundationDB.Layers.Common\FoundationDB.Layers.Common.csproj" />
 		<ProjectReference Include="..\FoundationDB.Layers.Experimental\FoundationDB.Layers.Experimental.csproj" />
 		<ProjectReference Include="..\FoundationDB.Testing\FoundationDB.Testing.csproj" />
