@@ -295,6 +295,29 @@ namespace FoundationDB.Storage.FdbLite
 
 		private byte[]? CursorUpperBuffer;
 
+		/// <summary>Buffered image of the dirty page <see cref="CursorBufferId"/> (0 = nothing cached): the splice path's per-key Dictionary lookup, paid once per page instead.</summary>
+		/// <remarks>Sound because a Dirty entry's buffer is assigned ONCE per id per generation (<c>WritePage</c> reuses it for every later mutation); the only way the pair goes stale is the id being FREED and reallocated, and both free paths clear it by id.</remarks>
+		private byte[]? CursorBuffer;
+
+		private uint CursorBufferId;
+
+		/// <summary>The dirty buffer of <paramref name="leafId"/>, through the one-entry cache; null when this generation does not own the page.</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private byte[]? DirtyBufferOf(uint leafId)
+		{
+			if (this.CursorBufferId == leafId)
+			{
+				return this.CursorBuffer;
+			}
+			if (this.Dirty.TryGetValue(leafId, out var buffered))
+			{
+				this.CursorBufferId = leafId;
+				this.CursorBuffer = buffered;
+				return buffered;
+			}
+			return null;
+		}
+
 		/// <summary>Returns <paramref name="buffer"/> grown to hold at least <paramref name="needed"/> bytes (existing content need not survive: every caller overwrites from offset 0).</summary>
 		private static byte[] GrowScratch([NotNull] ref byte[]? buffer, int needed)
 		{
@@ -865,6 +888,7 @@ namespace FoundationDB.Storage.FdbLite
 			this.UnderflowCandidates.Remove(pageId);
 			if (this.Dirty.Remove(pageId, out var released))
 			{
+				if (this.CursorBufferId == pageId) { this.CursorBufferId = 0; this.CursorBuffer = null; }
 				ReturnPageBuffer(released);
 			}
 			if (this.Shadow.Remove(pageId))
@@ -1052,6 +1076,7 @@ namespace FoundationDB.Storage.FdbLite
 			uint blocks = (uint) this.Pager.Geometry.BlocksPerPage;
 			if (this.Dirty.Remove(pageId, out var released))
 			{ // a released page must not be written back by a later flush, and its image buffer can be recycled
+				if (this.CursorBufferId == pageId) { this.CursorBufferId = 0; this.CursorBuffer = null; }
 				ReturnPageBuffer(released);
 			}
 
@@ -1135,7 +1160,7 @@ namespace FoundationDB.Storage.FdbLite
 		/// </remarks>
 		private bool TrySpliceInto(uint leafId, ReadOnlySpan<byte> key, ReadOnlySpan<byte> storedValue, byte flags)
 		{
-			if (!this.Dirty.TryGetValue(leafId, out var buffered))
+			if (DirtyBufferOf(leafId) is not { } buffered)
 			{
 				return false;
 			}
@@ -1221,7 +1246,7 @@ namespace FoundationDB.Storage.FdbLite
 		private bool TryRemoveInPlace(uint leafId, ReadOnlySpan<byte> key, out bool removed)
 		{
 			removed = false;
-			if (!this.Dirty.TryGetValue(leafId, out var buffered))
+			if (DirtyBufferOf(leafId) is not { } buffered)
 			{
 				return false;
 			}
@@ -2864,6 +2889,8 @@ namespace FoundationDB.Storage.FdbLite
 				ReturnPageBuffer(image);
 			}
 			this.Dirty.Clear();
+			this.CursorBufferId = 0;
+			this.CursorBuffer = null;
 		}
 
 		#endregion
