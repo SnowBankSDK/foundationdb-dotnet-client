@@ -1143,7 +1143,21 @@ namespace FoundationDB.Storage.FdbLite
 			// splicing into the free area beats re-gathering and re-serializing every cell in the page (the rebuild
 			// path is O(cells) per insert)
 			var image = buffered.AsSpan();
-			int at = FdbLiteTreePage.FindLeafSlot(image, key, out bool exists);
+			// append fast path: a sequential load lands EVERY key past the page's last cell, and the binary
+			// search pays ~10 suffix decode-and-compares per key to discover that; one compare against the
+			// last cell answers it (greater = append, anything else = the ordinary search)
+			int at;
+			bool exists;
+			int cellCount = FdbLitePageHeader.GetCellCount(image);
+			if (cellCount > 0 && FdbLiteTreePage.CompareLeafKey(image, cellCount - 1, key) < 0)
+			{
+				at = cellCount;
+				exists = false;
+			}
+			else
+			{
+				at = FdbLiteTreePage.FindLeafSlot(image, key, out exists);
+			}
 			if (exists)
 			{
 				// A REPLACE. When the replacement occupies exactly the same room this is a memcpy over bytes
