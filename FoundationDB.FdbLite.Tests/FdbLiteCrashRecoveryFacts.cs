@@ -134,6 +134,8 @@ namespace FoundationDB.Storage.FdbLite.Tests
 
 			public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count) => this.Live.ReadBlocks(firstBlock, count);
 
+			public FdbLitePageRef ReadBlocksRef(uint firstBlock, int count) => this.Live.ReadBlocksRef(firstBlock, count);
+
 			public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data)
 			{
 				this.Live.WriteBlocks(firstBlock, data);

@@ -207,6 +207,20 @@ namespace FoundationDB.Storage.FdbLite
 		}
 
 		/// <inheritdoc />
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public FdbLitePageRef ReadBlocksRef(uint firstBlock, int count)
+		{
+			ObjectDisposedException.ThrowIf(this.Disposed, this);
+			Contract.Requires(count > 0 && firstBlock + (uint) count <= this.BlockCount, "block run out of bounds");
+			uint region = firstBlock >> this.RegionSizeInBlocksLog2;
+			Contract.Requires((firstBlock + (uint) count - 1) >> this.RegionSizeInBlocksLog2 == region, "block run straddles a region boundary");
+
+			var mapped = GetOrMapRegion((int) region);
+			int offset = (int) (firstBlock & (this.RegionSizeInBlocks - 1)) << this.Geometry.BlockSizeLog2;
+			return new(mapped.Pointer + offset, count << this.Geometry.BlockSizeLog2);
+		}
+
+		/// <inheritdoc />
 		public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data)
 		{
 			ObjectDisposedException.ThrowIf(this.Disposed, this);

@@ -173,6 +173,7 @@ namespace FoundationDB.Storage.FdbLite.Tests
 			public uint BlockCount => inner.BlockCount;
 			public uint RegionSizeInBlocks => inner.RegionSizeInBlocks;
 			public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count) { this.ReadCalls++; return inner.ReadBlocks(firstBlock, count); }
+			public FdbLitePageRef ReadBlocksRef(uint firstBlock, int count) { this.ReadCalls++; return inner.ReadBlocksRef(firstBlock, count); }
 			public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data) => inner.WriteBlocks(firstBlock, data);
 			public void Flush() => inner.Flush();
 			public void Grow(uint minimumBlockCount) => inner.Grow(minimumBlockCount);

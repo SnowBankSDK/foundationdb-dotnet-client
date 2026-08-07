@@ -48,6 +48,10 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Returns a read-only view over a contiguous run of blocks (which must not straddle a region boundary).</summary>
 		ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count);
 
+		/// <summary>Returns a HOLDABLE reference to a contiguous run of blocks, with the same validity contract as <see cref="ReadBlocks"/>.</summary>
+		/// <remarks>The scan path's per-leaf cache: a cursor (a plain struct, so it cannot hold a span) resolves the pager once per LEAF and reads rows off <see cref="FdbLitePageRef.Span"/>, instead of paying this interface two to three times per row.</remarks>
+		FdbLitePageRef ReadBlocksRef(uint firstBlock, int count);
+
 		/// <summary>Writes a contiguous run of blocks (which must not straddle a region boundary); durable only after <see cref="Flush"/>.</summary>
 		void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data);
 
@@ -75,6 +79,43 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>True exactly once per block since this pager opened; always false when <see cref="TrackFirstTouch"/> is off.</summary>
 		/// <remarks>The gate of read-path verification: the caller that receives <c>true</c> performs the one-time checksum check of the page (or extent) starting at that block. Content the process writes afterwards is its own sealed bytes, so a block never needs re-verification within one open; rot that develops AFTER a block's first touch is the offline audit's job.</remarks>
 		bool MarkTouched(uint firstBlock);
+
+	}
+
+	/// <summary>A reference to a run of blocks in a pager's own memory that a plain struct (a cursor) can hold across row accesses.</summary>
+	/// <remarks>
+	/// <para>Backed by a heap array (heap-pager regions, the writer overlay's buffered images) or by a raw pointer into a mapped region. It carries EXACTLY the lifetime of the span <see cref="IFdbLitePager.ReadBlocks"/> hands out: valid until the blocks are reused or truncated, which the engine's pin/horizon machinery guarantees for a pinned generation. Every state that would dangle this ref already dangles a plain <see cref="IFdbLitePager.ReadBlocks"/> span the same way.</para>
+	/// <para><see cref="Span"/> is one branch and a span construction, no call: the reason this exists instead of a <see cref="ReadOnlyMemory{T}"/> (whose unmanaged backing would pay a virtual <c>GetSpan</c> per access, the very cost the cache removes).</para>
+	/// </remarks>
+	public readonly unsafe struct FdbLitePageRef
+	{
+
+		private readonly byte[]? Array;
+
+		private readonly int Offset;
+
+		private readonly byte* Pointer;
+
+		private readonly int Length;
+
+		public FdbLitePageRef(byte[] array, int offset, int length)
+		{
+			this.Array = array;
+			this.Offset = offset;
+			this.Length = length;
+		}
+
+		public FdbLitePageRef(byte* pointer, int length)
+		{
+			this.Pointer = pointer;
+			this.Length = length;
+		}
+
+		public ReadOnlySpan<byte> Span
+		{
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+			get => this.Array is { } array ? array.AsSpan(this.Offset, this.Length) : new ReadOnlySpan<byte>(this.Pointer, this.Length);
+		}
 
 	}
 

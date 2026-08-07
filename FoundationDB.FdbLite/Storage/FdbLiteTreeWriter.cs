@@ -144,6 +144,17 @@ namespace FoundationDB.Storage.FdbLite
 			}
 
 			/// <inheritdoc />
+			/// <remarks>A buffered image ref points at the buffer CURRENTLY holding the page; a held ref across a structural change of that page dangles exactly like a held <see cref="ReadBlocks"/> span would, and the same cursor-invalidation rules forbid it.</remarks>
+			public FdbLitePageRef ReadBlocksRef(uint firstBlock, int count)
+			{
+				if (count == this.Inner.Geometry.BlocksPerPage && this.Writer.Dirty.TryGetValue(firstBlock, out var image))
+				{
+					return new(image, 0, image.Length);
+				}
+				return this.Inner.ReadBlocksRef(firstBlock, count);
+			}
+
+			/// <inheritdoc />
 			/// <remarks>Pass-through ON PURPOSE, asymmetric with <see cref="ReadBlocks"/>: tree pages never come through here (they are buffered in <see cref="FdbLiteTreeWriter.Dirty"/> by <see cref="WritePage"/> and flushed at commit), only extent data, which is written once and read back through the inner pager. Do not "fix" this by adding a dirty-buffer check on the write side.</remarks>
 			public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data) => this.Inner.WriteBlocks(firstBlock, data);
 

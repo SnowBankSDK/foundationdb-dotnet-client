@@ -183,30 +183,44 @@ namespace FoundationDB.Storage.FdbLite
 		/// <summary>Value at the current position (pager memory, valid while the generation is pinned; extent values are one contiguous span)</summary>
 		public ReadOnlySpan<byte> CurrentValue => FdbLiteTreeReader.ResolveLeafValue(this.Pager, ReadLeaf(), this.LeafSlot);
 
+		/// <summary>Leaf whose storage ref and cell count are cached (0 = nothing cached).</summary>
+		/// <remarks>Fields, not auto-properties: this group is read on every single row of a scan, which is where the repo's property convention stops paying for itself.</remarks>
+		private uint CachedLeafPage;
+
+		/// <summary>Storage of the current leaf, resolved through the pager once per LEAF rather than two to three times per row.</summary>
+		/// <remarks>
+		/// <para>A pager read is not free even inlined: a disposed check, three always-on preconditions and a region lookup, paid by <see cref="CurrentKey"/> and <see cref="CurrentValue"/> on every row. The legacy prototype keeps a page POINTER on its cursor, which is why its per-row access is so much cheaper; <see cref="FdbLitePageRef"/> is that pointer with the array-backed pagers covered.</para>
+		/// <para>Self-invalidating on the page id, so no seek path has to remember to clear it. Sound because a cursor runs over a COMMITTED generation: the pages under it are immutable for as long as the pin is held, and the ref's lifetime is exactly the lifetime of the span <see cref="IFdbLitePager.ReadBlocks"/> already hands out.</para>
+		/// </remarks>
+		private FdbLitePageRef CachedLeaf;
+
+		private int CachedCellCount;
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private ReadOnlySpan<byte> ReadLeaf()
 		{
 			Contract.Debug.Requires(this.IsValid);
-			return this.Pager.ReadBlocks(this.LeafPage, this.Pager.Geometry.BlocksPerPage);
+			if (this.CachedLeafPage != this.LeafPage)
+			{
+				RefreshLeafCache();
+			}
+			return this.CachedLeaf.Span;
 		}
 
-		/// <summary>Page whose cell count <see cref="CachedCellCount"/> holds (0 = nothing cached).</summary>
-		/// <remarks>Fields, not auto-properties: this pair is read on every single row of a scan, which is where the repo's property convention stops paying for itself.</remarks>
-		private uint CachedCountPage;
+		private void RefreshLeafCache()
+		{
+			this.CachedLeaf = this.Pager.ReadBlocksRef(this.LeafPage, this.Pager.Geometry.BlocksPerPage);
+			this.CachedCellCount = FdbLitePageHeader.GetCellCount(this.CachedLeaf.Span);
+			this.CachedLeafPage = this.LeafPage;
+		}
 
-		private int CachedCellCount;
-
-		/// <summary>Cell count of the current leaf, resolved once per LEAF rather than once per row.</summary>
-		/// <remarks>
-		/// <para>The advance step used to re-resolve the whole page through the pager just to read this number, and a pager read is not free: a disposed check, three always-on preconditions (two of them integer divisions) and a region lookup, paid per row. The legacy prototype keeps a page POINTER on its cursor and reads the count off it, which is why its per-row advance is so much cheaper.</para>
-		/// <para>Self-invalidating on the page id, so no seek path has to remember to clear it. Sound because a cursor runs over a COMMITTED generation: the pages under it are immutable for as long as the pin is held.</para>
-		/// </remarks>
+		/// <summary>Cell count of the current leaf, off the same per-leaf cache.</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private int LeafCellCount()
 		{
-			if (this.CachedCountPage != this.LeafPage)
+			if (this.CachedLeafPage != this.LeafPage)
 			{
-				this.CachedCellCount = FdbLitePageHeader.GetCellCount(ReadLeaf());
-				this.CachedCountPage = this.LeafPage;
+				RefreshLeafCache();
 			}
 			return this.CachedCellCount;
 		}

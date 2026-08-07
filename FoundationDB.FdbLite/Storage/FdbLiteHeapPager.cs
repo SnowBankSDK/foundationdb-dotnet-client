@@ -92,6 +92,19 @@ namespace FoundationDB.Storage.FdbLite
 		public ReadOnlySpan<byte> ReadBlocks(uint firstBlock, int count) => GetSpan(firstBlock, count);
 
 		/// <inheritdoc />
+		/// <remarks>Region arrays are never reallocated once published (Grow copies the array-of-arrays, not the regions), so a held ref stays valid under the same pin/horizon rules as a span.</remarks>
+		public FdbLitePageRef ReadBlocksRef(uint firstBlock, int count)
+		{
+			ObjectDisposedException.ThrowIf(this.Disposed, this);
+			Contract.Requires(count > 0 && firstBlock + (uint) count <= this.BlockCount, "block run out of bounds");
+			uint region = firstBlock >> this.RegionSizeInBlocksLog2;
+			Contract.Requires((firstBlock + (uint) count - 1) >> this.RegionSizeInBlocksLog2 == region, "block run straddles a region boundary");
+			int offset = (int) (firstBlock & (this.RegionSizeInBlocks - 1)) << this.Geometry.BlockSizeLog2;
+			var regions = this.Regions; // one snapshot read: the array is immutable once published
+			return new(regions[(int) region], offset, count << this.Geometry.BlockSizeLog2);
+		}
+
+		/// <inheritdoc />
 		public void WriteBlocks(uint firstBlock, ReadOnlySpan<byte> data)
 		{
 			Contract.Requires((data.Length & (this.Geometry.BlockSize - 1)) == 0);
