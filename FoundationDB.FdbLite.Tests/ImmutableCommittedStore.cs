@@ -132,6 +132,20 @@ namespace FoundationDB.FdbLite.Tests
 		/// <inheritdoc />
 		public Value this[Key key] { set => this.Inner = this.Inner.SetItem(key, value); }
 
+		/// <inheritdoc />
+		public void Set(Key key, Value value, Arena arena)
+		{ // reuse the stored key instance and skip no-op sets; the immutable map retains the bytes, so no arena interning
+			if (this.TryGetKeyValue(key, out var kv))
+			{
+				if (kv.Value.Equals(value)) return; // value hasn't changed
+				key = kv.Key; // keep the stored instance (the versionstamp path relies on it)
+			}
+			this.Inner = this.Inner.SetItem(key, value);
+		}
+
+		/// <inheritdoc />
+		public void Discard() { } // an in-memory store has nothing to release
+
 	}
 
 	/// <summary>Bidirectional cursor over the immutable reference backend: an index into the ordered snapshot.</summary>
