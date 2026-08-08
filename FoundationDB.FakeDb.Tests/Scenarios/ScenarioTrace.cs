@@ -30,7 +30,7 @@ namespace FoundationDB.Client.Tests
 
 	/// <summary>Maps the absolute versions observed during a scenario run to stable symbolic ids (<c>v1</c>, <c>v2</c>, ... by first appearance).</summary>
 	/// <remarks>
-	/// <para>Absolute read/commit versions and versionstamps never match across backends or runs; the symbols preserve what matters — ordering of first appearance, equality, and uniqueness — while ignoring the absolute values (design spec §6.2).</para>
+	/// <para>Absolute read/commit versions and versionstamps never match across backends or runs; the symbols preserve what matters, ordering of first appearance, equality, and uniqueness, while ignoring the absolute values.</para>
 	/// <para>Versionstamps symbolize their 8-byte transaction version through the <b>same</b> table as plain versions, so the "stamp == committed version" relation survives symbolization.</para>
 	/// </remarks>
 	public sealed class VersionSymbolizer

@@ -32,7 +32,7 @@ public static class WatchAndQueue
 		tr.AtomicIncrement32(subscriber.Key(WATCH));
 	}
 
-	/// <summary>Stamp the VALUE (not the key) with the commit version — e.g. "last updated at" markers.</summary>
+	/// <summary>Stamp the VALUE (not the key) with the commit version, e.g. "last updated at" markers.</summary>
 	public static void StampValue(IFdbTransaction tr, IKeySubspace subspace)
 	{
 		// The value carries the incomplete stamp; FDB fills in the real commit version on commit.

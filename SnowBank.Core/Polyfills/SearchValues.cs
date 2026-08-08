@@ -14,7 +14,7 @@
 
 // Minimal netstandard2.0 backport of System.Buffers.SearchValues (.NET 8+), covering the subset the SDK uses
 // (Create + Contains). The real type compiles the value set into SIMD-friendly lookup structures; this fallback
-// does a linear scan over the original values — same results, slower for large sets (ours are < 10 chars).
+// does a linear scan over the original values, same results, slower for large sets (ours are < 10 chars).
 // Public: BCL-shaped, so consumer code using SearchValues compiles identically once retargeted to modern .NET.
 
 #if NETSTANDARD2_0

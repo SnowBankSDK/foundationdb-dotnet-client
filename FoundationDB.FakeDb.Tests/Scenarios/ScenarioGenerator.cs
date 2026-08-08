@@ -28,7 +28,7 @@ namespace FoundationDB.Client.Tests
 {
 	using FoundationDB.Client;
 
-	/// <summary>Seeded random scenario generator (design spec §6.5): one method per generator family, each producing zero-nondeterminism scenarios with trivially comparable traces.</summary>
+	/// <summary>Seeded random scenario generator: one method per generator family, each producing zero-nondeterminism scenarios with trivially comparable traces.</summary>
 	public static class ScenarioGenerator
 	{
 

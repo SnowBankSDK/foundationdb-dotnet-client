@@ -90,7 +90,7 @@ namespace FoundationDB.Client.Tests
 		SnapshotReadYourWritesDisable,
 	}
 
-	/// <summary>Declares the accepted slack on a step where the real cluster is legitimately nondeterministic (design spec §6.4); the default comparison is exact.</summary>
+	/// <summary>Declares the accepted slack on a step where the real cluster is legitimately nondeterministic; the default comparison is exact.</summary>
 	public enum ScenarioTolerance
 	{
 		/// <summary>No tolerance: the outcome must match the golden exactly.</summary>

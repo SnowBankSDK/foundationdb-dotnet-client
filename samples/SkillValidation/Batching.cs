@@ -1,4 +1,4 @@
-// Validates the read-batching idioms from the foundationdb-advanced-layers skill (§2): reading many
+// Validates the read-batching idioms from the foundationdb-advanced-layers skill (section 2): reading many
 // independent keys in one round-trip instead of awaiting them serially in a loop.
 
 using FoundationDB.Client;

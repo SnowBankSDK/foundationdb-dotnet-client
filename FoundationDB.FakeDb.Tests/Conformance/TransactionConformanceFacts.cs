@@ -1253,7 +1253,7 @@ namespace FoundationDB.Client.Tests
 			await PerformAtomicOperationAndCheck(db, key, 0x0F0F0F0F, FdbMutationType.BitXor, 0x018055AA);
 
 			// note: gate on the DATABASE's selected api level, not the process-global Fdb.ApiVersion (which is 0 on
-			// the emulator head, where the native client never starts) — the client-side mutation gate consults the
+			// the emulator head, where the native client never starts), the client-side mutation gate consults the
 			// database level, so both backends behave the same at the same level
 			if (db.GetApiVersion() >= 300)
 			{
@@ -5609,7 +5609,7 @@ namespace FoundationDB.Client.Tests
 			}, this.Cancellation);
 		}
 
-		// Inlined from FoundationDB.Tests/TestHelpers.cs (not available outside that assembly) - see task-3-report.md.
+		// Inlined from FoundationDB.Tests/TestHelpers.cs (not available outside that assembly).
 		private static async Task AssertThrowsFdbErrorAsync(Func<Task> asyncTest, FdbError expectedCode, string message)
 		{
 			try

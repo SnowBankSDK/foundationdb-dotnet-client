@@ -118,7 +118,7 @@ namespace SnowBank.Testing.Framework.Tests
 		/// <c>Set-Cookie</c> headers on the same response must survive <see cref="WebBrowserTestComponent.ForwardToMeshAsync"/>
 		/// as separate <see cref="WebBrowserTestComponent.MeshResponse.Headers"/> entries, not folded into one
 		/// comma-joined (and therefore malformed) value. Other multi-value headers are still expected to fold with a
-		/// comma, per RFC 9110 §5.3.</summary>
+		/// comma, per RFC 9110 section 5.3.</summary>
 		[Test]
 		public async Task Test_Multiple_SetCookie_Headers_Are_Not_Comma_Folded()
 		{

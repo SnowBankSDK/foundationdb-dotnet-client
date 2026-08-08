@@ -86,7 +86,7 @@ namespace SnowBank.Testing.Framework.Playwright
 		/// <remarks>
 		/// <para>This is the ONE deliberate crack in the bubble: the endpoint is a REAL loopback socket, so that an external
 		/// controller (an inspector, an agent-driven Playwright client, ...) can attach to the SAME browser with
-		/// <c>connectOverCDP</c> and co-drive the pages while this component keeps owning all routing — everything the
+		/// <c>connectOverCDP</c> and co-drive the pages while this component keeps owning all routing, everything the
 		/// external controller triggers still flows through the virtual network, the packet capture and the journal.</para>
 		/// <para>Pick a unique port per parked test; startup fails fast if the endpoint does not answer (port already in use).</para>
 		/// </remarks>
@@ -311,7 +311,7 @@ namespace SnowBank.Testing.Framework.Playwright
 		/// <summary>Init script that forces every page-side <c>WebSocket.close()</c> to carry a close code and reason.</summary>
 		/// <remarks>
 		/// <para>Microsoft.Playwright 1.61 crashes on any WebSocket close event that omits <c>code</c>/<c>reason</c> (which the
-		/// protocol allows — the TS client types them <c>number | undefined</c>): <c>WebSocketRoute.OnMessage</c> reads them with
+		/// protocol allows, the TS client types them <c>number | undefined</c>): <c>WebSocketRoute.OnMessage</c> reads them with
 		/// the throwing <c>JsonElement.GetProperty</c>, and the exception escapes <c>Connection.Dispatch</c>, poisoning the WHOLE
 		/// driver connection (the browser dies, every later call throws <c>TargetClosedException</c>). Reported upstream (2026-07).</para>
 		/// <para>The <c>@microsoft/signalr</c> client (and many others) call <c>ws.close()</c> with no arguments during cleanup,
@@ -348,14 +348,14 @@ namespace SnowBank.Testing.Framework.Playwright
 		/// <summary>Bridges one page-created WebSocket to the in-memory <c>TestServer</c> of the virtual host its URL points to.</summary>
 		/// <remarks>
 		/// <para>This is the WebSocket analog of <see cref="BindMeshNetworkRoutingAsync"/>: the page believes it holds a real
-		/// socket, but frames are pumped between the Playwright mock and a <c>TestServer.CreateWebSocketClient()</c> connection —
+		/// socket, but frames are pumped between the Playwright mock and a <c>TestServer.CreateWebSocketClient()</c> connection,
 		/// no socket is bound, no DNS lookup happens.</para>
 		/// <para>The page side is wired BEFORE the server connect completes: early frames (e.g. the SignalR handshake, sent from
-		/// <c>onopen</c>) are queued on a send chain that starts when the server socket is up — awaiting the connect first
+		/// <c>onopen</c>) are queued on a send chain that starts when the server socket is up, awaiting the connect first
 		/// silently drops them, and the server then kills the connection after its handshake timeout.</para>
 		/// <para>Connect-time offline states reject the connection (like the HTTP transport), and both endpoints' online
 		/// tokens sever an ESTABLISHED bridge (close code 4001). Directional link cuts (<c>VirtualNetworkCutEdge</c>) are NOT
-		/// yet honored — the topology's edge API is internal; take this bridge there when it moves into the framework.</para>
+		/// yet honored, the topology's edge API is internal; take this bridge there when it moves into the framework.</para>
 		/// </remarks>
 		private void BridgePageWebSocket(IWebSocketRoute pageWs)
 		{
@@ -548,7 +548,7 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		/// <summary>Waits for the Chromium remote debugging endpoint to answer, and records it in <see cref="RemoteDebuggingEndpoint"/>.</summary>
 		/// <remarks>Deliberately probes over a REAL loopback socket: the CDP endpoint exists precisely so that EXTERNAL
-		/// tools can attach to the browser (see <see cref="RemoteDebuggingPort"/>) — a stale listener or a port conflict
+		/// tools can attach to the browser (see <see cref="RemoteDebuggingPort"/>), a stale listener or a port conflict
 		/// must fail the component start with an actionable message, not surface later as a confusing connect error.</remarks>
 		private async Task VerifyRemoteDebuggingEndpointAsync(int port, CancellationToken ct)
 		{
@@ -568,7 +568,7 @@ namespace SnowBank.Testing.Framework.Playwright
 					await Task.Delay(200, ct);
 				}
 			}
-			throw new InvalidOperationException($"The Chromium remote debugging endpoint did not answer on {endpoint} — the port may already be bound by another process (a previous parked session?); pick a unique port per test.");
+			throw new InvalidOperationException($"The Chromium remote debugging endpoint did not answer on {endpoint}, the port may already be bound by another process (a previous parked session?); pick a unique port per test.");
 		}
 
 		/// <summary>Matches the exception signature of the playwright-dotnet 1.61 WebSocketRoute close-event bug (see
@@ -683,8 +683,8 @@ namespace SnowBank.Testing.Framework.Playwright
 				catch (Exception ex) when (IsKnownWebSocketRouteCloseBug(ex))
 				{
 					// destroying a page that ever had a routed WebSocket makes the upstream dispatcher emit
-					// closePage/closeServer with ONLY wasClean (no code/reason) — even for sockets that closed
-					// cleanly earlier — and the 1.61 binding poisons the driver connection on it. Unavoidable
+					// closePage/closeServer with ONLY wasClean (no code/reason), even for sockets that closed
+					// cleanly earlier, and the 1.61 binding poisons the driver connection on it. Unavoidable
 					// from user code; the browser is being discarded anyway, so contain the known signature
 					// (the driver process itself is reaped by disposing DriverCore above).
 					this.Log($"# <WS> teardown hit the known playwright-dotnet 1.61 WebSocketRoute close-event bug (contained): {ex.GetType().Name}");

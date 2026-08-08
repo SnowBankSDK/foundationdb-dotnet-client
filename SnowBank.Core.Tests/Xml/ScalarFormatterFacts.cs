@@ -32,8 +32,8 @@ namespace SnowBank.Data.Xml.Tests
 
 	/// <summary>Pins the exact lexical text produced by <see cref="CrystalXmlFormatters"/> for both XML profiles</summary>
 	/// <remarks>
-	/// <para>The DCS forms below were measured against a live <c>DataContractSerializer</c> at the design spike (see
-	/// <c>XmlContracts.cs</c>, <c>PrimitiveContracts.Create()</c>). They are hardcoded as literal expected strings, not
+	/// <para>The DCS forms below were measured against a live <c>DataContractSerializer</c>.
+	/// They are hardcoded as literal expected strings, not
 	/// recomputed via <see cref="XmlConvert"/> in the test, so a change in the wrapped BCL behaviour on any target
 	/// framework would be caught here instead of silently matching itself.</para>
 	/// <para>The one exception is the machine-dependent UTC offset of a <see cref="DateTimeKind.Local"/>

@@ -151,7 +151,7 @@ namespace SnowBank.Testing.Framework
 			};
 		}
 
-		/// <summary>Appends a header's values to <paramref name="headers"/>, folding multi-value headers with a comma per RFC 9110 §5.3 - except <c>Set-Cookie</c>, which cannot be comma-folded (RFC 6265 §3): cookie values may themselves legitimately contain commas, and folding several cookies together would produce one malformed value. Each <c>Set-Cookie</c> value is therefore added as its own entry, exactly as it came off the wire.</summary>
+		/// <summary>Appends a header's values to <paramref name="headers"/>, folding multi-value headers with a comma per RFC 9110 section 5.3 - except <c>Set-Cookie</c>, which cannot be comma-folded (RFC 6265 section 3): cookie values may themselves legitimately contain commas, and folding several cookies together would produce one malformed value. Each <c>Set-Cookie</c> value is therefore added as its own entry, exactly as it came off the wire.</summary>
 		private static void AddHeader(List<KeyValuePair<string, string>> headers, string name, IEnumerable<string> values)
 		{
 			if (string.Equals(name, "Set-Cookie", StringComparison.OrdinalIgnoreCase))

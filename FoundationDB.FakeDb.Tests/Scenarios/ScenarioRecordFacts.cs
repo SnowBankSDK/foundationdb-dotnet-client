@@ -31,7 +31,7 @@ namespace FoundationDB.Client.Tests
 	/// <summary>Records (or refreshes) the golden trace of corpus scenarios by executing them against a real FoundationDB cluster (Testcontainers).</summary>
 	/// <remarks>
 	/// <para>Run explicitly from the Unit Test Sessions UI (or with a CLI filter); requires a local Docker daemon. The golden is written into the source tree under <c>Scenarios/Goldens/</c> and must be committed.</para>
-	/// <para>Re-record when the corpus changes, and whenever the fdb server container image version bumps — review that diff as "server behavior changed".</para>
+	/// <para>Re-record when the corpus changes, and whenever the fdb server container image version bumps, review that diff as "server behavior changed".</para>
 	/// </remarks>
 	[TestFixture, Explicit("Requires a local Docker daemon"), Category("RealCluster")]
 	public class ScenarioRecordFacts : FdbTest

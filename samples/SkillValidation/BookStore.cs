@@ -1,5 +1,5 @@
 // This file is the verbatim worked example from
-//   .claude/skills/foundationdb-keys-and-layers/SKILL.md  (§7 "Writing a custom Layer")
+//   .claude/skills/foundationdb-keys-and-layers/SKILL.md  (section 7 "Writing a custom Layer")
 // Its purpose is to fail the build if that example ever drifts from the real API.
 
 using FoundationDB.Client;
@@ -22,7 +22,7 @@ public sealed partial class BookStore : IFdbLayer<BookStore.State>
 	private const int SUBSPACE_FEED = 2;           // (2, <versionstamp>) -> json change event (the feed)
 	private const int SUBSPACE_SIGNAL = 3;         // (3,)                -> counter watched by subscribers
 	private const int SUBSPACE_SUBSCRIBERS = 4;    // (4, <subId>)        -> (leaseReadVersion, cursor) lease
-	// (eviction is signalled by a TOMBSTONE left inside the feed itself — see BookStore.ChangeFeed.cs — so
+	// (eviction is signalled by a TOMBSTONE left inside the feed itself, see BookStore.ChangeFeed.cs, so
 	//  no separate "trim horizon" key is needed; a resuming subscriber detects it in its normal GetRange.)
 
 	/// <summary>LayerId advertised to the Directory layer, linking subspaces to <see cref="SchemaMapper"/>.</summary>
@@ -79,7 +79,7 @@ public sealed partial class BookStore : IFdbLayer<BookStore.State>
 		public async Task<Book?> GetAsync(IFdbReadOnlyTransaction tr, string id)
 		{
 			var bytes = await tr.GetAsync(this.Subspace.Key(SUBSPACE_DOCUMENTS, id));
-			// Deserialize already maps a Nil/empty slice (missing key) to null — no IsNull check needed.
+			// Deserialize already maps a Nil/empty slice (missing key) to null, no IsNull check needed.
 			return CrystalJson.Deserialize<Book>(bytes);
 		}
 

@@ -13,7 +13,7 @@ public static class Slices
 {
 	public static void Core()
 	{
-		// construction — a Slice is a VIEW over the array (no copy)
+		// construction, a Slice is a VIEW over the array (no copy)
 		byte[] b = [1, 2, 3, 4, 5];
 		Slice view = b.AsSlice();
 		Slice sub = b.AsSlice(1, 3);

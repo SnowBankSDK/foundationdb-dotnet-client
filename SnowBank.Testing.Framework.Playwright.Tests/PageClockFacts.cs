@@ -33,7 +33,7 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 	using SnowBank.Testing.Framework;
 
 	/// <summary>Facts for the virtual page clock of <see cref="PlaywrightWebBrowserTestComponent"/>: with
-	/// <c>WithVirtualClock()</c> the page's timers only move when the test advances them — the browser-side twin of the
+	/// <c>WithVirtualClock()</c> the page's timers only move when the test advances them, the browser-side twin of the
 	/// hosts' fake <c>TimeProvider</c>, enabling whole-topology time travel (or deliberate one-sided skew).</summary>
 	[TestFixture]
 	[Explicit("Requires Chromium (auto-installed on first run)")]

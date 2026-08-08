@@ -50,7 +50,7 @@ namespace SnowBank.Data.Xml
 	/// <see cref="WriteText(string?)"/> and <see cref="WriteRawAscii(string?)"/> must add <b>nothing at all</b> for
 	/// <see langword="null"/>, not even an empty node.</para>
 	/// <para><b>Line-ending normalization is applied by hand.</b> <see cref="XContainer.Add(object)"/> stores a string
-	/// verbatim, without the XML 1.0 §2.11 end-of-line normalization (<c>\r\n</c> or lone <c>\r</c> becomes <c>\n</c>) that
+	/// verbatim, without the XML 1.0 section 2.11 end-of-line normalization (<c>\r\n</c> or lone <c>\r</c> becomes <c>\n</c>) that
 	/// <see cref="XDocument.Parse(string)"/> applies. This emitter replicates it itself, so that
 	/// <c>XNode.DeepEquals(emitter.ToDocument(), XDocument.Parse(referenceWire))</c> holds for any text containing a line
 	/// break.</para>
@@ -152,7 +152,7 @@ namespace SnowBank.Data.Xml
 			}
 		}
 
-		/// <summary>Normalizes every line ending to a single <c>\n</c>, matching the XML 1.0 §2.11 rule a conformant parser applies</summary>
+		/// <summary>Normalizes every line ending to a single <c>\n</c>, matching the XML 1.0 section 2.11 rule a conformant parser applies</summary>
 		/// <remarks>See the type remarks: this is what keeps a directly-built document infoset-equivalent to a parse of the
 		/// same logical text, since <see cref="XContainer.Add(object)"/> would otherwise store the input verbatim.</remarks>
 		private static string NormalizeLineEndings(ReadOnlySpan<char> text)

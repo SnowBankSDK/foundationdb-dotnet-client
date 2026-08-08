@@ -29,9 +29,9 @@ namespace FoundationDB.Client.Tests
 	using FoundationDB.Client;
 	using SnowBank.Linq;
 
-	/// <summary>Executes a scenario against any <see cref="IFdbDatabase"/> backend and records the trace: the runner is the recorder (design spec §6.2).</summary>
+	/// <summary>Executes a scenario against any <see cref="IFdbDatabase"/> backend and records the trace: the runner is the recorder.</summary>
 	/// <remarks>
-	/// <para>Scenarios are cooperative single-threaded scripts: at most one in-flight operation at a time, watches and versionstamps settled only at explicit observation steps — determinism is a property of the model, not of the capture.</para>
+	/// <para>Scenarios are cooperative single-threaded scripts: at most one in-flight operation at a time, watches and versionstamps settled only at explicit observation steps, determinism is a property of the model, not of the capture.</para>
 	/// <para>The database's root location must resolve to a non-empty prefix (open the database on a test partition path), so that "key outside the scenario subspace" renders identically on every backend.</para>
 	/// </remarks>
 	public sealed class ScenarioRunner
@@ -157,7 +157,7 @@ namespace FoundationDB.Client.Tests
 					actor.Transaction?.Dispose(); // an actor owns at most one open transaction: Begin replaces any previous one
 					actor.Transaction = null;
 					actor.Subspace = null;
-					// note: the subspace is resolved lazily at the first key-using step, NOT here — the resolution is a
+					// note: the subspace is resolved lazily at the first key-using step, NOT here, the resolution is a
 					// directory READ, and a step like SetOption(ReadYourWritesDisable) must be able to precede any read
 					actor.Transaction = this.Db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
 					break;

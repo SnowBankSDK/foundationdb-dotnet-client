@@ -42,7 +42,7 @@ namespace SnowBank.Data.Xml.Tests
 	/// characters, typed exceptions in place of the reference serializer's own exception types) get their own pinning
 	/// test instead of a plain equality assertion.
 	/// </summary>
-	/// <remarks>Ported from the design spike's own <c>WireFidelityFacts.cs</c>, family by family.</remarks>
+	/// <remarks>Structured family by family, the fact per probe family.</remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-XML")]
@@ -121,7 +121,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// Items are named after the item type contract: <string>, <int>, <dateTime>, <Shelf>, <ArrayOfstring> for
 			// nested lists.
-			// note: the spike's [CollectionDataContract]-named collection member is excluded here; see NamedItems'
+			// note: the [CollectionDataContract]-named collection member is excluded here; see NamedItems'
 			// summary in DcsProbes.cs for why (CXML0010, a pre-existing Task 9 decision).
 			AssertSameWire(new CollectionProbe
 			{
@@ -138,7 +138,7 @@ namespace SnowBank.Data.Xml.Tests
 			}, v => DcsProbeSerializers.CollectionProbe.ToXmlText(v));
 		}
 
-		// note: the spike's "List<Shelf> as root" and "string as root" families are not exercised here: registering a
+		// note: the "List<Shelf> as root" and "string as root" families are not exercised here: registering a
 		// bare collection or scalar type directly with [CrystalSerializable] (no declaring DTO) produces generator
 		// output that fails to compile. See the note above DcsProbeSerializers in DcsProbes.cs; reported to the main
 		// session as a finding, not fixed here, and not a Task 9 DataContract-XML-specific defect (nothing in that
@@ -155,7 +155,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// <KeyValueOfstringstring><Key>..</Key><Value>..</Value></KeyValueOfstringstring>, <KeyValueOfintstring> for
 			// int keys, self-closing empty map.
-			// note: the spike's [CollectionDataContract]-named map member is excluded here for the same CXML0010 reason
+			// note: the [CollectionDataContract]-named map member is excluded here for the same CXML0010 reason
 			// as the collection family above.
 			AssertSameWire(new DictionaryProbe
 			{
@@ -419,7 +419,7 @@ namespace SnowBank.Data.Xml.Tests
 			// PolymorphicProbe.AsObjectString) needs the output name "ArrayOfstring", which reflection-free code has no
 			// way to compute for a type this container never registers as an object-slot candidate: the live oracle
 			// succeeds (it always can, via reflection), CrystalXml refuses instead of guessing.
-			// note: the spike names this family after KeyedBag<List<string>> instead; porting that exact shape hits a
+			// note: naming the family this KeyedBag<after<string>> instead would hit a
 			// DIFFERENT, build-time refusal here (see the note on KeyedBagProbe in DcsProbes.cs) and never reaches
 			// runtime at all, so this test pins the same acted deviation through the shape Task 9's own fixture
 			// already exercises for it (Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Refused_In_An_AnyType_Slot).

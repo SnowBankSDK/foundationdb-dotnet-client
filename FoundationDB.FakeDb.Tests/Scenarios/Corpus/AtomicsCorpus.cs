@@ -28,7 +28,7 @@ namespace FoundationDB.Client.Tests
 {
 	using FoundationDB.Client;
 
-	/// <summary>Atomic-operation completeness matrix (design spec §7.3): every mutation type alone and pairwise-coalesced, over absent and committed values, with a read-back — the actually-throwing combinations map themselves.</summary>
+	/// <summary>Atomic-operation completeness matrix: every mutation type alone and pairwise-coalesced, over absent and committed values, with a read-back, the actually-throwing combinations map themselves.</summary>
 	public static class AtomicsCorpus
 	{
 

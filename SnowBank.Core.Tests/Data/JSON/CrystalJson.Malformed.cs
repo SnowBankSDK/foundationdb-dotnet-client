@@ -216,7 +216,7 @@ namespace SnowBank.Data.Json.Tests
 				error = e;
 			}
 
-			// A rejection must always use a clean, catchable JSON exception — never a leaked internal exception
+			// A rejection must always use a clean, catchable JSON exception, never a leaked internal exception
 			// (IndexOutOfRange, Overflow, NullReference, ...), and never a crash or a hang.
 			if (error is not null)
 			{

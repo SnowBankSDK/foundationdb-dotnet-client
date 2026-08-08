@@ -31,7 +31,7 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 	using NUnit.Framework;
 	using SnowBank.Testing.Framework;
 
-	/// <summary>Facts for the remote debugging (CDP) endpoint of <see cref="PlaywrightWebBrowserTestComponent"/> — the one
+	/// <summary>Facts for the remote debugging (CDP) endpoint of <see cref="PlaywrightWebBrowserTestComponent"/>, the one
 	/// deliberate real loopback socket that lets an external controller attach to the bubble's browser.</summary>
 	[TestFixture]
 	[Explicit("Requires Chromium (auto-installed on first run)")]

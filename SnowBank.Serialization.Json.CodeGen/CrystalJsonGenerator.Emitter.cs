@@ -149,7 +149,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#region Sample member (documentation only)...
 
-			// The "How to use" blocks of the generated proxy helpers quote ONE member of the type as an example. A type with
+			// The "How to use" blocks of the generated proxy helpers quote one member of the type as an example. A type with
 			// no serialized member at all is legal (an ISerializable wrapper on the DataContract XML format is exactly that),
 			// and indexing the member list for those comments used to crash the whole emission for such a type. The three
 			// helpers below answer with a placeholder instead: the sample is documentation, and documentation must never be
@@ -421,7 +421,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							Diagnostic.Create(new(
 								"CJSON0003",
 								"Failed to emit JSON code",
-								"Failed to emit the generate source-code for for type {0} in {1}: [{2}] {3}.",
+								"Failed to generate the source code for type {0} in {1}: [{2}] {3}.",
 								"SnowBank.Serialization.Json.CodeGen",
 								DiagnosticSeverity.Error,
 								isEnabledByDefault: true
@@ -713,11 +713,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				#region JsonConverter class...
 
-				// when the container also produces XML, the SAME instance carries the XML facet: passing Default to code that
+				// when the container also produces XML, the same instance carries the XML facet: passing Default to code that
 				// wants an ICrystalXmlSerializer<T> resolves statically, with no second converter to keep in sync
 				// without a proxy surface, the converter implements the plain IJsonConverter<T>: the three-argument form
 				// names the proxy types, and does not exist on the lite path in the first place
-				// an XML-only container implements the XML facet ALONE: there is no JSON contract for it to answer
+				// an XML-only container implements the XML facet by itself: there is no JSON contract for it to answer
 				var facets = new List<string>();
 				if (this.WritesJson)
 				{
@@ -1120,7 +1120,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									getterExpr = $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), typeof({member.CustomConverterType}), {GetForgivingDefaultLiteral(member)})!";
 								}
 								else if (member.CustomConverterIsNullableForm)
-								{ // converter declared for the T? form itself: it owns every PRESENT value, the pipeline still owns null/missing
+								{ // converter declared for the T? form itself: it owns every present value, the pipeline still owns null/missing
 									getterExpr = member.IsRequired
 										? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null, null, {CSharpCodeBuilder.Constant(member.MemberName)})"
 										: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null)";
@@ -1407,7 +1407,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									getterExpr = $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), typeof({member.CustomConverterType}), {defaultValue})!";
 								}
 								else if (member.CustomConverterIsNullableForm)
-								{ // converter declared for the T? form itself: it owns every PRESENT value, the pipeline still owns null/missing
+								{ // converter declared for the T? form itself: it owns every present value, the pipeline still owns null/missing
 									getterExpr = member.IsRequired
 										? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null, null, {CSharpCodeBuilder.Constant(member.MemberName)})"
 										: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null)";
@@ -2370,7 +2370,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							continue;
 						}
 						if (member.CustomConverterIsNullableForm)
-						{ // converter declared for the T? form itself: it owns every PRESENT value, the pipeline still owns null/missing
+						{ // converter declared for the T? form itself: it owns every present value, the pipeline still owns null/missing
 							EmitUnpackAssignment(sb, member, member.IsRequired
 								? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})"
 								: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver)");

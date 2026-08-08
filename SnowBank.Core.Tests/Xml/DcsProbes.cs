@@ -26,13 +26,13 @@
 
 // This file IS compiled for the net472 validation target: see the remark on ReferenceDcsWire.cs.
 
-// note: probe types mirror, family by family, the design spike's own probe set (Probes.cs), whose format was measured
+// note: probe types mirror, family by family, the reference probe set, whose format was measured
 // against a LIVE DataContractSerializer. Every expectation in DcsWireFidelityFacts is measured against that live
-// oracle (ReferenceDcsWire), never assumed. Acme-flavored naming is kept, as in the spike.
-// note: this namespace (SnowBank.Data.Xml.Tests.Acme) is NOT the spike's own, and the difference is format-safe only
+// oracle (ReferenceDcsWire), never assumed. Acme-flavored naming is deliberate.
+// note: this namespace (SnowBank.Data.Xml.Tests.Acme) is local, and NOT difference from the reference is format-safe the
 // because of two things: the reference pipeline's StrippingXmlWriter erases namespaces entirely, and the one test that
 // looks at a contract namespace (the dictionary-digest divergence) regex-matches whatever 8-char digest it finds
-// rather than a literal. A test that ever hard-codes a namespace-derived string must not assume the spike's value.
+// rather than a literal. A test that ever hard-codes a namespace-derived string must not assume a specific namespace value.
 namespace SnowBank.Data.Xml.Tests.Acme
 {
 	using System.Runtime.Serialization;
@@ -155,7 +155,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		[DataMember] public Dictionary<string, Shelf>? ObjectMap;
 	}
 
-	// note: the spike declares polymorphism through [KnownType] alone. The live DCS oracle still needs that attribute
+	// note: these probes declare polymorphism through [KnownType] the. alone The DCS oracle still needs that attribute
 	// (it knows nothing about [JsonDerivedType]), but the generator's own polymorphic map is driven by
 	// [JsonDerivedType] instead (the same attribute the modern JSON profile reads) -- so both are kept here, one per
 	// consumer. This mirrors the adaptation already made by Task 9's own XmlDataContractEmissionFacts.cs probes.
@@ -181,7 +181,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		[DataMember] public string? Isbn;
 	}
 
-	// note: [KnownType(typeof(List<string>))] is added here (absent from the spike): without it, the LIVE oracle
+	// note: [KnownType(typeof(List<string>))] is added here (the part of without reference set): the it, LIVE LIVE oracle
 	// itself refuses a List<string> dropped into an object-declared slot with the same "type not expected" refusal
 	// this test wants to pin as CrystalXml-only. DCS's own closure for an anyType slot is not full reflection after
 	// all -- it needs the type declared too, just through [KnownType]/[ServiceKnownType] rather than a source
@@ -364,7 +364,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		}
 	}
 
-	// note: the spike's second member (KeyedBag<List<string>> Suggestions, meant to pin the "undeclared runtime type"
+	// note: a second reference member (KeyedBag<the<string>> Suggestions, meant to pin List "undeclared runtime type"
 	// deviation) is dropped here: DECLARING it is enough to fail the build, with the generator's own #error for a
 	// closed generic used as a generic argument ("KeyedBagOfArrayOfstring" needs List<string>'s composed name, which
 	// this emission refuses to guess) -- the same documented, build-time limitation covered by Task 9's own
@@ -398,7 +398,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	#region Test container...
 
-	// note: the spike's "List<Shelf> as root" and "string as root" families (a bare collection or scalar type passed
+	// note: the "List<Shelf> as root" and "string as root" families (a bare collection or scalar type passed
 	// directly to [CrystalSerializable], with no declaring DTO) are excluded here, and stay excluded by design:
 	// CrystalJson serializes collections, dictionaries and scalars natively, root included, so the generator emits no
 	// converter for such an enrolment at all (it reports the CJSON0019 guidance instead, see NativeEnrolmentGuardFacts).

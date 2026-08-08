@@ -28,7 +28,7 @@ namespace FoundationDB.Client.Tests
 {
 	using FoundationDB.Client;
 
-	/// <summary>Read-your-writes campaign corpus (design spec §7.2): single-actor, fully deterministic scenarios exercising the managed RYW re-implementation below the validation seam.</summary>
+	/// <summary>Read-your-writes campaign corpus: single-actor, fully deterministic scenarios exercising the managed RYW re-implementation below the validation seam.</summary>
 	public static class RywCorpus
 	{
 

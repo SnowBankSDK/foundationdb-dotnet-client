@@ -43,7 +43,7 @@ namespace SnowBank.Data.Xml
 	/// <see cref="ICrystalXmlEmitter.WriteRawAscii(ReadOnlySpan{char})"/>, whereas <c>WriteString(string.Empty)</c> forces the
 	/// expanded form. Pre-validated ASCII never contains a character the escaper treats specially, so the output is identical
 	/// for every non-empty value.</para>
-	/// <para>Also measured against the BCL: the wrapped writer already applies XML 1.0 §2.11 end-of-line normalization on
+	/// <para>Also measured against the BCL: the wrapped writer already applies XML 1.0 section 2.11 end-of-line normalization on
 	/// write and already entitizes TAB/LF/CR inside attribute values, so neither needs any help from this type.</para>
 	/// <para><b>The format core's control-character sanitization does NOT apply here.</b> The characters XML 1.0 cannot
 	/// represent (C0 controls, unpaired surrogate halves, U+FFFE/U+FFFF) reach the wrapped writer unchanged, which answers

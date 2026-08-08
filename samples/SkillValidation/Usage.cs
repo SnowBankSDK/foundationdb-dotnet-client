@@ -11,7 +11,7 @@ namespace SkillValidation;
 
 public static class Usage
 {
-	// keys-and-layers §3 — Building keys
+	// keys-and-layers section 3, Building keys
 	public static void BuildingKeys(IKeySubspace subspace)
 	{
 		FdbTupleKey<string> k1 = subspace.Key("hello");
@@ -32,7 +32,7 @@ public static class Usage
 		_ = (k1, k2, k3, kp, t1, t2, raw, r, t, sys);
 	}
 
-	// keys-and-layers §4 — Ranges & key derivation
+	// keys-and-layers section 4, Ranges & key derivation
 	public static void RangesAndDerivation(IKeySubspace subspace)
 	{
 		var r1 = subspace.ToRange();
@@ -53,7 +53,7 @@ public static class Usage
 		_ = (r1, r2, r3, r4, r5, r6, r7, succ, sib, first, last, sel1, sel2);
 	}
 
-	// keys-and-layers §5 — Decoding keys
+	// keys-and-layers section 5, Decoding keys
 	public static async Task DecodingKeys(IFdbDatabase db, ISubspaceLocation location, CancellationToken ct)
 	{
 		await db.ReadAsync(async tr =>
@@ -72,7 +72,7 @@ public static class Usage
 		}, ct);
 	}
 
-	// keys-and-layers §6 — Locations & the Directory layer
+	// keys-and-layers section 6, Locations & the Directory layer
 	public static async Task Locations(IFdbDatabase db, CancellationToken ct)
 	{
 		ISubspaceLocation location = db.Root["Tenants"]["ACME"]["Documents"]["Books"];
@@ -87,7 +87,7 @@ public static class Usage
 		_ = viaPath;
 	}
 
-	// keys-and-layers §8 — Encoding values
+	// keys-and-layers section 8, Encoding values
 	public static void EncodingValues()
 	{
 		var book = new Book { Id = "B1", Author = "Asimov", Title = "Foundation" };
@@ -104,7 +104,7 @@ public static class Usage
 		_ = (v1, v2, v3, v4, v5, v6, v7, v8);
 	}
 
-	// keys-and-layers §7 — Using the layer + composing layers
+	// keys-and-layers section 7, Using the layer + composing layers
 	public static async Task UsingLayers(IFdbDatabase db, CancellationToken ct)
 	{
 		var store = new BookStore(db.Root["Documents"]["Books"]);
@@ -152,7 +152,7 @@ public static class Usage
 		_ = (b, deleted, rules);
 	}
 
-	// transactions §1 — the three retry-loop methods
+	// transactions section 1, the three retry-loop methods
 	public static async Task RetryLoops(IFdbDatabase db, ISubspaceLocation location, CancellationToken ct)
 	{
 		Book? book = await db.ReadAsync(async tr =>
@@ -180,7 +180,7 @@ public static class Usage
 		_ = (book, newBalance);
 	}
 
-	// transactions §4 — atomic mutations, snapshot reads, conflict ranges
+	// transactions section 4, atomic mutations, snapshot reads, conflict ranges
 	public static async Task Atomics(IFdbDatabase db, ISubspaceLocation location, CancellationToken ct)
 	{
 		var counterKey = KeySubspace.FromKey(Slice.FromByte(8)).Key("c");
@@ -212,7 +212,7 @@ public static class Usage
 		}, ct);
 	}
 
-	// transactions §5 — watches
+	// transactions section 5, watches
 	public static async Task Watches(IFdbDatabase db, ISubspaceLocation location, CancellationToken ct)
 	{
 		FdbWatch watch = await db.ReadWriteAsync(

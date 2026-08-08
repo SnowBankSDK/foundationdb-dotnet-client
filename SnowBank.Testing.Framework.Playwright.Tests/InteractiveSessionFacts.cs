@@ -32,10 +32,10 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 
 	/// <summary>Parks a live "bubble universe" (virtual web host + browser with an exposed CDP endpoint) so a human or an
 	/// agent-driven external controller can attach to the browser (<c>connectOverCDP</c>) and explore interactively, while
-	/// the component keeps owning all routing — everything the external controller does still flows through the virtual
+	/// the component keeps owning all routing, everything the external controller does still flows through the virtual
 	/// network, the packet capture and the journal.</summary>
 	[TestFixture]
-	[Explicit("Parks a live bubble universe for interactive debugging — opt-in via SNOWBANK_INTERACTIVE=1")]
+	[Explicit("Parks a live bubble universe for interactive debugging, opt-in via SNOWBANK_INTERACTIVE=1")]
 	public class InteractiveSessionFacts : DistributedTest
 	{
 

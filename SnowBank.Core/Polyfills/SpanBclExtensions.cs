@@ -37,7 +37,7 @@ namespace SnowBank.Compat
 
 		#region Random.NextInt64...
 
-		// NOTE: these do not reproduce the BCL's values — Random.NextInt64 draws from the internal PRNG state directly,
+		// NOTE: these do not reproduce the BCL's values, Random.NextInt64 draws from the internal PRNG state directly,
 		// whereas this pulls 8 bytes via NextBytes and reinterprets them. The distribution is uniform and unbiased (bounded
 		// overloads use rejection sampling), but a given seed will NOT yield the same sequence as a modern runtime. Fine for
 		// non-reproducible id/salt generation; do not rely on cross-target-framework reproducibility from a fixed seed.
@@ -151,7 +151,7 @@ namespace SnowBank.Compat
 		#region TryFormat for primitives...
 
 		// Mirrors the instance TryFormat(Span<char>, out int, ReadOnlySpan<char>, IFormatProvider?) that all primitives
-		// gained with ISpanFormattable (.NET 6). Fallback formats to a transient string then copies — one string allocation
+		// gained with ISpanFormattable (.NET 6). Fallback formats to a transient string then copies, one string allocation
 		// per call (the modern versions write digits straight into the destination). Same results, including format strings.
 		// On the modern targets the real instance methods take over, so call sites are source-compatible across both.
 
@@ -360,7 +360,7 @@ namespace SnowBank.Compat
 
 		#region Collection capacity/mutation helpers (net6+)...
 
-		/// <summary>Mirrors <c>Dictionary&lt;TKey,TValue&gt;.EnsureCapacity</c> (.NET Core 2.1+). The netstandard2.0 Dictionary cannot be re-sized in place, so this is a no-op that returns the requested capacity — correct, just without the re-hash-avoidance benefit.</summary>
+		/// <summary>Mirrors <c>Dictionary&lt;TKey,TValue&gt;.EnsureCapacity</c> (.NET Core 2.1+). The netstandard2.0 Dictionary cannot be re-sized in place, so this is a no-op that returns the requested capacity, correct, just without the re-hash-avoidance benefit.</summary>
 		public static int EnsureCapacity<TKey, TValue>(this Dictionary<TKey, TValue> dictionary, int capacity)
 			where TKey : notnull
 			=> capacity;

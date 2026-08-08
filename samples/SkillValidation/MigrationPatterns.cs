@@ -15,7 +15,7 @@ public static class MigrationPatterns
 	private const int INDEXES = 1;
 	private const int CHUNKS = 0;
 
-	// OLD (pre-revamp, dynamic API — shown in comments, no longer compiles):
+	// OLD (pre-revamp, dynamic API, shown in comments, no longer compiles):
 	//   tenant.Encode(CHUNKS, rid, chunkId, chunkCount)
 	//   tenant.Pack(STuple.Create(INDEXES, idx).Concat(value))
 	//   tenant.EncodeRange(CHUNKS, rid)

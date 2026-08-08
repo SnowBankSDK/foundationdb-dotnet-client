@@ -109,7 +109,7 @@ namespace FoundationDB.Testing.Tests
 		public async Task Test_All_Mutation_Types_Are_Accepted_At_The_Emulation_Floor()
 		{
 			// FakeDb's emulation floor is api level 610 (MIN_API_VERSION), where every mutation type is already
-			// available — so the "old level rejects newer mutations" behavior is unreachable on the emulator by
+			// available, so the "old level rejects newer mutations" behavior is unreachable on the emulator by
 			// design. The managed client's gate consults the DATABASE's selected level (identically for a real
 			// database); this pins that the floor level accepts the whole mutation vocabulary.
 			var store = new FakeDbStore(apiVersion: FakeDbStore.MIN_API_VERSION);

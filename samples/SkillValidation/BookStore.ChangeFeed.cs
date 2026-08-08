@@ -28,7 +28,7 @@ public readonly record struct BookChangeEntry(VersionStamp Version, BookChange C
 /// Thrown when a subscriber resumes from a cursor that the retention GC has already reclaimed past:
 /// changes between the cursor and the trim horizon were deleted, so the feed is INCOMPLETE for this
 /// subscriber (it was likely frozen long enough to be evicted). The subscriber must reload current
-/// state and re-subscribe from "now" — it cannot trust its incremental view any more.
+/// state and re-subscribe from "now", it cannot trust its incremental view any more.
 /// </summary>
 public sealed class ChangeFeedOutOfSyncException(VersionStamp cursor, VersionStamp trimHorizon)
 	: Exception($"Change feed is out of sync: cursor {cursor} is older than the trim horizon {trimHorizon}; changes were missed.")
@@ -44,7 +44,7 @@ public sealed partial class BookStore
 	public sealed partial class State
 	{
 		// Called by every mutation (Insert/Update/Patch/Delete) in BookStore.cs, in the SAME transaction
-		// as the document write — so the feed can never disagree with the data.
+		// as the document write, so the feed can never disagree with the data.
 		internal void LogChange(IFdbTransaction tr, BookChangeKind kind, string id, Book? book)
 		{
 			var stamp = tr.CreateUniqueVersionStamp();   // distinct per change, even several in one tx
@@ -69,9 +69,9 @@ public sealed partial class BookStore
 		TimeSpan? heartbeat = null,
 		[EnumeratorCancellation] CancellationToken ct = default)
 	{
-		// NOTE: `heartbeat` is only this consumer pacing ITS OWN renewals with a local timer — that needs no
+		// NOTE: `heartbeat` is only this consumer pacing ITS OWN renewals with a local timer, that needs no
 		// cross-node agreement. The lease value and its expiry are measured in the DATABASE read version
-		// (a single global clock all nodes share), never in local wall-clock time — see PurgeAsync.
+		// (a single global clock all nodes share), never in local wall-clock time, see PurgeAsync.
 		var hb = heartbeat ?? TimeSpan.FromSeconds(10);
 		VersionStamp? cursor = after;
 
@@ -83,7 +83,7 @@ public sealed partial class BookStore
 				var feed = state.Subspace.Key(SUBSPACE_FEED);
 
 				// ONE round-trip: read the next page of changes after our cursor. Eviction is detected IN this
-				// same GetRange — when the GC reclaims part of the log it leaves a TOMBSTONE (an empty value)
+				// same GetRange, when the GC reclaims part of the log it leaves a TOMBSTONE (an empty value)
 				// at the trim horizon. If we were reclaimed past, everything below the horizon is gone, so the
 				// first entry we see is that tombstone (a null change) instead of a real delta. No extra read,
 				// no serial dependency on a separate "trim" key.
@@ -93,10 +93,10 @@ public sealed partial class BookStore
 				var chunk = await tr.Snapshot.GetRangeAsync(range, FdbRangeOptions.WantAll.WithLimit(BatchSize));
 
 				// renew this subscriber's liveness TOKEN with a database-sourced monotonic value (the read
-				// version; a version-stamped value works too). It is never compared to wall-clock time —
+				// version; a version-stamped value works too). It is never compared to wall-clock time,
 				// the observer (see LivenessObserver) only checks whether it CHANGES between polls, so it is
 				// immune to both clock skew across nodes and the non-constant version tick-rate.
-				// NOTE: if a tombstone is found below we throw, which rolls back this renewal — so an evicted
+				// NOTE: if a tombstone is found below we throw, which rolls back this renewal, so an evicted
 				// subscriber never re-registers a stale cursor that could mislead the GC's horizon.
 				long token = await tr.GetReadVersionAsync();
 				tr.Set(
@@ -104,7 +104,7 @@ public sealed partial class BookStore
 					FdbValue.FromTuple((token, cursor ?? default(VersionStamp))));
 
 				if (chunk.Count == 0)
-				{ // caught up: watch the signal key (outer token — the watch outlives this tx)
+				{ // caught up: watch the signal key (outer token, the watch outlives this tx)
 					BookChangeEntry[] none = [];
 					return (none, (FdbWatch?) tr.Watch(state.Subspace.Key(SUBSPACE_SIGNAL), ct));
 				}
@@ -195,11 +195,11 @@ public sealed partial class BookStore
 	#region Retention (purge old feed entries) ...
 
 	/// <summary>
-	/// Decides which subscribers are frozen and trims the feed accordingly — WITHOUT ever comparing
+	/// Decides which subscribers are frozen and trims the feed accordingly, WITHOUT ever comparing
 	/// timestamps across nodes. Each subscriber stores a database-sourced monotonic token that changes
 	/// only when it renews. This observer reads those tokens on a fixed LOCAL interval and watches for
 	/// tokens that have NOT CHANGED across several consecutive polls. "Unchanged for N polls" == "N ×
-	/// the observer's own local delay between reads" — the local clock measures only the gap between this
+	/// the observer's own local delay between reads", the local clock measures only the gap between this
 	/// observer's own reads, never a value produced by another node. Testing the token for equality (not
 	/// converting it to a duration) also makes it immune to the non-constant version tick-rate.
 	/// Call <see cref="PollAndPurgeAsync"/> in a loop with a local <c>Task.Delay</c> between calls.
@@ -258,7 +258,7 @@ public sealed partial class BookStore
 				{
 					// Reclaim everything up to and including the horizon, then leave a single TOMBSTONE (empty
 					// value, reusing the horizon's versionstamp) as a fence. A resuming subscriber whose cursor
-					// is older than the horizon will read this tombstone first and know it missed changes — all
+					// is older than the horizon will read this tombstone first and know it missed changes, all
 					// detected by its normal GetRange, with no extra read. (Set-after-clear keeps the tombstone.)
 					tr.ClearRange(feed.ToHeadRangeInclusive(trimTo));
 					tr.Set(feed.Key(trimTo), FdbValue.Empty);
@@ -306,14 +306,14 @@ public static class BookStoreChangeFeedUsage
 			}
 			catch (ChangeFeedOutOfSyncException)
 			{
-				// We were frozen/evicted and missed changes — our incremental view is untrustworthy.
+				// We were frozen/evicted and missed changes, our incremental view is untrustworthy.
 				// Loop: reload current state and re-subscribe from now.
 				continue;
 			}
 		}
 	}
 
-	// Background GC: poll every 5s (LOCAL clock — only the gap between our own reads), evicting any
+	// Background GC: poll every 5s (LOCAL clock, only the gap between our own reads), evicting any
 	// subscriber whose DB token hasn't changed for 3 polls (~15s frozen) and trimming the feed.
 	public static async Task RunGcLoop(BookStore store, IFdbDatabase db, CancellationToken ct)
 	{

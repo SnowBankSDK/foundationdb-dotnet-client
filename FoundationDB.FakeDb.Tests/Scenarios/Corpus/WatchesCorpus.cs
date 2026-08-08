@@ -28,7 +28,7 @@ namespace FoundationDB.Client.Tests
 {
 	using FoundationDB.Client;
 
-	/// <summary>Watches campaign corpus (design spec §7.1): where watch folklore is uncertain, the recorded real-cluster behavior IS the spec, and FakeDb is pinned to it.</summary>
+	/// <summary>Watches campaign corpus: where watch folklore is uncertain, the recorded real-cluster behavior IS the spec, and FakeDb is pinned to it.</summary>
 	public static class WatchesCorpus
 	{
 

@@ -172,7 +172,7 @@ namespace System.Security.Cryptography
 	{
 
 		//REVIEW: the real CryptographicOperations.ZeroMemory guarantees the zeroing is NOT elided by the JIT (it is a
-		// security primitive: sensitive bytes must actually be wiped). Span.Clear() carries no such guarantee — in principle
+		// security primitive: sensitive bytes must actually be wiped). Span.Clear() carries no such guarantee, in principle
 		// the optimizer could remove it if it proves the buffer is never read again. In practice Clear() is not currently
 		// elided on the .NET Framework JIT, and our callers (wiping pooled buffers before returning them) still benefit,
 		// but this is weaker than the modern contract. Revisit if a hardened non-elidable wipe is ever required here.

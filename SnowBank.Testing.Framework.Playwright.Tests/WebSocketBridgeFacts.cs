@@ -36,7 +36,7 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 
 	/// <summary>Facts for the WebSocket bridge of <see cref="PlaywrightWebBrowserTestComponent"/>: a WebSocket opened by
 	/// page javascript is intercepted (<c>RouteWebSocketAsync</c>) and its frames are bridged to the target virtual host's
-	/// in-memory <c>TestServer</c>, so the page talks to a purely virtual server exactly like it does for HTTP requests —
+	/// in-memory <c>TestServer</c>, so the page talks to a purely virtual server exactly like it does for HTTP requests,
 	/// no socket is ever bound, no DNS lookup ever happens.</summary>
 	[TestFixture]
 	[Explicit("Requires Chromium (auto-installed on first run)")]

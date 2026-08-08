@@ -258,7 +258,7 @@ namespace FoundationDB.Testing
 						// If the existing value in the database is not present, the parameter is stored.
 						// The existing value is zero-extended or truncated to the operand length, then both are
 						// compared as UNSIGNED LITTLE-ENDIAN integers (pinned against fdb 7.4: the comparison is
-						// numeric, NOT lexicographic — ByteMin/ByteMax are the lexicographic ones).
+						// numeric, NOT lexicographic, ByteMin/ByteMax are the lexicographic ones).
 						if (previous.IsNull)
 						{
 							return scratch.InternValue(operand);
@@ -275,7 +275,7 @@ namespace FoundationDB.Testing
 						// the missing value instead would make MIN always win with zeros).
 						// The existing value is zero-extended or truncated to the operand length, then both are
 						// compared as UNSIGNED LITTLE-ENDIAN integers (pinned against fdb 7.4: the comparison is
-						// numeric, NOT lexicographic — ByteMin/ByteMax are the lexicographic ones).
+						// numeric, NOT lexicographic, ByteMin/ByteMax are the lexicographic ones).
 						if (previous.IsNull)
 						{
 							return scratch.InternValue(operand);
@@ -430,7 +430,7 @@ namespace FoundationDB.Testing
 				}
 				else if (mutation != null)
 				{ // the key is covered by an uncommitted cleared RANGE: the atomic applies over the locally-cleared (nil)
-				  // value, and must NOT mutate the shared range entry (it covers other keys) — pinned by the RYW fuzzer
+				  // value, and must NOT mutate the shared range entry (it covers other keys), pinned by the RYW fuzzer
 					var head = Mutation.Clear();
 					head.Next = stacked;
 					head.Tail = stacked;
@@ -1911,7 +1911,7 @@ namespace FoundationDB.Testing
 					{
 						if (Volatile.Read(ref m_keyReadCount) > 0)
 						{ // observed on the real cluster: disabling read-your-writes after the transaction has already
-						  // performed a read leaves it unusable — reads and the commit fail, writes are accepted but doomed
+						  // performed a read leaves it unusable, reads and the commit fail, writes are accepted but doomed
 							this.OptionPoisoned = true;
 						}
 						this.OptionReadYourWrites = false;
@@ -2811,7 +2811,7 @@ namespace FoundationDB.Testing
 			/// GET = 25 + 2k, SET = 69 + 3k + v, CLEAR = 50 + 4k, CLEARRANGE = 68 + 2(b+e), ATOMIC = 69 + 3k + p.</summary>
 			/// <remarks>Where FakeDb cannot know what the native client would do (reads served locally by the RYW layer are
 			/// not accounted natively; selector/range read formulas are unprobed), it accounts anyway: the invariant that
-			/// matters is to never UNDER-estimate — batching loops flush on this value, and an underestimate would produce
+			/// matters is to never UNDER-estimate, batching loops flush on this value, and an underestimate would produce
 			/// an oversized commit that fails deterministically on every retry.</remarks>
 			private long m_approximateSize;
 
@@ -2885,7 +2885,7 @@ namespace FoundationDB.Testing
 				}
 				catch (FdbException e)
 				{ // a failed commit (e.g. a conflict) kills the futures it would have settled:
-					// the watches fail with the commit error, the versionstamp with TransactionInvalidVersion (there is no commit version) — both pinned against the real cluster
+					// the watches fail with the commit error, the versionstamp with TransactionInvalidVersion (there is no commit version), both pinned against the real cluster
 					this.StampSignal?.TrySetException(new FdbException(FdbError.TransactionInvalidVersion));
 					FailPendingWatches(e.Code);
 					throw;

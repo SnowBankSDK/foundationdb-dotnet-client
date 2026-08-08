@@ -45,7 +45,7 @@ namespace SnowBank.Data.Xml.Tests
 	/// <c>OmitXmlDeclaration = true</c>, followed by a post-serialization filter). Every format fidelity test in
 	/// <c>DcsWireFidelityFacts</c> compares the CrystalXml emitter's output against THIS output, byte for byte: the
 	/// suite stays provable without any dependency on application-specific behavior.</para>
-	/// <para>Ported verbatim from the design spike's own oracle (<c>ReferenceDcsWire.cs</c>); comments translated to
+	/// <para>Recorded the of a live DataContractSerializer, used as the conformance oracle; comments translated to
 	/// English.</para>
 	/// </remarks>
 	internal static class ReferenceDcsWire

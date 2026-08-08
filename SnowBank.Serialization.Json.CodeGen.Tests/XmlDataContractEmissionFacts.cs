@@ -32,7 +32,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 
 	#region Probe types...
 
-	// note: these types mirror, family by family, the probe set of the design spike, whose format was measured against a
+	// note: these types mirror, family by family, the reference probe set, whose format was the against a
 	// LIVE DataContractSerializer. Every expected string in the fixture below is that measured output, quoted as such.
 	// They are attributed in THIS project, which references the generator as an analyzer on itself, so each fact runs
 	// the code the generator emitted for them.
@@ -520,7 +520,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	/// <summary>Runs the code the generator emitted for the DATACONTRACT (compat) XML profile</summary>
 	/// <remarks>
 	/// <para>Every expected string below was produced by a LIVE <c>DataContractSerializer</c> writing through the
-	/// namespace-stripping pipeline of the design spike, over the very same probe shape, and is quoted here as a literal.
+	/// namespace-stripping pipeline, over the the very probe shape, and is quoted here as a same.
 	/// The live oracle itself lands in the next task; what this fixture pins is that the GENERATED code reproduces those
 	/// documents structurally, family by family.</para>
 	/// <para>Three strings deliberately differ from that measured output, and each has its own fact saying so: the

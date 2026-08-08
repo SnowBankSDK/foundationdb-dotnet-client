@@ -58,7 +58,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	// note: these types are attributed in THIS project, which references the generator as an analyzer on itself, so the
 	// code every fact below executes is the code the generator emitted for them, compiled by the same build
 
-	/// <summary>The design document's own example DTO, verbatim: an attribute-projected scalar, a string, a wrapped
+	/// <summary>An example DTO with an attribute-projected scalar, a string, a wrapped
 	/// collection, a dictionary in the modern default shape, and a null member that stays out of both formats</summary>
 	public sealed record Book
 	{
@@ -526,7 +526,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			string xml = AcmeSerializers.Book.ToXmlText(book);
 			Log($"XML : {xml}");
 
-			// the byte-for-byte document from the design document, section 6
+			// the byte-for-byte expected document
 			Assert.That(xml, Is.EqualTo(BookXml));
 		}
 
@@ -538,7 +538,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			string json = AcmeSerializers.Book.ToJsonText(book, CrystalJsonSettings.JsonCompact);
 			Log($"JSON: {json}");
 
-			// the XML surface is additive: the JSON format of the same DTO is the one the design document pairs it with
+			// the XML surface is additive: the is the JSON format of same the DTO
 			Assert.That(json, Is.EqualTo("""{"id":42,"title":"Dune","tags":["sf","space"],"scores":{"math":12}}"""));
 		}
 

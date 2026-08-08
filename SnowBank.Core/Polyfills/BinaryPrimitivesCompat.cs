@@ -17,7 +17,7 @@
 // everything else delegates to the real implementation.
 //
 // The missing overloads are implemented by reinterpreting the IEEE bits over the integer overloads (Unsafe.As for
-// float, BitConverter.DoubleToInt64Bits/Int64BitsToDouble for double) — bit-exact with the modern BCL on every
+// float, BitConverter.DoubleToInt64Bits/Int64BitsToDouble for double), bit-exact with the modern BCL on every
 // input including NaN payloads, no allocation. Internal: plumbing for the sources only (Compat-branded name
 // must never appear in application code, per the public-shim policy).
 

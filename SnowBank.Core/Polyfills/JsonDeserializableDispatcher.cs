@@ -16,7 +16,7 @@
 // IJsonDeserializable<TSelf>.JsonDeserialize. Static interface members need runtime support that
 // netstandard2.0/netfx lacks, so on this target the interface is a marker and implementing types expose a
 // plain `public static TSelf JsonDeserialize(JsonValue, ICrystalJsonTypeResolver?)` instead; this dispatcher
-// locates that method by reflection ONCE per type and caches a compiled delegate — the per-call overhead
+// locates that method by reflection ONCE per type and caches a compiled delegate, the per-call overhead
 // after the first hit is a single delegate invocation.
 
 #if NETSTANDARD2_0

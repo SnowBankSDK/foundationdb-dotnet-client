@@ -29,7 +29,7 @@ namespace FoundationDB.Client.Tests
 	using FoundationDB.Client;
 	using SnowBank.Data.Tuples;
 
-	/// <summary>Versionstamps campaign corpus (design spec §7.1): commit-time stamps, key/value placeholders, user-version ordering, and stamp fate on failed commits.</summary>
+	/// <summary>Versionstamps campaign corpus: commit-time stamps, key/value placeholders, user-version ordering, and stamp fate on failed commits.</summary>
 	public static class VersionstampsCorpus
 	{
 
@@ -126,7 +126,7 @@ namespace FoundationDB.Client.Tests
 		private static Scenario IncompleteTuPackLayout()
 		{
 			// the key uses the REAL tuple encoding of an incomplete stamp (type byte + 12-byte placeholder),
-			// with the offset computed from the packed layout — what the high-level tuple API does under the hood
+			// with the offset computed from the packed layout, what the high-level tuple API does under the hood
 			var packed = TuPack.Pack(STuple.Create("evt", VersionStamp.Incomplete(7)));
 			int offset = packed.Span.IndexOf(VersionStamp.Incomplete(7).ToSlice().Span);
 

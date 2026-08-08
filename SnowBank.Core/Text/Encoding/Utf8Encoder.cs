@@ -769,7 +769,7 @@ namespace SnowBank.Text
 		{
 			// netstandard2.0 has no System.Text.Rune: decode the UTF-8 bytes to a string and compare code-unit-wise.
 			// Allocates (unlike the Rune scan), and for MALFORMED UTF-8 the decoder substitutes U+FFFD rather than
-			// reporting a mismatch — acceptable here since callers compare well-formed text.
+			// reporting a mismatch, acceptable here since callers compare well-formed text.
 			string decoded = System.Text.Encoding.UTF8.GetString(leftUtf8.ToArray());
 			return decoded.AsSpan().SequenceEqual(rightUtf16);
 		}

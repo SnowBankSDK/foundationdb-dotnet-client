@@ -36,7 +36,7 @@ namespace FoundationDB.Client.Tests
 	/// <param name="Actual">Rendered actual-side value (<see langword="null"/> when absent on that side).</param>
 	public sealed record TraceDivergence(int Step, string Path, string? Expected, string? Actual);
 
-	/// <summary>Structurally compares two traces of the same scenario and reports every divergence (design spec §6.2/§6.4).</summary>
+	/// <summary>Structurally compares two traces of the same scenario and reports every divergence.</summary>
 	public static class TraceComparer
 	{
 
