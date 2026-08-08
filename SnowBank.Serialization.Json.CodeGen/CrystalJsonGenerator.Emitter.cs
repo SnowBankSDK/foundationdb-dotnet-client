@@ -2163,9 +2163,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 					}
 
-					// if we are deserializing a (non-nullable) ValueType, the "instance" arg could still be null!
-					// => it will call the Nullable<T> variant of Default.Serialize(...) which should be generated automatically
-					sb.AppendLine($"Visitor = (instance, declaredType, runtimeType, writer) => Default.Serialize(writer, ({typeDef.Type.FullyQualifiedName}?) instance),");
+					// the Visitor receives the member value (not the declaring instance): the reflection member-walk calls
+					// member.Visitor(member.Getter(value), member.Type, ...), so this must serialize the member value typed as
+					// the member type, and honor any member-level converter, to stay byte-identical to the typed Serialize path.
+					// the boxed "instance" is object? (and could be null even for a non-nullable value type), so the cast target is
+					// always the Nullable/annotated-nullable form; the `is {}` then unwraps Nullable<T> to its underlying, exactly
+					// like the typed path's `getterExpr is {} v`, so a converter for T lifts over a T? member the same way.
+					string memberCast = member.Type.IsValueType()
+						? (member.Type.NullableOfType is null ? member.Type.FullyQualifiedName + "?" : member.Type.FullyQualifiedNameAnnotated)
+						: member.Type.FullyQualifiedName + "?";
+					if (member.CustomConverterType != null && member.CustomConverterHasPacker)
+					{ // a member converter shapes the output: pack the value through it (parity with WriteMemberSerializerCore)
+						sb.AppendLine($"Visitor = (instance, declaredType, runtimeType, writer) => ((({memberCast}) instance) is {{ }} __v ? {GetMemberConverterRef(member)}.Pack(__v, writer.Settings, writer.Resolver) : {KnownTypeSymbols.JsonNullFullName}.Null).JsonSerialize(writer),");
+					}
+					else
+					{ // serialize the member value as the member type (resolver-aware, so nested generated types route through the chain)
+						sb.AppendLine($"Visitor = (instance, declaredType, runtimeType, writer) => {KnownTypeSymbols.CrystalJsonVisitorFullName}.VisitValue<{memberCast}>(({memberCast}) instance, writer),");
+					}
 
 					if (IsLocallyGeneratedType(member.Type, out var target, out _))
 					{
