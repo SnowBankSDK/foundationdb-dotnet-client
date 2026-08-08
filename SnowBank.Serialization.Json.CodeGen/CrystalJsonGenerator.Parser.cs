@@ -200,6 +200,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 								continue;
 							}
 
+							if (type.TypeKind == TypeKind.Error || type is IErrorTypeSymbol)
+							{ // the compiler could not resolve the enrolled type (a compile error on the [CrystalSerializable] target):
+								// report it cleanly on the attribute, instead of enqueuing an unresolved symbol the emitter cannot enumerate
+								ReportUnresolvedEnrolledType(typeAttribute, symbol, type);
+								continue;
+							}
+
 							if (!mappedTypes.Add(type))
 							{
 								//TODO: report a diagnostic about a duplicated type?
@@ -519,6 +526,24 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				shape = default;
 				return false;
+			}
+
+			/// <summary>Reports <c>CJSON0021</c> on a <c>[CrystalSerializable]</c> attribute whose enrolled type the compiler could not resolve</summary>
+			/// <remarks>An error, not a warning: an unresolved enrolled type has no members to enumerate, so there is nothing to generate for it, and letting it through crashes the emitter with an opaque internal exception (reported as <c>CJSON0003</c>) instead of naming the real problem. Surfacing it here points the author at the actual compile error on the target.</remarks>
+			private void ReportUnresolvedEnrolledType(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type)
+			{
+				ReportDiagnostic(
+					new(
+						"CJSON0021",
+						"Cannot resolve enrolled type",
+						"Cannot resolve enrolled type '{0}' in container '{1}'; fix the compile error on the [CrystalSerializable] target.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					attribute.ApplicationSyntaxReference?.GetSyntax().GetLocation() ?? this.ContextClassLocation,
+					[ type.ToDisplayString(), container.ToDisplayString() ]
+				);
 			}
 
 			/// <summary>Reports <c>CJSON0019</c> on a <c>[CrystalSerializable]</c> attribute that enrolls a natively serialized type</summary>
@@ -2169,6 +2194,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					case IPropertySymbol property:
 					{
+						if (property.IsStatic)
+						{ // static members are never serialization state; an instance accessor over one would not compile (CS0176)
+							return default;
+						}
 						if (property.IsImplicitlyDeclared)
 						{
 							return default;
@@ -2234,6 +2263,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (field.IsConst)
 						{ // do not include constants
+							return default;
+						}
+						if (field.IsStatic)
+						{ // static members are never serialization state; an instance accessor over one would not compile (CS0176)
 							return default;
 						}
 						if (field.IsImplicitlyDeclared)
