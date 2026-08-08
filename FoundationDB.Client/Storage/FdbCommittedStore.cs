@@ -73,10 +73,8 @@ namespace FoundationDB.Storage
 		IFdbCommittedStore Copy();
 
 		/// <summary>Releases an UNCOMMITTED copy produced by <see cref="Copy"/> without publishing it.</summary>
-		/// <remarks>A persistent backend rolls its writable generation back (allocations, buffered pages, recorded frees) and releases the single-writer slot; the in-memory store has nothing to release, which is this default. EVERY path that drops a copy without publishing it must call this: a conflicted commit, a failed mutation replay, chaos injection.</remarks>
-		void Discard()
-		{
-		}
+		/// <remarks>A persistent backend rolls its writable generation back (allocations, buffered pages, recorded frees) and releases the single-writer slot; an in-memory store has nothing to release. EVERY path that drops a copy without publishing it must call this: a conflicted commit, a failed mutation replay, chaos injection.</remarks>
+		void Discard();
 
 		/// <summary>Removes a key</summary>
 		bool Remove(Key key);
@@ -91,25 +89,11 @@ namespace FoundationDB.Storage
 		Value this[Key key] { set; }
 
 		/// <summary>Sets the value for a key during mutation apply, skipping the write when the stored value is already identical.</summary>
+		/// <param name="key">Key to set.</param>
+		/// <param name="value">Value to store for the key.</param>
 		/// <param name="arena">Arena of the snapshot being built, for a backend that must intern the bytes into stable memory.</param>
-		/// <remarks>The default is the view-backed store's read-compare-intern dance (reuse the stored key instance, skip no-op sets, intern new bytes). A page-backed backend overrides it: its writer copies caller bytes into pages anyway, so interning and the extra read descent buy nothing.</remarks>
-		void Set(Key key, Value value, Arena arena)
-		{
-			Key k;
-			if (TryGetKeyValue(key, out var kv))
-			{
-				if (kv.Value.Equals(value))
-				{ // value hasn't changed!
-					return;
-				}
-				k = kv.Key;
-			}
-			else
-			{
-				k = arena.InternKey(key);
-			}
-			this[k] = arena.InternValue(value);
-		}
+		/// <remarks>An in-memory store does the read-compare-intern dance (reuse the stored key instance, skip no-op sets, intern new bytes). A page-backed backend copies caller bytes into pages anyway, so it skips interning and the extra read descent.</remarks>
+		void Set(Key key, Value value, Arena arena);
 
 		#endregion
 

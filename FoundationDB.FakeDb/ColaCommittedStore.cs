@@ -100,6 +100,28 @@ namespace FoundationDB.Storage
 		/// <inheritdoc />
 		public Value this[Key key] { set => this.Inner[key] = value; }
 
+		/// <inheritdoc />
+		public void Set(Key key, Value value, Arena arena)
+		{ // read-compare-intern dance: reuse the stored key instance, skip no-op sets, intern new bytes
+			Key k;
+			if (this.Inner.TryGetKeyValue(key, out var kv))
+			{
+				if (kv.Value.Equals(value))
+				{ // value hasn't changed!
+					return;
+				}
+				k = kv.Key;
+			}
+			else
+			{
+				k = arena.InternKey(key);
+			}
+			this.Inner[k] = arena.InternValue(value);
+		}
+
+		/// <inheritdoc />
+		public void Discard() { } // an in-memory store has nothing to release
+
 	}
 
 	/// <summary><see cref="IFdbCommittedCursor"/> backed by a <see cref="ColaOrderedDictionary{TKey,TValue}"/>'s iterator</summary>
