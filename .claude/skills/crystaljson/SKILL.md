@@ -79,17 +79,18 @@ This is the most important concept. `JsonObject` and `JsonArray` can each be **m
 ```csharp
 using SnowBank.Data.Json;
 
-// mutable (collection initializer)
-var obj = new JsonObject
-{
-    ["name"]  = "Alice",          // implicit conversions from string/int/bool/double/...
-    ["age"]   = 30,
-    ["tags"]  = new JsonArray { "admin", "user" },
-    ["point"] = new JsonObject { ["x"] = 1, ["y"] = 2 },
-};
-var arr = new JsonArray { 1, 2, 3 };
+// mutable, with the Create factories (the default pattern; implicit conversions cover scalars)
+var obj = JsonObject.Create([
+    ("name", "Alice"),
+    ("age", 30),
+    ("tags", JsonArray.Create("admin", "user")),
+    ("point", JsonObject.Create([ ("x", 1), ("y", 2) ])),
+]);
+var arr = JsonArray.Create(1, 2, 3);
+// (the collection-initializer form `new JsonObject { ["name"] = "Alice" }` compiles too, but the
+// factories read identically in their mutable and ReadOnly forms, so prefer them)
 
-// read-only directly (good for cached/shared constants) - note the ("key", value) tuple form
+// read-only directly (good for cached/shared constants): the ReadOnly twin, same call shape
 var ro = JsonObject.ReadOnly.Create([
     ("name", "Alice"),
     ("age", 30),
@@ -252,9 +253,14 @@ using SnowBank.Data.Json;
 
 public sealed record Book
 {
-    [JsonProperty("id")]    public required string Id { get; init; }
-    [JsonProperty("title")] public required string Title { get; init; }
-    [JsonProperty("year")]  public int Year { get; init; }
+    [JsonProperty("id")]
+    public required string Id { get; init; }
+
+    [JsonProperty("title")]
+    public required string Title { get; init; }
+
+    [JsonProperty("year")]
+    public int Year { get; init; }
     public Author? Author { get; init; }   // nested type: auto-discovered
 }
 
@@ -617,7 +623,8 @@ silently changes the output, so check the matrix before annotating a DTO:
 
 | Attribute | Reflection | Source generator |
 |---|---|---|
-| `[JsonProperty("x")]` (SnowBank; also `DefaultValue`, `EnumFormat`) | YES (all three) | YES (all three) *(`EnumFormat` since 7.4.3, proxy setters included)* |
+| `[JsonProperty("x")]` (SnowBank; also `DefaultValue`, `EnumFormat`, `NumberFormat`) | YES (all four) | YES (all four) *(`EnumFormat` and `NumberFormat` since 7.4.3, proxy setters included)* |
+| `[JsonProperty(NumberFormat = JsonNumberFormat.String)]` *(7.4.3+)* | YES - the member's numbers write as strings (the exact numeric literal, decimal scale included; protects 64-bit values from JavaScript precision loss); reads always accept both forms | YES, all write routes (converter, Pack, proxy setters), byte-parity pinned |
 | STJ `[JsonPropertyName("x")]` | YES | YES |
 | STJ `[JsonIgnore]` / `[JsonIgnore(Condition = ...)]` | YES, full STJ semantics *(7.4.3+)* | YES, full STJ semantics *(7.4.3+)* |
 | `[IgnoreDataMember]` | YES *(7.4.3+)* - excludes the member on a non-`[DataContract]` type; on a `[DataContract]` type the `[DataMember]` opt-in still governs (DCJS's own precedence) | counts as an ignore signal *(7.4.3+)* |
