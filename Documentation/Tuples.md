@@ -11,7 +11,7 @@ t = | "Hello" | 123 | 773166b7-de74-4fcc-845c-84080cc89533 |
     +---------+-----+--------------------------------------+
 </pre>
 
-This is a tuple of size 3, which contains 3 elements in a specific order: the first element, the second element and then - you guessed it - the third element.
+This tuple has size 3: three elements in a fixed order, at positions 0, 1 and 2.
 
 The difference with a regular struct, is that the elements do not have names, only positions: `t[0]`, `t[1]`, ..., `t[i]` with `0 <= i < N`, like an array.
 
@@ -36,13 +36,13 @@ There is a special case, for the tuple of size 1, where we usually add an extra 
 
 <pre>("Hello", )</pre>
 
-And of course you can have an empty tuple, of size 0:
+The empty tuple has size 0:
 
 <pre>()</pre>
 
-### The Dark Ages
+### Why not `object[]` or `Tuple<...>`
 
-The absolute minimum implementation of a tuple is an `object[]` array. But this would not be very efficient nor user friendly, especially when you need to encode and decode keys composed of multiple elements with different types. You will probably use a lot of value types (int, Guid, bool, ...) that would need to be boxed, and you will also need to blindly casts items back into their expected type. Now was the 3rd element of this tuple an `int` or a `long`? If you guessed wrong, you will get an `InvalidCastException` at runtime. Uhoh :(
+The minimum implementation of a tuple is an `object[]` array. It is neither efficient nor safe for keys built from elements of different types: every value type (int, Guid, bool, ...) gets boxed, and reading an element back is a blind cast. Was the 3rd element an `int` or a `long`? A wrong guess is an `InvalidCastException` at runtime.
 
 ```CSharp
 // in application A that encoded a key...
@@ -58,7 +58,7 @@ var c = (Guid)items[2];
 var d = (int)items[3]; // FAIL: there is no 4th item !
 ```
 
-The .NET Framework comes with a set of `Tuple<...>` classes, which gives you the ability to specify the types as well as the number of elements. You get type safety and a better intellisense experience.
+The BCL `Tuple<...>` classes state the types and the number of elements, which restores type safety and IntelliSense.
 
 ```CSharp
 // in application A that encoded a key...
@@ -73,11 +73,7 @@ int b = items.Item2;
 Guid c = items.Item3;
 ```
 
-This is much better, but unfortunately, the BCL's Tuple classes are relatively barebone and don't offer much in term of feature, if at all. You can't really combine them or split them. They still require you to know that the 2nd element was an `int`, and not a `long` or `uint`.
-
-And quite frankly, if you have used other languages where tuples are first-class citizens (Python, for example), they seem rather bleak.
-    
-That's why we need a better API, in order to help us be more productive.
+The BCL classes stop there: you cannot combine them or split them, and you still have to know that the 2nd element was an `int`, not a `long` or a `uint`. Key encoding needs a richer tuple API, which is what this library provides.
 
 ## IVarTuple
 
@@ -102,7 +98,7 @@ That's why there are several variants, all implementing `IVarTuple`:
 
 ### Creating a tuple
 
-The most simple way to create a tuple, is from its elements:
+The simplest way to create a tuple is from its elements:
 
 ```CSharp
 var t = STuple.Create("Hello", 123, Guid.NewGuid());
@@ -116,7 +112,7 @@ We can also create a tuple by adding something to an existing tuples, even start
 var t = STuple.Empty.Append("Hello").Append(123).Append(Guid.NewGuid());
 ```
 
-The good news here is that _t_ is still a struct of type `STuple<string, int, Guid>` and we did not produce any allocations: the Empty tuple is a singleton, and all the intermediate Append() returned structs of type `STuple<string>` and `STuple<string, int>`. There is of course a limit to the number of elements that can be added, before we have to switch to an array-based tuple variant.
+Here _t_ is still a struct of type `STuple<string, int, Guid>`, and nothing allocated: the Empty tuple is a singleton, and the intermediate `Append()` calls returned structs of type `STuple<string>` and `STuple<string, int>`. Past 8 elements, the chain switches to an array-based variant.
 
 If we have a variable-size list of items, we can also create a tuple from it:
 
@@ -142,7 +138,7 @@ var t = STuple.Create("Hello", 123, Guid.NewGuid());
 Tuple<string, int, Guid> bcl = (Tuple<string, int, Guid>) t; // explicit cast
 ```
 
-And for the more adventurous, you can of course create a tuple by copying the elements of an object[] array.
+You can also create a tuple by copying the elements of an `object[]` array:
 
 ```CSharp
 var xs = new object[] { "Hello", 123, Guid.NewGuid() };
@@ -152,7 +148,7 @@ xs[1] = 456; // won't change the content of the tuples
 // t[1] => 123
 ```
 
-If you really want to push it, you can skip copying the items by wrapping an existing array, but then you will break the immutability contract of the Tuples API. Don't try this at home!
+`STuple.Wrap` skips the copy by wrapping the array itself. This breaks the immutability contract of the tuple API: a later write to the array changes the tuple. Use it only when you control the array for its whole lifetime.
 
 ```CSharp
 var xs = new object[] { "Hello", 123, Guid.NewGuid() };
@@ -164,19 +160,15 @@ xs[1] = 456; // will change the content of the tuples!!
 
 ### Using a tuple
 
-Now that you have a tuple, the first thing you would want to know, is its size and if it is empty or not.
-
-All tuples expose a `Count` property which returns the number of elements in the tuple (0 to N).
-    
-To help you verify that a tuple has the correct size before accessing its elements, there is a set of help extension methods just for that:
+The first thing to check on a tuple is its size. Every tuple exposes a `Count` property with the number of elements (0 to N), and a set of helper extension methods verifies the size before you access the elements:
 
 - `t.IsNullOrEmpty()` returns `true` if either `t == null` or `t.Count == 0`
 - `t.OfSize(3)` checks that `t` is not null, and that `t.Count` is equal to 3, and then returns the tuple itself, so you can write: `t.OfSize(3).DoSomethingWhichExpectsThreeElements()`
 - `t.OfSizeAtLeast(3)` works the same, except it checks that `t.Count >= 3`
 
-Of course, if you have one of the `STuple<T1, ...>` struct, you can skip this step, since the size if known at compile time.
+With an `STuple<T1, ...>` struct you can skip this step, since the size is known at compile time.
 
-To read the content of a tuple, you can simply call `t.Get<T>(index)`, where `index` is the offset _in the tuple_ of the element, and `T` is the type into which the value will be converted.
+To read the content of a tuple, call `t.Get<T>(index)`, where `index` is the offset _in the tuple_ of the element, and `T` is the type into which the value converts.
 
 ```CSharp
 var t = STuple.Create("hello", 123, Guid.NewGuid());
@@ -194,11 +186,9 @@ var y = t.Get<int>(-2); // => 123
 var z = t.Get<Guid>(-1); // => guid
 ```
 
-### Pretty Printing
+### Text output
 
-Code that manipulates tuples can get complex pretty fast, so you need a way to display the content of a tuple in a nice and understandable way.
-
-For that, every tuple overrides `ToString()` to return a nicely formatted string with a standardized format.
+Every tuple overrides `ToString()` and renders its content in one standardized format:
 
 ```CSharp
 var t1 = STuple.Create("hello", 123, Guid.NewGuid());
@@ -212,13 +202,11 @@ Console.WriteLine("t3 = {0}", t3);
 // => t3 = ()
 ```
 
-There is a special case for tuples of size 1, which have a trailing comma - `(123,)` instead of `(123)` - so that they can be distinguished from a normal expression in parenthesis.
+A tuple of size 1 renders with a trailing comma (`(123,)` instead of `(123)`), which distinguishes it from an expression in parentheses.
 
-### Tuples all the way down
+### Nested tuples
 
-Since a tuple is just a vector of elements, you can of course put a tuple inside another tuple.
-
-This works:
+A tuple is a vector of elements, so a tuple can contain another tuple:
 
 ```CSharp
 var t1 = STuple.Create("hello", STuple.Create(123, 456), Guid.NewGuid());
@@ -245,30 +233,26 @@ var t = STuple.Create(productId, STuple.FromArray(locationId), orderId);
 // t[2] => {773166b7-de74-4fcc-845c-84080cc89533}
 ```
 
-You code that want to parse the key can always read `t[2]` to get the order_id, without caring about the actual size of the location_id.
+Code that parses the key can always read `t[2]` to get the order_id, whatever the size of the location_id.
 
 ### Combining tuples
 
-Since tuples are immutable, there are no methods to modify the value of an element. You'd do that by creating a new tuple, with a combination of Substring, Append or Concat.
+Tuples are immutable: no method modifies an element in place. Instead, `Substring`, `Append` and `Concat` return a new tuple, with or without copying the items (depending on the variant).
 
-You can, though, modify tuples by returning a new tuple, with or without copying the items (depending on the tuple variant being used).
-
-The most common case is to simply add a value to a tuple via the `t.Append<T>(T value)` method. For example you have a base tuple (cached value), and you want to add a document ID.
+The most common case adds one value to a tuple with `t.Append<T>(T value)`: for example, a cached base tuple plus a document id.
 
 ```CSharp
-var location = STuple.Create("MyAwesomeApp", "Documents");
+var location = STuple.Create("Acme", "Documents");
 
 var documentId = Guid.NewGuid();
 var t = location.Append(documentId);
-// t => ("MyAwesomeApp", "Documents", {773166b7-de74-4fcc-845c-84080cc89533});
+// t => ("Acme", "Documents", {773166b7-de74-4fcc-845c-84080cc89533});
 ```
 
-Don't forget that if you Append a tuple, it will be added as a nested tuple!
-
-If you actually want to merge the elements of two tuples, when you can use the `t1.Concat(t2)` method, which return a new tuple with the elements of both t1 and t2.
+Remember that `Append` with a tuple argument adds it as one nested element. To merge the elements of two tuples, use `t1.Concat(t2)`, which returns a new tuple with the elements of both:
 
 ```CSharp
-var location = STuple.Create("MyAwesomeApp", "OrdersByProduct");
+var location = STuple.Create("Acme", "OrdersByProduct");
 
 var productId = "B00CS8QSSK";
 var orderId = Guid.NewGuid();
@@ -276,16 +260,14 @@ var t1 = STuple.Create(productId, orderId)
 // t1 => ("B00CS8QSSK", {773166b7-de74-4fcc-845c-84080cc89533})
 
 var t2 = location.Concat(t1);
-// t2 => ("MyAwesomeApp", "OrdersByProduct", "B00CS8QSSK", {773166b7-de74-4fcc-845c-84080cc89533});
+// t2 => ("Acme", "OrdersByProduct", "B00CS8QSSK", {773166b7-de74-4fcc-845c-84080cc89533});
 ```
 
 ### Splitting tuples
 
-You can also split tuples into smaller chunks.
+A subset of a tuple comes from one of the `t.Substring(...)` methods, or from the `t[from, to]` indexer.
 
-First, you can return a subset of a tuple via on of the `t.Substring(...)` methods, or the `t[from, to]` indexer.
-    
-The `Substring()` method works exactly the same way as for regular strings.
+`Substring()` works the same way as on a string:
 
 ```CSharp
 var t = STuple.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
@@ -297,7 +279,7 @@ var w = t.Substring(7); // => (8, 9, 10)
 var w = v.Substring(-3); // => (8, 9, 10)
 ```
 
-The `t[from, to]` indexer takes some getting used to. It actually returns all the elements in the tuple with position `from <= p < to`, which means that the `to` is excluded.
+The `t[from, to]` indexer returns the elements at positions `from <= p < to`: the `to` bound is excluded.
 
 ```CSharp
 var t = STuple.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
@@ -312,7 +294,7 @@ var w = t[7, null]; // => (8, 9, 10)
 var w = v[-3, null]; // => (8, 9, 10)
 ```
 
-If you are tired of writing `t.Substring(0, 3)` all the time, you can also use `t.Truncate(3)` which does the same thing.
+`t.Truncate(3)` is shorthand for `t.Substring(0, 3)`:
 
 ```CSharp
 var t = STuple.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
@@ -322,9 +304,9 @@ var v = t.Truncate(-3);
 // v => (8, 9, 10);
 ```
 
-### More advanced stuff
+### Decoding into model types
 
-When decoding keys using tuple, you will often find yourself extracting a fixed number of arguments into local variables, and then constructing an instance of a Model class from your application.
+Code that decodes keys often extracts a fixed number of elements into local variables, then constructs an instance of an application model class:
 
 ```CSharp
 public MyFooBar DecodeFoobar(IVarTuple tuple)
@@ -336,14 +318,13 @@ public MyFooBar DecodeFoobar(IVarTuple tuple)
 }
 ```
 
-The keen eye will see the problems with this method:
+This method has problems:
 
-- no null check on tuple.
-- what if tuple.Count is 5 ?
-- what if tuple.Count is only 2 ?
-- you probably copy/pasted `var x = tuple.Get<...>(0)` two more times, and forgot to change the index to 1 and 2! _(even Notch does it!)_
+- no null check on `tuple`;
+- no check that `tuple.Count` is exactly 3;
+- a copy/pasted `tuple.Get<...>(0)` line whose index was never changed to 1 or 2 compiles fine and reads the wrong element.
 
-One solution is to use the set of `t.As<T1, ..., TN>()` helper methods to convert a tuple of type `IVarTuple` into a more friendly `STuple<T1, ..., TN>`, introducing type safety and IntelliSense.
+The `t.As<T1, ..., TN>()` helpers convert an `IVarTuple` into an `STuple<T1, ..., TN>`, which restores the size check, type safety and IntelliSense:
 
 ```CSharp
 public MyFooBar DecodeFoobar(IVarTuple tuple)
@@ -354,9 +335,7 @@ public MyFooBar DecodeFoobar(IVarTuple tuple)
 }
 ```
 
-That's better, but you can still swap two arguments by mistake, if they have the same type.
-
-To combat this, you can use on of the `t.With<T1, ..., TN>(Action<T1, ..., TN>)` or `t.With<T1, ..., TN, TResult>(Func<T1, ..., TN, TResult>)` which can give names to the elements.
+Two elements of the same type can still be swapped by mistake. The `t.With<T1, ..., TN>(Action<T1, ..., TN>)` and `t.With<T1, ..., TN, TResult>(Func<T1, ..., TN, TResult>)` overloads give the elements names:
 
 ```CSharp
 public MyFooBar DecodeFoobar(IVarTuple tuple)

@@ -49,7 +49,7 @@ Slice.FromGuid(g);   Slice.FromUuid128(u);   Slice.FromHexString("00ff");
 
 ### Three integer encodings: choose deliberately
 
-A classic confusion. On a standalone `Slice`:
+Three encodings are easy to confuse. On a standalone `Slice`:
 
 | Factory | Encoding | int32 size |
 |---|---|---|

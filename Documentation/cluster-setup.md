@@ -28,7 +28,7 @@ fdbcli --version
 You should see something like:
 
 ```
-FoundationDB CLI 7.3 (v7.3.70)
+FoundationDB CLI 7.3 (v7.3.76)
 source version ...
 protocol fdb00b073000000
 ```
@@ -39,7 +39,7 @@ The `7.3` (or `7.4`) is what matters. If `fdbcli` is not installed, ask whoever 
 
 | Your cluster | `FoundationDB.Client.Native` | API level |
 |---|---|---|
-| `7.3.x` | a `7.3.x` version (e.g. `7.3.70`) | `730` |
+| `7.3.x` | a `7.3.x` version (e.g. `7.3.76`) | `730` |
 | `7.4.x` | a `7.4.x` version (e.g. `7.4.6`) | `740` (or `730` to stay compatible with `7.3`) |
 
 Keep `FoundationDB.Client` (the managed package) on the latest either way. Only the native package tracks the cluster version.

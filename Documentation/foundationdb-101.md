@@ -1,6 +1,6 @@
 # How it connects
 
-FoundationDB has a client/server split that trips up almost every newcomer, so it is worth two minutes before you write any code. Get this right and the rest is easy; get it wrong and every operation mysteriously times out.
+FoundationDB has a client/server split that catches most newcomers. Read these two minutes before you write any code: a version mismatch here makes every operation time out with no useful error.
 
 ## Three moving parts
 
@@ -27,7 +27,7 @@ There are two version knobs, and only one of them is about the cluster:
 | `FoundationDB.Client.Native` | The native `fdb_c`, i.e. the wire protocol | **Must match your cluster.** `7.3.x` for a `7.3` cluster. |
 | API level (`Fdb.Start(730)`, `AddFoundationDb(730, ...)`) | The feature and behaviour level | At or below the cluster's level. `<= 730` for `7.3`; a `7.4+` cluster allows up to `740`. |
 
-So a `7.3` cluster is served perfectly well by the latest `FoundationDB.Client` + `FoundationDB.Client.Native` `7.3.x` + API level `730`.
+So a `7.3` cluster is served by the latest `FoundationDB.Client`, plus `FoundationDB.Client.Native` `7.3.x`, plus API level `730`.
 
 ## What a mismatch looks like
 

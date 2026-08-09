@@ -6,11 +6,11 @@ This library is a C#/.NET binding for [FoundationDB](https://www.foundationdb.or
 
 FoundationDB is a distributed, **ordered key/value store** with **serializable, ACID transactions** across the entire keyspace. It is intentionally minimal: it stores byte-string keys mapped to byte-string values, keeps keys sorted, and lets you read and write many of them atomically. Everything higher-level (tables, indexes, queues, document collections, pub/sub) you build yourself, as a **Layer** on top of that primitive.
 
-That minimalism is the source of both its power and its sharp edges. Get the key encoding and the transaction model right and you get a rock-solid distributed foundation; get them wrong and you get subtle data corruption. The goal of this documentation is to keep you firmly on the first path.
+The same minimalism puts two responsibilities on you: the key encoding and the transaction model. Get them right and the store is dependable; get them wrong and the result is subtle data corruption. This documentation teaches both.
 
 ## What this binding gives you
 
-- **Strongly-typed, lazy keys**: `subspace.Key("user", 123)` builds a small struct that tuple-encodes itself only when handed to a transaction. No manual byte wrangling.
+- **Strongly-typed, lazy keys**: `subspace.Key("user", 123)` builds a small struct that tuple-encodes itself only when handed to a transaction. You never assemble key bytes by hand.
 - **A retry loop**: `db.ReadAsync` / `WriteAsync` / `ReadWriteAsync` handle FoundationDB's conflict-and-retry model for you.
 - **The Directory layer**: map human-readable paths to short, dense key prefixes.
 - **Layers**: a small contract (`IFdbLayer<TState>`) for packaging data access into reusable, composable components.

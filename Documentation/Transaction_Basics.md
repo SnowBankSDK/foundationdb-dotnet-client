@@ -36,7 +36,7 @@ using (IFdbTransaction tr = db.BeginTransaction(ct))
 }
 ```
 
-**This is not how robust code should be written.** Managing the transaction lifetime yourself, and deciding which errors are retryable and for how long, is error-prone:
+**Do not write application code this way.** Managing the transaction lifetime yourself, and deciding which errors are retryable and for how long, is error-prone:
 
 - Conflicts between transactions are a normal, expected outcome for many algorithms; when they happen the transaction must be retried.
 - Many transient errors can temporarily prevent a commit but would succeed on the next attempt.

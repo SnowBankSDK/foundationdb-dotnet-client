@@ -35,9 +35,9 @@ long balance = await db.ReadWriteAsync(async tr =>
 }, ct);
 ```
 
-The loop **commits for you** (never call `CommitAsync` inside the handler) and re-runs the handler on retryable errors until it succeeds, the `CancellationToken` fires, or a non-retryable error is thrown. The split between `WriteAsync` and `ReadWriteAsync` is about whether you return a value, not about whether you read. Both hand you a full read/write transaction; `ReadWriteAsync` simply has no "returns nothing" overload.
+The loop **commits for you** (never call `CommitAsync` inside the handler) and re-runs the handler on retryable errors until it succeeds, the `CancellationToken` fires, or a non-retryable error is thrown. The split between `WriteAsync` and `ReadWriteAsync` is about whether you return a value, not about whether you read. Both hand you a full read/write transaction; `ReadWriteAsync` has no "returns nothing" overload.
 
-Under the hood, one attempt is a short, ordered exchange with the cluster: get a read version, read at that version, run your logic, then commit. If the commit conflicts, the loop runs your handler again from the top.
+One attempt is a short, ordered exchange with the cluster: get a read version, read at that version, run your logic, then commit. If the commit conflicts, the loop runs your handler again from the top.
 
 ```mermaid
 sequenceDiagram
@@ -110,7 +110,7 @@ The canonical use is a **signal-key fan-out**: a producer bumps a single watched
 
 ## Layers inside transactions
 
-A Layer resolves its per-transaction `State` inside the handler and uses it there. The real power is **composing layers in one transaction** so everything commits together or not at all:
+A Layer resolves its per-transaction `State` inside the handler and uses it there. The payoff is **composing layers in one transaction**, so everything commits together or not at all:
 
 ```csharp
 await db.WriteAsync(async tr =>
