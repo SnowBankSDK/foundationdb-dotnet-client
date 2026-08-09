@@ -780,6 +780,126 @@ namespace SnowBank.Testing
 			}
 		}
 
+		/// <summary>Verifies that the specified condition stays <see langword="false"/> for the whole duration, failing if it ever becomes <see langword="true"/>.</summary>
+		/// <returns>Task that completes once the duration has elapsed without the condition becoming satisfied.</returns>
+		/// <remarks>This is the negative counterpart of <see cref="WaitUntil(System.Func{bool},System.TimeSpan,string,System.TimeSpan?,string?)"/>: it proves that something does NOT happen, so it always polls for the full duration.</remarks>
+		public async Task ShouldNotHappenWithin([InstantHandle] Func<bool> condition, TimeSpan duration, string message, TimeSpan? ticks = null, [CallerArgumentExpression(nameof(condition))] string? conditionExpression = null)
+		{
+			var ct = this.Cancellation;
+
+			var max = ticks ?? TimeSpan.FromMilliseconds(250);
+			if (max > duration) max = TimeSpan.FromTicks(duration.Ticks / 10);
+			var delay = TimeSpan.FromMilliseconds(Math.Min(5, max.TotalMilliseconds));
+			// heuristic to get a sensible value
+			if (max <= TimeSpan.FromMilliseconds(50)) Assert.Fail("Ticks must be at least greater than 50ms!");
+
+			var startInstant = this.Clock.GetCurrentInstant();
+			long startTimestamp = GetTimestamp();
+			long endTimestamp = 0;
+			bool success = false;
+			Exception? error = null;
+			try
+			{
+				while (!ct.IsCancellationRequested)
+				{
+					try
+					{
+						if (condition())
+						{
+							endTimestamp = GetTimestamp();
+							Assert.Fail($"Condition became true after {GetElapsedTime(startTimestamp, endTimestamp)} but should not have happened within {duration}: {message}{Environment.NewLine}Condition: {conditionExpression}");
+						}
+					}
+					catch (Exception e)
+					{
+						endTimestamp = GetTimestamp();
+						error = e;
+						if (e is AssertionException) throw;
+						Assert.Fail($"Operation failed while polling expression '{conditionExpression}': {e}");
+					}
+
+					endTimestamp = GetTimestamp();
+					if (GetElapsedTime(startTimestamp, endTimestamp) >= duration)
+					{
+						break;
+					}
+
+					await Task.Delay(delay, this.Cancellation).ConfigureAwait(false);
+
+					delay += delay;
+					if (delay > max) delay = max;
+				}
+
+				ct.ThrowIfCancellationRequested();
+				success = true;
+			}
+			finally
+			{
+				var endInstant = this.Clock.GetCurrentInstant();
+				await OnWaitOperationCompleted(nameof(ShouldNotHappenWithin), conditionExpression!, success, error, startInstant, endInstant).ConfigureAwait(false);
+			}
+		}
+
+		/// <summary>Verifies that the specified condition stays <see langword="false"/> for the whole duration, failing if it ever becomes <see langword="true"/>.</summary>
+		/// <returns>Task that completes once the duration has elapsed without the condition becoming satisfied.</returns>
+		/// <remarks>This is the negative counterpart of <see cref="WaitUntil(System.Func{System.Threading.Tasks.Task{bool}},System.TimeSpan,string,System.TimeSpan?,string?)"/>: it proves that something does NOT happen, so it always polls for the full duration.</remarks>
+		public async Task ShouldNotHappenWithin([InstantHandle] Func<Task<bool>> condition, TimeSpan duration, string message, TimeSpan? ticks = null, [CallerArgumentExpression(nameof(condition))] string? conditionExpression = null)
+		{
+			var ct = this.Cancellation;
+
+			var max = ticks ?? TimeSpan.FromMilliseconds(250);
+			if (max > duration) max = TimeSpan.FromTicks(duration.Ticks / 10);
+			var delay = TimeSpan.FromMilliseconds(Math.Min(5, max.TotalMilliseconds));
+			// heuristic to get a sensible value
+			if (max <= TimeSpan.FromMilliseconds(50)) Assert.Fail("Ticks must be at least greater than 50ms!");
+
+			var startInstant = this.Clock.GetCurrentInstant();
+			long startTimestamp = GetTimestamp();
+			long endTimestamp = 0;
+			bool success = false;
+			Exception? error = null;
+			try
+			{
+				while (!ct.IsCancellationRequested)
+				{
+					try
+					{
+						if (await condition().ConfigureAwait(false))
+						{
+							endTimestamp = GetTimestamp();
+							Assert.Fail($"Condition became true after {GetElapsedTime(startTimestamp, endTimestamp)} but should not have happened within {duration}: {message}{Environment.NewLine}Condition: {conditionExpression}");
+						}
+					}
+					catch (Exception e)
+					{
+						endTimestamp = GetTimestamp();
+						error = e;
+						if (e is AssertionException) throw;
+						Assert.Fail($"Operation failed while polling expression '{conditionExpression}': {e}");
+					}
+
+					endTimestamp = GetTimestamp();
+					if (GetElapsedTime(startTimestamp, endTimestamp) >= duration)
+					{
+						break;
+					}
+
+					await Task.Delay(delay, this.Cancellation).ConfigureAwait(false);
+
+					delay += delay;
+					if (delay > max) delay = max;
+				}
+
+				ct.ThrowIfCancellationRequested();
+				success = true;
+			}
+			finally
+			{
+				var endInstant = this.Clock.GetCurrentInstant();
+				await OnWaitOperationCompleted(nameof(ShouldNotHappenWithin), conditionExpression!, success, error, startInstant, endInstant).ConfigureAwait(false);
+			}
+		}
+
 		/// <summary>Called whenever an <see cref="Await(Task,TimeSpan,string?,string?)"/> operation completes (successfully or not)</summary>
 		protected virtual Task OnWaitOperationCompleted(string operation, string conditionExpression, bool success, Exception? error, Instant startedAt, Instant endedAt)
 		{
