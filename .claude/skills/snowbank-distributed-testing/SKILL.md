@@ -1,6 +1,6 @@
 ---
 name: snowbank-distributed-testing
-description: How to write, run, and especially DIAGNOSE multi-node integration tests built on the SnowBank distributed-test framework (SnowBank.Testing.Framework / SnowBank.Testing.Common — a general-purpose harness, NOT FoundationDB-specific). Covers DistributedTest/MakeItSo + virtual hosts (AddSimpleLan/WithMinimalWebHost), the unified in-memory Timeline journal that every test prints (its column format and kind/level vocabulary), and the controls for cranking diagnostic detail when a test regresses — per-host WithLogLevel, SetTimelineLogLevel, the always-on HTTP packet capture, and the RegisterTimelineEvent extension point that lets a library surface its own tagged ILogger events as a journal kind. Use whenever you write or run a DistributedTest, read or interpret the "TEST JOURNAL" block in test output, need MORE logging to troubleshoot a flaky/failing distributed test (HTTP packets, wire/protocol traces, fdb traces), or want a library's diagnostics to show up in the journal. For a specific layer's own test probes (e.g. Teleport's TeleportDebugger, chaos/fuzz hooks), see that layer's testing skill in the consuming repo.
+description: How to write, run, and especially DIAGNOSE multi-node integration tests built on the SnowBank distributed-test framework (SnowBank.Testing.Framework / SnowBank.Testing.Common — a general-purpose harness, NOT FoundationDB-specific). Covers DistributedTest/MakeItSo + virtual hosts (AddSimpleLan/WithMinimalWebHost), the unified in-memory Timeline journal that every test prints (its column format and kind/level vocabulary), and the controls for cranking diagnostic detail when a test regresses — per-host WithLogLevel, SetTimelineLogLevel, the always-on HTTP packet capture, and the RegisterTimelineEvent extension point that lets a library surface its own tagged ILogger events as a journal kind. Use whenever you write or run a DistributedTest, read or interpret the "TEST JOURNAL" block in test output, need MORE logging to troubleshoot a flaky/failing distributed test (HTTP packets, wire/protocol traces, fdb traces), or want a library's diagnostics to show up in the journal. For a specific layer's own test probes (e.g. a sync layer's debugger probes, chaos/fuzz hooks), see that layer's testing skill in the consuming repo.
 ---
 
 # SnowBank Distributed Testing & the Unified Test Journal
@@ -9,7 +9,7 @@ description: How to write, run, and especially DIAGNOSE multi-node integration t
 
 Its single most important diagnostic output is the **unified Timeline journal**: one chronologically-ordered, correlation-tagged event stream merging every host's logs, HTTP packets, and any library-registered traces. When a distributed test misbehaves, the journal is where you look first — and this skill is mostly about reading it and cranking its detail.
 
-This skill is layer-agnostic. A specific layer's own probes (e.g. Teleport's `TeleportDebugger`, the BUGGIFY apply-barrier, replay/chaos fuzzing) live in **that layer's testing skill in the consuming repo**, not here.
+This skill is layer-agnostic. A specific layer's own probes (e.g. a state-synchronization layer's debugger surface, a BUGGIFY apply-barrier, replay/chaos fuzzing) live in **that layer's testing skill in the consuming repo**, not here.
 
 ## Version & compatibility
 

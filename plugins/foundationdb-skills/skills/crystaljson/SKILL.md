@@ -9,7 +9,7 @@ description: >-
   JsonPath. Use whenever code parses, builds, reads, mutates, or serializes JSON with these types, reads optional fields
   with defaults, declares a generated JSON converter/proxy, or implements custom JSON (de)serialization. Use it even when
   the request only says "serializer", "converter", or "serialize/deserialize a record, document, or model" without naming
-  JSON: in SnowBank-based code (DocStore, Teleport, Layers, models) document and message (de)serialization goes through
+  JSON: in SnowBank-based code (document stores, sync layers, Layers, models) document and message (de)serialization goes through
   CrystalJson, not System.Text.Json or Newtonsoft.
 ---
 
@@ -166,12 +166,12 @@ Slice  bytes  = CrystalJson.ToSlice(value, CrystalJsonSettings.JsonCompact);   /
 byte[] raw    = CrystalJson.ToBytes(value);
 CrystalJson.SerializeTo(textWriterOrStream, value);                    // streaming
 
-// PARSE text/bytes -> DOM (JsonValue)
-JsonValue  any = CrystalJson.Parse(json);                              // string, Slice, ReadOnlySpan<char/byte>
-JsonObject o   = CrystalJson.Parse(json).AsObject();                   // AsObject() throws if it is not an object
-JsonArray  a   = CrystalJson.Parse(json).AsArray();                    // AsArray() likewise
-// Parse a READ-ONLY DOM (cache-safe) by passing read-only settings:
-JsonValue roDom = CrystalJson.Parse(json, CrystalJsonSettings.JsonReadOnly);
+// PARSE text/bytes -> DOM: parse through the DOM types, not through CrystalJson.*
+JsonValue  any = JsonValue.Parse(json);      // string, Slice, ReadOnlySpan<char/byte>
+JsonObject o   = JsonObject.Parse(json);     // throws if it is not an object
+JsonArray  a   = JsonArray.Parse(json);      // throws if it is not an array
+// READ-ONLY (cache-safe) twin of each: the nested ReadOnly class, same entry points
+JsonValue roDom = JsonValue.ReadOnly.Parse(json);   // also JsonObject.ReadOnly.Parse, etc.
 
 // DESERIALIZE text/bytes -> POCO (parse + bind)
 Book book  = CrystalJson.Deserialize<Book>(json);                      // throws if the JSON is null
@@ -186,10 +186,11 @@ Slice  b2 = value.ToJsonSlice(CrystalJsonSettings.JsonCompact);
 to your type. A `null`/empty/missing input deserializes to `null` -> throws for a non-nullable `T` unless you pass a
 `defaultValue`.
 
-⚠️ There is **no `CrystalJson.ParseObject(...)` or `CrystalJson.ParseArray(...)`** - parse, then narrow with
-`.AsObject()` / `.AsArray()` as above. (`JsonObject.Parse(json)` compiles, but it is the *inherited* `JsonValue.Parse`
-and still returns a `JsonValue`, so it needs `.AsObject()` too. `CrystalJsonDomWriter.ParseObject(value)` is unrelated:
-it goes the other way, CLR value -> DOM.)
+The intended split: **`CrystalJson.*` serves the POCO route** (`Serialize`, `Deserialize`, `ToSlice`), **the DOM
+parses through the DOM types** (`JsonValue.Parse`, `JsonObject.Parse`, `JsonArray.Parse`, each a `new static`
+returning the derived type, throwing when the payload has another shape). Pick `JsonObject.Parse` when a non-object
+payload is a bug (let it throw); pick `JsonValue.Parse` plus a type test when it is an ordinary case to handle.
+(`CrystalJsonDomWriter.ParseObject(value)` is unrelated: it goes the other way, CLR value -> DOM.)
 
 ### CrystalJsonSettings
 
@@ -239,7 +240,7 @@ reader instead of `.WithTrailingData()`, which parses the first value and silent
 ## 5. The source generator (your domain types)
 
 For POCOs, prefer the generator over the DOM: it emits a fast, reflection-free, AOT-friendly converter **and** typed
-read-only/writable proxies. (This is how DocStore documents work.)
+read-only/writable proxies. (This is how the document-collection layers built on this stack store their documents.)
 
 ### Declare
 
@@ -259,7 +260,7 @@ public sealed record Book
 
 [CrystalJsonConverter]                       // or [CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)] for camelCase + ignore-case
 [CrystalSerializable(typeof(Book))]
-public static partial class MyJson { }       // generated members land here
+public static partial class AcmeSerializers { }       // generated members land here
 ```
 
 #### The container vocabulary *(7.4.4+)*
@@ -295,7 +296,7 @@ and byte-identical, but `[Obsolete]` (enrollment never was JSON-specific).
 
 ### Self-serializable types: the entity IS its own container *(7.4.3+)*
 
-The container above (`MyJson`) is one way to enroll a type. The other is to let the type carry its own
+The container above (`AcmeSerializers`) is one way to enroll a type. The other is to let the type carry its own
 generated code, which is what you want when a **layer** owns a vocabulary and should not force every consuming
 application to also declare a JSON container.
 
@@ -321,7 +322,7 @@ Everything generated lands inside **one** nested static class named `Json`, so t
 member name:
 
 ```csharp
-Widget.Json.Default          // the converter (the container mode's MyJson.Widget)
+Widget.Json.Default          // the converter (the container mode's AcmeSerializers.Widget)
 Widget.Json.ReadOnly         // read-only proxy
 Widget.Json.Writable         // writable proxy
 Widget.Json.PropertyNames    // property-name constants
@@ -386,32 +387,37 @@ for members declared in nullable-oblivious code.
 
 ```csharp
 // POCO <-> JSON text
-string json = MyJson.Book.ToJsonText(book);
-Book   back = MyJson.Book.Deserialize(json);
+string json = AcmeSerializers.Book.ToJsonText(book);
+Book   back = AcmeSerializers.Book.Deserialize(json);
 
 // POCO <-> JsonValue (DOM)
-JsonValue packed = MyJson.Book.Pack(book);
-Book      from   = MyJson.Book.Unpack(jsonObject);
+JsonValue packed = AcmeSerializers.Book.Pack(book);
+Book      from   = AcmeSerializers.Book.Unpack(jsonObject);
 
-// runtime resolver (pass to CrystalJson APIs / DocStore / Teleport so they can resolve your converters)
-ICrystalJsonTypeResolver resolver = MyJson.GetResolver();
+// runtime resolver (pass to CrystalJson APIs and to layers that must resolve your converters)
+ICrystalJsonTypeResolver resolver = AcmeSerializers.GetResolver();
 ```
 
 ### Read-only / writable proxies (zero-copy typed views over the DOM)
 
 ```csharp
-MyJson.Book.ReadOnly ro = MyJson.Book.ToReadOnly(book);   // typed read-only view over a JsonValue
+AcmeSerializers.Book.ReadOnly ro = AcmeSerializers.Book.ToReadOnly(book);   // typed read-only view over a JsonValue
 string title = ro.Title;                                  // typed property read
 JsonValue dom = ro.ToJsonValue();                         // underlying (read-only) JsonValue
 Book poco = ro.ToValue();                                 // materialize the POCO
 
 // edit via copy-on-write: the original proxy is unchanged, you get a new frozen proxy
-MyJson.Book.ReadOnly edited = ro.With(m => { m.Year = 2025; });
+AcmeSerializers.Book.ReadOnly edited = ro.With(m => { m.Year = 2025; });
 
 // or an explicit mutable proxy
-MyJson.Book.Writable w = ro.ToMutable();
+AcmeSerializers.Book.Writable w = ro.ToMutable();
 w.Year = 2025;
 ```
+
+Absence propagates through a proxy the way it does through the DOM: a chain across a missing inner object keeps
+navigating (`proxy.Metadata.IsNullOrMissing()` tells you), an optional member reads as its default, and a
+`required` member absent from the document throws `JsonBindingException`, never a `NullReferenceException`
+(pinned by `Test_JsonReadOnlyProxy_With_Empty_Object` in `SnowBank.Serialization.Json.CodeGen.Tests`).
 
 Note: `.With(...)` (copy-on-write edit) is a method on the GENERATED typed proxies shown here, not on a raw DOM
 `JsonObject`/`JsonArray`. For a plain DOM value there is no `.With(...)`: freeze with `value.ToReadOnly()` and edit a
@@ -421,7 +427,7 @@ copy with `value.ToMutable()` (section 2), then set fields via the indexer.
 
 ## 6. Mutating JSON: MutableJsonValue (and ObservableJsonValue)
 
-`MutableJsonValue` is a mutation proxy used inside "write" closures (DocStore updates, Teleport `doc.Write(root => ...)`).
+`MutableJsonValue` is a mutation proxy used inside "write" closures (document updates in a collection layer, the `doc.Write(root => ...)` closures of a reactive layer).
 `ObservableJsonValue` is the read side that tracks which fields were read (for reactive views). You usually interact via
 the `root` handed to a write callback:
 

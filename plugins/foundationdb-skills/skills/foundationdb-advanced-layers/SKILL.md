@@ -60,7 +60,7 @@ Slice[] values = await tr.GetValuesAsync(ids.Select(id => subspace.Key(id)));   
 Slice[] vs = await Task.WhenAll(tr.GetAsync(k1), tr.GetAsync(k2), tr.GetAsync(k3));
 ```
 
-`tr.GetValuesAsync(keys)` reads many independent keys in one logical batch (this is what the DocStore's metadata fetch uses). For ranges, `GetRangeAsync(range, options)` returns a page per round-trip — tune `FdbRangeOptions` (`WantAll`, `WithLimit`, streaming mode) to your access pattern.
+`tr.GetValuesAsync(keys)` reads many independent keys in one logical batch (this is what a document store's metadata fetch uses). For ranges, `GetRangeAsync(range, options)` returns a page per round-trip — tune `FdbRangeOptions` (`WantAll`, `WithLimit`, streaming mode) to your access pattern.
 
 **Collapse read→decide→read dependencies.** If you find yourself reading key A only to decide whether/how to read B, ask whether the information can be encoded so a *single* read carries it. (The change-feed in §5 does exactly this: instead of "read the trim marker, then range-read the feed," the trim signal is a **tombstone inside the feed**, so one `GetRange` returns both the data and the eviction signal — see §5.4.) If you genuinely can't, issue both in parallel with `Task.WhenAll` and discard the wasted one in the rare case.
 

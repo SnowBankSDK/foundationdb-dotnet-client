@@ -429,7 +429,7 @@ The example offers three update flavors, trading a read against caller obligatio
 
 Raw FoundationDB keys are opaque bytes. Tools like the FQL shell, `FdbShell`, database dumps, and the transaction logger can render them as friendly tuples *if* the layer publishes a **schema**. Implement `IFdbLayerSchemaMapper` (often as a nested class) and return one `FqlTemplateExpression` per key family from `GetRules()`:
 
-- `LayerId` ties the rules to any Directory subspace created with that layer id (the `layer` argument to `CreateOrOpenAsync`), so the tooling knows which mapper to apply. Use a namespaced id like `"MyApp:DocStore:Collection"`.
+- `LayerId` ties the rules to any Directory subspace created with that layer id (the `layer` argument to `CreateOrOpenAsync`), so the tooling knows which mapper to apply. Use a namespaced id like `"Acme:Documents:Collection"`.
 - Build each template with `FqlTupleExpression.Create()` and the fluent API:
   - constants: `.Integer(0)` / `.String("…")`; name a constant for nicer output with `.Integer(CHUNKS, "CHUNKS")`.
   - captures: `.VarString("id")`, `.VarInteger("n")`, `.VarUuid("id")`, `.VarAny("value")` (any type).
@@ -496,7 +496,7 @@ public sealed class TenantCounter : IFdbLayer<TenantCounter.State, TenantToken>
 await counter.WriteAsync(db, tenant, (tr, state) => state.Bump(tr, "hits"), ct);
 ```
 
-This is how the real DocStore layer resolves a per-tenant subspace under a shared collection location.
+This is how a production document-collection layer resolves a per-tenant subspace under a shared collection location.
 
 ---
 
@@ -581,5 +581,5 @@ Notes:
 Patterns seen in mature layers; reach for them when you actually need them:
 
 - **Boundary keys to isolate range scans.** Writing an empty value at the subspace prefix and at a trailing system sentinel — `tr.Set(subspace.GetPrefix(), Slice.Empty)` and `tr.Set(subspace.Key(TuPackUserType.System), Slice.Empty)` — fences `GetRange` over the subspace from a neighbouring subspace's keys, so an empty collection still has stable range boundaries.
-- **Compact internal ids.** Instead of repeating a long external `PrimaryKey` in every key, allocate a small monotonic **record id** (e.g. via `FdbHighContentionAllocator`) and store `document(recordId) → data` plus `index(externalKey) → recordId`. Keys stay tiny and indexes point at the compact id. (See `FdbHighContentionAllocator` and the DocStore's record-id generator.)
+- **Compact internal ids.** Instead of repeating a long external `PrimaryKey` in every key, allocate a small monotonic **record id** (e.g. via `FdbHighContentionAllocator`) and store `document(recordId) → data` plus `index(externalKey) → recordId`. Keys stay tiny and indexes point at the compact id. (See `FdbHighContentionAllocator`; a document-collection layer allocates its record ids this way.)
 - **Cross-transaction metadata cache (`TCache`).** A layer may cache expensive resolved metadata (schema, index map) across transactions — but it must **re-validate** on each use: compare the cached prefix to the freshly resolved one (`cached.Prefix.Equals(subspace.GetPrefix())`) and/or attach FDB value-checks, dropping the cache if the directory moved. Only the *cache* is long-lived; the per-transaction `State` is still rebuilt each transaction (see `IFdbLayer<TState>`'s remarks: cache a `TCache`, not the `TState`).
