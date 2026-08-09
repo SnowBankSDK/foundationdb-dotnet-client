@@ -2717,7 +2717,10 @@ namespace SnowBank.Data.Json
 				if (member.Attributes != null)
 				{
 					var tmp = writer.PushAttributes(member.Attributes);
-					member.Visitor(child, member.Type, null, writer);
+					if (member.Attributes.NumberFormat != JsonNumberFormat.String || child == null || !writer.TryWriteNumberAsString(child))
+					{ // [JsonProperty(NumberFormat = String)] forces the string form for a numeric member; anything else takes the normal visitor
+						member.Visitor(child, member.Type, null, writer);
+					}
 					writer.PopAttributes(tmp);
 				}
 				else

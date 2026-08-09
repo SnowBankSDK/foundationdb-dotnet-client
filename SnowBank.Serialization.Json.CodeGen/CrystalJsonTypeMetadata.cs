@@ -258,6 +258,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Per-member enum format from <c>[JsonProperty(EnumFormat = ...)]</c>: <c>"String"</c>, <c>"Number"</c>, or <see langword="null"/> when inherited from the settings</summary>
 		public string? EnumFormat { get; init; }
 
+		/// <summary>Per-member number format from <c>[JsonProperty(NumberFormat = ...)]</c>: <c>"String"</c>, or <see langword="null"/> for the numeric default</summary>
+		public string? NumberFormat { get; init; }
+
 		/// <summary>XML name of this member from <c>[XmlProperty]</c>, or <see langword="null"/> when the member does not override it (the XML name then derives from <see cref="Name"/>)</summary>
 		/// <remarks>
 		/// <para>Already NORMALIZED: the <c>"@id"</c> sugar has been split into <c>"id"</c> plus <see cref="XmlIsAttribute"/>, so nothing downstream ever sees a <c>'@'</c> in a name, and the value is known to be a legal XML NCName.</para>

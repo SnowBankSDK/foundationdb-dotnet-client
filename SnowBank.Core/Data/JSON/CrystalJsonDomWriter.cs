@@ -940,6 +940,11 @@ namespace SnowBank.Data.Json
 					: CrystalJsonEnumCache.GetNumber(enumValue.GetType(), enumValue);
 			}
 
+			if (member.Attributes?.NumberFormat == JsonNumberFormat.String && JsonNumber.TryGetLiteral(value) is string numberLiteral)
+			{ // [JsonProperty(NumberFormat = String)] forces the string form for this numeric member, same as on the text route
+				return JsonString.Return(numberLiteral);
+			}
+
 			return ParseObjectInternal(ref context, value, member.Type, null);
 		}
 

@@ -2385,6 +2385,41 @@ namespace SnowBank.Data.Json
 			return CrystalJsonEnumCache.GetNumber(typeof(TEnum), value);
 		}
 
+		/// <summary>Packs a numeric value into its string form: the number's own literal, as a string</summary>
+		/// <remarks>Used by generated converters for members carrying <c>[JsonProperty(NumberFormat = JsonNumberFormat.String)]</c>.</remarks>
+		[Pure]
+		public static JsonValue PackNumberString(int value) => JsonString.Return(JsonNumber.Return(value).ToJsonText());
+
+		/// <inheritdoc cref="PackNumberString(int)"/>
+		[Pure]
+		public static JsonValue PackNumberString(uint value) => JsonString.Return(JsonNumber.Return(value).ToJsonText());
+
+		/// <inheritdoc cref="PackNumberString(int)"/>
+		[Pure]
+		public static JsonValue PackNumberString(long value) => JsonString.Return(JsonNumber.Return(value).ToJsonText());
+
+		/// <inheritdoc cref="PackNumberString(int)"/>
+		[Pure]
+		public static JsonValue PackNumberString(ulong value) => JsonString.Return(JsonNumber.Return(value).ToJsonText());
+
+		/// <inheritdoc cref="PackNumberString(int)"/>
+		[Pure]
+		public static JsonValue PackNumberString(float value) => JsonString.Return(JsonNumber.Return(value).ToJsonText());
+
+		/// <inheritdoc cref="PackNumberString(int)"/>
+		[Pure]
+		public static JsonValue PackNumberString(double value) => JsonString.Return(JsonNumber.Return(value).ToJsonText());
+
+		/// <inheritdoc cref="PackNumberString(int)"/>
+		[Pure]
+		public static JsonValue PackNumberString(decimal value) => JsonString.Return(JsonNumber.Return(value).ToJsonText());
+
+#if NET5_0_OR_GREATER
+		/// <inheritdoc cref="PackNumberString(int)"/>
+		[Pure]
+		public static JsonValue PackNumberString(Half value) => JsonString.Return(JsonNumber.Return(value).ToJsonText());
+#endif
+
 		#endregion
 
 		extension<TJsonPackable>(TJsonPackable? self)

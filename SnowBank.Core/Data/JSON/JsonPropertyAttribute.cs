@@ -54,6 +54,10 @@ namespace SnowBank.Data.Json
 		/// <summary>Defines if this field should be always serialized as strings (true), as integers (false), or according to the runtime json settings (null)</summary>
 		public JsonEnumFormat EnumFormat { get; set; }
 
+		/// <summary>Defines if this numeric field is serialized as a number (the default) or as a string literal</summary>
+		/// <remarks>Reading always accepts both forms, whatever this setting says. The string form protects 64-bit values from the precision loss of JavaScript consumers.</remarks>
+		public JsonNumberFormat NumberFormat { get; set; }
+
 	}
 
 	/// <summary>Specifies how enums are serialized into JSON</summary>
@@ -67,6 +71,20 @@ namespace SnowBank.Data.Json
 		Number,
 
 		/// <summary>Serialize enums as string literals</summary>
+		String
+	}
+
+	/// <summary>Specifies how numeric members are serialized into JSON</summary>
+	public enum JsonNumberFormat
+	{
+
+		/// <summary>Inherits the settings from the parent context</summary>
+		Inherits = 0,
+
+		/// <summary>Serialize numbers as numbers (the default)</summary>
+		Number,
+
+		/// <summary>Serialize numbers as string literals</summary>
 		String
 	}
 

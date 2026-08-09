@@ -1663,6 +1663,28 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static JsonValue Return(float? value) => value.HasValue ? Create(value.Value) : JsonNull.Null;
 
+		/// <summary>Returns the JSON number literal for a boxed numeric value, or <see langword="null"/> when the value is not a supported number</summary>
+		/// <remarks>Serves the per-member <see cref="JsonNumberFormat.String"/> form: the string is exactly the literal that the numeric form would have produced.</remarks>
+		[Pure]
+		internal static string? TryGetLiteral(object value) => value switch
+		{
+			int v => Return(v).ToJsonText(),
+			long v => Return(v).ToJsonText(),
+			double v => Return(v).ToJsonText(),
+			float v => Return(v).ToJsonText(),
+			decimal v => Return(v).ToJsonText(),
+			uint v => Return(v).ToJsonText(),
+			ulong v => Return(v).ToJsonText(),
+			short v => Return(v).ToJsonText(),
+			ushort v => Return(v).ToJsonText(),
+			byte v => Return(v).ToJsonText(),
+			sbyte v => Return(v).ToJsonText(),
+#if NET5_0_OR_GREATER
+			Half v => Return(v).ToJsonText(),
+#endif
+			_ => null,
+		};
+
 #if NET5_0_OR_GREATER
 		// System.Half does not exist on netstandard2.0
 		/// <summary>Returns the equivalent <see cref="JsonNumber"/></summary>

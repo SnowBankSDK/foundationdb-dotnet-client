@@ -2245,6 +2245,22 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+		/// <summary>Writes a boxed numeric value as a string literal (per-member <see cref="JsonNumberFormat.String"/>)</summary>
+		/// <returns><see langword="false"/> when the value is not a supported number, in which case nothing was written</returns>
+		/// <remarks>The string is exactly the literal that the numeric form would have produced; numbers never need escaping.</remarks>
+		internal bool TryWriteNumberAsString(object value)
+		{
+			var literal = JsonNumber.TryGetLiteral(value);
+			if (literal == null)
+			{
+				return false;
+			}
+			m_buffer.Write('"');
+			m_buffer.Write(literal);
+			m_buffer.Write('"');
+			return true;
+		}
+
 		/// <summary>Writes a <see cref="decimal"/>, as a number literal</summary>
 		/// <param name="value">Value to write</param>
 		/// <example><code>
@@ -4857,6 +4873,66 @@ namespace SnowBank.Data.Json
 				WriteNull();
 			}
 		}
+
+		/// <summary>Writes the numeric literal of a member value between quotes (per-member <see cref="JsonNumberFormat.String"/>)</summary>
+		private void WriteQuotedNumberLiteral(JsonValue number)
+		{
+			m_buffer.Write('"');
+			m_buffer.Write(number.ToJsonText());
+			m_buffer.Write('"');
+		}
+
+		/// <summary>Writes a field with a numeric value forced to its string form (per-member <see cref="JsonNumberFormat.String"/>)</summary>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, int value) { WriteName(name); WriteQuotedNumberLiteral(JsonNumber.Return(value)); }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, uint value) { WriteName(name); WriteQuotedNumberLiteral(JsonNumber.Return(value)); }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, long value) { WriteName(name); WriteQuotedNumberLiteral(JsonNumber.Return(value)); }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, ulong value) { WriteName(name); WriteQuotedNumberLiteral(JsonNumber.Return(value)); }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, float value) { WriteName(name); WriteQuotedNumberLiteral(JsonNumber.Return(value)); }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, double value) { WriteName(name); WriteQuotedNumberLiteral(JsonNumber.Return(value)); }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, decimal value) { WriteName(name); WriteQuotedNumberLiteral(JsonNumber.Return(value)); }
+
+#if NET5_0_OR_GREATER
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, Half value) { WriteName(name); WriteQuotedNumberLiteral(JsonNumber.Return(value)); }
+#endif
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, int? value) { if (value.HasValue) { WriteFieldNumberString(name, value.Value); } else if (!m_discardNulls) { WriteName(name); WriteNull(); } }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, uint? value) { if (value.HasValue) { WriteFieldNumberString(name, value.Value); } else if (!m_discardNulls) { WriteName(name); WriteNull(); } }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, long? value) { if (value.HasValue) { WriteFieldNumberString(name, value.Value); } else if (!m_discardNulls) { WriteName(name); WriteNull(); } }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, ulong? value) { if (value.HasValue) { WriteFieldNumberString(name, value.Value); } else if (!m_discardNulls) { WriteName(name); WriteNull(); } }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, float? value) { if (value.HasValue) { WriteFieldNumberString(name, value.Value); } else if (!m_discardNulls) { WriteName(name); WriteNull(); } }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, double? value) { if (value.HasValue) { WriteFieldNumberString(name, value.Value); } else if (!m_discardNulls) { WriteName(name); WriteNull(); } }
+
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, decimal? value) { if (value.HasValue) { WriteFieldNumberString(name, value.Value); } else if (!m_discardNulls) { WriteName(name); WriteNull(); } }
+
+#if NET5_0_OR_GREATER
+		/// <inheritdoc cref="WriteFieldNumberString(JsonEncodedPropertyName,int)"/>
+		public void WriteFieldNumberString(JsonEncodedPropertyName name, Half? value) { if (value.HasValue) { WriteFieldNumberString(name, value.Value); } else if (!m_discardNulls) { WriteName(name); WriteNull(); } }
+#endif
 
 		public void WriteFieldJsonSerializable<TSerializable>(string name, TSerializable? value)
 			where TSerializable : IJsonSerializable

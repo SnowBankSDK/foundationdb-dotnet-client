@@ -113,6 +113,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 					? $"global::System.Array.Empty<{elementType.FullyQualifiedName}>()"
 					: $"new {type.FullyQualifiedName}()";
 
+			/// <summary>Numeric types that support the per-member <c>[JsonProperty(NumberFormat = String)]</c> form (the writer and pack helpers carry one overload per type)</summary>
+			private static bool IsNumberFormatCapable(TypeMetadata type)
+				=> type.SpecialType is SpecialType.System_Int32 or SpecialType.System_Int64 or SpecialType.System_UInt32 or SpecialType.System_UInt64
+					or SpecialType.System_Int16 or SpecialType.System_UInt16 or SpecialType.System_Byte or SpecialType.System_SByte
+					or SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_Decimal
+				|| type.FullyQualifiedName == "global::System.Half";
+
 			/// <summary>Emits the <c>[DynamicallyAccessedMembers(All)]</c> trimming annotation, when the consumer can see the attribute</summary>
 			/// <remarks>The annotation only matters to a trimming/AOT publish, which the lite path (the only place where the attribute is out of reach) does not support anyway.</remarks>
 			private void WriteTrimmingAnnotation(CSharpCodeBuilder sb)
@@ -1533,7 +1540,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 								}
 								else if (member.Type.IsNumberLike(allowNullables: true))
 								{
-									setterExpr = $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value)";
+									if (member.NumberFormat is "String" && IsNumberFormatCapable(member.Type.NullableOfType ?? member.Type))
+									{ // [JsonProperty(NumberFormat = String)] forces the string form written by the proxy setter as well
+										var packHelper = $"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackNumberString";
+										setterExpr = member.Type.NullableOfType is null
+											? $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, {packHelper}(value))"
+											: $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value is {{ }} v{member.MemberName} ? {packHelper}(v{member.MemberName}) : {KnownTypeSymbols.JsonNullFullName}.Null)";
+									}
+									else
+									{
+										setterExpr = $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value)";
+									}
 								}
 								else if (member.Type.IsDateLike(allowNullables: true))
 								{
@@ -1601,6 +1618,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 							if (setterExpr == null && member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
 							{ // [JsonProperty(EnumFormat = ...)] forces the output form written by the proxy setter as well
 								var packHelper = $"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackEnum{member.EnumFormat}";
+								setterExpr = member.Type.NullableOfType is null
+									? $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, {packHelper}(value))"
+									: $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value is {{ }} v{member.MemberName} ? {packHelper}(v{member.MemberName}) : {KnownTypeSymbols.JsonNullFullName}.Null)";
+							}
+
+							if (setterExpr == null && member.NumberFormat is "String" && IsNumberFormatCapable(member.Type.NullableOfType ?? member.Type))
+							{ // [JsonProperty(NumberFormat = String)] forces the string form written by the proxy setter as well
+								var packHelper = $"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackNumberString";
 								setterExpr = member.Type.NullableOfType is null
 									? $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, {packHelper}(value))"
 									: $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value is {{ }} v{member.MemberName} ? {packHelper}(v{member.MemberName}) : {KnownTypeSymbols.JsonNullFullName}.Null)";
@@ -3187,6 +3212,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return $"/* enum-format */ {getterExpr} is {{ }} v{member.MemberName} ? {packHelper}(v{member.MemberName}) : {KnownTypeSymbols.JsonNullFullName}.Null";
 				}
 
+				if (member.NumberFormat is "String" && IsNumberFormatCapable(member.Type.NullableOfType ?? member.Type))
+				{ // [JsonProperty(NumberFormat = String)] forces the string form for this numeric member
+					var packHelper = $"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.PackNumberString";
+					if (member.Type.NullableOfType is null)
+					{
+						return $"/* number-format */ {packHelper}({getterExpr})";
+					}
+					return $"/* number-format */ {getterExpr} is {{ }} v{member.MemberName} ? {packHelper}(v{member.MemberName}) : {KnownTypeSymbols.JsonNullFullName}.Null";
+				}
+
 				if (IsLocallyGeneratedType(member.Type, out var target, out _))
 				{ // one level deeper: this is a nested object, and the callee's own guard is what stops a cycle running through it
 					return $"/* local-serializer */ {GetLocalSerializerRef(target)}.Pack(ref context, {getterExpr})";
@@ -3475,6 +3510,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (member.EnumFormat is "String" or "Number" && (member.Type.NullableOfType ?? member.Type).IsEnum())
 				{ // [JsonProperty(EnumFormat = ...)] forces the output form for this member, regardless of the settings
 					sb.AppendLine($"writer.WriteFieldEnum{member.EnumFormat}({propertyName}, {getterExpr}); // enum-format");
+					return;
+				}
+
+				if (member.NumberFormat is "String" && IsNumberFormatCapable(member.Type.NullableOfType ?? member.Type))
+				{ // [JsonProperty(NumberFormat = String)] forces the string form for this numeric member
+					sb.AppendLine($"writer.WriteFieldNumberString({propertyName}, {getterExpr}); // number-format");
 					return;
 				}
 

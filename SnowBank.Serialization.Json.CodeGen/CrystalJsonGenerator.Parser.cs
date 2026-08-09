@@ -2414,6 +2414,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				bool isKey = false;
 				string? ignoreCondition = null;
 				string? enumFormat = null;
+				string? numberFormat = null;
 				string? customConverterType = null;
 				string? customConverterArgs = null;
 				bool customConverterHasPacker = true;
@@ -2486,6 +2487,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 								else if (kv.Key == "EnumFormat" && kv.Value.Value is int ef)
 								{ // JsonEnumFormat: 0 = Inherits, 1 = Number, 2 = String
 									enumFormat = ef switch { 1 => "Number", 2 => "String", _ => null };
+								}
+								else if (kv.Key == "NumberFormat" && kv.Value.Value is int nf)
+								{ // JsonNumberFormat: 0 = Inherits, 1 = Number, 2 = String; only String changes the output
+									numberFormat = nf == 2 ? "String" : null;
 								}
 							}
 							//TODO: check if a default value was provided!
@@ -2822,6 +2827,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						DefaultLiteral = defaultLiteral,
 						IgnoreCondition = ignoreCondition,
 						EnumFormat = enumFormat,
+						NumberFormat = numberFormat,
 						CustomConverterType = customConverterType,
 						CustomConverterArgs = customConverterArgs,
 						CustomConverterHasPacker = customConverterHasPacker,
