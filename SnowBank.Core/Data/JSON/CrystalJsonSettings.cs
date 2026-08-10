@@ -159,6 +159,9 @@ namespace SnowBank.Data.Json
 			/// <summary>Serialize <c>TimeSpan</c> values as ISO 8601 duration strings (<c>"P1DT2H3M4.005S"</c>, the legacy DataContractJsonSerializer wire form) instead of a number of seconds</summary>
 			Iso8601Durations = 0x40000,
 
+			/// <summary>Emit canonical output: object members sorted by ordinal comparison of their name, numbers rendered from their value with a float marker. See <see cref="CrystalJsonSettings.Canonical"/>.</summary>
+			CanonicalOutput = 0x80000,
+
 			// Misc
 			UseCamelCasingForEnums = 0x100000,
 			DenyTrailingComma = 0x200000,
@@ -316,6 +319,15 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private static OptionFlags SetShowNullMembers(OptionFlags flags, bool value)
 			=> value ? flags | OptionFlags.ShowNullMembers : flags & ~OptionFlags.ShowNullMembers;
+
+		/// <summary>Output is canonical: object members are sorted by ordinal comparison of their name (attribute-driven ordering is disregarded), and numbers are rendered from their value (the source literal only decides the int/float shape).</summary>
+		public bool IsCanonicalOutput
+		{
+			get => (m_flags & OptionFlags.CanonicalOutput) != 0;
+		}
+
+		private static OptionFlags SetCanonicalOutput(OptionFlags flags, bool value)
+			=> value ? flags | OptionFlags.CanonicalOutput : flags & ~OptionFlags.CanonicalOutput;
 
 		/// <summary>If <see langword="true"/>, omit all fields that are equal to the default value of their type, including <see langword="null"/>, <see langword="0"/>, <see langword="false"/>, <c>DateTime.MinValue</c>, etc...</summary>
 		/// <remarks>
@@ -542,6 +554,14 @@ namespace SnowBank.Data.Json
 		/// <summary>Null values for members (ref types and <see cref="Nullable{T}"/>) will be included.</summary>
 		[Pure]
 		public CrystalJsonSettings WithNullMembers() => Update(SetShowNullMembers(m_flags, true));
+
+		/// <summary>Enables canonical output: within a compatible range of library versions, the same JSON DOM serialized with the same settings produces the same text, and the output is closed under reparse. A runtime change or a required bug fix may still change the output between versions; such changes are called out in the release notes. Not supported on the netstandard2.0/net472 build (no shortest-round-trip float formatting there).</summary>
+		[Pure]
+		public CrystalJsonSettings Canonical() => Update(SetCanonicalOutput(m_flags, true));
+
+		/// <summary>Disables canonical output</summary>
+		[Pure]
+		public CrystalJsonSettings NotCanonical() => Update(SetCanonicalOutput(m_flags, false));
 
 		/// <summary>Default values for all members will be omitted</summary>
 		[Pure]
