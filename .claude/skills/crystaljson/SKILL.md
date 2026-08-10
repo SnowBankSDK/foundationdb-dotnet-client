@@ -642,7 +642,7 @@ silently changes the output, so check the matrix before annotating a DTO:
 | `[OnSerializing]` / `[OnSerialized]` / `[OnDeserializing]` / `[OnDeserialized]` | YES *(7.4.3+)*, `void M()` on all four and `void M(JsonValue\|JsonObject\|JsonArray)` on the deserialize pair; the legacy `void M(StreamingContext)` throws at contract build | same shapes accepted; the legacy `StreamingContext` form is build error `CJSON0015` at the callsite |
 | STJ `IJsonOnSerializing` / `IJsonOnSerialized` / `IJsonOnDeserializing` / `IJsonOnDeserialized` interfaces | no, deliberately (see *Lifecycle* below) | no, deliberately |
 | `[CollectionDataContract]`'s `Name` / `ItemName` / `KeyName` / `ValueName` | no, and **neither does DCJS**: those four names shape the XML format only, so there is nothing to reproduce (see below) | no |
-| Newtonsoft `[JsonProperty]` (name only) | YES | no |
+| Newtonsoft `[JsonProperty]` (name only) | YES | YES *(7.4.3+)* - honoured as the lowest-priority naming fallback (after native `[JsonProperty]` and `[JsonPropertyName]`); a member stacking naming attributes with DIFFERENT names is refused (`CJSON0011` / a reflection throw) |
 | `[XmlIgnore]` / `[XmlElement]` / `[XmlAttribute]` | YES (non-`[DataContract]` types) | no |
 | STJ `[JsonPropertyOrder]`, `[JsonNumberHandling]`, `[JsonExtensionData]`, `[JsonConstructor]` | no | no |
 

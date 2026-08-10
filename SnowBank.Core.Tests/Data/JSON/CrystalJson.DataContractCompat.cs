@@ -616,6 +616,29 @@ namespace SnowBank.Data.Json.Tests
 			public string? Value { get; set; }
 		}
 
+		/// <summary>Two JSON naming attributes disagree, with NO [DataMember]: the same dual-output defect between the three JSON serializers</summary>
+		public sealed class NativeNewtonsoftNameConflictDto
+		{
+			[JsonProperty("CODE_A")]
+			[Newtonsoft.Json.JsonProperty("CODE_B")]
+			public string? Code { get; set; }
+		}
+
+		public sealed class StjNewtonsoftNameConflictDto
+		{
+			[System.Text.Json.Serialization.JsonPropertyName("CODE_A")]
+			[Newtonsoft.Json.JsonProperty("CODE_B")]
+			public string? Code { get; set; }
+		}
+
+		/// <summary>Two naming attributes that AGREE, with no [DataMember]: a common migration state, and legal</summary>
+		public sealed class NativeNewtonsoftAgreeingDto
+		{
+			[JsonProperty("CODE")]
+			[Newtonsoft.Json.JsonProperty("CODE")]
+			public string? Code { get; set; }
+		}
+
 		/// <summary>The ignore variant of the double contract: on the DCJS wire via [DataMember], off the other wire via [JsonIgnore]</summary>
 		[DataContract]
 		public sealed class DualOutputDto
@@ -680,6 +703,29 @@ namespace SnowBank.Data.Json.Tests
 				() => CrystalJson.Serialize(new DoubleContractStjDto { Code = "c-1" }),
 				Throws.Exception.With.Message.Contains("CODE_X"),
 				"a conflicting [JsonPropertyName] is the same defect with another serializer");
+		}
+
+		[Test]
+		public void Test_Conflicting_Json_Naming_Attributes_Are_Refused_Loudly()
+		{
+			// several JSON naming attributes on one member with different names, with NO [DataMember]: still a
+			// dual-output DTO, refused the same way (the source generator refuses the same shape at build time,
+			// CJSON0011). Precedence when they agree is CrystalJson [JsonProperty] > STJ [JsonPropertyName] > Newtonsoft
+
+			Assert.That(
+				() => CrystalJson.Serialize(new NativeNewtonsoftNameConflictDto { Code = "c" }),
+				Throws.Exception.With.Message.Contains("CODE_A").And.Message.Contains("CODE_B").And.Message.Contains("split"));
+
+			Assert.That(
+				() => CrystalJson.Serialize(new StjNewtonsoftNameConflictDto { Code = "c" }),
+				Throws.Exception.With.Message.Contains("CODE_A").And.Message.Contains("CODE_B").And.Message.Contains("split"),
+				"the same defect between [JsonPropertyName] and a Newtonsoft [JsonProperty]");
+
+			// the agreeing pair is legal on both paths
+			Assert.That(
+				CrystalJson.Serialize(new NativeNewtonsoftAgreeingDto { Code = "c" }),
+				Does.Contain("CODE").And.Not.Contain("Code"),
+				"two naming attributes agreeing on the same wire name is not a conflict");
 		}
 
 		[Test]

@@ -2409,6 +2409,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				bool xmlAttributeValue = false;
 				string? xmlItemName = null;
 				string? xmlDictionaryFormat = null;
+				string? nativePropertyName = null;
 				string? stjPropertyName = null;
 				string? newtonsoftPropertyName = null;
 				bool isKey = false;
@@ -2467,7 +2468,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{ // [JsonProperty("fooBar", ...)]
 							if (attribute.ConstructorArguments.Length > 0)
 							{
-								name = (string) attribute.ConstructorArguments[0].Value!;
+								name = nativePropertyName = (string) attribute.ConstructorArguments[0].Value!;
 							}
 
 							foreach(var kv in attribute.NamedArguments)
@@ -2731,6 +2732,39 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
+				// several JSON naming attributes on one member with DIFFERENT names is a dual-output DTO: refuse it
+				// the same way the reflection path does. When they AGREE the precedence is CrystalJson [JsonProperty]
+				// > STJ [JsonPropertyName] > Newtonsoft [JsonProperty]; a disagreement is the defect, and the fix is
+				// to split the type into one DTO per serializer.
+				{
+					string? namingReference = null;
+					string? namingReferenceFamily = null;
+					foreach (var (jsonName, family) in new[] { (nativePropertyName, "JsonProperty"), (stjPropertyName, "JsonPropertyName"), (newtonsoftPropertyName, "Newtonsoft.Json.JsonProperty") })
+					{
+						if (jsonName is null) continue;
+						if (namingReference is null)
+						{
+							namingReference = jsonName;
+							namingReferenceFamily = family;
+						}
+						else if (jsonName != namingReference)
+						{
+							ReportDiagnostic(
+								new(
+									"CJSON0011",
+									"A member declares two different format names for two different serializers",
+									"The member '{0}' declares two different format names: [{1}(\"{2}\")] and [{3}(\"{4}\")]. One type cannot serve two format contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.",
+									"SnowBank.Serialization.Json.CodeGen",
+									DiagnosticSeverity.Error,
+									isEnabledByDefault: true
+								),
+								member.Locations.Length > 0 ? member.Locations[0] : null,
+								member.ToDisplayString(), namingReferenceFamily, namingReference, family, jsonName);
+							break;
+						}
+					}
+				}
+
 				if (nativeConverterType != null)
 				{ // the native attribute wins over [JsonBooleanLiterals] and the foreign [JsonConverter] spellings
 					customConverterType = nativeConverterType;
@@ -2744,6 +2778,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (dataContractMember && dataMemberName is not null)
 				{ // on a [DataContract] type the DataMember rename wins, as it does on the reflection path (attr.Name ?? name)
 					name = dataMemberName;
+				}
+
+				if (string.IsNullOrEmpty(name))
+				{ // no native [JsonProperty] / STJ [JsonPropertyName] / [DataMember] name: honor a Newtonsoft [JsonProperty]
+					// name if one is present, matching the reflection resolver, which uses it as the same fallback
+					name = newtonsoftPropertyName;
 				}
 
 				if (string.IsNullOrEmpty(name))

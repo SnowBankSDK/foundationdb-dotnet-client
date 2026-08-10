@@ -24,6 +24,20 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+// Simulates the Newtonsoft [JsonProperty] naming attribute WITHOUT referencing the package: both the generator
+// (matched by full name) and the reflection resolver (matched by name+namespace) must recognize it the same as
+// the real one.
+namespace Newtonsoft.Json
+{
+	[System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field)]
+	public sealed class JsonPropertyAttribute : System.Attribute
+	{
+		public JsonPropertyAttribute() { }
+		public JsonPropertyAttribute(string propertyName) => this.PropertyName = propertyName;
+		public string? PropertyName { get; set; }
+	}
+}
+
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
 	using System.Runtime.Serialization;
@@ -68,6 +82,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	public sealed record MxSnowRenameDto
 	{
 		[JsonProperty("sb_name")]
+		public string? Original { get; init; }
+	}
+
+	public sealed record MxNewtonsoftRenameDto
+	{
+		[Newtonsoft.Json.JsonProperty("nj_name")]
 		public string? Original { get; init; }
 	}
 
@@ -166,6 +186,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	[CrystalSerializable(typeof(MxIgnoreConditionsDto))]
 	[CrystalSerializable(typeof(MxStjRenameDto))]
 	[CrystalSerializable(typeof(MxSnowRenameDto))]
+	[CrystalSerializable(typeof(MxNewtonsoftRenameDto))]
 	[CrystalSerializable(typeof(MxEnumDto))]
 	[CrystalSerializable(typeof(MxStjTokenDto))]
 	[CrystalSerializable(typeof(MxEmTokenDto))]
@@ -299,6 +320,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				generated: ParityHost.MxSnowRenameDto.Default,
 				stjWire: """{"Original":"X"}""",
 				cjWire: """{"sb_name":"X"}""");
+
+			// a member carrying ONLY a Newtonsoft [JsonProperty] name: the reflection path honors it as a naming
+			// fallback, and the generated converter must agree (STJ ignores the foreign attribute and emits the raw name)
+			yield return Case(
+				id: "newtonsoft-jsonproperty-rename",
+				dto: new MxNewtonsoftRenameDto { Original = "X" },
+				generated: ParityHost.MxNewtonsoftRenameDto.Default,
+				stjWire: """{"Original":"X"}""",
+				cjWire: """{"nj_name":"X"}""");
 
 			// ---- enums (D-19: strings by default, deliberately diverging from STJ's numeric default) ----
 

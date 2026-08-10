@@ -1547,12 +1547,14 @@ namespace SnowBank.Data.Json
 			Attribute? fallbackSystemTextJson = null;
 #endif
 			Attribute? fallbackNewtonsoftJson = null;
+			JsonPropertyAttribute? nativeJsonProperty = null;
 			foreach (var attr in member.GetCustomAttributes(true))
 			{
-				// look for our own attribute, that has priority
+				// look for our own attribute, that has priority (kept, not returned early, so a conflicting foreign name is still seen)
 				if (attr is JsonPropertyAttribute jp)
 				{
-					return jp;
+					nativeJsonProperty ??= jp;
+					continue;
 				}
 
 				// recognize [JsonPropertyName(...)] from System.Text.Json, if present
@@ -1576,24 +1578,46 @@ namespace SnowBank.Data.Json
 				}
 			}
 
-			if (fallbackSystemTextJson is not null)
-			{ // fake the original [JsonProperty("...")] by copying the name of the other attribute
-#if NET5_0_OR_GREATER
-				return new JsonPropertyAttribute(fallbackSystemTextJson.Name);
+#if !NETSTANDARD2_0
+			string? stjName = fallbackSystemTextJson?.Name;
 #else
-				var stjName = (string?) fallbackSystemTextJson.GetType().GetProperty("Name")?.GetValue(fallbackSystemTextJson);
-				if (stjName != null) return new JsonPropertyAttribute(stjName);
+			string? stjName = fallbackSystemTextJson is null ? null : (string?) fallbackSystemTextJson.GetType().GetProperty("Name")?.GetValue(fallbackSystemTextJson);
 #endif
-			}
+			string? newtonsoftName = fallbackNewtonsoftJson is null ? null : (string?) fallbackNewtonsoftJson.GetType().GetProperty("PropertyName")?.GetValue(fallbackNewtonsoftJson);
 
-			if (fallbackNewtonsoftJson is not null)
-			{ // we need to access the "PropertyName" property via reflection!
-				var name = (string?) fallbackNewtonsoftJson.GetType().GetProperty("PropertyName")?.GetValue(fallbackNewtonsoftJson);
-				if (name != null) return new JsonPropertyAttribute(name);
-			}
+			// several JSON naming attributes on one member with DIFFERENT names is a dual-output DTO: refuse it, as the
+			// generated converter does at build time. Precedence when they AGREE is CrystalJson [JsonProperty] > STJ
+			// [JsonPropertyName] > Newtonsoft [JsonProperty]; a disagreement is the defect, and the fix is to split it.
+			ThrowIfConflictingJsonWireNames(member, nativeJsonProperty?.PropertyName, stjName, newtonsoftName);
+
+			// return by priority, faking a [JsonProperty("...")] over the foreign name when there is no native one
+			if (nativeJsonProperty is not null) return nativeJsonProperty;
+			if (stjName != null) return new JsonPropertyAttribute(stjName);
+			if (newtonsoftName != null) return new JsonPropertyAttribute(newtonsoftName);
 
 			// no valid candidate found
 			return null;
+		}
+
+		/// <summary>Throws if a member carries several JSON naming attributes with different wire names (a dual-output DTO)</summary>
+		/// <remarks>Precedence when they agree is CrystalJson <c>[JsonProperty]</c> then System.Text.Json <c>[JsonPropertyName]</c> then Newtonsoft <c>[JsonProperty]</c>. A disagreement is the defect, and the generated converter refuses the same shape at build time (<c>CJSON0011</c>).</remarks>
+		private static void ThrowIfConflictingJsonWireNames(MemberInfo member, string? nativeName, string? stjName, string? newtonsoftName)
+		{
+			string? reference = null;
+			string? referenceFamily = null;
+			foreach (var (wireName, family) in new[] { (nativeName, "JsonProperty"), (stjName, "JsonPropertyName"), (newtonsoftName, "Newtonsoft.Json.JsonProperty") })
+			{
+				if (string.IsNullOrEmpty(wireName)) continue;
+				if (reference is null)
+				{
+					reference = wireName;
+					referenceFamily = family;
+				}
+				else if (!string.Equals(wireName, reference, StringComparison.Ordinal))
+				{
+					throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' declares two different wire names: [{referenceFamily}(\"{reference}\")] and [{family}(\"{wireName}\")]. One type cannot serve two wire contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.");
+				}
+			}
 		}
 
 		/// <summary>Throws if the member also carries a name-giving attribute of ANOTHER serializer family with a different wire name</summary>
