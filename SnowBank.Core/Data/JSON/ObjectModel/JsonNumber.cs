@@ -1982,7 +1982,7 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public bool IsDecimal => m_kind >= Kind.Double;
 
-		/// <summary>The number is float-shaped: its source literal carries a fractional or exponent marker ('<c>.</c>', '<c>e</c>' or '<c>E</c>'), or its kind is <see cref="Kind.Double"/> or <see cref="Kind.Decimal"/> with either no literal (built from a CLR value) or a value within the 64-bit signed range (where CLR-built floats format as bare digits).</summary>
+		/// <summary>The number is float-shaped: its literal carries a fractional or exponent marker ('<c>.</c>', '<c>e</c>' or '<c>E</c>'), or its kind is <see cref="Kind.Double"/> or <see cref="Kind.Decimal"/> with a value within the 64-bit signed range (where CLR-built floats format as bare digits).</summary>
 		/// <remarks>
 		/// An integer literal too large for long/ulong (e.g., "99999999999999999999") overflows into Decimal kind while staying int-shaped; the literal is the witness that survives parsing. A CLR-built whole float only formats as bare digits within the 64-bit range; larger values format with exponent notation (caught by marker check).
 		/// NaN and the infinities are int-shaped: their literal ("NaN", "Infinity", "-Infinity") carries no float marker, and the literal is the witness this property trusts. Callers must precheck non-finite values before relying on this property for output shaping (the canonical writer does).

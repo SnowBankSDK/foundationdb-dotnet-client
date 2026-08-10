@@ -191,7 +191,9 @@ namespace SnowBank.Data.Json.Tests
 			// fall back to its own (non-canonical) writing order.
 			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
 			var dto = new VocabularyDto { Id = 1 };
-			Assert.Throws<JsonSerializationException>(() => CrystalJson.Serialize(dto, new NonPackableSerializer(), canonical));
+			Assert.That(
+				() => CrystalJson.Serialize(dto, new NonPackableSerializer(), canonical),
+				Throws.TypeOf<JsonSerializationException>().With.Message.Contains("IJsonPacker"));
 		}
 
 		[Test]
@@ -201,6 +203,7 @@ namespace SnowBank.Data.Json.Tests
 			var combos = new[]
 			{
 				CrystalJsonSettings.Json.Canonical(),
+				CrystalJsonSettings.JsonIndented.Canonical(),
 				CrystalJsonSettings.JsonCompact.Canonical(),
 				CrystalJsonSettings.JsonCompact.Canonical().WithNullMembers(),
 			};
@@ -240,14 +243,45 @@ namespace SnowBank.Data.Json.Tests
 				CrystalJson.SerializeJson(doc, CrystalJsonSettings.Json.Canonical()),
 				Is.EqualTo("""{ "Baz": 10.0, "alpha": 1.1, "bar": { "a": [ 1e-7, 0.000001, 0 ], "b": 18446744073709551615 }, "zeta": 1.0 }"""));
 
-			// FROZEN: same document, compact layout plus WithNullMembers(). This document has no null
-			// member, so the string is byte-identical to the plain compact case above; the point of this
-			// case is pinning that the combination itself does not change canonical output for a
-			// null-free document (a document with a null member is out of scope: canonical ordering and
-			// number rendering are the contract this corpus pins, not null-member visibility).
+			// FROZEN: same document, the genuinely indented layout (multi-line, tab-indented) —
+			// distinct from Json's single-line Formatted default pinned above.
+			Assert.That(
+				CrystalJson.SerializeJson(doc, CrystalJsonSettings.JsonIndented.Canonical()),
+				Is.EqualTo("""
+				{
+					"Baz": 10.0,
+					"alpha": 1.1,
+					"bar": {
+						"a": [
+							1e-7,
+							0.000001,
+							0
+						],
+						"b": 18446744073709551615
+					},
+					"zeta": 1.0
+				}
+				"""));
+
+			// FROZEN: same document, compact layout plus WithNullMembers(). A DOM-level explicit JSON
+			// null (JsonNull.Null, what a parser produces for a literal "null") is never discarded
+			// regardless of this flag; only JsonNull.Missing (what a null CLR reference member becomes)
+			// is. This document has no member that hits that path, so this case proves layout stability
+			// under the combination, not null emission; the next case proves emission, on a typed value.
 			Assert.That(
 				CrystalJson.SerializeJson(doc, CrystalJsonSettings.JsonCompact.Canonical().WithNullMembers()),
 				Is.EqualTo("""{"Baz":10.0,"alpha":1.1,"bar":{"a":[1e-7,0.000001,0],"b":18446744073709551615},"zeta":1.0}"""));
+
+			// FROZEN: a tiny typed value with one null member. Null-member visibility is a
+			// typed-serialization concern (JsonNull.Missing), so unlike the case above, this pair does
+			// differ: the default omits the null Label, WithNullMembers() emits it.
+			var withNull = new VocabularyDto { Id = 1, Label = null };
+			Assert.That(
+				CrystalJson.Serialize(withNull, CrystalJsonSettings.JsonCompact.Canonical()),
+				Is.EqualTo("""{"Enabled":false,"Id":1}"""));
+			Assert.That(
+				CrystalJson.Serialize(withNull, CrystalJsonSettings.JsonCompact.Canonical().WithNullMembers()),
+				Is.EqualTo("""{"Enabled":false,"Id":1,"Label":null}"""));
 		}
 
 		// --- Task 3 follow-up: decimal-kind canonical text must be value-determined, not kind-determined ---
