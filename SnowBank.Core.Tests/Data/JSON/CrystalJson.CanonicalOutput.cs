@@ -43,6 +43,8 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(canonical.WithNullMembers().IsCanonicalOutput, Is.True);
 		}
 
+#if !NETFRAMEWORK
+
 		[Test]
 		public void Test_Canonical_Number_Rendering()
 		{
@@ -231,6 +233,20 @@ namespace SnowBank.Data.Json.Tests
 			// canonical formatter. That is a pre-existing parser precision limit, not a defect in
 			// this fix; the frozen corpus and the closure test use no value that hits it.
 		}
+
+#endif
+
+#if NETFRAMEWORK
+
+		[Test]
+		public void Test_Canonical_Not_Supported_On_NetFramework()
+		{
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			Assert.Throws<NotSupportedException>(() => new JsonObject { ["a"] = JsonNumber.Return(1) }.ToJsonText(canonical));
+			Assert.Throws<NotSupportedException>(() => JsonNumber.Return(1.5d).ToJsonText(canonical));
+		}
+
+#endif
 
 	}
 
