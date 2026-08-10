@@ -43,6 +43,64 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(canonical.WithNullMembers().IsCanonicalOutput, Is.True);
 		}
 
+		[Test]
+		public void Test_Canonical_Number_Rendering()
+		{
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+
+			// (input value, expected canonical text); the worked-example table of the design, section 5
+			Assert.Multiple(() =>
+			{
+				// int-shaped
+				Assert.That(JsonNumber.Return(1).ToJsonText(canonical), Is.EqualTo("1"));
+				Assert.That(JsonNumber.Return(long.MaxValue).ToJsonText(canonical), Is.EqualTo("9223372036854775807"));
+				Assert.That(JsonNumber.Return(ulong.MaxValue).ToJsonText(canonical), Is.EqualTo("18446744073709551615"));
+				// float-shaped whole values carry the .0 marker
+				Assert.That(JsonNumber.Return(1.0d).ToJsonText(canonical), Is.EqualTo("1.0"));
+				Assert.That(JsonNumber.Return(100.0d).ToJsonText(canonical), Is.EqualTo("100.0"));
+				Assert.That(JsonNumber.Return(-0.0d).ToJsonText(canonical), Is.EqualTo("0.0"));
+				Assert.That(JsonNumber.Return(1e20d).ToJsonText(canonical), Is.EqualTo("100000000000000000000.0"));
+				// ES6 exponent decoration: lowercase e, sign only when positive, no zero padding
+				Assert.That(JsonNumber.Return(1e21d).ToJsonText(canonical), Is.EqualTo("1e+21"));
+				Assert.That(JsonNumber.Return(1e-7d).ToJsonText(canonical), Is.EqualTo("1e-7"));
+				Assert.That(JsonNumber.Return(0.000001d).ToJsonText(canonical), Is.EqualTo("0.000001"));
+				Assert.That(JsonNumber.Return(double.MaxValue).ToJsonText(canonical), Is.EqualTo("1.7976931348623157e+308"));
+				Assert.That(JsonNumber.Return(5e-324d).ToJsonText(canonical), Is.EqualTo("5e-324"));
+				Assert.That(JsonNumber.Return(0.1d + 0.2d).ToJsonText(canonical), Is.EqualTo("0.30000000000000004"));
+				Assert.That(JsonNumber.Return(3.141592653589793d).ToJsonText(canonical), Is.EqualTo("3.141592653589793"));
+				// decimal scale is normalized
+				Assert.That(JsonNumber.Return(1.10m).ToJsonText(canonical), Is.EqualTo("1.1"));
+				Assert.That(JsonNumber.Return(1.1m).ToJsonText(canonical), Is.EqualTo("1.1"));
+				Assert.That(JsonNumber.Return(100m).ToJsonText(canonical), Is.EqualTo("100.0"));
+			});
+		}
+
+		[Test]
+		public void Test_Canonical_Number_Rendering_From_Parsed_Literals()
+		{
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+
+			// the literal never drives the digits; it only decides the int/float shape
+			Assert.Multiple(() =>
+			{
+				Assert.That(CrystalJson.Parse("1").ToJsonText(canonical), Is.EqualTo("1"));
+				Assert.That(CrystalJson.Parse("1.0").ToJsonText(canonical), Is.EqualTo("1.0"));
+				Assert.That(CrystalJson.Parse("1E1").ToJsonText(canonical), Is.EqualTo("10.0"));
+				Assert.That(CrystalJson.Parse("1.10").ToJsonText(canonical), Is.EqualTo("1.1"));
+				Assert.That(CrystalJson.Parse("-0").ToJsonText(canonical), Is.EqualTo("0"));
+				// integer literal too large for ulong: parses into the Decimal kind, stays int-shaped
+				Assert.That(CrystalJson.Parse("99999999999999999999999").ToJsonText(canonical), Is.EqualTo("99999999999999999999999"));
+			});
+		}
+
+		[Test]
+		public void Test_Canonical_Rejects_NonFinite()
+		{
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			Assert.Throws<JsonSerializationException>(() => JsonNumber.Return(double.NaN).ToJsonText(canonical));
+			Assert.Throws<JsonSerializationException>(() => JsonNumber.Return(double.PositiveInfinity).ToJsonText(canonical));
+		}
+
 	}
 
 }

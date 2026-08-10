@@ -2280,6 +2280,12 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override void JsonSerialize(CrystalJsonWriter writer)
 		{
+			if (writer.Settings.IsCanonicalOutput)
+			{
+				JsonSerializeCanonical(writer);
+				return;
+			}
+
 			// We want to keep the original literal intact, in order to maximize the chances of "perfect" round-tripping.
 			// -> for example, if the original JSON contained either '42', '42.0', '4.2E1' etc... we should try to output the same token (as long as it was legal JSON)
 
@@ -2319,6 +2325,136 @@ namespace SnowBank.Data.Json
 				}
 			}
 		}
+
+		private void JsonSerializeCanonical(CrystalJsonWriter writer)
+		{
+#if NETSTANDARD2_0
+			// the lite build has no shortest-round-trip float formatting (FastDtoa is excluded): canonical text would differ between TFMs
+			throw new NotSupportedException("Canonical JSON output requires .NET 8 or greater.");
+#else
+			if (m_kind == Kind.Double)
+			{
+				double dbl = m_value.Double;
+				if (double.IsNaN(dbl) || double.IsInfinity(dbl))
+				{
+					throw new JsonSerializationException("Canonical JSON cannot represent NaN or Infinity.");
+				}
+			}
+
+			if (!this.IsFloatShaped)
+			{ // int-shaped: plain integer digits, whatever the storage kind
+				switch (m_kind)
+				{
+					case Kind.Signed:   writer.WriteRaw(m_value.Signed.ToString(CultureInfo.InvariantCulture)); return;
+					case Kind.Unsigned: writer.WriteRaw(m_value.Unsigned.ToString(CultureInfo.InvariantCulture)); return;
+					case Kind.Decimal:  writer.WriteRaw(m_value.Decimal.ToString(CultureInfo.InvariantCulture)); return;
+					default:            writer.WriteRaw(m_value.Double.ToString("F0", CultureInfo.InvariantCulture)); return;
+				}
+			}
+
+			switch (m_kind)
+			{
+				case Kind.Double:
+				{
+					writer.WriteRaw(FormatCanonicalDouble(m_value.Double));
+					return;
+				}
+				case Kind.Decimal:
+				{
+					writer.WriteRaw(FormatCanonicalDecimal(m_value.Decimal));
+					return;
+				}
+				default:
+				{ // an integer value whose literal was float-shaped (e.g. a parsed "1.0"): whole by construction
+					string digits = m_kind == Kind.Unsigned
+						? m_value.Unsigned.ToString(CultureInfo.InvariantCulture)
+						: m_value.Signed.ToString(CultureInfo.InvariantCulture);
+					writer.WriteRaw(digits + ".0");
+					return;
+				}
+			}
+#endif
+		}
+
+#if !NETSTANDARD2_0
+
+		/// <summary>Formats a finite double in the ES6 shortest-round-trip form (RFC 8785), with a trailing <c>.0</c> when the result would carry no float marker</summary>
+		internal static string FormatCanonicalDouble(double value)
+		{
+			Contract.Debug.Requires(!double.IsNaN(value) && !double.IsInfinity(value));
+
+			if (value == 0)
+			{ // covers -0.0: canonical output drops the sign of zero
+				return "0.0";
+			}
+
+			// .NET shortest-round-trip digits are identical to the ES6 digits; only the decoration differs
+			string raw = value.ToString(CultureInfo.InvariantCulture);
+			string sign = "";
+			if (raw[0] == '-')
+			{
+				sign = "-";
+				raw = raw.Substring(1);
+			}
+
+			// decompose into a digit string d1..dk (d1 != 0, dk != 0) and n such that value = 0.d1..dk * 10^n
+			int e = raw.IndexOf('E');
+			string mantissa = e < 0 ? raw : raw.Substring(0, e);
+			int exp10 = e < 0 ? 0 : int.Parse(raw.Substring(e + 1), CultureInfo.InvariantCulture);
+			int dot = mantissa.IndexOf('.');
+			string digits;
+			int n;
+			if (dot < 0)
+			{
+				digits = mantissa;
+				n = mantissa.Length + exp10;
+			}
+			else
+			{
+				digits = mantissa.Remove(dot, 1);
+				n = dot + exp10;
+			}
+			int lead = 0;
+			while (lead < digits.Length - 1 && digits[lead] == '0') { lead++; }
+			digits = digits.Substring(lead);
+			n -= lead;
+			digits = digits.TrimEnd('0');
+			if (digits.Length == 0) { digits = "0"; }
+
+			// ES6 Number::toString: plain notation for -6 < n <= 21, exponent notation outside
+			if (n is > -6 and <= 21)
+			{
+				if (n <= 0)
+				{
+					return $"{sign}0.{new string('0', -n)}{digits}";
+				}
+				if (n >= digits.Length)
+				{ // whole value: the ES6 form has no '.' so the float marker is appended
+					return $"{sign}{digits}{new string('0', n - digits.Length)}.0";
+				}
+				return $"{sign}{digits.Substring(0, n)}.{digits.Substring(n)}";
+			}
+
+			int exponent = n - 1;
+			string tail = digits.Length > 1 ? $".{digits.Substring(1)}" : "";
+			return $"{sign}{digits[0]}{tail}e{(exponent >= 0 ? "+" : "")}{exponent.ToString(CultureInfo.InvariantCulture)}";
+		}
+
+		/// <summary>Formats a decimal with its scale normalized (trailing fractional zeros removed) in plain notation, with a trailing <c>.0</c> when the value is whole</summary>
+		internal static string FormatCanonicalDecimal(decimal value)
+		{
+			// decimal.ToString never uses exponent notation, so only the scale needs normalizing
+			string text = value.ToString(CultureInfo.InvariantCulture);
+			int dot = text.IndexOf('.');
+			if (dot < 0)
+			{
+				return text + ".0";
+			}
+			text = text.TrimEnd('0');
+			return text[^1] == '.' ? text + "0" : text;
+		}
+
+#endif
 
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Never)]
@@ -3505,6 +3641,22 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override string ToJsonText(CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			if (settings?.IsCanonicalOutput == true)
+			{ // the cached literal is not canonical text: go through the canonical writer path
+				var writer = CrystalJson.WriterPool.Allocate();
+				try
+				{
+					writer.Initialize(0, settings, resolver);
+					this.JsonSerialize(writer);
+					return writer.GetString();
+				}
+				finally
+				{
+					writer.Dispose();
+					CrystalJson.WriterPool.Free(writer);
+				}
+			}
+
 			//TODO: if javascript we have to special case for thins like NaN, infinities, ... !
 			return this.Literal;
 		}
