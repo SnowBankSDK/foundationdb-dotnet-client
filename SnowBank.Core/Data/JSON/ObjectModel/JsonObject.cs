@@ -4455,6 +4455,16 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override void JsonSerialize(CrystalJsonWriter writer)
 		{
+			if (writer.Settings.IsCanonicalOutput)
+			{
+#if NETSTANDARD2_0
+				throw new NotSupportedException("Canonical JSON output requires .NET 8 or greater.");
+#else
+				JsonSerializeCanonical(writer);
+				return;
+#endif
+			}
+
 			var items = m_items;
 			if (items.Count == 0)
 			{
@@ -4475,6 +4485,37 @@ namespace SnowBank.Data.Json
 			}
 			writer.EndObject(state);
 		}
+
+#if !NETSTANDARD2_0
+		/// <summary>Serializes the members in ordinal case-sensitive key order (RFC 8785), sorted at write time.</summary>
+		private void JsonSerializeCanonical(CrystalJsonWriter writer)
+		{
+			var items = m_items;
+			if (items.Count == 0)
+			{
+				writer.WriteEmptyObject();
+				return;
+			}
+
+			var keys = new string[items.Count];
+			items.Keys.CopyTo(keys, 0);
+			Array.Sort(keys, StringComparer.Ordinal);
+
+			var state = writer.BeginObject();
+			foreach (var key in keys)
+			{
+				var value = items[key];
+				// first check if the value is not a discarded null or default
+				if (!writer.WillBeDiscarded(value))
+				{
+					//note: the key may require escaping!
+					writer.WriteNameEscaped(key);
+					value.JsonSerialize(writer);
+				}
+			}
+			writer.EndObject(state);
+		}
+#endif
 
 		/// <inheritdoc />
 		public override bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format = default, IFormatProvider? provider = null)

@@ -101,6 +101,32 @@ namespace SnowBank.Data.Json.Tests
 			Assert.Throws<JsonSerializationException>(() => JsonNumber.Return(double.PositiveInfinity).ToJsonText(canonical));
 		}
 
+		[Test]
+		public void Test_Canonical_Member_Ordering()
+		{
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+
+			// ordinal case-sensitive: 'B' (0x42) sorts before 'b' (0x62), per RFC 8785
+			var obj = new JsonObject
+			{
+				["bar"] = JsonNumber.Return(2),
+				["Baz"] = JsonNumber.Return(1),
+				["alpha"] = JsonNumber.Return(3),
+			};
+			Assert.That(obj.ToJsonText(canonical), Is.EqualTo("""{"Baz":1,"alpha":3,"bar":2}"""));
+
+			// recursion: nested objects sort too, including inside arrays
+			var nested = new JsonObject
+			{
+				["z"] = new JsonObject { ["b"] = JsonNumber.Return(1), ["a"] = JsonNumber.Return(2) },
+				["a"] = JsonArray.Create(new JsonObject { ["y"] = JsonNumber.Return(1), ["x"] = JsonNumber.Return(2) }),
+			};
+			Assert.That(nested.ToJsonText(canonical), Is.EqualTo("""{"a":[{"x":2,"y":1}],"z":{"a":2,"b":1}}"""));
+
+			// without the flag, insertion order is preserved (unchanged behavior)
+			Assert.That(obj.ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"bar":2,"Baz":1,"alpha":3}"""));
+		}
+
 	}
 
 }
