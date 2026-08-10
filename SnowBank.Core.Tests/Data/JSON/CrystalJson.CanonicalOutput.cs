@@ -127,6 +127,25 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(obj.ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"bar":2,"Baz":1,"alpha":3}"""));
 		}
 
+		public sealed record CanonicalAcmeOrder(string Id, string Customer, decimal Total, double Weight);
+
+		[Test]
+		public void Test_Canonical_Typed_Serialization()
+		{
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			var order = new CanonicalAcmeOrder("X-42", "acme", Total: 9.90m, Weight: 1.0d);
+
+			// members sorted, decimal scale normalized, whole double keeps its float marker
+			string text = CrystalJson.Serialize(order, canonical);
+			Assert.That(text, Is.EqualTo("""{"Customer":"acme","Id":"X-42","Total":9.9,"Weight":1.0}"""));
+
+			// the core invariant: parse-then-reserialize equals built-from-scratch
+			Assert.That(CrystalJson.SerializeJson(CrystalJson.Parse(text), canonical), Is.EqualTo(text));
+
+			// bytes route agrees with the text route
+			Assert.That(CrystalJson.ToSlice(order, canonical).ToStringUtf8(), Is.EqualTo(text));
+		}
+
 	}
 
 }

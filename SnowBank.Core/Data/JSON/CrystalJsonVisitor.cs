@@ -1156,6 +1156,12 @@ namespace SnowBank.Data.Json
 				return;
 			}
 
+			if (writer.Settings.IsCanonicalOutput && value is not JsonValue)
+			{ // canonical output is produced from the DOM: pack first, then write (sorted members, normalized numbers)
+				JsonValue.FromValue<T>(value, writer.Settings, writer.Resolver).JsonSerialize(writer);
+				return;
+			}
+
 			if (value is string s)
 			{
 				writer.WriteValue(s);
@@ -1189,6 +1195,12 @@ namespace SnowBank.Data.Json
 			if (value == null)
 			{ // "null"
 				writer.WriteNull(); // "null"
+				return;
+			}
+
+			if (writer.Settings.IsCanonicalOutput && value is not JsonValue)
+			{ // canonical output is produced from the DOM: pack first, then write (sorted members, normalized numbers)
+				JsonValue.FromValue(value, declaredType, writer.Settings, writer.Resolver).JsonSerialize(writer);
 				return;
 			}
 
