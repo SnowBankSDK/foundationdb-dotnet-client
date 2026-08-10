@@ -159,6 +159,42 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
+		public void Test_Canonical_Typed_Serializer_Branches_Match_Visitor_Route()
+		{
+			// the three IJsonSerializer<T> canonical branches (CrystalJson.Serialize, ToSlice, and
+			// ToSlice with a pool) all detour through Pack() + JsonSerialize(); prove each one against
+			// the plain DOM-visitor route (no serializer), using a real generated converter already
+			// exercised elsewhere in this suite.
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			var dto = new VocabularyDto { Id = 42, Label = "hello", Enabled = true };
+			var serializer = ModernSpellingSerializers.VocabularyDto.Default;
+
+			string expected = CrystalJson.Serialize(dto, canonical);
+
+			Assert.That(CrystalJson.Serialize(dto, serializer, canonical), Is.EqualTo(expected));
+			Assert.That(CrystalJson.ToSlice(dto, serializer, canonical).ToStringUtf8(), Is.EqualTo(expected));
+			using var owner = CrystalJson.ToSlice(dto, serializer, null, canonical);
+			Assert.That(owner.Data.ToStringUtf8(), Is.EqualTo(expected));
+		}
+
+		/// <summary>Serializer that implements only the writing facet, not <see cref="IJsonPacker{T}"/></summary>
+		private sealed class NonPackableSerializer : IJsonSerializer<VocabularyDto>
+		{
+			public void Serialize(CrystalJsonWriter writer, VocabularyDto? instance) => writer.WriteValue("unused");
+		}
+
+		[Test]
+		public void Test_Canonical_Serialize_Rejects_NonPackableSerializer()
+		{
+			// canonical output packs to the DOM first (sorted members, normalized numbers), so a
+			// serializer that cannot pack cannot honor the contract: it must fail loudly, not silently
+			// fall back to its own (non-canonical) writing order.
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			var dto = new VocabularyDto { Id = 1 };
+			Assert.Throws<JsonSerializationException>(() => CrystalJson.Serialize(dto, new NonPackableSerializer(), canonical));
+		}
+
+		[Test]
 		public void Test_Canonical_Closed_Under_Reparse()
 		{
 			// serialize(parse(serialize(x)), s) == serialize(x, s) for every supported combination s
@@ -195,6 +231,22 @@ namespace SnowBank.Data.Json.Tests
 			var doc = CrystalJson.Parse("""{"zeta":1.0,"alpha":1.10,"Baz":1E1,"bar":{"b":18446744073709551615,"a":[1e-7,0.000001,-0]}}""");
 			Assert.That(
 				CrystalJson.SerializeJson(doc, canonical),
+				Is.EqualTo("""{"Baz":10.0,"alpha":1.1,"bar":{"a":[1e-7,0.000001,0],"b":18446744073709551615},"zeta":1.0}"""));
+
+			// FROZEN: same document, CrystalJsonSettings.Json's default layout (single-line, spaced).
+			// Sanity-checked: keys still sort ordinally (Baz, alpha, bar, zeta), numbers are still
+			// canonical (10.0, 1.1, 1e-7, 0.000001, 0, the full-width ulong, 1.0); only the spacing differs.
+			Assert.That(
+				CrystalJson.SerializeJson(doc, CrystalJsonSettings.Json.Canonical()),
+				Is.EqualTo("""{ "Baz": 10.0, "alpha": 1.1, "bar": { "a": [ 1e-7, 0.000001, 0 ], "b": 18446744073709551615 }, "zeta": 1.0 }"""));
+
+			// FROZEN: same document, compact layout plus WithNullMembers(). This document has no null
+			// member, so the string is byte-identical to the plain compact case above; the point of this
+			// case is pinning that the combination itself does not change canonical output for a
+			// null-free document (a document with a null member is out of scope: canonical ordering and
+			// number rendering are the contract this corpus pins, not null-member visibility).
+			Assert.That(
+				CrystalJson.SerializeJson(doc, CrystalJsonSettings.JsonCompact.Canonical().WithNullMembers()),
 				Is.EqualTo("""{"Baz":10.0,"alpha":1.1,"bar":{"a":[1e-7,0.000001,0],"b":18446744073709551615},"zeta":1.0}"""));
 		}
 
