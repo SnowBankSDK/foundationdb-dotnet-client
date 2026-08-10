@@ -643,6 +643,7 @@ silently changes the output, so check the matrix before annotating a DTO:
 | STJ `IJsonOnSerializing` / `IJsonOnSerialized` / `IJsonOnDeserializing` / `IJsonOnDeserialized` interfaces | no, deliberately (see *Lifecycle* below) | no, deliberately |
 | `[CollectionDataContract]`'s `Name` / `ItemName` / `KeyName` / `ValueName` | no, and **neither does DCJS**: those four names shape the XML format only, so there is nothing to reproduce (see below) | no |
 | Newtonsoft `[JsonProperty]` (name only) | YES | YES *(7.4.3+)* - honoured as the lowest-priority naming fallback (after native `[JsonProperty]` and `[JsonPropertyName]`); a member stacking naming attributes with DIFFERENT names is refused (`CJSON0011` / a reflection throw) |
+| Newtonsoft `[JsonIgnore]` | YES | YES *(7.4.3+)* - `[JsonIgnore]` is matched by name on both paths (any namespace); the generated converter learned the non-STJ spelling in 7.4.3 |
 | `[XmlIgnore]` / `[XmlElement]` / `[XmlAttribute]` | YES (non-`[DataContract]` types) | no |
 | STJ `[JsonPropertyOrder]`, `[JsonNumberHandling]`, `[JsonExtensionData]`, `[JsonConstructor]` | no | no |
 

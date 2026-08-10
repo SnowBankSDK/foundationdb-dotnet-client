@@ -36,6 +36,11 @@ namespace Newtonsoft.Json
 		public JsonPropertyAttribute(string propertyName) => this.PropertyName = propertyName;
 		public string? PropertyName { get; set; }
 	}
+
+	[System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field)]
+	public sealed class JsonIgnoreAttribute : System.Attribute
+	{
+	}
 }
 
 namespace SnowBank.Serialization.Json.CodeGen.Tests
@@ -89,6 +94,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	{
 		[Newtonsoft.Json.JsonProperty("nj_name")]
 		public string? Original { get; init; }
+	}
+
+	public sealed record MxNewtonsoftIgnoreDto
+	{
+		[Newtonsoft.Json.JsonIgnore]
+		public string? Hidden { get; init; }
+
+		public int Kept { get; init; }
 	}
 
 	public sealed record MxEnumDto
@@ -187,6 +200,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	[CrystalSerializable(typeof(MxStjRenameDto))]
 	[CrystalSerializable(typeof(MxSnowRenameDto))]
 	[CrystalSerializable(typeof(MxNewtonsoftRenameDto))]
+	[CrystalSerializable(typeof(MxNewtonsoftIgnoreDto))]
 	[CrystalSerializable(typeof(MxEnumDto))]
 	[CrystalSerializable(typeof(MxStjTokenDto))]
 	[CrystalSerializable(typeof(MxEmTokenDto))]
@@ -285,6 +299,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				dto: new MxIgnoreDto { Hidden = "boo", Kept = 1 },
 				generated: ParityHost.MxIgnoreDto.Default,
 				stjWire: """{"Kept":1}""",
+				cjWire: """{"Kept":1}""");
+
+			// a member carrying ONLY a Newtonsoft [JsonIgnore]: the reflection path excludes it by name, and the
+			// generated converter must too (STJ does not know the foreign attribute and emits the member)
+			yield return Case(
+				id: "newtonsoft-jsonignore",
+				dto: new MxNewtonsoftIgnoreDto { Hidden = "boo", Kept = 1 },
+				generated: ParityHost.MxNewtonsoftIgnoreDto.Default,
+				stjWire: """{"Hidden":"boo","Kept":1}""",
 				cjWire: """{"Kept":1}""");
 
 			yield return Case(

@@ -141,16 +141,6 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						[Newtonsoft.Json.JsonIgnore]
 						public string? Both { get; set; }
 					}
-				""",
-				extraNamespaces: """
-
-				namespace Newtonsoft.Json
-				{
-					[System.AttributeUsage(System.AttributeTargets.Property | System.AttributeTargets.Field)]
-					public sealed class JsonIgnoreAttribute : System.Attribute
-					{
-					}
-				}
 				""");
 			AssertRefusedLoudly(diagnostics, "DataMember");
 		}

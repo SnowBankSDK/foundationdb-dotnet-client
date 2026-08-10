@@ -2437,6 +2437,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					var attributeType = attribute.AttributeClass;
 					if (attributeType is null) continue;
 
+					// a [JsonIgnore] from another library (e.g. Newtonsoft) excludes the member: the reflection path
+					// matches [JsonIgnore] by name (any namespace), so the generated converter must too. The
+					// System.Text.Json spelling keeps its own case below (it may carry a Condition); every other
+					// spelling has no Condition property and so is an unconditional exclusion.
+					if (attributeType.Name == "JsonIgnoreAttribute" && attributeType.ToDisplayString() != JsonIgnoreAttributeFullName)
+					{
+						return default; // excluded from both serialization and deserialization
+					}
+
 					switch (attributeType.ToDisplayString())
 					{
 						case IgnoreDataMemberAttributeFullName:
