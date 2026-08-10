@@ -181,8 +181,9 @@ namespace SnowBank.Data.Json
 
 				if (serializer != null)
 				{
-					if (settings?.IsCanonicalOutput == true && serializer is IJsonPacker<T> packer)
+					if (settings?.IsCanonicalOutput == true)
 					{ // canonical output is produced from the DOM: pack first, then write (sorted members, normalized numbers)
+						if (serializer is not IJsonPacker<T> packer) throw JsonSerializationException.CanonicalOutputRequiresPackableSerializer(serializer.GetType());
 						packer.Pack(value!, settings, resolver).JsonSerialize(writer);
 					}
 					else
@@ -594,8 +595,9 @@ namespace SnowBank.Data.Json
 
 				if (serializer != null)
 				{
-					if (settings?.IsCanonicalOutput == true && serializer is IJsonPacker<T> packer)
+					if (settings?.IsCanonicalOutput == true)
 					{ // canonical output is produced from the DOM: pack first, then write (sorted members, normalized numbers)
+						if (serializer is not IJsonPacker<T> packer) throw JsonSerializationException.CanonicalOutputRequiresPackableSerializer(serializer.GetType());
 						packer.Pack(value!, settings, resolver).JsonSerialize(writer);
 					}
 					else
@@ -692,8 +694,9 @@ namespace SnowBank.Data.Json
 				writer.Initialize(0, settings, resolver);
 				if (serializer != null)
 				{
-					if (settings?.IsCanonicalOutput == true && serializer is IJsonPacker<T> packer)
+					if (settings?.IsCanonicalOutput == true)
 					{ // canonical output is produced from the DOM: pack first, then write (sorted members, normalized numbers)
+						if (serializer is not IJsonPacker<T> packer) throw JsonSerializationException.CanonicalOutputRequiresPackableSerializer(serializer.GetType());
 						packer.Pack(value!, settings, resolver).JsonSerialize(writer);
 					}
 					else

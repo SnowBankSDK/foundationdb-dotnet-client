@@ -70,6 +70,10 @@ namespace SnowBank.Data.Json
 		public static JsonSerializationException CannotPackTaskLikeType(Type type)
 			=> new($"Cannot pack task-like type {type.GetFriendlyName()}. Did you forget the 'await' keyword?");
 
+		[MustUseReturnValue, Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		public static JsonSerializationException CanonicalOutputRequiresPackableSerializer(Type serializerType)
+			=> new($"Serializer '{serializerType.GetFriendlyName()}' cannot produce canonical output because it does not implement IJsonPacker<T>. Canonical output requires a packable serializer.");
+
 	}
 
 }

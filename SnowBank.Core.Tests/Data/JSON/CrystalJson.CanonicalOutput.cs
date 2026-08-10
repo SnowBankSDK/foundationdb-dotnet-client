@@ -146,6 +146,16 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.ToSlice(order, canonical).ToStringUtf8(), Is.EqualTo(text));
 		}
 
+		[Test]
+		public void Test_Canonical_Typed_Scalar_Serialization()
+		{
+			// top-level scalars go through VisitValue<T>'s Release-mode JIT_HACK fast path;
+			// this is the discriminator that catches a fast path left ungated by IsCanonicalOutput
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			Assert.That(CrystalJson.Serialize(1.0d, canonical), Is.EqualTo("1.0"));
+			Assert.That(CrystalJson.Serialize(42, canonical), Is.EqualTo("42"));
+		}
+
 	}
 
 }
