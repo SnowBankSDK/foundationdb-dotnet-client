@@ -2361,7 +2361,19 @@ namespace SnowBank.Data.Json
 				}
 				case Kind.Decimal:
 				{
-					writer.WriteRaw(FormatCanonicalDecimal(m_value.Decimal));
+					// Canonical text must depend on the value only: the parser is free to land a given
+					// literal on Kind.Double or Kind.Decimal, and both must serialize identically. When
+					// the decimal is exactly representable as a double, render through the same ES6
+					// formatter Kind.Double uses; only a decimal with more precision than a double can
+					// hold keeps the full-digit plain notation.
+					decimal dec = m_value.Decimal;
+					double asDouble = (double) dec;
+					if (TryConvertBackExactly(asDouble, dec))
+					{
+						writer.WriteRaw(FormatCanonicalDouble(asDouble));
+						return;
+					}
+					writer.WriteRaw(FormatCanonicalDecimal(dec));
 					return;
 				}
 				default:
@@ -2452,6 +2464,20 @@ namespace SnowBank.Data.Json
 			}
 			text = text.TrimEnd('0');
 			return text[^1] == '.' ? text + "0" : text;
+		}
+
+		/// <summary>Tests whether converting <paramref name="value"/> back to <see cref="decimal"/> reproduces <paramref name="original"/> exactly</summary>
+		/// <remarks>A double near or beyond <see cref="decimal.MaxValue"/>/<see cref="decimal.MinValue"/> overflows the back-conversion; that is treated as not-exact, not as an error.</remarks>
+		private static bool TryConvertBackExactly(double value, decimal original)
+		{
+			try
+			{
+				return (decimal) value == original;
+			}
+			catch (OverflowException)
+			{
+				return false;
+			}
 		}
 
 #endif
