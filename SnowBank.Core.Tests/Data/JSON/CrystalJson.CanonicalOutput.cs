@@ -156,6 +156,82 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Serialize(42, canonical), Is.EqualTo("42"));
 		}
 
+		[Test]
+		public void Test_Canonical_Closed_Under_Reparse()
+		{
+			// serialize(parse(serialize(x)), s) == serialize(x, s) for every supported combination s
+			var combos = new[]
+			{
+				CrystalJsonSettings.Json.Canonical(),
+				CrystalJsonSettings.JsonCompact.Canonical(),
+				CrystalJsonSettings.JsonCompact.Canonical().WithNullMembers(),
+			};
+			var subjects = new JsonValue[]
+			{
+				CrystalJson.Parse("""{"zeta":1.0,"alpha":1.10,"beta":3,"Gamma":{"y":1E1,"x":[1,2.5,true,null,"text"]}}"""),
+				JsonObject.Create("x", JsonNumber.Return(1e21d)),
+				JsonArray.Create(JsonNumber.Return(0.1d + 0.2d), JsonString.Return("Ünïcode \"quoted\""), JsonNumber.Return(long.MinValue)),
+			};
+			foreach (var s in combos)
+			{
+				foreach (var subject in subjects)
+				{
+					string once = CrystalJson.SerializeJson(subject, s);
+					string twice = CrystalJson.SerializeJson(CrystalJson.Parse(once), s);
+					Assert.That(twice, Is.EqualTo(once), $"not closed under reparse for settings {s.Flags}");
+				}
+			}
+		}
+
+		[Test]
+		public void Test_Canonical_Frozen_Corpus()
+		{
+			// FROZEN: these exact strings are the canonical output contract (design, section 2).
+			// A failure here means a release changed canonical bytes: that is a conscious decision
+			// with a release-note entry, never a casual edit of the expected value.
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			var doc = CrystalJson.Parse("""{"zeta":1.0,"alpha":1.10,"Baz":1E1,"bar":{"b":18446744073709551615,"a":[1e-7,0.000001,-0]}}""");
+			Assert.That(
+				CrystalJson.SerializeJson(doc, canonical),
+				Is.EqualTo("""{"Baz":10.0,"alpha":1.1,"bar":{"a":[1e-7,0.000001,0],"b":18446744073709551615},"zeta":1.0}"""));
+		}
+
+		// --- Task 3 follow-up: decimal-kind canonical text must be value-determined, not kind-determined ---
+		// (coordinator finding via Task 6's closure-invariant tests; see task-3-report.md)
+
+		[Test]
+		public void Test_Canonical_Decimal_MaxValue_Does_Not_Throw()
+		{
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			// decimal.MaxValue is a whole number outside the 64-bit signed range, so IsFloatShaped
+			// classifies it int-shaped: it never reaches the new double-round-trip guard (that branch
+			// only runs for a float-shaped Kind.Decimal). This still exercises the canonical path
+			// end-to-end and proves no OverflowException anywhere on the way.
+			string once = JsonNumber.Return(decimal.MaxValue).ToJsonText(canonical);
+			Assert.That(once, Does.Not.Contain("E"));
+			Assert.That(once, Does.Not.Contain("."));
+			string twice = CrystalJson.Parse(once).ToJsonText(canonical);
+			Assert.That(twice, Is.EqualTo(once));
+		}
+
+		[Test]
+		public void Test_Canonical_High_Precision_Decimal_Stays_Plain()
+		{
+			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
+			// 18 significant digits: exceeds a double's ~15-17 digit precision, so the round-trip
+			// back-conversion cannot be exact and the value must keep full-digit plain notation.
+			var value = JsonNumber.Return(3.141592653589793238m);
+			string once = value.ToJsonText(canonical);
+			Assert.That(once, Is.EqualTo("3.141592653589793238"));
+
+			// NOT asserting reparse-closure here: CrystalJsonParser.ParseNumberFromLiteral tries
+			// double.TryParse before decimal.TryParse for any literal with a '.', and double.TryParse
+			// succeeds (losing precision) for every magnitude a decimal can hold. A dotted literal
+			// can therefore never land back on Kind.Decimal through the parser, regardless of the
+			// canonical formatter. That is a pre-existing parser precision limit, not a defect in
+			// this fix; the frozen corpus and the closure test use no value that hits it.
+		}
+
 	}
 
 }
