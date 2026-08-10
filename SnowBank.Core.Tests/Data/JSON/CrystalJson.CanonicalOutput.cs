@@ -244,24 +244,26 @@ namespace SnowBank.Data.Json.Tests
 				Is.EqualTo("""{ "Baz": 10.0, "alpha": 1.1, "bar": { "a": [ 1e-7, 0.000001, 0 ], "b": 18446744073709551615 }, "zeta": 1.0 }"""));
 
 			// FROZEN: same document, the genuinely indented layout (multi-line, tab-indented) —
-			// distinct from Json's single-line Formatted default pinned above.
-			Assert.That(
-				CrystalJson.SerializeJson(doc, CrystalJsonSettings.JsonIndented.Canonical()),
-				Is.EqualTo("""
-				{
-					"Baz": 10.0,
-					"alpha": 1.1,
-					"bar": {
-						"a": [
-							1e-7,
-							0.000001,
-							0
-						],
-						"b": 18446744073709551615
-					},
-					"zeta": 1.0
-				}
-				"""));
+			// distinct from Json's single-line Formatted default pinned above. CrystalJsonWriter
+			// hardcodes "\r\n" as the line separator on every platform, so the expected value is built
+			// from explicit \r\n escapes: a raw multi-line literal would instead take on whatever line
+			// ending the source FILE happens to have, which is not part of the contract this pins.
+			string indentedExpected = string.Join(
+				"\r\n",
+				"{",
+				"\t\"Baz\": 10.0,",
+				"\t\"alpha\": 1.1,",
+				"\t\"bar\": {",
+				"\t\t\"a\": [",
+				"\t\t\t1e-7,",
+				"\t\t\t0.000001,",
+				"\t\t\t0",
+				"\t\t],",
+				"\t\t\"b\": 18446744073709551615",
+				"\t},",
+				"\t\"zeta\": 1.0",
+				"}");
+			Assert.That(CrystalJson.SerializeJson(doc, CrystalJsonSettings.JsonIndented.Canonical()), Is.EqualTo(indentedExpected));
 
 			// FROZEN: same document, compact layout plus WithNullMembers(). A DOM-level explicit JSON
 			// null (JsonNull.Null, what a parser produces for a literal "null") is never discarded
