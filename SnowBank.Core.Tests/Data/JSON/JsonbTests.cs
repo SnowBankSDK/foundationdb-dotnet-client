@@ -687,6 +687,47 @@ namespace SnowBank.Data.Json.Binary.Tests
 
 		}
 
+		[Test]
+		public void Test_Jsonb_Preserves_Float_Shape_Of_Whole_Numbers()
+		{
+			// a parsed "1.0" must come back float-shaped, not collapsed to the integer 1
+			var parsed = CrystalJson.Parse("""{"x":1.0}""");
+			var decoded = Jsonb.Decode(Jsonb.Encode(parsed));
+			Assert.That(decoded.ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":1.0}"""));
+
+			// integers keep the compact varint encoding (mechanism check: a varint "1" is smaller than the text "1.0")
+			var encodedInt = Jsonb.Encode(CrystalJson.Parse("""{"x":1}"""));
+			Assert.That(encodedInt.Count, Is.LessThan(Jsonb.Encode(parsed).Count));
+			Assert.That(Jsonb.Decode(encodedInt).ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":1}"""));
+
+			// a whole double built from a CLR value has no literal: the encoder must add the float marker itself
+			var built = JsonObject.Create("x", JsonNumber.Return(100.0d));
+			Assert.That(Jsonb.Decode(Jsonb.Encode(built)).ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":100.0}"""));
+
+			// decimals keep their source scale through JSONB (intent preservation, unchanged behavior)
+			var dec = CrystalJson.Parse("""{"x":1.10}""");
+			Assert.That(Jsonb.Decode(Jsonb.Encode(dec)).ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":1.10}"""));
+
+			// large integer literals that overflow to Decimal kind must stay int-shaped (no ".0" appended)
+			var bigInt = CrystalJson.Parse("""{"x":99999999999999999999}""");
+			var decodedBigInt = Jsonb.Decode(Jsonb.Encode(bigInt));
+			Assert.That(decodedBigInt.ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":99999999999999999999}"""), "Big integer should not get .0 appended");
+
+			// NaN and Infinity must round-trip without modification
+			var nan = JsonObject.Create("x", JsonNumber.NaN);
+			Assert.That(Jsonb.Decode(Jsonb.Encode(nan)).ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":NaN}"""), "NaN should round-trip unchanged");
+
+			var inf = JsonObject.Create("x", JsonNumber.PositiveInfinity);
+			Assert.That(Jsonb.Decode(Jsonb.Encode(inf)).ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":Infinity}"""), "Infinity should round-trip unchanged");
+
+			var negInf = JsonObject.Create("x", JsonNumber.NegativeInfinity);
+			Assert.That(Jsonb.Decode(Jsonb.Encode(negInf)).ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":-Infinity}"""), "NegativeInfinity should round-trip unchanged");
+
+			// built negative double should get ".0" marker
+			var builtNeg = JsonObject.Create("x", JsonNumber.Return(-100.0d));
+			Assert.That(Jsonb.Decode(Jsonb.Encode(builtNeg)).ToJsonText(CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"x":-100.0}"""), "Built negative double should get .0");
+		}
+
 		public sealed record FooDb
 		{
 			public required int Version { get; init; }

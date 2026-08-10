@@ -1544,6 +1544,8 @@ namespace SnowBank.Data.Json.Binary
 
 			//TODO: OPTIMIZE: use a buffer pool?
 
+			private static readonly char[] FloatShapeMarkers = [ '.', 'e', 'E' ];
+
 			/// <summary>Constructs a <see cref="Writer"/> using an optional initial buffer</summary>
 			public Writer(JsonbWriterOptions options, byte[]? buffer = null)
 			{
@@ -1719,7 +1721,8 @@ namespace SnowBank.Data.Json.Binary
 					}
 					case JsonNumber num:
 					{
-						if (!num.IsDecimal)
+						bool isFloatShaped = num.IsFloatShaped;
+						if (!isFloatShaped)
 						{
 							if (num.IsBetween(long.MinValue, long.MaxValue))
 							{ // Integer up to 64-bit (signed)
@@ -1729,10 +1732,20 @@ namespace SnowBank.Data.Json.Binary
 							}
 						}
 
+						// float-shaped numbers, and integers beyond 64-bit, are stored as their text literal
 						//note: the literal is already formatted by the JsonNumber, so we can copy it as-is
-						//BUGBUG: and if the literal is "1.0" ?
 						//note: contrary to hstore2, we do not pad numbers up to 32 bits!
-						int len = AppendAsciiString(value.ToString());
+						string text = num.Literal;
+						if (isFloatShaped && text.IndexOfAny(FloatShapeMarkers) < 0)
+						{ // a whole-valued float with no literal (built from a CLR double/decimal) formats as bare digits: add the marker so the shape survives decoding
+							// Check if text is a bare integer (possibly with leading '-'), not a special value like "NaN" or "Infinity"
+							char first = text[0];
+							if (char.IsDigit(first) || (first == '-' && text.Length > 1 && char.IsDigit(text[1])))
+							{
+								text += ".0";
+							}
+						}
+						int len = AppendAsciiString(text);
 						return JENTRY_TYPE_NUMERIC | (uint) len;
 					}
 					default:

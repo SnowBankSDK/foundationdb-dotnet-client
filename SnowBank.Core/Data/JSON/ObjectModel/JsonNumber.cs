@@ -1982,6 +1982,44 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public bool IsDecimal => m_kind >= Kind.Double;
 
+		/// <summary>The number is float-shaped: its source literal carries a fractional or exponent marker ('<c>.</c>', '<c>e</c>' or '<c>E</c>'), or its kind is <see cref="Kind.Double"/> or <see cref="Kind.Decimal"/> with either no literal (built from a CLR value) or a value within the 64-bit signed range (where CLR-built floats format as bare digits).</summary>
+		/// <remarks>An integer literal too large for long/ulong (e.g., "99999999999999999999") overflows into Decimal kind while staying int-shaped; the literal is the witness that survives parsing. A CLR-built whole float only formats as bare digits within the 64-bit range; larger values format with exponent notation (caught by marker check).</remarks>
+		[Pure]
+		internal bool IsFloatShaped
+		{
+			get
+			{
+				// If the literal has a float marker, it's always float-shaped
+				if (m_literal is not null && m_literal.AsSpan().IndexOfAny('.', 'e', 'E') >= 0)
+				{
+					return true;
+				}
+
+				// For Double/Decimal kinds:
+				if (m_kind is Kind.Double or Kind.Decimal)
+				{
+					// If no literal (built from CLR value), it's float-shaped
+					if (m_literal is null)
+					{
+						return true;
+					}
+
+					// If literal has no marker, check if the value fits in 64-bit signed range
+					// CLR-built whole floats only format as bare digits within this range
+					if (this.IsBetween(long.MinValue, long.MaxValue))
+					{
+						return true;
+					}
+
+					// Value is outside 64-bit range: it's a parsed big integer, int-shaped
+					return false;
+				}
+
+				// For other kinds (Signed, Unsigned), check if literal has a marker
+				return m_literal is not null && m_literal.AsSpan().IndexOfAny('.', 'e', 'E') >= 0;
+			}
+		}
+
 		/// <summary>Returns <see langword="true"/> for positive integers (ex: "123"), or <see langword="false"/> for negative integers (ex: "-123") or decimal numbers (ex: "1.23")</summary>
 		[Pure]
 		public bool IsUnsigned => m_kind == Kind.Unsigned;
