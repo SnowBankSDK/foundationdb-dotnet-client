@@ -4458,7 +4458,7 @@ namespace SnowBank.Data.Json
 			if (writer.Settings.IsCanonicalOutput)
 			{
 #if NETSTANDARD2_0
-				throw new NotSupportedException("Canonical JSON output requires .NET 8 or greater.");
+				throw JsonSerializationException.CanonicalOutputRequiresNet8OrGreater();
 #else
 				JsonSerializeCanonical(writer);
 				return;

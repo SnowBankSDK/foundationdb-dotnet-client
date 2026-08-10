@@ -74,6 +74,14 @@ namespace SnowBank.Data.Json
 		public static JsonSerializationException CanonicalOutputRequiresPackableSerializer(Type serializerType)
 			=> new($"Serializer '{serializerType.GetFriendlyName()}' cannot produce canonical output because it does not implement IJsonPacker<T>. Canonical output requires a packable serializer.");
 
+		[MustUseReturnValue, Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		public static NotSupportedException CanonicalOutputRequiresNet8OrGreater()
+			=> new("Canonical JSON output requires .NET 8 or greater.");
+
+		[MustUseReturnValue, Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		public static JsonSerializationException CanonicalOutputCannotRepresentNonFinite()
+			=> new("Canonical JSON cannot represent NaN or Infinity.");
+
 	}
 
 }

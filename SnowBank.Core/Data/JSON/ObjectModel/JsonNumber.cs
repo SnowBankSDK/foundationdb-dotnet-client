@@ -1983,40 +1983,31 @@ namespace SnowBank.Data.Json
 		public bool IsDecimal => m_kind >= Kind.Double;
 
 		/// <summary>The number is float-shaped: its source literal carries a fractional or exponent marker ('<c>.</c>', '<c>e</c>' or '<c>E</c>'), or its kind is <see cref="Kind.Double"/> or <see cref="Kind.Decimal"/> with either no literal (built from a CLR value) or a value within the 64-bit signed range (where CLR-built floats format as bare digits).</summary>
-		/// <remarks>An integer literal too large for long/ulong (e.g., "99999999999999999999") overflows into Decimal kind while staying int-shaped; the literal is the witness that survives parsing. A CLR-built whole float only formats as bare digits within the 64-bit range; larger values format with exponent notation (caught by marker check).</remarks>
+		/// <remarks>
+		/// An integer literal too large for long/ulong (e.g., "99999999999999999999") overflows into Decimal kind while staying int-shaped; the literal is the witness that survives parsing. A CLR-built whole float only formats as bare digits within the 64-bit range; larger values format with exponent notation (caught by marker check).
+		/// NaN and the infinities are int-shaped: their literal ("NaN", "Infinity", "-Infinity") carries no float marker, and the literal is the witness this property trusts. Callers must precheck non-finite values before relying on this property for output shaping (the canonical writer does).
+		/// </remarks>
 		[Pure]
 		internal bool IsFloatShaped
 		{
 			get
 			{
 				// If the literal has a float marker, it's always float-shaped
-				if (m_literal is not null && m_literal.AsSpan().IndexOfAny('.', 'e', 'E') >= 0)
+				if (this.Literal.AsSpan().IndexOfAny('.', 'e', 'E') >= 0)
 				{
 					return true;
 				}
 
-				// For Double/Decimal kinds:
+				// For Double/Decimal kinds with a marker-free literal: float-shaped only if the value
+				// fits in the 64-bit signed range (CLR-built whole floats only format as bare digits
+				// there); outside that range the literal reflects a parsed big integer, int-shaped.
 				if (m_kind is Kind.Double or Kind.Decimal)
 				{
-					// If no literal (built from CLR value), it's float-shaped
-					if (m_literal is null)
-					{
-						return true;
-					}
-
-					// If literal has no marker, check if the value fits in 64-bit signed range
-					// CLR-built whole floats only format as bare digits within this range
-					if (this.IsBetween(long.MinValue, long.MaxValue))
-					{
-						return true;
-					}
-
-					// Value is outside 64-bit range: it's a parsed big integer, int-shaped
-					return false;
+					return this.IsBetween(long.MinValue, long.MaxValue);
 				}
 
-				// For other kinds (Signed, Unsigned), check if literal has a marker
-				return m_literal is not null && m_literal.AsSpan().IndexOfAny('.', 'e', 'E') >= 0;
+				// For other kinds (Signed, Unsigned), a marker-free literal is never float-shaped.
+				return false;
 			}
 		}
 
@@ -2330,14 +2321,14 @@ namespace SnowBank.Data.Json
 		{
 #if NETSTANDARD2_0
 			// the lite build has no shortest-round-trip float formatting (FastDtoa is excluded): canonical text would differ between TFMs
-			throw new NotSupportedException("Canonical JSON output requires .NET 8 or greater.");
+			throw JsonSerializationException.CanonicalOutputRequiresNet8OrGreater();
 #else
 			if (m_kind == Kind.Double)
 			{
 				double dbl = m_value.Double;
 				if (double.IsNaN(dbl) || double.IsInfinity(dbl))
 				{
-					throw new JsonSerializationException("Canonical JSON cannot represent NaN or Infinity.");
+					throw JsonSerializationException.CanonicalOutputCannotRepresentNonFinite();
 				}
 			}
 
