@@ -2190,8 +2190,9 @@ namespace SnowBank.Buffers.Tests
 			Verify(0.5m, "00000100000000000500000000000000");
 
 			Verify(1m / 3m, "00001C00CA44C50A55555505CB00B714");
-			Verify((decimal) Math.PI, "00000E000000000083246AE7B91D0100");
-			Verify((decimal)Math.E, "00000E0000000000D04947EE39F70000");
+			// explicit decimal literals, not (decimal)Math.PI: a double-to-decimal cast of a const double is folded by the compiler, and the fold changed with the .NET 11 preview 7 Roslyn (corrected double->decimal rounding), which would silently move the frozen bytes
+			Verify(3.14159265358979m, "00000E000000000083246AE7B91D0100");
+			Verify(2.71828182845904m, "00000E0000000000D04947EE39F70000");
 
 			Verify(decimal.MaxValue, "00000000FFFFFFFFFFFFFFFFFFFFFFFF");
 			Verify(decimal.MinValue, "00000080FFFFFFFFFFFFFFFFFFFFFFFF");
@@ -2215,8 +2216,8 @@ namespace SnowBank.Buffers.Tests
 			Verify("00000100000000000500000000000000", 0.5m);
 
 			Verify("00001C00CA44C50A55555505CB00B714", 1m / 3m);
-			Verify("00000E000000000083246AE7B91D0100", (decimal) Math.PI);
-			Verify("00000E0000000000D04947EE39F70000", (decimal) Math.E);
+			Verify("00000E000000000083246AE7B91D0100", 3.14159265358979m);
+			Verify("00000E0000000000D04947EE39F70000", 2.71828182845904m);
 
 			Verify("00000000FFFFFFFFFFFFFFFFFFFFFFFF", decimal.MaxValue);
 			Verify("00000080FFFFFFFFFFFFFFFFFFFFFFFF", decimal.MinValue);

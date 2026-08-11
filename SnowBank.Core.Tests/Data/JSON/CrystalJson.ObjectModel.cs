@@ -1918,18 +1918,33 @@ namespace SnowBank.Data.Json.Tests
 			// => we check that JsonNumber is able to handle this problem correctly
 
 			double x = 7.5318246509562359d;
+#if NET11_0_OR_GREATER
+			// .NET 11 corrected the decimal<->double conversion (dotnet/runtime #130566): the roundtrip is exact now
+			Assert.That((double)((decimal)x), Is.EqualTo(x));
+#else
 			Assert.That((double)((decimal)x), Is.Not.EqualTo(x), $"Check that {x:R} gets corrupted during roundtrip by the CLR");
+#endif
 			Assert.That(JsonNumber.Return(x).ToString(), Is.EqualTo(x.ToString("R")));
 			Assert.That(((JsonNumber) JsonValue.Parse("7.5318246509562359")).ToDouble(), Is.EqualTo(x), $"Rounding Bug check: {x:R} should not change!");
 
 			x = 3.8219629199346357;
+#if NET11_0_OR_GREATER
+			// .NET 11 corrected the decimal<->double conversion (dotnet/runtime #130566): the roundtrip is exact now
+			Assert.That((double)((decimal)x), Is.EqualTo(x));
+#else
 			Assert.That((double)((decimal)x), Is.Not.EqualTo(x), $"Check that {x:R} gets corrupted during roundtrip by the CLR");
+#endif
 			Assert.That(JsonNumber.Return(x).ToString(), Is.EqualTo(x.ToString("R")));
 			Assert.That(((JsonNumber) JsonValue.Parse("3.8219629199346357")).ToDouble(), Is.EqualTo(x), $"Rounding Bug check: {x:R} should not change!");
 
 			// same problem with floats!
 			float y = 7.53182459f;
+#if NET11_0_OR_GREATER
+			// .NET 11 corrected the decimal<->float conversion (dotnet/runtime #130566): the roundtrip is exact now
+			Assert.That((float)((decimal)y), Is.EqualTo(y));
+#else
 			Assert.That((float)((decimal)y), Is.Not.EqualTo(y), $"Check that {y:R} gets corrupted during roundtrip by the CLR");
+#endif
 			Assert.That(JsonNumber.Return(y).ToString(), Is.EqualTo(y.ToString("R")));
 			Assert.That(((JsonNumber) JsonValue.Parse("7.53182459")).ToSingle(), Is.EqualTo(y), $"Rounding Bug check: {y:R}");
 		}

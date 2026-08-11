@@ -132,16 +132,17 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(JsonValue.Parse("1E2"), Is.EqualTo(JsonNumber.Return(100)));
 			Assert.That(JsonValue.Parse("1.23E2"), Is.EqualTo(JsonNumber.Return(123)));
 			Assert.That(JsonValue.Parse("1E+1"), Is.EqualTo(JsonNumber.Return(10)));
-			Assert.That(JsonValue.Parse("1E-1"), Is.EqualTo(JsonNumber.Return(0.1)));
-			Assert.That(JsonValue.Parse("1E-2"), Is.EqualTo(JsonNumber.Return(0.01)));
+			// exponent-notation fractions parse to Kind.Decimal, so compare by value: cross-kind decimal-vs-double equality distinguishes 0.1m from the double nearest 0.1 (an exact distinction since .NET 11 corrected the decimal<->double conversion, dotnet/runtime #130566)
+			Assert.That(JsonValue.Parse("1E-1").ToDouble(), Is.EqualTo(0.1), "Parse('1E-1')");
+			Assert.That(JsonValue.Parse("1E-2").ToDouble(), Is.EqualTo(0.01), "Parse('1E-2')");
 
 			// negative with exponent
 			Assert.That(JsonValue.Parse("-1E1"), Is.EqualTo(JsonNumber.Return(-10)));
 			Assert.That(JsonValue.Parse("-1E2"), Is.EqualTo(JsonNumber.Return(-100)));
 			Assert.That(JsonValue.Parse("-1.23E2"), Is.EqualTo(JsonNumber.Return(-123)));
 			Assert.That(JsonValue.Parse("-1E1"), Is.EqualTo(JsonNumber.Return(-10)));
-			Assert.That(JsonValue.Parse("-1E-1"), Is.EqualTo(JsonNumber.Return(-0.1)));
-			Assert.That(JsonValue.Parse("-1E-2"), Is.EqualTo(JsonNumber.Return(-0.01)));
+			Assert.That(JsonValue.Parse("-1E-1").ToDouble(), Is.EqualTo(-0.1), "Parse('-1E-1')");
+			Assert.That(JsonValue.Parse("-1E-2").ToDouble(), Is.EqualTo(-0.01), "Parse('-1E-2')");
 
 			// Special
 			Assert.That(JsonValue.Parse("4.94065645841247E-324"), Is.EqualTo(JsonNumber.Return(double.Epsilon)));

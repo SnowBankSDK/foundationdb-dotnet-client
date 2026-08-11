@@ -576,8 +576,9 @@ namespace SnowBank.Buffers.Tests
 			Verify("00000100000000000500000000000000", 0.5m);
 
 			Verify("00001C00CA44C50A55555505CB00B714", 1m / 3m);
-			Verify("00000E000000000083246AE7B91D0100", (decimal) Math.PI);
-			Verify("00000E0000000000D04947EE39F70000", (decimal) Math.E);
+			// explicit decimal literals, not (decimal)Math.PI: the compile-time double-to-decimal fold changed with the .NET 11 preview 7 Roslyn (corrected rounding) and would move the frozen bytes
+			Verify("00000E000000000083246AE7B91D0100", 3.14159265358979m);
+			Verify("00000E0000000000D04947EE39F70000", 2.71828182845904m);
 
 			Verify("00000000FFFFFFFFFFFFFFFFFFFFFFFF", decimal.MaxValue);
 			Verify("00000080FFFFFFFFFFFFFFFFFFFFFFFF", decimal.MinValue);

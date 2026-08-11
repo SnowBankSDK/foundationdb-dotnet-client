@@ -2354,14 +2354,19 @@ namespace SnowBank.Data.Json
 				{
 					// Canonical text must depend on the value only: the parser is free to land a given
 					// literal on Kind.Double or Kind.Decimal, and both must serialize identically. When
-					// the decimal is exactly representable as a double, render through the same ES6
-					// formatter Kind.Double uses; only a decimal with more precision than a double can
-					// hold keeps the full-digit plain notation.
+					// the double captures the decimal (same significant digits as the ES6 shortest form),
+					// render through the same ES6 formatter Kind.Double uses; only a decimal with more
+					// precision than a double can hold keeps the full-digit plain notation.
 					decimal dec = m_value.Decimal;
 					double asDouble = (double) dec;
-					if (TryConvertBackExactly(asDouble, dec))
+					string doubleForm = FormatCanonicalDouble(asDouble);
+					// The double-vs-decimal choice compares significant digits, never (decimal)asDouble == dec:
+					// the double<->decimal conversion is runtime-dependent (its rounding was corrected in .NET 11,
+					// dotnet/runtime #130566), so gating on it would move canonical bytes between runtimes. The
+					// significant-digit test never converts, so it is stable.
+					if (SameSignificantDigits(doubleForm, dec))
 					{
-						writer.WriteRaw(FormatCanonicalDouble(asDouble));
+						writer.WriteRaw(doubleForm);
 						return;
 					}
 					writer.WriteRaw(FormatCanonicalDecimal(dec));
@@ -2457,18 +2462,29 @@ namespace SnowBank.Data.Json
 			return text[^1] == '.' ? text + "0" : text;
 		}
 
-		/// <summary>Tests whether converting <paramref name="value"/> back to <see cref="decimal"/> reproduces <paramref name="original"/> exactly</summary>
-		/// <remarks>A double near or beyond <see cref="decimal.MaxValue"/>/<see cref="decimal.MinValue"/> overflows the back-conversion; that is treated as not-exact, not as an error.</remarks>
-		private static bool TryConvertBackExactly(double value, decimal original)
+		/// <summary>Tests whether the ES6-formatted double <paramref name="doubleForm"/> carries the same significant digits as the decimal <paramref name="value"/>, i.e. the double captures the decimal without losing precision.</summary>
+		/// <remarks>Runtime-independent, unlike a decimal round-trip: it never converts between <see cref="double"/> and <see cref="decimal"/>, whose rounding differs across runtimes. Sign, radix point, exponent, and leading or trailing zeros are ignored, so the whole-value marker <c>.0</c> never affects the decision (a whole decimal still selects the double form and keeps its marker in the output).</remarks>
+		private static bool SameSignificantDigits(string doubleForm, decimal value)
+			=> SignificantDigitRun(doubleForm) == SignificantDigitRun(value.ToString(CultureInfo.InvariantCulture));
+
+		/// <summary>Returns the run of significant digits in a formatted number: no sign, no radix point, no exponent, no leading or trailing zeros. An all-zero value returns <c>"0"</c>.</summary>
+		private static string SignificantDigitRun(string text)
 		{
-			try
+			Span<char> buffer = stackalloc char[text.Length];
+			int n = 0;
+			foreach (char c in text)
 			{
-				return (decimal) value == original;
+				if (c is 'e' or 'E') { break; } // stop before the exponent
+				if (c is >= '0' and <= '9') { buffer[n++] = c; }
 			}
-			catch (OverflowException)
-			{
-				return false;
-			}
+
+			var digits = buffer[..n];
+			int lead = 0;
+			while (lead < digits.Length - 1 && digits[lead] == '0') { lead++; }
+			digits = digits[lead..];
+			int end = digits.Length;
+			while (end > 1 && digits[end - 1] == '0') { end--; }
+			return digits[..end].ToString();
 		}
 
 #endif

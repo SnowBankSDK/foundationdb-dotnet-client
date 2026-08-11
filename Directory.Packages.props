@@ -57,31 +57,31 @@
   <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net11.0'))">
     <PackageVersion Include="Aspire.Hosting" Version="13.4.6" />
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.4.6" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100-preview.6.26359.118" />
-    <PackageVersion Include="System.Collections.Immutable" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="System.IO.Hashing" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="System.IO.Pipelines" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="System.Reflection.Metadata" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="System.Text.Encoding.CodePages" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="System.Text.Json" Version="11.0.0-preview.6.26359.118" />
-    <PackageVersion Include="System.Threading.Channels" Version="11.0.0-preview.6.26359.118" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Configuration" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.Net.Http.Headers" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100-preview.7.26381.103" />
+    <PackageVersion Include="System.Collections.Immutable" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="System.IO.Hashing" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="System.IO.Pipelines" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="System.Reflection.Metadata" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="System.Text.Encoding.CodePages" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="System.Text.Json" Version="11.0.0-preview.7.26381.103" />
+    <PackageVersion Include="System.Threading.Channels" Version="11.0.0-preview.7.26381.103" />
   </ItemGroup>
   <!-- Packages for .NET 10 -->
   <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net10.0')) and !$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net11.0'))">
