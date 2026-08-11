@@ -2970,7 +2970,15 @@ namespace FoundationDB.Testing
 
 			public void Cancel()
 			{
-				this.LifeTime.Cancel();
+				try
+				{
+					this.LifeTime.Cancel();
+				}
+				catch (ObjectDisposedException)
+				{ // Cancel can race Dispose at teardown (the client sets DISPOSED then disposes the handler, while a
+				  // Cancel that already won the state race reaches here afterwards): a disposed lifetime is a no-op,
+				  // matching how FdbTransaction.Dispose guards its own CancellationTokenSource.
+				}
 			}
 
 		}

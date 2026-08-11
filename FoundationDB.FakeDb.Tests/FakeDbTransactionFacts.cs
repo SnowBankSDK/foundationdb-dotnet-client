@@ -71,6 +71,25 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
+		public async Task Test_Cancel_After_Dispose_Is_A_Noop()
+		{
+			// At teardown a transaction can be cancelled and disposed at the same time: the client sets the state to
+			// DISPOSED and then disposes the handler, while a Cancel that already won the state race reaches the handler
+			// afterwards. FdbTransaction.Dispose guards its OWN CancellationTokenSource with catch(ObjectDisposedException);
+			// the FakeDb handler's Cancel must do the same, so cancelling an already-disposed lifetime is a no-op rather
+			// than an ObjectDisposedException surfacing at teardown.
+			var db = await OpenTestDatabaseAsync();
+			var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
+			var handler = FdbTransactionDebugger.GetHandler(tr);
+
+			// the racing Dispose disposed the handler's lifetime CTS first
+			handler.Dispose();
+
+			// the later Cancel must not throw
+			Assert.That(() => handler.Cancel(), Throws.Nothing, "cancelling an already-disposed transaction handler must be a no-op");
+		}
+
+		[Test]
 		public async Task Test_Selector_Resolution_Over_Mixed_Uncommitted_Mutations()
 		{
 			// pinned by the RYW fuzzer (seed 173): LastLessOrEqual(k6) - 1 over a mix of clears, re-sets and
