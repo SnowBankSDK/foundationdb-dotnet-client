@@ -1570,6 +1570,48 @@ namespace FoundationDB.Testing
 			}
 		}
 
+		// --- Native idempotency emulation (mirrors the cluster's \xff\x02/idmp/ keyspace) ---
+
+		/// <summary>Idempotency id of every committed transaction that carried one, mapped to its commit version, so a maybe-committed retry can resolve "did my commit land?" without re-running the handler.</summary>
+		private Dictionary<Slice, long> IdempotencyIds { get; } = new();
+
+		private long m_idempotencyCounter;
+
+		private int m_maybeCommittedResolutions;
+
+		/// <summary>Number of buggify-injected maybe-committed outcomes that were resolved to a definitive success because an idempotency id was set (the native-resolution path). Lets a test assert the mechanism fired, rather than passing trivially when no injection occurred.</summary>
+		public int MaybeCommittedResolutions => Volatile.Read(ref m_maybeCommittedResolutions);
+
+		/// <summary>Mints a deterministic 16-byte idempotency id for <see cref="FdbTransactionOption.AutomaticIdempotency"/> (the real client uses random bytes; only presence is ever asserted).</summary>
+		internal Slice NewIdempotencyId()
+		{
+			long n = Interlocked.Increment(ref m_idempotencyCounter);
+			var buf = new byte[16];
+			BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(0, 8), 0x1D3E_0000_0000_0000L);
+			BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(8, 8), n);
+			return buf.AsSlice();
+		}
+
+		/// <summary>Records a committed transaction's idempotency id.</summary>
+		internal void RecordIdempotencyId(Slice id, long commitVersion)
+		{
+			if (id.IsNull) return;
+			lock (this.IdempotencyIds)
+			{
+				this.IdempotencyIds[id] = commitVersion;
+			}
+		}
+
+		/// <summary>Resolves whether a transaction with the given idempotency id already committed, and at which version. This is the emulator's analog of the client's <c>determineCommitStatus</c>.</summary>
+		internal bool TryResolveIdempotencyId(Slice id, out long commitVersion)
+		{
+			if (id.IsNull) { commitVersion = -1; return false; }
+			lock (this.IdempotencyIds)
+			{
+				return this.IdempotencyIds.TryGetValue(id, out commitVersion);
+			}
+		}
+
 		internal async Task<long> Commit<TCursor>(TransactionHandler<TCursor> handler, CancellationToken ct)
 			where TCursor : struct, IFdbCommittedCursor
 		{
@@ -1613,6 +1655,8 @@ namespace FoundationDB.Testing
 					if (updated != null)
 					{
 						updated = PublishSnapshot(updated, commitVersion);
+						// native FDB stores the idempotency id of every committed transaction under \xff\x02/idmp/; mirror that so a maybe-committed retry can resolve "did my commit land?"
+						if (!handler.IdempotencyId.IsNull) RecordIdempotencyId(handler.IdempotencyId, commitVersion);
 					}
 
 					if (handler.Watches != null)
@@ -1748,6 +1792,16 @@ namespace FoundationDB.Testing
 					}
 				}
 
+				// buggify: emulate a maybe-committed outcome - the commit applied above, but the acknowledgement is lost
+				if (commitVersion >= 0 && this.BuggifyState?.ConsumeLoseNextCommitAck() == true)
+				{
+					if (handler.IdempotencyId.IsNull)
+					{ // no id: the client cannot resolve the ambiguity, so the loop re-runs the handler on top of the applied writes
+						throw new FdbException(FdbError.CommitUnknownResult);
+					}
+					// an id is set: the client resolves the ambiguity (the id was recorded in idmp above) to a definitive success
+					Interlocked.Increment(ref m_maybeCommittedResolutions);
+				}
 				return commitVersion;
 			}
 
@@ -1891,6 +1945,9 @@ namespace FoundationDB.Testing
 
 			private bool OptionSnapshotReadYourWritesDisable { get; set; }
 
+			/// <summary>Idempotency id set for the current attempt via <see cref="FdbTransactionOption.IdempotencyId"/> or <see cref="FdbTransactionOption.AutomaticIdempotency"/>, or <see cref="Slice.Nil"/>. Non-persistent: cleared by <see cref="Reset"/>, matching the real cluster dropping the option on the on_error reset.</summary>
+			internal Slice IdempotencyId { get; private set; }
+
 			public void SetOption(FdbTransactionOption option, ReadOnlySpan<byte> data)
 			{
 				switch (option)
@@ -1952,6 +2009,19 @@ namespace FoundationDB.Testing
 					{
 						if (data.Length != 0) throw new FdbException(FdbError.InvalidOptionValue, "ReportConflictingKeys option value must be empty");
 						this.OptionReportConflictingKeys = true;
+						break;
+					}
+				case FdbTransactionOption.IdempotencyId:
+					{
+						// native requires at least 16 bytes and less than 256; store a copy so a maybe-committed retry can resolve "was it me?"
+						if (data.Length < 16 || data.Length >= 256) throw new FdbException(FdbError.InvalidOptionValue, "Idempotency id must be at least 16 bytes and less than 256 bytes");
+						this.IdempotencyId = data.ToArray().AsSlice();
+						break;
+					}
+				case FdbTransactionOption.AutomaticIdempotency:
+					{
+						// native mints a random 16-byte id when none is set yet; the emulator uses a deterministic per-store id (only its presence is ever asserted)
+						if (this.IdempotencyId.IsNull) this.IdempotencyId = this.Store.NewIdempotencyId();
 						break;
 					}
 					default:
@@ -2909,6 +2979,7 @@ namespace FoundationDB.Testing
 					case FdbError.NotCommitted:
 					case FdbError.TransactionTooOld:
 					case FdbError.FutureVersion:
+					case FdbError.CommitUnknownResult: // retryable on a real cluster; the handler re-runs (idempotency is what makes that safe)
 					{
 						this.RetryCount++;
 						if (this.OptionRetryLimit > 0 && this.RetryCount > this.OptionRetryLimit)
@@ -2965,6 +3036,8 @@ namespace FoundationDB.Testing
 					m_keyReadCount = 0;
 					m_keyReadSize = 0;
 					m_approximateSize = 0;
+					// non-persistent options are dropped by the on_error reset on a real cluster: the id must be re-applied by the handler each attempt
+					this.IdempotencyId = Slice.Nil;
 				}
 			}
 
@@ -3385,6 +3458,20 @@ namespace FoundationDB.Testing
 			/// <remarks>Deterministic on-demand injection (<see cref="FireWatches"/> / <see cref="SuppressNextWatchCheck"/> / <see cref="FireWatchesAfter"/>)
 			/// is unaffected: it only fires when the test explicitly calls it, so there is nothing to disable.</remarks>
 			public void Disable() => this.Chaos = null;
+
+			/// <summary>One-shot flag: the next successful commit applies its writes but then loses the acknowledgement (the maybe-committed shape).</summary>
+			private bool LoseNextAck { get; set; }
+
+			/// <summary>Arms a single injection: the NEXT transaction whose commit applies reports the maybe-committed outcome. The writes ARE applied. With an idempotency id set, the client resolves the outcome to success and the handler is not re-run; without one, the commit surfaces <see cref="FdbError.CommitUnknownResult"/> and the retry loop re-runs the handler on top of its own landed writes.</summary>
+			public void LoseNextCommitAck() => this.LoseNextAck = true;
+
+			/// <summary>Consumes the one-shot <see cref="LoseNextCommitAck"/> arming (returns <see langword="true"/> at most once per arming).</summary>
+			internal bool ConsumeLoseNextCommitAck()
+			{
+				if (!this.LoseNextAck) return false;
+				this.LoseNextAck = false;
+				return true;
+			}
 
 			/// <summary>Enables seeded chaos with a stable seed derived from <paramref name="name"/> - the one-line opt-in for a whole suite: buggify every watch-arming test with a profile that is distinct per name yet reproducible across runs.</summary>
 			/// <param name="name">A stable, distinct identifier (typically the test or suite name) that fixes the injection profile.</param>
