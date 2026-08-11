@@ -122,6 +122,12 @@ namespace FoundationDB.Client.Native
 		{
 			Fdb.EnsureNotOnNetworkThread();
 
+			// idempotency ids landed in api level 720 (fdb 7.2); reject early with a clear message rather than a cryptic native error or a silent no-op against an older cluster
+			if ((option is FdbTransactionOption.IdempotencyId or FdbTransactionOption.AutomaticIdempotency) && this.Database.GetApiVersion() < 720)
+			{
+				throw new NotSupportedException($"The {option} transaction option requires API level 720 or greater. Your application has selected API version {this.Database.GetApiVersion()} which is too low. Select API version 720 or greater to use FoundationDB idempotency.");
+			}
+
 			unsafe
 			{
 				fixed (byte* ptr = data)
