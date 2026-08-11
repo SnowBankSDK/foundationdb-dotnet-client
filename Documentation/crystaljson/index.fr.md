@@ -5,7 +5,7 @@ couches de ce SDK qui stockent ou transmettent des documents (valeurs dans Found
 collections de documents, enregistrements de changements) sérialisent à travers elle. Cette page
 explique ce qu'est CrystalJson et pourquoi il a cette forme ; pour les guides pratiques, voir
 [Travailler avec CrystalJson](serializing.fr.md), et pour les tables complètes des attributs, des
-settings et des diagnostics, voir la [référence](reference.md).
+settings et des diagnostics, voir la [référence](reference.fr.md).
 
 Ce n'est **pas** `System.Text.Json`, ni Newtonsoft. Les noms de types semblent familiers
 (`JsonObject`, `JsonArray`) mais l'API est différente, et ces différences sont le cœur du sujet.

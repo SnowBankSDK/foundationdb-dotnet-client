@@ -3,9 +3,10 @@
 Les gestes de tous les jours, une section par tâche. Cette page suppose que vous savez ce qu'est
 CrystalJson et pourquoi il a un DOM (Document Object Model), des proxies et deux chemins de
 sérialisation ; sinon, lisez [l'explication](index.fr.md) d'abord. Porter un parc
-`DataContractJsonSerializer` ou Newtonsoft est un projet à part entière et a
-[sa propre page](porting-legacy.md). Les tables complètes des attributs, des settings et des
-diagnostics sont dans la [référence](reference.md).
+`DataContractJsonSerializer` ou Newtonsoft est un projet à part entière ; le
+[guide de migration](../migrations/7.4.2-to-7.4.3.md) couvre les diagnostics et les changements de
+comportement que vous rencontrerez. Les tables complètes des attributs, des settings et des
+diagnostics sont dans la [référence](reference.fr.md).
 
 Tous les exemples utilisent `using SnowBank.Data.Json;`.
 
@@ -31,7 +32,7 @@ public sealed record Book
 }
 
 string json = CrystalJson.Serialize(book);
-// => {"Id":"B123","Title":"Dune","Year":1965}
+// => { "Id": "B123", "Title": "Dune", "Year": 1965 }
 
 // throw si le JSON est null ou vide
 Book back = CrystalJson.Deserialize<Book>(json);
@@ -59,7 +60,7 @@ Book   back = AcmeSerializers.Book.Deserialize(json);
 Le convertisseur généré est sans réflexion (il fonctionne sous AOT et trimming), plus rapide, et
 apporte les proxies typés utilisés plus loin sur cette page. Le projet qui consomme le générateur
 a besoin de `LangVersion` 9 ou plus et du générateur référencé comme analyzer ; les deux sont un
-setup unique, détaillé dans la [référence](reference.md).
+setup unique, détaillé dans la [référence](reference.fr.md).
 
 Les deux voies produisent les mêmes octets pour le même type, donc vous pouvez commencer en
 ad hoc et adopter le générateur plus tard sans changer aucun document stocké. Le chemin par
@@ -325,7 +326,7 @@ public sealed class GpsPositionConverter : IJsonMemberConverter<GpsPosition>
 
 [JsonConvertWith(typeof(GpsPositionConverter))]
 public GpsPosition Position { get; init; }
-// => "position": [48.8584, 2.2945], sur les deux chemins et dans les deux sens
+// => "position": [ 48.8584, 2.2945 ], sur les deux chemins et dans les deux sens
 ```
 
 Un converter ne voit jamais null ni absent : le pipeline gère ces cas avant qu'il ne s'exécute.
@@ -413,8 +414,8 @@ public sealed record DateRange(DateOnly From, DateOnly? To)
     }
 }
 
-// => {"from":"2026-01-01"}                    borne ouverte
-// => {"from":"2026-01-01","to":"2026-03-31"}  fermé
+// => { "from": "2026-01-01" }                      borne ouverte
+// => { "from": "2026-01-01", "to": "2026-03-31" }  fermé
 ```
 
 Déclarer le paramètre resolver avec une valeur par défaut est la convention (les appelants

@@ -3,8 +3,9 @@
 The everyday gestures, one section per task. This page assumes you know what CrystalJson is and
 why it has a DOM (Document Object Model), proxies and two serialization paths; if not, read
 [the explanation](index.md) first. Porting a `DataContractJsonSerializer` or Newtonsoft estate is
-its own project and has [its own page](porting-legacy.md). The complete attribute, settings and
-diagnostics tables are in the [reference](reference.md).
+its own project; the [migration guide](../migrations/7.4.2-to-7.4.3.md) covers the diagnostics and
+behavior changes you will hit. The complete attribute, settings and diagnostics tables are in the
+[reference](reference.md).
 
 All examples use `using SnowBank.Data.Json;`.
 
@@ -29,7 +30,7 @@ public sealed record Book
 }
 
 string json = CrystalJson.Serialize(book);
-// => {"Id":"B123","Title":"Dune","Year":1965}
+// => { "Id": "B123", "Title": "Dune", "Year": 1965 }
 
 // throws if the JSON is null or empty
 Book back = CrystalJson.Deserialize<Book>(json);
@@ -317,7 +318,7 @@ public sealed class GpsPositionConverter : IJsonMemberConverter<GpsPosition>
 
 [JsonConvertWith(typeof(GpsPositionConverter))]
 public GpsPosition Position { get; init; }
-// => "position": [48.8584, 2.2945], on both paths and in both directions
+// => "position": [ 48.8584, 2.2945 ], on both paths and in both directions
 ```
 
 Converters never see null or missing: the pipeline handles those before the converter runs. A
@@ -404,8 +405,8 @@ public sealed record DateRange(DateOnly From, DateOnly? To)
     }
 }
 
-// => {"from":"2026-01-01"}                    open-ended
-// => {"from":"2026-01-01","to":"2026-03-31"}  closed
+// => { "from": "2026-01-01" }                      open-ended
+// => { "from": "2026-01-01", "to": "2026-03-31" }  closed
 ```
 
 Declaring the resolver parameter with a default value is the convention (callers can omit it,

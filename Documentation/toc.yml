@@ -24,6 +24,16 @@
       href: guide/advanced-layers.md
     - name: Binary Data (Slice & Buffers)
       href: guide/slices-and-buffers.md
+    - name: JSON (CrystalJson)
+      items:
+        - name: What it is and why
+          href: crystaljson/index.md
+        - name: Getting Started
+          href: crystaljson/getting-started.md
+        - name: Working with CrystalJson
+          href: crystaljson/serializing.md
+        - name: Reference
+          href: crystaljson/reference.md
     - name: XML Output (CrystalXml)
       href: CrystalXml.md
 - name: Migrations
