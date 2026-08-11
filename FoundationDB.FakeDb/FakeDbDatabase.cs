@@ -1950,6 +1950,11 @@ namespace FoundationDB.Testing
 
 			public void SetOption(FdbTransactionOption option, ReadOnlySpan<byte> data)
 			{
+				// idempotency ids landed at api level 720 (fdb 7.2); reject them below that, exactly like the native client
+				if ((option is FdbTransactionOption.IdempotencyId or FdbTransactionOption.AutomaticIdempotency) && this.Store.ApiVersion < FdbIdempotencyFacet.MinimumApiVersion)
+				{
+					throw new NotSupportedException($"The {option} transaction option requires API level {FdbIdempotencyFacet.MinimumApiVersion} or greater. The emulated cluster is at API version {this.Store.ApiVersion}.");
+				}
 				switch (option)
 				{
 					case FdbTransactionOption.ReadSystemKeys:
