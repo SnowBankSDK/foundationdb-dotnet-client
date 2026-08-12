@@ -1114,6 +1114,22 @@ namespace FoundationDB.Client.Native
 			try
 			{
 				FdbCLib = UnmanagedLibrary.Load(libraryPath);
+#if NETCOREAPP3_0_OR_GREATER
+				// Pin every [LibraryImport/DllImport(FDB_C_DLL)] call to the library we just preloaded, so the
+				// P/Invoke name resolution can never bind a different copy: a stale libfdb_c in the application
+				// base directory, a system copy (on macOS, /usr/local/lib/libfdb_c.dylib), or a dyld leaf-name
+				// match. On Windows the OS module table already pins the name once the library is loaded; on Linux
+				// and macOS NativeLibrary.Load loads by path and does NOT bind the FDB_C_DLL name, so without this
+				// the first call re-resolves by convention and can pick the wrong file. Done on all platforms so
+				// the guarantee is explicit and uniform. The handle is never released (see
+				// SafeLibraryHandle.ReleaseHandle), so it stays valid for the lifetime of the process.
+				NativeLibrary.SetDllImportResolver(
+					typeof(FdbNative).Assembly,
+					static (name, assembly, searchPath) => string.Equals(name, FDB_C_DLL, StringComparison.Ordinal) && FdbCLib is not null
+						? FdbCLib.Handle.DangerousGetHandle()
+						: IntPtr.Zero
+				);
+#endif
 			}
 			catch (Exception e)
 			{
