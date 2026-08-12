@@ -97,7 +97,17 @@ Copyright (c) 2023-2026 SnowBank SAS
 			SourceFiles="@(FdbPortableNativeLibraries)"
 			DestinationFolder="$(OutDir)runtimes\%(RecursiveDir)"
 			SkipUnchangedFiles="true"
-		/>
+		>
+			<!-- Register the copies so 'dotnet clean' removes them (a bare Copy task is not tracked) -->
+			<Output TaskParameter="CopiedFiles" ItemName="FileWrites" />
+		</Copy>
+
+		<!-- A portable build keeps the native libraries under runtimes/{rid}/native/. Remove any copy left
+		     directly in the output ROOT: the .NET loader resolves [DllImport(fdb_c)] from the application base
+		     directory before it looks under runtimes/, so a root copy is loaded in preference to the correct one.
+		     A root copy can survive from a prior RID/publish build (see the platform target below) or an older
+		     version of these targets, and 'dotnet clean' does not remove it. -->
+		<Delete Files="$(OutDir)libfdb_c.dylib;$(OutDir)libfdb_c.so;$(OutDir)fdb_c.dll" />
 
 	</Target>
 
@@ -112,7 +122,10 @@ Copyright (c) 2023-2026 SnowBank SAS
 			SourceFiles="@(FdbPlatformNativeLibraries)"
 			DestinationFolder="$(OutDir)%(RecursiveDir)"
 			SkipUnchangedFiles="true"
-		/>
+		>
+			<!-- Register the copies so 'dotnet clean' removes them (a bare Copy task is not tracked) -->
+			<Output TaskParameter="CopiedFiles" ItemName="FileWrites" />
+		</Copy>
 
 	</Target>
 
