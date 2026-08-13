@@ -43,6 +43,7 @@ builder.AddProject<Projects.MyApp>("app")
 
 - **Prefer omitting `clusterVersion`.** Left out, the hosting package picks its own last-known-good Docker tag for the major it selects (the `FdbAspireHostingExtensions.LatestVersionNN` constants, refreshed from Docker Hub by `scripts/check-fdb-image-tags.ps1`). A tag you hardcode is a number that rots in your AppHost: pin one only when you need a specific image, and then treat it as something to review, alongside `rollForward: FdbVersionPolicy.Exact`.
 - `AddFoundationDb(...)` → `IResourceBuilder<FdbClusterResource>` **runs a container**.
+- **A fresh volume self-provisions.** On first start the integration runs `configure new single ssd` inside the container (a brand-new cluster has no database until then), and `WaitFor(fdb)` holds dependents until the database answers. An already-configured database is left untouched. Opt out with `.WithAutoProvisioning(false)`; run mode only.
 - `AddFoundationDbCluster(name, apiVersion, root, clusterFile?, clusterVersion?)` → `IResourceBuilder<FdbConnectionResource>` instead **connects to an already-running cluster** (no container) given a cluster file.
 - `FdbVersionPolicy` (`Exact`, etc.) lives in `Aspire.Hosting.ApplicationModel`. `.WithDefaults(timeout, retryLimit, tracing)` tunes the connection.
 

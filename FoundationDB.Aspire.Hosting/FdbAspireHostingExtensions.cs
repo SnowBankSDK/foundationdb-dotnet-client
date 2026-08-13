@@ -31,6 +31,8 @@ namespace Aspire.Hosting
 	using System.Text;
 	using Aspire.Hosting.ApplicationModel;
 	using Aspire.Hosting.Publishing;
+	using Microsoft.Extensions.DependencyInjection;
+	using Microsoft.Extensions.Logging;
 
 	/// <summary>Provides extension methods for adding FoundationDB resources to the application model.</summary>
 	[PublicAPI]
@@ -252,12 +254,12 @@ namespace Aspire.Hosting
 
 			//note: Aspire wants to allocate random ports to ensure that there is not conflict with any local versions of the resources,
 			// but we have an issue where the fdbserver that runs in the docker image sees the "targetPort" of the container, which is 4550
-			// and will return this as part of the address sent to any client. So if, inside the container, the port is 4550, it HAS to be 4550 also on the host!
+			// and will return this as part of the address sent to any client. So if, inside the container, the port is 4550, it has to be 4550 also on the host!
 			// If not, if for ex Aspire allocated port 12345 externally, we will set the "connection string" to "127.0.0.1:12345",
 			// which will initially be proxied to the port 4550 inside the container (so far so good), but the fdb node will return addresses to other "agents" using "127.0.0.1:4550" because it does not know of the port 12345
 			// The application will think that we are pointed to a different node, and attempt to connect to 127.0.0.1:4550 which would not exist on the host!
 
-			// => To work around this problem, we must FORCE both the "aspire port" and the "container port" to be the same, as well as disable the Aspire proxy.
+			// => To work around this problem, we must force both the "aspire port" and the "container port" to be the same, as well as disable the Aspire proxy.
 
 			// In order to prevent any conflict with any natively installed FoundationDB server, we will use the port 4550,
 			// which is outside the typical range of 4500+ for default fdb installations (unless there are more than 50 processes on the same box??)
@@ -272,7 +274,7 @@ namespace Aspire.Hosting
 				.WithVolume("fdb_data", "/var/fdb/data", isReadOnly: false) //HACKHACK: TODO: make this configurable!
 				.WithEndpoint("tcp", ep =>
 				{
-					// note: both Port and TargetPort MUST be the same (see above)
+					// note: both Port and TargetPort must be the same (see above)
 					ep.Port = nodePort;
 					ep.TargetPort = nodePort;
 					ep.IsProxied = false;
@@ -284,7 +286,7 @@ namespace Aspire.Hosting
 				{
 					// get the allocated endpoint
 					var ep = fdbCluster.GetEndpoint("tcp");
-					//note: it SHOULD be equal to 'nodePort' here!
+					//note: it should be equal to 'nodePort' here!
 					Contract.Debug.Assert(ep.Port == nodePort);
 
 					// we use the "host" mode so that we can talk to the node from the host
@@ -298,7 +300,89 @@ namespace Aspire.Hosting
 					context.EnvironmentVariables["FDB_COORDINATOR_PORT"] = ep.Port.ToString(CultureInfo.InvariantCulture);
 				});
 
+			if (builder.ExecutionContext.IsRunMode)
+			{
+				// a fresh volume has no database until "configure new" runs once. Dependents under WaitFor(fdb)
+				// are released only after this handler completes, so they only ever see an available database
+				cluster.OnResourceReady(static (resource, e, ct) => resource.AutoProvision ? ProvisionDatabaseAsync(resource, e, ct) : Task.CompletedTask);
+			}
+
 			return cluster;
+		}
+
+		/// <summary>Enables or disables the automatic <c>configure new</c> of a database when the container starts on a fresh volume</summary>
+		/// <remarks>Enabled by default. See <see cref="FdbClusterResource.AutoProvision"/>.</remarks>
+		public static IResourceBuilder<FdbClusterResource> WithAutoProvisioning(this IResourceBuilder<FdbClusterResource> builder, bool enabled = true)
+		{
+			Contract.NotNull(builder);
+			builder.Resource.AutoProvision = enabled;
+			return builder;
+		}
+
+		/// <summary>Configures the database of a freshly created cluster container, and waits until it is available</summary>
+		private static async Task ProvisionDatabaseAsync(FdbClusterResource resource, ResourceReadyEvent e, CancellationToken ct)
+		{
+			var logger = e.Services.GetRequiredService<ResourceLoggerService>().GetLogger(resource);
+
+			// the container id is published to the resource snapshot by the orchestrator, shortly after the container starts
+			var notifications = e.Services.GetRequiredService<ResourceNotificationService>();
+			using (var cts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+			{
+				cts.CancelAfter(TimeSpan.FromSeconds(30));
+				var evt = await notifications.WaitForResourceAsync(
+					resource.Name,
+					(re) => re.Snapshot.Properties.Any(p => p.Name == "container.id" && p.Value is string { Length: > 0 }),
+					cts.Token
+				).ConfigureAwait(false);
+				var containerId = (string) evt.Snapshot.Properties.First(p => p.Name == "container.id").Value!;
+
+				// "docker" unless the host is configured for another runtime (ex: podman)
+				var runtime = Environment.GetEnvironmentVariable("ASPIRE_CONTAINER_RUNTIME");
+				if (string.IsNullOrWhiteSpace(runtime)) runtime = "docker";
+
+				try
+				{
+					await Fdb.Provisioning.EnsureDatabaseConfiguredAsync(
+						(arguments, token) => RunFdbCliInContainerAsync(runtime, containerId, arguments, token),
+						timeout: TimeSpan.FromSeconds(60),
+						log: (line) => logger.LogInformation("{Message}", line),
+						ct: ct
+					).ConfigureAwait(false);
+				}
+				catch (Exception ex) when (ex is not OperationCanceledException)
+				{
+					// the exception also fails the ready event, which blocks every resource waiting on this cluster
+					logger.LogError(ex, "The FoundationDB database could not be provisioned.");
+					throw;
+				}
+			}
+		}
+
+		/// <summary>Runs <c>fdbcli</c> inside the cluster container, and returns its exit code and combined console output</summary>
+		private static async Task<(int ExitCode, string Output)> RunFdbCliInContainerAsync(string runtime, string containerId, string[] arguments, CancellationToken ct)
+		{
+			var psi = new System.Diagnostics.ProcessStartInfo(runtime)
+			{
+				UseShellExecute = false,
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				CreateNoWindow = true,
+			};
+			psi.ArgumentList.Add("exec");
+			psi.ArgumentList.Add(containerId);
+			psi.ArgumentList.Add("fdbcli");
+			foreach (var arg in arguments)
+			{
+				psi.ArgumentList.Add(arg);
+			}
+
+			using var process = System.Diagnostics.Process.Start(psi) ?? throw new InvalidOperationException($"Failed to launch the '{runtime}' CLI.");
+			var stdOut = process.StandardOutput.ReadToEndAsync(ct);
+			var stdErr = process.StandardError.ReadToEndAsync(ct);
+			await process.WaitForExitAsync(ct).ConfigureAwait(false);
+			string output = await stdOut.ConfigureAwait(false);
+			string error = await stdErr.ConfigureAwait(false);
+			return (process.ExitCode, output.Length != 0 ? output : error);
 		}
 
 		/// <summary>Specifies the path to the native FoundationDB C library that should be used by the application</summary>
@@ -424,7 +508,7 @@ namespace Aspire.Hosting
 		{
 			// Important Note:
 			// - As of now, they are always released in pairs: one with AVX instructions enabled (odd number, ex: 7.3.71) and one without AVX enabled (even number, ex: 7.3.70)
-			// - The AVX enabled versions are faster, but are NOT compatible with ARM64 and will not run on Apple M-chip enabled laptops, where you need a non-AVX version.
+			// - The AVX enabled versions are faster, but are not compatible with ARM64 and will not run on Apple M-chip enabled laptops, where you need a non-AVX version.
 			// - As this method is mostly used for the local dev loop, and to make it easier to develop on MBP or Mac Mini, we will always roll forward to even version (non-AVX)
 			// => In production deployment, you should use the most appropriate version depending on the target platform.
 

@@ -144,7 +144,18 @@ namespace FoundationDB.Client.Tests
 				}
 			}
 
+			// a fresh volume has no database until "configure new" runs once. A configured one answers immediately
+			await Fdb.Provisioning.EnsureDatabaseConfiguredAsync(this.RunFdbCliAsync, TimeSpan.FromSeconds(30), log: SimpleTest.Log, ct: ct).ConfigureAwait(false);
+
 			SimpleTest.Log($"FdbServer test container '{name}' ready");
+		}
+
+		/// <summary>Runs <c>fdbcli</c> inside the test container, and returns its exit code and combined console output</summary>
+		public async Task<(int ExitCode, string Output)> RunFdbCliAsync(string[] arguments, CancellationToken ct)
+		{
+			var container = this.Container ?? throw new InvalidOperationException("The container has not been started.");
+			var result = await container.ExecAsync([ "fdbcli", ..arguments ], ct).ConfigureAwait(false);
+			return ((int) result.ExitCode, result.Stdout.Length != 0 ? result.Stdout : result.Stderr);
 		}
 #else
 		// Docker.DotNet cannot run on the .NET Framework CLR (its request serialization reads generic attributes,
@@ -198,7 +209,30 @@ namespace FoundationDB.Client.Tests
 				}
 			}
 
+			// a fresh volume has no database until "configure new" runs once. A configured one answers immediately
+			await Fdb.Provisioning.EnsureDatabaseConfiguredAsync(this.RunFdbCliAsync, TimeSpan.FromSeconds(30), log: SimpleTest.Log, ct: ct).ConfigureAwait(false);
+
 			SimpleTest.Log($"FdbServer test container '{name}' ready");
+		}
+
+		/// <summary>Runs <c>fdbcli</c> inside the test container, and returns its exit code and combined console output</summary>
+		public Task<(int ExitCode, string Output)> RunFdbCliAsync(string[] arguments, CancellationToken ct)
+		{
+			// quote the arguments that carry spaces (ex: --exec "configure new single ssd")
+			var sb = new System.Text.StringBuilder("exec ").Append(this.Name).Append(" fdbcli");
+			foreach (var arg in arguments)
+			{
+				sb.Append(' ');
+				if (arg.IndexOf(' ') >= 0)
+				{
+					sb.Append('"').Append(arg).Append('"');
+				}
+				else
+				{
+					sb.Append(arg);
+				}
+			}
+			return RunDockerAsync(sb.ToString(), ct);
 		}
 
 		/// <summary>Runs the docker CLI with the specified arguments, and returns the exit code and console output</summary>

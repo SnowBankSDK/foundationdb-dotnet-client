@@ -68,6 +68,13 @@ namespace Aspire.Hosting.ApplicationModel
 		/// </remarks>
 		public bool DisableNativePreloading { get; set; }
 
+		/// <summary>Specifies if the database is configured automatically when the container starts on a fresh volume (enabled by default)</summary>
+		/// <remarks>
+		/// <para>A cluster on a brand-new volume has no database until <c>configure new</c> runs once. Without provisioning, every client waits until its transaction timeout.</para>
+		/// <para>An already-configured database is left untouched. Only applies when the AppHost runs the container (run mode).</para>
+		/// </remarks>
+		public bool AutoProvision { get; set; } = true;
+
 		/// <summary>Default transaction timeout</summary>
 		/// <remarks>See <see cref="IFdbTransactionOptions.Timeout"/> for more information.</remarks>
 		public TimeSpan? DefaultTimeout { get; set; }

@@ -50,7 +50,7 @@ builder.Build().Run();
 
 `AddFoundationDb(...)` runs the cluster as a Docker container. `WithReference(fdb)` passes the connection string to the referenced project under the same name (`"fdb"`), and `WaitFor(fdb)` delays startup until the cluster is ready. Add `.WithLifetime(ContainerLifetime.Persistent)` to the cluster to reuse the container (and its data) across runs.
 
-> On the very first start, a fresh cluster has no database until it is configured once. Use Docker Desktop (or `docker exec`) to run `fdbcli --exec "configure new single ssd"` inside the container, then restart the AppHost. While it runs, the cluster is reachable at `docker:docker@127.0.0.1:4550`. Aspire maps the cluster to its own host port (`4550` here), not the `4500` used in the plain-Docker walkthroughs, so connect with the address Aspire prints in the dashboard.
+> On the very first start, a fresh cluster has no database until it is configured once. The AppHost integration does this for you: when the container starts on a fresh volume, it runs `configure new single ssd` inside the container and holds every resource waiting on the cluster until the database answers (disable with `.WithAutoProvisioning(false)`). While it runs, the cluster is reachable at `docker:docker@127.0.0.1:4550`. Aspire maps the cluster to its own host port (`4550` here), not the `4500` used in the plain-Docker walkthroughs, so connect with the address Aspire prints in the dashboard.
 
 ## Connect to an existing cluster instead
 
