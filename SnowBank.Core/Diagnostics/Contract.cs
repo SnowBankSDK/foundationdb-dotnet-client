@@ -752,8 +752,7 @@ namespace SnowBank.Diagnostics.Contracts
 		/// <summary>The specified value must not be less than or equal to the specified lower bound (assert: value > threshold)</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[StackTraceHidden]
-		public static void GreaterThan<T>(TimeSpan value, TimeSpan threshold, string? message = null, [InvokerParameterName, CallerArgumentExpression(nameof(value))] string? valueExpression = null, [InvokerParameterName, CallerArgumentExpression(nameof(threshold))] string? thresholdExpression = null)
-			where T : System.Numerics.INumber<T>
+		public static void GreaterThan(TimeSpan value, TimeSpan threshold, string? message = null, [InvokerParameterName, CallerArgumentExpression(nameof(value))] string? valueExpression = null, [InvokerParameterName, CallerArgumentExpression(nameof(threshold))] string? thresholdExpression = null)
 		{
 			if (value <= threshold) ThrowArgumentNotGreaterThan(value, valueExpression!, thresholdExpression!, threshold == TimeSpan.Zero, message);
 		}
