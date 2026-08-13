@@ -47,6 +47,8 @@
     <PackageVersion Include="PolySharp" Version="1.16.0" />
     <PackageVersion Include="protobuf-net" Version="3.3.8" />
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
+    <!-- Transitive from Testcontainers; pinned up to override the vulnerable 2025.1.0 (GHSA-q939-rpr3-3284, ScpClient arbitrary file write) -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
     <PackageVersion Include="StructuredFieldValues" Version="0.7.7" />
     <PackageVersion Include="System.CommandLine" Version="2.0.11" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />
