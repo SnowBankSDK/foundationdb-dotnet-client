@@ -126,6 +126,47 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
+		public async Task Test_Disposing_One_Database_On_A_Shared_Store_Keeps_The_Store_Alive()
+		{
+			// Several hosts share one FakeDbStore, as the FakeDb provider does with FakeDbProviderOptions.Store.
+			// Disposing one host's database must leave the store, and the other hosts' databases, alive.
+			var store = new FakeDbStore();
+
+			var dbA = store.OpenDatabase(FdbPath.Root, readOnly: false, ownsStore: false);
+			var dbB = store.OpenDatabase(FdbPath.Root, readOnly: false, ownsStore: false);
+
+			await dbB.WriteAsync(tr => tr.Set(Key("hello"), Value("world")), this.Cancellation);
+
+			// one host stops
+			dbA.Dispose();
+			Assert.That(dbA.Cancellation.IsCancellationRequested, Is.True, "the disposed database is cancelled");
+
+			// the shared store and the other host survive
+			Assert.That(store.IsClosed, Is.False, "the shared store must stay open after one database is disposed");
+			Assert.That(dbB.Cancellation.IsCancellationRequested, Is.False, "the other database must stay alive");
+
+			// dbB still reads what it wrote and keeps working
+			await dbB.ReadAsync(async tr => Assert.That(await tr.GetAsync(Key("hello")), Is.EqualTo(Value("world"))), this.Cancellation);
+			await dbB.WriteAsync(tr => tr.Set(Key("again"), Value("ok")), this.Cancellation);
+
+			// the store's owner tears it down: now every remaining database is cancelled
+			store.Dispose();
+			Assert.That(store.IsClosed, Is.True);
+			Assert.That(dbB.Cancellation.IsCancellationRequested, Is.True, "disposing the store cancels the remaining databases");
+		}
+
+		[Test]
+		public void Test_Disposing_An_Owning_Database_Closes_Its_Store()
+		{
+			// The standalone default: a database opened with ownsStore: true (the default) disposes its store.
+			var store = new FakeDbStore();
+			var db = store.OpenDatabase(FdbPath.Root, readOnly: false);
+
+			db.Dispose();
+			Assert.That(store.IsClosed, Is.True, "an owning database disposes its store");
+		}
+
+		[Test]
 		[Order(10)]
 		public async Task Test_Can_Read_And_Write()
 		{
@@ -850,7 +891,7 @@ namespace FoundationDB.Testing.Tests
 
 					tr.Set(subspace.Key("Foo", 123, "Bar"), Value("It works!"));
 
-					return subspace.GetPrefix(); // ILLEGAL: but it's fine for a test!
+					return subspace.GetPrefix(); // illegal, but it's fine for a test!
 				}, this.Cancellation);
 
 				DumpStore(store, "After first open");
@@ -864,7 +905,7 @@ namespace FoundationDB.Testing.Tests
 
 					tr.Set(subspace.Key("Bar", 456), Value("It works again!!"));
 
-					return subspace.GetPrefix(); // ILLEGAL: but it's fine for a test!
+					return subspace.GetPrefix(); // illegal, but it's fine for a test!
 				}, this.Cancellation);
 
 				DumpStore(store, "After second open");

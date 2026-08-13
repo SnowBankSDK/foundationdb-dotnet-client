@@ -40,7 +40,7 @@ namespace FoundationDB.Testing
 	}
 
 	/// <summary>Provides access to a simulated in-memory database instance</summary>
-	/// <remarks>This emulator is currently <b>EXPERIMENTAL</b> and may not accurately reproduce the behavior of an actual fdb cluster, most notably due to the absence of network latency!</remarks>
+	/// <remarks>This emulator is currently <b>experimental</b> and may not accurately reproduce the behavior of an actual fdb cluster, most notably due to the absence of network latency!</remarks>
 	public class FakeDbProvider : IFdbDatabaseProvider
 	{
 
@@ -131,6 +131,7 @@ namespace FoundationDB.Testing
 		{
 			// either we use a global store (shared by multiple components
 			var store = this.ProviderOptions.Store;
+			bool ownsStore;
 			if (store != null)
 			{
 				//TODO: we still have to make sure that the API verison is compatible
@@ -138,16 +139,19 @@ namespace FoundationDB.Testing
 				{
 					throw new InvalidOperationException($"Cannot use the global store because its API version ({store.ApiVersion}) is less than our expected version ({this.ProviderOptions.ApiVersion}).");
 				}
+				// the store is owned by the caller and shared across providers: stopping this provider must not dispose it
+				ownsStore = false;
 			}
 			else
-			{ 
+			{
 				// we create our own local store instance, that is not shared
 				store = new FakeDbStore(this.ProviderOptions.ApiVersion);
+				ownsStore = true;
 			}
 
 			try
 			{
-				var db = store.OpenDatabase(this.ProviderOptions.ConnectionOptions.Root, this.ProviderOptions.ConnectionOptions.ReadOnly);
+				var db = store.OpenDatabase(this.ProviderOptions.ConnectionOptions.Root, this.ProviderOptions.ConnectionOptions.ReadOnly, ownsStore);
 
 				if (this.ProviderOptions.DefaultLogHandler != null)
 				{ // enable transaction capture and logging!

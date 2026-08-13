@@ -46,7 +46,7 @@ namespace FoundationDB.Testing
 	using KeyRange = FoundationDB.Storage.KeyRange;
 
 	/// <summary>Simulates a FoundationDB cluster running in-memory in the local process</summary>
-	/// <remarks>This emulator is currently <b>EXPERIMENTAL</b> and may not accurately reproduce the behavior of an actual fdb cluster, most notably due to the absence of network latency!</remarks>
+	/// <remarks>This emulator is currently <b>experimental</b> and may not accurately reproduce the behavior of an actual fdb cluster, most notably due to the absence of network latency!</remarks>
 	[PublicAPI]
 	[DebuggerDisplay("Version={CurrentSnapshotUnsafe.Version}, Count={CurrentSnapshotUnsafe.Data.Count}")]
 	public class FakeDbStore : IFdbDatabaseHandler
@@ -123,10 +123,10 @@ namespace FoundationDB.Testing
 
 						if (!snapshotRead)
 						{
-							// the documented read-your-writes caveat: a REGULAR read converts the chain into a single
+							// the documented read-your-writes caveat: a regular read converts the chain into a single
 							// Set of the read value (semantically neutral for an anchored chain: it applies to the
-							// same result at commit time), and establishes a conflict range on the key IF the value
-							// depended on the database; a SNAPSHOT read observes the value transiently and leaves the
+							// same result at commit time), and establishes a conflict range on the key if the value
+							// depended on the database; a snapshot read observes the value transiently and leaves the
 							// chain to apply over the committed value at commit time (oracle-pinned)
 							this.Mutations.Mark(key.Begin, key.End, Mutation.Set(value));
 							if (readThrough)
@@ -257,8 +257,8 @@ namespace FoundationDB.Testing
 						// Performs a little-endian comparison of byte strings.
 						// If the existing value in the database is not present, the parameter is stored.
 						// The existing value is zero-extended or truncated to the operand length, then both are
-						// compared as UNSIGNED LITTLE-ENDIAN integers (pinned against fdb 7.4: the comparison is
-						// numeric, NOT lexicographic, ByteMin/ByteMax are the lexicographic ones).
+						// compared as unsigned little-endian integers (pinned against fdb 7.4: the comparison is
+						// numeric, not lexicographic, ByteMin/ByteMax are the lexicographic ones).
 						if (previous.IsNull)
 						{
 							return scratch.InternValue(operand);
@@ -272,10 +272,10 @@ namespace FoundationDB.Testing
 					{
 						// Performs a little-endian comparison of byte strings.
 						// If the existing value in the database is not present, the parameter is stored (zero-extending
-						// the missing value instead would make MIN always win with zeros).
+						// the missing value instead would make Min always win with zeros).
 						// The existing value is zero-extended or truncated to the operand length, then both are
-						// compared as UNSIGNED LITTLE-ENDIAN integers (pinned against fdb 7.4: the comparison is
-						// numeric, NOT lexicographic, ByteMin/ByteMax are the lexicographic ones).
+						// compared as unsigned little-endian integers (pinned against fdb 7.4: the comparison is
+						// numeric, not lexicographic, ByteMin/ByteMax are the lexicographic ones).
 						if (previous.IsNull)
 						{
 							return scratch.InternValue(operand);
@@ -421,7 +421,7 @@ namespace FoundationDB.Testing
 				}
 
 				var stacked = Mutation.Atomic(type, value);
-				// note: bounds-aware lookup, because TryGetValue can match a range whose EXCLUSIVE end equals the key
+				// note: bounds-aware lookup, because TryGetValue can match a range whose exclusive end equals the key
 				var mutation = FindCoveringMutation(key.Begin);
 				if (mutation != null && !mutation.IsRange())
 				{ // a single-key entry at this exact key: stack this operation on top of the previous one
@@ -429,8 +429,8 @@ namespace FoundationDB.Testing
 					mutation.Tail = stacked;
 				}
 				else if (mutation != null)
-				{ // the key is covered by an uncommitted cleared RANGE: the atomic applies over the locally-cleared (nil)
-				  // value, and must NOT mutate the shared range entry (it covers other keys), pinned by the RYW fuzzer
+				{ // the key is covered by an uncommitted cleared range: the atomic applies over the locally-cleared (nil)
+				  // value, and must not mutate the shared range entry (it covers other keys)
 					var head = Mutation.Clear();
 					head.Next = stacked;
 					head.Tail = stacked;
@@ -469,7 +469,7 @@ namespace FoundationDB.Testing
 				}
 
 				// slow path: resolve against the merged view (committed snapshot + local uncommitted mutations)
-				// getKey RESULT: skip a CompareAndClear'd is_kv anchor to the nearest content key (FDBV-037)
+				// getKey result: skip a CompareAndClear'd is_kv anchor to the nearest content key
 				var resolved = ResolveMerged(selector, accessSystemKeys, contentSkip: true);
 
 				if (!snapshotRead)
@@ -480,7 +480,7 @@ namespace FoundationDB.Testing
 			}
 
 			/// <summary>Resolves a key selector against the merged view (committed snapshot + local uncommitted mutations), without recording any conflict range.</summary>
-			/// <remarks>This is the ONLY correct selector semantics over pending writes: the onion iterator's per-layer seek is exact just for the 0/+1 offsets the internal pager uses, so range-read bounds resolve here too. <paramref name="contentSkip"/> selects the two fdb semantics: getKey passes <c>true</c> (its RESULT skips a CompareAndClear'd is_kv anchor forward/backward to the nearest content key, FDBV-037); a GetRange begin/end BOUND passes <c>false</c> (it stops at the raw is_kv anchor, FDBV-038 - the merged range scan excludes CAC'd keys on its own, so skipping the bound would over-shrink or over-grow the range).</remarks>
+			/// <remarks>This is the only correct selector semantics over pending writes: the onion iterator's per-layer seek is exact just for the 0/+1 offsets the internal pager uses, so range-read bounds resolve here too. <paramref name="contentSkip"/> selects the two fdb semantics: getKey passes <c>true</c> (it skips a CompareAndClear'd is_kv anchor forward/backward to the nearest content key); a GetRange begin/end bound passes <c>false</c> (it stops at the raw is_kv anchor - the merged range scan excludes CAC'd keys on its own, so skipping the bound would over-shrink or over-grow the range).</remarks>
 			private Key ResolveMerged(Selector selector, bool accessSystemKeys, bool contentSkip)
 			{
 				if (!accessSystemKeys && selector.Key > SpecialKeys.SystemPrefix)
@@ -488,50 +488,44 @@ namespace FoundationDB.Testing
 					throw new FdbException(FdbError.KeyOutsideLegalRange, $"Key selector {selector} requires access to system keys");
 				}
 
-				var merged = GetMergedVisibleKeys(accessSystemKeys);
-
-				// base position: index of the last key <= pivot (orEqual) or < pivot (!orEqual), -1 when none
-				int baseIndex = -1;
-				for (int i = 0; i < merged.Count; i++)
+				// The walk consumes visible keys away from the pivot, in offset order, over the lazy merged view:
+				// offset >= +1 walks ascending over the keys after the anchor position (the pivot itself belongs to
+				// that side only for a !orEqual selector); offset <= 0 walks descending starting at the anchor (the
+				// pivot itself belongs to it only for an orEqual selector). Exhaustion reproduces the index math of
+				// the eager list: past the last visible key clamps into the system range, before the first is empty.
+				//
+				// the is_kv walk positions the anchor (a pending atomic counts as a present boundary
+				// key). fdb getKey is getRange with limit 1 (ReadYourWrites.actor.cpp), so its result is the nearest
+				// content key from the anchor - forward for offset > 0, backward for offset <= 0 - which skips a
+				// CompareAndClear'd key (content-absent though is_kv-present). This content-skip is the getKey result
+				// step only (contentSkip): a GetRange begin/end bound stops at the raw is_kv anchor - the merged range
+				// scan (OnionIterator) already excludes a CAC'd key, so skipping the bound too would drop a content key
+				// below an end bound, or add one below a begin bound. The walk is the is_kv set and content-
+				// present keys are a subset of it, so the skip is a filtered continuation of the same walk.
+				if (selector.Offset > 0)
 				{
-					int cmp = merged[i].CompareTo(selector.Key);
-					if (cmp < 0 || (selector.OrEqual && cmp == 0)) { baseIndex = i; } else { break; }
-				}
-
-				long target = (long) baseIndex + selector.Offset;
-				if (target < 0)
-				{ // before the first visible key
-					return Key.Empty;
-				}
-				if (target >= merged.Count)
-				{ // past the last visible key: clamp like the real cluster does (the walk enters the system range)
+					long remaining = selector.Offset;
+					foreach (var key in EnumerateMergedVisibleKeys(selector.Key, includePivot: !selector.OrEqual, ascending: true, accessSystemKeys))
+					{
+						if (remaining > 1) { remaining--; continue; }
+						if (contentSkip && !IsContentPresentInMergedView(key)) continue;
+						return key;
+					}
+					// past the last visible key: clamp like the real cluster does (the walk enters the system range)
 					return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
 				}
-
-				int index = (int) target;
-
-				// FDBV-037/038: the is_kv walk above positioned the anchor (a pending atomic counts as a present
-				// boundary key). fdb getKey is getRange with limit 1 (ReadYourWrites.actor.cpp), so its RESULT is the
-				// nearest CONTENT key from the anchor - forward for offset > 0, backward for offset <= 0 - which SKIPS
-				// a CompareAndClear'd key (content-absent though is_kv-present). This content-skip is the getKey RESULT
-				// step ONLY (contentSkip): a GetRange begin/end BOUND stops at the raw is_kv anchor - the merged range
-				// scan (OnionIterator) already excludes a CAC'd key, so skipping the bound too would drop a content key
-				// below an end bound, or add one below a begin bound (FDBV-038). merged is the is_kv set and content-
-				// present keys are a subset of it, so this is a filtered scan over merged.
-				if (contentSkip)
+				else
 				{
-					if (selector.Offset > 0)
+					long remaining = 1L - selector.Offset;
+					foreach (var key in EnumerateMergedVisibleKeys(selector.Key, includePivot: selector.OrEqual, ascending: false, accessSystemKeys))
 					{
-						while (index < merged.Count && !IsContentPresentInMergedView(merged[index])) index++;
-						if (index >= merged.Count) return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
+						if (remaining > 1) { remaining--; continue; }
+						if (contentSkip && !IsContentPresentInMergedView(key)) continue;
+						return key;
 					}
-					else
-					{
-						while (index >= 0 && !IsContentPresentInMergedView(merged[index])) index--;
-						if (index < 0) return Key.Empty;
-					}
+					// before the first visible key
+					return Key.Empty;
 				}
-				return merged[index];
 			}
 
 			/// <summary>Marks the read-conflict range implied by a resolved key selector (the range of keys whose change could alter the resolution).</summary>
@@ -590,15 +584,15 @@ namespace FoundationDB.Testing
 			/// </remarks>
 			private void MarkRangeReadConflict(Selector beginSelector, Selector endSelector, Key lowestReturned, Key highestReturned, bool limitHit, bool reversed, bool merged)
 			{
-				// oracle-fitted against the FULL 378-shape x 12-position calibration matrix (the FDBV-029/030/031
-				// loops; zero mismatches): the extent anchors on the PIVOT SPAN [begin pivot (excl when orEqual),
+				// oracle-fitted against the full 378-shape x 12-position calibration matrix (the calibration
+				// loops; zero mismatches): the extent anchors on the pivot span [begin pivot (excl when orEqual),
 				// end pivot (incl when orEqual)) - a proper span records even when it returned nothing (the
 				// phantom rule), a degenerate pivot span records nothing, resolution slack beyond either pivot is
-				// not a dependency. On top of the span: returned keys are always covered; the GAP between a pivot
+				// not a dependency. On top of the span: returned keys are always covered; the gap between a pivot
 				// and the served keys on its side is always covered (a backward begin walk below its pivot, the
 				// reversed serve gap between the end pivot and the highest returned key); a satisfied limit clamps
 				// the far scan bound (forward, under a forward-resolving end); and on a reverse-truncated read the
-				// scan span clamps to the lowest returned key ONLY under a canonical or backward begin (offset
+				// scan span clamps to the lowest returned key only under a canonical or backward begin (offset
 				// <= 1) - a forward begin walk keeps the whole span, down to its pivot bound, a dependency.
 				var beginPivotBound = beginSelector.OrEqual ? beginSelector.Key.GetSuccessor(this.Arena) : beginSelector.Key;
 				var endPivotBound = endSelector.OrEqual ? endSelector.Key.GetSuccessor(this.Arena) : endSelector.Key;
@@ -651,8 +645,8 @@ namespace FoundationDB.Testing
 				}
 			}
 
-			/// <summary>Marks the read conflict of a merged-view read (selector or range): the given extent MINUS the segments the transaction's own INDEPENDENT writes fully determine (a Set, a Clear, a versionstamped set, or an atomic over one of those); a DEPENDENT atomic chain reads through to the committed value, so its segment stays a conflict.</summary>
-			/// <remarks>fdb's read-conflict tracking is scan-based, not presence-based (7.4.6 fdbclient/WriteMap.cpp OperationStack::isDependent): reading over a dependent atomic reads the database for keys AND values alike, so the exemption is identical for selector and range reads - there is no "atomics are local under selector resolution" rule (that under-conflicted every non-CompareAndClear atomic, FDBV-039).</remarks>
+			/// <summary>Marks the read conflict of a merged-view read (selector or range): the given extent minus the segments the transaction's own independent writes fully determine (a Set, a Clear, a versionstamped set, or an atomic over one of those); a dependent atomic chain reads through to the committed value, so its segment stays a conflict.</summary>
+			/// <remarks>fdb's read-conflict tracking is scan-based, not presence-based (7.4.6 fdbclient/WriteMap.cpp OperationStack::isDependent): reading over a dependent atomic reads the database for keys and values alike, so the exemption is identical for selector and range reads - there is no "atomics are local under selector resolution" rule (that under-conflicted every non-CompareAndClear atomic).</remarks>
 			private void MarkMergedRangeReadConflict(Key fromInclusive, Key toExclusive)
 			{
 				var cursor = fromInclusive;
@@ -665,13 +659,13 @@ namespace FoundationDB.Testing
 					if (!mutation.IsKv() && !mutation.IsRange())
 					{
 						// fdb WriteMap OperationStack::isDependent (7.4.6 fdbclient/WriteMap.cpp:49): an own write is
-						// INDEPENDENT - its value is known WITHOUT the committed data, so its segment is subtracted from
+						// independent - its value is known without the committed data, so its segment is subtracted from
 						// the read-conflict range - only when a Set, Clear, or versionstamped set gives the coalesced
 						// stack a DB-free base. A chain of pure atomics (Add/Max/Min/Bit*/Byte*/AppendIfFits/CompareAndClear)
-						// reads THROUGH to the committed value (DEPENDENT) and stays a conflict. fdb's read-conflict
-						// tracking is SCAN-based, not presence-based: reading over a dependent atomic reads the DB whether
+						// reads through to the committed value (dependent) and stays a conflict. fdb's read-conflict
+						// tracking is scan-based, not presence-based: reading over a dependent atomic reads the DB whether
 						// the read returns keys (getKey) or values, so an own atomic never makes a selector read local
-						// (FDBV-039 - the removed atomicsAreLocal exemption wrongly did, catching only CompareAndClear).
+						// (the removed atomicsAreLocal exemption wrongly did, catching only CompareAndClear).
 						// An atomic over an own Clear/Set is independent (the clear/set is the base, WriteMap.cpp:103),
 						// found by scanning the chain for a structural op below the atomic head.
 						bool independent = false;
@@ -705,61 +699,132 @@ namespace FoundationDB.Testing
 				}
 			}
 
-			/// <summary>Finds the mutation entry covering a key (its begin at or before the key, its END strictly after), or null.</summary>
-			/// <remarks>Unlike <c>TryGetValue</c>, this never matches a range whose exclusive end equals the key.</remarks>
+			/// <summary>Finds the mutation entry covering a key (its begin at or before the key, its end strictly after), or null.</summary>
+			/// <remarks>Unlike <c>TryGetValue</c>, this never matches a range whose exclusive end equals the key: an entry
+			/// covers the key exactly when it intersects the single-key range <c>[key, key+\0)</c>, which the dictionary
+			/// answers with a seek instead of a scan of the whole mutation set.</remarks>
 			private Mutation? FindCoveringMutation(Key key)
 			{
-				foreach (var entry in this.Mutations.IterateOrdered())
-				{
-					if (entry.Begin > key) break;
-					if (entry.End > key) return entry.Value;
-				}
-				return null;
+				return this.Mutations.Intersect(key, key.GetSuccessor(this.Arena), out var entry) ? entry.Value : null;
 			}
 
-			/// <summary>Computes the ordered list of keys visible in the merged view (committed snapshot + local mutations), without any side effect on the mutation log or the conflict ranges.</summary>
-			private List<Key> GetMergedVisibleKeys(bool accessSystemKeys)
+			/// <summary>Upper fence for an ascending merged walk: strictly above every key the store can hold (the system space ends at <c>\xFF\xFF</c>).</summary>
+			private static readonly Key MergedWalkUpperFence = new(Slice.FromByteString("\xFF\xFF\xFF"));
+
+			/// <summary>Lazily enumerates the keys visible in the merged view (committed snapshot + local mutations), in key order, walking away from <paramref name="pivot"/>.</summary>
+			/// <remarks>The sources are the committed keys and the local mutation entry begins (the only keys a pending
+			/// mutation can create), merged in order with duplicates collapsed; each candidate is then filtered by the
+			/// is_kv visibility rules (<see cref="IsVisibleInMergedView"/>). The laziness is the point: a selector
+			/// resolution consumes only its offset + content-skip neighborhood instead of materializing every visible
+			/// key of the store.</remarks>
+			private IEnumerable<Key> EnumerateMergedVisibleKeys(Key pivot, bool includePivot, bool ascending, bool accessSystemKeys)
 			{
-				var candidates = new SortedSet<Key>();
-				foreach (var kv in this.Inner.Data.IterateOrdered())
+				using var committed = EnumerateCommittedKeysFrom(pivot, includePivot, ascending).GetEnumerator();
+				using var mutations = EnumerateMutationBeginsFrom(pivot, includePivot, ascending).GetEnumerator();
+				bool hasCommitted = committed.MoveNext();
+				bool hasMutation = mutations.MoveNext();
+				while (hasCommitted || hasMutation)
 				{
-					if (!accessSystemKeys && kv.Key.IsSystemKey()) continue;
-					candidates.Add(kv.Key);
-				}
-				foreach (var entry in this.Mutations.IterateOrdered())
-				{
-					var mutation = entry.Value;
-					if (mutation is null || mutation.Op is Operation.Invalid) continue;
-					if (mutation.Op is Operation.Clear or Operation.ClearRange && mutation.Next is null) continue; // pure clears never create keys; Clear-HEADED CHAINS (clear then atomic) can
-					var key = entry.Begin;
+					Key key;
+					if (!hasMutation || (hasCommitted && (ascending ? committed.Current.CompareTo(mutations.Current) <= 0 : committed.Current.CompareTo(mutations.Current) >= 0)))
+					{
+						key = committed.Current;
+						bool duplicate = hasMutation && key.CompareTo(mutations.Current) == 0;
+						hasCommitted = committed.MoveNext();
+						if (duplicate) hasMutation = mutations.MoveNext();
+					}
+					else
+					{
+						key = mutations.Current;
+						hasMutation = mutations.MoveNext();
+					}
 					if (!accessSystemKeys && key.IsSystemKey()) continue;
-					candidates.Add(key);
+					if (IsVisibleInMergedView(key)) yield return key;
 				}
-
-				var visible = new List<Key>(candidates.Count);
-				foreach (var key in candidates)
-				{
-					if (IsVisibleInMergedView(key)) visible.Add(key);
-				}
-				return visible;
 			}
 
-			/// <summary>Checks whether a key is a PRESENT boundary key for selector / range-bound resolution (fdb 7.4.6 <c>RYWIterator::is_kv()</c>): the offset walk counts the KEY, not its coalesced value.</summary>
-			/// <remarks>This is the selector-walk present-set (used only by <see cref="GetMergedVisibleKeys"/> -> <see cref="ResolveMerged"/>), NOT read content. A key with a pending write is present unless its net effect is a pure clear (<c>CLEARED_RANGE</c>). Read CONTENT (which excludes a CompareAndClear'd key) is a separate scan.</remarks>
+			/// <summary>Enumerates the committed keys away from <paramref name="pivot"/>, in walk order.</summary>
+			private IEnumerable<Key> EnumerateCommittedKeysFrom(Key pivot, bool includePivot, bool ascending)
+			{
+				if (ascending)
+				{
+					var begin = includePivot ? pivot : pivot.GetSuccessor(this.Arena);
+					foreach (var kv in this.Inner.Data.Scan(begin, MergedWalkUpperFence, reversed: false))
+					{
+						yield return kv.Key;
+					}
+				}
+				else
+				{
+					var end = includePivot ? pivot.GetSuccessor(this.Arena) : pivot;
+					foreach (var kv in this.Inner.Data.Scan(Key.Empty, end, reversed: true))
+					{
+						yield return kv.Key;
+					}
+				}
+			}
+
+			/// <summary>Enumerates the begins of the key-creating local mutations away from <paramref name="pivot"/>, in walk order.</summary>
+			private IEnumerable<Key> EnumerateMutationBeginsFrom(Key pivot, bool includePivot, bool ascending)
+			{
+				if (this.Mutations.Count == 0) yield break;
+				var it = this.Mutations.GetIterator();
+				var probe = new ColaRangeDictionary<Key, Mutation>.Entry(pivot, pivot, null);
+				if (ascending)
+				{
+					// Seek lands on the last begin at/before the pivot: at most one stale element to step over
+					if (!it.Seek(probe, orEqual: true))
+					{
+						it.SeekFirst();
+					}
+					for (var entry = it.Current; entry is not null; entry = it.Next() ? it.Current : null)
+					{
+						var begin = entry.Begin;
+						int cmp = begin.CompareTo(pivot);
+						if (cmp < 0 || (cmp == 0 && !includePivot)) continue;
+						if (IsKeyCreatingMutation(entry.Value)) yield return begin;
+					}
+				}
+				else
+				{
+					if (!it.Seek(probe, orEqual: includePivot))
+					{ // every begin is above the walk's start: nothing on this side
+						yield break;
+					}
+					for (var entry = it.Current; entry is not null; entry = it.Previous() ? it.Current : null)
+					{
+						var begin = entry.Begin;
+						int cmp = begin.CompareTo(pivot);
+						if (cmp > 0 || (cmp == 0 && !includePivot)) continue;
+						if (IsKeyCreatingMutation(entry.Value)) yield return begin;
+					}
+				}
+			}
+
+			/// <summary>Whether a pending mutation can CREATE its begin key in the merged view: pure clears never do; clear-headed chains (clear then atomic) can.</summary>
+			private static bool IsKeyCreatingMutation(Mutation? mutation)
+			{
+				if (mutation is null || mutation.Op is Operation.Invalid) return false;
+				if (mutation.Op is Operation.Clear or Operation.ClearRange && mutation.Next is null) return false;
+				return true;
+			}
+
+			/// <summary>Checks whether a key is a present boundary key for selector / range-bound resolution (fdb 7.4.6 <c>RYWIterator::is_kv()</c>): the offset walk counts the key, not its coalesced value.</summary>
+			/// <remarks>This is the selector-walk present-set (used only by <see cref="GetMergedVisibleKeys"/> -> <see cref="ResolveMerged"/>), not read content. A key with a pending write is present unless its net effect is a pure clear (<c>CLEARED_RANGE</c>). Read content (which excludes a CompareAndClear'd key) is a separate scan.</remarks>
 			private bool IsVisibleInMergedView(Key key)
 			{
 				var mutation = FindCoveringMutation(key);
 				if (mutation != null)
 				{
 					if (mutation.IsKv()) return !mutation.Parameter.IsNull; // a single-key Clear (CLEARED_RANGE) is IsKv() with a Nil parameter; a Set (INDEPENDENT_WRITE) is present
-					if (mutation.IsRange()) return false;                   // a ClearRange (CLEARED_RANGE) is EMPTY
+					if (mutation.IsRange()) return false;                   // a ClearRange (CLEARED_RANGE) is empty
 					if (mutation.IsAtomic())
 					{
 						// is_kv semantics: a pending atomic is a DEPENDENT_WRITE (or an INDEPENDENT_WRITE when it
-						// coalesces over a cleared span, fdb WriteMap.cpp), both classified KV = a PRESENT boundary key.
-						// The walk counts the KEY, not its coalesced value, so a CompareAndClear that would erase the key
+						// coalesces over a cleared span, fdb WriteMap.cpp), both classified KV = a present boundary key.
+						// The walk counts the key, not its coalesced value, so a CompareAndClear that would erase the key
 						// (its value coalesces to absent) STILL counts for resolution; only read CONTENT (a separate
-						// scan via the coalesced value) drops it. Do not coalesce here (FDBV-036).
+						// scan via the coalesced value) drops it. Do not coalesce here.
 						return true;
 					}
 					return true;
@@ -767,7 +832,7 @@ namespace FoundationDB.Testing
 				return this.Inner.ContainsKey(key);
 			}
 
-			/// <summary>Checks whether a key is present in the merged read CONTENT: the coalesced atomic chain is non-null. A CompareAndClear'd key is absent from content even though it is a present boundary key for the is_kv walk (<see cref="IsVisibleInMergedView"/>) - this is the kv() vs is_kv() split (FDBV-037).</summary>
+			/// <summary>Checks whether a key is present in the merged read content: the coalesced atomic chain is non-null. A CompareAndClear'd key is absent from content even though it is a present boundary key for the is_kv walk (<see cref="IsVisibleInMergedView"/>) - this is the kv() vs is_kv() split.</summary>
 			private bool IsContentPresentInMergedView(Key key)
 			{
 				var mutation = FindCoveringMutation(key);
@@ -813,7 +878,7 @@ namespace FoundationDB.Testing
 
 					if (!snapshotRead)
 					{
-						// note: a reverse chunk is ordered high-to-low, so res.Last is its LOWEST key
+						// note: a reverse chunk is ordered high-to-low, so res.Last is its lowest key
 						MarkRangeReadConflict(beginInclusive, endExclusive,
 							lowestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.Last : res.First) : default,
 							highestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.First : res.Last) : default,
@@ -842,10 +907,10 @@ namespace FoundationDB.Testing
 					}
 #endif
 
-				// resolve BOTH bounds on the merged view first (ResolveMerged is the only correct selector
+				// resolve both bounds on the merged view first (ResolveMerged is the only correct selector
 					// semantics over pending writes; the onion iterator's per-layer Seek is exact just for the
 					// 0/+1 offsets used below to position the scan), then scan between the resolved keys
-					// a range BOUND resolves to the raw is_kv anchor (contentSkip: false, FDBV-038); the scan below
+					// a range bound resolves to the raw is_kv anchor (contentSkip: false); the scan below
 					// excludes CAC'd keys on its own, so a content-skipped bound would over-shrink/over-grow the range
 					var endKey = ResolveMerged(endExclusive, accessSystemKeys, contentSkip: false);
 					if (endKey.IsNull)
@@ -911,19 +976,19 @@ namespace FoundationDB.Testing
 						MarkRangeReadConflict(beginInclusive, endExclusive,
 							lowestReturned: lowest,
 							highestReturned: res.Count > 0 ? new Key(res[reversed ? 0 : ^1].Key) : default,
-							limitHit: limit != 0 && res.Count == limit, // NOT hasMore: a limit satisfied exactly at the end of the data clamps the result all the same
+							limitHit: limit != 0 && res.Count == limit, // not hasMore: a limit satisfied exactly at the end of the data clamps the result all the same
 							reversed: reversed,
 							merged: true);
 
 						// the documented read-your-writes caveat, range flavor: an atomic chain whose key the read
-						// actually RETURNED is converted into a set of the read value (keys the scan merely walked
+						// actually returned is converted into a set of the read value (keys the scan merely walked
 						// past keep their chain, and apply over the committed value at commit time); this runs AFTER
 						// the conflict marking above, which must see the chains intact
 						foreach (var kv in res)
 						{
 							if (FindCoveringMutation(new Key(kv.Key))?.IsAtomic() == true)
 							{
-								// DETACH the key and value (heap copies) before they enter the mutation log: a
+								// Detach the key and value (heap copies) before they enter the mutation log: a
 								// null-arena wrapper around arena-backed bytes would be waved through the commit-time
 								// interning boundary (null means "immutable, safe to keep"), and the committed store
 								// would end up aliasing recycled transaction-arena memory
@@ -967,7 +1032,7 @@ namespace FoundationDB.Testing
 
 					if (!snapshotRead)
 					{
-						// note: a reverse read reports First as its HIGHEST key, so the lowest returned is Last (same as GetRange)
+						// note: a reverse read reports First as its highest key, so the lowest returned is Last (same as GetRange)
 						MarkRangeReadConflict(beginInclusive, endExclusive,
 							lowestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.Last : res.First) : default,
 							highestReturned: res.Count > 0 ? new Key(options.IsReversed ? res.First : res.Last) : default,
@@ -1048,7 +1113,7 @@ namespace FoundationDB.Testing
 							{
 								throw new FdbException(FdbError.NotCommitted, $"Read conflict for `{FdbKey.Dump(x.Begin.Span)}` -> `{FdbKey.Dump(x.End.Span)}` @ {this.Version} by `{FdbKey.Dump(match.Begin.Span)}` -> `{FdbKey.Dump(match.End.Span)}` @ {match.Value}!");
 							}
-							// keep scanning: the report must contain EVERY conflicting read range, not just the first
+							// keep scanning: the report must contain every conflicting read range, not just the first
 							(conflicting ??= [ ]).Add(new(x.Begin, x.End));
 						}
 					}
@@ -1076,11 +1141,11 @@ namespace FoundationDB.Testing
 				var stamp = MakeVersionStamp(commitVersion, 0);
 				Kenobi($"$ #{this.Id} apply trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}");
 
-				// a versionstamped KEY whose placeholder sat inside a clear-range submitted EARLIER in this same
+				// a versionstamped key whose placeholder sat inside a clear-range submitted earlier in this same
 				// transaction: the clear was split around the placeholder position, but completing the stamp moves
 				// the key to its final slot, which can land in a remainder of that very clear. Since the clear was
 				// submitted first, the later stamped write must survive it - so defer these completions until after
-				// every clear-range has been applied, out of reach of the remainders. (versionstamp fuzz FDBV-034)
+				// every clear-range has been applied, out of reach of the remainders.
 				List<(Key Key, Value Value)>? deferredStampedKeys = null;
 
 				foreach (var entry in this.Mutations.IterateOrdered())
@@ -1136,11 +1201,11 @@ namespace FoundationDB.Testing
 
 						Kenobi($"$$ #{this.Id} atomic {mutation}");
 
-						// apply the WHOLE chain in submission order (api 520+ stamp semantics): a stamped KEY
+						// apply the whole chain in submission order (api 520+ stamp semantics): a stamped key
 						// materializes immediately against the commit stamp (identical placeholders complete to the
-						// same key, so the last submitted wins, like any other mutation), a stamped VALUE completes
+						// same key, so the last submitted wins, like any other mutation), a stamped value completes
 						// into the running value, and everything else coalesces on top. The overlay key of a stamped
-						// KEY (placeholder + offset suffix) is synthetic and never lands in the committed data; the
+						// key (placeholder + offset suffix) is synthetic and never lands in the committed data; the
 						// only non-stamped links such a chain can carry are Clear anchors from a covering range wipe.
 						var value = kv.Value;
 						bool stampedKey = false;
@@ -1201,7 +1266,7 @@ namespace FoundationDB.Testing
 							// the synthetic overlay key never lands; only the completed key does. If this chain was
 							// anchored by an earlier clear (a covered wipe), that clear was split around the placeholder
 							// and its remainders are still to be applied below - defer the completed key past them so a
-							// remainder cannot re-wipe the relocated slot (FDBV-034). Uncovered stamped keys land now.
+							// remainder cannot re-wipe the relocated slot. Uncovered stamped keys land now.
 							if (clearHeaded)
 							{
 								(deferredStampedKeys ??= new()).Add((stampedKeyDst, stampedKeyVal));
@@ -1229,7 +1294,7 @@ namespace FoundationDB.Testing
 				}
 
 				// completed stamped keys that were covered by an earlier clear land now, after every clear-range
-				// remainder has been applied - so a remainder split off the covering wipe cannot re-wipe them (FDBV-034)
+				// remainder has been applied - so a remainder split off the covering wipe cannot re-wipe them
 				if (deferredStampedKeys != null)
 				{
 					foreach (var (k, v) in deferredStampedKeys)
@@ -1349,7 +1414,7 @@ namespace FoundationDB.Testing
 		/// <summary>Value seeded under <see cref="SpecialKeys.SystemRoot"/> in every fresh store, whichever backend</summary>
 		protected static readonly Slice SystemRootSentinelValue = Slice.FromString("You shall not pass!");
 
-		/// <summary>Shared initialization for backend subclasses: the derived constructor MUST call <see cref="InitializeSnapshot"/> (with a snapshot seeding the same system keys a fresh in-memory store gets) before the store is used.</summary>
+		/// <summary>Shared initialization for backend subclasses: the derived constructor must call <see cref="InitializeSnapshot"/> (with a snapshot seeding the same system keys a fresh in-memory store gets) before the store is used.</summary>
 		protected FakeDbStore(int apiVersion, int protocolVersion, TimeProvider? time)
 		{
 			if (protocolVersion < MIN_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be less than the minimum supported version");
@@ -1734,7 +1799,7 @@ namespace FoundationDB.Testing
 									if (!w.Value.Equals(updatedValue.Slice))
 									{
 										if (this.BuggifyState is not null && this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
-										{ // buggify: the deferred check leaves the node registered with its ORIGINAL baseline and read version, so a later commit still differing from the baseline fires it (self-heal), and only a net-reverted change stays pending
+										{ // buggify: the deferred check leaves the node registered with its original baseline and read version, so a later commit still differing from the baseline fires it (self-heal), and only a net-reverted change stays pending
 											Kenobi($"WWW watch({w.Key}) check deferred by buggify at commit {commitVersion}");
 											continue;
 										}
@@ -1830,7 +1895,11 @@ namespace FoundationDB.Testing
 
 		public IFdbTenantHandler OpenTenant(FdbTenantName name) => throw new NotImplementedException();
 
-		public FdbDatabase OpenDatabase(FdbPath? rootPath, bool readOnly)
+		/// <summary>Opens a database on this store.</summary>
+		/// <param name="rootPath">Root path of the database, or <see langword="null"/> for the cluster root.</param>
+		/// <param name="readOnly">Whether the database is read-only.</param>
+		/// <param name="ownsStore">When <see langword="true"/> (the default, for a standalone store), disposing the returned database disposes this store. When <see langword="false"/>, the store is shared by several databases (a provider opened it from <see cref="FakeDbProviderOptions.Store"/>), and disposing one database must leave the store alive for the others; the store's owner disposes it.</param>
+		public FdbDatabase OpenDatabase(FdbPath? rootPath, bool readOnly, bool ownsStore = true)
 		{
 			if (this.IsClosed) throw new ObjectDisposedException(this.GetType().Name);
 			if (this.ApiVersion > this.ProtocolVersion)
@@ -1842,7 +1911,34 @@ namespace FoundationDB.Testing
 			var root = new FdbDirectorySubspaceLocation(rootPath ?? FdbPath.Root);
 			bool hasPartition = root.Path.Count != 0;
 
-			return FdbDatabase.Create(this, directory, root, !hasPartition && readOnly, this.LifeTime.Token);
+			IFdbDatabaseHandler handler = ownsStore ? this : new NonOwningHandler(this);
+			return FdbDatabase.Create(handler, directory, root, !hasPartition && readOnly, this.LifeTime.Token);
+		}
+
+		/// <summary>Handler that shares a <see cref="FakeDbStore"/> without owning it: its <see cref="Dispose"/> is a no-op, so one database's disposal leaves the shared store alive for the other databases. Every other member forwards to the store, so the shared store still fails all databases when its own owner disposes it (which cancels the shared lifetime), matching a real cluster where one database handle's disposal never severs another's connection.</summary>
+		private sealed class NonOwningHandler : IFdbDatabaseHandler
+		{
+			public NonOwningHandler(IFdbDatabaseHandler inner) => this.Inner = inner;
+
+			private IFdbDatabaseHandler Inner { get; }
+
+			public string? ClusterFile => this.Inner.ClusterFile;
+			public string? ConnectionString => this.Inner.ConnectionString;
+			public bool IsInvalid => this.Inner.IsInvalid;
+			public bool IsClosed => this.Inner.IsClosed;
+			public void SetOption(FdbDatabaseOption option, ReadOnlySpan<byte> data) => this.Inner.SetOption(option, data);
+			public IFdbTransactionHandler CreateTransaction(FdbOperationContext context) => this.Inner.CreateTransaction(context);
+			public IFdbTenantHandler OpenTenant(FdbTenantName name) => this.Inner.OpenTenant(name);
+			public Task RebootWorkerAsync(ReadOnlySpan<char> name, bool check, int duration, CancellationToken ct) => this.Inner.RebootWorkerAsync(name, check, duration, ct);
+			public Task ForceRecoveryWithDataLossAsync(ReadOnlySpan<char> dcId, CancellationToken ct) => this.Inner.ForceRecoveryWithDataLossAsync(dcId, ct);
+			public Task CreateSnapshotAsync(ReadOnlySpan<char> uid, ReadOnlySpan<char> snapCommand, CancellationToken ct) => this.Inner.CreateSnapshotAsync(uid, snapCommand, ct);
+			public Task<FdbProtocolVersion> GetServerProtocolVersionAsync(FdbProtocolVersion expectedVersion, CancellationToken ct) => this.Inner.GetServerProtocolVersionAsync(expectedVersion, ct);
+			public Task<Slice> GetClientStatus(CancellationToken ct) => this.Inner.GetClientStatus(ct);
+			public int GetApiVersion() => this.Inner.GetApiVersion();
+			public int GetMaxApiVersion() => this.Inner.GetMaxApiVersion();
+			public double GetMainThreadBusyness() => this.Inner.GetMainThreadBusyness();
+
+			public void Dispose() { } // non-owning: the store's owner disposes the store, not an individual database
 		}
 
 		#region IFdbDatabaseHandler...
@@ -1866,7 +1962,7 @@ namespace FoundationDB.Testing
 
 		public virtual IFdbTransactionHandler CreateTransaction(FdbOperationContext context)
 		{
-			// closes the FL-15 generic boundary for this backend: the whole handler monomorphizes over the ColaStore cursor
+			// closes the generic boundary for this backend: the whole handler monomorphizes over the ColaStore cursor
 			return new TransactionHandler<ColaCommittedCursor>(this, context);
 		}
 
@@ -2741,7 +2837,7 @@ namespace FoundationDB.Testing
 			public Task<string[]> GetAddressesForKeyAsync(ReadOnlySpan<byte> key, CancellationToken ct)
 			{
 				// in memory => fake a single storage process. Starting at API level 630 (IncludePortInAddress
-				// becomes the default) the real client returns "IP:PORT" (or "IP:PORT:tls"); before that, just "IP".
+				// becomes the default) the real client returns "IP:PORT" (or "IP:PORT:tls"). Before that, just "IP".
 				var address = this.Store.ApiVersion >= 630 ? "127.0.0.1:4500" : "127.0.0.1";
 				return !ct.IsCancellationRequested ? Task.FromResult<string[]>([ address ]) : Task.FromCanceled<string[]>(ct);
 			}
@@ -2886,7 +2982,7 @@ namespace FoundationDB.Testing
 			/// GET = 25 + 2k, SET = 69 + 3k + v, CLEAR = 50 + 4k, CLEARRANGE = 68 + 2(b+e), ATOMIC = 69 + 3k + p.</summary>
 			/// <remarks>Where FakeDb cannot know what the native client would do (reads served locally by the RYW layer are
 			/// not accounted natively; selector/range read formulas are unprobed), it accounts anyway: the invariant that
-			/// matters is to never UNDER-estimate, batching loops flush on this value, and an underestimate would produce
+			/// matters is to never under-estimate, batching loops flush on this value, and an underestimate would produce
 			/// an oversized commit that fails deterministically on every retry.</remarks>
 			private long m_approximateSize;
 
@@ -2993,14 +3089,14 @@ namespace FoundationDB.Testing
 						}
 
 						// realistic-but-virtual retry backoff: scheduled on the store's TimeProvider, so a fake clock
-						// advances it with everything else (and a real backoff costs ZERO real time under virtual time).
+						// advances it with everything else (and a real backoff costs zero real time under virtual time).
 						// The default policy is no wait (RetryDelayMaximum == 0), so normal tests retry instantly - a
 						// "broken cluster" test raises FakeDbStore.RetryDelayMaximum to emulate recovery timing.
 						var maximum = this.Store.RetryDelayMaximum;
 						if (maximum > TimeSpan.Zero)
 						{
 							if (this.OptionMaxRetryDelay > 0)
-							{ // the client's MaxRetryDelay option only TIGHTENS the store's cap (it never enables the backoff)
+							{ // the client's MaxRetryDelay option only tightens the store's cap (it never enables the backoff)
 								var cap = TimeSpan.FromMilliseconds(this.OptionMaxRetryDelay);
 								if (cap < maximum) maximum = cap;
 							}
@@ -3142,15 +3238,15 @@ namespace FoundationDB.Testing
 				}
 
 				// setup "outer": position at the first entry that can affect keys at/after the pivot.
-				// Clear/ClearRange entries are NEVER skipped: the merge consumes them as masking directives over the inner layer.
+				// Clear/ClearRange entries are never skipped: the merge consumes them as masking directives over the inner layer.
 				if (this.Outer.Seek(new(selector.Key, selector.Key, null), selector.OrEqual))
 				{ // positioned at the last entry beginning at/before the pivot
 					this.OuterState = STATE_AVAILABLE;
 					Kenobi($"*** #{this.Id} outer: {this.Outer.Current}");
 					if (selector.Offset > 0)
 					{
-						// move past the reference entry, UNLESS it is a cleared range covering keys strictly beyond the
-						// pivot (it still masks them); a point entry AT the pivot has End == successor(pivot) and must
+						// move past the reference entry, unless it is a cleared range covering keys strictly beyond the
+						// pivot (it still masks them); a point entry at the pivot has End == successor(pivot) and must
 						// be stepped past, or an end selector like FirstGreaterThan(pivot) would resolve to the pivot itself
 						var entry = this.Outer.Current;
 						if (entry is null || entry.Value?.Op is not (Operation.ClearRange or Operation.Clear) || !(entry.End > selector.Key.GetSuccessor(this.Arena)))
@@ -3467,7 +3563,7 @@ namespace FoundationDB.Testing
 			/// <summary>One-shot flag: the next successful commit applies its writes but then loses the acknowledgement (the maybe-committed shape).</summary>
 			private bool LoseNextAck { get; set; }
 
-			/// <summary>Arms a single injection: the NEXT transaction whose commit applies reports the maybe-committed outcome. The writes ARE applied. With an idempotency id set, the client resolves the outcome to success and the handler is not re-run; without one, the commit surfaces <see cref="FdbError.CommitUnknownResult"/> and the retry loop re-runs the handler on top of its own landed writes.</summary>
+			/// <summary>Arms a single injection: the next transaction whose commit applies reports the maybe-committed outcome. The writes are applied. With an idempotency id set, the client resolves the outcome to success and the handler is not re-run; without one, the commit surfaces <see cref="FdbError.CommitUnknownResult"/> and the retry loop re-runs the handler on top of its own landed writes.</summary>
 			public void LoseNextCommitAck() => this.LoseNextAck = true;
 
 			/// <summary>Consumes the one-shot <see cref="LoseNextCommitAck"/> arming (returns <see langword="true"/> at most once per arming).</summary>
@@ -3506,11 +3602,11 @@ namespace FoundationDB.Testing
 				}
 			}
 
-			/// <summary>Injects an immediate spurious fire of every watch registered on <paramref name="key"/>, then unregisters them (the FDBV-026 per-key fan-out shape).</summary>
+			/// <summary>Injects an immediate spurious fire of every watch registered on <paramref name="key"/>, then unregisters them (the per-key fan-out shape).</summary>
 			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
 			/// <returns>The number of watches fired (0 when no watch was armed on the key: a test can assert the injection landed).</returns>
 			/// <remarks>This is exactly the real-client entanglement shape - one stale-armed sibling dragging every co-registered watch
-			/// on the key - and degenerates to a single spurious fire when one watch is registered. The watched value is NOT changed,
+			/// on the key - and degenerates to a single spurious fire when one watch is registered. The watched value is not changed,
 			/// so a correct consumer re-reads and observes no change.</remarks>
 			public int FireWatches(Slice key)
 			{
@@ -3524,7 +3620,7 @@ namespace FoundationDB.Testing
 					this.Store.ActiveWatches.Remove(key);
 				}
 
-				// trigger OUTSIDE the lock, like the commit path does
+				// trigger outside the lock, like the commit path does
 				foreach (var node in nodes)
 				{
 					node.Trigger();
@@ -3532,7 +3628,7 @@ namespace FoundationDB.Testing
 				return nodes.Count;
 			}
 
-			/// <summary>Arms a one-shot deferred watch check for <paramref name="key"/>: the next commit-time check that would fire a watch on the key is skipped, leaving the watch registered with its original baseline (the FDBV-027 missed-fire shape).</summary>
+			/// <summary>Arms a one-shot deferred watch check for <paramref name="key"/>: the next commit-time check that would fire a watch on the key is skipped, leaving the watch registered with its original baseline (the missed-fire shape).</summary>
 			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
 			/// <remarks>
 			/// <para>This reproduces the real mechanism, not just the symptom. The watch stack is level-triggered against the expected
@@ -3551,7 +3647,7 @@ namespace FoundationDB.Testing
 				}
 			}
 
-			/// <summary>Schedules a spurious fire of the watches on <paramref name="key"/> after <paramref name="delay"/> elapses on the store clock (the timed variant of <see cref="FireWatches"/>, BG-5).</summary>
+			/// <summary>Schedules a spurious fire of the watches on <paramref name="key"/> after <paramref name="delay"/> elapses on the store clock (the timed variant of <see cref="FireWatches"/>).</summary>
 			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
 			/// <param name="delay">Delay measured on <see cref="FakeDbStore.Time"/>.</param>
 			/// <remarks>Deterministic only when the store runs on an injectable clock (e.g. a <c>FakeTimeProvider</c>): the test advances
@@ -3637,7 +3733,7 @@ namespace FoundationDB.Testing
 
 		/// <summary>Seeded configuration for automatic watch buggify (see <see cref="FakeDbBuggify.Chaos"/>): every commit may inject a spurious fire or defer a watch check, deterministically under the seed.</summary>
 		/// <remarks>
-		/// <para>Decisions are pure deterministic hashes of (<see cref="Seed"/>, commit version, key), NOT draws from a stateful PRNG,
+		/// <para>Decisions are pure deterministic hashes of (<see cref="Seed"/>, commit version, key), not draws from a stateful PRNG,
 		/// so a chaos run is a pure function of (seed, transaction schedule) and never depends on hash-table iteration order - it replays
 		/// byte-for-byte. Choose a seed derived from the test name so each test gets a stable, distinct injection profile.</para>
 		/// <para>Both modelled classes stay inside the watch contract: the spurious fire is always permitted, and the deferred check only
@@ -3657,10 +3753,10 @@ namespace FoundationDB.Testing
 			/// <summary>Seed that fixes the whole injection profile.</summary>
 			public int Seed { get; }
 
-			/// <summary>Probability in [0, 1] that a commit injects a per-key fan-out spurious fire on one armed key (the FDBV-026 shape).</summary>
+			/// <summary>Probability in [0, 1] that a commit injects a per-key fan-out spurious fire on one armed key.</summary>
 			public double SpuriousFireRate { get; init; } = 0.25;
 
-			/// <summary>Probability in [0, 1] that a commit-time watch check is deferred, i.e. skipped this commit (the FDBV-027 shape).</summary>
+			/// <summary>Probability in [0, 1] that a commit-time watch check is deferred, i.e. skipped this commit.</summary>
 			public double DeferredCheckRate { get; init; } = 0.25;
 
 			internal bool ShouldSpuriousFire(long commitVersion) => Fraction(Mix(this.Seed, commitVersion, default, SaltSpurious)) < this.SpuriousFireRate;
