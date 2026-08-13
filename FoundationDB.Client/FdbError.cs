@@ -114,7 +114,7 @@ namespace FoundationDB.Client
 		ConnectionUnreferenced = 1048,
 		/// <summary>Connection closed after idle timeout</summary>
 		ConnectionIdle = 1049,
-		/// <summary>The disk queue adpater reset</summary>
+		/// <summary>The disk queue adapter reset</summary>
 		DiskAdapterReset = 1050,
 		/// <summary>Batch GRV request rate limit exceeded</summary>
 		BatchTransactionThrottled = 1051,

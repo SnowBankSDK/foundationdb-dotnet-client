@@ -33,6 +33,19 @@ namespace FoundationDB.Client.Tests
 	public sealed class FdbErrorMessageFacts
 	{
 
+		[OneTimeSetUp]
+		public void PinNativeLibrary()
+		{
+			// pin the client library this repo redistributes before the first interop call: default probing
+			// can fall back to an older system-wide install (ex: a 7.3 client from PATH), and the sweep would
+			// then compare the table against the wrong client's messages
+			var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
+			if (probe.Path != null)
+			{
+				Fdb.Options.NativeLibPath = probe.Path;
+			}
+		}
+
 		/// <summary>Every code of this build's <see cref="FdbError"/> enum answers from the table, with the exact <c>fdb_get_error</c> text</summary>
 		[Test]
 		public void Test_Managed_Message_Table_Matches_The_Native_Client()
