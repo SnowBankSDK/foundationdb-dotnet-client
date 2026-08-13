@@ -1166,6 +1166,21 @@ namespace SnowBank.Data.Tuples.Tests
 				Assert.That(TuPack.DecodeKey<BigInteger>(Slice.FromHexa("0B EC FE 99 E9 38 7E 6C D8 68 E5 F9 7E 3A 99 64 8E DE 4A 00 FE")), Is.EqualTo(-p3));
 				Assert.That(TuPack.DecodeKey<BigInteger>(Slice.FromHexa("0B DD FB 2A 14 F9 45 25 64 51 9E E3 CB 19 85 C7 6C F1 05 A9 9C 09 94 F6 1C CA D7 47 11 EF 17 69 BC AA D3 DE")), Is.EqualTo(-p4));
 			});
+
+			// A big integer that is NOT the first element decodes from a non-zero cursor.
+			// The reader must check the type byte at the cursor, not at buffer[0] (the first element's byte).
+			Assert.Multiple(() =>
+			{
+				var pos = BigInteger.Parse("523347633027360537213687137");
+				var neg = -pos;
+
+				// (prefix, bigint): the "A" prefix packs to <02>41<00>, so buffer[0] is 0x02, not the big-integer marker.
+				var packedPos = TuPack.EncodeKey("A", pos);
+				var packedNeg = TuPack.EncodeKey("A", neg);
+
+				Assert.That(TuPack.DecodeKey<string, BigInteger>(packedPos), Is.EqualTo(("A", pos)));
+				Assert.That(TuPack.DecodeKey<string, BigInteger>(packedNeg), Is.EqualTo(("A", neg)));
+			});
 		}
 
 

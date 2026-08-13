@@ -145,7 +145,7 @@ namespace SnowBank.Data.Tuples.Binary
 				goto too_small;
 			}
 
-			Contract.Debug.Assert(buffer[0] is TupleTypes.PositiveBigInteger);
+			Contract.Debug.Assert(buffer[start] is TupleTypes.PositiveBigInteger);
 
 			int len = buffer[start + 1];
 			end = checked(start + 2 + len);
@@ -181,7 +181,7 @@ namespace SnowBank.Data.Tuples.Binary
 				goto too_small;
 			}
 
-			Contract.Debug.Assert(buffer[0] is TupleTypes.NegativeBigInteger);
+			Contract.Debug.Assert(buffer[start] is TupleTypes.NegativeBigInteger);
 
 			int len = buffer[start + 1];
 			if (len == 0) goto too_small;
