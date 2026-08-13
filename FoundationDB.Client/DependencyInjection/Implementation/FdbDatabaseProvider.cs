@@ -158,6 +158,28 @@ namespace FoundationDB.DependencyInjection
 			}, this.LifeTime.Token);
 		}
 
+		/// <summary>Starts a new connection attempt if the previous one has failed</summary>
+		/// <remarks>
+		/// <para>Without this, the first failed <see cref="Fdb.OpenAsync(FdbConnectionOptions,CancellationToken)"/> would poison the provider for the life of the process: every later call would replay the first error, even after the cluster recovered.</para>
+		/// <para>A new <see cref="InitTask"/> is installed under the lock before the new attempt runs, so a success can only ever complete the current attempt (a stale success would be disposed by <see cref="SetDatabase"/>).</para>
+		/// <para>Callers that observe a failure and retry provide the pacing; attempts coalesce, at most one connection attempt is in flight at any time.</para>
+		/// </remarks>
+		private void RearmIfFaulted()
+		{
+			if (this.LifeTime.IsCancellationRequested)
+			{ // stopped or disposed: the terminal error stays
+				return;
+			}
+			lock (this.Lock)
+			{
+				// only re-arm a completed, failed attempt: a pending or successful one is left alone
+				if (!this.LifeTime.IsCancellationRequested && this.DbTask.IsFaulted && (this.InitTask?.Task.IsCompleted ?? false))
+				{
+					StartCore();
+				}
+			}
+		}
+
 		/// <inheritdoc cref="IFdbDatabaseProvider.Stop"/>
 		public void Stop()
 		{
@@ -249,6 +271,10 @@ namespace FoundationDB.DependencyInjection
 				if (provider.InitTask == null && provider.ProviderOptions.AutoStart)
 				{ // start is deferred
 					provider.Start();
+				}
+				else if (provider.DbTask.IsFaulted)
+				{ // the previous connection attempt failed: start a new one instead of replaying the old error
+					provider.RearmIfFaulted();
 				}
 
 				var t = provider.DbTask;
