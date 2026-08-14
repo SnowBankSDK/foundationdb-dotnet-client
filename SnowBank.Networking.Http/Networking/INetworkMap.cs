@@ -218,6 +218,8 @@ namespace SnowBank.Networking
 		DataCenter,
 		/// <summary>Servers in a public cloud</summary>
 		Cloud,
+		/// <summary>Endpoints outside our networks, reachable by their real names (a third-party API, a payment provider). Real names only, never ".simulated".</summary>
+		External,
 	}
 
 	/// <summary>Defines the identity of a virtual host in a virtual test network</summary>
@@ -353,7 +355,7 @@ namespace SnowBank.Networking
 		string Fqdn { get; }
 
 		/// <summary>Primary host name, excluding the domain (ex: PC123)</summary>
-		/// <remarks>By convention, should be UPPERCASE.</remarks>
+		/// <remarks>By convention, should be uppercase.</remarks>
 		string HostName { get; }
 
 		/// <summary>Additional names for this host (excluding the primary host name and fqdn)</summary>

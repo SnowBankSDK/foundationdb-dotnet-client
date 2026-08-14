@@ -34,6 +34,7 @@ namespace SnowBank.Networking
 	using System.Net.Http;
 	using System.Net.NetworkInformation;
 	using System.Net.Sockets;
+	using System.Text.RegularExpressions;
 	using SnowBank.IO.Hashing;
 
 	/// <summary>Default implementation of <see cref="IVirtualNetworkTopology"/></summary>
@@ -68,9 +69,9 @@ namespace SnowBank.Networking
 
 		}
 
-		// By convention:
-		// - If hostname is a fqdns that ends in ".simulated", it is a virtual device
-		// - If hostname is an IPv4 in the range 83.73.77.0/24 ("SIM*" in ascii), it is also a virtual device
+		// Naming convention, enforced by the egress guard (ValidateEgressName) and the resolve/request defense (ClassifyUnresolvedName):
+		// - a name that ends in ".simulated" is a simulated device on a lan/cloud network
+		// - a real name (never ".simulated") is a device on an external network; its address draws from the 69.88.84.0/24 EXT block
 
 		/// <summary>Represents a virtual host in a <see cref="SimulatedNetwork"/></summary>
 		[DebuggerDisplay("{ToString(),nq}")]
@@ -268,7 +269,7 @@ namespace SnowBank.Networking
 		/// <summary>Registers a virtual load balancer: a public alias that routes each incoming connection to one of several backend hosts, under full test control</summary>
 		/// <param name="id">Identifier of the balancer (e.g. <c>"CLUSTER"</c>)</param>
 		/// <param name="alias">Public name the clients connect to (e.g. <c>"cluster.lan.simulated"</c>); must not be the name of a real host</param>
-		/// <param name="backends">Ids of the backend hosts; they may be registered LATER in the setup (resolution is lazy)</param>
+		/// <param name="backends">Ids of the backend hosts; they may be registered later in the setup (resolution is lazy)</param>
 		public VirtualLoadBalancer RegisterLoadBalancer(string id, string alias, string[] backends)
 		{
 			Contract.NotNullOrEmpty(id);
@@ -332,10 +333,10 @@ namespace SnowBank.Networking
 
 		/// <summary>Registers (or re-points) a mutable alias - a virtual VIP - that resolves to the given host</summary>
 		/// <param name="alias">Name the clients connect to (e.g. <c>"cluster.lan.simulated"</c>); must not be the name of a real host</param>
-		/// <param name="hostId">Id of the host that the alias resolves to FROM NOW ON</param>
+		/// <param name="hostId">Id of the host that the alias resolves to from now on</param>
 		/// <remarks>
-		/// <para>This emulates a load balancer re-routing a public endpoint: host resolution happens per REQUEST (see
-		/// <c>VirtualHttpClientHandler.SendAsync</c>), so re-pointing the alias affects the NEXT connection while any
+		/// <para>This emulates a load balancer re-routing a public endpoint: host resolution happens per request (see
+		/// <c>VirtualHttpClientHandler.SendAsync</c>), so re-pointing the alias affects the next connection while any
 		/// already-established stream keeps flowing to its original host - exactly like a real VIP change, which never
 		/// migrates live TCP connections.</para>
 		/// </remarks>
@@ -346,10 +347,13 @@ namespace SnowBank.Networking
 
 			using (this.Lock.GetWriteLock())
 			{
-				if (!this.HostsById.ContainsKey(hostId))
+				if (!this.HostsById.TryGetValue(hostId, out var host))
 				{
 					throw ErrorMissingHost(hostId);
 				}
+				// a VIP carries the egress rule of the host it points at: a real-TLD VIP can attach only to an external host, a
+				// .simulated VIP only to a simulated host.
+				ValidateEgressName(PrimaryNetworkType(host), alias, hostId);
 				if (this.HostsByNameOrAddress.ContainsKey(alias) && !this.DynamicAliases.Contains(alias))
 				{
 					throw new ArgumentException($"Cannot register alias '{alias}': this name already belongs to a real host", nameof(alias));
@@ -361,30 +365,30 @@ namespace SnowBank.Networking
 
 		#region Fault Injection (directional link cuts)...
 
-		/// <summary>Time source used to schedule the DEFERRED fault behaviors (blackhole connect budgets and read/write notice deadlines)</summary>
-		/// <remarks>Tests running on virtual time should point this to their advanceable provider BEFORE injecting <see cref="VirtualNetworkFaultKind.Blackhole"/> faults: a parked connect/read/write then fails only when the fake clock is advanced past its budget, so "30 seconds of silence" costs zero real time.</remarks>
+		/// <summary>Time source used to schedule the deferred fault behaviors (blackhole connect budgets and read/write notice deadlines)</summary>
+		/// <remarks>Tests running on virtual time should point this to their advanceable provider before injecting <see cref="VirtualNetworkFaultKind.Blackhole"/> faults: a parked connect/read/write then fails only when the fake clock is advanced past its budget, so "30 seconds of silence" costs zero real time.</remarks>
 		public TimeProvider Time { get; set; } = TimeProvider.System;
 
 		/// <summary>Live state of all the directional edges of this network, created lazily per (from, to) pair that talks (or gets cut)</summary>
 		private ConcurrentDictionary<(string From, string To), VirtualNetworkCutEdge> CutEdges { get; } = new();
 
-		/// <summary>Gets (or lazily creates) the live state of the directional edge carrying the traffic FROM one host TO another</summary>
-		/// <remarks>The transport resolves this per-request, and captures the edge's <see cref="VirtualNetworkCutEdge.CutToken"/> per connection - which is why the edge object must be long-lived: a cut applied LATER must still be able to abort the streams established while the edge was healthy.</remarks>
+		/// <summary>Gets (or lazily creates) the live state of the directional edge carrying the traffic from one host to another</summary>
+		/// <remarks>The transport resolves this per-request, and captures the edge's <see cref="VirtualNetworkCutEdge.CutToken"/> per connection - which is why the edge object must be long-lived: a cut applied later must still be able to abort the streams established while the edge was healthy.</remarks>
 		internal VirtualNetworkCutEdge GetOrCreateCutEdge(string fromId, string toId)
 		{
 			return this.CutEdges.GetOrAdd((fromId, toId), static (k) => new VirtualNetworkCutEdge(k.From, k.To));
 		}
 
-		/// <summary>Cuts the DIRECTIONAL link carrying the traffic FROM one host TO another, with the given failure mode</summary>
+		/// <summary>Cuts the directional link carrying the traffic from one host to another, with the given failure mode</summary>
 		/// <param name="fromId">Id of the host whose outgoing traffic (towards <paramref name="toId"/>) is affected</param>
 		/// <param name="toId">Id of the host that becomes unreachable from <paramref name="fromId"/></param>
-		/// <param name="fault">HOW the link fails, as observed by <paramref name="fromId"/> (see <see cref="VirtualNetworkFault"/>)</param>
+		/// <param name="fault">how the link fails, as observed by <paramref name="fromId"/> (see <see cref="VirtualNetworkFault"/>)</param>
 		/// <remarks>
 		/// <para>Only this direction is affected: traffic from <paramref name="toId"/> to <paramref name="fromId"/> keeps flowing,
 		/// which is the whole point (asymmetric faults are where failure detectors earn their keep). Use <see cref="CutBoth"/>
 		/// for a symmetric cut. <see cref="SimulatedHost.SetOffline"/> remains the degenerate "every edge of this host, both
 		/// directions" case.</para>
-		/// <para>A <see cref="VirtualNetworkFaultKind.Severed"/> cut also aborts the established connections that were INITIATED
+		/// <para>A <see cref="VirtualNetworkFaultKind.Severed"/> cut also aborts the established connections that were initiated
 		/// over this edge (the transport links each connection to the edge's <see cref="VirtualNetworkCutEdge.CutToken"/>); the
 		/// other fault kinds only affect new connection attempts and (for <see cref="VirtualNetworkFaultKind.Blackhole"/>) the
 		/// byte flow of established connections in this direction.</para>
@@ -404,8 +408,8 @@ namespace SnowBank.Networking
 			GetOrCreateCutEdge(fromId, toId).Apply(fault);
 		}
 
-		/// <summary>Restores the DIRECTIONAL link carrying the traffic FROM one host TO another (the "cable is plugged back in")</summary>
-		/// <remarks>New connections are allowed again, and operations parked on a <see cref="VirtualNetworkFaultKind.Blackhole"/> resume; connections aborted by a <see cref="VirtualNetworkFaultKind.Severed"/> cut STAY dead (latched), like after a real link flap.</remarks>
+		/// <summary>Restores the directional link carrying the traffic from one host to another (the "cable is plugged back in")</summary>
+		/// <remarks>New connections are allowed again, and operations parked on a <see cref="VirtualNetworkFaultKind.Blackhole"/> resume; connections aborted by a <see cref="VirtualNetworkFaultKind.Severed"/> cut stay dead (latched), like after a real link flap.</remarks>
 		public void Restore(string fromId, string toId)
 		{
 			Contract.NotNullOrEmpty(fromId);
@@ -417,18 +421,81 @@ namespace SnowBank.Networking
 			}
 		}
 
-		/// <summary>Cuts BOTH directions of the link between two hosts, with the given failure mode (see <see cref="Cut"/>)</summary>
+		/// <summary>Cuts both directions of the link between two hosts, with the given failure mode (see <see cref="Cut"/>)</summary>
 		public void CutBoth(string hostA, string hostB, VirtualNetworkFault fault)
 		{
 			Cut(hostA, hostB, fault);
 			Cut(hostB, hostA, fault);
 		}
 
-		/// <summary>Restores BOTH directions of the link between two hosts (see <see cref="Restore"/>)</summary>
+		/// <summary>Restores both directions of the link between two hosts (see <see cref="Restore"/>)</summary>
 		public void RestoreBoth(string hostA, string hostB)
 		{
 			Restore(hostA, hostB);
 			Restore(hostB, hostA);
+		}
+
+		/// <summary>Disables DNS resolution for every name matching a glob pattern, topology-wide: a matching name gives the normal simulated name-resolution failure (quiet), instead of the loud "real URI leaked" alarm.</summary>
+		/// <param name="pattern">A glob over the host name, where <c>*</c> matches any run of characters (e.g. <c>"api.*.partner.com"</c>, or <c>"*"</c> for every name).</param>
+		/// <param name="fault">Must be <see cref="VirtualNetworkFault.NameResolution"/>: a name-pattern cut only models an intended DNS failure.</param>
+		/// <remarks>This is the sanctioned way to get a simulated DNS failure for an unregistered name, and the opt-out a test of the harness itself uses (<c>Cut("*", VirtualNetworkFault.NameResolution)</c> disables the egress alarm broadly). The cut is topology-global by design; a source-scoped variant can follow if a test needs one.</remarks>
+		public void Cut(string pattern, VirtualNetworkFault fault)
+		{
+			Contract.NotNullOrEmpty(pattern);
+			Contract.NotNull(fault);
+			if (fault.Kind != VirtualNetworkFaultKind.NameResolution)
+			{
+				throw new ArgumentException($"A name-pattern cut only models an intended DNS failure: pass {nameof(VirtualNetworkFault)}.{nameof(VirtualNetworkFault.NameResolution)}, not {fault.Kind}.", nameof(fault));
+			}
+
+			using (this.Lock.GetWriteLock())
+			{
+				this.NameResolutionCuts.Add(GlobToRegex(pattern));
+			}
+		}
+
+		/// <summary>Compiled glob patterns whose matching names fail DNS resolution on purpose (a quiet, intended failure, never the loud alarm).</summary>
+		private List<Regex> NameResolutionCuts { get; } = [ ];
+
+		/// <summary>Tests whether a name is disabled by a <see cref="Cut(string, VirtualNetworkFault)">name-pattern NameResolution cut</see>.</summary>
+		private bool IsNameResolutionCut(string name)
+		{
+			using (this.Lock.GetReadLock())
+			{
+				foreach (var rx in this.NameResolutionCuts)
+				{
+					if (rx.IsMatch(name)) return true;
+				}
+			}
+			return false;
+		}
+
+		/// <summary>Translates a simple glob (only <c>*</c> is special) into an anchored, case-insensitive regex.</summary>
+		private static Regex GlobToRegex(string pattern)
+			=> new("^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+		/// <summary>Classifies a name that did not resolve to a registered host and throws the right error, unless the failure is intended (a name-pattern NameResolution cut, or a raw IP), in which case it returns and the caller produces the normal quiet failure.</summary>
+		/// <remarks>Always on (not DEBUG-only): a real name that leaks into the sandbox must be loud so the harness bug is found, instead of a request silently reaching a real server.</remarks>
+		internal void ClassifyUnresolvedName(string name)
+		{
+			// an intended DNS failure (the sanctioned negative path, and the harness self-test opt-out): stay quiet
+			if (IsNameResolutionCut(name)) return;
+
+			// a ".simulated" name, or an address in the reserved EXT block, with no registration is almost always a typo or a
+			// forgotten mock: a friendly, specific error naming the missing device.
+			if (name.EndsWith(SimulatedSuffix, StringComparison.OrdinalIgnoreCase) || name.StartsWith("69.88.84.", StringComparison.Ordinal))
+			{
+				if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
+				throw new InvalidOperationException($"You probably forgot to register simulated device '{name}' during startup of the test!");
+			}
+
+			// a raw IP that resolves to nothing is a connect scenario, not a name leak: leave the caller's normal failure path
+			if (IPAddress.TryParse(name, out _)) return;
+
+			// anything else is a real name that leaked into the sandbox: not a ".simulated" host, not a registered external host,
+			// and not an intended Cut. Loud, so the harness bug is found instead of a request reaching a real server.
+			if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
+			throw new InvalidOperationException($"Real URI '{name}' reached the virtual network: not a '.simulated' host, not a registered external host, and not an intended Cut(pattern, NameResolution). This is a test-harness bug; inspect the code path that produced it.");
 		}
 
 		#endregion
@@ -724,6 +791,48 @@ namespace SnowBank.Networking
 			}
 		}
 
+		/// <summary>The DNS suffix that marks a simulated (virtual) host. A name that ends in it routes virtually; a real name never does.</summary>
+		internal const string SimulatedSuffix = ".simulated";
+
+		/// <summary>Default DNS suffix minted for a host with no explicit FQDN on a network of the given type: the simulated networks mint <c>.simulated</c>; the external network mints nothing, because its hosts carry real names.</summary>
+		public static string DefaultDnsSuffix(VirtualNetworkType type)
+			=> type == VirtualNetworkType.External ? "" : SimulatedSuffix;
+
+		/// <summary>Validates one name a host answers to against the egress rule of its network: the <c>lan</c>/<c>cloud</c> networks carry only <c>.simulated</c> names; the <c>external</c> network carries only real names.</summary>
+		/// <exception cref="ArgumentException">If the name violates the network's egress rule.</exception>
+		internal static void ValidateEgressName(VirtualNetworkType type, string name, string hostId)
+		{
+			// only FQDN-shaped names (with a domain part) carry the simulated/real distinction; a bare host name is exempt
+			if (name.IndexOf('.') < 0) return;
+
+			bool isSimulated = name.EndsWith(SimulatedSuffix, StringComparison.OrdinalIgnoreCase);
+			switch (type)
+			{
+				case VirtualNetworkType.External:
+				{
+					if (isSimulated) throw new ArgumentException($"Cannot register '{name}' for host '{hostId}' on the external network: external hosts carry real names, never '{SimulatedSuffix}'.", nameof(name));
+					break;
+				}
+				case VirtualNetworkType.LocalNetwork:
+				case VirtualNetworkType.Cloud:
+				{
+					if (!isSimulated) throw new ArgumentException($"Cannot register '{name}' for host '{hostId}' on a simulated network: a real name reached the sandbox. A simulated host name must end in '{SimulatedSuffix}'; put a real endpoint on an external network (AddSimpleExternal).", nameof(name));
+					break;
+				}
+				// Loopback / DataCenter / Unspecified carry no egress rule
+			}
+		}
+
+		/// <summary>Returns the primary (non-loopback) network type of a host, used to classify the names and VIPs that point at it.</summary>
+		internal static VirtualNetworkType PrimaryNetworkType(SimulatedHost host)
+		{
+			foreach (var loc in host.Locations)
+			{
+				if (loc.Type != VirtualNetworkType.Loopback) return loc.Type;
+			}
+			return VirtualNetworkType.Unspecified;
+		}
+
 		/// <summary>Registers a new host in the global network topology</summary>
 		/// <param name="location">Network location where this host is located</param>
 		/// <param name="id">Unique id of this host</param>
@@ -761,10 +870,20 @@ namespace SnowBank.Networking
 				Contract.Debug.Assert(hostName != null);
 			}
 
-			fqdn ??= hostName + (identity.DnsSuffix ?? ".simulated");
+			fqdn ??= hostName + (identity.DnsSuffix ?? DefaultDnsSuffix(location.Type));
 
 			var aliases = identity.Aliases.ToArray();
 			var addresses = identity.Addresses.ToArray();
+
+			// egress naming guard: keep real names off the simulated networks, and ".simulated" off the external network, so a
+			// test cannot register a host whose name would let a request escape (or a real endpoint masquerade as simulated).
+			// Validate before mutating any map so a rejection leaves no partial state.
+			ValidateEgressName(location.Type, fqdn, id);
+			foreach (var alias in aliases)
+			{
+				if (alias != null!) ValidateEgressName(location.Type, alias, id);
+			}
+
 			var netMask = IPAddress.Parse("255.0.0.0"); //HACKHACK: BUGBUG: must parse from the IP range!
 			var prefixLen = 8; //HACKHACK: BUGBUG: must parse from the IP range!
 
@@ -901,7 +1020,8 @@ namespace SnowBank.Networking
 
 			if (!this.HostsByNameOrAddress.TryGetValue(hostNameOrAddress, out var hostId))
 			{
-				throw new SocketException(11001);
+				ClassifyUnresolvedName(hostNameOrAddress); // loud if a real name leaked, friendly for an unregistered ".simulated"
+				throw new SocketException(11001);          // an intended Cut or a raw IP: the normal quiet DNS failure
 			}
 
 			// simulate context switch

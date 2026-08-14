@@ -118,6 +118,24 @@ namespace SnowBank.Testing.Framework
 			);
 		}
 
+		/// <summary>Adds an External network to the test environment (69.88.84/24), for endpoints reached by their real names (a third-party API, a payment provider)</summary>
+		/// <remarks>External hosts carry real FQDNs (e.g. <c>api.partner.com</c>), never a <c>.simulated</c> name. A host's own outbound HttpClient must draw from its component DI so a webhook callback rides the same virtual map and stays sandboxed.</remarks>
+		public static IVirtualNetworkLocation AddSimpleExternal(this IDistributedTestEnvironmentBuilder builder, Action<IDistributedTestNetworkBuilder> configureHosts)
+		{
+			return builder.AddLocation(
+				"EXT",
+				"External Network",
+				VirtualNetworkType.External,
+				configureHosts,
+				(options) =>
+				{
+					options.AllowsIncoming = true;
+					options.IpRange = "69.88.84.0/24"; // "EXT" in ASCII: external traffic is spottable by address
+					options.DnsSuffix = null; // external hosts carry real names; there is no simulated suffix to mint
+				}
+			);
+		}
+
 		#endregion
 
 		#region Generic Hosts...

@@ -67,7 +67,7 @@ namespace SnowBank.Networking
 		/// <summary>Lookup the Virtual Host that correspond to the given hostname or IP address</summary>
 		/// <param name="hostOrAddress">Host name, or IP address of the host.</param>
 		/// <returns>Corresponding <see cref="VirtualNetworkTopology.SimulatedHost"/>, or <c>null</c> if no match was found.</returns>
-		/// <exception cref="InvalidOperationException">If there was no match for a hostname that ends with <c>".simulated"</c>, or an IP address in the range <c>83.73.77.0/24</c>.</exception>
+		/// <remarks>A <c>null</c> return means "not registered here"; the request/resolve path then classifies the name (see <see cref="VirtualNetworkTopology.ClassifyUnresolvedName"/>) to decide whether it is a loud real-name leak, a friendly forgot-to-register, or a quiet intended failure.</remarks>
 		public VirtualNetworkTopology.SimulatedHost? FindHost(string hostOrAddress)
 		{
 			if (IPAddress.TryParse(hostOrAddress, out var ip))
@@ -85,7 +85,7 @@ namespace SnowBank.Networking
 				}
 			}
 
-			// a load-balanced alias resolves per SOURCE host (this map's owner), so a test can pin each client to a backend
+			// a load-balanced alias resolves per source host (this map's owner), so a test can pin each client to a backend
 			if (this.Topology.TryResolveLoadBalancer(hostOrAddress, this.Host.Id, out var balanced))
 			{
 				return balanced;
@@ -93,14 +93,8 @@ namespace SnowBank.Networking
 
 			if (!this.Topology.HostsByNameOrAddress.TryGetValue(hostOrAddress, out var hostId))
 			{
-#if DEBUG
-				// if this looks like a simulated host, and it does not match anything... it's very probable that this is either a typo, or the test setup forgot to register this host!
-				if (hostOrAddress.EndsWith(".simulated", StringComparison.OrdinalIgnoreCase) || hostOrAddress.StartsWith("83.73.77.", StringComparison.Ordinal))
-				{
-					if (System.Diagnostics.Debugger.IsAttached) System.Diagnostics.Debugger.Break();
-					throw new InvalidOperationException($"You probably forgot to register simulated device '{hostOrAddress}' during startup of the test!");
-				}
-#endif
+				// not registered here: the request/resolve path classifies the name (loud leak, friendly forgot-to-register, or
+				// quiet intended failure) via VirtualNetworkTopology.ClassifyUnresolvedName. This lookup itself just misses.
 				return null;
 			}
 
@@ -160,6 +154,16 @@ namespace SnowBank.Networking
 			{
 				//HACKHACK: we assume that a "cloud" network is reachable by everyone!
 				if (loc.Type == VirtualNetworkType.Cloud) return (this.Host.Locations[0], loc);
+
+				// External endpoints and lan/cloud hosts reach each other both ways: a system under test calls a third-party
+				// endpoint by its real name, and that endpoint webhooks back into a local host. Without this case there is no path.
+				if (loc.Type == VirtualNetworkType.External) return (this.Host.Locations[0], loc);
+			}
+
+			// the reverse of the case above: this host is external, the target is a normal lan/cloud host it webhooks back to
+			if (this.Host.Locations.Any(l => l.Type == VirtualNetworkType.External) && target.Locations.Length > 0)
+			{
+				return (this.Host.Locations[0], target.Locations[0]);
 			}
 
 			return (null, null);
@@ -169,7 +173,7 @@ namespace SnowBank.Networking
 		public override HttpMessageHandler CreateTransportHandler(BetterHttpClientOptions options)
 		{
 			// target-agnostic virtual transport: the destination host is resolved per-request (inside SendAsync) against the
-			// LIVE map, so a client held across a node stop/start/remap reroutes on its very next request.
+			// live map, so a client held across a node stop/start/remap reroutes on its very next request.
 			return new VirtualHttpClientHandler(this, options);
 		}
 

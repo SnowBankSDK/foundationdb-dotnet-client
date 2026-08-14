@@ -97,12 +97,13 @@ namespace SnowBank.Testing.Framework.Tests
 			// same client: a resolvable host works ...
 			Assert.That(await client.GetStringAsync(web.GetUri("/ping"), this.Cancellation), Is.EqualTo("pong"), "resolvable host answers");
 
-			// ... and an unknown name fails per-request with the virtual network's DNS-failure shape. We deliberately use a name
-			// OUTSIDE the ".simulated" convention: an unregistered ".simulated" name trips a DEBUG "you forgot to register" guard
-			// in FindHost (a test-setup aid), whereas a plain unresolvable name exercises the real name-resolution fault path.
+			// ... and an intended DNS failure fails per-request with the virtual network's DNS-failure shape. The hard egress
+			// defense turns an unregistered real name into a LOUD alarm, so the sanctioned way to get a quiet simulated DNS
+			// failure is an explicit Cut(pattern, NameResolution) at the resolution layer.
+			context.Topology.Cut("does-not-exist.acme.invalid", VirtualNetworkFault.NameResolution);
 			var ex = Assert.ThrowsAsync<HttpRequestException>(async () =>
 				await client.GetStringAsync(new Uri("https://does-not-exist.acme.invalid/ping"), this.Cancellation),
-				"an unknown host must fail the SAME client's request");
+				"an intended DNS cut must fail the SAME client's request");
 
 			// mirror the exact shape produced by VirtualHttpClientHandler.SimulateNameResolutionError: an HttpRequestException
 			// wrapping a WebException whose status is NameResolutionFailure.
