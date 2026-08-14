@@ -125,11 +125,56 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
+		public async Task Test_Merged_Range_Reads_Stay_Bounded_In_A_Write_Heavy_Transaction()
+		{
+			// Once a transaction has a pending write, every selector resolves through the merged view (committed
+			// snapshot + local mutations). The merged resolution used to enumerate the entire committed store and,
+			// per candidate key, linearly scan the whole local mutation set: O(committedKeys x pendingMutations)
+			// per read, so a transaction interleaving a few hundred range reads with writes took minutes of CPU
+			// where the real cluster takes milliseconds. The bounded path walks only the keys the selector needs
+			// and finds the covering mutation by seek, which keeps this transaction inside a generous real ceiling.
+			var db = await OpenTestDatabaseAsync();
+
+			// a committed store big enough that a per-read full-store enumeration dominates
+			const int CommittedKeys = 4_000;
+			for (int batch = 0; batch < CommittedKeys; batch += 500)
+			{
+				int start = batch;
+				await db.WriteAsync(tr =>
+				{
+					for (int i = start; i < start + 500; i++)
+					{
+						tr.Set(Key($"doc{i:D6}"), Value($"v{i}"));
+					}
+				}, this.Cancellation);
+			}
+
+			var sw = System.Diagnostics.Stopwatch.StartNew();
+			using (var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation))
+			{
+				for (int i = 0; i < 150; i++)
+				{
+					var prefix = $"doc{(i * 17) % CommittedKeys:D6}";
+					_ = await tr.GetRangeAsync(
+						KeySelector.FirstGreaterOrEqual(Key(prefix)),
+						KeySelector.FirstGreaterOrEqual(Key(prefix + "z")),
+						new FdbRangeOptions { Limit = 5 });
+					tr.Set(Key(prefix + "-a"), Value($"w{i}"));
+					tr.Set(Key(prefix + "-b"), Value($"w{i}"));
+				}
+				await tr.CommitAsync();
+			}
+			sw.Stop();
+			Log($"write-heavy merged transaction: {sw.Elapsed.TotalSeconds:N1}s for 150 reads over {CommittedKeys:N0} committed keys");
+			Assert.That(sw.Elapsed, Is.LessThan(TimeSpan.FromSeconds(15)), "merged-view reads must stay bounded to the requested neighborhood (the full-store path takes minutes here)");
+		}
+
+		[Test]
 		public async Task Test_All_Mutation_Types_Are_Accepted_At_The_Emulation_Floor()
 		{
 			// FakeDb's emulation floor is api level 610 (MIN_API_VERSION), where every mutation type is already
 			// available, so the "old level rejects newer mutations" behavior is unreachable on the emulator by
-			// design. The managed client's gate consults the DATABASE's selected level (identically for a real
+			// design. The managed client's gate consults the database's selected level (identically for a real
 			// database); this pins that the floor level accepts the whole mutation vocabulary.
 			var store = new FakeDbStore(apiVersion: FakeDbStore.MIN_API_VERSION);
 			using var db = store.OpenDatabase(FdbPath.Root, readOnly: false);
@@ -185,7 +230,7 @@ namespace FoundationDB.Testing.Tests
 		public async Task Test_Retry_Backoff_Runs_On_Virtual_Time()
 		{
 			// A retryable error backs off on the store's TimeProvider: with a fake clock and a realistic
-			// RetryDelayMaximum, the retry loop STALLS while virtual time is frozen (however long we really wait) and
+			// RetryDelayMaximum, the retry loop stalls while virtual time is frozen (however long we really wait) and
 			// proceeds only when virtual time advances. The default policy (RetryDelayMaximum == 0) retries instantly,
 			// keeping normal tests fast.
 

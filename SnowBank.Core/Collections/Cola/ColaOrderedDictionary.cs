@@ -325,7 +325,7 @@ namespace SnowBank.Collections.CacheOblivious
 		/// <summary>Removes the entry with the specified key from the dictionary.</summary>
 		/// <param name="key">The key of the entry to remove.</param>
 		/// <returns>true if the value was found and removed from the dictionary; otherwise, false.</returns>
-		/// <remarks>It is NOT allowed to remove keys while iterating on the dictionary at the same time!</remarks>
+		/// <remarks>It is not allowed to remove keys while iterating on the dictionary at the same time!</remarks>
 		public bool Remove(TKey key)
 		{
 			Contract.NotNull(key);
@@ -343,7 +343,7 @@ namespace SnowBank.Collections.CacheOblivious
 		/// <summary>Remove the entries with the specified keys from the dictionary.</summary>
 		/// <param name="keys">The keys of the entries to remove.</param>
 		/// <returns>Number of entries that were found and removed.</returns>
-		/// <remarks>It is NOT allowed to remove keys while iterating on the dictionary at the same time!</remarks>
+		/// <remarks>It is not allowed to remove keys while iterating on the dictionary at the same time!</remarks>
 		public int RemoveRange(IEnumerable<TKey> keys)
 		{
 			Contract.NotNull(keys);
@@ -362,7 +362,7 @@ namespace SnowBank.Collections.CacheOblivious
 		/// <summary>Iterates and removes all the keys between two bounds</summary>
 		public IEnumerable<TKey> IterateAndRemoveRange(TKey begin, bool beginEqual, TKey end, bool endEqual)
 		{
-			// This is the worst case scenario for COLA: this operation is VERY SLOW!
+			// This is the worst case scenario for COLA: this operation is very slow!
 			// => It should be optimized, but for this it would need to modify the levels directly
 
 			var kvNext = new KeyValuePair<TKey, TValue>(begin, default!);
@@ -395,7 +395,7 @@ namespace SnowBank.Collections.CacheOblivious
 		/// <summary>Removes all the keys between two bounds</summary>
 		public int RemoveRange(TKey begin, bool beginEqual, TKey end, bool endEqual)
 		{
-			// This is the worst case scenario for COLA: this operation is VERY SLOW!
+			// This is the worst case scenario for COLA: this operation is very slow!
 			// => It should be optimized, but for this it would need to modify the levels directly
 
 			var kvNext = new KeyValuePair<TKey, TValue>(begin, default!);
@@ -501,8 +501,9 @@ namespace SnowBank.Collections.CacheOblivious
 			{
 				var it = m_items.GetIterator();
 				if (!it.Seek(new(end, default!), endOrEqual))
-				{ // starts at the end
-					it.SeekAfterLast();
+				{ // a failed seek means NO key at or below 'end' (the bound is below the smallest key): the
+				  // descending range is empty. (Reading Current here would compare a default key and throw.)
+					yield break;
 				}
 
 				var cmp = m_keyComparer;
