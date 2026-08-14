@@ -67,6 +67,11 @@ namespace FoundationDB.Client.Native
 			public const int FIRED = 512;
 		}
 
+		/// <summary>Hook invoked right before a future attaches its cancellation registration</summary>
+		/// <remarks>Always null in production; a test can install a stall here to widen an otherwise
+		/// sub-microsecond scheduling window inside the initialization of a future wrapper.</remarks>
+		internal static Action? BeforeCancellationRegistration;
+
 #if NET8_0_OR_GREATER
 
 		/// <summary>Entry point invoked by the fdb_c network thread when a future becomes ready</summary>
@@ -74,7 +79,7 @@ namespace FoundationDB.Client.Native
 		/// <param name="parameter">Cookie passed to <c>fdb_future_set_callback</c>: a <see cref="GCHandle"/> on the managed wrapper</param>
 		/// <remarks>The cookie is freed by the wrapper itself (the fire path is its sole owner), never by a concurrent
 		/// <c>Dispose()</c>: a handle freed while this method is between the native invocation and the
-		/// <see cref="GCHandle.Target"/> read could be recycled and resolve to a DIFFERENT live future.</remarks>
+		/// <see cref="GCHandle.Target"/> read could be recycled and resolve to a different live future.</remarks>
 		[UnmanagedCallersOnly(CallConvs = [ typeof(CallConvCdecl) ])]
 		private static void FutureReadyCallback(IntPtr futureHandle, IntPtr parameter)
 		{
@@ -278,7 +283,7 @@ namespace FoundationDB.Client.Native
 
 		/// <summary>Release phases still pending before this instance may be reused: the consumer reading the result
 		/// (<see cref="IValueTaskSource{TResult}.GetResult"/>) and the cleanup path closing the native resources
-		/// (<see cref="DoCleanup"/>). Only when BOTH have happened does <see cref="OnReadyForReuse"/> fire; an
+		/// (<see cref="DoCleanup"/>). Only when both have happened does <see cref="OnReadyForReuse"/> fire; an
 		/// abandoned, never-consumed future simply stays at 1 and falls to the GC like a non-pooled instance.</summary>
 		private int m_releasesPending;
 
@@ -362,7 +367,7 @@ namespace FoundationDB.Client.Native
 		/// <summary>Permanently excludes this instance from wrapper pooling (required when the wrapper object itself is handed to a holder that may observe it after completion, like a watch)</summary>
 		internal void MarkUnpooled() => SetFlag(FdbFuture.Flags.UNPOOLED);
 
-		/// <summary>Materializes the Task hatch on a freshly armed-to-be instance, BEFORE the native callback can fire</summary>
+		/// <summary>Materializes the Task hatch on a freshly armed-to-be instance, before the native callback can fire</summary>
 		/// <remarks>The wrapper Task registers as the (sole) consumer of the value-task core: when the future completes,
 		/// the wrapper consumes the result exactly once and never touches this instance again, so the instance stays
 		/// POOLABLE - the caller keeps only the returned Task, never the wrapper object. Must be called before
@@ -378,7 +383,7 @@ namespace FoundationDB.Client.Native
 		TResult IValueTaskSource<TResult>.GetResult(short token)
 		{
 			if (token != m_core.Version)
-			{ // stale token (a ValueTask consumed after the instance was reused): must throw WITHOUT touching the
+			{ // stale token (a ValueTask consumed after the instance was reused): must throw without touching the
 			  // release gate of the CURRENT lifecycle
 				return m_core.GetResult(token);
 			}
@@ -422,6 +427,13 @@ namespace FoundationDB.Client.Native
 			Contract.Debug.Requires(Volatile.Read(ref m_key) == IntPtr.Zero && Volatile.Read(ref m_releasesPending) == 0);
 			Contract.Debug.Requires(m_ctr.Equals(default(CancellationTokenRegistration)), "cancellation registration still armed on a recycling instance");
 
+			if (!m_ctr.Equals(default(CancellationTokenRegistration)))
+			{ // a registration must never survive its lifecycle: left armed, it would fire into whatever
+			  // operation occupies this recycled instance next (the Debug assert above fails fast instead,
+			  // so that the leaking path gets found and fixed)
+				UnregisterCancellationRegistration();
+			}
+
 			m_flags = 0;
 			m_task = null;
 			m_resultState = 0;
@@ -461,9 +473,9 @@ namespace FoundationDB.Client.Native
 
 		protected void SetFlag(int flag)
 		{
-			var flags = m_flags;
-			Interlocked.MemoryBarrier();
-			m_flags = flags | flag;
+			// same atomic publication as TrySetFlag: a plain read-modify-write here would race the
+			// Interlocked writers and could erase a flag published between the read and the write
+			TrySetFlag(flag);
 		}
 
 		protected bool TrySetFlag(int flag)
@@ -681,6 +693,8 @@ namespace FoundationDB.Client.Native
 
 		protected void RegisterForCancellation(CancellationToken ct)
 		{
+			FdbFuture.BeforeCancellationRegistration?.Invoke();
+
 			//note: if the token is already cancelled, the callback handler will run inline and any exception would bubble up here
 			//=> this is not a problem because the ctor already has a try/catch that will clean up everything
 			m_ctr = ct.Register(

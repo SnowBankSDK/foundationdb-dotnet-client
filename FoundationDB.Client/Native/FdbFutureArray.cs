@@ -107,6 +107,14 @@ namespace FoundationDB.Client.Native
 				Volatile.Write(ref m_completionHandler, completionHandler);
 				Volatile.Write(ref m_resultSelector, resultSelector);
 
+				if (ct.CanBeCanceled)
+				{ // register for cancellation before arming the callbacks (same order as FdbFutureSingle): a
+				  // registration created after arming can lose the race against its own completion, and a
+				  // registration that survives its lifecycle fires into whatever operation occupies this
+				  // (recycled) instance next
+					RegisterForCancellation(ct);
+				}
+
 				// add this instance to the list of pending futures
 				var prm = RegisterCallback(this);
 
@@ -151,10 +159,6 @@ namespace FoundationDB.Client.Native
 					m_resultSelector = null;
 					abortAllHandles = true;
 					SetFlag(FdbFuture.Flags.COMPLETED);
-				}
-				else  if (ct.CanBeCanceled)
-				{ // register for cancellation (if needed)
-					RegisterForCancellation(ct);
 				}
 			}
 			catch
