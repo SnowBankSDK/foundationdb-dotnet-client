@@ -211,7 +211,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// (services.AddHttpClient(name).SetHandlerLifetime(...) AFTER the bundle registration - which is exactly what
 			// Test_Pipeline_Handler_Is_Rebuilt_On_Rotation does, and why it stays green).
 			var services = new ServiceCollection();
-			services.AddBetterHttpClient();
+			services.AddBetterHttpClientDefaults();
 			services.AddBetterHttpClient("custom");
 			using var provider = services.BuildServiceProvider();
 
@@ -231,7 +231,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// are IBetterHttpClientFactory (typed shells) and IHttpMessageHandlerFactory.CreateHandler (bare handler).
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
-			services.AddBetterHttpClient();
+			services.AddBetterHttpClientDefaults();
 			services.AddBetterHttpClient("signed");
 			using var provider = services.BuildServiceProvider();
 

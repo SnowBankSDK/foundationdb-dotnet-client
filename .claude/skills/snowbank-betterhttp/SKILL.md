@@ -48,8 +48,9 @@ Two properties fall out of this design:
 //    virtual network map - TryAdd yields to it, a plain Add would clobber the simulation.
 services.TryAddSingleton<INetworkMap, NetworkMap>();   // namespace SnowBank.Networking
 
-// 2. the client stack: the default (dynamic) bundle + the factory singleton
-services.AddBetterHttpClient();
+// 2. the client stack: the defaults hook (routes EVERY factory client through the map, so a plain AddHttpClient
+//    needs no enrollment) + the factory singleton
+services.AddBetterHttpClientDefaults();
 
 // 3. any named policy bundles the application defines
 services.AddBetterHttpClient("Catalog", options =>
