@@ -103,6 +103,42 @@ public class MyFacts : DistributedTest
 - `WithPlaywrightBrowser(id, configure)` (from the `SnowBank.Testing.Framework.Playwright` package): a real headless Chromium on the virtual network, driven via `browser.Page` (a standard Playwright `IPage`). Builder hooks: `WithVirtualClock`, `WithRemoteDebugging(port)`, `WithBrowserOptions` / `WithContextOptions` (tweak the launch and context options on top of the package defaults), `WithInitScript(js)`, `WithConsoleFormatter(msg => ...)` (reformat or drop JS-console lines), and `WithSnapshots(...)` (full-page PNGs plus an HTML contact sheet into the per-test output dir). `IPage.WaitForPageReadyAsync(ct, ..., readyPredicate)` waits for DOM plus network-quiet, plus an optional application-readiness predicate. These tests need Chromium (auto-installed on first run) and are usually `[Explicit]`.
 - Use the injected **`IClock`** for time inside the simulated nodes (it can be a fake clock); use `context.RealClock` only for wall-clock measurements.
 
+## The virtual network: the external network and egress safety
+
+Every simulated host's outbound HTTP rides the virtual network. Three networks and their DNS conventions:
+
+- `AddSimpleLan`: `192.168.1.0/24`, `*.lan.simulated`.
+- `AddSimpleCloud`: a distinctive non-LAN block, `*.cloud.simulated`.
+- `AddSimpleExternal`: `69.88.84.0/24` ("EXT" in ASCII), REAL names only. This is how you mock a third-party endpoint reachable by its real URI, so the system under test needs no config edit:
+
+```csharp
+env.AddSimpleExternal(ext => ext.WithMinimalWebHost("PARTNER", host =>
+{
+    host.Identity.Fqdn = "api.partner.com";                       // a real name, legal only on external
+    host.ConfigureApplication(app => app.MapGet("/pay", () => "charged"));
+}));
+// a lan host now reaches it by its real URI, and PARTNER can webhook back into a lan host through its own DI client
+```
+
+Naming guard (`VirtualNetworkTopology.RegisterHost`): the `lan`/`cloud` networks carry only `.simulated` names, the `external` network only real names. A host name, alias, or `SetAlias` VIP that violates its network is rejected at registration.
+
+The `.simulated` defense (always on). A name that reaches the resolver or the virtual HTTP handler and is neither a registered host, nor `.simulated`, nor an intended `Cut` is a REAL URI that leaked into the sandbox: it throws a loud, specific error and calls `Debugger.Break` under a debugger. An unregistered `.simulated` name keeps the friendly "you forgot to register" error. To get a QUIET simulated DNS failure on purpose (the sanctioned negative path, and the opt-out a test of the harness itself uses), cut the name at the resolution layer:
+
+```csharp
+context.Topology.Cut("api.*.partner.com", VirtualNetworkFault.NameResolution); // glob, topology-wide
+context.Topology.Cut("*", VirtualNetworkFault.NameResolution);                 // disable the alarm broadly
+```
+
+Raw-client tripwire (`RawClientTripwire`, opt-in). A `new HttpClient()` with no DI, or a package that sets its own primary handler, bypasses the map and opens a REAL socket. `RawClientTripwire` subscribes to `System.Net.Http.HttpRequestOut.Start`, which fires ONLY for real-socket requests, so a fully virtual test stays silent and any event is a genuine escape. It is opt-in per test and, because the listener is process-wide, must run serialized; loopback is allowlisted. Roll out warn-first, then flip to fail:
+
+```csharp
+using var tripwire = new RawClientTripwire(RawClientTripwireAction.Fail);
+// ... run the test ...
+tripwire.Verify(); // throws, naming each escaping URI and its callstack
+```
+
+White-list an accepted real endpoint with `AllowHost("telemetry.vendor.com")` (steadier) or `AllowCallstack("*SomeVendor.Telemetry.*")` (best-effort: a cold first socket loses the caller frame, warm requests keep it). A white-listed client really opens a socket, so that test depends on the real network and belongs in an Explicit/Ignore lane.
+
 ## The unified Timeline journal
 
 Every test prints its journal at teardown (`DistributedTest.OnAfterEachTest` → `Timeline.DumpReport` → `context.LogOutput`), bracketed by grep-able markers so it's findable even under parallel runs:

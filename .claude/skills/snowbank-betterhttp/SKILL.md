@@ -66,6 +66,10 @@ Notes:
 - The name `"SnowBank.Networking.Http.BetterHttpClient"` (`BetterHttpClientExtensions.DefaultClientName`) is reserved for the default bundle.
 - Inside a distributed test you do NOT wire `INetworkMap`: the framework registers the virtual network map in every simulated host (see section 8).
 
+**The two entry points.** `AddBetterHttpClientDefaults(configure)` is the recommended default: it installs a `ConfigureHttpClientDefaults` hook that routes EVERY factory client (named, typed via `AddHttpClient<TClient>`, or a plain `AddHttpClient("x")`) through the map, so a stock client needs no enrollment and a distributed-test host sandboxes every factory client by construction. The global `configure` sets the baseline (transport, default headers, TLS trust, filters, credentials) for every client. `AddBetterHttpClient("name", configure)` adds a named policy bundle for a client that needs its own certificates, credentials, or filters, or the bare-handler-by-name seam; its per-name options override that baseline. Both are safe to call more than once: each `configure` composes, and the defaults hook installs once (a second `AddBetterHttpClientDefaults` does not stack a second pipeline handler, which would run every request's filters twice).
+
+The old no-name `AddBetterHttpClient(configure)` overload is retired (`[Obsolete(error: true)]`): it wired only the default bundle, so a stock `AddHttpClient` escaped the map. Call `AddBetterHttpClientDefaults(configure)`.
+
 ## 3. Getting a client: the doors
 
 | Door | API | What you get |
