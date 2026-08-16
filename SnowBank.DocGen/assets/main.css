@@ -1,7 +1,7 @@
 /* ============================================================
-   SnowBank SDK - brand overlay for the docfx "modern" template.
-   Layered after "default" + "modern" (see docfx.json template array).
-   Layout override (left sidebar + dark default) is in layout/_master.tmpl.
+   SnowBank SDK: stylesheet for the SnowBank.DocGen static site.
+   It defines the --bs-* / --sb-* design tokens. The page layout lives in
+   templates/layout.sbn-html.
    Brand blue sampled from the FoundationDB + SnowBank logos.
    ============================================================ */
 
@@ -142,8 +142,7 @@ article h2 {
 	border-top: 1px solid var(--bs-border-color);
 }
 
-/* Inline code color is driven by --bs-code-color (set in the theme tokens above),
-   which avoids fighting docfx's stylesheet specificity. */
+/* Inline code color is driven by --bs-code-color (set in the theme tokens above). */
 
 /* ---- Code blocks ---- */
 pre {
@@ -161,7 +160,7 @@ article .hljs { background-color: transparent !important; }
 [data-bs-theme="light"] .hljs-meta { color: #17738c !important; }
 
 /* ---- Mermaid diagrams: brand palette, theme-aware ---- */
-/* mermaid is an ESM module (no global, no docfx config hook) and inlines an ID-scoped <style>
+/* mermaid is an ESM module (no global) and inlines an ID-scoped <style>
    with plain (non-!important) fills. We recolor the rendered SVG here via the --sb-mm-* tokens,
    which flip with data-bs-theme so diagrams follow the light/dark toggle. Covers the two types
    we use: sequenceDiagram and flowchart. */

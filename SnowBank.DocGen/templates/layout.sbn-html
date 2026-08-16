@@ -166,7 +166,7 @@
 		article h3 { font-size: 1.34rem; font-weight: 650; margin-top: 1.9rem; color: #fff; }
 		article h4 { font-size: 1.12rem; font-weight: 650; margin-top: 1.5rem; color: #fff; }
 		/* Mermaid renders SVG <text> labels here (htmlLabels off, so they scale cleanly). main.css only
-		   recolors docfx's HTML-label structure (.nodeLabel), so force the SVG text to theme colors;
+		   recolors mermaid's HTML-label structure (.nodeLabel), so force the SVG text to theme colors;
 		   mermaid inlines fill:#000. */
 		.mermaid svg .node text, .mermaid svg .node tspan,
 		.mermaid svg .cluster text, .mermaid svg .cluster tspan,
