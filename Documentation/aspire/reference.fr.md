@@ -4,7 +4,7 @@ Les types, méthodes, paramètres et défauts de l'intégration Aspire de Founda
 lancement, voir [Getting started](getting-started.fr.md) ; pour des tâches ponctuelles, voir les
 [guides pratiques](how-to.fr.md) ; pour la conception, voir [l'explication](index.fr.md).
 
-## Packages
+## *Packages*
 
 | Package | Projet | Fournit |
 |---|---|---|
@@ -14,7 +14,7 @@ lancement, voir [Getting started](getting-started.fr.md) ; pour des tâches ponc
 
 ## AddFoundationDb
 
-Définit un cluster FoundationDB qu'Aspire fait tourner comme un container Docker, et rend un
+Définit un *cluster* FoundationDB qu'Aspire fait tourner comme un *container* Docker, et rend un
 `IResourceBuilder<FdbClusterResource>`.
 
 ```csharp
@@ -41,8 +41,8 @@ Une surcharge prend `root` comme un `FdbPath` et ajoute `imageRegistry` (défaut
 
 ## AddFoundationDbCluster
 
-Définit une connexion à un cluster existant à partir d'un cluster file. Elle ne démarre aucun
-container, et rend un `IResourceBuilder<FdbConnectionResource>`.
+Définit une connexion à un *cluster* existant à partir d'un *cluster file*. Elle ne démarre aucun
+*container*, et rend un `IResourceBuilder<FdbConnectionResource>`.
 
 ```csharp
 IResourceBuilder<FdbConnectionResource> AddFoundationDbCluster(
@@ -66,7 +66,7 @@ Une surcharge prend `root` comme un `FdbPath`.
 
 ## Modificateurs de ressource cluster
 
-S'appliquent au builder que `AddFoundationDb` ou `AddFoundationDbCluster` rend.
+S'appliquent au *builder* que `AddFoundationDb` ou `AddFoundationDbCluster` rend.
 
 | Modificateur | S'applique à | Effet |
 |---|---|---|
@@ -78,7 +78,7 @@ S'appliquent au builder que `AddFoundationDb` ou `AddFoundationDbCluster` rend.
 
 ## FdbVersionPolicy
 
-La politique de roll-forward pour l'image Docker, dans le namespace `Aspire.Hosting.ApplicationModel`.
+La politique de *roll-forward* pour l'image Docker, dans le *namespace* `Aspire.Hosting.ApplicationModel`.
 
 | Valeur | Sélectionne |
 |---|---|
@@ -90,7 +90,7 @@ La politique de roll-forward pour l'image Docker, dans le namespace `Aspire.Host
 
 ## Formes de clusterVersion
 
-La forme string de `clusterVersion` fixe la version et un `rollForward` par défaut.
+La forme *string* de `clusterVersion` fixe la version et un `rollForward` par défaut.
 
 | Forme | Exemple | Version | rollForward par défaut |
 |---|---|---|---|
@@ -104,8 +104,8 @@ normalement `0`).
 
 ## AddFoundationDb (service)
 
-Lit la connexion injectée nommée `connectionName` et enregistre le singleton `IFdbDatabaseProvider`.
-Dans le package `FoundationDB.Aspire`.
+Lit la connexion injectée nommée `connectionName` et enregistre le *singleton* `IFdbDatabaseProvider`.
+Dans le *package* `FoundationDB.Aspire`.
 
 ```csharp
 IHostApplicationBuilder AddFoundationDb(
@@ -115,13 +115,13 @@ IHostApplicationBuilder AddFoundationDb(
     Action<FdbDatabaseProviderOptions>? configureProvider = null)
 ```
 
-`configureSettings` ajuste les settings du client lus depuis la configuration ; `configureProvider`
-ajuste les options du provider. Les deux sont optionnels.
+`configureSettings` ajuste les *settings* du client lus depuis la configuration ; `configureProvider`
+ajuste les options du *provider*. Les deux sont optionnels.
 
 ## Fdb.Provisioning.EnsureDatabaseConfiguredAsync
 
-Configure la database d'un cluster neuf et rend la main une fois qu'elle est disponible. Dans
-`FoundationDB.Client` ; l'AppHost et le test harness l'appellent tous les deux.
+Configure la base de données d'un *cluster* neuf et rend la main une fois qu'elle est disponible. Dans
+`FoundationDB.Client` ; l'AppHost et le *test harness* l'appellent tous les deux.
 
 ```csharp
 Task EnsureDatabaseConfiguredAsync(
@@ -136,15 +136,15 @@ Task EnsureDatabaseConfiguredAsync(
 | Paramètre | Sens | Défaut |
 |---|---|---|
 | `runFdbCli` | un delegate qui exécute `fdbcli` avec les arguments donnés et rend son code de sortie et sa sortie | requis |
-| `timeout` | la borne de l'attente ; la méthode throw si la database n'est pas disponible à temps | requis |
+| `timeout` | la borne de l'attente ; la méthode throw si la base de données n'est pas disponible à temps | requis |
 | `configuration` | l'argument de `configure new` | `"single ssd"` |
 | `probeInterval` | le délai entre deux vérifications de disponibilité | un défaut interne |
 | `log` | un sink pour les lignes de progression | `null` |
 | `ct` | le cancellation token | `default` |
 
-L'appel est idempotent : une database déjà configurée est laissée intacte.
+L'appel est idempotent : une base de données déjà configurée est laissée intacte.
 
-## Défauts du container
+## Défauts du *container*
 
 | Setting | Valeur |
 |---|---|
@@ -156,5 +156,5 @@ L'appel est idempotent : une database déjà configurée est laissée intacte.
 ## Télémétrie
 
 `FoundationDB.Aspire` ajoute `AddFoundationDbInstrumentation` à la fois à `TracerProviderBuilder` et
-`MeterProviderBuilder`, pour que le pipeline OpenTelemetry d'un service puisse collecter les traces et
-les métriques du binding.
+`MeterProviderBuilder`, pour que le *pipeline* OpenTelemetry d'un service puisse collecter les traces et
+les métriques du *binding*.
