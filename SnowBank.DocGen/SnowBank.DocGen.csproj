@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<!-- Standalone doc tool: not in FoundationDB.Client.slnx, opted out of the repo's central
+		     package management and multi-target machinery (see the local Directory.Build.props). -->
+		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+		<RootNamespace>SnowBank.DocGen</RootNamespace>
+		<AssemblyName>SnowBank.DocGen</AssemblyName>
+		<InvariantGlobalization>true</InvariantGlobalization>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Update="templates\layout.sbn-html" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Markdig" Version="0.41.3" />
+		<PackageReference Include="Scriban" Version="7.2.6" />
+		<PackageReference Include="System.Reflection.MetadataLoadContext" Version="10.0.11" />
+		<PackageReference Include="YamlDotNet" Version="18.1.0" />
+	</ItemGroup>
+
+</Project>

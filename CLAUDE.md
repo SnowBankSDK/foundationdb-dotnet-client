@@ -125,4 +125,12 @@ These skills are also packaged as a Claude Code **plugin** ([`plugins/foundation
 
 ## Docs
 
-Human-facing docs (docfx) live in [`Documentation/`](Documentation/). The top-level [`README.md`](README.md) is the authoritative getting-started narrative, and it is packed into the NuGet package, so treat it as shipped surface.
+Human-facing docs live in [`Documentation/`](Documentation/) as Markdown (listed in [`Documentation/toc.yml`](Documentation/toc.yml)), rendered to a static site by [`SnowBank.DocGen`](SnowBank.DocGen/), a standalone .NET tool in this repo. It is **not** part of `FoundationDB.Client.slnx`; build and run it on its own:
+
+```bash
+dotnet run --project SnowBank.DocGen        # renders to artifacts/_site
+```
+
+The tool builds the guide pages, an API reference reflected from the built assemblies (`SnowBank.Core`, `FoundationDB.Client`, `FoundationDB.Aspire`, `FoundationDB.Aspire.Hosting`, so build those in Release first for the reference to appear), and a French twin under `/fr/` from the `*.fr.md` files. It shells out to Node for two build-time passes: mermaid diagrams to static SVG (needs a Chrome, pointed to by `CHROME_PATH`) and Shiki syntax highlighting; run `npm ci` in [`SnowBank.DocGen/tools`](SnowBank.DocGen/tools) once. The [`docs.yml`](.github/workflows/docs.yml) workflow runs all of this and publishes to GitHub Pages (manual dispatch).
+
+The top-level [`README.md`](README.md) is the authoritative getting-started narrative, and it is packed into the NuGet package, so treat it as shipped surface.

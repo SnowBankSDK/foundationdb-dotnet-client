@@ -1,0 +1,5 @@
+<Project>
+	<!-- Throwaway spike: isolate from the SDK build machinery (ArtifactsPath, central package
+	     management, multi-target vars). An empty Directory.Build.props stops the upward walk, so
+	     this project builds standalone into its own bin/obj with plain PackageReference versions. -->
+</Project>

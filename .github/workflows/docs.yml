@@ -22,18 +22,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install the SDK the repo pins in global.json (docfx's metadata step loads
-      # SnowBank.Core, FoundationDB.Client, and the two Aspire projects to extract the API docs).
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
-      - name: Install docfx
-        run: dotnet tool update -g docfx
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      # Metadata (net8.0 API from the 4 projects in docfx.json) + build to artifacts/_site.
-      - name: Build docs
-        run: docfx Documentation/docfx.json
+      # SnowBank.DocGen renders mermaid diagrams to static SVG at build time via puppeteer-core, which
+      # drives an installed Chrome (no chromium download). CHROME_PATH points the script at it.
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+
+      # The API reference is extracted by reflection from the built assemblies, so build the four the
+      # docs cover (Release, net10.0). CopyLocalLockFileAssemblies puts their package deps next to them
+      # so the reflection-only metadata load can resolve every referenced type.
+      - name: Build API assemblies
+        run: |
+          for p in SnowBank.Core FoundationDB.Client FoundationDB.Aspire FoundationDB.Aspire.Hosting; do
+            dotnet build "$p/$p.csproj" -c Release -f net10.0 -p:CopyLocalLockFileAssemblies=true
+          done
+
+      - name: Install doc-tool node deps (mermaid + Shiki)
+        run: npm ci
+        working-directory: SnowBank.DocGen/tools
+
+      # Reads Documentation/, renders the static site (guides + API reference + French) to artifacts/_site.
+      - name: Generate docs
+        run: dotnet run --project SnowBank.DocGen/SnowBank.DocGen.csproj -c Release
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

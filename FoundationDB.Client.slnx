@@ -41,7 +41,7 @@
     <File Path="Common/VersionInfo.props" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
-    <File Path="Documentation/docfx.json" />
+    <File Path="Documentation/toc.yml" />
     <File Path="global.json" />
     <File Path="LICENSE.md" />
     <File Path="README.md" />

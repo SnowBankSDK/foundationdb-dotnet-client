@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" data-bs-theme="dark">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{{ title }} | SnowBank SDK</title>
+	<link rel="stylesheet" href="/main.css">
+	<style>
+		/* Base rules Bootstrap normally supplies. main.css only defines the --bs-* / --sb-* tokens
+		   (under [data-bs-theme]); these apply them, plus the two-column docs layout. Everything is in
+		   <head>, so the first paint is fully styled: no client script runs, nothing shifts on load. */
+		* { box-sizing: border-box; }
+		/* JetBrains Mono (SIL OFL 1.1, bundling-compatible; installed here, so no web-font fetch and no
+		   FOUT) leads the code stack; box-drawing glyphs tile cleanly at a tight line-height. */
+		:root { color-scheme: dark; --doc-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Consolas, monospace; }
+		/* Theme token overrides (would live in main.css for the real site): a slightly darker page, a
+		   brighter inline-code color, and the muted secondary color Bootstrap normally supplies. */
+		html[data-bs-theme="dark"] { --bs-secondary-color: #9aa4b3; --bs-body-bg: #0b131d; --bs-code-color: #66bbff; --sb-code-bg: #060c14; }
+		html, body { margin: 0; padding: 0; }
+		body {
+			background: var(--bs-body-bg);
+			color: var(--bs-body-color);
+			font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+			font-size: 16px;
+			line-height: 1.3;
+			-webkit-font-smoothing: antialiased;
+		}
+		a { color: var(--bs-link-color); text-decoration: none; }
+		a:hover { color: var(--bs-link-hover-color); text-decoration: underline; }
+		code { color: var(--bs-code-color); font-family: var(--doc-mono); font-size: 1em; }
+		/* an inline-code span wrapped in a link (auto-linked API symbol): dotted underline marks it clickable */
+		.content a code { text-decoration: underline dotted; text-underline-offset: 0.2em; text-decoration-color: rgba(102,187,255,0.5); }
+		.content a:hover code { text-decoration: underline; }
+		/* tight line-height so ASCII / box-drawing rows sit flush and vertical lines connect */
+		pre { padding: 0.9rem 1.1rem; overflow-x: auto; margin: 1.1rem 0; font-family: var(--doc-mono); line-height: 1.2; }
+		pre code { background: none; padding: 0; color: inherit; }
+
+		/* Shiki emits <pre class="shiki" style="background;color">...spans...</pre> for code fences
+		   (build-time, VS Code dark-plus). Give it the code-card chrome and override its inline #1e1e1e
+		   with the site's blue-tinted code background (the token colors still read well on it). */
+		.content pre.shiki { border: 1px solid var(--bs-border-color); border-radius: 10px; padding: 0.9rem 1.1rem; margin: 1.1rem 0; overflow-x: auto; line-height: 1.5; background: var(--sb-code-bg); color: var(--bs-body-color); }
+
+		/* Classic (space-reserving) thin scrollbars on scrollable code / box blocks. Chrome's overlay
+		   scrollbar otherwise draws over the last row and lingers after the mouse leaves. */
+		.content pre { scrollbar-width: thin; scrollbar-color: var(--bs-border-color) transparent; }
+		.content pre::-webkit-scrollbar { height: 9px; width: 9px; }
+		.content pre::-webkit-scrollbar-thumb { background: var(--bs-border-color); border-radius: 6px; }
+		.content pre::-webkit-scrollbar-track { background: transparent; }
+
+		.site-header {
+			position: sticky; top: 0; z-index: 10;
+			display: flex; align-items: center; gap: 0.6rem;
+			padding: 0.55rem 1.4rem;
+			background: var(--bs-secondary-bg);
+			border-bottom: 1px solid var(--bs-border-color);
+		}
+		.site-header .brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; color: var(--bs-emphasis-color); text-decoration: none; }
+		.site-header .brand:hover { color: var(--bs-emphasis-color); text-decoration: none; }
+		.site-header .brand img { display: block; }
+
+		/* Inline search. The box lives in the header (present at load, no reflow); results overlay in an
+		   absolutely positioned dropdown and the index is fetched only on first use. */
+		.search { position: relative; margin-left: auto; display: flex; align-items: center; }
+		.search input { width: 300px; max-width: 42vw; padding: 0.4rem 0.7rem; border-radius: 8px; border: 1px solid var(--bs-border-color); background: var(--bs-body-bg); color: var(--bs-body-color); font-size: 0.9rem; }
+		.search input:focus { outline: none; border-color: var(--bs-primary); }
+		.search input::placeholder { color: var(--bs-secondary-color); }
+		.search .slash { position: absolute; right: 0.55rem; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 0.72rem; color: var(--bs-secondary-color); border: 1px solid var(--bs-border-color); border-radius: 4px; padding: 0 0.35em; background: var(--bs-secondary-bg); }
+		.search input:focus ~ .slash, .search.has-query .slash { display: none; }
+		.results { position: absolute; top: calc(100% + 6px); right: 0; width: 460px; max-width: 84vw; max-height: 64vh; overflow-y: auto; background: var(--bs-secondary-bg); border: 1px solid var(--bs-border-color); border-radius: 10px; box-shadow: 0 14px 34px rgba(0,0,0,0.45); z-index: 50; padding: 0.35rem; }
+		.results .res { display: block; padding: 0.5rem 0.6rem; border-radius: 7px; text-decoration: none; }
+		.results .res:hover, .results .res.sel { background: var(--bs-tertiary-bg); }
+		.results .rt { display: block; color: var(--bs-emphasis-color); font-weight: 600; font-size: 0.92rem; }
+		.results .rs { display: block; color: var(--bs-secondary-color); font-size: 0.82rem; margin-top: 0.15rem; line-height: 1.35; }
+		.results mark { background: transparent; color: var(--bs-primary); font-weight: 600; }
+		.results .no { padding: 0.65rem 0.6rem; color: var(--bs-secondary-color); font-size: 0.85rem; }
+		@media (max-width: 640px) { .search input { width: 44vw; } }
+
+		/* Component "island": a static SVG (SSR'd first frame) animated in place by a deferred script.
+		   Fixed viewBox + width:100%, so it holds its final size at first paint (no layout shift); the
+		   script only moves elements inside the SVG. */
+		.island { margin: 1.6rem 0; background: var(--sb-code-bg); border: 1px solid var(--bs-border-color); border-radius: 11px; padding: 0.9rem 1.1rem 1.1rem; }
+		.island svg { display: block; width: 100%; height: auto; }
+		.txn-flow .tf-edge { fill: none; stroke: var(--bs-border-color); stroke-width: 2; transition: stroke .25s, opacity .25s, stroke-width .25s; }
+		.txn-flow .tf-edge.done { stroke: var(--bs-primary); opacity: 0.4; }        /* ghost trail of completed steps */
+		.txn-flow .tf-edge.traveling { stroke: var(--bs-primary); opacity: 0.95; stroke-width: 3; }
+		.txn-flow .tf-node rect { fill: #17293f; stroke: var(--sb-azure); stroke-width: 1.5; }
+		.txn-flow .tf-title { fill: #e8effb; font: 600 15px system-ui, sans-serif; }
+		.txn-flow .tf-sub { fill: var(--bs-secondary-color); font: 12px system-ui, sans-serif; }
+		.txn-flow .packet { stroke: #0d1521; stroke-width: 1.5; }
+		.txn-flow .packet.grv { fill: var(--bs-primary); }
+		.txn-flow .packet.read { fill: #7ee787; }
+		.txn-flow .packet.commit { fill: #ffcc66; }
+		.txn-flow .packet.ack { fill: #7ee787; }
+		/* the active step's nodes glow */
+		.txn-flow .tf-node rect { transition: stroke 0.2s, filter 0.2s; }
+		.txn-flow .tf-node.active rect { stroke: var(--bs-primary); stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(76, 159, 251, 0.6)); }
+		/* step indicator: reserved height so advancing the text never shifts layout */
+		.tf-step { display: flex; align-items: flex-start; gap: 0.65rem; margin-bottom: 0.8rem; min-height: 2.8em; }
+		.tf-step .tf-num { flex: 0 0 auto; width: 1.7em; height: 1.7em; line-height: 1.7em; text-align: center; border-radius: 50%; background: var(--bs-primary); color: #0d1521; font-weight: 700; font-size: 0.9rem; }
+		.tf-step .tf-label { color: var(--bs-body-color); font-size: 0.92rem; line-height: 1.4; padding-top: 0.15em; }
+
+		.layout { display: flex; align-items: flex-start; gap: 1.25rem; max-width: 1640px; margin: 0 auto; padding: 0 1.5rem; }
+		.sidebar {
+			flex: 0 0 270px; width: 270px;
+			position: sticky; top: 3rem;
+			max-height: calc(100vh - 3rem); overflow-y: auto;
+			padding: 1.6rem 0.4rem 2rem 0.25rem;
+		}
+		/* wide, flexible reading column with generous bottom runway so every section can scroll up to
+		   the scroll-spy activation line (the last "In this article" entry lights up at the bottom) */
+		.content { flex: 1 1 auto; min-width: 0; padding: 1.4rem 2.6rem 42vh; max-width: 1000px; }
+
+		/* Right-hand "In this article" panel: the current page's h2/h3 as static anchor links. */
+		.on-this-page {
+			flex: 0 0 214px; width: 214px;
+			position: sticky; top: 3rem;
+			max-height: calc(100vh - 3rem); overflow-y: auto;
+			padding: 1.7rem 1rem 2rem 0.2rem;
+		}
+		.on-this-page h5 { margin: 0 0 0.5rem; font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--bs-emphasis-color); }
+		.on-this-page ul { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--bs-border-color); }
+		.on-this-page li > a { display: block; margin-left: -1px; padding: 0.26rem 0 0.26rem 0.85rem; border-left: 2px solid transparent; color: var(--bs-secondary-color); line-height: 1.4; font-size: 1rem; }
+		.on-this-page li > a:hover { color: var(--bs-emphasis-color); text-decoration: none; border-left-color: var(--bs-border-color); }
+		.on-this-page li.level3 > a { padding-left: 1.55rem; }
+		/* active section: color only (border-left is already 2px), so scroll-spy never shifts layout */
+		.on-this-page li > a.active { color: var(--bs-primary); border-left-color: var(--bs-primary); }
+		@media (max-width: 1080px) { .on-this-page { display: none; } }
+
+		/* clicked/observed headings clear the sticky header instead of hiding under it */
+		article h1, article h2, article h3, article h4 { scroll-margin-top: 4rem; }
+
+		/* Left sidebar: larger than main.css's default; sections collapse via native <details>. */
+		.toc { font-size: 1rem; }
+		/* Hierarchy reads by indentation, size and weight, not by shouting: no uppercase. Every folder
+		   (a node with children) is a chevron section header; leaf pages are plain links. Labels are kept
+		   short in toc.yml so they fit on one line. Depth indent is set inline per node. */
+		.toc li > a { display: block; font-size: 1.1rem; padding: 0.2rem 0.6rem; line-height: 1.4; color: var(--bs-secondary-color); }
+		.toc li > a:hover { color: var(--bs-emphasis-color); text-decoration: none; }
+		.toc li.active > a { color: var(--bs-primary); font-weight: 700; }
+		.toc .toc-section > details > summary {
+			cursor: pointer;
+			list-style: none;
+			display: flex; align-items: center;
+			padding: 0.32rem 0.6rem;
+			font-size: 1.1rem; font-weight: 600;
+			color: var(--bs-emphasis-color);
+			user-select: none;
+		}
+		/* top level (folders and pages alike) is the boldest / whitest and a touch larger */
+		.toc > ul > li.toc-section > details > summary,
+		.toc > ul > li > a { padding-top: 0.8rem; font-size: 1.22rem; font-weight: 700; color: var(--bs-emphasis-color); }
+		/* a top-level page has nothing to expand; the hidden chevron reserves the disclosure slot so its
+		   label lines up with the folder headers */
+		.toc > ul > li > a::before { content: "\25B8"; visibility: hidden; margin-right: 0.4em; font-size: 0.85em; flex: none; }
+		.toc .toc-section > details > summary::-webkit-details-marker { display: none; }
+		.toc .toc-section > details > summary::before {
+			content: "\25B8"; margin-right: 0.4em; font-size: 0.85em; flex: none;
+			color: var(--bs-secondary-color);
+			transition: transform 0.15s ease;
+		}
+		.toc .toc-section > details[open] > summary::before { transform: rotate(90deg); }
+
+		/* Headings: pure white to pop off the body text, with a clearer size ladder. */
+		article h1 { font-size: 2.15rem; font-weight: 700; margin: 0.2rem 0 1.3rem; color: #fff; letter-spacing: -0.01em; }
+		article h2 { font-size: 1.7rem; font-weight: 700; color: #fff; }
+		article h3 { font-size: 1.34rem; font-weight: 650; margin-top: 1.9rem; color: #fff; }
+		article h4 { font-size: 1.12rem; font-weight: 650; margin-top: 1.5rem; color: #fff; }
+		/* Mermaid renders SVG <text> labels here (htmlLabels off, so they scale cleanly). main.css only
+		   recolors docfx's HTML-label structure (.nodeLabel), so force the SVG text to theme colors;
+		   mermaid inlines fill:#000. */
+		.mermaid svg .node text, .mermaid svg .node tspan,
+		.mermaid svg .cluster text, .mermaid svg .cluster tspan,
+		.mermaid svg .nodeLabel { fill: var(--sb-mm-label) !important; }
+		.mermaid svg .edgeLabel text, .mermaid svg .edgeLabel tspan { fill: var(--bs-body-color) !important; }
+
+		article ul, article ol { padding-left: 1.4rem; }
+		article li { margin: 0.25rem 0; }
+		article p { margin: 0.9rem 0; }
+		/* main.css zeroes the blockquote's last child margin but not the first, so the paragraph's
+		   top margin stacks on the padding and the text sits low. Zero it for even vertical padding. */
+		article blockquote > :first-child { margin-top: 0; }
+
+		/* Tables: markdown emits a bare <table>; Bootstrap (not shipped) would style it. Add borders, a
+		   header rule and cell padding so columns are easy to parse; wide tables scroll, not overflow. */
+		article table { border-collapse: collapse; margin: 1.2rem 0; display: block; width: max-content; max-width: 100%; overflow-x: auto; }
+		article th, article td { border: 1px solid var(--bs-border-color); padding: 0.45rem 0.8rem; text-align: left; vertical-align: top; }
+		article thead th { background: var(--bs-secondary-bg); color: var(--bs-emphasis-color); font-weight: 650; }
+
+		/* EN | FR language switch in the header: static links (no script), so the reflow-free rule holds. */
+		.langswitch { display: flex; gap: 0.15rem; align-items: center; margin-left: 0.75rem; font-size: 0.85rem; }
+		.langswitch a { padding: 0.15rem 0.45rem; border-radius: 0.35rem; color: var(--bs-secondary-color); text-decoration: none; }
+		.langswitch a.on { color: var(--bs-emphasis-color); background: var(--bs-secondary-bg); font-weight: 700; }
+		.langswitch a:hover { color: var(--bs-emphasis-color); }
+	</style>
+</head>
+<body>
+	<header class="site-header">
+		<a class="brand" href="/">
+			<img src="/logo.png" width="26" height="26" alt="SnowBank SDK">
+			<span>SnowBank SDK</span>
+		</a>
+		<div class="search" id="docsearch">
+			<input id="q" type="search" placeholder="Search the docs…" autocomplete="off" spellcheck="false" aria-label="Search the docs">
+			<kbd class="slash">/</kbd>
+			<div id="results" class="results" hidden></div>
+		</div>
+		<div class="langswitch" aria-label="Language">
+			<a href="{{ en_url }}"{{ if lang == "en" }} class="on"{{ end }}>EN</a>
+			{{ if has_fr }}<a href="{{ fr_url }}"{{ if lang == "fr" }} class="on"{{ end }}>FR</a>{{ end }}
+		</div>
+	</header>
+	<div class="layout">
+		<nav class="sidebar toc">{{ nav_html }}</nav>
+		<main class="content">
+			<article>{{ body_html }}</article>
+		</main>
+		{{ if on_this_page != "" }}<aside class="on-this-page">{{ on_this_page }}</aside>{{ end }}
+	</div>
+{{ if on_this_page != "" }}
+	<script>
+		// "In this article" scroll-spy: highlight the section being read. It only toggles a color
+		// class, never touches layout or fetches anything, so the page has no load-time reflow.
+		(function () {
+			var links = Array.prototype.slice.call(document.querySelectorAll('.on-this-page a[href^="#"]'));
+			if (!links.length) return;
+			var targets = links
+				.map(function (a) { return { link: a, el: document.getElementById(decodeURIComponent(a.hash.slice(1))) }; })
+				.filter(function (t) { return t.el; });
+			if (!targets.length) return;
+
+			function update() {
+				var line = 96; // activation line just below the sticky header
+				var current = targets[0].link;
+				for (var i = 0; i < targets.length; i++) {
+					if (targets[i].el.getBoundingClientRect().top <= line) current = targets[i].link;
+					else break;
+				}
+				// at the bottom the last headings can't reach the line; force the last one active there
+				if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+					current = targets[targets.length - 1].link;
+				}
+				for (var j = 0; j < links.length; j++) links[j].classList.toggle('active', links[j] === current);
+			}
+
+			var ticking = false;
+			function onScroll() {
+				if (ticking) return;
+				ticking = true;
+				requestAnimationFrame(function () { update(); ticking = false; });
+			}
+			window.addEventListener('scroll', onScroll, { passive: true });
+			window.addEventListener('resize', onScroll, { passive: true });
+			update();
+		})();
+	</script>
+{{ end }}
+	<script>
+		// Inline search: fetch the build-time index once on first use, rank client-side (small corpus),
+		// show results in an overlay dropdown. Runs only on interaction, so no load-time work or reflow.
+		(function () {
+			var input = document.getElementById('q');
+			var box = document.getElementById('results');
+			var wrap = document.getElementById('docsearch');
+			if (!input || !box) return;
+			var idx = null, loading = null, sel = -1;
+
+			function load() {
+				if (idx) return Promise.resolve();
+				if (!loading) loading = fetch('{{ search_index }}').then(function (r) { return r.json(); })
+					.then(function (d) { idx = d; }).catch(function () { idx = []; });
+				return loading;
+			}
+			function esc(s) { return s.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+			function rx(t) { return new RegExp('(' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig'); }
+			function highlight(s, tokens) { s = esc(s); tokens.forEach(function (t) { s = s.replace(rx(t), '<mark>$1</mark>'); }); return s; }
+			function snippet(text, tokens) {
+				var lc = text.toLowerCase(), pos = -1;
+				for (var i = 0; i < tokens.length; i++) { var p = lc.indexOf(tokens[i]); if (p >= 0) { pos = p; break; } }
+				if (pos < 0) return highlight(text.slice(0, 130), tokens);
+				var start = Math.max(0, pos - 45);
+				return (start > 0 ? '…' : '') + highlight(text.slice(start, start + 150), tokens) + '…';
+			}
+			function run(q) {
+				var tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+				if (!tokens.length) { box.hidden = true; box.innerHTML = ''; return; }
+				var hits = [];
+				idx.forEach(function (d) {
+					var title = d.title.toLowerCase(), text = d.text.toLowerCase(), score = 0, ok = true, hitH = null;
+					tokens.forEach(function (t) {
+						var s = 0;
+						if (title.indexOf(t) >= 0) s += 8;
+						for (var i = 0; i < d.headings.length; i++) if (d.headings[i].t.toLowerCase().indexOf(t) >= 0) { s += 4; if (!hitH) hitH = d.headings[i]; }
+						s += Math.min(text.split(t).length - 1, 3);
+						if (s === 0) ok = false; score += s;
+					});
+					if (ok && score > 0) hits.push({ d: d, score: score, h: hitH });
+				});
+				hits.sort(function (a, b) { return b.score - a.score; });
+				hits = hits.slice(0, 8);
+				sel = -1;
+				if (!hits.length) { box.innerHTML = '<div class="no">No results for "' + esc(q) + '"</div>'; box.hidden = false; return; }
+				box.innerHTML = hits.map(function (r) {
+					var url = r.h ? r.d.url + '#' + r.h.a : r.d.url;
+					var sub = r.h ? highlight(r.h.t, tokens) : snippet(r.d.text, tokens);
+					return '<a class="res" href="' + url + '"><span class="rt">' + esc(r.d.title) + '</span><span class="rs">' + sub + '</span></a>';
+				}).join('');
+				box.hidden = false;
+			}
+
+			var timer;
+			input.addEventListener('input', function () {
+				var q = input.value;
+				wrap.classList.toggle('has-query', q.length > 0);
+				load().then(function () { clearTimeout(timer); timer = setTimeout(function () { run(q); }, 60); });
+			});
+			input.addEventListener('focus', load);
+			input.addEventListener('keydown', function (e) {
+				var items = box.querySelectorAll('a.res');
+				if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); sel = Math.min(sel + 1, items.length - 1); mark(items); }
+				else if (e.key === 'ArrowUp' && items.length) { e.preventDefault(); sel = Math.max(sel - 1, 0); mark(items); }
+				else if (e.key === 'Enter') { var t = sel >= 0 ? items[sel] : items[0]; if (t) window.location.href = t.getAttribute('href'); }
+				else if (e.key === 'Escape') { box.hidden = true; input.blur(); }
+			});
+			function mark(items) { for (var i = 0; i < items.length; i++) items[i].classList.toggle('sel', i === sel); if (sel >= 0) items[sel].scrollIntoView({ block: 'nearest' }); }
+			document.addEventListener('click', function (e) { if (!e.target.closest('#docsearch')) box.hidden = true; });
+			document.addEventListener('keydown', function (e) {
+				if (e.key === '/' && document.activeElement !== input && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); input.focus(); }
+			});
+			// deep-linkable search: /?q=term opens with the query prefilled and run
+			var pq = new URLSearchParams(location.search).get('q');
+			if (pq) { input.value = pq; wrap.classList.add('has-query'); input.focus(); load().then(function () { run(pq); }); }
+		})();
+	</script>
+{{ if has_island }}
+	<script src="/d3.min.js" defer></script>
+	<script>
+		// Island animation: a slow, numbered walkthrough of a FoundationDB transaction. The SVG is
+		// already painted at its final size (SSR'd); d3 loads deferred and only moves packets inside the
+		// SVG and updates the reserved step label, so nothing shifts. Plays while the island is on screen.
+		(function () {
+			var STEPS = [
+				{ n: 1, nodes: ['n-client', 'n-proxy', 'n-storage'], hops: [['e_cp', 1, 'grv'], ['e_cp', -1, 'grv'], ['e_cs', 1, 'read'], ['e_cs', -1, 'read']],
+					label: 'First read: the client fetches a read version from a proxy (once, then cached) and reads from storage. The read version is fetched inline with this first read, not as a separate step before your handler runs.' },
+				{ n: 2, nodes: ['n-client', 'n-storage'], hops: [['e_cs', 1, 'read'], ['e_cs', -1, 'read']],
+					label: 'Later reads go straight to storage at the cached read version.' },
+				{ n: 3, nodes: ['n-client', 'n-proxy'], hops: [['e_cp', 1, 'commit']],
+					label: 'Commit: the client sends its writes and read-conflict ranges to a proxy.' },
+				{ n: 4, nodes: ['n-proxy', 'n-resolver'], hops: [['e_pr', 1, 'commit'], ['e_pr', -1, 'commit']],
+					label: 'Resolve: the resolver rejects the commit if another transaction wrote the same keys since the read version.' },
+				{ n: 5, nodes: ['n-proxy', 'n-tlog'], hops: [['e_pt', 1, 'commit'], ['e_pt', -1, 'commit']],
+					label: 'Durable: the proxy writes the commit to the transaction logs before acknowledging.' },
+				{ n: 6, nodes: ['n-proxy', 'n-client'], hops: [['e_cp', -1, 'ack']],
+					label: 'Committed: the proxy returns the commit version to the client.' },
+			];
+			function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+			function hop(svg, id, dir, cls) {
+				return new Promise(function (res) {
+					var p = svg.querySelector('#' + id); if (!p) { res(); return; }
+					p.classList.add('traveling');
+					var len = p.getTotalLength();
+					var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+					c.setAttribute('r', '7'); c.setAttribute('class', 'packet ' + cls); svg.appendChild(c);
+					d3.select(c).transition().duration(1200).ease(d3.easeCubicInOut)
+						.attrTween('transform', function () { return function (t) { var s = dir > 0 ? t : 1 - t; var pt = p.getPointAtLength(s * len); return 'translate(' + pt.x + ',' + pt.y + ')'; }; })
+						.on('end', function () { c.remove(); p.classList.remove('traveling'); p.classList.add('done'); res(); });
+				});
+			}
+			async function play(root) {
+				var svg = root.querySelector('svg');
+				var numEl = root.querySelector('.tf-num'), labEl = root.querySelector('.tf-label');
+				var nodes = svg.querySelectorAll('.tf-node');
+				var edges = svg.querySelectorAll('.tf-edge');
+				while (root.dataset.play === '1') {
+					edges.forEach(function (e) { e.classList.remove('done', 'traveling'); }); // fresh trail each loop
+					for (var s = 0; s < STEPS.length; s++) {
+						if (root.dataset.play !== '1') break;
+						var step = STEPS[s];
+						numEl.textContent = step.n; labEl.textContent = step.label;
+						nodes.forEach(function (nd) { nd.classList.remove('active'); });
+						step.nodes.forEach(function (id) { var nd = svg.querySelector('#' + id); if (nd) nd.classList.add('active'); });
+						for (var h = 0; h < step.hops.length; h++) { if (root.dataset.play !== '1') break; await hop(svg, step.hops[h][0], step.hops[h][1], step.hops[h][2]); }
+						await wait(2000); // linger so the reader can read the step
+					}
+					await wait(900);
+				}
+			}
+			function maybeStart(root) { if (root.dataset.play !== '1') { root.dataset.play = '1'; play(root); } }
+			function start() {
+				if (typeof d3 === 'undefined') { setTimeout(start, 50); return; }
+				document.querySelectorAll('.island.txn-flow').forEach(function (root) {
+					new IntersectionObserver(function (es) {
+						es.forEach(function (e) {
+							if (e.isIntersecting) maybeStart(root);
+							else root.dataset.play = '0';
+						});
+					}, { threshold: 0.3 }).observe(root);
+					// fallback: if already on screen at load, start now (IntersectionObserver's first
+					// callback can be missed under headless capture)
+					var r = root.getBoundingClientRect();
+					if (r.top < innerHeight && r.bottom > 0) maybeStart(root);
+				});
+			}
+			window.addEventListener('load', start);
+		})();
+	</script>
+{{ end }}
+</body>
+</html>
