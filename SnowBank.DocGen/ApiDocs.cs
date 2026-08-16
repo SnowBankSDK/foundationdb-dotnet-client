@@ -13,7 +13,7 @@ namespace SnowBank.DocGen
 	public sealed record ApiParam(string Name, string Type, string Doc);
 	public sealed record ApiMember(string Group, string Name, string Anchor, List<ApiOverload> Overloads);
 	public sealed record ApiOverload(string Signature, string Summary, List<ApiParam> Params, string Returns, string Remarks, string Example);
-	public sealed record ApiType(string Namespace, string Display, string Slug, string Kind, string Summary, string Remarks, string Example, List<string> Implements, List<ApiMember> Members);
+	public sealed record ApiType(string Assembly, string Namespace, string Display, string Slug, string Kind, string Summary, string Remarks, string Example, List<string> Implements, List<ApiMember> Members);
 
 	public static class ApiDocs
 	{
@@ -65,14 +65,19 @@ namespace SnowBank.DocGen
 
 			public List<ApiType> Run()
 			{
-				var types = this.Asms.SelectMany(a => a.GetExportedTypes())
-					.Where(t => t.Namespace is { } ns && !ns.StartsWith("JetBrains", StringComparison.Ordinal) && ns != "System.Runtime.CompilerServices")
-					.Where(t => !t.Name.Contains('<') && !t.Name.Contains('$')) // drop compiler-generated display classes
-					.ToList();
+				var types = new List<(string Asm, Type T)>();
+				foreach (var a in this.Asms)
+				{
+					var asm = a.GetName().Name ?? "";
+					foreach (var t in a.GetExportedTypes()
+						.Where(t => t.Namespace is { } ns && !ns.StartsWith("JetBrains", StringComparison.Ordinal) && ns != "System.Runtime.CompilerServices")
+						.Where(t => !t.Name.Contains('<') && !t.Name.Contains('$'))) // drop compiler-generated display classes
+						types.Add((asm, t));
+				}
 
 				// Pass A: register the href of every type and member, so <see cref> in any summary can
 				// resolve to a link, even a forward reference to a type rendered later.
-				foreach (var t in types)
+				foreach (var (_, t) in types)
 				{
 					this.Href["T:" + DocType(t)] = "/api/" + Slug(t) + ".html";
 					foreach (var mi in Members(t))
@@ -82,16 +87,17 @@ namespace SnowBank.DocGen
 
 				// Pass B: render.
 				var result = new List<ApiType>();
-				foreach (var t in types)
+				foreach (var (asm, t) in types)
 				{
 					var doc = Effective("T:" + DocType(t), t);
 					result.Add(new ApiType(
-						t.Namespace ?? "", FullDisplay(t), Slug(t), Kind(t),
+						asm, t.Namespace ?? "", FullDisplay(t), Slug(t), Kind(t),
 						Summary(doc), Block(doc?.Element("remarks")), Block(doc?.Element("example")),
 						Implements(t), BuildMembers(t)));
 				}
 				return result
-					.OrderBy(x => x.Namespace, StringComparer.Ordinal)
+					.OrderBy(x => x.Assembly, StringComparer.Ordinal)
+					.ThenBy(x => x.Namespace, StringComparer.Ordinal)
 					.ThenBy(x => x.Display, StringComparer.Ordinal)
 					.ToList();
 			}
@@ -586,12 +592,16 @@ namespace SnowBank.DocGen
 
 		public static string RenderIndex(List<ApiType> types)
 		{
-			var sb = new StringBuilder("# API Reference\n\nGenerated from `FoundationDB.Client` (public types).\n\n");
-			foreach (var ns in types.GroupBy(x => x.Namespace).OrderBy(g => g.Key, StringComparer.Ordinal))
+			var sb = new StringBuilder("# API Reference\n\nPublic types, one page each, grouped by assembly.\n\n");
+			foreach (var asm in types.GroupBy(x => x.Assembly).OrderBy(g => g.Key, StringComparer.Ordinal))
 			{
-				sb.Append("## ").Append(ns.Key).Append("\n\n");
-				foreach (var t in ns) sb.Append("- [").Append(MdText(t.Display)).Append("](/api/").Append(t.Slug).Append(".html) — ").Append(Cell(FirstSentence(t.Summary))).Append('\n');
-				sb.Append('\n');
+				sb.Append("## ").Append(asm.Key).Append(" {#").Append(Anchor(asm.Key)).Append("}\n\n"); // explicit id matches the nav anchor
+				foreach (var ns in asm.GroupBy(x => x.Namespace).OrderBy(g => g.Key, StringComparer.Ordinal))
+				{
+					sb.Append("### ").Append(ns.Key).Append("\n\n");
+					foreach (var t in ns) sb.Append("- [").Append(MdText(t.Display)).Append("](/api/").Append(t.Slug).Append(".html) — ").Append(Cell(FirstSentence(t.Summary))).Append('\n');
+					sb.Append('\n');
+				}
 			}
 			return sb.ToString();
 		}

@@ -142,18 +142,13 @@ namespace SnowBank.DocGen
 						if (!apiByMember.ContainsKey(lastSeg + "." + m.Name)) apiByMember[lastSeg + "." + m.Name] = mhref;
 					}
 				}
-				// One collapsed "API Reference" entry (folded unless the current page is an API page), so the
-				// namespaces do not clutter the menu as a block of uppercase labels. Namespace labels drop the
-				// shared "FoundationDB." prefix to stay short.
+				// Collapsed "API Reference" section: one flat entry per assembly (linking into the API overview
+				// page at that assembly's section), plus the overview itself. No per-namespace or per-type
+				// entries in the menu; the full namespace/type listing lives on the overview page.
 				var apiSection = new TocNode { Name = "API Reference", NameFr = "Référence API", Collapsed = true, Items = new List<TocNode>() };
 				apiSection.Items.Add(new TocNode { Name = "Overview", NameFr = "Vue d'ensemble", Href = "api/index.md" });
-				apiSection.Items.AddRange(types.GroupBy(t => t.Namespace).OrderBy(g => g.Key, StringComparer.Ordinal)
-					.Select(g => new TocNode
-					{
-						Name = g.Key.StartsWith("FoundationDB.", StringComparison.Ordinal) ? g.Key["FoundationDB.".Length..] : g.Key,
-						Collapsed = true, // namespace groups are large; keep them folded unless they hold the current page
-						Items = g.Select(t => new TocNode { Name = t.Display, Href = "api/" + t.Slug + ".md" }).ToList(),
-					}));
+				apiSection.Items.AddRange(types.Select(t => t.Assembly).Distinct().OrderBy(a => a, StringComparer.Ordinal)
+					.Select(a => new TocNode { Name = a, Href = "api/index.md#" + ApiDocs.Anchor(a) }));
 				nodes.Add(apiSection);
 				Console.WriteLine($"  api: {types.Count} types across {types.Select(t => t.Namespace).Distinct().Count()} namespace(s)");
 			}
@@ -794,7 +789,7 @@ namespace SnowBank.DocGen
 		private static string Href(string? md, bool french)
 			{
 				if (md == null) return "#";
-				var html = "/" + Regex.Replace(md, @"\.md$", ".html");
+				var html = "/" + Regex.Replace(md, @"\.md($|#)", ".html$1"); // handles "api/index.md#anchor" too
 				return french && !md.StartsWith("api/", StringComparison.Ordinal) ? "/fr" + html : html;
 			}
 
