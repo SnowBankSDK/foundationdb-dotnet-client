@@ -24,31 +24,37 @@ namespace SnowBank.DocGen
 	{
 		public static int Main(string[] args)
 		{
-			var root = FindRoot();
+			string? rootArg = null;
+			int? servePort = null;
+			for (int i = 0; i < args.Length; i++)
+			{
+				if (args[i] == "--root" && i + 1 < args.Length) rootArg = args[++i];
+				else if (args[i] == "--serve") servePort = i + 1 < args.Length && int.TryParse(args[i + 1], out var p) ? p : 8080;
+			}
+			var root = rootArg != null ? Path.GetFullPath(rootArg) : FindRoot();
 			var docs = Path.Combine(root, "Documentation");
 			var outDir = Path.Combine(root, "artifacts", "_site");
+			var config = DocGenConfig.Load(docs);
 
-			Render(root, docs, outDir);
+			Render(root, docs, outDir, config);
 
-			if (args.Length > 0 && args[0] == "--serve")
-			{
-				int port = args.Length > 1 && int.TryParse(args[1], out var p) ? p : 8080;
-				Serve(outDir, port);
-			}
+			if (servePort is int port) Serve(outDir, port);
 			return 0;
 		}
 
-		private static void Render(string root, string docs, string outDir)
+		private static void Render(string root, string docs, string outDir, DocGenConfig config)
 		{
 			if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true); // fresh output, no orphan pages
 			Directory.CreateDirectory(outDir);
 
+			var toolDir = ToolDir(); // the tool's own dir, so its assets/scripts resolve over any repo, not just its own
 			var nodes = ParseToc(File.ReadAllText(Path.Combine(docs, "toc.yml")));
 
 			// shared assets at the site root (pages link them root-absolute, so they resolve at any depth)
-			File.Copy(Path.Combine(root, "SnowBank.DocGen", "assets", "main.css"), Path.Combine(outDir, "main.css"), overwrite: true);
-			File.Copy(Path.Combine(docs, "images", "logo.png"), Path.Combine(outDir, "logo.png"), overwrite: true);
-			var d3 = Path.Combine(root, "SnowBank.DocGen", "assets", "d3.min.js");
+			File.Copy(Path.Combine(toolDir, "assets", "main.css"), Path.Combine(outDir, "main.css"), overwrite: true);
+			var logo = Path.Combine(docs, "images", "logo.png");
+			if (File.Exists(logo)) File.Copy(logo, Path.Combine(outDir, "logo.png"), overwrite: true);
+			var d3 = Path.Combine(toolDir, "assets", "d3.min.js");
 			if (File.Exists(d3)) File.Copy(d3, Path.Combine(outDir, "d3.min.js"), overwrite: true);
 
 			var template = Template.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "templates", "layout.sbn-html")));
@@ -85,30 +91,33 @@ namespace SnowBank.DocGen
 			{
 				var mdPath = Path.Combine(docs, href.Replace('/', Path.DirectorySeparatorChar));
 				if (!File.Exists(mdPath)) { missing++; Console.Error.WriteLine($"  [skip] {href} (no file)"); continue; }
-				var text = ReflowCodeComments(InjectPackageVersions(File.ReadAllText(mdPath)));
+				var text = ReflowCodeComments(InjectPackageVersions(File.ReadAllText(mdPath), config.Version));
 				mdByHref[href] = text;
 				Collect(text);
 				// French twin (X.md -> X.fr.md), collected so its fences are highlighted in the same batches
 				var frPath = Path.ChangeExtension(mdPath, null) + ".fr.md";
 				if (File.Exists(frPath))
 				{
-					var frText = ReflowCodeComments(InjectPackageVersions(File.ReadAllText(frPath)));
+					var frText = ReflowCodeComments(InjectPackageVersions(File.ReadAllText(frPath), config.Version));
 					frMdByHref[href] = frText;
 					Collect(frText);
 				}
 			}
-			var mermaidSvg = RenderMermaid(root, mermaidCodes);
-			var shiki = Highlight(root, codeFences);
+			var mermaidSvg = RenderMermaid(toolDir, mermaidCodes);
+			var shiki = Highlight(toolDir, codeFences);
 
-			// API reference: reflect FoundationDB.Client + its XML docs into one markdown page per public
+			// API reference: reflect each configured assembly + its XML docs into one markdown page per public
 			// type, then feed those pages through the same nav / search / render path as the guides. Done
 			// after Phase 1 so the collect pass does not re-scan them (API pages carry no fenced blocks).
 			// The symbol map drives auto-linking of inline-code type names in the guides.
 			var apiByName = new Dictionary<string, string>(StringComparer.Ordinal);   // "TypeName" -> /api/slug.html
 			var apiByMember = new Dictionary<string, string>(StringComparer.Ordinal); // "Type.Member" -> /api/slug.html#anchor
 			var apiHrefs = new HashSet<string>();
-			var apiNames = new[] { "SnowBank.Core", "FoundationDB.Client", "FoundationDB.Aspire", "FoundationDB.Aspire.Hosting" };
-			var apiAssemblies = apiNames.Select(n => (Path.Combine(root, "artifacts", "bin", n, "release_net10.0", n + ".dll"), Path.Combine(root, "artifacts", "bin", n, "release_net10.0", n + ".xml"))).Where(p => File.Exists(p.Item1)).ToList();
+			var apiAssemblies = config.Assemblies
+				.Select(n => ResolveAssembly(root, config, n))
+				.Where(p => p.Dll != null)
+				.Select(p => (p.Dll!, p.Xml!))
+				.ToList();
 			if (apiAssemblies.Count > 0)
 			{
 				var types = ApiDocs.Extract(apiAssemblies);
@@ -147,7 +156,7 @@ namespace SnowBank.DocGen
 				nodes.Add(apiSection);
 				Console.WriteLine($"  api: {types.Count} types across {types.Select(t => t.Namespace).Distinct().Count()} namespace(s)");
 			}
-			else Console.Error.WriteLine("  [api] no API assemblies built under artifacts/bin (Release net10.0)");
+			else Console.Error.WriteLine($"  [api] no API assemblies resolved from docgen.json ({config.Assemblies.Count} configured; build them Release {config.ApiTfm})");
 
 			// Phase 2: the fenced-block set for this build: FoundationDB's fdb-* blocks, CloudLayer's
 			// island(s), and mermaid from the pre-rendered map. Regular code fences resolve against the
@@ -259,30 +268,22 @@ namespace SnowBank.DocGen
 			Console.WriteLine($"rendered {rendered} page(s) to {outDir}{(missing > 0 ? $" ({missing} missing)" : "")}");
 			Console.WriteLine($"  search index: {index.Count} pages, {indexJson.Length:N0} bytes; mermaid: {mermaidSvg.Count}/{mermaidCodes.Count} diagrams");
 
-			// self-checks against the reorganized (diataxis) tree: build-time blocks, no client assembly,
-			// working nav links. The tuple reference now lives at guide/keys-and-layers/reference.html.
-			var tuples = File.ReadAllText(Path.Combine(outDir, "guide", "keys-and-layers", "reference.html"));
-			Check(tuples.Contains("class=\"bytes-card\""), "fdb-bytes block baked into HTML (tuple reference)");
-			Check(!tuples.Contains("<script src"), "non-island page ships no external script (d3 loads only where an island is used)");
-			Check(tuples.Contains("class=\"toc-section\""), "nav sidebar baked into static HTML");
-			Check(tuples.Contains("href=\"/guide/keys-and-layers/index.html\""), "inter-page nav links are root-absolute .html");
-			Check(tuples.Contains("id=\"docsearch\""), "search box present in header");
+			// generic self-checks: no repo-specific page names, so the tool validates any doc set
+			Check(rendered >= 1, $"rendered at least one page ({rendered})");
 			Check(File.Exists(Path.Combine(outDir, "search-index.json")), "build-time search index written");
-			var refPage = File.ReadAllText(Path.Combine(outDir, "crystaljson", "reference.html"));
-			Check(refPage.Contains(LatestStableVersion), $"sample PackageReference versions injected ({LatestStableVersion})");
-			var fdb101 = File.ReadAllText(Path.Combine(outDir, "foundationdb-101.html"));
-			Check(fdb101.Contains("<div class=\"mermaid\"><svg"), "mermaid rendered to static SVG at build time");
-			Check(!fdb101.Contains("<pre class=\"mermaid\">"), "no raw mermaid source left in output");
-
-			if (apiHrefs.Count > 0)
+			Check(File.Exists(Path.Combine(outDir, "main.css")), "stylesheet copied to the site root");
+			Check(mermaidCodes.Count == 0 || mermaidSvg.Count > 0, "mermaid diagrams rendered to static SVG at build time");
+			// a page with no island must ship no external script: the reflow-free invariant (d3 loads only on island pages)
+			var noIsland = Directory.EnumerateFiles(outDir, "*.html", SearchOption.AllDirectories)
+				.Select(File.ReadAllText).FirstOrDefault(h => !h.Contains("class=\"island "));
+			if (noIsland != null)
 			{
-				var apiIndex = File.ReadAllText(Path.Combine(outDir, "api", "index.html"));
-				Check(apiIndex.Contains("API Reference"), "API index page generated");
-				var dbPage = Path.Combine(outDir, "api", "FoundationDB.Client.IFdbDatabase.html");
-				Check(File.Exists(dbPage), "per-type API page generated (IFdbDatabase)");
-				var txns = File.ReadAllText(Path.Combine(outDir, "guide", "transactions", "how-to.html"));
-				Check(txns.Contains("href=\"/api/FoundationDB.Client.FdbWatch.html\""), "inline-code type name auto-linked to its API page (FdbWatch)");
+				Check(!noIsland.Contains("<script src"), "a non-island page ships no external script (reflow-free)");
+				Check(noIsland.Contains("class=\"toc-section\""), "nav sidebar baked into static HTML");
+				Check(noIsland.Contains("id=\"docsearch\""), "search box present in header");
 			}
+			if (apiHrefs.Count > 0)
+				Check(File.Exists(Path.Combine(outDir, "api", "index.html")), "API reference index generated");
 		}
 
 		private sealed record MermaidResult(string? Id, string? Svg, string? Error);
@@ -290,13 +291,13 @@ namespace SnowBank.DocGen
 		// Render every mermaid diagram to a static SVG in one headless-Chrome pass (tools/mermaid.mjs).
 		// Returns a map from the trimmed diagram source to its SVG. Empty results leave the block to fall
 		// back to raw source, so a missing Node/Chrome degrades instead of failing the build.
-		private static Dictionary<string, string> RenderMermaid(string root, List<string> codes)
+		private static Dictionary<string, string> RenderMermaid(string toolDir, List<string> codes)
 		{
 			var map = new Dictionary<string, string>();
 			if (codes.Count == 0) return map;
 
 			var items = codes.Select((c, i) => new { id = i.ToString(), code = c });
-			var script = Path.Combine(root, "SnowBank.DocGen", "tools", "mermaid.mjs");
+			var script = Path.Combine(toolDir, "tools", "mermaid.mjs");
 			try
 			{
 				var psi = new ProcessStartInfo("node")
@@ -353,7 +354,7 @@ namespace SnowBank.DocGen
 		// Highlight every code fence to static HTML in one Shiki pass (tools/highlight.mjs, VS Code's
 		// dark-plus theme). Returns a map keyed by (lang, code). A missing Node leaves code to fall back
 		// to a plain <pre>, so the build still succeeds.
-		private static Dictionary<string, string> Highlight(string root, List<(string Lang, string Code)> fences)
+		private static Dictionary<string, string> Highlight(string toolDir, List<(string Lang, string Code)> fences)
 		{
 			var map = new Dictionary<string, string>();
 			if (fences.Count == 0) return map;
@@ -363,7 +364,7 @@ namespace SnowBank.DocGen
 			foreach (var f in fences) if (seen.Add(ShikiKey(f.Lang, f.Code))) distinct.Add(f);
 
 			var items = distinct.Select((f, i) => new { id = i.ToString(), lang = f.Lang, code = f.Code });
-			var script = Path.Combine(root, "SnowBank.DocGen", "tools", "highlight.mjs");
+			var script = Path.Combine(toolDir, "tools", "highlight.mjs");
 			try
 			{
 				var psi = new ProcessStartInfo("node")
@@ -464,19 +465,15 @@ namespace SnowBank.DocGen
 
 		private static string HrefToHtml(string href) => Regex.Replace(href, @"\.md$", ".html");
 
-		// Latest PUBLISHED stable version of the SnowBank / FoundationDB packages. The repo builds under
-		// central package management, so the docs write <PackageReference Include="..." /> with no Version;
-		// a standalone sample a reader copies needs one. Inject it into OUR packages only (injecting this
-		// into a third-party reference would be wrong). Bump on every release.
-		// Productization: read this from a docgen config or the release props instead of a constant.
-		private const string LatestStableVersion = "7.4.3";
-
+		// The docs write <PackageReference Include="..." /> with no Version (the repo builds under central
+		// package management), so a standalone sample a reader copies needs one. Inject the configured
+		// release version into OUR packages only (injecting it into a third-party reference would be wrong).
 		private static readonly Regex OurPackageRef = new(
 			@"(<PackageReference\s+Include=""(?:SnowBank|FoundationDB)[^""]*"")\s*/>",
 			RegexOptions.Compiled);
 
-		private static string InjectPackageVersions(string markdown)
-			=> OurPackageRef.Replace(markdown, $"$1 Version=\"{LatestStableVersion}\" />");
+		private static string InjectPackageVersions(string markdown, string version)
+			=> OurPackageRef.Replace(markdown, $"$1 Version=\"{version}\" />");
 
 		// A long code line with a trailing // comment forces a horizontal scrollbar. Move the comment to
 		// its own line above the code when the combined line is too wide. Scoped to code fences whose
@@ -792,9 +789,55 @@ namespace SnowBank.DocGen
 		private static string FindRoot()
 		{
 			var dir = new DirectoryInfo(AppContext.BaseDirectory);
-			while (dir != null && !File.Exists(Path.Combine(dir.FullName, "FoundationDB.Client.slnx")))
+			while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Documentation", "docgen.json")))
 				dir = dir.Parent;
-			return dir?.FullName ?? throw new InvalidOperationException("could not find repo root (FoundationDB.Client.slnx)");
+			return dir?.FullName ?? throw new InvalidOperationException("could not find a repo root with Documentation/docgen.json; pass --root <dir>");
+		}
+
+		// The tool's own project dir (SnowBank.DocGen/), so its bundled assets and node scripts resolve
+		// whether the tool documents its own repo or a parent repo pointed at by --root.
+		private static string ToolDir()
+		{
+			var dir = new DirectoryInfo(AppContext.BaseDirectory);
+			while (dir != null && !File.Exists(Path.Combine(dir.FullName, "SnowBank.DocGen.csproj")))
+				dir = dir.Parent;
+			return dir?.FullName ?? AppContext.BaseDirectory;
+		}
+
+		// Per-repo doc config (Documentation/docgen.json): the release version stamped into sample
+		// PackageReferences, the TFM and bin roots to find built assemblies under, and the assembly names
+		// whose public API becomes reference pages. The names live in each repo, not in the tool source.
+		private sealed class DocGenConfig
+		{
+			public string Version { get; set; } = "0.0.0";
+			public string ApiTfm { get; set; } = "net10.0";
+			public List<string> BinRoots { get; set; } = new() { "artifacts/bin" };
+			public List<string> Assemblies { get; set; } = new();
+
+			public static DocGenConfig Load(string docsDir)
+			{
+				var path = Path.Combine(docsDir, "docgen.json");
+				if (!File.Exists(path))
+				{
+					Console.Error.WriteLine($"  [config] no docgen.json in {docsDir}; API reference disabled, version 0.0.0");
+					return new DocGenConfig();
+				}
+				var cfg = JsonSerializer.Deserialize<DocGenConfig>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new DocGenConfig();
+				if (cfg.BinRoots.Count == 0) cfg.BinRoots.Add("artifacts/bin");
+				return cfg;
+			}
+		}
+
+		// Find a configured assembly's built dll (first matching bin root) with its sibling xml docs.
+		private static (string? Dll, string? Xml) ResolveAssembly(string root, DocGenConfig config, string name)
+		{
+			foreach (var br in config.BinRoots)
+			{
+				var dll = Path.Combine(root, br.Replace('/', Path.DirectorySeparatorChar), name, "release_" + config.ApiTfm, name + ".dll");
+				if (File.Exists(dll)) return (dll, Path.ChangeExtension(dll, ".xml"));
+			}
+			Console.Error.WriteLine($"  [api] '{name}' not found under {string.Join(", ", config.BinRoots)} (release_{config.ApiTfm})");
+			return (null, null);
 		}
 
 		// ---- tiny static file server (the preview pane blocks file://) ----

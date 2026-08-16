@@ -37,6 +37,9 @@ namespace SnowBank.DocGen
 			{
 
 				var paths = new List<string>();
+				// each configured assembly's own dll first, so its canonical copy wins over any copy that
+				// CopyLocalLockFileAssemblies dropped next to a peer that depends on it
+				foreach (var (dll, _) in assemblies) paths.Add(dll);
 				foreach (var (dll, _) in assemblies) paths.AddRange(Directory.GetFiles(Path.GetDirectoryName(dll)!, "*.dll"));
 				var runtimeDir = RuntimeEnvironment.GetRuntimeDirectory().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 				paths.AddRange(Directory.GetFiles(runtimeDir, "*.dll"));
@@ -52,7 +55,11 @@ namespace SnowBank.DocGen
 						.OrderBy(x => x.v).Select(x => x.d).LastOrDefault();
 					if (dir != null) paths.AddRange(Directory.GetFiles(dir, "*.dll"));
 				}
-				this.Mlc = new MetadataLoadContext(new PathAssemblyResolver(paths.Distinct()));
+				// exactly one path per assembly file name: MetadataLoadContext throws "already loaded" when the
+				// same dependency sits in several dirs (a copy next to each assembly that pulled it in)
+				var byFile = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+				foreach (var p in paths) { var n = Path.GetFileName(p); if (!byFile.ContainsKey(n)) byFile[n] = p; }
+				this.Mlc = new MetadataLoadContext(new PathAssemblyResolver(byFile.Values));
 				foreach (var (dll, xml) in assemblies) { if (File.Exists(xml)) LoadXml(xml); this.Asms.Add(this.Mlc.LoadFromAssemblyPath(dll)); }
 			}
 
@@ -102,7 +109,7 @@ namespace SnowBank.DocGen
 					foreach (var byName in g.GroupBy(x => x.Name).OrderBy(x => x.Key, StringComparer.Ordinal))
 					{
 						var overloads = new List<ApiOverload>();
-						foreach (var m in byName.OrderBy(x => (x.Mi as MethodBase)?.GetParameters().Length ?? 0))
+						foreach (var m in byName.OrderBy(x => ParamCountSafe(x.Mi)))
 						{
 							try { overloads.Add(BuildOverload(m.Mi, t)); }
 							catch (Exception ex) { Console.Error.WriteLine($"  [api] dropped {t.FullName}.{m.Name}: {ex.GetType().Name} {ex.Message}"); }
@@ -111,6 +118,14 @@ namespace SnowBank.DocGen
 					}
 				}
 				return members;
+			}
+
+			// GetParameters() decodes the method signature and can throw when it references a type in an
+			// assembly the resolver cannot find; treat that as zero for ordering (the overload is dropped later).
+			private static int ParamCountSafe(MemberInfo mi)
+			{
+				try { return (mi as MethodBase)?.GetParameters().Length ?? 0; }
+				catch { return 0; }
 			}
 
 			private ApiOverload BuildOverload(MemberInfo mi, Type owner)
