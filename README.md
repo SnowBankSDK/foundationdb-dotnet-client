@@ -75,6 +75,8 @@ Keys are built with `subspace.Key(...)` and stay lazily tuple-encoded until the 
 
 **Full walkthrough:** the [documentation](Documentation/introduction.md) takes you from zero (installing .NET, running a local cluster) to your first read and write, then into modeling data with the Directory layer and Layers, and running it all with [.NET Aspire](Documentation/aspire.md).
 
+**Upgrading?** [Migrating from 7.4.2 to 7.4.3](Documentation/migrations/7.4.2-to-7.4.3.md) lists the breaking changes and the wire-format changes to review before you bump the package version.
+
 What you get:
 
 - **Strongly-typed, lazy keys**: `subspace.Key("user", 123)` tuple-encodes itself only when handed to a transaction. No manual byte wrangling.
