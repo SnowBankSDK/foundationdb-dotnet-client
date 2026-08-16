@@ -64,6 +64,7 @@ namespace SnowBank.DocGen
 			// the diataxis toc lists some pages twice (a section landing that repeats as its first child,
 			// and the Reference section aliasing folder pages), so render / index each once
 			pages = pages.GroupBy(p => p.Href).Select(g => g.First()).ToList();
+			var landingHtml = pages.Count > 0 ? HrefToHtml(pages[0].Href) : "index.html"; // first toc page = the site landing
 
 			// Phase 1: read + transform every page, then parse it to collect the blocks that need a
 			// build-time pass: mermaid diagrams (one headless-Chrome batch) and code fences (one Shiki
@@ -268,10 +269,16 @@ namespace SnowBank.DocGen
 			Console.WriteLine($"rendered {rendered} page(s) to {outDir}{(missing > 0 ? $" ({missing} missing)" : "")}");
 			Console.WriteLine($"  search index: {index.Count} pages, {indexJson.Length:N0} bytes; mermaid: {mermaidSvg.Count}/{mermaidCodes.Count} diagrams");
 
+			// a root index.html so "/" and the logo's href="/" resolve on a static host (Pages has no
+			// directory-default): copy the first toc page as the landing, for the English and French trees
+			CopyAsIndex(outDir, landingHtml);
+			CopyAsIndex(Path.Combine(outDir, "fr"), landingHtml);
+
 			// generic self-checks: no repo-specific page names, so the tool validates any doc set
 			Check(rendered >= 1, $"rendered at least one page ({rendered})");
 			Check(File.Exists(Path.Combine(outDir, "search-index.json")), "build-time search index written");
 			Check(File.Exists(Path.Combine(outDir, "main.css")), "stylesheet copied to the site root");
+			Check(File.Exists(Path.Combine(outDir, "index.html")), "root index.html emitted (site landing)");
 			Check(mermaidCodes.Count == 0 || mermaidSvg.Count > 0, "mermaid diagrams rendered to static SVG at build time");
 			// a page with no island must ship no external script: the reflow-free invariant (d3 loads only on island pages)
 			var noIsland = Directory.EnumerateFiles(outDir, "*.html", SearchOption.AllDirectories)
@@ -464,6 +471,14 @@ namespace SnowBank.DocGen
 		}
 
 		private static string HrefToHtml(string href) => Regex.Replace(href, @"\.md$", ".html");
+
+		// Emit dir/index.html as a copy of the landing page, so a static host serves "/" (and the logo's
+		// href="/") without a directory listing or 404. No-op if the landing was not rendered in this dir.
+		private static void CopyAsIndex(string dir, string landingHtml)
+		{
+			var src = Path.Combine(dir, landingHtml.Replace('/', Path.DirectorySeparatorChar));
+			if (File.Exists(src)) File.Copy(src, Path.Combine(dir, "index.html"), overwrite: true);
+		}
 
 		// The docs write <PackageReference Include="..." /> with no Version (the repo builds under central
 		// package management), so a standalone sample a reader copies needs one. Inject the configured
