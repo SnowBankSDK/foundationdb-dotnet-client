@@ -300,3 +300,10 @@ article blockquote > :last-child {
 .fdb-block .ln.add { background: var(--fx-add-bg); border-left-color: var(--fx-add-gut); }
 .fdb-block .g-del { color: var(--fx-del-fg); }
 .fdb-block .g-add { color: var(--fx-add-fg); }
+
+/* ---- Reading text at 120% (page titles and section headers unchanged) ----
+   Requested 2026-08-15. Headers use rem (root-relative) so they stay put.
+   Main article body + left menu: 16px -> 19.2px. "In this article": 14px -> 16.8px. */
+article { font-size: 1.2rem; }
+.nav-link { font-size: 1.2rem; }
+#affix { font-size: 1.05rem; }

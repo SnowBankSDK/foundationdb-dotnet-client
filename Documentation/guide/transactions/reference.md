@@ -1,6 +1,6 @@
 # Transaction Basics
 
-A transaction is the type that lets you interact with the database, reading the values of keys and/or modifying them. This page is the low-level reference for the transaction API; for the practical rules of using transactions well (idempotency, the 5-second limit, conflicts, atomic operations, watches), read the [Transactions guide](guide/transactions.md).
+A transaction is the type that lets you interact with the database, reading the values of keys and/or modifying them. This page is the low-level reference for the transaction API; for the practical rules of using transactions well (idempotency, the 5-second limit, conflicts, atomic operations, watches), read the [Transactions guide](index.md) and its [how-to recipes](how-to.md).
 
 There are two kinds of transaction:
 
@@ -68,6 +68,6 @@ Slice result2 = await db.ReadWriteAsync(tr =>
 }, ct);
 ```
 
-> ⚠️ The handler can run more than once, so it **must not mutate state outside the database** (no caches, counters, logging, or messaging inside the lambda). Do that work after the loop returns. This and the rest of the rules are covered in the [Transactions guide](guide/transactions.md).
+> The handler can run more than once, so it **must not mutate state outside the database** (no caches, counters, logging, or messaging inside the lambda). Do that work after the loop returns. This and the rest of the rules are covered in the [Transactions guide](index.md).
 
 **Why both `WriteAsync` and `ReadWriteAsync`?** It's a C# type-resolution limitation: "write-only" handlers return `Task` and "read/write" handlers return `Task<T>` (down-castable to `Task`), which causes overload ambiguity. Separate names avoid it. By convention, anything named `Read…` returns a value.

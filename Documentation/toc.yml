@@ -11,38 +11,62 @@
 - name: Getting Started
   href: getting-started.md
 - name: Aspire
-  href: aspire.md
+  items:
+    - name: Overview
+      href: aspire/index.md
+    - name: Getting Started
+      href: aspire/getting-started.md
+    - name: How-to
+      href: aspire/how-to.md
+    - name: Reference
+      href: aspire/reference.md
 - name: Guide
   items:
     - name: Overview
       href: guide/index.md
-    - name: Keys, Values & Layers
-      href: guide/keys-and-layers.md
-    - name: Transactions
-      href: guide/transactions.md
-    - name: Advanced Layers
-      href: guide/advanced-layers.md
-    - name: Binary Data (Slice & Buffers)
-      href: guide/slices-and-buffers.md
-    - name: JSON (CrystalJson)
+    - name: Keys & Layers
+      href: guide/keys-and-layers/index.md
       items:
-        - name: What it is and why
+        - name: Overview
+          href: guide/keys-and-layers/index.md
+        - name: How-to
+          href: guide/keys-and-layers/how-to.md
+    - name: Transactions
+      href: guide/transactions/index.md
+      items:
+        - name: Overview
+          href: guide/transactions/index.md
+        - name: How-to
+          href: guide/transactions/how-to.md
+        - name: Reference
+          href: guide/transactions/reference.md
+    - name: Advanced Layers
+      href: guide/advanced-layers/index.md
+      items:
+        - name: How it works
+          href: guide/advanced-layers/index.md
+        - name: Building layers
+          href: guide/advanced-layers/how-to.md
+- name: Working with data
+  items:
+    - name: Slices & Buffers
+      href: guide/slices-and-buffers.md
+    - name: Tuples
+      href: guide/keys-and-layers/reference.md
+    - name: JSON
+      href: crystaljson/index.md
+      items:
+        - name: Overview
           href: crystaljson/index.md
         - name: Getting Started
           href: crystaljson/getting-started.md
-        - name: Working with CrystalJson
+        - name: Usage
           href: crystaljson/serializing.md
         - name: Reference
           href: crystaljson/reference.md
-    - name: XML Output (CrystalXml)
+    - name: XML
       href: CrystalXml.md
 - name: Migrations
   items:
     - name: 7.4.2 to 7.4.3
       href: migrations/7.4.2-to-7.4.3.md
-- name: Reference
-  items:
-    - name: Tuples
-      href: Tuples.md
-    - name: Transaction Basics
-      href: Transaction_Basics.md

@@ -1,17 +1,18 @@
 # CrystalJson: what it is and why
 
-CrystalJson is the JSON stack of `SnowBank.Core` (namespace `SnowBank.Data.Json`). Every layer of
-this SDK that stores or transmits documents (values in FoundationDB, document collections, change
-records) serializes through it. This page explains what it is and why it is shaped this way; for
-the task guides see [Working with CrystalJson](serializing.md), and for the complete attribute,
-settings and diagnostics tables see the [reference](reference.md).
+CrystalJson is the JSON stack of `SnowBank.Core` (namespace `SnowBank.Data.Json`). It parses,
+builds, reads, mutates and serializes JSON, and it runs on its own: `SnowBank.Core` has no project
+dependencies, so any .NET application can use it without the rest of the SDK. This page explains
+what it is and why it is shaped this way; for the task guides see
+[Working with CrystalJson](serializing.md), and for the complete attribute, settings and
+diagnostics tables see the [reference](reference.md).
 
 It is **not** `System.Text.Json` and not Newtonsoft. The type names look familiar (`JsonObject`,
 `JsonArray`) but the API is different, and the differences are the point.
 
 ## Why: the POCO round-trip problem
 
-A distributed application on FoundationDB handles a lot of data represented as JSON. The classic
+Many applications handle a lot of data represented as JSON. The classic
 way to work with it, deserialize into a POCO (Plain Old CLR Object, a concept also met as DTO,
 Data Transfer Object, or view model), use the object, serialize it back, has two drawbacks at
 this scale:
@@ -134,9 +135,8 @@ a supported migration path rather than an obstacle:
 
 ## Where it sits in this stack
 
-`FdbValue.ToJson(obj)` encodes a FoundationDB value through CrystalJson; a document-collection
-layer built on this SDK stores its documents as CrystalJson-serialized values with generated
-converters; [CrystalXml](../CrystalXml.md) reuses the same containers, enrollment and settings to
-emit XML from the same types. An application built
-on this SDK can use another JSON library at its HTTP boundary, but the data layer speaks
-CrystalJson throughout.
+CrystalJson is a `SnowBank.Core` component with no dependency on the rest of the SDK, so any .NET
+application can use it on its own. [CrystalXml](../CrystalXml.md) reuses the same containers,
+enrollment and settings to emit XML from the same types. Layers in this SDK that store or transmit
+documents serialize through CrystalJson, so a document keeps one representation across the layers
+that handle it.

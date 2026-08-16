@@ -4,10 +4,10 @@ A C#/.NET binding for [FoundationDB](https://www.foundationdb.org/), the distrib
 
 - **New here?** Read the [Introduction](introduction.md), then [Getting Started](getting-started.md).
 - **Building something real?** The [Guide](guide/index.md) walks from key encoding through transactions to advanced, distributed layers (change feeds, retention, fencing):
-  - [Keys, Values & Layers](guide/keys-and-layers.md)
-  - [Transactions](guide/transactions.md)
-  - [Advanced Layers](guide/advanced-layers.md)
+  - [Keys, Values & Layers](guide/keys-and-layers/index.md)
+  - [Transactions](guide/transactions/index.md)
+  - [Advanced Layers](guide/advanced-layers/index.md)
   - [Binary Data (Slice & Buffers)](guide/slices-and-buffers.md)
-- **Reference:** [Tuples](Tuples.md) (the tuple model in depth), [Transaction Basics](Transaction_Basics.md) (the low-level transaction API).
+- **Reference:** [Tuples](guide/keys-and-layers/reference.md) (the tuple model in depth), [Transaction Basics](guide/transactions/reference.md) (the low-level transaction API).
 
 The top-level [README](../README.md) is the authoritative getting-started narrative (installation, dependency injection, .NET Aspire, deployment) and is packed into the NuGet package.

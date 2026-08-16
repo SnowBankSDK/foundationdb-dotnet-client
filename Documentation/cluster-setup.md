@@ -5,15 +5,7 @@ Before your app can read or write anything, it needs a cluster to talk to. Two s
 - You already have a cluster (a colleague set one up, or it runs in your infrastructure): see [Connect to an existing cluster](#connect-to-an-existing-cluster).
 - You have nothing yet: see [Run a local cluster with Docker](#run-a-local-cluster-with-docker).
 
-```mermaid
-flowchart TD
-    q{"Do you already<br/>have a cluster?"}
-    q -->|"Yes"| v["Find its version<br/>fdbcli --version"]
-    v --> pick["Pick the matching<br/>FoundationDB.Client.Native<br/>+ API level"]
-    q -->|"No"| d["Run fdb 7.4<br/>locally in Docker"]
-    pick --> go(["Getting Started"])
-    d --> go
-```
+Both paths end at [Getting Started](getting-started.md). For an existing cluster, find its version (`fdbcli --version`), match it with the `FoundationDB.Client.Native` package and API level, then point your app at its `fdb.cluster` file. With nothing yet, run FoundationDB 7.4 locally in Docker. Both routes are covered below.
 
 ## Connect to an existing cluster
 
@@ -129,7 +121,7 @@ Removes the container. The command above mounts no volume, so this also discards
 
 ### Or let Aspire do it
 
-For real development, .NET Aspire can start this cluster for you and inject the connection into your app automatically, with no manual `docker run`. That is the recommended setup once you are past "hello world": see [Aspire](aspire.md).
+For real development, .NET Aspire can start this cluster for you and inject the connection into your app automatically, with no manual `docker run`. That is the recommended setup once you are past "hello world": see [Aspire](aspire/index.md).
 
 ## Next
 

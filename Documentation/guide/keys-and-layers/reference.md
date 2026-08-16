@@ -1,6 +1,6 @@
 # Tuples
 
-> This page explains the tuple model in depth. In this library, tuples are how you encode **keys** (and sometimes values): the tuple binary encoding produces bytes whose sort order matches the logical order of the elements: exactly what FoundationDB's ordered keyspace needs. For how tuples become database keys via subspaces, see the [Keys, Values & Layers guide](guide/keys-and-layers.md).
+> This page explains the tuple model in depth. In this library, tuples are how you encode **keys** (and sometimes values): the tuple binary encoding produces bytes whose sort order matches the logical order of the elements: exactly what FoundationDB's ordered keyspace needs. For how tuples become database keys via subspaces, see the [Keys, Values & Layers guide](index.md).
 
 _"A tuple is an ordered list of elements."_ - [Wikipedia](http://en.wikipedia.org/wiki/Tuple)
 
@@ -344,4 +344,3 @@ public MyFooBar DecodeFoobar(IVarTuple tuple)
     // all three elements are GUID, but adding name help you catch argument inversion errors
 }
 ```
-

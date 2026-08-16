@@ -116,7 +116,7 @@ string? greeting = await db.ReadAsync(async tr =>
 Console.WriteLine($"Read back: {greeting}");
 ```
 
-Three things worth noticing, all explained in the [Guide](guide/keys-and-layers.md):
+Three things worth noticing, all explained in the [Guide](guide/keys-and-layers/index.md):
 
 - You build the key with **`subspace.Key("greeting")`** and pass that object straight to the transaction. No manual byte encoding.
 - You **resolve the subspace inside the transaction** (`location.Resolve(tr)`) and never cache the prefix.
@@ -124,7 +124,7 @@ Three things worth noticing, all explained in the [Guide](guide/keys-and-layers.
 
 Storing the data under `db.Root["Examples"]["Hello"]` rather than at a raw key is deliberate: the Directory layer keeps your keyspace tidy and collision-free, instead of scattering loose keys at the root. That is the first step towards "thinking in layers", covered next.
 
-> **Resist the urge to build keys by hand.** Do not format keys as raw `byte[]`, UTF-8-encoded strings, or hand-assembled `Slice`s. Always compose them from directory subspaces, tuples, and the typed key helpers (`subspace.Key(...)`), which get ordering and escaping right for you. The [Keys, Values & Layers](guide/keys-and-layers.md) guide explains why this matters and how the encoding works.
+> **Resist the urge to build keys by hand.** Do not format keys as raw `byte[]`, UTF-8-encoded strings, or hand-assembled `Slice`s. Always compose them from directory subspaces, tuples, and the typed key helpers (`subspace.Key(...)`), which get ordering and escaping right for you. The [Keys, Values & Layers](guide/keys-and-layers/index.md) guide explains why this matters and how the encoding works.
 
 ## 4. A small HTTP API you can click through
 
@@ -227,5 +227,5 @@ Run the app and open **`/scalar/v1`** in your browser. You get a dashboard listi
 
 You now have a working connection, a read, a write, and an HTTP endpoint. Two directions from here:
 
-- **Think in layers.** [Keys, Values & Layers](guide/keys-and-layers.md) is the most important thing to learn next: how keys are tuple-encoded, how subspaces and the Directory layer organize the keyspace, and how to package data access into a reusable Layer. Then [Transactions](guide/transactions.md) for the retry loop, conflicts, and atomic operations.
-- **A production-shaped setup.** Let .NET Aspire start the cluster and inject the connection for you, alongside a proper API backend. See [Aspire](aspire.md).
+- **Think in layers.** [Keys, Values & Layers](guide/keys-and-layers/index.md) is the most important thing to learn next: how keys are tuple-encoded, how subspaces and the Directory layer organize the keyspace, and how to package data access into a reusable Layer. Then [Transactions](guide/transactions/index.md) for the retry loop, conflicts, and atomic operations.
+- **A production-shaped setup.** Let .NET Aspire start the cluster and inject the connection for you, alongside a proper API backend. See [Aspire](aspire/index.md).

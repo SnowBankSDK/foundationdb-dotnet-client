@@ -1,0 +1,43 @@
+name: Documentation
+
+# Manual only: run this from the Actions tab whenever the docs are updated.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish-docs:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install the SDK the repo pins in global.json (docfx's metadata step loads
+      # SnowBank.Core, FoundationDB.Client, and the two Aspire projects to extract the API docs).
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install docfx
+        run: dotnet tool update -g docfx
+
+      # Metadata (net8.0 API from the 4 projects in docfx.json) + build to artifacts/_site.
+      - name: Build docs
+        run: docfx Documentation/docfx.json
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: artifacts/_site
+      - id: deployment
+        uses: actions/deploy-pages@v4
