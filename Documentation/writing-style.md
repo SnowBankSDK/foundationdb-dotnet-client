@@ -37,6 +37,17 @@ documentation. The goal is text that a non-native reader parses once, correctly.
 - Every API name, number and code sample must exist in the source tree. Verify before writing.
 - Example applications and tenants are named **Acme**.
 
+## Code samples
+
+- A call that does not fit comfortably on one line puts one argument per line, and the closing
+  `)` (with any `;`) on its own line. This keeps samples legible on a width-constrained page.
+- A lambda argument opens on the calling line: `db.ReadWriteAsync(async tr =>`, then the body,
+  then `}, ct);`. Do not push the lambda onto its own line under the call.
+- A multi-line raw-string literal (`"""`) aligns its closing delimiter with the left margin of
+  the content; that shared indentation is stripped from the string.
+- Short calls stay on one line. The rule is for long argument lists or an argument that is itself
+  multi-line.
+
 ## Technical names
 
 One term per concept. The left column is the term these pages use; do not substitute.
