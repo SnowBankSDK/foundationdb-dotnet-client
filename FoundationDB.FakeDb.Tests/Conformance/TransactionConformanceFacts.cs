@@ -444,7 +444,7 @@ namespace FoundationDB.Client.Tests
 				{
 					var bytes = await tr.GetAsync(subspace.Key("tuple"));
 					Log($"> `tuple`: {bytes:X}");
-					Assert.That(TuPack.Unpack(bytes), Is.EqualTo(("hello", 123, true, "world")));
+					Assert.That(TuPack.Unpack(bytes), Is.EqualTo(STuple.Create("hello", 123, true, "world")));
 				}
 				{
 					var bytes = await tr.GetAsync(subspace.Key("blob"));
