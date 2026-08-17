@@ -83,6 +83,8 @@ _cache[id] = book;
 
 The handler may read whatever it needs from the transaction; it just must not affect anything outside it. (See also the `success` callback overloads, which run once after a successful commit.)
 
+**Native idempotency (fdb 7.2+) covers the commit-side hazard.** A commit can fail with `CommitUnknownResult`: the client never learned whether it applied, so a blind retry of a read-modify-write could apply it twice. On a cluster at api level 720 or greater, `tr.Options.WithAutomaticIdempotency()` tags each commit so the cluster deduplicates it, and the retry loop returns the committed result instead of re-running the handler. It throws below api level 720; gate it on `tr.Options.IsAutomaticIdempotencySupported` if you also target older clusters. This does not replace the rule above: keep the handler side-effect-free, since native idempotency only makes the *commit* safe to retry.
+
 ---
 
 ## 3. Hard limits you must design around
