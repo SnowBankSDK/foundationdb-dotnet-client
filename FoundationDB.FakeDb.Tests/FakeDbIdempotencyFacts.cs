@@ -59,7 +59,7 @@ namespace FoundationDB.Testing.Tests
 		[Test]
 		public async Task Test_MaybeCommitted_Retry_Without_Idempotency_Reproduces_The_Bug()
 		{
-			var store = new FakeDbStore(FdbIdempotencyFacet.MinimumApiVersion);
+			var store = new FakeDbStore(FdbIdempotencyExtensions.MinimumApiVersion);
 			using var db = store.OpenDatabase(null, readOnly: false);
 
 			var key = Key("thing");
@@ -80,7 +80,7 @@ namespace FoundationDB.Testing.Tests
 		[Test]
 		public async Task Test_MaybeCommitted_Retry_With_Idempotency_Short_Circuits()
 		{
-			var store = new FakeDbStore(FdbIdempotencyFacet.MinimumApiVersion);
+			var store = new FakeDbStore(FdbIdempotencyExtensions.MinimumApiVersion);
 			using var db = store.OpenDatabase(null, readOnly: false);
 
 			var key = Key("thing");
@@ -103,7 +103,7 @@ namespace FoundationDB.Testing.Tests
 		[Test]
 		public async Task Test_Genuine_Collision_Still_Throws()
 		{
-			var store = new FakeDbStore(FdbIdempotencyFacet.MinimumApiVersion);
+			var store = new FakeDbStore(FdbIdempotencyExtensions.MinimumApiVersion);
 			using var db = store.OpenDatabase(null, readOnly: false);
 
 			var key = Key("thing");
@@ -123,17 +123,17 @@ namespace FoundationDB.Testing.Tests
 		[Test]
 		public async Task Test_IsSupported_Tracks_Api_Version()
 		{
-			// below api 720 the cluster has no native idempotency: the facet reports false
+			// below api 720 the cluster has no native idempotency: the check reports false
 			using (var db = new FakeDbStore(710).OpenDatabase(null, readOnly: false))
 			{
-				var supported = await db.ReadAsync(tr => Task.FromResult(tr.Idempotency.IsSupported), this.Cancellation);
+				var supported = await db.ReadAsync(tr => Task.FromResult(tr.Options.IsAutomaticIdempotencySupported), this.Cancellation);
 				Assert.That(supported, Is.False, "api 710 (< 720) does not support native idempotency");
 			}
 
-			// at api 720 or greater the facet reports true
-			using (var db = new FakeDbStore(FdbIdempotencyFacet.MinimumApiVersion).OpenDatabase(null, readOnly: false))
+			// at api 720 or greater the check reports true
+			using (var db = new FakeDbStore(FdbIdempotencyExtensions.MinimumApiVersion).OpenDatabase(null, readOnly: false))
 			{
-				var supported = await db.ReadAsync(tr => Task.FromResult(tr.Idempotency.IsSupported), this.Cancellation);
+				var supported = await db.ReadAsync(tr => Task.FromResult(tr.Options.IsAutomaticIdempotencySupported), this.Cancellation);
 				Assert.That(supported, Is.True, "api 720+ supports native idempotency");
 			}
 		}

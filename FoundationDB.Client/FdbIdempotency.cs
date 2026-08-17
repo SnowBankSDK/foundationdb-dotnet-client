@@ -27,42 +27,24 @@
 namespace FoundationDB.Client
 {
 
-	/// <summary>Idempotency helpers exposed on a transaction (see the <c>Idempotency</c> extension).</summary>
-	/// <remarks>
-	/// <para>Native FoundationDB idempotency (the <see cref="FdbTransactionOption.AutomaticIdempotency"/> option) makes a commit that
-	/// returns an ambiguous result resolve to a definitive outcome, so the handler is never re-run on top of its own landed writes.
-	/// It is available from api level 720 (fdb 7.2). A handler queries <see cref="IsSupported"/> to decide whether to enable it or fall
-	/// back to another strategy.</para>
-	/// </remarks>
-	public readonly struct FdbIdempotencyFacet
+	/// <summary>Extension exposing native FoundationDB idempotency helpers on a transaction's options.</summary>
+	[PublicAPI]
+	public static class FdbIdempotencyExtensions
 	{
 
 		/// <summary>Minimum api level at which native FoundationDB idempotency is available (fdb 7.2).</summary>
 		public const int MinimumApiVersion = 720;
 
-		internal FdbIdempotencyFacet(IFdbReadOnlyTransaction transaction)
-		{
-			this.Transaction = transaction;
-		}
-
-		private IFdbReadOnlyTransaction Transaction { get; }
-
-		/// <summary>Returns <see langword="true"/> when the connected cluster supports native idempotency (api level 720 or greater, fdb 7.2+).</summary>
-		/// <remarks>When this is <see langword="false"/>, a handler either proceeds without idempotency (accepting the maybe-committed hazard) or applies its own fallback.</remarks>
-		public bool IsSupported => this.Transaction.Context.GetApiVersion() >= MinimumApiVersion;
-
-	}
-
-	/// <summary>Extension exposing the idempotency facet on a transaction.</summary>
-	[PublicAPI]
-	public static class FdbIdempotencyExtensions
-	{
-
-		extension(IFdbReadOnlyTransaction tr)
+		extension(IFdbTransactionOptions options)
 		{
 
-			/// <summary>Idempotency helpers for this transaction (native FoundationDB idempotency, api level 720+).</summary>
-			public FdbIdempotencyFacet Idempotency => new(tr);
+			/// <summary>Returns <see langword="true"/> when the connected cluster supports native automatic idempotency (api level 720 or greater, fdb 7.2+).</summary>
+			/// <remarks>
+			/// <para>Native FoundationDB idempotency (the <see cref="FdbTransactionOption.AutomaticIdempotency"/> option) makes a commit that
+			/// returns an ambiguous result resolve to a definitive outcome, so the handler is never re-run on top of its own landed writes.</para>
+			/// <para>When this is <see langword="false"/>, a handler either proceeds without idempotency (accepting the maybe-committed hazard) or applies its own fallback.</para>
+			/// </remarks>
+			public bool IsAutomaticIdempotencySupported => options.ApiVersion >= MinimumApiVersion;
 
 		}
 
