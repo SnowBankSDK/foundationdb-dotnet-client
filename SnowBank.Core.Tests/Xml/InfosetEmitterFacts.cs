@@ -345,6 +345,9 @@ namespace SnowBank.Data.Xml.Tests
 		#region Review round 1 fixes...
 
 		[Test]
+#if !DEBUG
+		[Ignore("Only works in DEBUG mode")]
+#endif
 		public void Test_XDocumentEmitter_WriteEndElement_Requires_An_Open_Element()
 		{
 			// balance guard: calling WriteEndElement with nothing open must not silently pop an empty stack
@@ -353,6 +356,9 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		[Test]
+#if !DEBUG
+		[Ignore("Only works in DEBUG mode")]
+#endif
 		public void Test_XmlWriterEmitter_WriteRawAscii_String_Overload_Enforces_Ascii_Precondition()
 		{
 			// the string? overload must delegate to the span overload, so the same ASCII precondition applies to both -
