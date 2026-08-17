@@ -91,6 +91,11 @@
           href: crystaljson/reference.md
     - name: XML
       href: CrystalXml.md
+- name: Release notes
+  nameFr: Notes de version
+  items:
+    - name: "7.4.3"
+      href: releases/7.4.3.md
 - name: Migrations
   items:
     - name: 7.4.2 to 7.4.3
