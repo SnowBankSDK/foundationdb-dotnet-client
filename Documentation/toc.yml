@@ -96,8 +96,3 @@
   items:
     - name: "7.4.3"
       href: releases/7.4.3.md
-- name: Migrations
-  items:
-    - name: 7.4.2 to 7.4.3
-      nameFr: 7.4.2 vers 7.4.3
-      href: migrations/7.4.2-to-7.4.3.md

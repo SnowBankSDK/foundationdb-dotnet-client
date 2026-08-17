@@ -109,7 +109,7 @@ members above are **build errors**, not choices: the double name is refused (`CJ
 the include-plus-unconditional-ignore pair is refused (`CJSON0008`). The remedy is always the
 split: one DTO per format contract, each carrying a single coherent set of attributes. The same
 policy rejects the `DataContractJsonSerializer`-era callback signature rather than approximating
-it. The [migration guide](../migrations/7.4.2-to-7.4.3.md) documents each refusal with its
+it. The [migration guide](../releases/7.4.3.md) documents each refusal with its
 diagnostic id and remedy.
 
 Note that the dual-output DTO is a different need than serving legacy and modern consumers from
