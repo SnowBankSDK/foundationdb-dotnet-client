@@ -35,6 +35,7 @@ namespace SnowBank.Networking
 	using System.Net.NetworkInformation;
 	using System.Net.Sockets;
 	using System.Text.RegularExpressions;
+	using NodaTime;
 	using SnowBank.IO.Hashing;
 
 	/// <summary>Default implementation of <see cref="IVirtualNetworkTopology"/></summary>
@@ -553,10 +554,10 @@ namespace SnowBank.Networking
 			public Dictionary<string, List<(string Id, string? Argument)>> NetworkServices { get; } = new(StringComparer.Ordinal);
 
 			/// <inheritdoc />
-			IVirtualNetworkMap IVirtualNetworkLocation.RegisterHost(string id, VirtualHostIdentity identity) => RegisterHost(id, identity);
+			IVirtualNetworkMap IVirtualNetworkLocation.RegisterHost(string id, VirtualHostIdentity identity, IClock? clock) => RegisterHost(id, identity, clock);
 
 			/// <inheritdoc cref="IVirtualNetworkLocation.RegisterHost" />
-			public VirtualNetworkMap RegisterHost(string id, VirtualHostIdentity identity)
+			public VirtualNetworkMap RegisterHost(string id, VirtualHostIdentity identity, IClock? clock = null)
 			{
 				var host = this.Topology.RegisterHost(this, id, identity);
 				this.HostsById.Add(id, host);
@@ -564,7 +565,7 @@ namespace SnowBank.Networking
 				{
 					this.HostsByNameOrAddress.Add(key, id);
 				}
-				return new VirtualNetworkMap(this.Topology, host);
+				return new VirtualNetworkMap(this.Topology, host, clock);
 			}
 
 			/// <inheritdoc />

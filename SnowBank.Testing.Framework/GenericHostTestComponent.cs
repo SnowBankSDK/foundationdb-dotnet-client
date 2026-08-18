@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -92,8 +92,11 @@ namespace SnowBank.Testing.Framework
 
 		protected override ValueTask OnDisposing()
 		{
-			var packet = this.Services.GetService<PacketCaptureManager>();
-			if (packet != null) packet.Shutdown();
+			if (this.HasServices)
+			{ // a component whose server never started has no container to query, and must still tear down cleanly
+				var packet = this.Services.GetService<PacketCaptureManager>();
+				if (packet != null) packet.Shutdown();
+			}
 
 			return this.DisposingHandler();
 		}

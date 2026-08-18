@@ -32,6 +32,7 @@ namespace SnowBank.Testing.Framework.Tests
 	using Microsoft.Extensions.Http;
 	using NUnit.Framework;
 	using SnowBank.Networking.Http;
+	using SnowBank.Threading;
 
 	/// <summary>Tests the rework's core invariant: a client name maps to one policy, and every consumer door observes it
 	/// identically, because the request stages (filters, credentials, hooks) now run inside the pooled handler chain via
@@ -133,13 +134,48 @@ namespace SnowBank.Testing.Framework.Tests
 			Assert.That(policy, Is.EqualTo("from-options"), "the rich send extension: the bundle's default request header must reach the server");
 		}
 
-		// A fake-time timeout test (Timeout on a "slow" client, virtual time advanced past it via a FakeTimeProvider-backed
-		// NodaTimeProvider set as this.Clock before MakeItSo) was attempted here and deliberately left out. The fake clock
-		// reaches the chain and the in-chain timeout fires at the configured virtual instant, but the virtual transport
-		// (TestHost-backed) defers a mid-flight cancellation into the response Content instead of throwing from SendAsync:
-		// the caller observes an HttpRequestException from HttpContent.LoadIntoBufferAsync instead of the canonical
-		// TaskCanceledException wrapping a TimeoutException that the pipeline handler produces over a real transport.
-		// The test can come back once the virtual transport surfaces mid-flight cancellation with the canonical shape.
+		[Test]
+		public async Task Test_Fake_Time_Advances_Past_A_Client_Timeout()
+		{
+			// the test clock is a fake-backed NodaTimeProvider, set before MakeItSo so the whole environment (the map, the
+			// pipeline handler's timeout, and the virtual transport) shares this one advanceable time source.
+			var fake = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+			this.Clock = new NodaTimeProvider(fake);
+
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("WEB", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/never", async (HttpContext ctx) =>
+					{
+						// never completes on its own; only the connection's abort (the caller giving up, here via the timeout)
+						// unblocks it, so the host tears down cleanly instead of leaving a handler parked forever.
+						var tcs = new TaskCompletionSource();
+						await using var registration = ctx.RequestAborted.Register(() => tcs.TrySetResult());
+						await tcs.Task;
+					}));
+					host.ConfigureServices(builder =>
+					{
+						builder.Services.AddBetterHttpClient("slow", o => o.Timeout = TimeSpan.FromSeconds(30));
+					});
+				});
+			}));
+
+			var web = context.GetWebHost("WEB");
+			var uri = web.GetUri("/never");
+			var factory = web.GetRequiredService<IHttpClientFactory>();
+			using var client1 = factory.CreateClient("slow");
+
+			var task = client1.GetAsync(uri, this.Cancellation);
+
+			// crank virtual time past the configured Timeout: the pipeline handler's timeoutCts (armed on map.Time) fires,
+			// which must reach the virtual transport as a real OperationCanceledException from SendAsync (see the
+			// VirtualHttpClientHandler.SendAsync fix), so the pipeline handler's own catch produces the canonical shape.
+			await AdvanceAndPump(fake, TimeSpan.FromSeconds(31));
+
+			var ex = Assert.ThrowsAsync<TaskCanceledException>(async () => await task);
+			Assert.That(ex!.InnerException, Is.InstanceOf<TimeoutException>(), "a client Timeout must surface as a TaskCanceledException wrapping a TimeoutException, the same shape as a real HttpClient.Timeout");
+		}
 
 		/// <summary>Typed client used to prove <c>AddHttpClient&lt;TClient&gt;("policy")</c> rides the same named policy as the other doors.</summary>
 		public sealed class ProbeTypedClient

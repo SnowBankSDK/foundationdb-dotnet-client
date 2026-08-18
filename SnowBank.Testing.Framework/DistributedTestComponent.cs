@@ -181,6 +181,10 @@ namespace SnowBank.Testing.Framework
 		private IServiceProvider? m_services;
 		public IServiceProvider Services => m_services ?? throw new InvalidOperationException("Test server is not ready on this component");
 
+		/// <summary>True once this component's DI container is ready, i.e. <see cref="Services"/> can be read without throwing.</summary>
+		/// <remarks>A component whose server never started (Init or Start threw before the container was built) reaches teardown with this still <see langword="false"/>; a derived <c>OnDisposing</c> override should check it before reading <see cref="Services"/>.</remarks>
+		protected bool HasServices => m_services is not null;
+
 		public IClock Clock { get; private set; }
 
 		public IClock RealClock { get; }
@@ -436,7 +440,9 @@ namespace SnowBank.Testing.Framework
 
 					if (m_networkMap == null)
 					{
-						m_networkMap = this.Location.RegisterHost(this.Id, this.NetworkIdentity);
+						// this.Clock was just set (above) from the test context: it is the test's (possibly fake) clock, the most
+						// authoritative one available at this point, so the host's map observes the same time as the test itself.
+						m_networkMap = this.Location.RegisterHost(this.Id, this.NetworkIdentity, this.Clock);
 					}
 				}
 				else

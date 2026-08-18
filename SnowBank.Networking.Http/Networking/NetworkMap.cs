@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -36,13 +36,24 @@ namespace SnowBank.Networking
 	public class NetworkMap : INetworkMap
 	{
 
-		public NetworkMap(IClock? clock = null)
+		public NetworkMap(IClock? clock = null, TimeProvider? time = null)
 		{
+			// Clock and Time mirror the host's registrations (dependency injection supplies both when registered); a clock
+			// that is also a TimeProvider (e.g. NodaTimeProvider) serves both faces when no separate time source is given.
 			this.Clock = clock ?? SystemClock.Instance;
+			this.Time = time ?? clock as TimeProvider ?? TimeProvider.System;
+			this.RealClock = SystemClock.Instance;
 		}
 
 		/// <inheritdoc />
 		public IClock Clock { get; }
+
+		/// <inheritdoc />
+		public TimeProvider Time { get; }
+
+		/// <inheritdoc />
+		[System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+		public IClock RealClock { get; }
 
 		/// <inheritdoc />
 		public virtual HttpMessageHandler CreateTransportHandler(BetterHttpClientOptions options)

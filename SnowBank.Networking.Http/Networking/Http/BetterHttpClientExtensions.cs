@@ -222,11 +222,8 @@ namespace SnowBank.Networking.Http
 
 					// the request-stage handler, innermost delegating handler (right above the transport), so it sees the request
 					// after the client's default headers AND after any application handler has run.
-					// Clock and time provider come from the host's DI first: inside a distributed test they are the test's
-					// (possibly fake) clock, while the virtual map's own Clock is always the system clock.
-					var timeProvider = services.GetService<TimeProvider>() ?? TimeProvider.System;
-					var clock = services.GetService<IClock>() ?? map.Clock;
-					builder.AdditionalHandlers.Add(new BetterHttpPipelineHandler(builder.Name ?? clientName, clientOptions, services, clock, timeProvider));
+					// The map carries the truth here: inside a virtualized test, map.Clock and map.Time are the test's (possibly fake) clock.
+					builder.AdditionalHandlers.Add(new BetterHttpPipelineHandler(builder.Name ?? clientName, clientOptions, services, map.Clock, map.Time));
 
 					// If a higher layer registered an outer capture handler (e.g. packet capture) under CaptureHandlerServiceKey,
 					// insert it as the outermost handler of this chain, so capture rides the whole pipeline (a bare handler obtained
