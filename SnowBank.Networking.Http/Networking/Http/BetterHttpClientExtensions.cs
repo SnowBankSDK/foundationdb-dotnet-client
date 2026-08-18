@@ -26,6 +26,8 @@
 
 namespace SnowBank.Networking.Http
 {
+	using System.Globalization;
+	using Microsoft.Extensions.Configuration;
 	using Microsoft.Extensions.DependencyInjection;
 	using Microsoft.Extensions.DependencyInjection.Extensions;
 	using Microsoft.Extensions.Http;
@@ -45,6 +47,9 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Per-name configuration callbacks for the registered clients.</summary>
 		public Dictionary<string, Action<BetterHttpClientOptions>> NamedConfigures { get; } = new(StringComparer.Ordinal);
+
+		/// <summary>Configuration sections registered by <c>AddBetterHttpClientConfiguration</c>, applied on top of the code layers (the section's <c>Defaults</c> first, then <c>Clients:&lt;name&gt;</c>).</summary>
+		public List<IConfiguration> ConfigurationSections { get; } = [ ];
 
 	}
 
@@ -98,6 +103,27 @@ namespace SnowBank.Networking.Http
 					.AddOptions<BetterHttpClientOptionsBuilder>()
 					.Configure(options => options.Configure += configure);
 			}
+			return services;
+		}
+
+		/// <summary>Registers the configuration override layer: the given section can override the BetterHttp options of any client, without a rebuild.</summary>
+		/// <param name="services">Service collection</param>
+		/// <param name="configuration">Configuration root (or section) that carries the override section.</param>
+		/// <param name="sectionName">Name of the override section (defaults to <c>"BetterHttp"</c>).</param>
+		/// <remarks>
+		/// <para>The section is a pure override: when it is absent the code-configured behavior runs unchanged. Its <c>Defaults</c> sub-section overrides the global baseline for every client, and <c>Clients:&lt;name&gt;</c> overrides one named client, both applied after the code layers (configuration always has the last word).</para>
+		/// <para>A knob can carry the value <c>"inherit"</c> to cancel every override below the global layers, so the effective value falls back to the code-global baseline (for a knob in <c>Clients:&lt;name&gt;</c>, this also cancels the client's own code configure).</para>
+		/// <para>Only the operation-safe subset binds from configuration: <c>Timeout</c>, <c>AllowAutoRedirect</c>, <c>AutomaticDecompression</c>, and <c>Tls:Mode</c> (<c>System</c>, <c>AcceptSelfSigned</c>, <c>AcceptAny</c>). Credentials, filters, handlers and callbacks are code-only by construction.</para>
+		/// <para>Repeated calls compose: each registered section is applied in registration order.</para>
+		/// </remarks>
+		public static IServiceCollection AddBetterHttpClientConfiguration(this IServiceCollection services, IConfiguration configuration, string sectionName = "BetterHttp")
+		{
+			Contract.NotNull(configuration);
+			Contract.NotNullOrWhiteSpace(sectionName);
+			RegisterCore(services);
+			services
+				.AddOptions<BetterHttpClientOptionsBuilder>()
+				.Configure(options => options.ConfigurationSections.Add(configuration.GetSection(sectionName)));
 			return services;
 		}
 
@@ -246,8 +272,102 @@ namespace SnowBank.Networking.Http
 				configure(options);
 			}
 
+			// the configuration override layers run last: the section's Defaults, then Clients:<name>.
+			// "inherit" restores a knob to its value at the layer named by the lazy snapshot: for a Defaults knob
+			// that is the code-global baseline; for a per-name knob it is the code-global baseline plus the
+			// configuration Defaults (skipping the client's own code configure).
+			if (builder.ConfigurationSections.Count > 0)
+			{
+				var codeGlobal = new Lazy<BetterHttpClientOptions>(() =>
+				{
+					var g = new BetterHttpClientOptions();
+					builder.Configure?.Invoke(g);
+					return g;
+				});
+				foreach (var section in builder.ConfigurationSections)
+				{
+					ApplyConfigurationSection(options, section.GetSection("Defaults"), codeGlobal);
+				}
+				var configGlobal = new Lazy<BetterHttpClientOptions>(() =>
+				{
+					var g = new BetterHttpClientOptions();
+					builder.Configure?.Invoke(g);
+					foreach (var section in builder.ConfigurationSections)
+					{
+						ApplyConfigurationSection(g, section.GetSection("Defaults"), codeGlobal);
+					}
+					return g;
+				});
+				foreach (var section in builder.ConfigurationSections)
+				{
+					ApplyConfigurationSection(options, section.GetSection("Clients").GetSection(name), configGlobal);
+				}
+			}
+
 			return options;
 		}
+
+		/// <summary>Applies one configuration override section onto resolved options. A missing section is a no-op; the value <c>"inherit"</c> restores a knob from the <paramref name="inherited"/> snapshot.</summary>
+		private static void ApplyConfigurationSection(BetterHttpClientOptions options, IConfigurationSection section, Lazy<BetterHttpClientOptions> inherited)
+		{
+			if (!section.Exists()) return;
+
+			if (section["Timeout"] is { } timeout)
+			{
+				options.Timeout = IsInherit(timeout) ? inherited.Value.Timeout : TimeSpan.Parse(timeout, CultureInfo.InvariantCulture);
+			}
+
+			if (section["AllowAutoRedirect"] is { } redirect)
+			{
+				options.AllowAutoRedirect = IsInherit(redirect) ? inherited.Value.AllowAutoRedirect : bool.Parse(redirect);
+			}
+
+			if (section["AutomaticDecompression"] is { } decompression)
+			{
+				options.AutomaticDecompression = IsInherit(decompression) ? inherited.Value.AutomaticDecompression : Enum.Parse<DecompressionMethods>(decompression, ignoreCase: true);
+			}
+
+			if (section["Tls"] is { } tlsScalar && IsInherit(tlsScalar))
+			{ // the whole TLS group falls back to the inherited layer
+				options.ServerCertificateCustomValidationCallback = inherited.Value.ServerCertificateCustomValidationCallback;
+			}
+			else
+			{
+				var tls = section.GetSection("Tls");
+				if (tls["Mode"] is { } mode)
+				{
+					if (IsInherit(mode))
+					{
+						options.ServerCertificateCustomValidationCallback = inherited.Value.ServerCertificateCustomValidationCallback;
+					}
+					else if (string.Equals(mode, "System", StringComparison.OrdinalIgnoreCase))
+					{
+						options.ServerCertificateCustomValidationCallback = null;
+					}
+					else if (string.Equals(mode, "AcceptSelfSigned", StringComparison.OrdinalIgnoreCase))
+					{
+						options.AcceptSelfSignedServerCertificates();
+					}
+					else if (string.Equals(mode, "AcceptAny", StringComparison.OrdinalIgnoreCase))
+					{
+#pragma warning disable CS0618 // the operator opted in from configuration; the application decides its own auditing
+						options.DangerousAcceptAnyServerCertificate();
+#pragma warning restore CS0618
+					}
+					else if (string.Equals(mode, "TrustRoots", StringComparison.OrdinalIgnoreCase))
+					{
+						throw new NotSupportedException("Tls:Mode 'TrustRoots' is not bindable from configuration yet; pin the roots in code with TrustServerCertificates(...).");
+					}
+					else
+					{
+						throw new InvalidOperationException($"Unknown Tls:Mode '{mode}': expected System, AcceptSelfSigned, AcceptAny or inherit.");
+					}
+				}
+			}
+		}
+
+		private static bool IsInherit(string value)
+			=> string.Equals(value, "inherit", StringComparison.OrdinalIgnoreCase);
 
 		/// <summary>Adds a global <see cref="IBetterHttpFilter">HTTP filter</see> to all clients used by this process</summary>
 		/// <typeparam name="TFilter">Type of the <see cref="IBetterHttpFilter"/> implementation</typeparam>
