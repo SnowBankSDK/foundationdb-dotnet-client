@@ -245,6 +245,7 @@ namespace SnowBank.Networking.Http
 				if (attached)
 				{ // the shell's overlay options win: run the Configure stage here, with them; the pipeline handler skips it.
 					context.SetStage(BetterHttpClientStage.Configure);
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 					foreach (var filter in options.Filters)
 					{
 						Contract.Debug.Assert(filter != null);
@@ -260,6 +261,7 @@ namespace SnowBank.Networking.Http
 							}
 						}
 					}
+#pragma warning restore CS0618
 					options.Hooks?.OnConfigured(context);
 				}
 
@@ -298,6 +300,7 @@ namespace SnowBank.Networking.Http
 						context.SetStage(BetterHttpClientStage.PrepareResponse);
 						try
 						{
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 							foreach (var filter in options.Filters)
 							{
 								try
@@ -309,6 +312,7 @@ namespace SnowBank.Networking.Http
 									options.Hooks?.OnFilterError(context, e);
 								}
 							}
+#pragma warning restore CS0618
 
 							options.Hooks?.OnResponsePrepared(context);
 						}
@@ -369,6 +373,7 @@ namespace SnowBank.Networking.Http
 
 							context.ReceiveCompletedAt = clock.GetCurrentInstant();
 							context.SetStage(BetterHttpClientStage.CompleteResponse);
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 							foreach (var filter in options.Filters)
 							{
 								try
@@ -383,6 +388,7 @@ namespace SnowBank.Networking.Http
 									}
 								}
 							}
+#pragma warning restore CS0618
 							options.Hooks?.OnResponseCompleted(context);
 
 							#endregion
@@ -416,6 +422,7 @@ namespace SnowBank.Networking.Http
 			try
 			{
 				context.SetStage(BetterHttpClientStage.Finalize);
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 				foreach (var filter in options.Filters)
 				{
 					try
@@ -430,6 +437,7 @@ namespace SnowBank.Networking.Http
 						}
 					}
 				}
+#pragma warning restore CS0618
 			}
 			finally
 			{

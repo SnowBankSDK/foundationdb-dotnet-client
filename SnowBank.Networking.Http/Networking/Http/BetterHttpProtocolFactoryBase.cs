@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -56,10 +56,12 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Creates the protocol instance, handing it the client and the resolved options.</summary>
 		/// <remarks>The default resolves the protocol from the DI container with the client as a parameter. Override this to hand the protocol its <typeparamref name="TOptions"/> explicitly (so it does not have to reach back into the client instance).</remarks>
+#pragma warning disable CS0618 // the protocol layer rides the shell until its own redesign
 		protected virtual TProtocol CreateProtocol(BetterHttpClient client, TOptions options)
 		{
 			return ActivatorUtilities.CreateInstance<TProtocol>(this.Services, client);
 		}
+#pragma warning restore CS0618
 
 		/// <inheritdoc />
 		//REVIEW: rename to CreateProtocol() ?
@@ -90,6 +92,7 @@ namespace SnowBank.Networking.Http
 
 			OnAfterConfigure(options);
 
+#pragma warning disable CS0618 // the protocol layer rides the shell until its own redesign
 			var factory = this.Services.GetRequiredService<IBetterHttpClientFactory>();
 
 			// per-call configure = protocol/client behavior only; wire policy = the bundle. Fail loudly on the rest:
@@ -105,6 +108,7 @@ namespace SnowBank.Networking.Http
 				Hooks = options.Hooks,
 			}, name);
 			Contract.Debug.Assert(client != null);
+#pragma warning restore CS0618
 
 			try
 			{

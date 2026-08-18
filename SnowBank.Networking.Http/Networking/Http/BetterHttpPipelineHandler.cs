@@ -112,6 +112,7 @@ namespace SnowBank.Networking.Http
 			if (ownsStages)
 			{ // the Configure stage used to run in the send extensions; for a context created (or completed) here, it runs here.
 				context.SetStage(BetterHttpClientStage.Configure);
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 				foreach (var filter in options.Filters)
 				{
 					try
@@ -126,6 +127,7 @@ namespace SnowBank.Networking.Http
 						}
 					}
 				}
+#pragma warning restore CS0618
 				options.Hooks?.OnConfigured(context);
 			}
 
@@ -142,6 +144,7 @@ namespace SnowBank.Networking.Http
 			}
 
 			// notify all filters
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 			foreach (var filter in options.Filters)
 			{
 				try
@@ -156,6 +159,7 @@ namespace SnowBank.Networking.Http
 					}
 				}
 			}
+#pragma warning restore CS0618
 
 			// handle authentication (the credentials see the final request, default headers included)
 			if (options.Credentials is not null)
@@ -186,6 +190,7 @@ namespace SnowBank.Networking.Http
 			}
 
 			context.SetStage(BetterHttpClientStage.CompleteRequest);
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 			foreach (var filter in options.Filters)
 			{
 				try
@@ -200,6 +205,7 @@ namespace SnowBank.Networking.Http
 					}
 				}
 			}
+#pragma warning restore CS0618
 
 			options.Hooks?.OnRequestCompleted(context);
 

@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,7 @@ namespace SnowBank.Networking.Http
 	/// <remarks>
 	/// <para>A client is a thin, transient shell over a POOLED handler chain: creating and disposing them is cheap, and disposing one never tears down the shared sockets. A registered NAME is a policy bundle (TLS, filters, pipeline) - never an origin; the call site provides the absolute target URI at send time.</para>
 	/// </remarks>
+	[Obsolete("Every factory door now carries the full per-name policy: inject IHttpClientFactory (or a typed/keyed client) and use the SendAsync extensions on any HttpClient; draw a bare pooled handler from IHttpMessageHandlerFactory.CreateHandler(name).", error: false)]
 	public interface IBetterHttpClientFactory
 	{
 

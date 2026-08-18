@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -78,7 +78,10 @@ namespace SnowBank.Testing.Framework.Tests
 			});
 			var app = context.GetWebHost("APP");
 
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			using var client = app.GetRequiredService<IBetterHttpClientFactory>().CreateClient(new Uri("https://api.partner.com"));
+#pragma warning restore CS0618
 			Assert.That(await client.GetStringAsync(new Uri("https://api.partner.com/pay"), this.Cancellation), Is.EqualTo("charged"),
 				"a lan host must reach the external mock by its real URI (no config edit on the SUT)");
 		}
@@ -102,8 +105,11 @@ namespace SnowBank.Testing.Framework.Tests
 					host.Identity.Fqdn = "api.partner.com";
 					host.ConfigureApplication(app => app.MapPost("/notify", async (HttpContext ctx) =>
 					{
+						// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 						var factory = ctx.RequestServices.GetRequiredService<IBetterHttpClientFactory>();
 						using var client = factory.CreateClient(new Uri("https://app.lan.simulated"));
+#pragma warning restore CS0618
 						await client.PostAsync(new Uri("https://app.lan.simulated/webhook"), new StringContent("event-42"), ctx.RequestAborted);
 						return "sent";
 					}));
@@ -111,7 +117,10 @@ namespace SnowBank.Testing.Framework.Tests
 			});
 			var app = context.GetWebHost("APP");
 
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			using var trigger = app.GetRequiredService<IBetterHttpClientFactory>().CreateClient(new Uri("https://api.partner.com"));
+#pragma warning restore CS0618
 			var res = await trigger.PostAsync(new Uri("https://api.partner.com/notify"), new StringContent(""), this.Cancellation);
 			Assert.That(res.IsSuccessStatusCode, Is.True, "the external endpoint must answer the trigger");
 
@@ -162,7 +171,10 @@ namespace SnowBank.Testing.Framework.Tests
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 				lan.WithMinimalWebHost("APP", host => host.ConfigureApplication(app => app.MapGet("/ping", (HttpContext _) => "pong")))));
 			var app = context.GetWebHost("APP");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			using var client = app.GetRequiredService<IBetterHttpClientFactory>().CreateClient(new Uri("https://api.leak.com"));
+#pragma warning restore CS0618
 
 			// a real name nobody registered leaked into the test: a loud, specific alarm, not a quiet simulated DNS failure
 			var ex = Assert.CatchAsync(async () => await client.GetStringAsync(new Uri("https://api.leak.com/x"), this.Cancellation));
@@ -191,7 +203,10 @@ namespace SnowBank.Testing.Framework.Tests
 
 			// opt a real name out of the alarm: the sanctioned negative path, a quiet simulated DNS failure
 			context.Topology.Cut("*.partner.com", VirtualNetworkFault.NameResolution);
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			using var client = app.GetRequiredService<IBetterHttpClientFactory>().CreateClient(new Uri("https://api.partner.com"));
+#pragma warning restore CS0618
 
 			var ex = Assert.ThrowsAsync<HttpRequestException>(async () =>
 				await client.GetStringAsync(new Uri("https://api.partner.com/pay"), this.Cancellation));
@@ -206,7 +221,10 @@ namespace SnowBank.Testing.Framework.Tests
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 				lan.WithMinimalWebHost("APP", host => host.ConfigureApplication(app => app.MapGet("/ping", (HttpContext _) => "pong")))));
 			var app = context.GetWebHost("APP");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			using var client = app.GetRequiredService<IBetterHttpClientFactory>().CreateClient(new Uri("https://ghost.lan.simulated"));
+#pragma warning restore CS0618
 
 			var ex = Assert.CatchAsync(async () => await client.GetStringAsync(new Uri("https://ghost.lan.simulated/x"), this.Cancellation));
 			Assert.That(ex!.ToString(), Does.Contain("ghost.lan.simulated").And.Contain("forgot to register"),

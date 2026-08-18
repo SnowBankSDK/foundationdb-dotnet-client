@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,9 @@ namespace SnowBank.Networking.PacketCapture
 	using SnowBank.Networking.Http;
 
 	/// <summary>Filter that capturing all the queries sent by a <see cref="BetterHttpClient"/> to the remote server</summary>
+#pragma warning disable CS0618 // packet capture still rides the legacy filter surface; the in-chain PacketCaptureHandler is the migrated path
 	public class PacketCaptureHttpFilter : IBetterHttpFilter
+#pragma warning restore CS0618
 	{
 
 		private const string NAME = "PacketCapture";

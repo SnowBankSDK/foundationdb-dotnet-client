@@ -123,7 +123,10 @@ namespace SnowBank.Testing.Framework.Tests
 				});
 			}));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
+#pragma warning restore CS0618
 			var uri = web.GetUri("/ping");
 
 			// create, use, dispose N clients: every request must succeed - disposing a shell must never tear down the shared chain
@@ -161,7 +164,10 @@ namespace SnowBank.Testing.Framework.Tests
 				});
 			}));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
+#pragma warning restore CS0618
 			var uri = web.GetUri("/ping");
 
 			// build #1 of the "rotation" chain (constructs the probe handler once) and use it
@@ -326,9 +332,12 @@ namespace SnowBank.Testing.Framework.Tests
 			Assert.That(() => factory.CreateClient(uri, o => o.AcceptSelfSignedServerCertificates()),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.ServerCertificateCustomValidationCallback)),
 				"a per-call TLS relaxation must throw (it would silently not reach the wire)");
+			// the test deliberately exercises the obsolete Filters surface (still the transport-tier wire policy at this call).
+#pragma warning disable CS0618
 			Assert.That(() => factory.CreateClient(uri, o => o.Filters.Add(new NoopFilter())),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Filters)),
 				"a per-call filter must throw (the pooled pipeline is built from the bundle options)");
+#pragma warning restore CS0618
 			Assert.That(() => factory.CreateClient(uri, o => o.Proxy = new WebProxy("http://proxy.lan.simulated:8080")),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Proxy)),
 				"a per-call proxy must throw (socket knobs are per-bundle transport policy)");
@@ -371,6 +380,8 @@ namespace SnowBank.Testing.Framework.Tests
 				});
 			}));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
 			var uri = web.GetUri("/echo-tag");
 
@@ -386,13 +397,17 @@ namespace SnowBank.Testing.Framework.Tests
 				var res = await plain.SendAsync(plain.CreateGetRequest(uri), (ctx) => ctx.Response.Content.ReadAsStringAsync(this.Cancellation), this.Cancellation);
 				Assert.That(res, Is.Empty, "a sibling client of the same bundle must not inherit another shell's headers");
 			}
+#pragma warning restore CS0618
 		}
 
 		/// <summary>No-op filter used to prove that per-call filter registration is rejected</summary>
+		// the test deliberately exercises the obsolete filter surface.
+#pragma warning disable CS0618
 		private sealed class NoopFilter : IBetterHttpFilter
 		{
 			public string Name => "noop";
 		}
+#pragma warning restore CS0618
 
 		[Test]
 		public async Task Test_Per_Request_Only_Credentials_Are_Shell_Tier()
@@ -409,6 +424,8 @@ namespace SnowBank.Testing.Framework.Tests
 				});
 			}));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
 			var uri = web.GetUri("/echo-stamp");
 
@@ -423,6 +440,7 @@ namespace SnowBank.Testing.Framework.Tests
 			Assert.That(() => factory.CreateClient(uri, new BetterHttpShellOptions() { Credentials = new WrappedCredentials(new NetworkCredential("user", "password")) }),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(WrappedCredentials)),
 				"transport-coupled credentials on the shell must fail loudly, not silently skip their configure half");
+#pragma warning restore CS0618
 		}
 
 		/// <summary>Per-request-only credential that stamps a header on each request (a stand-in for a message signer)</summary>

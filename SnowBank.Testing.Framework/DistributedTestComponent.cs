@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -305,6 +305,10 @@ namespace SnowBank.Testing.Framework
 			}
 		}
 
+		// the shell-based doors below still return the legacy BetterHttpClient/BetterHttpShellOptions surface for
+		// consumers that have not migrated to a factory-door client with the SendAsync extensions.
+#pragma warning disable CS0618
+
 		/// <summary>Returns an HTTP client that will send requests to this virtual host</summary>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
@@ -345,6 +349,8 @@ namespace SnowBank.Testing.Framework
 			TagPath(client.DefaultRequestHeaders, this, target, hostOrAddress);
 			return client;
 		}
+
+#pragma warning restore CS0618
 
 		/// <summary>Returns a REST http client that will talk to this virtual host</summary>
 		public RestHttpProtocol GetLocalRestClient(Action<RestHttpClientOptions>? configure = null) => this.GetRestClient(this, configure);
@@ -1454,6 +1460,10 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Helper for sending HTTP requests to or from this virtual host</summary>
 		public HttpHelper Http => new(this);
 
+		// everything below still rides the legacy BetterHttpClient/BetterHttpShellOptions surface for consumers
+		// that have not migrated to a factory-door client with the SendAsync extensions.
+#pragma warning disable CS0618
+
 		public readonly struct HttpHelper
 		{
 
@@ -1984,6 +1994,8 @@ namespace SnowBank.Testing.Framework
 		}
 
 		#endregion
+
+#pragma warning restore CS0618
 
 		#endregion
 

@@ -58,6 +58,7 @@ namespace SnowBank.Networking.Http
 		public HttpVersionPolicy DefaultVersionPolicy { get; set; } = HttpVersionPolicy.RequestVersionOrHigher;
 
 		/// <summary>List of filters that will be able to intercept and or modify the request and response</summary>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public List<IBetterHttpFilter> Filters { get; } = [ ];
 
 		/// <summary>List of wrappers that can be applied to the underlying HTTP message handler</summary>
@@ -203,7 +204,9 @@ namespace SnowBank.Networking.Http
 				: this.AllowAutoRedirect is not null ? nameof(this.AllowAutoRedirect)
 				: this.AutomaticDecompression is not null ? nameof(this.AutomaticDecompression)
 				: this.Credentials is { IsPerRequestOnly: false } ? nameof(this.Credentials)
+#pragma warning disable CS0618 // the legacy Filters list is still part of the wire-policy surface this check guards
 				: this.Filters.Count > 0 ? nameof(this.Filters)
+#pragma warning restore CS0618
 				: this.Handlers.Count > 0 ? nameof(this.Handlers)
 				: null;
 			if (offender is not null)
@@ -244,11 +247,13 @@ namespace SnowBank.Networking.Http
 			}
 
 			// filters may also wrap handlers
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 			foreach (var filter in this.Filters)
 			{
 				handler = filter.Wrap(this, handler);
 				Contract.Debug.Assert(handler is not null);
 			}
+#pragma warning restore CS0618
 
 			return handler;
 		}

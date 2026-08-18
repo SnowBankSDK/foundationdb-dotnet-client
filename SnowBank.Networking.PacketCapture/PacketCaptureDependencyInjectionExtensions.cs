@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -170,7 +170,9 @@ namespace SnowBank.Networking.PacketCapture
 			services.AddSingleton<PacketCaptureRequestMiddleware>();
 
 			// hook-up the capturing filter for the BetterHttpClient send extensions
+#pragma warning disable CS0618 // packet capture still registers through the legacy global filter surface; the in-chain handler below is the migrated path
 			services.AddGlobalHttpFilter<PacketCaptureHttpFilter>();
+#pragma warning restore CS0618
 
 			// register the in-chain capture handler under the well-known key that the BetterHttp bundles resolve: it is wired as the
 			// OUTERMOST handler of every pooled bundle, so capture rides the pipeline and even a bare handler obtained from

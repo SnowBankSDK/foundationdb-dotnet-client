@@ -40,9 +40,11 @@ namespace SnowBank.Networking.Http
 		public Action<BetterHttpClientOptions>? Configure { get; set; }
 
 		/// <summary>List of global filters that will be applied to all requests performed by the client</summary>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public List<IBetterHttpFilter> GlobalFilters { get; set; } = [ ];
 
 		/// <summary>List of global handlers that will be called to configure the HTTP Handlers of all requests performed by the client</summary>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public List<Func<HttpMessageHandler, BetterHttpClientOptions, IServiceProvider, HttpMessageHandler>> GlobalHandlers { get; set; } = [ ];
 
 		/// <summary>Per-name configuration callbacks for the registered clients.</summary>
@@ -165,7 +167,9 @@ namespace SnowBank.Networking.Http
 		/// </remarks>
 		private static void RegisterCore(IServiceCollection services)
 		{
+#pragma warning disable CS0618 // the shell factory still ships for consumers that have not migrated to the factory doors yet
 			services.TryAddSingleton<IBetterHttpClientFactory, DefaultBetterHttpClientFactory>();
+#pragma warning restore CS0618
 			services.AddOptions<BetterHttpClientOptionsBuilder>();
 			services.AddHttpClient(); // registers IHttpClientFactory / IHttpMessageHandlerFactory
 			services.AddHttpClient(DefaultClientName); // the default (dynamic / by-URI) client is a regular named client
@@ -261,8 +265,10 @@ namespace SnowBank.Networking.Http
 			var builder = services.GetRequiredService<IOptions<BetterHttpClientOptionsBuilder>>().Value;
 
 			var options = new BetterHttpClientOptions();
+#pragma warning disable CS0618 // the pipeline still runs legacy global filters/handlers until consumers migrate to DelegatingHandlers
 			options.Filters.AddRange(builder.GlobalFilters);
 			options.Handlers.AddRange(builder.GlobalHandlers);
+#pragma warning restore CS0618
 			builder.Configure?.Invoke(options);
 
 			if (!string.Equals(name, DefaultClientName, StringComparison.Ordinal) && builder.NamedConfigures.TryGetValue(name, out var configure))
@@ -370,6 +376,7 @@ namespace SnowBank.Networking.Http
 		/// <summary>Adds a global <see cref="IBetterHttpFilter">HTTP filter</see> to all clients used by this process</summary>
 		/// <typeparam name="TFilter">Type of the <see cref="IBetterHttpFilter"/> implementation</typeparam>
 		/// <remarks>The filter will be added to the <see cref="BetterHttpClientOptionsBuilder.GlobalFilters"/> of the default option builder</remarks>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public static IServiceCollection AddGlobalHttpFilter<TFilter>(this IServiceCollection services, Action<TFilter>? configure = null)
 			where TFilter: class, IBetterHttpFilter
 		{
@@ -391,6 +398,7 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Adds a global HTTP message handler filter to all clients used by this process</summary>
 		/// <remarks>The handler will be added to the pipeline, and called whenever a new <see cref="HttpMessageHandler"/> is prepared, before executing a request.</remarks>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public static IServiceCollection AddGlobalHttpHandler(this IServiceCollection services, Func<HttpMessageHandler, BetterHttpClientOptions, IServiceProvider, HttpMessageHandler> factory)
 		{
 			services

@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -29,6 +29,7 @@ namespace SnowBank.Networking.Http
 	using Microsoft.Extensions.DependencyInjection;
 
 	/// <summary>Factory that hands out <see cref="BetterHttpClient"/> shells over pooled handler chains sourced from <see cref="IHttpMessageHandlerFactory"/>.</summary>
+	[Obsolete("Every factory door now carries the full per-name policy: inject IHttpClientFactory (or a typed/keyed client) and use the SendAsync extensions on any HttpClient; draw a bare pooled handler from IHttpMessageHandlerFactory.CreateHandler(name).", error: false)]
 	public class DefaultBetterHttpClientFactory : IBetterHttpClientFactory
 	{
 
