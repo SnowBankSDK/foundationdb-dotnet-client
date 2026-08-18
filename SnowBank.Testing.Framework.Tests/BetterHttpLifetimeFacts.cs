@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -224,28 +224,38 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
-		public void Test_Plain_HttpClientFactory_Is_Not_A_Door_To_A_Policy_Bundle()
+		public void Test_Plain_HttpClientFactory_Is_A_Full_Door_To_A_Policy_Client()
 		{
-			// IHttpClientFactory.CreateClient(bundleName) would hand out a plain HttpClient over the bundle's pooled
-			// chain but WITHOUT the BetterHttp runtime: no bundle filters, hooks or credentials at the request stage,
-			// so an auth-signing bundle would silently skip signing. The wrong door fails loudly; the supported doors
-			// are IBetterHttpClientFactory (typed shells) and IHttpMessageHandlerFactory.CreateHandler (bare handler).
+			// The plain IHttpClientFactory used to be a guarded "wrong door" for a policy client: a plain HttpClient over the
+			// pooled chain had no BetterHttp runtime, so the client's filters, hooks and credentials silently never ran, and
+			// the registration threw to prevent that silent skip. The request stages now live in the chain itself (the
+			// BetterHttpPipelineHandler creates the per-request context when none is attached), so a plain factory client
+			// carries the full policy and the guard is gone: every door hands out the same behavior.
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
 			services.AddBetterHttpClientDefaults();
 			services.AddBetterHttpClient("signed");
 			using var provider = services.BuildServiceProvider();
 
-			var wrongDoor = provider.GetRequiredService<IHttpClientFactory>();
-			Assert.That(() => wrongDoor.CreateClient("signed"),
-				Throws.InvalidOperationException.With.Message.Contains(nameof(IBetterHttpClientFactory)),
-				"resolving a policy bundle through the plain factory must fail loudly (it would skip the bundle's request pipeline)");
-			Assert.That(() => wrongDoor.CreateClient(BetterHttpClientExtensions.DefaultClientName),
-				Throws.InvalidOperationException,
-				"the default bundle is guarded like any named one");
+			var door = provider.GetRequiredService<IHttpClientFactory>();
+			Assert.That(() => door.CreateClient("signed").Dispose(), Throws.Nothing,
+				"a policy client must be resolvable through the plain factory (the request stages ride the chain now)");
+			Assert.That(() => door.CreateClient(BetterHttpClientExtensions.DefaultClientName).Dispose(), Throws.Nothing,
+				"the default client is a regular named client, resolvable through every door");
+			Assert.That(() => door.CreateClient("not-a-bundle").Dispose(), Throws.Nothing,
+				"the plain factory keeps working normally for names that carry no per-name policy");
 
-			Assert.That(() => wrongDoor.CreateClient("not-a-bundle").Dispose(), Throws.Nothing,
-				"the plain factory keeps working normally for names that are not policy bundles");
+			// and the chain behind that door carries the request-stage handler
+			var handlerFactory = provider.GetRequiredService<System.Net.Http.IHttpMessageHandlerFactory>();
+			using var handler = handlerFactory.CreateHandler("signed");
+			HttpMessageHandler? h = handler;
+			bool found = false;
+			while (h is not null)
+			{
+				if (h.GetType().Name == "BetterHttpPipelineHandler") { found = true; break; }
+				h = (h as DelegatingHandler)?.InnerHandler;
+			}
+			Assert.That(found, Is.True, "the policy client's chain must carry the request-stage pipeline handler");
 		}
 
 		[Test]

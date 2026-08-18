@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -45,8 +45,11 @@ namespace SnowBank.Networking.Http
 		public HttpClient? Client { get; init; }
 
 		/// <summary>Options used to configure the request pipeline (filters, hooks, credentials, ...)</summary>
-		/// <remarks>These options travel with the request, and are read by the pipeline instead of reaching back into the client instance.</remarks>
-		public required BetterHttpClientOptions Options { get; init; }
+		/// <remarks>These options travel with the request, and are read by the pipeline instead of reaching back into the client instance. When the context is created by the send extensions over a client that carries no runtime, they start as <see cref="BetterHttpClientOptions.Empty"/> and are filled in by the in-chain <see cref="BetterHttpPipelineHandler"/> (see <see cref="HasResolvedOptions"/>).</remarks>
+		public BetterHttpClientOptions Options { get; internal set; } = BetterHttpClientOptions.Empty;
+
+		/// <summary>True once <see cref="Options"/> and <see cref="Services"/> hold the resolved values (from a factory-built shell's runtime, or filled in by the in-chain pipeline handler); false while they hold the empty placeholders.</summary>
+		internal bool HasResolvedOptions { get; set; }
 
 		/// <summary>Clock used to measure the timestamps of this request</summary>
 		/// <remarks>Plugins and filters that need to measure time should use this clock instead of their own.</remarks>
@@ -92,7 +95,7 @@ namespace SnowBank.Networking.Http
 		public ExceptionDispatchInfo? Error { get; internal set; }
 
 		/// <summary>Provider for services used by this client when creating filters</summary>
-		public required IServiceProvider Services { get; init; }
+		public IServiceProvider Services { get; internal set; } = BetterHttpClientRuntime.EmptyServiceProvider.Instance;
 
 		/// <summary>Instant when the query was created</summary>
 		/// <remarks>

@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -36,9 +36,20 @@ namespace SnowBank.Networking.Http
 	public record BetterHttpClientOptions
 	{
 
+		/// <summary>Shared empty instance, used as the placeholder of a <see cref="BetterHttpClientContext"/> until the in-chain pipeline handler fills in the resolved options.</summary>
+		/// <remarks>This instance is shared by every request in the process: it must never be mutated (no filter, handler, header or option may be added to it).</remarks>
+		internal static readonly BetterHttpClientOptions Empty = new();
+
 		/// <summary>Optional hooks</summary>
 		/// <remarks>Mostly used for unit testing or low-level debugging</remarks>
 		public IBetterHttpHooks? Hooks { get; set; }
+
+		/// <summary>Timeout applied to each request sent by this client, or <see langword="null"/> to keep the default behavior.</summary>
+		/// <remarks>
+		/// <para>This timeout is enforced inside the handler chain (by the pipeline handler), not by <see cref="HttpClient.Timeout"/>: it measures time against the host's <see cref="TimeProvider"/>, so a test that uses a fake time provider can simulate a timeout by advancing time, without waiting for it on the wall clock.</para>
+		/// <para>The stock <see cref="HttpClient.Timeout"/> (100 seconds by default) still applies on top, on the real clock; set it explicitly on the client when it must be disabled or changed.</para>
+		/// </remarks>
+		public TimeSpan? Timeout { get; set; }
 
 		/// <summary>Default initial HTTP version for all requests</summary>
 		public Version DefaultRequestVersion { get; set; } = HttpVersion.Version11;

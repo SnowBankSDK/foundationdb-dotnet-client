@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@ namespace SnowBank.Networking.Http
 		/// <remarks>MUST be a field</remarks>
 		private static long RequestCounter;
 
-		private static string NewRequestId(string clientId)
+		internal static string NewRequestId(string clientId)
 			=> string.CreateInvariant($"{clientId}:{Interlocked.Increment(ref RequestCounter):D8}");
 
 		#region Request Creation...
@@ -210,18 +210,23 @@ namespace SnowBank.Networking.Http
 		{
 			Contract.Debug.Requires(client != null && request != null && handler != null);
 
-			var runtime = BetterHttpClientRuntime.Resolve(client);
-			var options = runtime.Options;
-			var clock = runtime.Clock;
+			// A client built by IBetterHttpClientFactory carries a runtime (its resolved bundle options, including the per-shell
+			// overlay). Any other client (typed, keyed, plain factory client) has none: the context starts with placeholder
+			// options, and the in-chain BetterHttpPipelineHandler fills in the name's resolved options when the request
+			// traverses the pooled chain (it also runs the Configure stage in that case).
+			bool attached = BetterHttpClientRuntime.TryResolve(client, out var runtime);
+			var options = attached ? runtime!.Options : BetterHttpClientOptions.Empty;
+			var clock = attached ? runtime!.Clock : SystemClock.Instance;
 
 			var startedAt = clock.GetCurrentInstant();
 			var context = new BetterHttpClientContext()
 			{
-				Id = NewRequestId(runtime.Id),
+				Id = NewRequestId(attached ? runtime!.Id : "adhoc"),
 				Client = client,
 				Options = options,
+				HasResolvedOptions = attached,
 				Clock = clock,
-				Services = runtime.Services,
+				Services = attached ? runtime!.Services : BetterHttpClientRuntime.EmptyServiceProvider.Instance,
 				Cancellation = ct,
 				State = new(StringComparer.Ordinal),
 				Request = request,
@@ -237,23 +242,26 @@ namespace SnowBank.Networking.Http
 
 				#region Configure...
 
-				context.SetStage(BetterHttpClientStage.Configure);
-				foreach (var filter in options.Filters)
-				{
-					Contract.Debug.Assert(filter != null);
-					try
+				if (attached)
+				{ // the shell's overlay options win: run the Configure stage here, with them; the pipeline handler skips it.
+					context.SetStage(BetterHttpClientStage.Configure);
+					foreach (var filter in options.Filters)
 					{
-						await filter.Configure(context).ConfigureAwait(false);
-					}
-					catch (Exception e)
-					{
-						if (!(options.Hooks?.OnFilterError(context, e) ?? false))
+						Contract.Debug.Assert(filter != null);
+						try
 						{
-							throw;
+							await filter.Configure(context).ConfigureAwait(false);
+						}
+						catch (Exception e)
+						{
+							if (!(options.Hooks?.OnFilterError(context, e) ?? false))
+							{
+								throw;
+							}
 						}
 					}
+					options.Hooks?.OnConfigured(context);
 				}
-				options.Hooks?.OnConfigured(context);
 
 				#endregion
 
@@ -281,6 +289,10 @@ namespace SnowBank.Networking.Http
 
 					using (res)
 					{
+						// from here on, read the options back from the context: for a plain client the pipeline handler has
+						// filled in the name's resolved options during the send (the pre-send local still holds the placeholder).
+						options = context.Options;
+
 						#region Prepare Response...
 
 						context.SetStage(BetterHttpClientStage.PrepareResponse);
@@ -384,7 +396,8 @@ namespace SnowBank.Networking.Http
 			{
 				context.Error = ExceptionDispatchInfo.Capture(e);
 				context.FailedStage ??= context.Stage;
-				options.Hooks?.OnError(context, e);
+				// read back from the context: a send that failed mid-chain may have had its options filled by the pipeline handler
+				context.Options.Hooks?.OnError(context, e);
 				throw;
 			}
 			finally

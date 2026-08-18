@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -54,15 +54,6 @@ namespace SnowBank.Networking.Http
 
 		private static readonly ConditionalWeakTable<HttpClient, BetterHttpClientRuntimeInfo> Table = new();
 
-		/// <summary>Fallback runtime for a raw <see cref="HttpClient"/> that was not built by the factory (no bundle, no filters, no hooks).</summary>
-		private static readonly BetterHttpClientRuntimeInfo Fallback = new()
-		{
-			Options = new BetterHttpClientOptions(),
-			Clock = SystemClock.Instance,
-			Services = EmptyServiceProvider.Instance,
-			Id = "adhoc",
-		};
-
 		/// <summary>Attaches the runtime to a client. Called by the factory right after the client is built.</summary>
 		public static void Attach(HttpClient client, BetterHttpClientRuntimeInfo info)
 		{
@@ -70,15 +61,16 @@ namespace SnowBank.Networking.Http
 			Table.AddOrUpdate(client, info);
 		}
 
-		/// <summary>Resolves the runtime attached to a client, or the <see cref="Fallback"/> if the client was not built by the factory.</summary>
-		public static BetterHttpClientRuntimeInfo Resolve(HttpClient client)
+		/// <summary>Resolves the runtime attached to a client by the factory, if there is one.</summary>
+		/// <remarks>A client without a runtime is not an error anymore: the send extensions start such a request with placeholder options, and the in-chain <see cref="BetterHttpPipelineHandler"/> fills in the name's resolved options when the request traverses the pooled chain.</remarks>
+		public static bool TryResolve(HttpClient client, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out BetterHttpClientRuntimeInfo info)
 		{
 			Contract.Debug.Requires(client is not null);
-			return Table.TryGetValue(client, out var info) ? info : Fallback;
+			return Table.TryGetValue(client, out info);
 		}
 
-		/// <summary>Minimal empty <see cref="IServiceProvider"/> used by the fallback runtime.</summary>
-		private sealed class EmptyServiceProvider : IServiceProvider
+		/// <summary>Minimal empty <see cref="IServiceProvider"/> used while a request's context has not yet been filled by the pipeline.</summary>
+		internal sealed class EmptyServiceProvider : IServiceProvider
 		{
 			public static readonly EmptyServiceProvider Instance = new();
 
