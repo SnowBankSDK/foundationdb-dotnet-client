@@ -131,12 +131,12 @@ namespace SnowBank.Networking.Http
 		/// <param name="services">Service collection</param>
 		/// <param name="name">Name of the client. A name carries policy, not an origin: the call site provides the absolute target URI at run time.</param>
 		/// <param name="configure">Optional callback used to configure the options for this client, applied on top of the global defaults.</param>
-		/// <returns>The native <see cref="IHttpClientBuilder"/> for this name, so the standard registration APIs (<c>AddHttpMessageHandler</c>, <c>AddAsKeyed</c>, <c>ConfigureHttpClient</c>, typed clients) chain on.</returns>
+		/// <returns>A <see cref="IBetterHttpClientBuilder"/> for this name; it implements <see cref="IHttpClientBuilder"/>, so the standard registration APIs (<c>AddHttpMessageHandler</c>, <c>AddAsKeyed</c>, <c>ConfigureHttpClient</c>, typed clients) chain on, and it anchors the BetterHttp-specific registration extensions.</returns>
 		/// <remarks>
 		/// <para>This is exactly <c>services.AddHttpClient(name)</c> plus the per-name options layer: the client is a regular factory client, reachable through every door (<see cref="System.Net.Http.IHttpClientFactory"/>, a typed or keyed client, <see cref="System.Net.Http.IHttpMessageHandlerFactory.CreateHandler"/>, or <see cref="IBetterHttpClientFactory"/>), and every door carries the same policy.</para>
 		/// <para>A client with no BetterHttp-specific policy does not need this method: a plain <c>AddHttpClient(name)</c> is already fully enrolled by <see cref="AddBetterHttpClientDefaults"/>.</para>
 		/// </remarks>
-		public static IHttpClientBuilder AddBetterHttpClient(this IServiceCollection services, string name, Action<BetterHttpClientOptions>? configure = null)
+		public static IBetterHttpClientBuilder AddBetterHttpClient(this IServiceCollection services, string name, Action<BetterHttpClientOptions>? configure = null)
 		{
 			Contract.NotNullOrWhiteSpace(name);
 			if (string.Equals(name, DefaultClientName, StringComparison.Ordinal)) throw new ArgumentException("This name is reserved for the default client.", nameof(name));
@@ -155,7 +155,8 @@ namespace SnowBank.Networking.Http
 							: configure;
 					});
 			}
-			return services.AddHttpClient(name);
+			services.AddHttpClient(name);
+			return new BetterHttpClientBuilder(name, services);
 		}
 
 		/// <summary>Ensures the factory, the options builder, the M.E.Http infrastructure and the per-name chain setup are registered.</summary>
