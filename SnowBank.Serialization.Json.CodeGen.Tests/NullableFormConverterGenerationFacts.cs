@@ -100,7 +100,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "a T? converter on a T? member is valid, not CJSON0010");
-				Assert.That(generated, Does.Contain("UnpackNullableForm("), "the read side must route through the nullable-form helper (the converter owns present values, the pipeline owns null/missing)");
+				Assert.That(generated, Does.Contain("UnpackNullableForm<int>("), "the read side must route through the nullable-form helper (the converter owns present values, the pipeline owns null/missing), with its type argument SPELLED OUT: inference from the converter class fails as soon as that class implements IJsonDeserializer<> more than once (CS0411)");
 				Assert.That(generated, Does.Contain("/* member-converter-nullable-form */"), "every read route takes the nullable-form branch");
 				Assert.That(generated, Does.Not.Contain("/* member-converter-nullable */"), "the exact form wins over the lift");
 			}
@@ -119,7 +119,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty);
-				Assert.That(generated, Does.Contain("UnpackRequiredNullableForm("), "the presence gate stays the pipeline's, the converter still owns present values");
+				Assert.That(generated, Does.Contain("UnpackRequiredNullableForm<int>("), "the presence gate stays the pipeline's, the converter still owns present values; the required variant spells its type argument out for the same reason as the optional one");
 				Assert.That(generated, Does.Contain("/* member-converter-nullable-form-required */"), "the required variant takes the nullable-form branch too");
 			}
 		}
@@ -138,7 +138,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			{
 				Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty);
 				Assert.That(generated, Does.Contain("/* member-converter-nullable */"), "a T converter on a T? member keeps today's lifted route");
-				Assert.That(generated, Does.Not.Contain("UnpackNullableForm("), "the nullable-form helper is reserved for converters declared for T? itself");
+				Assert.That(generated, Does.Not.Contain("UnpackNullableForm<"), "the nullable-form helper is reserved for converters declared for T? itself");
 			}
 		}
 
