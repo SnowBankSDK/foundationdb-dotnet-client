@@ -1,15 +1,15 @@
----
+﻿---
 name: snowbank-betterhttp
-description: How to make outbound HTTP calls with BetterHttpClient (SnowBank.Networking.Http) in an ASP.NET Core or generic-host .NET application - the DI story and the request API. Covers the one-policy-plane model where a client NAME maps to one effective policy that rides the pooled handler chain, so every door gets the same behavior: a typed client, a keyed client, IHttpClientFactory.CreateClient(name), and the bare IHttpMessageHandlerFactory.CreateHandler(name). Covers AddBetterHttpClientDefaults (routes every factory client through the map), AddBetterHttpClient(name, ...) returning an IBetterHttpClientBuilder for standard chaining (AddHttpMessageHandler, AddAsKeyed, typed clients), the AddBetterHttpClientConfiguration override layer bound from an appsettings section, the mandatory INetworkMap transport seam (NetworkMap in production, the virtual network inside distributed tests, with packet capture riding every chain automatically), BetterHttpClientOptions (default headers and UserAgent, cookies, credentials, TLS server-certificate callbacks and the self-signed/trusted-roots helpers, hooks, delegating handlers), the universal SendAsync(request, ctx => ...) lifecycle with BetterHttpClientContext that now runs the request stage on any door's client, the Create*Request builders, typed protocols (RestHttpProtocol, BetterHttpProtocolFactoryBase, the AddFooClient extension-method pattern), how to port legacy HttpWebRequest / WebClient (.NET Framework) code to this stack, and which 7.4.3 members are now soft-obsolete (IBetterHttpClientFactory, the BetterHttpClient shell, BetterHttpShellOptions, IBetterHttpFilter/Filters, AddGlobalHttpFilter/AddGlobalHttpHandler) and their native replacements. Use whenever application code registers or injects an HttpClient in a SnowBank-based app, declares a named client, configures user agents or HTTPS certificate validation, binds HTTP options from configuration, ports HttpWebRequest/.NET Framework 4.7.2 networking code to net8+/net10, or hits "You must register an implementation for INetworkMap".
+description: How to make outbound HTTP calls with BetterHttpClient (SnowBank.Networking.Http) in an ASP.NET Core or generic-host .NET application - the DI story and the request API. Covers the one-policy-plane model where a client NAME maps to one effective policy that lives in the pooled handler chain, so every client gets the same behavior: a typed client, a keyed client, IHttpClientFactory.CreateClient(name), and the bare IHttpMessageHandlerFactory.CreateHandler(name). Covers AddBetterHttpClientDefaults (routes every factory client through the map), AddBetterHttpClient(name, ...) returning an IBetterHttpClientBuilder for standard chaining (AddHttpMessageHandler, AddAsKeyed, typed clients), the AddBetterHttpClientConfiguration override layer bound from an appsettings section, the mandatory INetworkMap transport seam (NetworkMap in production, the virtual network inside distributed tests, with packet capture on every chain automatically), BetterHttpClientOptions (default headers and UserAgent, cookies, credentials, TLS server-certificate callbacks and the self-signed/trusted-roots helpers, hooks, delegating handlers), the universal SendAsync(request, ctx => ...) lifecycle with BetterHttpClientContext that now runs the request stage on any client, the Create*Request builders, typed protocols (RestHttpProtocol, BetterHttpProtocolFactoryBase, the AddFooClient extension-method pattern), how to port legacy HttpWebRequest / WebClient (.NET Framework) code to this stack, and which 7.4.3 members are now soft-obsolete (IBetterHttpClientFactory, the BetterHttpClient shell, BetterHttpShellOptions, IBetterHttpFilter/Filters, AddGlobalHttpFilter/AddGlobalHttpHandler) and their native replacements. Use whenever application code registers or injects an HttpClient in a SnowBank-based app, declares a named client, configures user agents or HTTPS certificate validation, binds HTTP options from configuration, ports HttpWebRequest/.NET Framework 4.7.2 networking code to net8+/net10, or hits "You must register an implementation for INetworkMap".
 ---
 
-<!-- Publisher note: the frontmatter description is skill-optimizer output. It was hand-corrected on the 7.4.4 rewrite to drop the now-false claims (the IHttpClientFactory "wrong door" throw, the shell-as-primary lifetime). Re-run the skill-creator optimizer before shipping, do not hand-tune further. -->
+<!-- Publisher note: the frontmatter description is skill-optimizer output. It was hand-corrected on the 7.4.4 rewrite to drop the now-false claims (the IHttpClientFactory throw on named clients, the shell-as-primary lifetime). Re-run the skill-creator optimizer before shipping, do not hand-tune further. -->
 
 # BetterHttpClient - outbound HTTP in an application (DI, options, requests, test interop)
 
 `SnowBank.Networking.Http` replaces ad-hoc `HttpClient` / legacy `HttpWebRequest` usage with a small set of load-bearing pieces. This skill is the consumer guide: wiring the DI, declaring named clients, making requests, and what you get for free inside the distributed test framework. For diagnosing multi-node tests themselves (journal, packet capture output, log knobs) see the **snowbank-distributed-testing** skill.
 
-> **7.4.4 changed the model.** A client name now maps to one effective policy that lives in the pooled handler chain, so every door behaves the same, including a plain injected `HttpClient`. The old `IBetterHttpClientFactory` shell, `BetterHttpShellOptions`, `IBetterHttpFilter`, and the global-filter helpers still work but are `[Obsolete]` warnings now. Section 10 maps each retired member to its replacement.
+> **7.4.4 changed the model.** A client name now maps to one effective policy that lives in the pooled handler chain, so every client behaves the same, including a plain injected `HttpClient`. The old `IBetterHttpClientFactory` shell, `BetterHttpShellOptions`, `IBetterHttpFilter`, and the global-filter helpers still work but are `[Obsolete]` warnings now. Section 10 maps each retired member to its replacement.
 
 ---
 
@@ -26,7 +26,7 @@ Three layers, each with its own lifetime:
 The chain, bottom to top:
 
 ```
-   [HttpClient from any door]           <- typed, keyed, or IHttpClientFactory.CreateClient(name)
+   [HttpClient, however obtained]       <- typed, keyed, or IHttpClientFactory.CreateClient(name)
         |
    (packet capture, when present)       <- outermost, inserted automatically in tests
    application handlers                  <- AddHttpMessageHandler, in registration order
@@ -36,7 +36,7 @@ The chain, bottom to top:
                                             the virtual network inside a DistributedTest
 ```
 
-`BetterHttpPipelineHandler` (the piece that replaced `MagicalHandler`) is the difference from 7.4.3. It self-contexts: on a plain `client.GetAsync(...)` it builds the `BetterHttpClientContext` itself and runs the name's request stage (credentials, hooks, default headers), so **the full policy runs on every door, not only on the old shell's `SendAsync`**. A request that already carries a context (from the `SendAsync(request, ctx => ...)` extension) is enriched and runs the same lifecycle.
+`BetterHttpPipelineHandler` (the piece that replaced `MagicalHandler`) is the difference from 7.4.3. It self-contexts: on a plain `client.GetAsync(...)` it builds the `BetterHttpClientContext` itself and runs the name's request stage (credentials, hooks, default headers), so **the full policy runs for every client, not only on the old shell's `SendAsync`**. A request that already carries a context (from the `SendAsync(request, ctx => ...)` extension) is enriched and runs the same lifecycle.
 
 Two properties fall out of this design:
 
@@ -90,11 +90,11 @@ services.AddBetterHttpClient("Catalog", options => options.AcceptSelfSignedServe
 
 The old no-name `AddBetterHttpClient(configure)` overload stays retired (`[Obsolete(error: true)]`): it wired only the default client, so a stock `AddHttpClient` escaped the map. Call `AddBetterHttpClientDefaults(configure)`.
 
-## 3. Getting a client: the doors are equivalent
+## 3. Getting a client: every kind is equivalent
 
-Every door gives the same policy, because the policy lives in the chain. Pick the door by consumer lifetime:
+Every kind of client gives the same policy, because the policy lives in the chain. Pick by consumer lifetime:
 
-| Consumer | Door | API |
+| Consumer | Client kind | API |
 |---|---|---|
 | Request-scoped (controllers, per-request services) | typed or keyed client | `AddHttpClient<CatalogService>()` (ctor-injected `HttpClient`), or `.AddAsKeyed()` then `[FromKeyedServices("Catalog")] HttpClient` |
 | Singletons, static-cached factories | `IHttpClientFactory` | `factory.CreateClient("Catalog")`, `using var` per operation |
@@ -124,11 +124,11 @@ public sealed class CatalogGateway
 
 Holding one client long-lived is correct (late binding keeps routing it against the live network), but the per-operation `CreateClient` idiom stays the convention for long-lived services: creation is cheap and `Dispose` never closes sockets.
 
-> **Legacy:** `IBetterHttpClientFactory.CreateClient(...)` and the `BetterHttpClient` shell still resolve, now under `[Obsolete]` warnings. They are no longer the primary door. Section 10 lists the moves.
+> **Legacy:** `IBetterHttpClientFactory.CreateClient(...)` and the `BetterHttpClient` shell still resolve, now under `[Obsolete]` warnings. They are no longer the primary way to get a client. Section 10 lists the moves.
 
 ## 4. Making requests
 
-Add `using SnowBank.Networking.Http;` - the request API lives in extension methods on `HttpClient`, so it works on a client from any door:
+Add `using SnowBank.Networking.Http;` - the request API lives in extension methods on `HttpClient`, so it works on any client:
 
 - Request builders: `client.CreateGetRequest(path)`, `CreatePostRequest(path, content)`, `CreatePutRequest`, `CreatePatchRequest`, `CreateDeleteRequest`, `CreateHeadRequest`, `CreateOptionsRequest`, `CreateTraceRequest` (each with `string` or `Uri` overloads, resolved against `BaseAddress`).
 - The send lifecycle: `client.SendAsync(request, handler, ct)` where the handler receives a **`BetterHttpClientContext`** while the response is still open:
@@ -158,7 +158,7 @@ Cancellation tokens are required across this stack, never optional: pass the cal
 | **Configuration override** | the `BetterHttp` section | `AddBetterHttpClientConfiguration(configuration)` | the ops-safe subset (section 6), applied after code, last word |
 | **Per call** (typed protocols) | the protocol's options | `protocolFactory.CreateClient(uri, o => ...)` | protocol/client behavior only |
 
-The rule: **wire policy lives on the name, at startup**. A per-call configure that touches wire policy (a TLS callback, a delegating handler) cannot reach the shared pooled transport, and silently ignoring it would be a silent security break, so it **throws**, naming the offending member.
+The rule: **wire policy lives on the name, at startup**. A per-call configure that touches wire policy (a TLS callback, a delegating handler) cannot reach the shared pooled transport, and silently ignoring it would be a silent security break, so it **throws**, naming the offending member. The per-call side may set client behavior only: default headers, request options, hooks, `Timeout`, and per-request-only credentials (a message signer stamping a different identity per client); all of them run per request, in the chain.
 
 Useful `BetterHttpClientOptions` members:
 
@@ -279,14 +279,14 @@ For a structured API surface (instead of raw requests), wrap the client in a pro
 - Consuming SDKs layer their own (e.g. a JSON-API protocol in an application-level SDK).
 - To build one: implement `IBetterHttpProtocol` + a factory deriving `BetterHttpProtocolFactoryBase<TProtocol, TOptions>` (with `TOptions : BetterHttpClientOptions`), and expose it as a dedicated `AddFooProtocol()` extension that calls `services.AddBetterHttpProtocol<TFactory, TProtocol, TOptions>(configure)`.
 
-Remember the scope rule from section 5: the per-call `configure` on `factory.CreateClient(uri, o => ...)` is for protocol behavior; wire policy there throws.
+Remember the scope rule from section 5: the per-call `configure` on `factory.CreateClient(uri, o => ...)` is for protocol/client behavior (headers, request options, hooks, `Timeout`, per-request-only credentials); wire policy there throws.
 
 ## 9. Inside the distributed test framework: zero-change interop
 
 When application code runs on a simulated host of a `DistributedTest` (see the **snowbank-distributed-testing** skill), the SAME registrations acquire test behavior automatically - do not add any test-specific wiring to application code:
 
 - **The virtual network replaces the transport.** The framework registers the virtual network map as the host's `INetworkMap`, so every name's chain bottoms out in the simulated network. In-test web hosts are reachable by their simulated names; TestServer-style in-memory handlers, simulated latency and faults all live below the same seam.
-- **Packet capture rides every chain.** The capture handler is inserted as the outermost handler of every pooled chain (bare handlers included, so gRPC and SignalR traffic shows up like any other request): every test journal carries one `H` line per request, with bodies dumped on failure. No registration needed. Only the deliberately-raw transport (`INetworkMap.CreateTransportHandler`) stays uncaptured. A **long-lived streaming response** (`application/grpc*` or `text/event-stream`) is captured at **headers only** (metadata plus a `Streaming` flag; the body is never mirrored, so the stream is never torn); finite bodies capture exactly.
+- **Packet capture is on every chain.** The capture handler is inserted as the outermost handler of every pooled chain (bare handlers included, so gRPC and SignalR traffic shows up like any other request): every test journal carries one `H` line per request, with bodies dumped on failure. No registration needed. Only the deliberately-raw transport (`INetworkMap.CreateTransportHandler`) stays uncaptured. A **long-lived streaming response** (`application/grpc*` or `text/event-stream`) is captured at **headers only** (metadata plus a `Streaming` flag; the body is never mirrored, so the stream is never torn); finite bodies capture exactly.
 - **Request-stage policy runs in tests too.** Because the pipeline handler is in-chain, credentials (signing), hooks, and default headers now run identically inside a distributed test for a plainly-injected client, not only for the old shell.
 - **Failures keep their historical shapes.** An unresolvable name surfaces as `HttpRequestException` wrapping a `WebException` with `WebExceptionStatus.NameResolutionFailure`; a stopped host fails like a connect failure. Ported legacy code that matches on these shapes keeps working.
 - **Late binding is observable.** Stopping, restarting or re-aliasing a host reroutes the SAME live client on its next request - tests can exercise reconnect logic without recreating clients.
@@ -300,8 +300,8 @@ These members still work in 7.4.4 under `[Obsolete]` warnings. Move to the repla
 | Soft-obsolete (7.4.4) | Replacement |
 |---|---|
 | `IBetterHttpClientFactory`, `DefaultBetterHttpClientFactory` | inject `IHttpClientFactory` (or a typed/keyed client) and use the `SendAsync` extensions on the `HttpClient` |
-| `BetterHttpClient` (the shell type) | any door's `HttpClient`; the `SendAsync` extensions work on all of them |
-| `BetterHttpShellOptions` (per-shell overlay) | per-name options on `AddBetterHttpClient`, or configure the request |
+| `BetterHttpClient` (the shell type) | any `HttpClient`; the `SendAsync` extensions work on all of them |
+| `BetterHttpShellOptions` (per-shell overlay) | per-name options on `AddBetterHttpClient`; for a per-call client tier (headers, hooks, timeout, per-request-only credentials), `services.CreateBetterHttpClient(uri, configure, name)` |
 | `IBetterHttpFilter`, `BetterHttpClientOptions.Filters` | a standard `DelegatingHandler` via `.AddHttpMessageHandler<T>()`, or `IBetterHttpHooks` for pure observation |
 | `AddGlobalHttpFilter<T>()` | `ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler<T>())` |
 | `AddGlobalHttpHandler(factory)` | `ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...))` |
