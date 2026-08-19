@@ -172,6 +172,47 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public required int? Count { get; set; }
 	}
 
+	/// <summary>Converter facade serving BOTH forms of the same value type: the class implements <c>IJsonDeserializer&lt;T&gt;</c> TWICE (for <see cref="DateTime"/> and for <see cref="DateTime"/>?)</summary>
+	/// <remarks>The legacy shape of a portage: one converter class posed on every member of a date family, nullable or not. The generated call to the nullable-form helper cannot infer its type argument from such a receiver (CS0411), so the emitter must spell the type argument out.</remarks>
+	public sealed class ProbeDualDateConverter :
+		IJsonPacker<DateTime>,
+		IJsonPacker<DateTime?>,
+		IJsonDeserializer<DateTime>,
+		IJsonDeserializer<DateTime?>
+	{
+
+		private const string Format = "dd/MM/yyyy";
+
+		public JsonValue Pack(ref CrystalJsonPackContext context, DateTime instance)
+			=> JsonString.Return(instance.ToString(Format, System.Globalization.CultureInfo.InvariantCulture));
+
+		public JsonValue Pack(ref CrystalJsonPackContext context, DateTime? instance)
+			=> instance is { } date ? JsonString.Return(date.ToString(Format, System.Globalization.CultureInfo.InvariantCulture)) : throw new InvalidOperationException("Pack must never see a null member");
+
+		DateTime IJsonDeserializer<DateTime>.Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
+			=> value is JsonString text && DateTime.TryParseExact(text.Value, Format, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date)
+				? date
+				: throw new JsonBindingException($"Cannot convert {value.Type} into a {Format} date");
+
+		DateTime? IJsonDeserializer<DateTime?>.Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
+			=> value is JsonNull ? throw new InvalidOperationException("the converter must never see JSON null or a missing member")
+				: value is JsonString { Value: var s } && DateTime.TryParseExact(s, Format, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date) ? date
+				: null;
+
+	}
+
+	public sealed record ProbeDualFormDto
+	{
+		[JsonConvertWith(typeof(ProbeDualDateConverter))]
+		public DateTime Created { get; set; }
+
+		[JsonConvertWith(typeof(ProbeDualDateConverter))]
+		public DateTime? Updated { get; set; }
+
+		[JsonConvertWith(typeof(ProbeDualDateConverter))]
+		public required DateTime? Checked { get; set; }
+	}
+
 	[CrystalJsonConverter]
 	[CrystalSerializable(typeof(ProbeConvertedDto))]
 	[CrystalSerializable(typeof(ProbePackOnlyDto))]
@@ -179,6 +220,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	[CrystalSerializable(typeof(ProbeNullableFormDto))]
 	[CrystalSerializable(typeof(ProbeOmitWhenFalseDto))]
 	[CrystalSerializable(typeof(ProbeRequiredNullableFormDto))]
+	[CrystalSerializable(typeof(ProbeDualFormDto))]
 	public static partial class ProbeConverterHost
 	{
 		// generated code goes here!
@@ -397,6 +439,48 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(() => ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": null }"""), Throws.InstanceOf<JsonBindingException>(), "an explicit null on a required member throws");
 				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": "42" }""").Count, Is.EqualTo(42));
 				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": "" }""").Count, Is.Null, "present-but-unreadable satisfies the presence gate and the converter answers no-value");
+			}
+		}
+
+		[Test]
+		public void Test_Dual_Form_Converter_Compiles_And_Round_Trips()
+		{
+			// a converter class posed on BOTH a T and a T? member implements IJsonDeserializer<T> twice, and the
+			// emitted call to the nullable-form helper used to leave its type argument to inference, which fails
+			// on such a receiver (CS0411): the container did not compile at all, so this fixture existing and
+			// running IS half the pin
+
+			var dto = new ProbeDualFormDto { Created = new(2026, 12, 25), Updated = new(2027, 1, 2), Checked = new(2026, 6, 1) };
+
+			var obj = JsonObject.Parse(ProbeConverterHost.ProbeDualFormDto.ToJsonText(dto));
+			Log(obj.ToJsonText());
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(obj["Created"], IsJson.EqualTo("25/12/2026"), "the non-nullable member packs through the T facet");
+				Assert.That(obj["Updated"], IsJson.EqualTo("02/01/2027"), "the nullable member packs through the T? facet");
+				Assert.That(obj["Checked"], IsJson.EqualTo("01/06/2026"));
+			}
+
+			var back = ProbeConverterHost.ProbeDualFormDto.Deserialize(obj.ToJsonText());
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(back.Created, Is.EqualTo(new DateTime(2026, 12, 25)));
+				Assert.That(back.Updated, Is.EqualTo(new DateTime(2027, 1, 2)), "the nullable member reads through the exact T? facet");
+				Assert.That(back.Checked, Is.EqualTo(new DateTime(2026, 6, 1)), "the required nullable member takes the required variant of the same helper");
+			}
+
+			// the pipeline still owns null and missing on the optional nullable member (the converter's throw-arm would fire otherwise)
+			var partial = ProbeConverterHost.ProbeDualFormDto.Deserialize("""{ "Created": "25/12/2026", "Updated": null, "Checked": "01/06/2026" }""");
+			Assert.That(partial.Updated, Is.Null);
+			Assert.That(ProbeConverterHost.ProbeDualFormDto.Deserialize("""{ "Created": "25/12/2026", "Checked": "01/06/2026" }""").Updated, Is.Null);
+
+			// and the same shape must round-trip through the proxies, whose getters take the same emit site
+			var proxy = ProbeConverterHost.ProbeDualFormDto.ToReadOnly(dto);
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(proxy.Updated, Is.EqualTo(new DateTime(2027, 1, 2)));
+				Assert.That(proxy.Checked, Is.EqualTo(new DateTime(2026, 6, 1)));
+				Assert.That(proxy.ToMutable().Updated, Is.EqualTo(new DateTime(2027, 1, 2)));
 			}
 		}
 
