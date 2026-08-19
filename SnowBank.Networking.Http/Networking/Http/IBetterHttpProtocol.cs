@@ -35,9 +35,11 @@ namespace SnowBank.Networking.Http
 		public string Name { get; }
 
 		/// <summary>Client used by this protocol</summary>
-#pragma warning disable CS0618 // the protocol layer rides the shell until its own redesign
-		public BetterHttpClient Http { get; }
-#pragma warning restore CS0618
+		/// <remarks>
+		/// <para>A plain factory client over the name's pooled chain: it carries the name's policy plus this instance's default headers, and disposing it never tears down the shared sockets.</para>
+		/// <para>The protocol's per-call overlay (per-request-only credentials, hooks, request options, timeout) is applied by the <c>SendAsync</c> extensions, which every protocol method uses; a raw <see cref="HttpClient.GetAsync(string?)"/>-style call on this client carries the name's policy only.</para>
+		/// </remarks>
+		public HttpClient Http { get; }
 
 	}
 

@@ -174,8 +174,8 @@ namespace SnowBank.Networking.PacketCapture
 			services.AddGlobalHttpFilter<PacketCaptureHttpFilter>();
 #pragma warning restore CS0618
 
-			// register the in-chain capture handler under the well-known key that the BetterHttp bundles resolve: it is wired as the
-			// OUTERMOST handler of every pooled bundle, so capture rides the pipeline and even a bare handler obtained from
+			// register the in-chain capture handler under the well-known key that the BetterHttp chain setup resolves: it is wired as the
+			// OUTERMOST handler of every pooled chain, so capture rides the pipeline and even a bare handler obtained from
 			// IHttpMessageHandlerFactory is captured (not just BetterHttpClient sends). Transient so each rebuilt chain gets a fresh one.
 			services.AddKeyedTransient<System.Net.Http.DelegatingHandler>(
 				BetterHttpClientExtensions.CaptureHandlerServiceKey,

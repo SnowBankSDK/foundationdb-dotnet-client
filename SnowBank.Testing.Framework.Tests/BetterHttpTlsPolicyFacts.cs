@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -34,7 +34,7 @@ namespace SnowBank.Testing.Framework.Tests
 
 	/// <summary>Pins the ergonomic TLS trust ladder on <see cref="BetterHttpClientOptions"/>: self-signed certificates are a
 	/// fact of life in dev/test/internal-LAN deployments (no public X509 for internal servers, local-CA distribution is its
-	/// own pain), so the bundle options offer graded helpers instead of hand-written callbacks - trust EXTRA roots with full
+	/// own pain), so the client options offer graded helpers instead of hand-written callbacks - trust EXTRA roots with full
 	/// chain validation (the private-CA / pinned-self-signed story), or forgive chain-trust errors while still enforcing the
 	/// host-name match. Validation is never silently disabled: accept-anything remains a separate, loudly-named method.</summary>
 	[TestFixture]

@@ -48,7 +48,7 @@ namespace SnowBank.Networking.PacketCapture
 		public PacketCaptureManager Manager { get; }
 
 		/// <summary>Indicates that the in-chain <see cref="PacketCaptureHandler"/> is the canonical capturer for this request, so this filter must stand down (capture must happen exactly once).</summary>
-		/// <remarks>Every pooled bundle carries the in-chain handler ABOVE the pipeline, so it always stamps the marker before this filter's request/response stages run. The only stage that runs before the marker is set is <see cref="Configure"/> (driven by the send extension, before the request enters the chain); the session it allocates is then simply never used, since every following stage defers.</remarks>
+		/// <remarks>Every pooled chain carries the in-chain handler ABOVE the pipeline, so it always stamps the marker before this filter's request/response stages run. The only stage that runs before the marker is set is <see cref="Configure"/> (driven by the send extension, before the request enters the chain); the session it allocates is then simply never used, since every following stage defers.</remarks>
 		private static bool DefersToChain(BetterHttpClientContext context)
 			=> context.Request.Options.TryGetValue(PacketCaptureHandler.RidesChainKey, out var ridesChain) && ridesChain;
 

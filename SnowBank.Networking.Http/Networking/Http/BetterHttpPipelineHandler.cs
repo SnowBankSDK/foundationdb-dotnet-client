@@ -29,7 +29,7 @@ namespace SnowBank.Networking.Http
 
 	/// <summary>In-chain handler that runs the BetterHttp request stages (filters, credentials, hooks) for every consumer of a pooled chain.</summary>
 	/// <remarks>
-	/// <para>This handler replaces the previous <c>MagicalHandler</c>, which only acted when the request carried a <see cref="BetterHttpClientContext"/> attached by the send extensions; a plain <see cref="HttpClient"/> obtained from <see cref="System.Net.Http.IHttpClientFactory"/> silently skipped every stage. This handler is built per client name, holds that name's resolved options, and creates the context itself when the request arrives without one, so the request stages run for every door: a typed or keyed client, a factory client, a bare handler, or a <see cref="BetterHttpRequestExtensions.SendAsync{TResult}(System.Net.Http.HttpClient,System.Net.Http.HttpRequestMessage,System.Func{BetterHttpClientContext,System.Threading.Tasks.Task{TResult}},System.Threading.CancellationToken)">send-extension</see> call.</para>
+	/// <para>This handler replaces the previous <c>MagicalHandler</c>, which only acted when the request carried a <see cref="BetterHttpClientContext"/> attached by the send extensions; a plain <see cref="HttpClient"/> obtained from <see cref="System.Net.Http.IHttpClientFactory"/> silently skipped every stage. This handler is built per client name, holds that name's resolved options, and creates the context itself when the request arrives without one, so the request stages run for every consumer: a typed or keyed client, a factory client, a bare handler, or a <see cref="BetterHttpRequestExtensions.SendAsync{TResult}(System.Net.Http.HttpClient,System.Net.Http.HttpRequestMessage,System.Func{BetterHttpClientContext,System.Threading.Tasks.Task{TResult}},System.Threading.CancellationToken)">send-extension</see> call.</para>
 	/// <para>When the request already carries a context (attached by the send extensions), the handler fills in the parts the extension could not know (the resolved options and the service provider) unless the extension already resolved them from a factory-built shell, whose per-shell overlay (headers, hooks, per-request credentials) must win over the chain's own options.</para>
 	/// <para>The handler must run once the <see cref="HttpClient"/> has fully set up the request (default headers added), which is why the stages live in a delegating handler instead of the client.</para>
 	/// </remarks>
@@ -57,7 +57,7 @@ namespace SnowBank.Networking.Http
 			this.Id = CorrelationIdGenerator.GetNextId();
 		}
 
-		/// <summary>Name of the client whose chain this handler rides.</summary>
+		/// <summary>Name of the client whose chain holds this handler.</summary>
 		private string Name { get; }
 
 		/// <summary>Resolved options for this client name (the full layer merge).</summary>
@@ -79,7 +79,7 @@ namespace SnowBank.Networking.Http
 		{
 			bool ownsStages;
 			if (!request.Options.TryGetValue(BetterHttpRequestExtensions.OptionKey, out var context))
-			{ // a plain send (GetAsync, PostAsync, SendAsync) from any door: create the context here, so the stages run anyway
+			{ // a plain send (GetAsync, PostAsync, SendAsync) from any client: create the context here, so the stages run anyway
 				context = new BetterHttpClientContext()
 				{
 					Id = BetterHttpRequestExtensions.NewRequestId(this.Id),

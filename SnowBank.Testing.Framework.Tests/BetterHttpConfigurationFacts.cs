@@ -35,7 +35,7 @@ namespace SnowBank.Testing.Framework.Tests
 	/// a section can override the operation-safe subset of a client's options (<c>Timeout</c>, <c>AllowAutoRedirect</c>,
 	/// <c>AutomaticDecompression</c>, <c>Tls:Mode</c>) on top of the code-configured layers, and <c>"inherit"</c> cancels an
 	/// override back down to the code-global baseline. Every test resolves the effective options with
-	/// <see cref="BetterHttpClientExtensions.ResolveBundleOptions"/>, which is a pure function over the registered
+	/// <see cref="BetterHttpClientExtensions.ResolveClientOptions"/>, which is a pure function over the registered
 	/// <c>IServiceCollection</c> and needs neither an <c>INetworkMap</c> nor a built handler chain.</summary>
 	[TestFixture]
 	public class BetterHttpConfigurationFacts : SimpleTest
@@ -57,7 +57,7 @@ namespace SnowBank.Testing.Framework.Tests
 			services.AddBetterHttpClientConfiguration(BuildConfiguration());
 			using var provider = services.BuildServiceProvider();
 
-			var options = BetterHttpClientExtensions.ResolveBundleOptions(provider, "foo");
+			var options = BetterHttpClientExtensions.ResolveClientOptions(provider, "foo");
 
 			Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(9)),
 				"an absent (or empty) override section must be a no-op: the code-configured per-name Timeout stands");
@@ -71,7 +71,7 @@ namespace SnowBank.Testing.Framework.Tests
 			services.AddBetterHttpClientConfiguration(BuildConfiguration(("BetterHttp:Defaults:Timeout", "00:00:10")));
 			using var provider = services.BuildServiceProvider();
 
-			var options = BetterHttpClientExtensions.ResolveBundleOptions(provider, "anything");
+			var options = BetterHttpClientExtensions.ResolveClientOptions(provider, "anything");
 
 			Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(10)),
 				"the configuration Defaults section must override the code-global baseline, for a name with no per-name policy");
@@ -88,7 +88,7 @@ namespace SnowBank.Testing.Framework.Tests
 				("BetterHttp:Clients:foo:Timeout", "00:00:20")));
 			using var provider = services.BuildServiceProvider();
 
-			var options = BetterHttpClientExtensions.ResolveBundleOptions(provider, "foo");
+			var options = BetterHttpClientExtensions.ResolveClientOptions(provider, "foo");
 
 			Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(20)),
 				"a Clients:<name> override must win over both the configuration Defaults and the code per-name configure");
@@ -103,11 +103,11 @@ namespace SnowBank.Testing.Framework.Tests
 			services.AddBetterHttpClientConfiguration(BuildConfiguration(("BetterHttp:Clients:foo:Timeout", "inherit")));
 			using var provider = services.BuildServiceProvider();
 
-			var fooOptions = BetterHttpClientExtensions.ResolveBundleOptions(provider, "foo");
+			var fooOptions = BetterHttpClientExtensions.ResolveClientOptions(provider, "foo");
 			Assert.That(fooOptions.Timeout, Is.EqualTo(TimeSpan.FromSeconds(5)),
 				"'inherit' on a Clients:<name> knob cancels the client's own code configure, falling back to the code-global baseline");
 
-			var barOptions = BetterHttpClientExtensions.ResolveBundleOptions(provider, "bar");
+			var barOptions = BetterHttpClientExtensions.ResolveClientOptions(provider, "bar");
 			Assert.That(barOptions.Timeout, Is.EqualTo(TimeSpan.FromSeconds(5)),
 				"a name with no per-name code configure and no override still resolves to the code-global baseline");
 		}
@@ -120,7 +120,7 @@ namespace SnowBank.Testing.Framework.Tests
 			services.AddBetterHttpClientConfiguration(BuildConfiguration(("BetterHttp:Defaults:Tls:Mode", "AcceptAny")));
 			using var provider = services.BuildServiceProvider();
 
-			var options = BetterHttpClientExtensions.ResolveBundleOptions(provider, "foo");
+			var options = BetterHttpClientExtensions.ResolveClientOptions(provider, "foo");
 
 			Assert.That(options.ServerCertificateCustomValidationCallback, Is.Not.Null,
 				"Tls:Mode 'AcceptAny' from configuration must install a certificate validation callback");
@@ -134,7 +134,7 @@ namespace SnowBank.Testing.Framework.Tests
 			services.AddBetterHttpClientConfiguration(BuildConfiguration(("BetterHttp:Defaults:Tls:Mode", "System")));
 			using var provider = services.BuildServiceProvider();
 
-			var options = BetterHttpClientExtensions.ResolveBundleOptions(provider, "foo");
+			var options = BetterHttpClientExtensions.ResolveClientOptions(provider, "foo");
 
 			Assert.That(options.ServerCertificateCustomValidationCallback, Is.Null,
 				"Tls:Mode 'System' from configuration must force the callback back to null, even when code accepted self-signed certificates");
@@ -148,7 +148,7 @@ namespace SnowBank.Testing.Framework.Tests
 			services.AddBetterHttpClientConfiguration(BuildConfiguration(("BetterHttp:Defaults:Tls:Mode", "Bogus")));
 			using var provider = services.BuildServiceProvider();
 
-			Assert.That(() => BetterHttpClientExtensions.ResolveBundleOptions(provider, "foo"), Throws.InvalidOperationException,
+			Assert.That(() => BetterHttpClientExtensions.ResolveClientOptions(provider, "foo"), Throws.InvalidOperationException,
 				"an unrecognized Tls:Mode value must fail loudly instead of silently picking a default");
 		}
 
@@ -160,7 +160,7 @@ namespace SnowBank.Testing.Framework.Tests
 			services.AddBetterHttpClientConfiguration(BuildConfiguration(("BetterHttp:Defaults:Tls:Mode", "TrustRoots")));
 			using var provider = services.BuildServiceProvider();
 
-			Assert.That(() => BetterHttpClientExtensions.ResolveBundleOptions(provider, "foo"), Throws.TypeOf<NotSupportedException>(),
+			Assert.That(() => BetterHttpClientExtensions.ResolveClientOptions(provider, "foo"), Throws.TypeOf<NotSupportedException>(),
 				"Tls:Mode 'TrustRoots' is not bindable from configuration yet: it must say so instead of silently doing nothing");
 		}
 
@@ -173,7 +173,7 @@ namespace SnowBank.Testing.Framework.Tests
 			services.AddBetterHttpClientConfiguration(BuildConfiguration(("Section2:Defaults:Timeout", "00:00:15")), "Section2");
 			using var provider = services.BuildServiceProvider();
 
-			var options = BetterHttpClientExtensions.ResolveBundleOptions(provider, "foo");
+			var options = BetterHttpClientExtensions.ResolveClientOptions(provider, "foo");
 
 			Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(15)),
 				"two registered sections must apply in registration order, so the later one wins when both set the same knob");

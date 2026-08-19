@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -91,7 +91,7 @@ namespace SnowBank.Testing.Framework
 
 				// Callback shape mirrors WebRequesterTestComponent.NavigateTo exactly (single ctx arg, closes over ct).
 				// The client owns a fresh handler chain, so it must be disposed like the raw branch below does.
-				using var client = this.GetBetterHttpClient(url);
+				using var client = this.CreateHttpClient(url);
 				return await client.SendAsync(request, async (ctx) =>
 				{
 					var responseBody = await ctx.Response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);

@@ -33,7 +33,7 @@ namespace SnowBank.Networking.Http
 	/// <para>The request pipeline - the IoC callback lifecycle (<c>SendAsync(request, ctx =&gt; ..., ct)</c>), the request builders (<c>CreateGetRequest</c>, ...) and the typed helpers - lives in the <see cref="BetterHttpRequestExtensions"/> extension methods on <see cref="HttpClient"/>. Add <c>using SnowBank.Networking.Http;</c> to bring them into scope.</para>
 	/// </remarks>
 	[PublicAPI]
-	[Obsolete("The SendAsync extensions work on any HttpClient obtained from the factory doors; a dedicated shell type is no longer needed.", error: false)]
+	[Obsolete("The SendAsync extensions work on any HttpClient obtained from IHttpClientFactory (typed, keyed, or CreateClient); a dedicated shell type is no longer needed.", error: false)]
 	public sealed class BetterHttpClient : HttpClient
 	{
 

@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -36,7 +36,7 @@ namespace SnowBank.Networking.Http
 		/// <remarks>
 		/// <para>The platform pools connections per-origin and, without a lifetime, a long-lived client would keep reusing a cached
 		/// endpoint forever - so this bounds how stale a warm connection's DNS can get. It is set once, on the shared production
-		/// <see cref="System.Net.Http.SocketsHttpHandler"/> that backs each bundle's transport.</para>
+		/// <see cref="System.Net.Http.SocketsHttpHandler"/> that backs each name's transport.</para>
 		/// <para>5 minutes matches the platform guidance for factory-managed handlers.</para>
 		/// </remarks>
 		public static readonly TimeSpan PooledConnectionLifetime = TimeSpan.FromMinutes(5);

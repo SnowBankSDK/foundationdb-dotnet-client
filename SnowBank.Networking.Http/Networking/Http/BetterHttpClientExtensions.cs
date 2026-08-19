@@ -66,7 +66,7 @@ namespace SnowBank.Networking.Http
 		/// </remarks>
 		public const string DefaultClientName = "SnowBank.Networking.Http.BetterHttpClient";
 
-		/// <summary>Service key under which a higher layer can register an outer "capture" delegating handler that rides every pooled chain.</summary>
+		/// <summary>Service key under which a higher layer can register an outer "capture" delegating handler that sits outermost on every pooled chain.</summary>
 		/// <remarks>
 		/// <para>The <c>SnowBank.Networking.PacketCapture</c> layer registers its in-chain capture handler under this key (keyed + transient). When present, the chain setup inserts it as the outermost handler of every client (above the <see cref="BetterHttpPipelineHandler"/> and any application handler), so capture observes the entire request/response for any consumer of the pooled chain.</para>
 		/// <para>This is a DI-key seam because <c>SnowBank.Networking.Http</c> must not depend on the packet-capture layer (the dependency runs the other way).</para>
@@ -135,7 +135,7 @@ namespace SnowBank.Networking.Http
 		/// <param name="configure">Optional callback used to configure the options for this client, applied on top of the global defaults.</param>
 		/// <returns>A <see cref="IBetterHttpClientBuilder"/> for this name; it implements <see cref="IHttpClientBuilder"/>, so the standard registration APIs (<c>AddHttpMessageHandler</c>, <c>AddAsKeyed</c>, <c>ConfigureHttpClient</c>, typed clients) chain on, and it anchors the BetterHttp-specific registration extensions.</returns>
 		/// <remarks>
-		/// <para>This is exactly <c>services.AddHttpClient(name)</c> plus the per-name options layer: the client is a regular factory client, reachable through every door (<see cref="System.Net.Http.IHttpClientFactory"/>, a typed or keyed client, <see cref="System.Net.Http.IHttpMessageHandlerFactory.CreateHandler"/>, or <see cref="IBetterHttpClientFactory"/>), and every door carries the same policy.</para>
+		/// <para>This is exactly <c>services.AddHttpClient(name)</c> plus the per-name options layer: the client is a regular factory client, reachable as a typed or keyed client, from <see cref="System.Net.Http.IHttpClientFactory"/>, from <see cref="System.Net.Http.IHttpMessageHandlerFactory.CreateHandler"/>, or from <see cref="IBetterHttpClientFactory"/>, and each carries the same policy.</para>
 		/// <para>A client with no BetterHttp-specific policy does not need this method: a plain <c>AddHttpClient(name)</c> is already fully enrolled by <see cref="AddBetterHttpClientDefaults"/>.</para>
 		/// </remarks>
 		public static IBetterHttpClientBuilder AddBetterHttpClient(this IServiceCollection services, string name, Action<BetterHttpClientOptions>? configure = null)
@@ -167,7 +167,7 @@ namespace SnowBank.Networking.Http
 		/// </remarks>
 		private static void RegisterCore(IServiceCollection services)
 		{
-#pragma warning disable CS0618 // the shell factory still ships for consumers that have not migrated to the factory doors yet
+#pragma warning disable CS0618 // the shell factory still ships for consumers that have not migrated to the factory clients yet
 			services.TryAddSingleton<IBetterHttpClientFactory, DefaultBetterHttpClientFactory>();
 #pragma warning restore CS0618
 			services.AddOptions<BetterHttpClientOptionsBuilder>();
@@ -195,7 +195,7 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Assembles, for every factory client name, the BetterHttp chain (map transport, pipeline handler, capture) and the client defaults, from that name's resolved options.</summary>
 		/// <remarks>
-		/// <para>This is the piece that makes every door equivalent: whether a client is consumed as a typed client, a keyed client, a plain <see cref="System.Net.Http.IHttpClientFactory"/> client, a bare handler, or an <see cref="IBetterHttpClientFactory"/> shell, it rides this chain.</para>
+		/// <para>This is the piece that makes every client of a name equivalent: a typed client, a keyed client, a plain <see cref="System.Net.Http.IHttpClientFactory"/> client, a bare handler, and an <see cref="IBetterHttpClientFactory"/> shell all get this chain.</para>
 		/// <para>It is a post-configure on purpose: its handler action must run after every application <c>AddHttpMessageHandler</c> action, so application handlers land between the capture handler (outermost) and the <see cref="BetterHttpPipelineHandler"/> (innermost delegating handler, right above the transport).</para>
 		/// <para>The primary handler is always the map's transport, built from the name's resolved options: this is the sandboxing guarantee inside a distributed test. Per-name transport customization goes through the options (TLS, proxy, <see cref="BetterHttpClientOptions.Handlers"/>), not through <c>ConfigurePrimaryHttpMessageHandler</c>.</para>
 		/// </remarks>
@@ -217,7 +217,7 @@ namespace SnowBank.Networking.Http
 				options.HttpMessageHandlerBuilderActions.Add(builder =>
 				{
 					var services = builder.Services;
-					var clientOptions = ResolveBundleOptions(services, builder.Name ?? clientName);
+					var clientOptions = ResolveClientOptions(services, builder.Name ?? clientName);
 
 					var map = services.GetService<INetworkMap>() ?? throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use the BetterHttpClient stack.");
 
@@ -231,7 +231,7 @@ namespace SnowBank.Networking.Http
 					builder.AdditionalHandlers.Add(new BetterHttpPipelineHandler(builder.Name ?? clientName, clientOptions, services, map.Clock, map.Time));
 
 					// If a higher layer registered an outer capture handler (e.g. packet capture) under CaptureHandlerServiceKey,
-					// insert it as the outermost handler of this chain, so capture rides the whole pipeline (a bare handler obtained
+					// insert it as the outermost handler of this chain, so capture sees the whole pipeline (a bare handler obtained
 					// from IHttpMessageHandlerFactory is captured too, not just client sends). Resolved per chain build, so it
 					// rotates with the pooled chain; Insert(0) means no extra handler when capture is absent.
 					if (services.GetKeyedService<DelegatingHandler>(CaptureHandlerServiceKey) is { } capture)
@@ -240,13 +240,13 @@ namespace SnowBank.Networking.Http
 					}
 				});
 
-				// client defaults (headers, request version) applied to every client instance the factory hands out, whatever the
-				// door (typed, keyed, or CreateClient). Insert(0): an application's own AddHttpClient(name, client => ...) action
+				// client defaults (headers, request version) applied to every client instance the factory hands out, whichever
+				// way it was obtained (typed, keyed, or CreateClient). Insert(0): an application's own AddHttpClient(name, client => ...) action
 				// runs after this one, so explicit application code wins over the options-sourced defaults.
 				var rootServices = this.Services;
 				options.HttpClientActions.Insert(0, client =>
 				{
-					var clientOptions = ResolveBundleOptions(rootServices, clientName);
+					var clientOptions = ResolveClientOptions(rootServices, clientName);
 					client.DefaultRequestVersion = clientOptions.DefaultRequestVersion;
 					client.DefaultVersionPolicy = clientOptions.DefaultVersionPolicy;
 					clientOptions.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
@@ -258,9 +258,9 @@ namespace SnowBank.Networking.Http
 		/// <summary>Resolves the effective <see cref="BetterHttpClientOptions"/> for a client name: global filters/handlers, the global configure, then the per-name configure. A fresh instance is returned each call (so nothing is mutated across calls).</summary>
 		/// <remarks>
 		/// <para>Consumers may use this to INSPECT a client's effective policy (e.g. whether it carries a custom certificate-validation callback); mutating the returned instance has no effect on the client.</para>
-		/// <para>Caveat: the pooled pipeline (this method, when the chain is stitched) and a shell's runtime resolve two separate options instances for the same name. Filters therefore must keep per-request state in <c>context.State</c> - never in instance fields that try to coordinate their <c>Wrap</c> with their stage callbacks, since the two runs see different option objects.</para>
+		/// <para>Caveat: the pooled pipeline (this method, when the chain is stitched) and a client's runtime (a protocol client, or a legacy shell) resolve separate options instances for the same name. Filters therefore must keep per-request state in <c>context.State</c> - never in instance fields that try to coordinate their <c>Wrap</c> with their stage callbacks, since the runs see different option objects.</para>
 		/// </remarks>
-		public static BetterHttpClientOptions ResolveBundleOptions(IServiceProvider services, string name)
+		public static BetterHttpClientOptions ResolveClientOptions(IServiceProvider services, string name)
 		{
 			var builder = services.GetRequiredService<IOptions<BetterHttpClientOptionsBuilder>>().Value;
 
@@ -309,6 +309,57 @@ namespace SnowBank.Networking.Http
 			}
 
 			return options;
+		}
+
+		/// <summary>Renamed to <see cref="ResolveClientOptions"/>: a registered name is a client name, and this resolves that name's merged policy.</summary>
+		[Obsolete("Renamed: use ResolveClientOptions(services, name).", error: false)]
+		public static BetterHttpClientOptions ResolveBundleOptions(IServiceProvider services, string name)
+			=> ResolveClientOptions(services, name);
+
+		/// <summary>Creates a client over a name's pooled chain, carrying per-call settings.</summary>
+		/// <param name="services">Service provider of the host.</param>
+		/// <param name="baseAddress">Optional base address applied to this client instance (relative request paths resolve against it). Never touches the pooled chain.</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to the named policy registered with <c>AddBetterHttpClient(name, ...)</c>.</param>
+		/// <param name="name">Client name whose policy drives the pooled chain; the default client when <see langword="null"/>.</param>
+		/// <remarks>
+		/// <para>This is the successor of the retired shell factory: the returned client is a plain factory client whose runtime carries the overlay, honored by the <c>SendAsync</c> extensions and the in-chain pipeline handler. Disposing it never tears down the shared sockets.</para>
+		/// <para>The <c>SendAsync</c> extensions apply the overlay; a raw <see cref="HttpClient.GetAsync(string?)"/>-style call on this client carries the name's policy plus this instance's default headers only.</para>
+		/// </remarks>
+		public static HttpClient CreateBetterHttpClient(this IServiceProvider services, Uri? baseAddress = null, Action<BetterHttpClientOptions>? configure = null, string? name = null)
+		{
+			Contract.NotNull(services);
+			var overlay = new BetterHttpClientOptions();
+			configure?.Invoke(overlay);
+			overlay.EnsureOnlyProtocolBehavior(nameof(CreateBetterHttpClient));
+			return CreateOverlaidClient(services, name ?? DefaultClientName, baseAddress, overlay);
+		}
+
+		/// <summary>Builds a factory client over a name's pooled chain and attaches a runtime carrying the name's merged policy overlaid with the caller's per-call settings.</summary>
+		/// <remarks>The caller has already validated <paramref name="overlay"/> with <see cref="BetterHttpClientOptions.EnsureOnlyProtocolBehavior"/>. The carried set below and that guard's blessed set are the same set, on purpose: a blessed setting that silently does not run is the failure mode the guard exists to prevent.</remarks>
+		internal static HttpClient CreateOverlaidClient(IServiceProvider services, string clientName, Uri? baseAddress, BetterHttpClientOptions overlay)
+		{
+			// a plain factory client over the name's pooled chain; the chain setup already applies the name's default
+			// headers and request version to the instance, the overlay applies to THIS instance only.
+			var client = services.GetRequiredService<IHttpClientFactory>().CreateClient(clientName);
+			if (baseAddress is not null)
+			{
+				client.BaseAddress = baseAddress;
+			}
+			overlay.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
+
+			var effective = ResolveClientOptions(services, clientName);
+			if (overlay.Options is not null) (effective.Options ??= [ ]).AddRange(overlay.Options);
+			if (overlay.Hooks is not null) effective.Hooks = overlay.Hooks;
+			if (overlay.Timeout is not null) effective.Timeout = overlay.Timeout;
+			if (overlay.Credentials is not null) effective.Credentials = overlay.Credentials;
+			BetterHttpClientRuntime.Attach(client, new BetterHttpClientRuntimeInfo()
+			{
+				Options = effective,
+				Clock = services.GetService<IClock>() ?? SystemClock.Instance,
+				Services = services,
+				Id = CorrelationIdGenerator.GetNextId(),
+			});
+			return client;
 		}
 
 		/// <summary>Applies one configuration override section onto resolved options. A missing section is a no-op; the value <c>"inherit"</c> restores a knob from the <paramref name="inherited"/> snapshot.</summary>

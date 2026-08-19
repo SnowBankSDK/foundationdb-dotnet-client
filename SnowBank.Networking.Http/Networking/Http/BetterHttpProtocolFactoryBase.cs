@@ -29,7 +29,7 @@ namespace SnowBank.Networking.Http
 	using Microsoft.Extensions.DependencyInjection;
 	using Microsoft.Extensions.Options;
 
-	/// <summary>Base implementation for a <see cref="IBetterHttpClientFactory"/></summary>
+	/// <summary>Base implementation of a typed-protocol factory: it creates <typeparamref name="TProtocol"/> instances over plain factory clients.</summary>
 	/// <typeparam name="TProtocol">Type of the supported <see cref="IBetterHttpProtocol"/></typeparam>
 	/// <typeparam name="TOptions">Type of the <see cref="BetterHttpClientOptions"/> used to configure this protocol</typeparam>
 	public abstract class BetterHttpProtocolFactoryBase<TProtocol, TOptions> : IBetterHttpProtocolFactory<TProtocol, TOptions>
@@ -56,12 +56,10 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Creates the protocol instance, handing it the client and the resolved options.</summary>
 		/// <remarks>The default resolves the protocol from the DI container with the client as a parameter. Override this to hand the protocol its <typeparamref name="TOptions"/> explicitly (so it does not have to reach back into the client instance).</remarks>
-#pragma warning disable CS0618 // the protocol layer rides the shell until its own redesign
-		protected virtual TProtocol CreateProtocol(BetterHttpClient client, TOptions options)
+		protected virtual TProtocol CreateProtocol(HttpClient client, TOptions options)
 		{
 			return ActivatorUtilities.CreateInstance<TProtocol>(this.Services, client);
 		}
-#pragma warning restore CS0618
 
 		/// <inheritdoc />
 		//REVIEW: rename to CreateProtocol() ?
@@ -70,9 +68,9 @@ namespace SnowBank.Networking.Http
 			return CreateClientCore(baseAddress, null, configure);
 		}
 
-		/// <summary>Creates a new client for sending requests to a remote target, using the named policy bundle for the pooled pipeline.</summary>
+		/// <summary>Creates a new client for sending requests to a remote target, using a named policy for the pooled pipeline.</summary>
 		/// <param name="baseAddress">Host name or IP address of the remote target</param>
-		/// <param name="name">Name of the policy bundle to use for the pooled pipeline (TLS, filters, ...). A registered name is a bundle, NOT an origin.</param>
+		/// <param name="name">Client name whose policy drives the pooled pipeline (TLS, handlers, ...). A registered name carries policy, NOT an origin.</param>
 		/// <param name="configure">Handler used to further configure the protocol options</param>
 		public TProtocol CreateClient(Uri baseAddress, string name, Action<TOptions>? configure = null)
 		{
@@ -82,7 +80,7 @@ namespace SnowBank.Networking.Http
 
 		private TProtocol CreateClientCore(Uri baseAddress, string? name, Action<TOptions>? configure)
 		{
-			// build the protocol options ONCE (the named bundle drives the pooled pipeline; these options travel with the protocol object)
+			// build the protocol options ONCE (the client name drives the pooled pipeline; these options travel with the protocol object)
 			var options = CreateOptions();
 
 			var localConfigure = this.Services.GetService<IConfigureOptions<TOptions>>();
@@ -92,23 +90,15 @@ namespace SnowBank.Networking.Http
 
 			OnAfterConfigure(options);
 
-#pragma warning disable CS0618 // the protocol layer rides the shell until its own redesign
-			var factory = this.Services.GetRequiredService<IBetterHttpClientFactory>();
-
-			// per-call configure = protocol/client behavior only; wire policy = the bundle. Fail loudly on the rest:
+			// per-call configure = protocol/client behavior only; wire policy = the named policy. Fail loudly on the rest:
 			// wire policy set here can never reach the shared pooled transport, and silence would be a silent break.
 			options.EnsureOnlyProtocolBehavior($"{GetType().Name}.CreateClient");
 
-			// the shell tier of the protocol options rides the transient shell (per-connection auth headers etc.);
-			// the request version/policy stay bundle-owned (the protocol options' defaults are not an explicit intent).
-			var client = factory.CreateClient(baseAddress, new BetterHttpShellOptions()
-			{
-				DefaultRequestHeaders = options.DefaultRequestHeaders,
-				RequestOptions = options.Options,
-				Hooks = options.Hooks,
-			}, name);
-			Contract.Debug.Assert(client != null);
-#pragma warning restore CS0618
+			// a plain factory client over the name's pooled chain, carrying the protocol options as its per-instance
+			// overlay (credentials, hooks, request options, timeout), honored by the SendAsync extensions and the
+			// in-chain pipeline handler. The request version/policy stay name-owned (the protocol options' defaults
+			// are not an explicit intent).
+			var client = BetterHttpClientExtensions.CreateOverlaidClient(this.Services, name ?? BetterHttpClientExtensions.DefaultClientName, baseAddress, options);
 
 			try
 			{

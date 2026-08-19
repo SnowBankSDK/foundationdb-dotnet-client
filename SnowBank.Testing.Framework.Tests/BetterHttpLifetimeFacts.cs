@@ -39,6 +39,7 @@ namespace SnowBank.Testing.Framework.Tests
 	using SnowBank.Networking;
 	using SnowBank.Networking.Http;
 	using SnowBank.Networking.PacketCapture;
+	using SnowBank.Threading;
 
 	/// <summary>Late-binding self-tests for the unified transport seam (<see cref="INetworkMap.CreateTransportHandler"/>):
 	/// ONE long-lived client, built once over the virtual transport, must resolve its target PER-REQUEST against the live
@@ -145,7 +146,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// A pooled handler chain is owned by the platform (Microsoft.Extensions.Http) and ROTATED once its HandlerLifetime
 			// elapses: the NEXT request past the lifetime rebuilds the whole chain - including our pipeline handlers. That is the
 			// point of moving sockets to the platform (the client no longer owns the connection pool's lifetime), so we guard it:
-			// a counting DelegatingHandler on a dedicated bundle must be re-constructed across a rotation. We assert on a static
+			// a counting DelegatingHandler on a dedicated name must be re-constructed across a rotation. We assert on a static
 			// construction counter (>= 2), never on wall-clock precision.
 			RotationProbeHandler.ResetConstructionCount();
 
@@ -156,7 +157,7 @@ namespace SnowBank.Testing.Framework.Tests
 					host.ConfigureApplication(app => app.MapGet("/ping", (HttpContext _) => "pong"));
 					host.ConfigureServices(builder =>
 					{
-						// a dedicated policy bundle whose pipeline includes the counting handler; 1s is M.E.Http's documented
+						// a dedicated named policy whose pipeline includes the counting handler; 1s is M.E.Http's documented
 						// minimum handler lifetime, so the chain rotates on the first request that arrives after it elapses.
 						builder.Services.AddBetterHttpClient("rotation", options => options.WithDelegatingHandler<RotationProbeHandler>());
 						builder.Services.AddHttpClient("rotation").SetHandlerLifetime(TimeSpan.FromSeconds(1));
@@ -191,7 +192,7 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		/// <summary>Pass-through <see cref="DelegatingHandler"/> that counts how many times it has been constructed, so a test can
-		/// observe the platform rebuilding a bundle's pipeline when the pooled handler chain rotates.</summary>
+		/// observe the platform rebuilding a name's pipeline when the pooled handler chain rotates.</summary>
 		public sealed class RotationProbeHandler : DelegatingHandler
 		{
 			private static int ConstructionCounter;
@@ -209,13 +210,13 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
-		public void Test_Wired_Bundles_Default_To_Infinite_Handler_Lifetime()
+		public void Test_Named_Clients_Default_To_Infinite_Handler_Lifetime()
 		{
 			// DNS staleness is already bounded by the transport itself (PooledConnectionLifetime on the SocketsHttpHandler,
 			// set by NetworkMap.CreateTransportHandler): the platform's default 2-minute chain rotation stacked on top of it
-			// paid pool cold-starts against every active origin and bought nothing. Wired bundles therefore default to an
-			// INFINITE handler lifetime; a bundle that wants periodic chain rebuild opts back in with the stock M.E.Http API
-			// (services.AddHttpClient(name).SetHandlerLifetime(...) AFTER the bundle registration - which is exactly what
+			// paid pool cold-starts against every active origin and bought nothing. Wired names therefore default to an
+			// INFINITE handler lifetime; a named policy that wants periodic chain rebuild opts back in with the stock M.E.Http API
+			// (services.AddHttpClient(name).SetHandlerLifetime(...) AFTER the named policy registration - which is exactly what
 			// Test_Pipeline_Handler_Is_Rebuilt_On_Rotation does, and why it stays green).
 			var services = new ServiceCollection();
 			services.AddBetterHttpClientDefaults();
@@ -224,34 +225,34 @@ namespace SnowBank.Testing.Framework.Tests
 
 			var factoryOptions = provider.GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>();
 			Assert.That(factoryOptions.Get(BetterHttpClientExtensions.DefaultClientName).HandlerLifetime, Is.EqualTo(Timeout.InfiniteTimeSpan),
-				"the default bundle must not rotate its chain (the transport owns DNS freshness)");
+				"the default client must not rotate its chain (the transport owns DNS freshness)");
 			Assert.That(factoryOptions.Get("custom").HandlerLifetime, Is.EqualTo(Timeout.InfiniteTimeSpan),
-				"a named bundle must not rotate its chain (the transport owns DNS freshness)");
+				"a named client must not rotate its chain (the transport owns DNS freshness)");
 		}
 
 		[Test]
-		public void Test_Plain_HttpClientFactory_Is_A_Full_Door_To_A_Policy_Client()
+		public void Test_Plain_HttpClientFactory_Resolves_A_Policy_Client()
 		{
-			// The plain IHttpClientFactory used to be a guarded "wrong door" for a policy client: a plain HttpClient over the
+			// The plain IHttpClientFactory used to throw for a policy client: a plain HttpClient over the
 			// pooled chain had no BetterHttp runtime, so the client's filters, hooks and credentials silently never ran, and
 			// the registration threw to prevent that silent skip. The request stages now live in the chain itself (the
 			// BetterHttpPipelineHandler creates the per-request context when none is attached), so a plain factory client
-			// carries the full policy and the guard is gone: every door hands out the same behavior.
+			// carries the full policy and the guard is gone: every client behaves the same.
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
 			services.AddBetterHttpClientDefaults();
 			services.AddBetterHttpClient("signed");
 			using var provider = services.BuildServiceProvider();
 
-			var door = provider.GetRequiredService<IHttpClientFactory>();
-			Assert.That(() => door.CreateClient("signed").Dispose(), Throws.Nothing,
-				"a policy client must be resolvable through the plain factory (the request stages ride the chain now)");
-			Assert.That(() => door.CreateClient(BetterHttpClientExtensions.DefaultClientName).Dispose(), Throws.Nothing,
-				"the default client is a regular named client, resolvable through every door");
-			Assert.That(() => door.CreateClient("not-a-bundle").Dispose(), Throws.Nothing,
+			var factory = provider.GetRequiredService<IHttpClientFactory>();
+			Assert.That(() => factory.CreateClient("signed").Dispose(), Throws.Nothing,
+				"a policy client must be resolvable through the plain factory (the request stages live in the chain now)");
+			Assert.That(() => factory.CreateClient(BetterHttpClientExtensions.DefaultClientName).Dispose(), Throws.Nothing,
+				"the default client is a regular named client, resolvable like any other name");
+			Assert.That(() => factory.CreateClient("not-a-name").Dispose(), Throws.Nothing,
 				"the plain factory keeps working normally for names that carry no per-name policy");
 
-			// and the chain behind that door carries the request-stage handler
+			// and the chain behind that name carries the request-stage handler
 			var handlerFactory = provider.GetRequiredService<System.Net.Http.IHttpMessageHandlerFactory>();
 			using var handler = handlerFactory.CreateHandler("signed");
 			HttpMessageHandler? h = handler;
@@ -267,7 +268,7 @@ namespace SnowBank.Testing.Framework.Tests
 		[Test]
 		public void Test_Certificate_Callback_Maps_Onto_SslOptions_Without_Reflection()
 		{
-			// The server-certificate callback is a per-bundle transport policy applied to the shared SocketsHttpHandler. Its
+			// The server-certificate callback is a per-name transport policy applied to the shared SocketsHttpHandler. Its
 			// shape deliberately has NO HttpRequestMessage argument: the callback validates a CONNECTION (SslStream knows no
 			// request), which is what lets it map DIRECTLY onto SslOptions.RemoteCertificateValidationCallback - a
 			// request-shaped signature cannot be honored there without reflecting over runtime internals.
@@ -315,7 +316,7 @@ namespace SnowBank.Testing.Framework.Tests
 		public async Task Test_Per_Call_Protocol_Configure_Rejects_Wire_Policy()
 		{
 			// The contract: per-call configure = protocol/client behavior only; wire policy (TLS, proxy, cookies, filters,
-			// pipeline handlers) = the policy bundle, registered at startup. A per-call TLS callback or filter CANNOT reach
+			// pipeline handlers) = the named policy, registered at startup. A per-call TLS callback or filter CANNOT reach
 			// the shared pooled transport, and silently ignoring it would be a silent security/behavior break: it must
 			// fail loudly, naming the offending member.
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
@@ -336,11 +337,11 @@ namespace SnowBank.Testing.Framework.Tests
 #pragma warning disable CS0618
 			Assert.That(() => factory.CreateClient(uri, o => o.Filters.Add(new NoopFilter())),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Filters)),
-				"a per-call filter must throw (the pooled pipeline is built from the bundle options)");
+				"a per-call filter must throw (the pooled pipeline is built from the client options)");
 #pragma warning restore CS0618
 			Assert.That(() => factory.CreateClient(uri, o => o.Proxy = new WebProxy("http://proxy.lan.simulated:8080")),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Proxy)),
-				"a per-call proxy must throw (socket knobs are per-bundle transport policy)");
+				"a per-call proxy must throw (socket knobs are per-name transport policy)");
 			Assert.That(() => factory.CreateClient(uri, o => o.Credentials = new WrappedCredentials(new NetworkCredential("user", "password"))),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Credentials)),
 				"per-call TRANSPORT-COUPLED credentials must throw (their handler-configure half cannot run on the pooled chain)");
@@ -368,10 +369,71 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
+		public async Task Test_Per_Call_Protocol_Configure_Carries_Per_Request_Credentials()
+		{
+			// The other blessed half: a per-request-only credential (a message signer stamping a different identity per
+			// client) is client-level behavior, admitted by EnsureOnlyProtocolBehavior, and must run for the protocol's
+			// requests. A blessed setting that silently does not run is the exact failure mode the guard exists to prevent.
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("WEB", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/echo-stamp", (HttpContext ctx) => ctx.Request.Headers["X-Stamped"].ToString()));
+				});
+			}));
+			var web = context.GetWebHost("WEB");
+			var factory = web.GetRequiredService<RestHttpProtocolFactory>();
+			var uri = web.GetUri("/echo-stamp");
+
+			using var protocol = factory.CreateClient(uri, o => o.Credentials = new HeaderStampCredentials());
+			Assert.That(await protocol.GetTextAsync(uri, this.Cancellation), Is.EqualTo("stamped"),
+				"a per-call per-request-only credential must be invoked for the protocol client's requests");
+		}
+
+		[Test]
+		public async Task Test_Per_Call_Protocol_Configure_Carries_Timeout()
+		{
+			// Timeout is client tier (absent from the guard's offender list), so a per-call Timeout must be enforced for
+			// the protocol client's requests, in-chain, against the host's TimeProvider (fake-time testable).
+			var fake = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+			this.Clock = new NodaTimeProvider(fake);
+
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("WEB", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/never", async (HttpContext ctx) =>
+					{
+						// never completes on its own; the caller giving up (via the timeout) aborts the connection
+						var tcs = new TaskCompletionSource();
+						await using var registration = ctx.RequestAborted.Register(() => tcs.TrySetResult());
+						await tcs.Task;
+					}));
+				});
+			}));
+			var web = context.GetWebHost("WEB");
+			var factory = web.GetRequiredService<RestHttpProtocolFactory>();
+			var uri = web.GetUri("/never");
+
+			using var protocol = factory.CreateClient(uri, o => o.Timeout = TimeSpan.FromSeconds(30));
+			var task = protocol.GetTextAsync(uri, this.Cancellation);
+
+			await AdvanceAndPump(fake, TimeSpan.FromSeconds(31));
+
+			// bounded wait on the REAL clock, so a dropped per-call Timeout fails the test instead of hanging it
+			var winner = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5), this.Cancellation));
+			Assert.That(winner, Is.SameAs(task), "the per-call Timeout must fire once fake time advances past it");
+
+			var ex = Assert.ThrowsAsync<TaskCanceledException>(async () => await task);
+			Assert.That(ex!.InnerException, Is.InstanceOf<TimeoutException>(),
+				"a per-call Timeout must surface as a TaskCanceledException wrapping a TimeoutException, the same shape as a real HttpClient.Timeout");
+		}
+
+		[Test]
 		public async Task Test_Factory_Shell_Options_Apply_To_The_Shell_Only()
 		{
 			// The factory's per-call surface is the SHELL tier: default headers (and hooks/request options) for THIS client,
-			// over the shared pooled chain. A sibling client of the same bundle must not see them.
+			// over the shared pooled chain. A sibling client of the same name must not see them.
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 			{
 				lan.WithMinimalWebHost("WEB", host =>
@@ -390,12 +452,12 @@ namespace SnowBank.Testing.Framework.Tests
 			using (var tagged = factory.CreateClient(uri, shell))
 			{
 				var res = await tagged.SendAsync(tagged.CreateGetRequest(uri), (ctx) => ctx.Response.Content.ReadAsStringAsync(this.Cancellation), this.Cancellation);
-				Assert.That(res, Is.EqualTo("42"), "the shell options' default headers must ride this client's requests");
+				Assert.That(res, Is.EqualTo("42"), "the shell options' default headers must be sent on this client's requests");
 			}
 			using (var plain = factory.CreateClient(uri))
 			{
 				var res = await plain.SendAsync(plain.CreateGetRequest(uri), (ctx) => ctx.Response.Content.ReadAsStringAsync(this.Cancellation), this.Cancellation);
-				Assert.That(res, Is.Empty, "a sibling client of the same bundle must not inherit another shell's headers");
+				Assert.That(res, Is.Empty, "a sibling client of the same name must not inherit another shell's headers");
 			}
 #pragma warning restore CS0618
 		}
@@ -412,10 +474,10 @@ namespace SnowBank.Testing.Framework.Tests
 		[Test]
 		public async Task Test_Per_Request_Only_Credentials_Are_Shell_Tier()
 		{
-			// Credentials have two halves: a handler-configure half (transport tier, bundle-only) and a per-request half
+			// Credentials have two halves: a handler-configure half (transport tier, name-only) and a per-request half
 			// (OnBeforeRequest - e.g. a message signer stamping auth onto each request). A credential that declares itself
 			// per-request only (IsPerRequestOnly) is CLIENT behavior - the "different identity per transient client" pattern -
-			// and must ride the shell; a transport-coupled one (e.g. NTLM via WrappedCredentials) must be rejected loudly.
+			// and must work on the shell; a transport-coupled one (e.g. NTLM via WrappedCredentials) must be rejected loudly.
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 			{
 				lan.WithMinimalWebHost("WEB", host =>
@@ -461,7 +523,7 @@ namespace SnowBank.Testing.Framework.Tests
 		public async Task Test_Bare_Handler_From_Factory_Is_Captured()
 		{
 			// A bare handler straight from the pooled factory carries the FULL pipeline, packet
-			// capture included. A plain HttpClient over IHttpMessageHandlerFactory.CreateHandler(default bundle) - the shape a
+			// capture included. A plain HttpClient over IHttpMessageHandlerFactory.CreateHandler(default client name) - the shape a
 			// gRPC/SignalR consumer uses - never goes through the BetterHttpClient send extension, yet its traffic must
 			// still land in the journal. This is the pinned regression for the historical half-applied-hooks dark spot, where
 			// capture only fired for requests that went through the send extension.
@@ -489,7 +551,7 @@ namespace SnowBank.Testing.Framework.Tests
 				if (packets.Count == 0) await Task.Delay(25, this.Cancellation);
 			}
 
-			Assert.That(packets, Is.Not.Empty, "a bare handler obtained from IHttpMessageHandlerFactory must ride the full pipeline and be captured");
+			Assert.That(packets, Is.Not.Empty, "a bare handler obtained from IHttpMessageHandlerFactory must go through the full pipeline and be captured");
 			Assert.That(packets[0].Metadata.Uri, Does.Contain(uri.Host), "the captured packet must record the request host");
 			Assert.That(packets[0].Metadata.Uri, Does.Contain("/ping"), "the captured packet must record the request path");
 		}
@@ -498,7 +560,7 @@ namespace SnowBank.Testing.Framework.Tests
 		public async Task Test_Streaming_Response_Is_Captured_At_Headers_Without_Tearing_The_Stream()
 		{
 			// A long-lived streaming response (here a Server-Sent Events feed; a gRPC duplex body behaves the same way) must
-			// ride the CAPTURED pooled chain without being torn. Its body stays open for the connection's whole life, so the
+			// flow through the CAPTURED pooled chain without being torn. Its body stays open for the connection's whole life, so the
 			// capture layer must record the packet at headers (metadata only) and pass the live body through completely
 			// untouched. Mirroring such a body would never emit a packet (the body never ends), grow without bound, and couple
 			// the capture wrapper's disposal to the transport's live stream - which is exactly what tears real duplex streams.
@@ -526,7 +588,7 @@ namespace SnowBank.Testing.Framework.Tests
 			}));
 			var web = context.GetWebHost("WEB");
 
-			// consume the feed through a CAPTURED bundle handler (the shape a gRPC/SignalR sink uses), headers-first so the body
+			// consume the feed through a CAPTURED pooled handler (the shape a gRPC/SignalR sink uses), headers-first so the body
 			// streams live instead of being buffered.
 			var handlerFactory = web.GetRequiredService<IHttpMessageHandlerFactory>();
 			using var client = new HttpClient(handlerFactory.CreateHandler(BetterHttpClientExtensions.DefaultClientName), disposeHandler: false);

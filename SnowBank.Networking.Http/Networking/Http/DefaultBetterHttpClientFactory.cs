@@ -29,7 +29,7 @@ namespace SnowBank.Networking.Http
 	using Microsoft.Extensions.DependencyInjection;
 
 	/// <summary>Factory that hands out <see cref="BetterHttpClient"/> shells over pooled handler chains sourced from <see cref="IHttpMessageHandlerFactory"/>.</summary>
-	[Obsolete("Every factory door now carries the full per-name policy: inject IHttpClientFactory (or a typed/keyed client) and use the SendAsync extensions on any HttpClient; draw a bare pooled handler from IHttpMessageHandlerFactory.CreateHandler(name).", error: false)]
+	[Obsolete("Every factory client now carries the full per-name policy: inject IHttpClientFactory (or use a typed/keyed client) and the SendAsync extensions work on any HttpClient; draw a bare pooled handler from IHttpMessageHandlerFactory.CreateHandler(name).", error: false)]
 	public class DefaultBetterHttpClientFactory : IBetterHttpClientFactory
 	{
 
@@ -77,10 +77,10 @@ namespace SnowBank.Networking.Http
 			// pooled handler chain (transport + pipeline), owned and rotated by the platform
 			var handler = this.HandlerFactory.CreateHandler(name);
 
-			var options = BetterHttpClientExtensions.ResolveBundleOptions(this.Services, name);
+			var options = BetterHttpClientExtensions.ResolveClientOptions(this.Services, name);
 
 			if (shell is not null)
-			{ // overlay the per-shell tier onto the freshly-resolved (per-client, mutation-safe) bundle options
+			{ // overlay the per-shell tier onto the freshly-resolved (per-client, mutation-safe) client options
 				if (shell.DefaultRequestVersion is not null) options.DefaultRequestVersion = shell.DefaultRequestVersion;
 				if (shell.DefaultVersionPolicy is not null) options.DefaultVersionPolicy = shell.DefaultVersionPolicy.Value;
 				if (shell.Hooks is not null) options.Hooks = shell.Hooks;
@@ -89,7 +89,7 @@ namespace SnowBank.Networking.Http
 				{ // only the per-request half can act for a shell: a transport-coupled credential would silently skip its configure half
 					if (!credentials.IsPerRequestOnly)
 					{
-						throw new InvalidOperationException($"Per-shell credentials must be per-request only: '{credentials.GetType().Name}' requires transport configuration, which belongs to a policy bundle registered at startup with AddBetterHttpClient(name, ...).");
+						throw new InvalidOperationException($"Per-shell credentials must be per-request only: '{credentials.GetType().Name}' requires transport configuration, which belongs to a named policy registered at startup with AddBetterHttpClient(name, ...).");
 					}
 					options.Credentials = credentials;
 				}
@@ -103,7 +103,7 @@ namespace SnowBank.Networking.Http
 			client.DefaultRequestVersion = options.DefaultRequestVersion;
 			client.DefaultVersionPolicy = options.DefaultVersionPolicy;
 			options.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
-			shell?.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders); // the shell's headers ride on top of the bundle's
+			shell?.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders); // the shell's headers apply on top of the name's
 
 			// attach the runtime that the send extensions read back at request time
 			BetterHttpClientRuntime.Attach(client, new BetterHttpClientRuntimeInfo()

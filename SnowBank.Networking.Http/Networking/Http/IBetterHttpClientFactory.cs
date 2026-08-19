@@ -29,32 +29,32 @@ namespace SnowBank.Networking.Http
 
 	/// <summary>Type that can create <see cref="BetterHttpClient"/> instances over pooled handler chains</summary>
 	/// <remarks>
-	/// <para>A client is a thin, transient shell over a POOLED handler chain: creating and disposing them is cheap, and disposing one never tears down the shared sockets. A registered NAME is a policy bundle (TLS, filters, pipeline) - never an origin; the call site provides the absolute target URI at send time.</para>
+	/// <para>A client is a thin, transient shell over a POOLED handler chain: creating and disposing them is cheap, and disposing one never tears down the shared sockets. A registered NAME is a named policy (TLS, filters, pipeline) - never an origin; the call site provides the absolute target URI at send time.</para>
 	/// </remarks>
-	[Obsolete("Every factory door now carries the full per-name policy: inject IHttpClientFactory (or a typed/keyed client) and use the SendAsync extensions on any HttpClient; draw a bare pooled handler from IHttpMessageHandlerFactory.CreateHandler(name).", error: false)]
+	[Obsolete("Every factory client now carries the full per-name policy: inject IHttpClientFactory (or use a typed/keyed client) and the SendAsync extensions work on any HttpClient; draw a bare pooled handler from IHttpMessageHandlerFactory.CreateHandler(name).", error: false)]
 	public interface IBetterHttpClientFactory
 	{
 
-		/// <summary>Creates a new client over the default policy bundle.</summary>
+		/// <summary>Creates a new client over the default named policy.</summary>
 		/// <returns>A transient shell over the pooled default chain. The call site provides the absolute target URI on each request.</returns>
 		BetterHttpClient CreateClient();
 
-		/// <summary>Creates a new client over the named policy bundle.</summary>
-		/// <param name="name">Name of the policy bundle registered with <c>AddBetterHttpClient(name, ...)</c></param>
-		/// <returns>A transient shell over the pooled chain for that bundle. The call site provides the absolute target URI on each request.</returns>
+		/// <summary>Creates a new client over the named named policy.</summary>
+		/// <param name="name">Name of the named policy registered with <c>AddBetterHttpClient(name, ...)</c></param>
+		/// <returns>A transient shell over the pooled chain for that name. The call site provides the absolute target URI on each request.</returns>
 		BetterHttpClient CreateClient(string name);
 
-		/// <summary>Creates a new client bound to a base address, over a policy bundle.</summary>
+		/// <summary>Creates a new client bound to a base address, over a named policy.</summary>
 		/// <param name="baseAddress">Base address applied to the transient shell (relative request paths resolve against it). Never touches the pooled chain.</param>
-		/// <param name="name">Optional name of the policy bundle; the default bundle is used when <c>null</c>.</param>
+		/// <param name="name">Optional client name; the default client is used when <c>null</c>.</param>
 		/// <returns>A transient shell whose <see cref="HttpClient.BaseAddress"/> is set to <paramref name="baseAddress"/>.</returns>
 		BetterHttpClient CreateClient(Uri baseAddress, string? name = null);
 
-		/// <summary>Creates a new client bound to a base address, with per-shell options, over a policy bundle.</summary>
+		/// <summary>Creates a new client bound to a base address, with per-shell options, over a named policy.</summary>
 		/// <param name="baseAddress">Base address applied to the transient shell (relative request paths resolve against it). Never touches the pooled chain.</param>
-		/// <param name="shell">Per-shell options (default headers, request version, hooks, request options) applied to THIS client only. Wire policy stays on the bundle.</param>
-		/// <param name="name">Optional name of the policy bundle; the default bundle is used when <c>null</c>.</param>
-		/// <returns>A transient shell carrying the per-shell options over the bundle's pooled chain.</returns>
+		/// <param name="shell">Per-shell options (default headers, request version, hooks, request options) applied to THIS client only. Wire policy stays on the named policy.</param>
+		/// <param name="name">Optional client name; the default client is used when <c>null</c>.</param>
+		/// <returns>A transient shell carrying the per-shell options over the name's pooled chain.</returns>
 		BetterHttpClient CreateClient(Uri baseAddress, BetterHttpShellOptions shell, string? name = null);
 
 	}

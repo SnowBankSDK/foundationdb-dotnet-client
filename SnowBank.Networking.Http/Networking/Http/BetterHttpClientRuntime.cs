@@ -29,11 +29,11 @@ namespace SnowBank.Networking.Http
 	using System.Runtime.CompilerServices;
 
 	/// <summary>Per-client runtime that the factory attaches to a <see cref="BetterHttpClient"/>, and that the request pipeline reads back at send time.</summary>
-	/// <remarks>Holds the resolved policy bundle (options), the clock, the service provider and the client identity - everything the <see cref="BetterHttpRequestExtensions">send extensions</see> need to build the per-request context. This lives OFF the client (see <see cref="BetterHttpClientRuntime"/>) so the client type itself stays an empty shell.</remarks>
+	/// <remarks>Holds the resolved named policy (options), the clock, the service provider and the client identity - everything the <see cref="BetterHttpRequestExtensions">send extensions</see> need to build the per-request context. This lives OFF the client (see <see cref="BetterHttpClientRuntime"/>) so the client type itself stays an empty shell.</remarks>
 	internal sealed record BetterHttpClientRuntimeInfo
 	{
 
-		/// <summary>Resolved options for the policy bundle this client belongs to (filters, hooks, credentials, ...)</summary>
+		/// <summary>Resolved options for the named policy this client belongs to (filters, hooks, credentials, ...)</summary>
 		public required BetterHttpClientOptions Options { get; init; }
 
 		/// <summary>Clock used to measure the timestamps of the requests sent by this client</summary>
@@ -48,7 +48,7 @@ namespace SnowBank.Networking.Http
 	}
 
 	/// <summary>Associates the per-client <see cref="BetterHttpClientRuntimeInfo"/> with a <see cref="BetterHttpClient"/> instance, without adding any state to the client type itself.</summary>
-	/// <remarks>The factory <see cref="Attach"/>es the runtime right after building a client; the send extensions <see cref="Resolve"/> it at the start of every request. A <see cref="ConditionalWeakTable{TKey,TValue}"/> keeps the client an empty shell (no instance fields) while still letting the pipeline find its bundle.</remarks>
+	/// <remarks>The factory <see cref="Attach"/>es the runtime right after building a client; the send extensions <see cref="Resolve"/> it at the start of every request. A <see cref="ConditionalWeakTable{TKey,TValue}"/> keeps the client an empty shell (no instance fields) while still letting the pipeline find its named policy.</remarks>
 	internal static class BetterHttpClientRuntime
 	{
 

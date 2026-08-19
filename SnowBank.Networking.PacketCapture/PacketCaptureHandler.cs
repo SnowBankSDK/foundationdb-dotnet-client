@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -32,9 +32,9 @@ namespace SnowBank.Networking.PacketCapture
 	using System.Net;
 	using System.Net.Http;
 
-	/// <summary>Delegating handler that captures every request flowing through a pooled <c>BetterHttp</c> bundle chain, so that packet capture "rides the pipeline" instead of firing only for requests that went through the <c>BetterHttpClient</c> send extension.</summary>
+	/// <summary>Delegating handler that captures every request flowing through a pooled <c>BetterHttp</c> chain, so that packet capture "rides the pipeline" instead of firing only for requests that went through the <c>BetterHttpClient</c> send extension.</summary>
 	/// <remarks>
-	/// <para>This handler is inserted as the OUTERMOST message handler of every bundle (above the pipeline's <c>MagicalHandler</c>), so a bare handler obtained from <see cref="IHttpMessageHandlerFactory"/> (the shape gRPC/SignalR consumers use) is captured just like a full <c>BetterHttpClient</c> send.</para>
+	/// <para>This handler is inserted as the OUTERMOST message handler of every name (above the pipeline's <c>MagicalHandler</c>), so a bare handler obtained from <see cref="IHttpMessageHandlerFactory"/> (the shape gRPC/SignalR consumers use) is captured just like a full <c>BetterHttpClient</c> send.</para>
 	/// <para>It is the CANONICAL capturer: it stamps <see cref="RidesChainKey"/> on the request so the <see cref="PacketCaptureHttpFilter"/> (driven by the BetterHttpClient send extensions) stands down for the same request and does not double-capture.</para>
 	/// <para>Bodies are intercepted with the same <see cref="InterceptedHttpContent"/> mirror machinery the filter uses. The response packet is emitted once, as soon as the caller has finished consuming the body - whichever comes first: the body is fully serialized (buffered reads), the response read-stream is disposed (streaming reads), or the response itself is disposed. This mirrors the filter's "emit after the response is consumed" timing without owning the read lifecycle. When there is no response body to capture (or the request failed), the packet is emitted right away.</para>
 	/// <para>A long-lived, potentially-infinite response - a gRPC duplex body (<c>application/grpc</c>) or a Server-Sent Events feed (<c>text/event-stream</c>) - is NEVER mirrored. Its body stays open for the whole life of the connection, so mirroring it would grow without bound, never emit a packet (the body never ends), and tie this wrapper's disposal to the transport's live stream. Such a response is captured at headers only - request metadata plus response status and headers, its body marked as streaming - and its content is passed through completely untouched. The matching request body of a streaming/duplex request is left alone for the same reason: its bytes keep being written long after the response headers have arrived, so restoring and disposing an interceptor around it would tear the request mid-flight. Every finite response keeps its usual, complete body capture. See <see cref="IsStreamingContent"/>.</para>
@@ -74,7 +74,7 @@ namespace SnowBank.Networking.PacketCapture
 			var fields = manager.Options.AllowedFields;
 
 			// mark the request as "capture rides the chain" so the filter (driven by the BetterHttpClient send extension)
-			// stands down: we are the single, canonical capturer for anything flowing through a pooled bundle.
+			// stands down: we are the single, canonical capturer for anything flowing through a pooled chain.
 			request.Options.Set(RidesChainKey, true);
 
 			var now = clock.GetCurrentInstant();

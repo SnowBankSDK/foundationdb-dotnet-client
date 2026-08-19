@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -38,7 +38,7 @@ namespace SnowBank.Testing.Framework.Tests
 	/// routes every factory client (named, typed via <c>AddHttpClient&lt;TClient&gt;</c>, or a plain <c>AddHttpClient</c>)
 	/// through the <see cref="INetworkMap"/> transport, so a stock client needs no per-client enrollment (and is
 	/// sandboxed by construction inside a distributed test). Also covers the registration-time coordination that keeps
-	/// exactly one pipeline handler and one packet-capture handler on a bundle when the defaults hook and a named bundle
+	/// exactly one pipeline handler and one packet-capture handler on a named policy when the defaults hook and a named client
 	/// are both present.</summary>
 	[TestFixture]
 	public class BetterHttpClientDefaultsFacts : DistributedTest
@@ -66,7 +66,7 @@ namespace SnowBank.Testing.Framework.Tests
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
 			services.AddBetterHttpClientDefaults();
-			services.AddHttpClient("weather"); // stock factory client, not a BetterHttpClient bundle
+			services.AddHttpClient("weather"); // stock factory client, no BetterHttp policy of its own
 			using var provider = services.BuildServiceProvider();
 
 			var handlerFactory = provider.GetRequiredService<System.Net.Http.IHttpMessageHandlerFactory>();
@@ -97,38 +97,38 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
-		public void Test_Named_Bundle_Overrides_The_Primary_Under_The_Defaults_Hook()
+		public void Test_Named_Client_Overrides_The_Primary_Under_The_Defaults_Hook()
 		{
 			// The defaults hook sets a baseline primary (map transport with the global options) for every client. A named
-			// bundle's own ConfigurePrimaryHttpMessageHandler runs after the defaults (per-name always beats defaults in
-			// IHttpClientFactory) and assigns the primary, so the bundle's per-name transport pipeline wins: a wrapper the
-			// bundle adds to its transport (options.Handlers) appears in the bundle's chain, but not in a stock client's chain.
+			// name's own ConfigurePrimaryHttpMessageHandler runs after the defaults (per-name always beats defaults in
+			// IHttpClientFactory) and assigns the primary, so the name's per-name transport pipeline wins: a wrapper the
+			// name adds to its transport (options.Handlers) appears in the name's chain, but not in a stock client's chain.
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
 			services.AddBetterHttpClientDefaults();
-			services.AddBetterHttpClient("catalog", options => options.Handlers.Add((inner, _, _) => new MarkerBundleHandler(inner)));
+			services.AddBetterHttpClient("catalog", options => options.Handlers.Add((inner, _, _) => new MarkerClientHandler(inner)));
 			services.AddHttpClient("weather");
 			using var provider = services.BuildServiceProvider();
 
 			var handlerFactory = provider.GetRequiredService<System.Net.Http.IHttpMessageHandlerFactory>();
 
 			using var catalog = handlerFactory.CreateHandler("catalog");
-			Assert.That(WalkChain(catalog).OfType<MarkerBundleHandler>().Count(), Is.EqualTo(1),
-				"the named bundle's own transport pipeline (its options.Handlers wrapper) must build the primary, overriding the defaults' baseline primary");
+			Assert.That(WalkChain(catalog).OfType<MarkerClientHandler>().Count(), Is.EqualTo(1),
+				"the named name's own transport pipeline (its options.Handlers wrapper) must build the primary, overriding the defaults' baseline primary");
 
 			using var weather = handlerFactory.CreateHandler("weather");
-			Assert.That(WalkChain(weather).OfType<MarkerBundleHandler>().Count(), Is.EqualTo(0),
-				"a stock client must NOT inherit the named bundle's per-name transport wrapper");
+			Assert.That(WalkChain(weather).OfType<MarkerClientHandler>().Count(), Is.EqualTo(0),
+				"a stock client must NOT inherit the named name's per-name transport wrapper");
 		}
 
 		[Test]
-		public void Test_Defaults_Plus_Named_Bundle_Get_Exactly_One_Pipeline_Handler_And_One_Capture()
+		public void Test_Defaults_Plus_Named_Client_Get_Exactly_One_Pipeline_Handler_And_One_Capture()
 		{
 			// The compose hazard: the defaults hook adds the pipeline handler (MagicalHandler) and the capture handler to
-			// every client, and WireBundle also adds its own to each named bundle. Two of each would run the pipeline twice and
+			// every client, and the per-name setup also adds its own to each name. Two of each would run the pipeline twice and
 			// record every request twice. The fix: when the defaults hook is installed it owns the shared pipeline + capture for
-			// the whole factory, and WireBundle contributes only the per-name primary + options. So every bundle carries exactly
-			// one of each - checked here for a named bundle and for the default bundle.
+			// the whole factory, and the per-name setup contributes only the per-name primary + options. So every name carries exactly
+			// one of each - checked here for a named client and for the default client.
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
 			// a marker capture handler under the capture seam, exactly how the packet-capture layer registers its own
@@ -144,16 +144,16 @@ namespace SnowBank.Testing.Framework.Tests
 				using var handler = handlerFactory.CreateHandler(name);
 				var chain = WalkChain(handler);
 				Assert.That(chain.Count(h => h.GetType().Name == "BetterHttpPipelineHandler"), Is.EqualTo(1),
-					$"'{name}' must carry exactly one pipeline handler (the defaults hook owns it; the bundle must not add a second)");
+					$"'{name}' must carry exactly one pipeline handler (the defaults hook owns it; the named policy must not add a second)");
 				Assert.That(chain.OfType<MarkerCaptureHandler>().Count(), Is.EqualTo(1),
 					$"'{name}' must carry exactly one capture handler (a second would record every request twice)");
 			}
 		}
 
 		[Test]
-		public void Test_Standalone_Named_Bundle_Still_Gets_Its_Full_Pipeline()
+		public void Test_Standalone_Named_Client_Still_Gets_Its_Full_Pipeline()
 		{
-			// The discriminator for the compose fix: without the defaults hook, a lone named bundle must still get its own
+			// The discriminator for the compose fix: without the defaults hook, a lone named client must still get its own
 			// pipeline handler and capture (nothing else provides them). This is unchanged from before the defaults hook existed.
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
@@ -166,9 +166,9 @@ namespace SnowBank.Testing.Framework.Tests
 			var chain = WalkChain(handler);
 
 			Assert.That(chain.Count(h => h.GetType().Name == "BetterHttpPipelineHandler"), Is.EqualTo(1),
-				"a standalone bundle (no defaults hook) must carry its own pipeline handler");
+				"a standalone named client (no defaults hook) must carry its own pipeline handler");
 			Assert.That(chain.OfType<MarkerCaptureHandler>().Count(), Is.EqualTo(1),
-				"a standalone bundle (no defaults hook) must carry its own capture handler");
+				"a standalone named client (no defaults hook) must carry its own capture handler");
 		}
 
 		[Test]
@@ -200,7 +200,7 @@ namespace SnowBank.Testing.Framework.Tests
 		{
 			// End to end: on a simulated host, a stock AddHttpClient (no BetterHttpClient enrollment) reaches a virtual host by
 			// its simulated URI. A real socket could never resolve a ".simulated" name, so this only passes if the per-host
-			// defaults hook (DistributedTestComponent's default bundle) pulled the stock client into the virtual network map.
+			// defaults hook (DistributedTestComponent's default client) pulled the stock client into the virtual network map.
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 			{
 				lan.WithMinimalWebHost("WEB", host =>
@@ -224,10 +224,10 @@ namespace SnowBank.Testing.Framework.Tests
 			private HttpClient Client { get; }
 		}
 
-		/// <summary>Pass-through handler a named bundle adds to its own transport, so a test can see the bundle's per-name pipeline built the primary.</summary>
-		private sealed class MarkerBundleHandler : DelegatingHandler
+		/// <summary>Pass-through handler a named client adds to its own transport, so a test can see the name's per-name pipeline built the primary.</summary>
+		private sealed class MarkerClientHandler : DelegatingHandler
 		{
-			public MarkerBundleHandler(HttpMessageHandler inner) : base(inner) { }
+			public MarkerClientHandler(HttpMessageHandler inner) : base(inner) { }
 		}
 
 		/// <summary>Marker capture handler registered under <see cref="BetterHttpClientExtensions.CaptureHandlerServiceKey"/>, standing in for the packet-capture layer's outer handler.</summary>

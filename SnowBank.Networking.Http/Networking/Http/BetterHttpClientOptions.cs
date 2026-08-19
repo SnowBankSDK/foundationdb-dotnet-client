@@ -91,7 +91,7 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Callback used to validate the certificate presented by the remote server</summary>
 		/// <remarks>
-		/// <para>This is a per-bundle transport policy, applied to the shared pooled transport when the bundle's chain is built. The callback validates a <em>connection</em> (there is no request at TLS-handshake time), so it receives only the certificate, the chain and the policy errors.</para>
+		/// <para>This is a per-name transport policy, applied to the shared pooled transport when the name's chain is built. The callback validates a <em>connection</em> (there is no request at TLS-handshake time), so it receives only the certificate, the chain and the policy errors.</para>
 		/// </remarks>
 		public Func<X509Certificate2?, X509Chain?, SslPolicyErrors, bool>? ServerCertificateCustomValidationCallback { get; set; }
 
@@ -120,7 +120,7 @@ namespace SnowBank.Networking.Http
 		/// <remarks>
 		/// <para>This is the recommended policy for internal deployments where endpoints cannot carry publicly-trusted certificates: trust is <em>extended</em> to the given roots, not relaxed - the presented chain must still build (signatures, lifetime) and the host name must still match.</para>
 		/// <para>Certificates the system already trusts (public CAs, an OS-trusted development certificate) remain accepted.</para>
-		/// <para>This is a per-bundle transport policy: register it on a (named) policy bundle at startup, e.g. <c>services.AddBetterHttpClient("teleport", options => options.TrustServerCertificates(siteCa))</c>.</para>
+		/// <para>This is a per-name transport policy: register it on a (named) named policy at startup, e.g. <c>services.AddBetterHttpClient("teleport", options => options.TrustServerCertificates(siteCa))</c>.</para>
 		/// </remarks>
 		public BetterHttpClientOptions TrustServerCertificates(params X509Certificate2[] trustedRoots)
 		{
@@ -157,7 +157,7 @@ namespace SnowBank.Networking.Http
 		/// <remarks>
 		/// <para>This forgives <em>chain-trust</em> errors only: a host-name mismatch or a missing certificate is still rejected (accepting those is what <see cref="DangerousAcceptAnyServerCertificate"/> would do, and it stays a separate, loud opt-in).</para>
 		/// <para>Prefer <see cref="TrustServerCertificates"/> when the expected certificate (or its issuing CA) is available: it keeps full validation instead of forgiving trust for ANY self-signed endpoint.</para>
-		/// <para>This is a per-bundle transport policy: register it on a (named) policy bundle at startup, e.g. <c>services.AddBetterHttpClient("teleport", options => options.AcceptSelfSignedServerCertificates())</c>.</para>
+		/// <para>This is a per-name transport policy: register it on a (named) named policy at startup, e.g. <c>services.AddBetterHttpClient("teleport", options => options.AcceptSelfSignedServerCertificates())</c>.</para>
 		/// </remarks>
 		public BetterHttpClientOptions AcceptSelfSignedServerCertificates()
 		{
@@ -186,7 +186,7 @@ namespace SnowBank.Networking.Http
 		/// <summary>Throws when this per-call options instance carries wire policy (transport or pipeline tier), which cannot reach the shared pooled transport.</summary>
 		/// <param name="context">Short description of the call site (e.g. the protocol type name), included in the exception message.</param>
 		/// <remarks>
-		/// <para>The contract: per-call configuration = protocol/client behavior only (default headers, request version, hooks, request options); wire policy = the policy bundle, registered at startup with <c>AddBetterHttpClient(name, ...)</c>.</para>
+		/// <para>The contract: per-call configuration = protocol/client behavior only (default headers, request options, hooks, timeout, per-request-only credentials); wire policy = the named policy, registered at startup with <c>AddBetterHttpClient(name, ...)</c>.</para>
 		/// <para>Wire policy set at a call site can never reach the shared pooled transport: silently ignoring it would be a silent security/behavior break, so it fails loudly instead.</para>
 		/// </remarks>
 		/// <exception cref="InvalidOperationException">When a transport- or pipeline-tier member is set on this instance.</exception>
@@ -211,7 +211,7 @@ namespace SnowBank.Networking.Http
 				: null;
 			if (offender is not null)
 			{
-				throw new InvalidOperationException($"Per-call configuration can only set protocol/client behavior (default headers, request version, hooks, request options): '{offender}' is wire policy, which belongs to a policy bundle registered at startup with AddBetterHttpClient(name, ...). ({context})");
+				throw new InvalidOperationException($"Per-call configuration can only set protocol/client behavior (default headers, request options, hooks, timeout, per-request-only credentials): '{offender}' is wire policy, which belongs to a named policy registered at startup with AddBetterHttpClient(name, ...). ({context})");
 			}
 		}
 
@@ -437,7 +437,7 @@ namespace SnowBank.Networking.Http
 			return handler;
 		}
 
-		/// <summary>Applies the per-bundle socket-level knobs (TLS, client certs, cookies, proxy, redirects, decompression) to a bundle's transport handler.</summary>
+		/// <summary>Applies the per-name socket-level knobs (TLS, client certs, cookies, proxy, redirects, decompression) to a name's transport handler.</summary>
 		/// <param name="handler">Transport handler that will be configured (the socket-backed handler in production, or an in-memory test handler).</param>
 		/// <returns>Configured handler. This could be a different instance that wraps the original handler (e.g. when cookies wrap a foreign handler type).</returns>
 		/// <remarks>

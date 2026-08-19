@@ -210,7 +210,7 @@ namespace SnowBank.Networking.Http
 		{
 			Contract.Debug.Requires(client != null && request != null && handler != null);
 
-			// A client built by IBetterHttpClientFactory carries a runtime (its resolved bundle options, including the per-shell
+			// A client built by IBetterHttpClientFactory carries a runtime (its resolved client options, including the per-shell
 			// overlay). Any other client (typed, keyed, plain factory client) has none: the context starts with placeholder
 			// options, and the in-chain BetterHttpPipelineHandler fills in the name's resolved options when the request
 			// traverses the pooled chain (it also runs the Configure stage in that case).

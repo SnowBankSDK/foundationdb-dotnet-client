@@ -31,8 +31,7 @@ namespace SnowBank.Networking.Http
 	public class RestHttpProtocol : IBetterHttpProtocol
 	{
 
-#pragma warning disable CS0618 // the protocol layer rides the shell until its own redesign
-		public RestHttpProtocol(BetterHttpClient httpClient, RestHttpClientOptions options)
+		public RestHttpProtocol(HttpClient httpClient, RestHttpClientOptions options)
 		{
 			this.Http = httpClient;
 			this.Options = options;
@@ -40,8 +39,8 @@ namespace SnowBank.Networking.Http
 
 		public RestHttpClientOptions Options { get; }
 
-		public BetterHttpClient Http { get; }
-#pragma warning restore CS0618
+		/// <inheritdoc />
+		public HttpClient Http { get; }
 
 		string IBetterHttpProtocol.Name => "Generic";
 

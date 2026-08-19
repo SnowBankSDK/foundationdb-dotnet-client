@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -147,7 +147,7 @@ namespace SnowBank.Testing.Framework
 		{
 			ct.ThrowIfCancellationRequested();
 
-			using var cli = this.GetBetterHttpClient(uri);
+			using var cli = this.CreateHttpClient(uri);
 			var req = cli.CreateGetRequest(uri);
 			var page = await cli.SendAsync(req, async (ctx) =>
 			{
@@ -170,7 +170,7 @@ namespace SnowBank.Testing.Framework
 		{
 			ct.ThrowIfCancellationRequested();
 
-			using var cli = this.GetBetterHttpClient(uri);
+			using var cli = this.CreateHttpClient(uri);
 			var req = cli.CreatePostRequest(uri, new ReadOnlyMemoryContent(requestBody.Memory));
 			var page = await cli.SendAsync(req, async (ctx) =>
 			{

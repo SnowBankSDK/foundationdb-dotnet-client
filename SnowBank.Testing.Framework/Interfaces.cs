@@ -211,27 +211,47 @@ namespace SnowBank.Testing.Framework
 	{
 		Uri GetUri(string? path = null);
 
-		#region BetterHttpClient...
+		#region HttpClient...
 
-		// the shell-based doors below still return the legacy BetterHttpClient/BetterHttpShellOptions surface for
-		// consumers that have not migrated to a factory-door client with the SendAsync extensions.
+		/// <summary>Returns an HTTP client that will talk to this virtual host</summary>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
+		HttpClient CreateLocalHttpClient(Action<BetterHttpClientOptions>? configure = null);
+
+		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
+		/// <param name="remote">Remote host</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
+		HttpClient CreateHttpClient(IDistributedWebTestComponent remote, Action<BetterHttpClientOptions>? configure = null);
+
+		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
+		/// <param name="hostOrAddress">Address of the remote host (note: only the hostname part of the URI is used)</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
+		HttpClient CreateHttpClient(Uri hostOrAddress, Action<BetterHttpClientOptions>? configure = null);
+
+		// the shell-based members below still return the legacy BetterHttpClient/BetterHttpShellOptions surface for
+		// consumers that have not migrated to the CreateHttpClient helpers above.
 #pragma warning disable CS0618
 
 		/// <summary>Returns an HTTP client that will talk to this virtual host</summary>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
+		[Obsolete("Use CreateLocalHttpClient(configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
 		BetterHttpClient GetLocalBetterHttpClient(BetterHttpShellOptions? options = null);
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="remote">Remote host</param>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
+		[Obsolete("Use CreateHttpClient(remote, configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
 		BetterHttpClient GetBetterHttpClient(IDistributedWebTestComponent remote, BetterHttpShellOptions? options = null);
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="hostOrAddress">Address of the remote host (note: only the hostname part of the URI is used)</param>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
+		[Obsolete("Use CreateHttpClient(hostOrAddress, configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
 		BetterHttpClient GetBetterHttpClient(Uri hostOrAddress, BetterHttpShellOptions? options = null);
 
 #pragma warning restore CS0618
@@ -240,15 +260,29 @@ namespace SnowBank.Testing.Framework
 
 		#region RestHttp...
 
-		/// <summary>Returns a REST http client that will talk to this virtual host</summary>
-		RestHttpProtocol GetLocalRestClient(Action<RestHttpClientOptions>? configure = null);
+		/// <summary>Creates a REST http client that will talk to this virtual host</summary>
+		/// <remarks>The caller owns the returned client and disposes it after use.</remarks>
+		RestHttpProtocol CreateLocalRestClient(Action<RestHttpClientOptions>? configure = null);
 
-		/// <summary>Returns a REST http client that will talk to the specified remote host</summary>
-		RestHttpProtocol GetRestClient(IDistributedWebTestComponent remote, Action<RestHttpClientOptions>? configure = null);
+		/// <summary>Creates a REST http client that will talk to the specified remote host</summary>
+		/// <remarks>The caller owns the returned client and disposes it after use.</remarks>
+		RestHttpProtocol CreateRestClient(IDistributedWebTestComponent remote, Action<RestHttpClientOptions>? configure = null);
 
+		/// <summary>Creates a REST http client that will talk to the specified remote host</summary>
+		/// <remarks>The caller owns the returned client and disposes it after use.</remarks>
+		RestHttpProtocol CreateRestClient(Uri hostOrAddress, Action<RestHttpClientOptions>? configure = null);
 
-		/// <summary>Returns a REST http client that will talk to the specified remote host</summary>
-		RestHttpProtocol GetRestClient(Uri hostOrAddress, Action<RestHttpClientOptions>? configure = null);
+		/// <summary>Renamed to <see cref="CreateLocalRestClient"/>.</summary>
+		[Obsolete("Renamed: use CreateLocalRestClient(configure).", error: false)]
+		RestHttpProtocol GetLocalRestClient(Action<RestHttpClientOptions>? configure = null) => CreateLocalRestClient(configure);
+
+		/// <summary>Renamed to <see cref="CreateRestClient(IDistributedWebTestComponent, Action{RestHttpClientOptions})"/>.</summary>
+		[Obsolete("Renamed: use CreateRestClient(remote, configure).", error: false)]
+		RestHttpProtocol GetRestClient(IDistributedWebTestComponent remote, Action<RestHttpClientOptions>? configure = null) => CreateRestClient(remote, configure);
+
+		/// <summary>Renamed to <see cref="CreateRestClient(Uri, Action{RestHttpClientOptions})"/>.</summary>
+		[Obsolete("Renamed: use CreateRestClient(hostOrAddress, configure).", error: false)]
+		RestHttpProtocol GetRestClient(Uri hostOrAddress, Action<RestHttpClientOptions>? configure = null) => CreateRestClient(hostOrAddress, configure);
 
 		#endregion
 

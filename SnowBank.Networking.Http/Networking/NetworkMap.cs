@@ -59,7 +59,7 @@ namespace SnowBank.Networking
 		public virtual HttpMessageHandler CreateTransportHandler(BetterHttpClientOptions options)
 		{
 			// socket-backed transport for the real network; the request URI decides the destination per-request. No filters or
-			// per-request hooks are applied here (those belong to the client pipeline, ABOVE the transport) - only the per-bundle
+			// per-request hooks are applied here (those belong to the client pipeline, ABOVE the transport) - only the per-name
 			// socket-level knobs, applied ONCE on this shared handler from the resolved options.
 			var handler = new BetterHttpClientHandler(this);
 
@@ -71,7 +71,7 @@ namespace SnowBank.Networking
 			// the per-request context from request.Options - nothing per-client is stashed on the shared handler.
 			handler.Setup();
 
-			// per-bundle socket-level knobs (TLS/certs/cookies/proxy/redirects/decompression) from the resolved bundle options.
+			// per-name socket-level knobs (TLS/certs/cookies/proxy/redirects/decompression) from the resolved client options.
 			return options.ConfigureTransport(handler);
 		}
 
