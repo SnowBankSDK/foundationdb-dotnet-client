@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@ namespace SnowBank.Networking.Http
 	/// <para>The request pipeline - the IoC callback lifecycle (<c>SendAsync(request, ctx =&gt; ..., ct)</c>), the request builders (<c>CreateGetRequest</c>, ...) and the typed helpers - lives in the <see cref="BetterHttpRequestExtensions"/> extension methods on <see cref="HttpClient"/>. Add <c>using SnowBank.Networking.Http;</c> to bring them into scope.</para>
 	/// </remarks>
 	[PublicAPI]
+	[Obsolete("The SendAsync extensions work on any HttpClient obtained from the factory doors; a dedicated shell type is no longer needed.", error: false)]
 	public sealed class BetterHttpClient : HttpClient
 	{
 

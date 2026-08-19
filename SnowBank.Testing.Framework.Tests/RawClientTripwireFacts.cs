@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -94,10 +94,13 @@ namespace SnowBank.Testing.Framework.Tests
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 				lan.WithMinimalWebHost("WEB", host => host.ConfigureApplication(app => app.MapGet("/ping", (HttpContext _) => "pong")))));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			using (var client = web.GetRequiredService<IBetterHttpClientFactory>().CreateClient(web.GetUri("/")))
 			{
 				Assert.That(await client.GetStringAsync(web.GetUri("/ping"), this.Cancellation), Is.EqualTo("pong"));
 			}
+#pragma warning restore CS0618
 			await tripwire.DrainAsync(this.Cancellation);
 
 			Assert.That(tripwire.Egress, Is.Empty, "a fully virtual test opens no real sockets, so the tripwire stays silent");

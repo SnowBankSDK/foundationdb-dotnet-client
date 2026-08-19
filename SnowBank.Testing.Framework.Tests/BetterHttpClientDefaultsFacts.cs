@@ -143,7 +143,7 @@ namespace SnowBank.Testing.Framework.Tests
 			{
 				using var handler = handlerFactory.CreateHandler(name);
 				var chain = WalkChain(handler);
-				Assert.That(chain.Count(h => h.GetType().Name == "MagicalHandler"), Is.EqualTo(1),
+				Assert.That(chain.Count(h => h.GetType().Name == "BetterHttpPipelineHandler"), Is.EqualTo(1),
 					$"'{name}' must carry exactly one pipeline handler (the defaults hook owns it; the bundle must not add a second)");
 				Assert.That(chain.OfType<MarkerCaptureHandler>().Count(), Is.EqualTo(1),
 					$"'{name}' must carry exactly one capture handler (a second would record every request twice)");
@@ -165,7 +165,7 @@ namespace SnowBank.Testing.Framework.Tests
 			using var handler = handlerFactory.CreateHandler("solo");
 			var chain = WalkChain(handler);
 
-			Assert.That(chain.Count(h => h.GetType().Name == "MagicalHandler"), Is.EqualTo(1),
+			Assert.That(chain.Count(h => h.GetType().Name == "BetterHttpPipelineHandler"), Is.EqualTo(1),
 				"a standalone bundle (no defaults hook) must carry its own pipeline handler");
 			Assert.That(chain.OfType<MarkerCaptureHandler>().Count(), Is.EqualTo(1),
 				"a standalone bundle (no defaults hook) must carry its own capture handler");
@@ -189,7 +189,7 @@ namespace SnowBank.Testing.Framework.Tests
 			using var handler = handlerFactory.CreateHandler(BetterHttpClientExtensions.DefaultClientName);
 			var chain = WalkChain(handler);
 
-			Assert.That(chain.Count(h => h.GetType().Name == "MagicalHandler"), Is.EqualTo(1),
+			Assert.That(chain.Count(h => h.GetType().Name == "BetterHttpPipelineHandler"), Is.EqualTo(1),
 				"calling the defaults hook twice must still yield exactly one pipeline handler (a second would run every request's pipeline twice)");
 			Assert.That(chain.OfType<MarkerCaptureHandler>().Count(), Is.EqualTo(1),
 				"calling the defaults hook twice must still yield exactly one capture handler");

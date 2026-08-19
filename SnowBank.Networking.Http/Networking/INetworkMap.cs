@@ -39,8 +39,24 @@ namespace SnowBank.Networking
 	public interface INetworkMap
 	{
 
-		/// <summary>Clock used to generate timestamps or measure elapsed time</summary>
+		/// <summary>Clock of the host, carried by the map for convenience.</summary>
+		/// <remarks>
+		/// <para>This is the same instance as the host's registered <see cref="IClock"/>: the map carries it so that the network internals it creates (transport handlers, connect callbacks) can read time without each injecting a clock. It never designates a different time source than the host's.</para>
+		/// <para>Use this clock unless you are writing low-level instrumentation that must correlate with actual wall-clock time regardless of what the host registered; that case is what <see cref="RealClock"/> exists for.</para>
+		/// </remarks>
 		IClock Clock { get; }
+
+		/// <summary>Time source of the host, carried by the map for convenience; the timer face of <see cref="Clock"/>.</summary>
+		/// <remarks>This is the same instance as the host's registered <see cref="TimeProvider"/>: a timer or timeout armed against it follows the host's time source.</remarks>
+		TimeProvider Time { get; }
+
+		/// <summary>The actual wall clock, regardless of what the host registered as its time source.</summary>
+		/// <remarks>
+		/// <para>Unlike <see cref="Clock"/> and <see cref="Time"/>, this member is not a mirror of a host registration: it is supplied by whoever constructed the map, and a host cannot obtain it through dependency injection. In production it is the same system clock as <see cref="Clock"/>.</para>
+		/// <para>Infrastructure only (packet capture, event-timeline correlation): a component that reads this escapes the host's time source and will disagree with the timestamps that application code produces. When in doubt, use <see cref="Clock"/>.</para>
+		/// </remarks>
+		[EditorBrowsable(EditorBrowsableState.Never)]
+		IClock RealClock { get; }
 
 		/// <summary>Creates the raw transport handler for this network (sockets in production, the virtual network in tests).</summary>
 		/// <param name="options">Configuration options for the client</param>
@@ -275,9 +291,12 @@ namespace SnowBank.Networking
 		VirtualNetworkLocationOptions Options { get; }
 
 		/// <summary>Registers a new host to this network location</summary>
+		/// <param name="id">Unique identifier of the new host</param>
+		/// <param name="identity">Network identity (host name, fqdn, addresses, ...) of the new host</param>
+		/// <param name="clock">Clock that the new host's map will expose as <see cref="INetworkMap.Clock"/> and <see cref="INetworkMap.Time"/>; <see langword="null"/> falls back to the system clock.</param>
 		/// <remarks>Should only be called by the test framework, during the setup phase</remarks>
 		[EditorBrowsable(EditorBrowsableState.Advanced)]
-		IVirtualNetworkMap RegisterHost(string id, VirtualHostIdentity identity);
+		IVirtualNetworkMap RegisterHost(string id, VirtualHostIdentity identity, IClock? clock = null);
 
 		/// <summary>Returns the host with the given id, from this location.</summary>
 		IVirtualNetworkHost? GetHost(string id);

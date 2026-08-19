@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -40,10 +40,12 @@ namespace SnowBank.Networking.Http
 			return new RestHttpClientOptions();
 		}
 
+#pragma warning disable CS0618 // the protocol layer rides the shell until its own redesign
 		protected override RestHttpProtocol CreateProtocol(BetterHttpClient client, RestHttpClientOptions options)
 		{
 			return new RestHttpProtocol(client, options);
 		}
+#pragma warning restore CS0618
 	}
 
 	/// <summary>Extension methods for registering the <see cref="RestHttpProtocol"/> with the DI</summary>

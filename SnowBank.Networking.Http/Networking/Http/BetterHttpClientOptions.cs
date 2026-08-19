@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -36,9 +36,20 @@ namespace SnowBank.Networking.Http
 	public record BetterHttpClientOptions
 	{
 
+		/// <summary>Shared empty instance, used as the placeholder of a <see cref="BetterHttpClientContext"/> until the in-chain pipeline handler fills in the resolved options.</summary>
+		/// <remarks>This instance is shared by every request in the process: it must never be mutated (no filter, handler, header or option may be added to it).</remarks>
+		internal static readonly BetterHttpClientOptions Empty = new();
+
 		/// <summary>Optional hooks</summary>
 		/// <remarks>Mostly used for unit testing or low-level debugging</remarks>
 		public IBetterHttpHooks? Hooks { get; set; }
+
+		/// <summary>Timeout applied to each request sent by this client, or <see langword="null"/> to keep the default behavior.</summary>
+		/// <remarks>
+		/// <para>This timeout is enforced inside the handler chain (by the pipeline handler), not by <see cref="HttpClient.Timeout"/>: it measures time against the host's <see cref="TimeProvider"/>, so a test that uses a fake time provider can simulate a timeout by advancing time, without waiting for it on the wall clock.</para>
+		/// <para>The stock <see cref="HttpClient.Timeout"/> (100 seconds by default) still applies on top, on the real clock; set it explicitly on the client when it must be disabled or changed.</para>
+		/// </remarks>
+		public TimeSpan? Timeout { get; set; }
 
 		/// <summary>Default initial HTTP version for all requests</summary>
 		public Version DefaultRequestVersion { get; set; } = HttpVersion.Version11;
@@ -47,6 +58,7 @@ namespace SnowBank.Networking.Http
 		public HttpVersionPolicy DefaultVersionPolicy { get; set; } = HttpVersionPolicy.RequestVersionOrHigher;
 
 		/// <summary>List of filters that will be able to intercept and or modify the request and response</summary>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public List<IBetterHttpFilter> Filters { get; } = [ ];
 
 		/// <summary>List of wrappers that can be applied to the underlying HTTP message handler</summary>
@@ -192,7 +204,9 @@ namespace SnowBank.Networking.Http
 				: this.AllowAutoRedirect is not null ? nameof(this.AllowAutoRedirect)
 				: this.AutomaticDecompression is not null ? nameof(this.AutomaticDecompression)
 				: this.Credentials is { IsPerRequestOnly: false } ? nameof(this.Credentials)
+#pragma warning disable CS0618 // the legacy Filters list is still part of the wire-policy surface this check guards
 				: this.Filters.Count > 0 ? nameof(this.Filters)
+#pragma warning restore CS0618
 				: this.Handlers.Count > 0 ? nameof(this.Handlers)
 				: null;
 			if (offender is not null)
@@ -233,11 +247,13 @@ namespace SnowBank.Networking.Http
 			}
 
 			// filters may also wrap handlers
+#pragma warning disable CS0618 // the pipeline still executes legacy filters until consumers migrate to DelegatingHandlers
 			foreach (var filter in this.Filters)
 			{
 				handler = filter.Wrap(this, handler);
 				Contract.Debug.Assert(handler is not null);
 			}
+#pragma warning restore CS0618
 
 			return handler;
 		}

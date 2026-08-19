@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,7 @@ namespace SnowBank.Networking.Http
 {
 
 	/// <summary>Type that can be used to change the behavior of an HTTP request during its execution</summary>
+	[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 	public interface IBetterHttpFilter
 	{
 

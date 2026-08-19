@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@ namespace SnowBank.Networking.Http
 	/// <para>The typical use is per-connection default headers (e.g. authentication headers on a transient client): <c>factory.CreateClient(uri, new BetterHttpShellOptions { ... })</c>.</para>
 	/// </remarks>
 	[PublicAPI]
+	[Obsolete("Per-shell overlays are retired: use per-name options (AddBetterHttpClient) for policy, or configure the request itself.", error: false)]
 	public sealed record BetterHttpShellOptions
 	{
 

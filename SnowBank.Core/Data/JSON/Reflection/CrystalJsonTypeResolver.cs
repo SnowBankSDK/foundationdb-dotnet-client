@@ -1706,7 +1706,7 @@ namespace SnowBank.Data.Json
 			=> new(string.Format(System.Globalization.CultureInfo.InvariantCulture, CrystalJson.Errors.CallbackSignatureNotSupported, method.Name));
 
 		private static JsonBindingException FailCallbackTakesStreamingContext(MethodInfo method)
-			=> new(string.Format(System.Globalization.CultureInfo.InvariantCulture, CrystalJson.Errors.CallbackStreamingContextNotSupported, method.Name));
+			=> new(string.Format(System.Globalization.CultureInfo.InvariantCulture, CrystalJson.Errors.CallbackStreamingContextNotSupported, $"{method.DeclaringType?.FullName}.{method.Name}"));
 
 		private static bool TakesStreamingContext(ParameterInfo[] prms)
 			=> prms.Length == 1 && prms[0].ParameterType.Name == "StreamingContext";

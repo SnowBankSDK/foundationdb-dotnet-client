@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -181,6 +181,10 @@ namespace SnowBank.Testing.Framework
 		private IServiceProvider? m_services;
 		public IServiceProvider Services => m_services ?? throw new InvalidOperationException("Test server is not ready on this component");
 
+		/// <summary>True once this component's DI container is ready, i.e. <see cref="Services"/> can be read without throwing.</summary>
+		/// <remarks>A component whose server never started (Init or Start threw before the container was built) reaches teardown with this still <see langword="false"/>; a derived <c>OnDisposing</c> override should check it before reading <see cref="Services"/>.</remarks>
+		protected bool HasServices => m_services is not null;
+
 		public IClock Clock { get; private set; }
 
 		public IClock RealClock { get; }
@@ -301,6 +305,10 @@ namespace SnowBank.Testing.Framework
 			}
 		}
 
+		// the shell-based doors below still return the legacy BetterHttpClient/BetterHttpShellOptions surface for
+		// consumers that have not migrated to a factory-door client with the SendAsync extensions.
+#pragma warning disable CS0618
+
 		/// <summary>Returns an HTTP client that will send requests to this virtual host</summary>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
@@ -341,6 +349,8 @@ namespace SnowBank.Testing.Framework
 			TagPath(client.DefaultRequestHeaders, this, target, hostOrAddress);
 			return client;
 		}
+
+#pragma warning restore CS0618
 
 		/// <summary>Returns a REST http client that will talk to this virtual host</summary>
 		public RestHttpProtocol GetLocalRestClient(Action<RestHttpClientOptions>? configure = null) => this.GetRestClient(this, configure);
@@ -436,7 +446,9 @@ namespace SnowBank.Testing.Framework
 
 					if (m_networkMap == null)
 					{
-						m_networkMap = this.Location.RegisterHost(this.Id, this.NetworkIdentity);
+						// this.Clock was just set (above) from the test context: it is the test's (possibly fake) clock, the most
+						// authoritative one available at this point, so the host's map observes the same time as the test itself.
+						m_networkMap = this.Location.RegisterHost(this.Id, this.NetworkIdentity, this.Clock);
 					}
 				}
 				else
@@ -1448,6 +1460,10 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Helper for sending HTTP requests to or from this virtual host</summary>
 		public HttpHelper Http => new(this);
 
+		// everything below still rides the legacy BetterHttpClient/BetterHttpShellOptions surface for consumers
+		// that have not migrated to a factory-door client with the SendAsync extensions.
+#pragma warning disable CS0618
+
 		public readonly struct HttpHelper
 		{
 
@@ -1978,6 +1994,8 @@ namespace SnowBank.Testing.Framework
 		}
 
 		#endregion
+
+#pragma warning restore CS0618
 
 		#endregion
 

@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -123,7 +123,10 @@ namespace SnowBank.Testing.Framework.Tests
 				});
 			}));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
+#pragma warning restore CS0618
 			var uri = web.GetUri("/ping");
 
 			// create, use, dispose N clients: every request must succeed - disposing a shell must never tear down the shared chain
@@ -161,7 +164,10 @@ namespace SnowBank.Testing.Framework.Tests
 				});
 			}));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
+#pragma warning restore CS0618
 			var uri = web.GetUri("/ping");
 
 			// build #1 of the "rotation" chain (constructs the probe handler once) and use it
@@ -224,28 +230,38 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
-		public void Test_Plain_HttpClientFactory_Is_Not_A_Door_To_A_Policy_Bundle()
+		public void Test_Plain_HttpClientFactory_Is_A_Full_Door_To_A_Policy_Client()
 		{
-			// IHttpClientFactory.CreateClient(bundleName) would hand out a plain HttpClient over the bundle's pooled
-			// chain but WITHOUT the BetterHttp runtime: no bundle filters, hooks or credentials at the request stage,
-			// so an auth-signing bundle would silently skip signing. The wrong door fails loudly; the supported doors
-			// are IBetterHttpClientFactory (typed shells) and IHttpMessageHandlerFactory.CreateHandler (bare handler).
+			// The plain IHttpClientFactory used to be a guarded "wrong door" for a policy client: a plain HttpClient over the
+			// pooled chain had no BetterHttp runtime, so the client's filters, hooks and credentials silently never ran, and
+			// the registration threw to prevent that silent skip. The request stages now live in the chain itself (the
+			// BetterHttpPipelineHandler creates the per-request context when none is attached), so a plain factory client
+			// carries the full policy and the guard is gone: every door hands out the same behavior.
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
 			services.AddBetterHttpClientDefaults();
 			services.AddBetterHttpClient("signed");
 			using var provider = services.BuildServiceProvider();
 
-			var wrongDoor = provider.GetRequiredService<IHttpClientFactory>();
-			Assert.That(() => wrongDoor.CreateClient("signed"),
-				Throws.InvalidOperationException.With.Message.Contains(nameof(IBetterHttpClientFactory)),
-				"resolving a policy bundle through the plain factory must fail loudly (it would skip the bundle's request pipeline)");
-			Assert.That(() => wrongDoor.CreateClient(BetterHttpClientExtensions.DefaultClientName),
-				Throws.InvalidOperationException,
-				"the default bundle is guarded like any named one");
+			var door = provider.GetRequiredService<IHttpClientFactory>();
+			Assert.That(() => door.CreateClient("signed").Dispose(), Throws.Nothing,
+				"a policy client must be resolvable through the plain factory (the request stages ride the chain now)");
+			Assert.That(() => door.CreateClient(BetterHttpClientExtensions.DefaultClientName).Dispose(), Throws.Nothing,
+				"the default client is a regular named client, resolvable through every door");
+			Assert.That(() => door.CreateClient("not-a-bundle").Dispose(), Throws.Nothing,
+				"the plain factory keeps working normally for names that carry no per-name policy");
 
-			Assert.That(() => wrongDoor.CreateClient("not-a-bundle").Dispose(), Throws.Nothing,
-				"the plain factory keeps working normally for names that are not policy bundles");
+			// and the chain behind that door carries the request-stage handler
+			var handlerFactory = provider.GetRequiredService<System.Net.Http.IHttpMessageHandlerFactory>();
+			using var handler = handlerFactory.CreateHandler("signed");
+			HttpMessageHandler? h = handler;
+			bool found = false;
+			while (h is not null)
+			{
+				if (h.GetType().Name == "BetterHttpPipelineHandler") { found = true; break; }
+				h = (h as DelegatingHandler)?.InnerHandler;
+			}
+			Assert.That(found, Is.True, "the policy client's chain must carry the request-stage pipeline handler");
 		}
 
 		[Test]
@@ -316,9 +332,12 @@ namespace SnowBank.Testing.Framework.Tests
 			Assert.That(() => factory.CreateClient(uri, o => o.AcceptSelfSignedServerCertificates()),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.ServerCertificateCustomValidationCallback)),
 				"a per-call TLS relaxation must throw (it would silently not reach the wire)");
+			// the test deliberately exercises the obsolete Filters surface (still the transport-tier wire policy at this call).
+#pragma warning disable CS0618
 			Assert.That(() => factory.CreateClient(uri, o => o.Filters.Add(new NoopFilter())),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Filters)),
 				"a per-call filter must throw (the pooled pipeline is built from the bundle options)");
+#pragma warning restore CS0618
 			Assert.That(() => factory.CreateClient(uri, o => o.Proxy = new WebProxy("http://proxy.lan.simulated:8080")),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Proxy)),
 				"a per-call proxy must throw (socket knobs are per-bundle transport policy)");
@@ -361,6 +380,8 @@ namespace SnowBank.Testing.Framework.Tests
 				});
 			}));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
 			var uri = web.GetUri("/echo-tag");
 
@@ -376,13 +397,17 @@ namespace SnowBank.Testing.Framework.Tests
 				var res = await plain.SendAsync(plain.CreateGetRequest(uri), (ctx) => ctx.Response.Content.ReadAsStringAsync(this.Cancellation), this.Cancellation);
 				Assert.That(res, Is.Empty, "a sibling client of the same bundle must not inherit another shell's headers");
 			}
+#pragma warning restore CS0618
 		}
 
 		/// <summary>No-op filter used to prove that per-call filter registration is rejected</summary>
+		// the test deliberately exercises the obsolete filter surface.
+#pragma warning disable CS0618
 		private sealed class NoopFilter : IBetterHttpFilter
 		{
 			public string Name => "noop";
 		}
+#pragma warning restore CS0618
 
 		[Test]
 		public async Task Test_Per_Request_Only_Credentials_Are_Shell_Tier()
@@ -399,6 +424,8 @@ namespace SnowBank.Testing.Framework.Tests
 				});
 			}));
 			var web = context.GetWebHost("WEB");
+			// the test deliberately exercises the obsolete shell-factory surface.
+#pragma warning disable CS0618
 			var factory = web.GetRequiredService<IBetterHttpClientFactory>();
 			var uri = web.GetUri("/echo-stamp");
 
@@ -413,6 +440,7 @@ namespace SnowBank.Testing.Framework.Tests
 			Assert.That(() => factory.CreateClient(uri, new BetterHttpShellOptions() { Credentials = new WrappedCredentials(new NetworkCredential("user", "password")) }),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(WrappedCredentials)),
 				"transport-coupled credentials on the shell must fail loudly, not silently skip their configure half");
+#pragma warning restore CS0618
 		}
 
 		/// <summary>Per-request-only credential that stamps a header on each request (a stand-in for a message signer)</summary>

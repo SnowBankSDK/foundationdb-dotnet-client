@@ -302,7 +302,9 @@ namespace SnowBank.Networking
 					// `linked` registers callbacks on the hosts' long-lived OnlineTokens, so it must be disposed or they pile
 					// up. It has to outlive SendAsync (a streaming body is read after the headers return), so we release it when
 					// the body is done: its read stream ends/errors/disposes, or the response is disposed (see SendAndReleaseAsync).
-					return SendAndReleaseAsync(invoker, request, linked, reverseEdge, this.Map.Topology);
+					// cancellationToken (the caller's own token, as opposed to `linked`, which also folds in the hosts' internal
+					// online/cut tokens) is passed through separately, so a mid-flight cancellation can be given the canonical shape.
+					return SendAndReleaseAsync(invoker, request, linked, cancellationToken, reverseEdge, this.Map.Topology);
 				}
 
 				throw SimulatePortNotBoundFailure(hostName, port, $"Found no port {port} bound on location '{remote}' of target host '{host.Id}', visible from host '{this.Map.Host.Id}' ({this.Map.Host.Fqdn})");
@@ -350,28 +352,47 @@ namespace SnowBank.Networking
 		/// source until GC. That is bounded (one per live connection) and not a per-request leak - completed and
 		/// reconnected calls release deterministically. Releasing those at host-teardown would require either the sinks
 		/// disposing their calls/connections, or a host-teardown signal plumbed into the virtual transport.</remarks>
-		private static async Task<HttpResponseMessage> SendAndReleaseAsync(HttpMessageInvoker invoker, HttpRequestMessage request, CancellationTokenSource linked, VirtualNetworkCutEdge reverseEdge, VirtualNetworkTopology topology)
+		private static async Task<HttpResponseMessage> SendAndReleaseAsync(HttpMessageInvoker invoker, HttpRequestMessage request, CancellationTokenSource linked, CancellationToken callerCancellationToken, VirtualNetworkCutEdge reverseEdge, VirtualNetworkTopology topology)
 		{
+			HttpResponseMessage response;
 			try
 			{
-				var response = await invoker.SendAsync(request, linked.Token).ConfigureAwait(false);
-				if (response.Content is not null)
-				{
-					// gate the response bytes against the reverse edge (they flow target -> source), then tie the linked
-					// source's release to the (outermost) content lifetime
-					response.Content = new ReleasingContent(new FaultGatedContent(response.Content, reverseEdge, topology), linked);
-				}
-				else
-				{ // no body to attach the lifetime to -> release now
-					linked.Dispose();
-				}
-				return response;
+				response = await invoker.SendAsync(request, linked.Token).ConfigureAwait(false);
+			}
+			catch (Exception) when (callerCancellationToken.IsCancellationRequested)
+			{ // the caller's own token fired during the inner send: normalize to the canonical shape, whatever the inner exception was
+				linked.Dispose();
+				throw new OperationCanceledException(callerCancellationToken);
 			}
 			catch
-			{ // SendAsync faulted before ownership was handed off -> release now
+			{ // SendAsync faulted before ownership was handed off, for a reason other than the caller's own cancellation -> release now
 				linked.Dispose();
 				throw;
 			}
+
+			// A real socket transport surfaces a mid-flight cancellation as an OperationCanceledException from SendAsync; the
+			// in-memory transport (TestHost-backed) can instead complete the inner send normally and defer the abort into the
+			// response body, which the caller would then observe as an HttpRequestException from content buffering. Restore
+			// the canonical shape here, but only for the caller's own token: `linked` also folds in the hosts' internal
+			// online/cut tokens, and those must keep producing their own (different) failure shapes.
+			if (callerCancellationToken.IsCancellationRequested)
+			{
+				response.Dispose();
+				linked.Dispose();
+				throw new OperationCanceledException(callerCancellationToken);
+			}
+
+			if (response.Content is not null)
+			{
+				// gate the response bytes against the reverse edge (they flow target -> source), then tie the linked
+				// source's release to the (outermost) content lifetime
+				response.Content = new ReleasingContent(new FaultGatedContent(response.Content, reverseEdge, topology), linked);
+			}
+			else
+			{ // no body to attach the lifetime to -> release now
+				linked.Dispose();
+			}
+			return response;
 		}
 
 		/// <inheritdoc />

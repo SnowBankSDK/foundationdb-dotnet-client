@@ -44,6 +44,16 @@ namespace SnowBank.Testing.Framework
 			this.Clock = subject.Clock;
 			this.LogOutput = logOutput;
 			this.LogOutputError = errorOutput;
+
+			// a dual clock/TimeProvider facade (e.g. a NodaTimeProvider wrapping a FakeTimeProvider) is the test's advanceable
+			// time source: wire it as the topology's fault-injection scheduler automatically, so a fake-time test does not need
+			// the manual "context.Topology.Time = fake" assignment. A test that assigns Topology.Time itself afterward still
+			// wins (plain property, last write stands), and a test whose Clock is not also a TimeProvider leaves Topology.Time
+			// at its default (the real system time), unchanged from today.
+			if (this.Clock is TimeProvider timeProvider)
+			{
+				this.Topology.Time = timeProvider;
+			}
 		}
 
 		public DistributedTest TestSubject { get; }

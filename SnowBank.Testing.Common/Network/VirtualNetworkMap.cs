@@ -33,6 +33,7 @@ namespace SnowBank.Networking
 	using System.Net.Http;
 	using System.Net.NetworkInformation;
 	using System.Net.Sockets;
+	using NodaTime;
 	using SnowBank.Networking.Http;
 
 	/// <summary>Default implementation of a <see cref="IVirtualNetworkMap">virtual network map</see>, as seen from a <see cref="IVirtualNetworkHost">virtual host</see></summary>
@@ -40,7 +41,8 @@ namespace SnowBank.Networking
 	public class VirtualNetworkMap : NetworkMap, IVirtualNetworkMap
 	{
 
-		public VirtualNetworkMap(VirtualNetworkTopology topology, VirtualNetworkTopology.SimulatedHost host)
+		public VirtualNetworkMap(VirtualNetworkTopology topology, VirtualNetworkTopology.SimulatedHost host, IClock? clock = null)
+			: base(clock)
 		{
 			Contract.NotNull(topology);
 			Contract.NotNull(host);

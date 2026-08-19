@@ -162,8 +162,14 @@ namespace SnowBank.Testing.Framework
 
         protected sealed override async ValueTask OnDisposing()
         {
-            var packet = this.Services.GetService<PacketCaptureManager>();
-            packet?.Shutdown();
+            // a component whose server never started (Init/Start threw, e.g. a test that deliberately fails host
+            // registration) reaches teardown with no DI container: skip the service lookup instead of letting
+            // Services throw and print a failed-dispose stack trace for a component that was never up.
+            if (this.HasServices)
+            {
+                var packet = this.Services.GetService<PacketCaptureManager>();
+                packet?.Shutdown();
+            }
 
             await this.DisposingHandler();
 

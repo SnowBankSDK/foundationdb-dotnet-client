@@ -1,4 +1,4 @@
-#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
+﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -26,6 +26,8 @@
 
 namespace SnowBank.Networking.Http
 {
+	using System.Globalization;
+	using Microsoft.Extensions.Configuration;
 	using Microsoft.Extensions.DependencyInjection;
 	using Microsoft.Extensions.DependencyInjection.Extensions;
 	using Microsoft.Extensions.Http;
@@ -38,13 +40,18 @@ namespace SnowBank.Networking.Http
 		public Action<BetterHttpClientOptions>? Configure { get; set; }
 
 		/// <summary>List of global filters that will be applied to all requests performed by the client</summary>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public List<IBetterHttpFilter> GlobalFilters { get; set; } = [ ];
 
 		/// <summary>List of global handlers that will be called to configure the HTTP Handlers of all requests performed by the client</summary>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public List<Func<HttpMessageHandler, BetterHttpClientOptions, IServiceProvider, HttpMessageHandler>> GlobalHandlers { get; set; } = [ ];
 
-		/// <summary>Per-name configuration callbacks for the registered policy bundles.</summary>
+		/// <summary>Per-name configuration callbacks for the registered clients.</summary>
 		public Dictionary<string, Action<BetterHttpClientOptions>> NamedConfigures { get; } = new(StringComparer.Ordinal);
+
+		/// <summary>Configuration sections registered by <c>AddBetterHttpClientConfiguration</c>, applied on top of the code layers (the section's <c>Defaults</c> first, then <c>Clients:&lt;name&gt;</c>).</summary>
+		public List<IConfiguration> ConfigurationSections { get; } = [ ];
 
 	}
 
@@ -53,23 +60,22 @@ namespace SnowBank.Networking.Http
 	public static class BetterHttpClientExtensions
 	{
 
-		/// <summary>Name of the default (dynamic / by-URI) policy bundle.</summary>
+		/// <summary>Name of the default (dynamic / by-URI) client.</summary>
 		/// <remarks>
-		/// <para>We use an explicit named bundle (rather than <c>ConfigureHttpClientDefaults</c>) so the default chain is wired exactly like a named one - one <c>AddHttpClient</c> registration over the map's transport seam, with the pipeline handler on top.</para>
-		/// <para>This is the name to pass to <see cref="System.Net.Http.IHttpMessageHandlerFactory.CreateHandler"/> to obtain a bare, pooled handler that carries the full default pipeline (packet capture included).</para>
+		/// <para>This is the name used when no explicit client name is given (e.g. <see cref="IBetterHttpClientFactory.CreateClient()"/>), and the name to pass to <see cref="System.Net.Http.IHttpMessageHandlerFactory.CreateHandler"/> to obtain a bare, pooled handler that carries the default pipeline (packet capture included).</para>
 		/// </remarks>
 		public const string DefaultClientName = "SnowBank.Networking.Http.BetterHttpClient";
 
-		/// <summary>Service key under which a higher layer can register an outer "capture" delegating handler that rides every pooled bundle chain.</summary>
+		/// <summary>Service key under which a higher layer can register an outer "capture" delegating handler that rides every pooled chain.</summary>
 		/// <remarks>
-		/// <para>The <c>SnowBank.Networking.PacketCapture</c> layer registers its in-chain capture handler under this key (keyed + transient). When present, <see cref="WireBundle"/> inserts it as the outermost handler of the bundle (above the pipeline's <see cref="MagicalHandler"/>), so capture observes the entire request/response for any consumer of the pooled chain.</para>
+		/// <para>The <c>SnowBank.Networking.PacketCapture</c> layer registers its in-chain capture handler under this key (keyed + transient). When present, the chain setup inserts it as the outermost handler of every client (above the <see cref="BetterHttpPipelineHandler"/> and any application handler), so capture observes the entire request/response for any consumer of the pooled chain.</para>
 		/// <para>This is a DI-key seam because <c>SnowBank.Networking.Http</c> must not depend on the packet-capture layer (the dependency runs the other way).</para>
 		/// </remarks>
 		public const string CaptureHandlerServiceKey = "SnowBank.Networking.Http.CaptureHandler";
 
-		/// <summary>Retired: use <see cref="AddBetterHttpClientDefaults"/>, which routes every factory client through the network map, not just the default bundle.</summary>
-		/// <remarks>The old overload wired only the default (dynamic) bundle, so a plain <c>AddHttpClient(...)</c> escaped the map. <see cref="AddBetterHttpClientDefaults"/> hooks every factory client (named, typed, or default) with no per-client enrollment.</remarks>
-		[Obsolete("Use AddBetterHttpClientDefaults(configure): it routes EVERY factory client through the network map (a plain AddHttpClient too), not just the default bundle. This overload wired only the default bundle, so stock clients escaped the map (and the test sandbox).", error: true)]
+		/// <summary>Retired: use <see cref="AddBetterHttpClientDefaults"/>, which routes every factory client through the network map, not just the default client.</summary>
+		/// <remarks>The old overload wired only the default (dynamic) client, so a plain <c>AddHttpClient(...)</c> escaped the map. <see cref="AddBetterHttpClientDefaults"/> hooks every factory client (named, typed, or default) with no per-client enrollment.</remarks>
+		[Obsolete("Use AddBetterHttpClientDefaults(configure): it routes EVERY factory client through the network map (a plain AddHttpClient too), not just the default client. This overload wired only the default client, so stock clients escaped the map (and the test sandbox).", error: true)]
 		public static IServiceCollection AddBetterHttpClient(this IServiceCollection services, Action<BetterHttpClientOptions>? configure = null)
 		{
 			RegisterCore(services);
@@ -86,19 +92,11 @@ namespace SnowBank.Networking.Http
 		/// <param name="services">Service collection</param>
 		/// <param name="configure">Optional callback used to configure the global options that form the baseline for every client.</param>
 		/// <remarks>
-		/// <para>This is the recommended default registration. It installs a <c>ConfigureHttpClientDefaults</c> hook that wires the map's transport plus the standard pipeline onto every factory client (named, typed via <c>AddHttpClient&lt;TClient&gt;</c>, or the default), so a plain <c>services.AddHttpClient("weather")</c> is routed with no enrollment. Inside a distributed test this sandboxes every factory client by construction.</para>
-		/// <para>The global <paramref name="configure"/> sets the baseline (transport, default headers, TLS trust, filters, credentials) for every client; a named bundle registered with <see cref="AddBetterHttpClient(IServiceCollection, string, Action{BetterHttpClientOptions})"/> overrides or extends that baseline for its own client.</para>
-		/// <para>Reach for <see cref="AddBetterHttpClient(IServiceCollection, string, Action{BetterHttpClientOptions})"/> when a specific client needs its own certificates, credentials or filters, or the bare-handler-by-name seam.</para>
+		/// <para>This is the recommended default registration. It wires the map's transport plus the standard pipeline onto every factory client (named, typed via <c>AddHttpClient&lt;TClient&gt;</c>, keyed via <c>AddAsKeyed()</c>, or the default), so a plain <c>services.AddHttpClient("weather")</c> is routed with no enrollment. Inside a distributed test this sandboxes every factory client by construction.</para>
+		/// <para>The global <paramref name="configure"/> sets the baseline (transport, default headers, TLS trust, timeout) for every client; a per-name registration made with <see cref="AddBetterHttpClient(IServiceCollection, string, Action{BetterHttpClientOptions})"/> overrides or extends that baseline for its own client.</para>
 		/// </remarks>
 		public static IServiceCollection AddBetterHttpClientDefaults(this IServiceCollection services, Action<BetterHttpClientOptions>? configure = null)
 		{
-			// The global hook owns the shared pipeline (the MagicalHandler + the outer capture) for the whole factory, so each
-			// bundle contributes only its per-name primary + options (see WireBundle). Recording it before RegisterCore lets
-			// WireBundle's build-time check read the final state whatever the registration order.
-			var wired = GetWiredBundles(services);
-			bool alreadyInstalled = wired.DefaultsHookInstalled;
-			wired.DefaultsHookInstalled = true;
-
 			RegisterCore(services);
 			if (configure != null)
 			{
@@ -107,51 +105,43 @@ namespace SnowBank.Networking.Http
 					.AddOptions<BetterHttpClientOptionsBuilder>()
 					.Configure(options => options.Configure += configure);
 			}
-
-			// install the shared hook once: a repeated call (a framework base plus an app, say) must not stack a second pipeline
-			// handler + capture, which would run every request's filters/credentials twice (e.g. sign a request twice).
-			if (alreadyInstalled) return services;
-
-			services.ConfigureHttpClientDefaults(builder =>
-			{
-				// parity with WireBundle: the transport bounds DNS staleness by itself (PooledConnectionLifetime on the shared
-				// SocketsHttpHandler), so periodic chain rotation buys nothing and pays socket-pool cold starts.
-				builder.SetHandlerLifetime(Timeout.InfiniteTimeSpan);
-
-				// primary = the map's transport (sockets in prod, the virtual network in tests), built from the global options.
-				// A named bundle's own ConfigurePrimaryHttpMessageHandler runs after this (per-name beats defaults) and reassigns
-				// the primary with its per-name options, so a bundle keeps its own transport pipeline.
-				builder.ConfigurePrimaryHttpMessageHandler((sp) =>
-				{
-					var map = sp.GetService<INetworkMap>() ?? throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use {nameof(IBetterHttpClientFactory)}.");
-					var options = ResolveBundleOptions(sp, DefaultClientName);
-					var transport = map.CreateTransportHandler(options);
-					return options.BuildTransportPipeline(transport, sp);
-				});
-
-				// the shared pipeline handler, plus the optional OUTER capture handler (above the pipeline), for every client.
-				// Built once here for the whole factory, so a bundle must not add its own (see WireBundle's build-time skip).
-				builder.ConfigureAdditionalHttpMessageHandlers((handlers, sp) =>
-				{
-					handlers.Add(new MagicalHandler());
-					if (sp.GetKeyedService<DelegatingHandler>(CaptureHandlerServiceKey) is { } capture)
-					{
-						handlers.Insert(0, capture);
-					}
-				});
-			});
-
 			return services;
 		}
 
-		/// <summary>Adds a named HTTP policy bundle (TLS, filters, pipeline) and support for <see cref="IBetterHttpClientFactory"/></summary>
+		/// <summary>Registers the configuration override layer: the given section can override the BetterHttp options of any client, without a rebuild.</summary>
 		/// <param name="services">Service collection</param>
-		/// <param name="name">Name of the policy bundle. A registered name is a bundle of policies, not an origin: the call site provides the absolute target URI at run time.</param>
-		/// <param name="configure">Optional callback used to configure the options for this bundle.</param>
-		public static IServiceCollection AddBetterHttpClient(this IServiceCollection services, string name, Action<BetterHttpClientOptions>? configure = null)
+		/// <param name="configuration">Configuration root (or section) that carries the override section.</param>
+		/// <param name="sectionName">Name of the override section (defaults to <c>"BetterHttp"</c>).</param>
+		/// <remarks>
+		/// <para>The section is a pure override: when it is absent the code-configured behavior runs unchanged. Its <c>Defaults</c> sub-section overrides the global baseline for every client, and <c>Clients:&lt;name&gt;</c> overrides one named client, both applied after the code layers (configuration always has the last word).</para>
+		/// <para>A knob can carry the value <c>"inherit"</c> to cancel every override below the global layers, so the effective value falls back to the code-global baseline (for a knob in <c>Clients:&lt;name&gt;</c>, this also cancels the client's own code configure).</para>
+		/// <para>Only the operation-safe subset binds from configuration: <c>Timeout</c>, <c>AllowAutoRedirect</c>, <c>AutomaticDecompression</c>, and <c>Tls:Mode</c> (<c>System</c>, <c>AcceptSelfSigned</c>, <c>AcceptAny</c>). Credentials, filters, handlers and callbacks are code-only by construction.</para>
+		/// <para>Repeated calls compose: each registered section is applied in registration order.</para>
+		/// </remarks>
+		public static IServiceCollection AddBetterHttpClientConfiguration(this IServiceCollection services, IConfiguration configuration, string sectionName = "BetterHttp")
+		{
+			Contract.NotNull(configuration);
+			Contract.NotNullOrWhiteSpace(sectionName);
+			RegisterCore(services);
+			services
+				.AddOptions<BetterHttpClientOptionsBuilder>()
+				.Configure(options => options.ConfigurationSections.Add(configuration.GetSection(sectionName)));
+			return services;
+		}
+
+		/// <summary>Registers a named HTTP client with its own BetterHttp policy (TLS, credentials, timeout), on top of the global defaults.</summary>
+		/// <param name="services">Service collection</param>
+		/// <param name="name">Name of the client. A name carries policy, not an origin: the call site provides the absolute target URI at run time.</param>
+		/// <param name="configure">Optional callback used to configure the options for this client, applied on top of the global defaults.</param>
+		/// <returns>A <see cref="IBetterHttpClientBuilder"/> for this name; it implements <see cref="IHttpClientBuilder"/>, so the standard registration APIs (<c>AddHttpMessageHandler</c>, <c>AddAsKeyed</c>, <c>ConfigureHttpClient</c>, typed clients) chain on, and it anchors the BetterHttp-specific registration extensions.</returns>
+		/// <remarks>
+		/// <para>This is exactly <c>services.AddHttpClient(name)</c> plus the per-name options layer: the client is a regular factory client, reachable through every door (<see cref="System.Net.Http.IHttpClientFactory"/>, a typed or keyed client, <see cref="System.Net.Http.IHttpMessageHandlerFactory.CreateHandler"/>, or <see cref="IBetterHttpClientFactory"/>), and every door carries the same policy.</para>
+		/// <para>A client with no BetterHttp-specific policy does not need this method: a plain <c>AddHttpClient(name)</c> is already fully enrolled by <see cref="AddBetterHttpClientDefaults"/>.</para>
+		/// </remarks>
+		public static IBetterHttpClientBuilder AddBetterHttpClient(this IServiceCollection services, string name, Action<BetterHttpClientOptions>? configure = null)
 		{
 			Contract.NotNullOrWhiteSpace(name);
-			if (string.Equals(name, DefaultClientName, StringComparison.Ordinal)) throw new ArgumentException("This name is reserved for the default policy bundle.", nameof(name));
+			if (string.Equals(name, DefaultClientName, StringComparison.Ordinal)) throw new ArgumentException("This name is reserved for the default client.", nameof(name));
 
 			RegisterCore(services);
 			if (configure != null)
@@ -161,93 +151,124 @@ namespace SnowBank.Networking.Http
 					.Configure(options =>
 					{
 						// compose repeated registrations for the same name (like the default overload's Configure +=), instead of
-						// the previous last-wins: several call sites can contribute policies to one bundle.
+						// the previous last-wins: several call sites can contribute policies to one client.
 						options.NamedConfigures[name] = options.NamedConfigures.TryGetValue(name, out var previous)
 							? (opts => { previous(opts); configure(opts); })
 							: configure;
 					});
 			}
-			WireBundle(services, name);
-			return services;
+			services.AddHttpClient(name);
+			return new BetterHttpClientBuilder(name, services);
 		}
 
-		/// <summary>Ensures the factory, the options builder, the M.E.Http infrastructure and the default policy bundle are registered.</summary>
+		/// <summary>Ensures the factory, the options builder, the M.E.Http infrastructure and the per-name chain setup are registered.</summary>
+		/// <remarks>
+		/// <para>The chain setup applies to every factory client name (registered through this API or through a plain <c>AddHttpClient</c>): once any <c>AddBetterHttpClient*</c> registration ran, the whole factory is enrolled. There is no per-name wiring left: the setup resolves each name's options when that name's chain is built.</para>
+		/// </remarks>
 		private static void RegisterCore(IServiceCollection services)
 		{
+#pragma warning disable CS0618 // the shell factory still ships for consumers that have not migrated to the factory doors yet
 			services.TryAddSingleton<IBetterHttpClientFactory, DefaultBetterHttpClientFactory>();
+#pragma warning restore CS0618
 			services.AddOptions<BetterHttpClientOptionsBuilder>();
 			services.AddHttpClient(); // registers IHttpClientFactory / IHttpMessageHandlerFactory
-			WireBundle(services, DefaultClientName);
+			services.AddHttpClient(DefaultClientName); // the default (dynamic / by-URI) client is a regular named client
+			// the two setups below are idempotent by implementation type (TryAddEnumerable)
+			services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<HttpClientFactoryOptions>, BetterHttpLifetimeSetup>());
+			services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<HttpClientFactoryOptions>, BetterHttpChainSetup>());
 		}
 
-		/// <summary>Wires a named M.E.Http bundle: primary handler = the map's transport seam, plus the <see cref="MagicalHandler"/> pipeline on top. Idempotent per name.</summary>
-		private static void WireBundle(IServiceCollection services, string name)
+		/// <summary>Disables the platform's periodic handler rotation for every factory client.</summary>
+		/// <remarks>
+		/// <para>The transport bounds DNS staleness by itself (<c>PooledConnectionLifetime</c>, set by the map's <see cref="INetworkMap.CreateTransportHandler"/>): platform chain rotation stacked on top would pay socket-pool cold starts against every active origin every ~2 minutes and buy nothing.</para>
+		/// <para>This runs at the configure stage (not post-configure), so a client that wants periodic chain rebuild can still opt back in with the stock M.E.Http API, after the BetterHttp registration: <c>services.AddHttpClient(name).SetHandlerLifetime(...)</c>.</para>
+		/// </remarks>
+		private sealed class BetterHttpLifetimeSetup : IConfigureNamedOptions<HttpClientFactoryOptions>
 		{
-			if (!GetWiredBundles(services).Names.Add(name)) return; // already wired
+			public void Configure(HttpClientFactoryOptions options) => Configure(Options.DefaultName, options);
 
-			services
-				.AddHttpClient(name)
-				// the transport bounds DNS staleness by itself (PooledConnectionLifetime, set by the map's CreateTransportHandler
-				// on the shared SocketsHttpHandler): platform chain rotation stacked on top would pay socket-pool cold starts
-				// against every active origin every ~2 minutes and buy nothing. A bundle that wants periodic chain rebuild
-				// (e.g. to re-evaluate its configure callbacks) opts back in with the stock M.E.Http API, AFTER registration:
-				//     services.AddHttpClient(name).SetHandlerLifetime(...)
-				.SetHandlerLifetime(Timeout.InfiniteTimeSpan)
-				.ConfigurePrimaryHttpMessageHandler((sp) =>
-				{
-					var map = sp.GetService<INetworkMap>() ?? throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use {nameof(IBetterHttpClientFactory)}.");
-					var options = ResolveBundleOptions(sp, name);
-					// raw transport (sockets in prod, virtual network in tests), plus the transport-level wrappers (credentials, custom handlers, filter wrappers)
-					var transport = map.CreateTransportHandler(options);
-					return options.BuildTransportPipeline(transport, sp);
-				});
-
-			services.Configure<HttpClientFactoryOptions>(name, options =>
+			public void Configure(string? name, HttpClientFactoryOptions options)
 			{
+				options.HandlerLifetime = Timeout.InfiniteTimeSpan;
+			}
+		}
+
+		/// <summary>Assembles, for every factory client name, the BetterHttp chain (map transport, pipeline handler, capture) and the client defaults, from that name's resolved options.</summary>
+		/// <remarks>
+		/// <para>This is the piece that makes every door equivalent: whether a client is consumed as a typed client, a keyed client, a plain <see cref="System.Net.Http.IHttpClientFactory"/> client, a bare handler, or an <see cref="IBetterHttpClientFactory"/> shell, it rides this chain.</para>
+		/// <para>It is a post-configure on purpose: its handler action must run after every application <c>AddHttpMessageHandler</c> action, so application handlers land between the capture handler (outermost) and the <see cref="BetterHttpPipelineHandler"/> (innermost delegating handler, right above the transport).</para>
+		/// <para>The primary handler is always the map's transport, built from the name's resolved options: this is the sandboxing guarantee inside a distributed test. Per-name transport customization goes through the options (TLS, proxy, <see cref="BetterHttpClientOptions.Handlers"/>), not through <c>ConfigurePrimaryHttpMessageHandler</c>.</para>
+		/// </remarks>
+		private sealed class BetterHttpChainSetup : IPostConfigureOptions<HttpClientFactoryOptions>
+		{
+
+			public BetterHttpChainSetup(IServiceProvider services)
+			{
+				this.Services = services;
+			}
+
+			/// <summary>Root service provider, used by the client actions (the handler actions use the builder's own provider).</summary>
+			private IServiceProvider Services { get; }
+
+			public void PostConfigure(string? name, HttpClientFactoryOptions options)
+			{
+				var clientName = name ?? Microsoft.Extensions.Options.Options.DefaultName;
+
 				options.HttpMessageHandlerBuilderActions.Add(builder =>
 				{
-					// When AddBetterHttpClientDefaults installed the global hook, it owns the shared pipeline handler and the
-					// outer capture handler for EVERY factory client; a bundle adding its own would run the pipeline (and record
-					// every request) twice. The check is at build time (builder.Services is the built container), so it is
-					// order-independent: it does not matter whether this bundle was registered before or after the defaults hook.
-					if (IsDefaultsHookInstalled(builder.Services)) return;
+					var services = builder.Services;
+					var clientOptions = ResolveBundleOptions(services, builder.Name ?? clientName);
 
-					// no defaults hook: this bundle owns its full pipeline. The MagicalHandler runs the bundle's filters/hooks.
-					builder.AdditionalHandlers.Add(new MagicalHandler());
+					var map = services.GetService<INetworkMap>() ?? throw new InvalidOperationException($"You must register an implementation for {nameof(INetworkMap)} during startup, in order to use the BetterHttpClient stack.");
+
+					// raw transport (sockets in prod, virtual network in tests), plus the transport-level wrappers (credentials, custom handlers, filter wrappers)
+					var transport = map.CreateTransportHandler(clientOptions);
+					builder.PrimaryHandler = clientOptions.BuildTransportPipeline(transport, services);
+
+					// the request-stage handler, innermost delegating handler (right above the transport), so it sees the request
+					// after the client's default headers AND after any application handler has run.
+					// The map carries the truth here: inside a virtualized test, map.Clock and map.Time are the test's (possibly fake) clock.
+					builder.AdditionalHandlers.Add(new BetterHttpPipelineHandler(builder.Name ?? clientName, clientOptions, services, map.Clock, map.Time));
 
 					// If a higher layer registered an outer capture handler (e.g. packet capture) under CaptureHandlerServiceKey,
-					// insert it as the outermost handler of this bundle - above the MagicalHandler - so capture rides the whole
-					// pipeline (a bare handler obtained from IHttpMessageHandlerFactory is captured too, not just BetterHttpClient
-					// sends). Resolved per chain build, so it rotates with the pooled chain; Insert(0) means no extra handler when
-					// capture is absent.
-					if (builder.Services.GetKeyedService<DelegatingHandler>(CaptureHandlerServiceKey) is { } capture)
+					// insert it as the outermost handler of this chain, so capture rides the whole pipeline (a bare handler obtained
+					// from IHttpMessageHandlerFactory is captured too, not just client sends). Resolved per chain build, so it
+					// rotates with the pooled chain; Insert(0) means no extra handler when capture is absent.
+					if (services.GetKeyedService<DelegatingHandler>(CaptureHandlerServiceKey) is { } capture)
 					{
 						builder.AdditionalHandlers.Insert(0, capture);
 					}
 				});
 
-				// HttpClientActions run only for clients built by the plain IHttpClientFactory.CreateClient(name) - the
-				// supported doors (IBetterHttpClientFactory shells, IHttpMessageHandlerFactory.CreateHandler) never hit
-				// them. A plain HttpClient over a bundle's chain has no BetterHttp runtime: the bundle's filters, hooks
-				// and credentials never run at the request stage, so e.g. an auth-signing bundle would silently not
-				// sign. Fail the wrong door loudly instead.
-				options.HttpClientActions.Add(_ => throw new InvalidOperationException(
-					$"'{name}' is a BetterHttpClient policy bundle: create clients through {nameof(IBetterHttpClientFactory)} (typed shells carrying the bundle's filters, hooks and credentials), or draw a bare pooled handler from IHttpMessageHandlerFactory.CreateHandler(name). A plain HttpClient from IHttpClientFactory would silently skip the bundle's request pipeline (e.g. authentication signing)."));
-			});
+				// client defaults (headers, request version) applied to every client instance the factory hands out, whatever the
+				// door (typed, keyed, or CreateClient). Insert(0): an application's own AddHttpClient(name, client => ...) action
+				// runs after this one, so explicit application code wins over the options-sourced defaults.
+				var rootServices = this.Services;
+				options.HttpClientActions.Insert(0, client =>
+				{
+					var clientOptions = ResolveBundleOptions(rootServices, clientName);
+					client.DefaultRequestVersion = clientOptions.DefaultRequestVersion;
+					client.DefaultVersionPolicy = clientOptions.DefaultVersionPolicy;
+					clientOptions.DefaultRequestHeaders.Apply(client.DefaultRequestHeaders);
+				});
+			}
+
 		}
 
-		/// <summary>Resolves the effective <see cref="BetterHttpClientOptions"/> for a policy bundle: global filters/handlers, the global configure, then the per-name configure. A fresh instance is returned each call (so nothing is mutated across calls).</summary>
+		/// <summary>Resolves the effective <see cref="BetterHttpClientOptions"/> for a client name: global filters/handlers, the global configure, then the per-name configure. A fresh instance is returned each call (so nothing is mutated across calls).</summary>
 		/// <remarks>
-		/// <para>Consumers may use this to INSPECT a bundle's effective policy (e.g. whether it carries a custom certificate-validation callback); mutating the returned instance has no effect on the bundle.</para>
-		/// <para>Caveat: the pooled pipeline (this method, when the primary handler is stitched) and the client runtime (the send extensions) resolve two separate options instances for the same bundle. Filters therefore must keep per-request state in <c>context.State</c> - never in instance fields that try to coordinate their <c>Wrap</c> with their stage callbacks, since the two runs see different option objects.</para>
+		/// <para>Consumers may use this to INSPECT a client's effective policy (e.g. whether it carries a custom certificate-validation callback); mutating the returned instance has no effect on the client.</para>
+		/// <para>Caveat: the pooled pipeline (this method, when the chain is stitched) and a shell's runtime resolve two separate options instances for the same name. Filters therefore must keep per-request state in <c>context.State</c> - never in instance fields that try to coordinate their <c>Wrap</c> with their stage callbacks, since the two runs see different option objects.</para>
 		/// </remarks>
 		public static BetterHttpClientOptions ResolveBundleOptions(IServiceProvider services, string name)
 		{
 			var builder = services.GetRequiredService<IOptions<BetterHttpClientOptionsBuilder>>().Value;
 
 			var options = new BetterHttpClientOptions();
+#pragma warning disable CS0618 // the pipeline still runs legacy global filters/handlers until consumers migrate to DelegatingHandlers
 			options.Filters.AddRange(builder.GlobalFilters);
 			options.Handlers.AddRange(builder.GlobalHandlers);
+#pragma warning restore CS0618
 			builder.Configure?.Invoke(options);
 
 			if (!string.Equals(name, DefaultClientName, StringComparison.Ordinal) && builder.NamedConfigures.TryGetValue(name, out var configure))
@@ -255,37 +276,107 @@ namespace SnowBank.Networking.Http
 				configure(options);
 			}
 
+			// the configuration override layers run last: the section's Defaults, then Clients:<name>.
+			// "inherit" restores a knob to its value at the layer named by the lazy snapshot: for a Defaults knob
+			// that is the code-global baseline; for a per-name knob it is the code-global baseline plus the
+			// configuration Defaults (skipping the client's own code configure).
+			if (builder.ConfigurationSections.Count > 0)
+			{
+				var codeGlobal = new Lazy<BetterHttpClientOptions>(() =>
+				{
+					var g = new BetterHttpClientOptions();
+					builder.Configure?.Invoke(g);
+					return g;
+				});
+				foreach (var section in builder.ConfigurationSections)
+				{
+					ApplyConfigurationSection(options, section.GetSection("Defaults"), codeGlobal);
+				}
+				var configGlobal = new Lazy<BetterHttpClientOptions>(() =>
+				{
+					var g = new BetterHttpClientOptions();
+					builder.Configure?.Invoke(g);
+					foreach (var section in builder.ConfigurationSections)
+					{
+						ApplyConfigurationSection(g, section.GetSection("Defaults"), codeGlobal);
+					}
+					return g;
+				});
+				foreach (var section in builder.ConfigurationSections)
+				{
+					ApplyConfigurationSection(options, section.GetSection("Clients").GetSection(name), configGlobal);
+				}
+			}
+
 			return options;
 		}
 
-		/// <summary>Registration-time state shared across the <c>AddBetterHttpClient*</c> calls: the set of wired bundle names, and whether the global defaults hook was installed. Registered as a singleton instance so it is also readable at chain-build time.</summary>
-		private static WiredBundles GetWiredBundles(IServiceCollection services)
+		/// <summary>Applies one configuration override section onto resolved options. A missing section is a no-op; the value <c>"inherit"</c> restores a knob from the <paramref name="inherited"/> snapshot.</summary>
+		private static void ApplyConfigurationSection(BetterHttpClientOptions options, IConfigurationSection section, Lazy<BetterHttpClientOptions> inherited)
 		{
-			var existing = (WiredBundles?) services.FirstOrDefault(d => d.ServiceType == typeof(WiredBundles))?.ImplementationInstance;
-			if (existing is null)
+			if (!section.Exists()) return;
+
+			if (section["Timeout"] is { } timeout)
 			{
-				existing = new WiredBundles();
-				services.AddSingleton(existing);
+				options.Timeout = IsInherit(timeout) ? inherited.Value.Timeout : TimeSpan.Parse(timeout, CultureInfo.InvariantCulture);
 			}
-			return existing;
+
+			if (section["AllowAutoRedirect"] is { } redirect)
+			{
+				options.AllowAutoRedirect = IsInherit(redirect) ? inherited.Value.AllowAutoRedirect : bool.Parse(redirect);
+			}
+
+			if (section["AutomaticDecompression"] is { } decompression)
+			{
+				options.AutomaticDecompression = IsInherit(decompression) ? inherited.Value.AutomaticDecompression : Enum.Parse<DecompressionMethods>(decompression, ignoreCase: true);
+			}
+
+			if (section["Tls"] is { } tlsScalar && IsInherit(tlsScalar))
+			{ // the whole TLS group falls back to the inherited layer
+				options.ServerCertificateCustomValidationCallback = inherited.Value.ServerCertificateCustomValidationCallback;
+			}
+			else
+			{
+				var tls = section.GetSection("Tls");
+				if (tls["Mode"] is { } mode)
+				{
+					if (IsInherit(mode))
+					{
+						options.ServerCertificateCustomValidationCallback = inherited.Value.ServerCertificateCustomValidationCallback;
+					}
+					else if (string.Equals(mode, "System", StringComparison.OrdinalIgnoreCase))
+					{
+						options.ServerCertificateCustomValidationCallback = null;
+					}
+					else if (string.Equals(mode, "AcceptSelfSigned", StringComparison.OrdinalIgnoreCase))
+					{
+						options.AcceptSelfSignedServerCertificates();
+					}
+					else if (string.Equals(mode, "AcceptAny", StringComparison.OrdinalIgnoreCase))
+					{
+#pragma warning disable CS0618 // the operator opted in from configuration; the application decides its own auditing
+						options.DangerousAcceptAnyServerCertificate();
+#pragma warning restore CS0618
+					}
+					else if (string.Equals(mode, "TrustRoots", StringComparison.OrdinalIgnoreCase))
+					{
+						throw new NotSupportedException("Tls:Mode 'TrustRoots' is not bindable from configuration yet; pin the roots in code with TrustServerCertificates(...).");
+					}
+					else
+					{
+						throw new InvalidOperationException($"Unknown Tls:Mode '{mode}': expected System, AcceptSelfSigned, AcceptAny or inherit.");
+					}
+				}
+			}
 		}
 
-		/// <summary>Reads, at chain-build time, whether <see cref="AddBetterHttpClientDefaults"/> installed the global hook (which then owns the shared pipeline handler + capture for every factory client).</summary>
-		private static bool IsDefaultsHookInstalled(IServiceProvider services)
-			=> services.GetService<WiredBundles>()?.DefaultsHookInstalled ?? false;
-
-		private sealed class WiredBundles
-		{
-			/// <summary>Names of the policy bundles already wired, so repeated <c>AddBetterHttpClient</c> calls do not stack pipeline handlers.</summary>
-			public HashSet<string> Names { get; } = new(StringComparer.Ordinal);
-
-			/// <summary>True once <see cref="AddBetterHttpClientDefaults"/> installed the global hook; then that hook owns the shared <see cref="MagicalHandler"/> + capture for the whole factory, and each bundle skips its own copy.</summary>
-			public bool DefaultsHookInstalled { get; set; }
-		}
+		private static bool IsInherit(string value)
+			=> string.Equals(value, "inherit", StringComparison.OrdinalIgnoreCase);
 
 		/// <summary>Adds a global <see cref="IBetterHttpFilter">HTTP filter</see> to all clients used by this process</summary>
 		/// <typeparam name="TFilter">Type of the <see cref="IBetterHttpFilter"/> implementation</typeparam>
 		/// <remarks>The filter will be added to the <see cref="BetterHttpClientOptionsBuilder.GlobalFilters"/> of the default option builder</remarks>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public static IServiceCollection AddGlobalHttpFilter<TFilter>(this IServiceCollection services, Action<TFilter>? configure = null)
 			where TFilter: class, IBetterHttpFilter
 		{
@@ -307,6 +398,7 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Adds a global HTTP message handler filter to all clients used by this process</summary>
 		/// <remarks>The handler will be added to the pipeline, and called whenever a new <see cref="HttpMessageHandler"/> is prepared, before executing a request.</remarks>
+		[Obsolete("Filters are replaced by standard DelegatingHandlers (AddHttpMessageHandler per client, ConfigureHttpClientDefaults(b => b.AddHttpMessageHandler(...)) for process-wide) and by IBetterHttpHooks for pure observation.", error: false)]
 		public static IServiceCollection AddGlobalHttpHandler(this IServiceCollection services, Func<HttpMessageHandler, BetterHttpClientOptions, IServiceProvider, HttpMessageHandler> factory)
 		{
 			services

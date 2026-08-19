@@ -1,6 +1,6 @@
 ﻿#region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -26,19 +26,19 @@
 
 namespace SnowBank.Networking.Http
 {
+	using Microsoft.Extensions.DependencyInjection;
 
-	/// <summary>Type that provides an API surface that is specific to a given Protocol</summary>
-	public interface IBetterHttpProtocol : IDisposable
+	/// <summary>Builder for a named HTTP client that carries a BetterHttp policy.</summary>
+	/// <remarks>
+	/// <para>This is the return type of <c>AddBetterHttpClient(name, ...)</c>. It implements <see cref="IHttpClientBuilder"/>, so every standard registration extension (<c>ConfigureHttpClient</c>, <c>AddHttpMessageHandler</c>, <c>AddAsKeyed</c>, typed clients, resilience handlers) chains on unchanged.</para>
+	/// <para>Its own purpose is to anchor BetterHttp-specific registration extensions: an extension method targeting this interface appears only on a client declared with a BetterHttp policy, instead of polluting every plain <c>AddHttpClient</c> chain. Standard extensions return the base interface, so BetterHttp-specific calls chain first.</para>
+	/// </remarks>
+	[PublicAPI]
+	public interface IBetterHttpClientBuilder : IHttpClientBuilder
 	{
-
-		/// <summary>Name of the protocol, for logging/troubleshooting purpose</summary>
-		public string Name { get; }
-
-		/// <summary>Client used by this protocol</summary>
-#pragma warning disable CS0618 // the protocol layer rides the shell until its own redesign
-		public BetterHttpClient Http { get; }
-#pragma warning restore CS0618
-
 	}
+
+	/// <summary>Default implementation of <see cref="IBetterHttpClientBuilder"/>: the (name, services) pair every registration extension operates on.</summary>
+	internal sealed record BetterHttpClientBuilder(string Name, IServiceCollection Services) : IBetterHttpClientBuilder;
 
 }
