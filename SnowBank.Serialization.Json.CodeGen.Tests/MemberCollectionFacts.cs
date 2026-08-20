@@ -272,6 +272,107 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(ReadLeafMembers(ShadowHierarchy), Is.EqualTo(new[] { "Shared@2", "Zulu@1", "Alpha@2" }));
 		}
 
+		// --- explicit interface implementations ------------------------------------------------------------------
+		//
+		// Pins how an explicit interface implementation is handled: excluded from a plain DTO, refused with
+		// CJSON0022 when a [DataContract] type opts one into the contract.
+		//
+		// The member name of an explicit implementation is the qualified interface member
+		// (Acme.Contracts.IIdentified.Key). It is neither a legal C# identifier for the generated constant and
+		// accessor thunk, nor the metadata name the thunk's [UnsafeAccessor] needs, so a collected one breaks the
+		// generated code (a cascade of syntax errors around const string IIdentified.Key, and CS0246 on the
+		// __get_ thunk).
+		//
+		// On a plain DTO the reference serializer ignores an explicit implementation, because the member is
+		// private in metadata, so excluding it silently is correct. On a [DataContract] type membership is
+		// accessibility-blind, and the reference serializer writes the member under the qualified name; silently
+		// dropping it would produce a document short of one element, so the declaration is refused instead.
+
+		private const string Interface = """
+			#nullable enable
+			namespace Probe
+			{
+				public interface IIdentified
+				{
+					string? Key { get; set; }
+				}
+
+			""";
+
+		private const string Container = """
+
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
+				public static partial class ProbeConverters
+				{
+				}
+			}
+			""";
+
+		private (Compilation Output, List<Diagnostic> GeneratorDiagnostics, List<Diagnostic> Errors) RunOnInterfaceProbe(string dtoSource)
+		{
+			var compilation = GeneratorProbeHarness.Compile(Interface + dtoSource + Container);
+
+			Assert.That(
+				compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error),
+				Is.Empty,
+				"the probe source must compile clean on its own");
+
+			var (outputCompilation, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+			foreach (var diagnostic in generatorDiagnostics) { Log($"generator: [{diagnostic.Severity}] {diagnostic}"); }
+
+			var errors = outputCompilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error).ToList();
+			foreach (var diagnostic in errors) { Log($"compiler: {diagnostic}"); }
+
+			return (outputCompilation, generatorDiagnostics.ToList(), errors);
+		}
+
+		[Test]
+		public void Test_An_Explicit_Implementation_On_A_Plain_Dto_Is_Excluded()
+		{
+			var (output, generatorDiagnostics, errors) = RunOnInterfaceProbe("""
+					public sealed class ProbeDto : IIdentified
+					{
+						string? IIdentified.Key { get; set; }
+
+						public string? Label { get; set; }
+					}
+				""");
+
+			Assert.That(errors.Where(static d => d.Id == "CS0246"), Is.Empty, "the qualified member name must not reach an accessor thunk (CS0246)");
+			Assert.That(errors, Is.Empty, "the generated container must compile with the explicit implementation excluded");
+			Assert.That(generatorDiagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "excluding it matches the reference serializer, so there is nothing to report");
+
+			var generated = string.Concat(output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
+			Assert.That(generated, Does.Not.Contain("IIdentified.Key"), "the explicit implementation must not reach the generated code");
+			Assert.That(generated, Does.Contain("\"Label\""), "the normal members of the same type must still be serialized");
+		}
+
+		[Test]
+		public void Test_An_Explicit_Implementation_Opted_Into_A_Data_Contract_Is_Refused()
+		{
+			var (_, generatorDiagnostics, errors) = RunOnInterfaceProbe("""
+					[System.Runtime.Serialization.DataContract]
+					public sealed class ProbeDto : IIdentified
+					{
+						[System.Runtime.Serialization.DataMember]
+						string? IIdentified.Key { get; set; }
+
+						[System.Runtime.Serialization.DataMember]
+						public string? Label { get; set; }
+					}
+				""");
+
+			var refusal = generatorDiagnostics.SingleOrDefault(static d => d.Id == "CJSON0022");
+			Assert.That(refusal, Is.Not.Null, "the generator must refuse a [DataMember] on an explicit interface implementation");
+			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "the member belongs to the contract, so dropping it silently would write a short document");
+			Assert.That(refusal.GetMessage(), Does.Contain("IIdentified.Key"), "the message must name the member");
+
+			Assert.That(errors, Is.Empty, "the refused member is not emitted, so the refusal replaces the broken generated code instead of coming on top of it");
+		}
+
 	}
 
 }

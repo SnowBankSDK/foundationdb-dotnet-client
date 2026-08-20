@@ -2158,6 +2158,26 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.ToDisplayString());
 			}
 
+			/// <summary>Reports CJSON0022 on an explicit interface implementation that a <c>[DataContract]</c> type opted into its contract with <c>[DataMember]</c></summary>
+			/// <remarks>
+			/// <para><c>DataContractSerializer</c> ignores an explicit implementation on a plain DTO, because the member is private in metadata, and writes one on a <c>[DataContract]</c> type, under the qualified name. Skipping the member silently would write a document short of one element.</para>
+			/// <para>Mangling the qualified name into an identifier would still give an element name that cannot match the reference format's, so the declaration is refused instead.</para>
+			/// </remarks>
+			private void ReportExplicitInterfaceDataMember(ISymbol member)
+			{
+				ReportDiagnostic(
+					new(
+						"CJSON0022",
+						"An explicit interface implementation cannot be a data member",
+						"The member '{0}' is an explicit interface implementation carrying [DataMember], so it belongs to the data contract, but generated code cannot declare an accessor for a qualified member name. Promote it to a normal member (the explicit implementation can then delegate to it), or move the contract onto a DTO of its own.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString());
+			}
+
 			/// <summary>Reports CJSON0020 (informational, once per container) when the generated JSON proxy surface (ToReadOnly/ToMutable, the ReadOnly/Writable proxy types) is left out</summary>
 			/// <remarks>
 			/// <para>Generating the proxy surface needs static abstract interface members, which require both a .NET 7+ runtime (the proxy interfaces are absent from the lite <c>netstandard2.0</c> build) and C# 11 (a consumer below that floor cannot implement them even when they are visible). <see cref="KnownTypeSymbols.SupportsJsonProxies"/> is the single source of truth for that combined test.</para>
@@ -2215,6 +2235,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 						if (property.IsIndexer)
 						{ // an indexer is not serialization state either, and the reference serializer ignores it; its member name is "this[]", which no generated constant can carry (CS1001)
+							return default;
+						}
+						if (!property.ExplicitInterfaceImplementations.IsDefaultOrEmpty)
+						{ // an explicit implementation is private in metadata, so the reference serializer ignores it on a plain DTO; its member name is the qualified interface member, which is neither a legal identifier for the accessor thunk nor the metadata name that thunk asks for
+							if (dataContractMember)
+							{ // on a [DataContract] type membership is accessibility-blind, so this member is in the contract and the reference serializer writes it: refuse the declaration instead of writing a document short of one element
+								ReportExplicitInterfaceDataMember(member);
+							}
 							return default;
 						}
 						if (property.IsImplicitlyDeclared)

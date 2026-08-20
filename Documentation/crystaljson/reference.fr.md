@@ -188,6 +188,7 @@ par réflexion *throw* le même message quand il construit le contrat du type. L
 | `CJSON0017` | Error | un argument de `[JsonBooleanLiterals]` qui n'est ni *string*, ni *bool*, ni nombre | utiliser un littéral valide |
 | `CJSON0018` | Warning | `StrictLiterals = true` avec un littéral false `null` (rien à imposer du côté false) | retirer `StrictLiterals`, ou donner au membre un vrai littéral false |
 | `CJSON0019` | Warning | une inscription `[CrystalSerializable]` d'un type que CrystalJson sérialise déjà nativement | retirer l'inscription |
+| `CJSON0022` | Error | `[DataMember]` sur une implémentation explicite d'interface : le membre appartient au contrat, et le code généré ne peut pas déclarer d'accesseur pour un nom de membre qualifié | le promouvoir en membre normal, ou déplacer le contrat sur un *DTO* dédié |
 
 Les diagnostics des types auto-sérialisables (`CJSON0004` à `CJSON0007`, `CJSON0020`, `CJSON0021`) et
 les codes du générateur XML (`CRYS####`, `CXML####`) sont couverts dans le
