@@ -223,6 +223,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <example><c>public string HelloWorld { get; init;}</c> has member name <c>"HelloWorld"</c></example>
 		public required string MemberName { get; init; }
 
+		/// <summary>Name given to the member by the data contract (<c>[DataMember(Name = "...")]</c> on a <c>[DataContract]</c> type), or <see langword="null"/> when the contract does not rename it</summary>
+		/// <remarks>
+		/// <para>Carried apart from <see cref="Name"/> so that the DataContract XML format writes the contract's own name (<see cref="DataMemberName"/>, falling back to <see cref="MemberName"/>) instead of the resolved JSON one. On a <c>[DataContract]</c> type the two agree, because CJSON0011 refuses a member whose JSON naming attribute disagrees with its contract name. On a plain DTO they do not: a <c>[JsonProperty]</c> renames the JSON member of a type that has no contract, and the reference serializer still writes the member's own name.</para>
+		/// <para>Only ever set on a <c>[DataContract]</c> type: the attribute is inert everywhere else, exactly as it is for the reference serializer.</para>
+		/// </remarks>
+		public string? DataMemberName { get; init; }
+
 #if FULL_DEBUG
 		/// <summary>Captured attributes on the member</summary>
 		public required ImmutableEquatableArray<string> Attributes { get; init; }
@@ -372,6 +379,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		{
 			sb.Append(indent).Append("Name = ").AppendLine(this.Name);
 			sb.Append(indent).Append("MemberName = ").AppendLine(this.MemberName);
+			if (this.DataMemberName is not null) sb.Append(indent).Append("DataMemberName = ").AppendLine(this.DataMemberName);
 			if (this.IsField) sb.Append(indent).AppendLine("IsField = true");
 			if (this.IsNotNull) sb.Append(indent).AppendLine("IsNotNull = true");
 			if (this.IsReadOnly) sb.Append(indent).AppendLine("IsReadOnly = true");

@@ -1810,8 +1810,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				foreach (var member in members)
 				{
-					// the JSON name is the fallback: it is what the XML name derives from when the member does not override it
-					string effective = member.CrystalXmlName ?? member.Name;
+					// the same name the emitter writes: the data contract's on the compat format, the JSON name on the modern
+					// one (which is what an XML name derives from there when the member does not override it)
+					string effective =
+						member.CrystalXmlName
+						?? (xmlProfile == XmlProfileDataContract ? member.DataMemberName ?? member.MemberName : member.Name);
 					var seen = member.XmlIsAttribute ? attributes : elements;
 
 					if (xmlProfile == XmlProfileModern && member.CrystalXmlName is null && memberSymbols.TryGetValue(member.MemberName, out var symbol))
@@ -2769,26 +2772,31 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
-				if (dataMemberName is not null)
+				if (dataContractMember)
 				{
 					// one member giving DIFFERENT format names to different serializers is two contracts on one type
 					// (ex: [DataMember(Name="code")] for the legacy format plus [JsonProperty("ACTIF")] for another
-					// consumer): report a build error instead of silently picking one; the fix is to split the DTO
-					foreach (var (foreignName, foreignFamily) in new[] { (stjPropertyName, "JsonPropertyName"), (newtonsoftPropertyName, "JsonProperty") })
+					// consumer): report a build error instead of silently picking one; the fix is to split the DTO.
+					// A bare [DataMember] names the member after itself, and that implied name counts: a [JsonProperty]
+					// next to it used to win the whole resolution silently, and the JSON name reached the XML document.
+					string contractName = dataMemberName ?? memberName;
+					string contractSpelling = dataMemberName is not null ? $"[DataMember(Name=\"{dataMemberName}\")]" : "[DataMember], which names it after the member";
+					foreach (var (foreignName, foreignFamily) in new[] { (nativePropertyName, "JsonProperty"), (stjPropertyName, "JsonPropertyName"), (newtonsoftPropertyName, "Newtonsoft.Json.JsonProperty") })
 					{
-						if (foreignName is not null && foreignName != dataMemberName)
+						if (foreignName is not null && foreignName != contractName)
 						{
 							ReportDiagnostic(
 								new(
 									"CJSON0011",
 									"A member declares two different format names for two different serializers",
-									"The member '{0}' declares two different format names: [DataMember(Name=\"{1}\")] and [{2}(\"{3}\")]. One type cannot serve two format contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.",
+									"The member '{0}' declares two different format names: the data contract names it '{1}' ({2}), and [{3}(\"{4}\")] names it '{4}'. One type cannot serve two format contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.",
 									"SnowBank.Serialization.Json.CodeGen",
 									DiagnosticSeverity.Error,
 									isEnabledByDefault: true
 								),
 								member.Locations.Length > 0 ? member.Locations[0] : null,
-								member.ToDisplayString(), dataMemberName, foreignFamily, foreignName);
+								member.ToDisplayString(), contractName, contractSpelling, foreignFamily, foreignName);
+							break; // one member, one error: the remedy is the same whichever attribute is named second
 						}
 					}
 				}
@@ -2908,6 +2916,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						Type = type,
 						Name = name!,
 						MemberName = memberName,
+						DataMemberName = dataContractMember ? dataMemberName : null,
 						CrystalXmlName = xmlName,
 						XmlIsAttribute = xmlIsAttribute,
 						XmlItemName = xmlItemName,

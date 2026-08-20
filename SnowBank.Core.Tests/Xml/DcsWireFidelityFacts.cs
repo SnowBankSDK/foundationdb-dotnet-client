@@ -113,6 +113,25 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		[Test]
+		public void Test_A_Json_Rename_On_A_Plain_Dto_Does_Not_Rename_The_Xml_Element()
+		{
+			// the reference serializer reads the data contract and nothing else, and a plain DTO has none: the element
+			// keeps the declared member name whatever the JSON attribute spells
+			AssertSameWire(new PocoJsonRenamedProbe { SubscriptionCode = "sc-1", Label = "l" }, v => DcsProbeSerializers.PocoJsonRenamedProbe.ToXmlText(v));
+		}
+
+		[Test]
+		public void Test_A_Json_Rename_On_A_Plain_Dto_Still_Names_The_Json_Member()
+		{
+			// the other half of the same rule: the JSON output keeps the name its own attribute gives it
+			string json = DcsProbeSerializers.PocoJsonRenamedProbe.ToJsonText(new PocoJsonRenamedProbe { SubscriptionCode = "sc-1", Label = "l" });
+			Log(json);
+
+			Assert.That(json, Does.Contain("\"SUBSCRIPTION_CODE\""), "the [JsonProperty] name names the JSON member");
+			Assert.That(json, Does.Not.Contain("\"SubscriptionCode\""), "the declared member name is the XML name, not the JSON one");
+		}
+
+		[Test]
 		public void Test_An_Overridden_Member_Is_Written_At_The_Level_That_Declares_It()
 		{
 			// three levels, the middle one overriding a member of the base: the reference serializer writes the member

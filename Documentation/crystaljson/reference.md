@@ -114,6 +114,8 @@ Newtonsoft.Json (JSON.NET), so a ported type serializes without re-annotation, t
 When several naming attributes agree, the effective name comes from the highest priority one:
 CrystalJson `[JsonProperty]`, then `[JsonPropertyName]`, then Newtonsoft `[JsonProperty]`. Two naming
 attributes that disagree are a build error (`CJSON0011`): one type cannot serve two output contracts.
+A `[DataMember]` on a `[DataContract]` type counts as one of them even when it is bare, because it names
+the member after itself: a `[JsonProperty]` that renames the same member is the same conflict.
 A foreign `[JsonConverter]` naming a type that does not implement the CrystalJson converter contract is
 ignored, not an error, so a half-ported DTO stays serializable. The
 [migration guide](../releases/7.4.3.md) has the full interop rules.

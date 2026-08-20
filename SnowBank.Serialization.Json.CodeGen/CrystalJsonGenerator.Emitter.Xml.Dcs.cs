@@ -345,10 +345,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Returns the output name of one member: its data-contract name, XML-encoded</summary>
-			/// <remarks>The compat profile refuses the whole <c>[XmlProperty]</c> renaming surface (CXML0004) and refuses a naming
-			/// policy on the container (CXML0001), so the resolved JSON name IS the data-contract name here: <c>[DataMember(Name =
-			/// ...)]</c> when present, the declared member name otherwise.</remarks>
-			private static string GetXmlDcsMemberName(CrystalJsonMemberMetadata member) => System.Xml.XmlConvert.EncodeLocalName(member.Name);
+			/// <remarks>The data contract owns this name: <c>[DataMember(Name = ...)]</c> when present, the declared member name
+			/// otherwise, which is what the reference serializer writes. The resolved JSON name is not read here. On a
+			/// <c>[DataContract]</c> type the two are the same name, because CJSON0011 refuses a declaration where they differ; on a
+			/// plain DTO they are not, because a <c>[JsonProperty]</c> renames the JSON member of a type that has no data contract,
+			/// and the reference serializer still writes the member's own name. The compat profile also refuses the
+			/// <c>[XmlProperty]</c> renaming surface (CXML0004) and any naming policy on the container (CXML0001), so this name has
+			/// exactly one source.</remarks>
+			private static string GetXmlDcsMemberName(CrystalJsonMemberMetadata member) => System.Xml.XmlConvert.EncodeLocalName(member.DataMemberName ?? member.MemberName);
 
 			/// <summary>Whether a type is the <c>byte[]</c> that this format treats as a base64 scalar</summary>
 			private static bool IsXmlDcsByteArray(TypeMetadata type) => type.TypeKind == TypeKind.Array && type.ElementType is { SpecialType: SpecialType.System_Byte };

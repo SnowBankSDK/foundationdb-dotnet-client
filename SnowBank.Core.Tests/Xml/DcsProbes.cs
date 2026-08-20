@@ -315,6 +315,16 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		public void SetSecret(string? value) => this.secret = value;
 	}
 
+	/// <summary>A plain DTO (no data contract) whose member carries a JSON rename. The reference serializer names the
+	/// element after the member, and the JSON attribute names the JSON member only. On a
+	/// <see cref="DataContractAttribute"/> type the same pair is refused instead (CJSON0011), because the contract
+	/// already names the member.</summary>
+	public sealed class PocoJsonRenamedProbe
+	{
+		[JsonProperty("SUBSCRIPTION_CODE")] public string? SubscriptionCode { get; set; }
+		public string? Label { get; set; }
+	}
+
 	/// <summary>Three levels, the middle one overriding a member of the base. The reference serializer writes the
 	/// member once, with the members of the level that declares it.</summary>
 	[DataContract]
@@ -474,6 +484,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[CrystalSerializable(typeof(KeyedBagProbe))]
 	[CrystalSerializable(typeof(AnyTypeCollectionProbe))]
 	[CrystalSerializable(typeof(ReadOnlyFieldProbe))]
+	[CrystalSerializable(typeof(PocoJsonRenamedProbe))]
 	[CrystalSerializable(typeof(OverrideLeafProbe))]
 	[CrystalSerializable(typeof(ShadowLeafProbe))]
 	public static partial class DcsProbeSerializers
