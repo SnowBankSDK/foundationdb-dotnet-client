@@ -365,6 +365,14 @@ namespace SnowBank.Data.Json
 				throw JsonBindingException.CannotBindJsonObjectToThisType(value, type);
 			}
 
+			// DataContractJsonSerializer writes a DateTimeOffset as an object, so convert it here. This is the one sanctioned
+			// exception to the rule that a JSON object is not a valid representation of an opaque value type: the shape is
+			// observed in the field. Running before the member binder also keeps the type out of that refusal.
+			if (typeof(DateTimeOffset) == type || typeof(DateTimeOffset?) == type)
+			{
+				return value.ToDateTimeOffset();
+			}
+
 			return CrystalJsonParser.DeserializeCustomClassOrStruct(value, type, this);
 		}
 
@@ -2310,6 +2318,9 @@ namespace SnowBank.Data.Json
 			// look for any custom binders
 			var binder = FindCustomBinder(type, out var generator, members);
 
+			// classified once, here, so that the binder pays a single flag test per value instead of this scan
+			var typeFlags = binder == null && IsOpaqueValueType(type, members) ? CrystalJsonTypeFlags.OpaqueValueType : CrystalJsonTypeFlags.None;
+
 			if (binder == null)
 			{ // we need to generate one ourselves for this type
 
@@ -2329,13 +2340,40 @@ namespace SnowBank.Data.Json
 
 			var callbacks = GetSerializationCallbacks(type);
 
-			return new CrystalJsonTypeDefinition(type, CrystalJsonTypeFlags.None, binder, generator, members, null, baseType, typeDiscriminatorProperty, typeDiscriminatorValue, derivedTypeMap)
+			return new CrystalJsonTypeDefinition(type, typeFlags, binder, generator, members, null, baseType, typeDiscriminatorProperty, typeDiscriminatorValue, derivedTypeMap)
 			{
 				OnSerializing = callbacks.OnSerializing,
 				OnSerialized = callbacks.OnSerialized,
 				OnDeserializing = callbacks.OnDeserializing,
 				OnDeserialized = callbacks.OnDeserialized,
 			};
+		}
+
+		/// <summary>Tests if a JSON object is an invalid representation of <paramref name="type"/>, because no member can carry its state</summary>
+		/// <remarks>
+		/// <para>The test covers value types under the <c>System</c> namespace that have no writable member, such as <see cref="TimeSpan"/>.
+		/// A JSON object was never a valid representation of one: the member binder assigns nothing and returns <c>default</c>, so the value
+		/// is lost with no error. Refusing the object corrects that defect; it is the general rule, not a tolerance for one writer.</para>
+		/// <para><see cref="DateTimeOffset"/> is the single exception, because <c>DataContractJsonSerializer</c> documents in the field do
+		/// spell it as an object. Its dedicated conversion in <see cref="BindJsonObject"/> runs before the member binder is ever reached.</para>
+		/// <para>Application value types stay out of the test. A user struct with only read-only members is a valid shape, and its current
+		/// behavior does not change.</para>
+		/// </remarks>
+		private static bool IsOpaqueValueType(Type type, CrystalJsonMemberDefinition[] members)
+		{
+			if (!type.IsValueType) return false;
+
+			var ns = type.Namespace;
+			if (ns is null || (!string.Equals(ns, "System", StringComparison.Ordinal) && !ns.StartsWith("System.", StringComparison.Ordinal)))
+			{
+				return false;
+			}
+
+			foreach (var member in members)
+			{
+				if (!member.IsReadOnly) return false;
+			}
+			return true;
 		}
 
 		/// <summary>Extracts the type definition for the Nullable&lt;T&gt; version of a struct</summary>

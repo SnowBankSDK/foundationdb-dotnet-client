@@ -849,6 +849,12 @@ namespace SnowBank.Data.Json
 				return typeDef.CustomBinder(data, type, resolver);
 			}
 
+			if (typeDef.IsOpaqueValueType && data.Count != 0)
+			{ // a JSON object is not a valid representation of this type. Binding one assigns no member and returns an
+			  // all-default value, which the caller cannot tell apart from a document whose values really are the defaults.
+				throw JsonBindingException.CannotBindJsonObjectToThisType(data, type);
+			}
+
 			if (typeDef.Generator == null)
 			{ // we don't have an instance generator for this type, we won't be able to do anything!
 				throw JsonBindingException.CannotDeserializeCustomTypeNoBinderOrGenerator(data, type);

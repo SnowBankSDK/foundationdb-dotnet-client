@@ -4372,6 +4372,41 @@ namespace SnowBank.Data.Json
 			return sb.ToString();
 		}
 
+		/// <summary>Returns the equivalent <see cref="DateTimeOffset"/>, if this object has the shape that <c>DataContractJsonSerializer</c> writes for that type</summary>
+		/// <remarks>
+		/// <para><c>DataContractJsonSerializer</c> has no notion of a <see cref="DateTimeOffset"/>. It decomposes the struct into an object,
+		/// <c>{ "DateTime": "\/Date(...)\/", "OffsetMinutes": ... }</c>. The inner date is the instant, normalized to UTC, and the offset
+		/// travels beside it, in minutes. Every other spelling of a date is a JSON string, and <see cref="JsonString"/> converts those.</para>
+		/// <para>The match requires exactly those two members. A looser test would claim application objects that happen to have a
+		/// <c>DateTime</c> member.</para>
+		/// <para>Without this override the value reaches the member binder of the reflection path. That binder finds no settable member on
+		/// <see cref="DateTimeOffset"/>, assigns nothing, and returns <c>default</c> with no error.</para>
+		/// </remarks>
+		/// <exception cref="JsonBindingException">If this object does not have that shape.</exception>
+		public override DateTimeOffset ToDateTimeOffset(DateTimeOffset defaultValue = default)
+		{
+			// exactly those two members: a looser test would claim application objects that happen to have a DateTime member
+			if (this.Count != 2
+			 || !TryGetValue(JsonTokens.LegacyDateTimeOffsetDateProperty, out var date)
+			 || !TryGetValue(JsonTokens.LegacyDateTimeOffsetMinutesProperty, out var minutes)
+			 || date.IsNullOrMissing()
+			 || minutes.IsNullOrMissing())
+			{
+				throw JsonBindingException.CannotBindJsonObjectToThisType(this, typeof(DateTimeOffset));
+			}
+
+			// the writer normalizes the instant to UTC and never puts an offset on it, but do not trust the parsed Kind
+			var instant = date.ToDateTime();
+			instant = instant.Kind switch
+			{
+				DateTimeKind.Local => instant.ToUniversalTime(),
+				_ => DateTime.SpecifyKind(instant, DateTimeKind.Utc),
+			};
+
+			var offset = TimeSpan.FromMinutes(minutes.ToInt32());
+			return offset == TimeSpan.Zero ? new DateTimeOffset(instant) : new DateTimeOffset(instant).ToOffset(offset);
+		}
+
 		/// <summary>Converts this JSON Object into a <see cref="Dictionary{TKey,TValue}">Dictionary&lt;string, object?&gt;</see>.</summary>
 		[Pure]
 		[EditorBrowsable(EditorBrowsableState.Never)]
