@@ -110,6 +110,30 @@ namespace FoundationDB.Client
 			}
 		}
 
+		/// <summary>Gets a <see cref="Task{Slice}"/> that will complete when this <see cref="FdbWatch">watch</see> fires, when the specified timeout expires, or when the specified <see cref="T:System.Threading.CancellationToken" /> has cancellation requested.</summary>
+		/// <param name="timeout">The timeout after which the <see cref="FdbWatch" /> should be cancelled if it hasn't otherwise fired.</param>
+		/// <param name="timeProvider">Time provider used to measure the timeout, so a virtualized clock (a test's fake time) drives the idle wake instead of the real wall clock.</param>
+		/// <param name="ct">The <see cref="T:System.Threading.CancellationToken" /> to monitor for a cancellation request.</param>
+		/// <returns>Task that returns <see langword="true"/> if the watch has fired, or <see langword="false"/> if the timeout has expired.</returns>
+		public async Task<bool> WaitAsync(TimeSpan timeout, TimeProvider timeProvider, CancellationToken ct)
+		{
+			EnsureNotDisposed();
+			try
+			{
+				await this.Future.Task.WaitAsync(timeout, timeProvider, ct).ConfigureAwait(false);
+				return true;
+			}
+			catch (TimeoutException)
+			{
+				return false;
+			}
+			catch (Exception)
+			{
+				this.Cancel(); // does nothing if already fired/cancelled!
+				throw;
+			}
+		}
+
 		/// <summary>Cancels the watch.</summary>
 		/// <remarks>
 		/// <para>It will immediately stop monitoring the key.</para>
