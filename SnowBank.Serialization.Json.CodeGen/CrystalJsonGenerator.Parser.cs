@@ -1209,6 +1209,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{
 							// the legacy shape keeps its own message: it is the migration recipe, and people grep for it
 							bool isLegacyShape = method.Parameters.Length == 1 && method.Parameters[0].Type.Name == "StreamingContext";
+							// the legacy-shape message names the declaring type as well: the reflection path refuses the
+							// same callback at runtime with no source location to point at, so the type has to be in the text
+							string callbackName = isLegacyShape
+								? $"{method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat.WithGlobalNamespaceStyle(SymbolDisplayGlobalNamespaceStyle.Omitted))}.{method.Name}"
+								: method.Name;
 							ReportDiagnostic(
 								new(
 									"CJSON0015",
@@ -1219,7 +1224,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									isEnabledByDefault: true
 								),
 								method.Locations.Length > 0 ? method.Locations[0] : null,
-								method.Name);
+								callbackName);
 							continue;
 						}
 

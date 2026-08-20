@@ -607,7 +607,7 @@ namespace SnowBank.Data.Json.Tests
 			// search-and-replace, and the type stops being serializable by DCJS once converted. Refused at
 			// contract-build time, once per type, never per invocation.
 			var ex = Assert.Throws<JsonBindingException>(() => CrystalJson.Serialize(new DxLegacyCallbackDto { Id = "X" }, Compact));
-			Assert.That(ex!.Message, Is.EqualTo(string.Format(CrystalJson.Errors.CallbackStreamingContextNotSupported, "AfterRead")));
+			Assert.That(ex!.Message, Is.EqualTo(string.Format(CrystalJson.Errors.CallbackStreamingContextNotSupported, $"{typeof(DxLegacyCallbackDto).FullName}.AfterRead")));
 			Assert.That(ex.Message, Does.StartWith("Remove the StreamingContext parameter"), "the message leads with the fix");
 
 			// and the same refusal on the read side, from the same contract build

@@ -1972,7 +1972,7 @@ namespace SnowBank.Data.Json
 
 			/// <summary>Message used when a serialization callback declares the legacy <c>StreamingContext</c> parameter</summary>
 			/// <remarks>
-			/// <para>Format placeholder <c>{0}</c> is the offending method's name.</para>
+			/// <para>Format placeholder <c>{0}</c> is the offending callback's declaring type and method name (e.g. <c>Acme.Orders.Order.OnDeserializing</c>): the reflection path refuses the callback at run time with no source location, so the type has to be in the text.</para>
 			/// <para>The source generator reports the same text as a build error. The two copies live in different assemblies (an analyzer cannot reference this one), so a test asserts they are identical rather than trusting them to stay in sync.</para>
 			/// </remarks>
 			public const string CallbackStreamingContextNotSupported = "Remove the StreamingContext parameter from serialization callback '{0}', or replace it with JsonValue, JsonObject or JsonArray. The legacy DataContractJsonSerializer callback signature is not supported.";

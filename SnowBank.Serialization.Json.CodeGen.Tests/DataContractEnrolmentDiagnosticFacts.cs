@@ -169,7 +169,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(refusal, Is.Not.Null, "the legacy callback signature is refused at build time");
 			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
 			Assert.That(refusal.GetMessage(), Does.StartWith("Remove the StreamingContext parameter"), "the message leads with the fix");
-			Assert.That(refusal.GetMessage(), Does.Contain("'AfterRead'"), "and names the offending method");
+			Assert.That(refusal.GetMessage(), Does.Contain("ProbeDto.AfterRead"), "and names the offending declaring type and method");
 		}
 
 		[Test]

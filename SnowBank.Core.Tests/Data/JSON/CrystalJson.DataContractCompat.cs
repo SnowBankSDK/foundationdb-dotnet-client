@@ -522,7 +522,7 @@ namespace SnowBank.Data.Json.Tests
 			// the signature DCJS REQUIRES is the one we refuse: converting it costs the type its DCJS compatibility,
 			// which is why the migration guide makes that a precondition of the sweep rather than a footnote
 			var ex = Assert.Throws<JsonBindingException>(() => CrystalJson.Deserialize<LifecycleDto>("""{ "Name": "x" }"""));
-			Assert.That(ex!.Message, Is.EqualTo(string.Format(CrystalJson.Errors.CallbackStreamingContextNotSupported, "OnDeserializedCallback")));
+			Assert.That(ex!.Message, Is.EqualTo(string.Format(CrystalJson.Errors.CallbackStreamingContextNotSupported, $"{typeof(LifecycleDto).FullName}.OnDeserializedCallback")));
 		}
 
 		[Test]
