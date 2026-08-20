@@ -2945,15 +2945,21 @@ namespace SnowBank.Data.Json
 		/// <summary>Fills a dictionary from the legacy DataContractJsonSerializer wire shape (<c>[ { "Key": ..., "Value": ... }, ... ]</c>)</summary>
 		/// <remarks>
 		/// <para>Only reached when the input is a JSON array, which the object-map binder otherwise rejects, so the regular path pays no cost.</para>
-		/// <para>Strict by design: every element must be an object with exactly the two members <c>Key</c> and <c>Value</c> (exact casing); anything else fails the whole bind.</para>
+		/// <para>Every element must be an object with a key member and a value member. Both spellings are accepted:
+		/// <c>DataContractJsonSerializer</c> writes a dictionary entry as <c>Key</c>/<c>Value</c>, and a standalone
+		/// <see cref="KeyValuePair{TKey,TValue}"/> as <c>key</c>/<c>value</c>. Any other member is ignored, as it is on any other object,
+		/// because a legacy document can carry a <c>__type</c> member next to the pair. An element with neither spelling fails the whole
+		/// bind; contributing a default-filled entry would hide the problem.</para>
 		/// </remarks>
 		private static void FillDictionaryFromLegacyPairs(IDictionary instance, JsonArray array, Type keyType, IJsonConverter valueConverter, ICrystalJsonTypeResolver resolver)
 		{
 			for (int i = 0; i < array.Count; i++)
 			{
-				if (array[i] is not JsonObject kv || kv.Count != 2 || !kv.TryGetValue("Key", out var key) || !kv.TryGetValue("Value", out var value))
+				if (array[i] is not JsonObject kv
+				 || !(kv.TryGetValue("Key", out var key) || kv.TryGetValue("key", out key))
+				 || !(kv.TryGetValue("Value", out var value) || kv.TryGetValue("value", out value)))
 				{
-					throw new JsonBindingException($"Cannot bind element #{i} of a legacy key/value-pair array to a dictionary entry: expected an object with exactly the two members 'Key' and 'Value'.", JsonPath.Create(i), array[i], instance.GetType());
+					throw new JsonBindingException($"Cannot bind element #{i} of a legacy key/value-pair array to a dictionary entry: expected an object with a 'Key' and a 'Value' member (either casing).", JsonPath.Create(i), array[i], instance.GetType());
 				}
 				instance.Add(key.Bind(keyType, resolver)!, valueConverter.BindJsonValue(value, resolver));
 			}
