@@ -27,6 +27,7 @@
 namespace FoundationDB.Testing.Tests
 {
 	using FoundationDB.Client;
+	using FoundationDB.FakeDb;
 
 	/// <summary>Tests for the native-idempotency emulation (<see cref="FdbTransactionOption.AutomaticIdempotency"/> / <see cref="FdbTransactionOption.IdempotencyId"/>)
 	/// and its fault-injection driver <see cref="FakeDbStore.FakeDbBuggify.LoseNextCommitAck"/>.</summary>
