@@ -2203,6 +2203,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{ // static members are never serialization state; an instance accessor over one would not compile (CS0176)
 							return default;
 						}
+						if (property.IsIndexer)
+						{ // an indexer is not serialization state either, and the reference serializer ignores it; its member name is "this[]", which no generated constant can carry (CS1001)
+							return default;
+						}
 						if (property.IsImplicitlyDeclared)
 						{
 							return default;
