@@ -4,7 +4,7 @@
 #pragma warning disable CS0649 // fields only ever assigned by the serializer
 
 // Categories: polymorphism, object graphs, lifecycle callbacks, extension data, and the
-// first DIAGNOSTIC case (expected to fail loudly rather than to match).
+// first diagnostic case, which is expected to fail loudly rather than to match.
 // Scan-derived weights: [KnownType] 1146 · IExtensibleDataObject 29 · lifecycle callbacks 103
 // (OnDeserialized 52, OnSerializing 27, OnDeserializing 23, OnSerialized 1) · ISerializable 5.
 // Serializer configurations in the whole application: exactly two, both represented here.
@@ -17,7 +17,7 @@ namespace Acme.Zoo.Cases.PolyKnownTypeAbstract
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>[KnownType] with an abstract-typed member, which is what makes DCJS emit its
-	/// __type hint. What matters beyond its presence is its VALUE, which encodes
+	/// __type hint. What matters beyond its presence is its value, which encodes
 	/// "TypeName:DataContractNamespace": a consumer that switches on __type sees a different
 	/// document if either the spelling or the value format changes.</summary>
 	[DataContract]
@@ -90,7 +90,7 @@ namespace Acme.Zoo.Cases.PolyKnownTypeAbstract
 			{
 				return new[]
 				{
-					// DCJS always emitted the hint FIRST and with this value format, so this is
+					// DCJS always emitted the hint first and with this value format, so this is
 					// the shape that exists at rest and in already-delivered payloads.
 					"{\"primary\":{\"__type\":\"TextCriterion:http:\\/\\/acme.invalid\\/zoo\",\"field\":\"title\",\"term\":\"atlas\"}}"
 				};
@@ -106,7 +106,7 @@ namespace Acme.Zoo.Cases.PolySerializerKnownTypes
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>The application's ONLY other serializer configuration: known types passed
+	/// <summary>The application's only other serializer configuration: known types passed
 	/// through the constructor instead of declared by attribute. Measured across the whole
 	/// source tree: 55 call sites use the type-only constructor, 4 use this one. There is no
 	/// DataContractJsonSerializerSettings anywhere, no surrogate, no DataContractResolver,
@@ -160,7 +160,7 @@ namespace Acme.Zoo.Cases.LifecycleCallbacks
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>Callbacks that MUTATE state, which is the only interesting kind. The
+	/// <summary>Callbacks that mutate state, which is the only interesting kind. The
 	/// application has 103 of them, dominated by OnDeserialized (52). If a replacement
 	/// serializer does not run these, the object comes back structurally correct and
 	/// semantically wrong, with nothing to signal it.</summary>
@@ -229,10 +229,10 @@ namespace Acme.Zoo.Cases.ExtensibleDataObject
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>IExtensibleDataObject: unknown members are RETAINED and re-emitted, which is
+	/// <summary>IExtensibleDataObject: unknown members are retained and re-emitted, which is
 	/// how a contract survives a version it does not know about. 29 occurrences.
 	/// <para>This case doubles as the duplicate-key probe. The second input carries an
-	/// unknown member whose name equals a DECLARED member's wire name in a different case
+	/// unknown member whose name equals a declared member's wire name in a different case
 	/// ("Known" vs "known"), which is the only realistic path to a duplicate key in DCJS
 	/// output that I could construct. If it stays clean, key-order irrelevance can be
 	/// asserted without reservation.</para></summary>
@@ -281,18 +281,18 @@ namespace Acme.Zoo.Cases.DiagnosticDoubleContract
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>DIAGNOSTIC CASE. Expected outcome is a LOUD FAILURE, not a match.
+	/// <summary>Diagnostic case. The expected outcome is a loud failure, not a match.
 	/// <para>Found in the wild: 2307 members carry both [DataMember] and [JsonProperty],
-	/// and 1726 of those give each attribute a DIFFERENT wire name. One DTO, two serializers,
+	/// and 1726 of those give each attribute a different wire name. One DTO, two serializers,
 	/// two different documents: the lowercase name is the client-facing contract served by
 	/// DCJS, the uppercase one is the field name of a legacy back-end wire served by
 	/// Newtonsoft.</para>
-	/// <para>The owner's arbitration is that this is an architecture defect rather than a
-	/// compatibility target: it cannot be carried over as-is, because a serializer that
-	/// understands both attribute families will see both and honour only one, silently. The
-	/// remedy is to SPLIT the DTO, and the "after" shape below is the worked example for the
-	/// migration guide. What CrystalJson should do with the "before" shape is refuse it with
-	/// an explicit message naming the property and the two conflicting attributes.</para></summary>
+	/// <para>This is an architecture defect rather than a compatibility target. It cannot be
+	/// carried over as-is, because a serializer that understands both attribute families will
+	/// see both and honour only one, silently. The remedy is to split the DTO, and the "after"
+	/// shape below is the worked example for the migration guide. What CrystalJson should do
+	/// with the "before" shape is refuse it with an explicit message naming the property and
+	/// the two conflicting attributes.</para></summary>
 	[DataContract]
 	public class TwoFacedDto
 	{
@@ -303,7 +303,7 @@ namespace Acme.Zoo.Cases.DiagnosticDoubleContract
 		public string Label { get; set; }
 
 		/// <summary>Same name on both sides: harmless, and worth including so the diagnostic
-		/// can distinguish "both attributes present" from "both present AND disagreeing".</summary>
+		/// can distinguish "both attributes present" from "both present and disagreeing".</summary>
 		[DataMember(Name = "code"), JsonProperty(PropertyName = "code")]
 		public string Code { get; set; }
 	}
@@ -352,7 +352,7 @@ namespace Acme.Zoo.Cases.DiagnosticDoubleContract
 			return new DataContractJsonSerializer(RootType);
 		}
 
-		/// <summary>The SAME instance serialized by the other library. Put the two outputs side
+		/// <summary>The same instance serialized by the other library. Put the two outputs side
 		/// by side and the defect stops being an assertion: DCJS honours its own attribute and
 		/// ignores the other, Newtonsoft does the reverse, so one DTO has two incompatible wire
 		/// contracts and no single serializer can serve both.</summary>

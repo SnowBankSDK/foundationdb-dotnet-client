@@ -6,12 +6,12 @@
 // Category: collections and dictionaries.
 // Scan-derived weights ([DataMember] members by declared type, DataContract-bearing product files):
 //   Collection<T> 396 · List<T> 303 · interface-declared collections 280 · array 101 · Dictionary 58.
-// Types DERIVING from a collection: Collection<T> 108, non-generic List<T> subclass 31,
+// Types deriving from a collection: Collection<T> 108, non-generic List<T> subclass 31,
 // Dictionary 43. [CollectionDataContract] 217 (ItemName 124, KeyName/ValueName 28 each).
 //
-// MEASURED FACT that shapes this whole category: the application NEVER sets
-// UseSimpleDictionaryFormat (0 occurrences in the entire source tree). Every dictionary on
-// the wire is therefore in DCJS's default key/value-pair ARRAY form.
+// The application never sets UseSimpleDictionaryFormat (0 occurrences in the entire source
+// tree), and that shapes this whole category. Every dictionary on the wire is therefore in
+// DCJS's default key/value-pair array form.
 
 namespace Acme.Zoo.Cases.CollectionOfTMember
 {
@@ -20,8 +20,8 @@ namespace Acme.Zoo.Cases.CollectionOfTMember
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>Collection&lt;T&gt; as a MEMBER. 395 occurrences in the application, and the
-	/// exact shape that deserialized to null with no error on CrystalJson 7.4.2 (fixed for
+	/// <summary>Collection&lt;T&gt; as a member. 395 occurrences in the application, and the
+	/// exact shape that deserialized to null with no error on CrystalJson 7.4.2 (fixed in
 	/// 7.4.3). Kept as a permanent regression witness, not as a live defect.</summary>
 	[DataContract]
 	public class CollectionMemberDto
@@ -137,7 +137,7 @@ namespace Acme.Zoo.Cases.DictionaryStringKey
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>Dictionary with STRING keys, in DCJS's default key/value-pair array form.
+	/// <summary>Dictionary with string keys, in DCJS's default key/value-pair array form.
 	/// Highest blast radius of the corpus for browser consumers: a client reading
 	/// <c>obj.map["k"]</c> and a client reading <c>obj.map[i].Key</c> are not
 	/// interchangeable, yet both bind to the same C# Dictionary.</summary>
@@ -191,7 +191,8 @@ namespace Acme.Zoo.Cases.DictionaryStringKey
 				return new[]
 				{
 					"{\"emptyMap\":[],\"map\":[{\"Key\":\"alpha\",\"Value\":\"first\"}],\"mapToInt\":[]}",
-					// The object-map form a modern serializer would emit. Does DCJS read it back?
+					// The object-map form a modern serializer emits is deliberately not listed: DCJS reads it as an
+					// empty dictionary with no error, so no producer ever wrote that shape into this application's data.
 				};
 			}
 		}
@@ -301,9 +302,9 @@ namespace Acme.Zoo.Cases.CollectionNonGenericSubclass
 
 	/// <summary>Non-generic subclasses of List&lt;T&gt; and Collection&lt;T&gt;, used both as
 	/// a member and as the root type. 31 List-derived and 105 Collection-derived declarations
-	/// in the application. This is the family that CRASHED on SERIALIZATION with
-	/// IndexOutOfRangeException on CrystalJson 7.4.2 (fixed for 7.4.3) because the element
-	/// type was read from the subclass instead of the closed base.</summary>
+	/// in the application. This family crashed on serialization with IndexOutOfRangeException
+	/// on CrystalJson 7.4.2 (fixed in 7.4.3) because the element type was read from the
+	/// subclass instead of the closed base.</summary>
 	public class ProfileList : List<ProfileEntry>
 	{
 	}
@@ -364,7 +365,7 @@ namespace Acme.Zoo.Cases.CollectionSubclassAsRoot
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>The same family with the collection subclass as the ROOT type rather than a
+	/// <summary>The same family with the collection subclass as the root type rather than a
 	/// member. Worth separating: root and member binding took different code paths in the
 	/// 7.4.2 defect, failing loudly in one and silently in the other.</summary>
 	[DataContract]

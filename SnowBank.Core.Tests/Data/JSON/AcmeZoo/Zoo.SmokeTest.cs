@@ -48,7 +48,7 @@ namespace Acme.Zoo.Cases.SmokeNullVersusEmpty
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>The four states the equivalence rubric deliberately does NOT treat as
+	/// <summary>The four states the equivalence rubric deliberately does not treat as
 	/// interchangeable: null string vs empty string, and null collection vs empty
 	/// collection. Everything else about this DTO is uninteresting on purpose.</summary>
 	[DataContract]

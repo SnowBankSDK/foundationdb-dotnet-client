@@ -4,7 +4,7 @@
 #pragma warning disable CS0649 // fields only ever assigned by the serializer
 
 // A landmine found while building the corpus, kept as its own case because it makes the
-// serializer THROW and would otherwise mask every other member of the date case.
+// serializer throw and would otherwise mask every other member of the date case.
 
 namespace Acme.Zoo.Cases.DateTimeMinValueLandmine
 {
@@ -12,11 +12,11 @@ namespace Acme.Zoo.Cases.DateTimeMinValueLandmine
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>DCJS CANNOT serialize <c>DateTime.MinValue</c> when its kind is Unspecified or
-	/// Local and the machine sits at a POSITIVE UTC offset: converting to UTC pushes the value
+	/// <summary>DCJS cannot serialize <c>DateTime.MinValue</c> when its kind is Unspecified or
+	/// Local and the machine sits at a positive UTC offset: converting to UTC pushes the value
 	/// below <c>DateTime.MinValue</c> and it throws
 	/// <c>SerializationException</c> wrapping <c>ArgumentOutOfRangeException</c>.
-	/// <para>Why this matters rather than being a curiosity: <c>DateTime.MinValue</c> IS the
+	/// <para>Why this matters rather than being a curiosity: <c>DateTime.MinValue</c> is the
 	/// default value of an unset <c>DateTime</c> member, the application has 343 DateTime
 	/// members, and <c>EmitDefaultValue</c> defaults to true. So any DTO with an
 	/// unassigned non-nullable DateTime throws on serialization anywhere east of Greenwich,
@@ -49,7 +49,7 @@ namespace Acme.Zoo.Cases.DateTimeMinValueLandmine
 		public static string Id { get { return "datetime-minvalue-landmine"; } }
 		public static Type RootType { get { return typeof(MinValueDto); } }
 
-		/// <summary>Expected to THROW on serialization. The recorded error is the witness.</summary>
+		/// <summary>Expected to throw on serialization. The recorded error is the witness.</summary>
 		public static object Create()
 		{
 			return new MinValueDto { UnspecifiedMin = DateTime.MinValue };
