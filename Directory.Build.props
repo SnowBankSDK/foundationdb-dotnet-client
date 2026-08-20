@@ -19,8 +19,10 @@
 		<SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
 	</PropertyGroup>
 
-	<!-- Enable Runtime Async by default on .NET 11+ -->
-	<PropertyGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net11.0'))">
+	<!-- Enable Runtime Async by default on .NET 11+.
+	     Opt out with UseRuntimeAsync=false: the SDK preview does not wire that property yet, so this
+	     condition is what makes it effective (and stays correct once the SDK wires it natively). -->
+	<PropertyGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net11.0')) AND '$(UseRuntimeAsync)' != 'false'">
 		<Features>$(Features);runtime-async=on</Features>
 	</PropertyGroup>
 
