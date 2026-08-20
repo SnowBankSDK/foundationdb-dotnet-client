@@ -135,10 +135,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var dto = ProbeConverters.ProbeDictDto.Deserialize("""{ "Counts": [ { "Key": "a", "Value": 1 }, { "Key": "b", "Value": 2 } ] }""");
 			Assert.That(dto.Counts, Is.EqualTo(new Dictionary<string, int> { ["a"] = 1, ["b"] = 2 }));
 
-			// and the strictness applies there too
+			// both spellings bind, like the reflection path: DataContractJsonSerializer writes a dictionary entry as
+			// Key/Value and a standalone pair as key/value, and the shared binder accepts either
+			var lower = ProbeConverters.ProbeDictDto.Deserialize("""{ "Counts": [ { "key": "a", "value": 1 } ] }""");
+			Assert.That(lower.Counts, Is.EqualTo(new Dictionary<string, int> { ["a"] = 1 }));
+
+			// an element with no recognizable key member still fails the whole bind, through the generated path too
 			Assert.That(
-				() => ProbeConverters.ProbeDictDto.Deserialize("""{ "Counts": [ { "key": "a", "value": 1 } ] }"""),
-				Throws.InstanceOf<JsonBindingException>(), "non-conforming elements must fail through the generated path as well");
+				() => ProbeConverters.ProbeDictDto.Deserialize("""{ "Counts": [ { "Nope": "a", "Value": 1 } ] }"""),
+				Throws.InstanceOf<JsonBindingException>(), "a non-conforming element must fail through the generated path as well");
 		}
 
 		[Test]
