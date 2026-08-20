@@ -55,7 +55,10 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			var ser = new DataContractSerializer(declaredType);
 			var sb = new StringBuilder();
-			var settings = new XmlWriterSettings { CheckCharacters = false, OmitXmlDeclaration = true };
+			// pin the newline convention to CRLF: XmlWriter defaults NewLineChars to Environment.NewLine, so without
+			// this the oracle emits "\n" on macOS/Linux and disagrees with CrystalXml's fixed CRLF. Fixing it here
+			// keeps the oracle platform-independent.
+			var settings = new XmlWriterSettings { CheckCharacters = false, OmitXmlDeclaration = true, NewLineChars = "\r\n" };
 			using (var writer = new StrippingXmlWriter(XmlWriter.Create(sb, settings)))
 			{
 				ser.WriteObject(writer, value);

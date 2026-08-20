@@ -338,8 +338,10 @@ namespace SnowBank.Data.Xml
 					}
 					case '\r' or '\n':
 					{
-						// NewLineHandling.Replace of the reference writer, measured against a live DCS: in TEXT, every line
-						// ending (\r\n, a lone \r, a lone \n) becomes a RAW \r\n, never a character reference.
+						// text line endings are normalized to a fixed CRLF, the same rule DataContractSerializer's
+						// NewLineHandling.Replace applies under a CRLF NewLineChars: a \r\n, a lone \r, or a lone \n
+						// all become a raw \r\n, never a character reference. The CRLF is fixed, not Environment.NewLine,
+						// so the output never depends on the platform.
 						FlushRun(text, start, i);
 						if (c == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
 						{
