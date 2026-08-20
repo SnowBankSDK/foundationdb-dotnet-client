@@ -56,6 +56,12 @@ namespace SnowBank.Data.Json
 		public const string Iso8601DateOnlyMaxValue = "\"9999-12-31\"";
 		public const string CustomClassAttribute = "$type";
 
+		/// <summary>Instant member of the object that <c>DataContractJsonSerializer</c> writes for a <see cref="DateTimeOffset"/></summary>
+		public const string LegacyDateTimeOffsetDateProperty = "DateTime";
+
+		/// <summary>Offset member of the object that <c>DataContractJsonSerializer</c> writes for a <see cref="DateTimeOffset"/></summary>
+		public const string LegacyDateTimeOffsetMinutesProperty = "OffsetMinutes";
+
 	}
 
 }
