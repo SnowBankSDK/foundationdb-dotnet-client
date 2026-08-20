@@ -480,20 +480,28 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Legacy_KeyValuePair_Array_Shape_Is_Strict()
+		public void Test_Legacy_KeyValuePair_Array_Shape_Rules()
 		{
-			// every element must be an object with exactly the two members "Key" and "Value": anything else fails
+			// every element must be an object with a key member and a value member, in either casing. Any other member is
+			// ignored, and an element with neither spelling fails the whole bind.
 			using (Assert.EnterMultipleScope())
 			{
+				// the accepted shapes. DCJS writes a dictionary entry as "Key"/"Value" and a standalone pair as "key"/"value",
+				// and can put a "__type" member next to either.
+				Assert.That(
+					CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "key": "a", "value": 1 } ]"""),
+					Is.EqualTo(new Dictionary<string, int> { ["a"] = 1 }), "the lowercase spelling is the same wire");
+				Assert.That(
+					CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a", "Value": 1, "Extra": 2 } ]"""),
+					Is.EqualTo(new Dictionary<string, int> { ["a"] = 1 }), "extra members are ignored, as on any other object");
+
+				// the refusals
 				Assert.That(
 					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a" } ]"""),
 					Throws.InstanceOf<JsonBindingException>(), "missing Value must fail");
 				Assert.That(
-					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "key": "a", "value": 1 } ]"""),
-					Throws.InstanceOf<JsonBindingException>(), "wrong member casing must fail");
-				Assert.That(
-					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a", "Value": 1, "Extra": 2 } ]"""),
-					Throws.InstanceOf<JsonBindingException>(), "extra members must fail");
+					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Nope": "a", "Value": 1 } ]"""),
+					Throws.InstanceOf<JsonBindingException>(), "no recognizable Key member must fail");
 				Assert.That(
 					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ 1, 2 ]"""),
 					Throws.InstanceOf<JsonBindingException>(), "non-object elements must fail");
