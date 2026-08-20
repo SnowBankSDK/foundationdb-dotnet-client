@@ -10,6 +10,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Let a new action version settle before proposing it, so a freshly published
+    # tag that gets pulled or repointed is not adopted the same day.
+    cooldown:
+      default-days: 7
 
 # NuGet version updates are deliberately NOT enabled here yet. Two reasons:
 #
