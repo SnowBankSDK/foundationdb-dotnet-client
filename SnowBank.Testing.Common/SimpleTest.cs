@@ -178,6 +178,14 @@ namespace SnowBank.Testing
 		/// <remarks>A single big <c>Advance()</c> fires every due timer INLINE on the calling thread: a callback that
 		/// awaits other virtual events can deadlock, and work scheduled by a fired timer would observe virtual time
 		/// far past its own due time. Stepping with yields keeps the virtual universe causally sane.</remarks>
+		/// <summary>Real settle budget granted to the async fold between two virtual-time advances, one Windows scheduler tick.</summary>
+		/// <remarks>Not a shorter value on purpose. <c>Task.Delay</c> rounds a request up to the platform timer resolution:
+		/// about 15.6 ms on Windows, about 1 ms on Linux and macOS. A 1 ms request therefore gave each platform a different
+		/// real settle budget for the same test, so a fold that landed in time on Windows could be read mid-flight on the
+		/// faster timers. Requesting a full tick sits at or above every platform's resolution, so all of them deliver the
+		/// same about-15 ms settle: the budget Windows always had, now applied everywhere.</remarks>
+		private static readonly TimeSpan SettlePerStep = TimeSpan.FromMilliseconds(15);
+
 		protected static async Task AdvanceAndPump(Microsoft.Extensions.Time.Testing.FakeTimeProvider provider, TimeSpan total, TimeSpan? step = null)
 		{
 			Contract.NotNull(provider);
@@ -189,9 +197,12 @@ namespace SnowBank.Testing
 				var remaining = total - advanced;
 				provider.Advance(remaining < increment ? remaining : increment);
 
-				// let continuations scheduled by the timers that just fired actually run
+				// let continuations scheduled by the timers that just fired actually run: the yield drains the ready
+				// queue, then a real delay gives cross-thread work (transport, other pool items) time to land. The
+				// delay is one platform-independent tick (see SettlePerStep), not 1 ms, so every OS grants the fold
+				// the same real settle instead of ~15 ms on Windows versus ~1 ms on Linux and macOS.
 				await Task.Yield();
-				await Task.Delay(1);
+				await Task.Delay(SettlePerStep);
 			}
 		}
 
@@ -662,6 +673,9 @@ namespace SnowBank.Testing
 		/// <returns>Task that will return the elapsed time for the condition to be satisfied. Since this method uses polling, this will be an upper bound of the actual processing time!</returns>
 		public async Task<TimeSpan> WaitUntil([InstantHandle] Func<bool> condition, TimeSpan timeout, Action<TimeSpan, Exception?>  onFail, TimeSpan? ticks = null, [CallerArgumentExpression(nameof(condition))] string? conditionExpression = null)
 		{
+			// positive wait: floor the deadline so a late-but-correct condition survives CPU contention (see PositiveWaitFloor)
+			if (timeout < PositiveWaitFloor) timeout = PositiveWaitFloor;
+
 			var ct = this.Cancellation;
 
 			var max = ticks ?? TimeSpan.FromMilliseconds(250);
@@ -725,6 +739,9 @@ namespace SnowBank.Testing
 		/// <returns>Task that will return the elapsed time for the condition to be satisfied. Since this method uses polling, this will be an upper bound of the actual processing time!</returns>
 		public async Task<TimeSpan> WaitUntil([InstantHandle] Func<Task<bool>> condition, TimeSpan timeout, string message, TimeSpan? ticks = null, [CallerArgumentExpression(nameof(condition))] string? conditionExpression = null)
 		{
+			// positive wait: floor the deadline so a late-but-correct condition survives CPU contention (see PositiveWaitFloor)
+			if (timeout < PositiveWaitFloor) timeout = PositiveWaitFloor;
+
 			var ct = this.Cancellation;
 
 			var max = ticks ?? TimeSpan.FromMilliseconds(250);
@@ -1063,9 +1080,26 @@ namespace SnowBank.Testing
 				: WaitForInternal(task.AsTask(), timeout, null, message, taskExpression!);
 		}
 
+		/// <summary>Minimum patience applied to a POSITIVE wait (an Await/WaitFor that expects its task to complete).</summary>
+		/// <remarks>
+		/// <para>A positive wait fails only when the task does NOT complete, so a generous floor is free on the happy
+		/// path: it never slows a passing test, it only lets a LATE-but-correct result land while the CPU is starved.
+		/// This stops the flake treadmill (a short real-clock timeout loses to scheduler starvation under load) WITHOUT
+		/// masking a real regression: a wrong or never-arriving result still times out and fails, just after the floor.
+		/// A "did it complete?" probe (throwIfExpired: false) keeps its short timeout and is never floored.</para>
+		/// </remarks>
+		private static readonly TimeSpan PositiveWaitFloor = TimeSpan.FromSeconds(15);
+
+		/// <summary>Appended to a positive-wait timeout failure, so a reader knows a load-induced timeout is expected.</summary>
+		private const string PositiveWaitTimeoutHint = " This is a floored positive wait: under CPU load a timeout here is usually test-harness contention (see the [scheduler-lag] teardown line, a high max lag means the machine was starved, not that the code regressed); a LOW-lag timeout is a suspect regression worth chasing.";
+
 		[StackTraceHidden]
 		private async Task<bool> WaitForInternal(Task task, TimeSpan delay, bool throwIfExpired, Action? onTimeout, string? message, string taskExpression)
 		{
+			// floor a positive wait (throwIfExpired) so a late-but-correct result survives CPU contention; a
+			// "did it complete?" probe (throwIfExpired: false) keeps its short delay and is never floored.
+			if (throwIfExpired && delay < PositiveWaitFloor) delay = PositiveWaitFloor;
+
 			bool success = false;
 			Exception? error = null;
 			var start = this.Clock.GetCurrentInstant();
@@ -1090,9 +1124,10 @@ namespace SnowBank.Testing
 						onTimeout?.Invoke();
 						if (throwIfExpired)
 						{
-							Assert.Fail(message != null
+							Assert.Fail((message != null
 								? $"{message}. Operation took more than {delay} to execute: {taskExpression}"
-								: $"Operation took more than {delay} to execute: {taskExpression}"
+								: $"Operation took more than {delay} to execute: {taskExpression}")
+								+ PositiveWaitTimeoutHint
 							);
 						}
 
@@ -1123,6 +1158,10 @@ namespace SnowBank.Testing
 		[StackTraceHidden]
 		private async Task<TResult> WaitForInternal<TResult>(Task<TResult> task, TimeSpan delay, Action? onTimeout, string? message, string taskExpression)
 		{
+			// this overload always expects the task to complete (it returns the result), so it is always a positive
+			// wait: floor it so a late-but-correct result survives CPU contention (see PositiveWaitFloor).
+			if (delay < PositiveWaitFloor) delay = PositiveWaitFloor;
+
 			bool? success = null;
 			Exception? error = null;
 			var start = this.Clock.GetCurrentInstant();
@@ -1147,9 +1186,10 @@ namespace SnowBank.Testing
 						{
 							LogError("### Wait aborted due to timeout! ###");
 							onTimeout?.Invoke();
-							Assert.Fail(message != null
+							Assert.Fail((message != null
 								? $"{message}. Operation took more than {delay} to execute: {taskExpression}"
-								: $"Operation took more than {delay} to execute: {taskExpression}"
+								: $"Operation took more than {delay} to execute: {taskExpression}")
+								+ PositiveWaitTimeoutHint
 							);
 						}
 					}
@@ -3009,7 +3049,8 @@ namespace SnowBank.Testing
 					t = this.Signal.Task;
 				}
 
-				return t.IsCompleted ? t : t.WaitAsync(timeout, this.Cancellation);
+				// positive wait: floor the timeout so a late-but-correct signal survives CPU contention (see PositiveWaitFloor)
+				return t.IsCompleted ? t : t.WaitAsync(timeout < PositiveWaitFloor ? PositiveWaitFloor : timeout, this.Cancellation);
 
 				Task<T?> HandleCancellation()
 				{
