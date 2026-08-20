@@ -2479,7 +2479,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							break;
 						}
 						case KnownTypeSymbols.JsonPropertyAttributeFullName:
-						{ // [JsonProperty("fooBar", ...)]
+						{ // [JsonProperty("fooBar", ...)] or [JsonProperty(PropertyName = "fooBar", ...)]
 							if (attribute.ConstructorArguments.Length > 0)
 							{
 								name = nativePropertyName = (string) attribute.ConstructorArguments[0].Value!;
@@ -2487,7 +2487,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 							foreach(var kv in attribute.NamedArguments)
 							{
-								if (kv.Key == "DefaultValue")
+								if (kv.Key == "PropertyName" && kv.Value.Value is string propertyName)
+								{ // PropertyName is a settable property, so both spellings fill the same slot; the reflection
+									// path reads that property whichever way it was filled, and this path must agree
+									name = nativePropertyName = propertyName;
+								}
+								else if (kv.Key == "DefaultValue")
 								{
 									hasNonZeroDefault = true; // BUGBUG: detect if value is still the default for this type??
 									if (type.IsPrimitive)
