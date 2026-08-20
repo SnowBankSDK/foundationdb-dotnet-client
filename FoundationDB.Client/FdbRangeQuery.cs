@@ -1082,7 +1082,9 @@ namespace FoundationDB.Client
 		[Pure, LinqTunnel]
 		public IAsyncLinqQuery<TResult> Where(Func<TResult, bool> predicate)
 		{
-			return AsyncQuery.Where(this, predicate);
+			// build the iterator directly: the AsyncQuery.Where extension dispatches back to this method for any
+			// IAsyncLinqQuery source, so tunneling through it here was an infinite mutual recursion (stack overflow)
+			return AsyncIterators.Where(this, predicate);
 		}
 
 		/// <inheritdoc />

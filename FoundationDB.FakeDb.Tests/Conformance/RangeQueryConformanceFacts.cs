@@ -1649,6 +1649,48 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
+		[Test]
+		public async Task Test_Range_Query_Supports_Composed_Linq_Operators()
+		{
+			// pins GetRange(...).Where(...).Select(...).ToListAsync(): the range query's Where used to tunnel back
+			// into the dispatching AsyncQuery.Where extension, which dispatched back to the query's own Where, an
+			// infinite mutual recursion that killed the process with a stack overflow before any read ran. The
+			// recursion was in the composition itself, so it reproduced on every backend.
+			const int N = 50;
+
+			using (var db = await OpenTestPartitionAsync())
+			{
+				var location = db.Root;
+				await CleanLocation(db, location);
+
+				await db.WriteAsync(async tr =>
+				{
+					var subspace = await location.Resolve(tr);
+					for (var i = 0; i < N; i++)
+					{
+						tr.Set(subspace.Key(i), Slice.FromInt32(i));
+					}
+				}, this.Cancellation);
+
+				var (filtered, mapped) = await db.ReadAsync(async tr =>
+				{
+					var folder = await location.Resolve(tr);
+					var f = await tr.GetRange(folder.Key(0), folder.Key(N))
+						.Where(kv => kv.Value.ToInt32() % 2 == 0)
+						.Select(kv => kv.Value.ToInt32())
+						.ToListAsync();
+					var m = await tr.GetRange(folder.Key(0), folder.Key(N))
+						.Select(kv => kv.Value.ToInt32())
+						.Where(v => v % 2 == 1)
+						.ToListAsync();
+					return (f, m);
+				}, this.Cancellation);
+
+				Assert.That(filtered, Is.EqualTo(Enumerable.Range(0, N).Where(i => i % 2 == 0)), "filter then map must stream every matching record");
+				Assert.That(mapped, Is.EqualTo(Enumerable.Range(0, N).Where(i => i % 2 == 1)), "map then filter must stream every matching record");
+			}
+		}
+
 
 	}
 
