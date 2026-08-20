@@ -112,6 +112,14 @@ namespace SnowBank.Data.Xml.Tests
 			AssertSameWire(new EmitDefaultProbe { SetInt = 7 }, v => DcsProbeSerializers.EmitDefaultProbe.ToXmlText(v));
 		}
 
+		[Test]
+		public void Test_An_Overridden_Member_Is_Written_At_The_Level_That_Declares_It()
+		{
+			// three levels, the middle one overriding a member of the base: the reference serializer writes the member
+			// once, with the base level's members, not with the level that overrides it
+			AssertSameWire(new OverrideLeafProbe { Shared = "s", Zulu = "z", Alpha = "a", Kilo = "k" }, v => DcsProbeSerializers.OverrideLeafProbe.ToXmlText(v));
+		}
+
 		#endregion
 
 		#region Collections and dictionaries...
@@ -466,6 +474,23 @@ namespace SnowBank.Data.Xml.Tests
 			// The rootName override renames the root element only; body unchanged.
 			string actual = DcsProbeSerializers.Shelf.ToXmlText(new Shelf { Label = "x" }, rootName: "data");
 			Assert.That(actual, Is.EqualTo("""<data><Label>x</Label></data>"""));
+		}
+
+		[Test]
+		public void Test_Deviation_4_A_Shadowed_Member_Is_Written_Once()
+		{
+			// a member shadowed by a 'new' one is two contract members to the reference serializer, which writes both:
+			// the base one (null, only the derived one is settable through the derived type) and the derived one.
+			// Generated code reads one accessor per member name, so it writes the derived member only (acted deviation 4)
+			var value = new ShadowLeafProbe { Shared = "s", Zulu = "z", Alpha = "a" };
+
+			string reference = ReferenceDcsWire.Serialize(value, typeof(ShadowLeafProbe));
+			string actual = DcsProbeSerializers.ShadowLeafProbe.ToXmlText(value);
+			Log($"reference: {reference}");
+			Log($"actual:    {actual}");
+
+			Assert.That(reference, Is.EqualTo("""<ShadowLeafProbe><Shared nil="true" /><Zulu>z</Zulu><Alpha>a</Alpha><Shared>s</Shared></ShadowLeafProbe>"""), "the reference format still writes the shadowed member twice");
+			Assert.That(actual, Is.EqualTo("""<ShadowLeafProbe><Zulu>z</Zulu><Alpha>a</Alpha><Shared>s</Shared></ShadowLeafProbe>"""), "the generated format writes the member the accessor reads, once");
 		}
 
 		[Test]

@@ -983,6 +983,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// the hierarchy comes back topmost-base first, so the index of the level IS the inheritance depth the
 				// DataContract format orders by (see CrystalJsonMemberMetadata.InheritanceLevel)
 				int inheritanceLevel = -1;
+				// position of each collected member in 'members', so that a member redeclared further down the hierarchy
+				// replaces the one it redeclares instead of being appended next to it
+				var memberIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
 				foreach (var current in GetTypeHierarchy(type))
 				{
 					++inheritanceLevel;
@@ -996,12 +999,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{
 								memberDef = memberDef with { InheritanceLevel = inheritanceLevel };
 								Kenobi($"Inspected member {member.Name} with type {memberDef.Type.FullName}, N={memberDef.Type.NullableOfType?.FullName}, E={memberDef.Type.ElementType?.FullName}, K={memberDef.Type.KeyType?.FullName}, V={memberDef.Type.ValueType?.FullName}");
-								if (member.Name == "Id")
+								if (memberIndexes.TryGetValue(memberDef.MemberName, out int redeclared))
 								{
-									indexOfId = members.Count;
+									// a member redeclared further down the hierarchy is one member: the generated code declares one
+									// constant per member name (two would be CS0102), and the accessor reads the most derived declaration.
+									// An 'override' keeps the level of the declaration it overrides, which is where the reference
+									// serializer writes it; a 'new' member is a distinct contract member and takes its own level.
+									members[redeclared] = member.IsOverride ? memberDef with { InheritanceLevel = members[redeclared].InheritanceLevel } : memberDef;
 								}
-								members.Add(memberDef);
-								// a member shadowed by a 'new' one appears twice: the most derived wins, which is the one that lands in the document
+								else
+								{
+									if (member.Name == "Id")
+									{
+										indexOfId = members.Count;
+									}
+									memberIndexes[memberDef.MemberName] = members.Count;
+									members.Add(memberDef);
+								}
 								memberSymbols[memberDef.MemberName] = member;
 							}
 							else
@@ -1810,10 +1824,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 						seen.Add(effective, member.MemberName);
 						continue;
 					}
-
-					// a member shadowing an inherited one of the same name (the 'new' keyword) appears twice in the
-					// hierarchy walk: that is one member, not a collision
-					if (previous == member.MemberName) continue;
 
 					ReportDiagnostic(
 						new(

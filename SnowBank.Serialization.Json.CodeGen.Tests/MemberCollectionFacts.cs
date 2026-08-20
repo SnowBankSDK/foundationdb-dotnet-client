@@ -26,6 +26,7 @@
 
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
+	using System.Text.RegularExpressions;
 	using Microsoft.CodeAnalysis;
 
 	/// <summary>Pins which members the generator collects into a contract: an indexer is excluded, an explicit interface implementation is excluded unless a data contract opts it in, and a member redeclared down the hierarchy is collected once, at the declaring level</summary>
@@ -114,6 +115,161 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var generated = string.Concat(outputCompilation.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
 			Assert.That(generated, Does.Not.Contain("this[]"), "the indexer must not reach the generated code under any spelling");
 			Assert.That(generated, Does.Contain("\"Label\""), "the normal members of the same type must still be serialized");
+		}
+
+		// --- redeclared members -----------------------------------------------------------------------------------
+		//
+		// Pins that a member redeclared further down the hierarchy (override, or new) is collected once, at the
+		// level the contract declares it.
+		//
+		// The generated PropertyNames class declares one constant per member name, so a member collected at two
+		// levels declares the same constant twice (CS0102).
+		//
+		// An override is the same contract member as the one it overrides, and the reference serializer writes it
+		// at the level that declares it, whether or not the override repeats [DataMember]. A 'new' member is a
+		// distinct contract member, written at its own level; the reference serializer writes both copies, which
+		// one C# accessor per name cannot reproduce.
+
+		private static string Probe(string types) => $$"""
+			#nullable enable
+			namespace Probe
+			{
+			{{types}}
+
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeLeaf))]
+				public static partial class ProbeConverters
+				{
+				}
+			}
+			""";
+
+		private (List<Diagnostic> Errors, string Generated) RunOn(string types)
+		{
+			var compilation = GeneratorProbeHarness.Compile(Probe(types));
+
+			Assert.That(
+				compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error),
+				Is.Empty,
+				"the probe source must compile clean on its own");
+
+			var (outputCompilation, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+			foreach (var diagnostic in generatorDiagnostics) { Log($"generator: [{diagnostic.Severity}] {diagnostic}"); }
+
+			var errors = outputCompilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error).ToList();
+			foreach (var diagnostic in errors) { Log($"compiler: {diagnostic}"); }
+
+			return (errors, string.Concat(outputCompilation.SyntaxTrees.Skip(1).Select(static t => t.ToString())));
+		}
+
+		/// <summary>Reads the resolved member list of the leaf type, as <c>name@level</c> pairs in collection order (level 0 is <c>System.Object</c>, so the first declaring type sits at 1)</summary>
+		private List<string> ReadLeafMembers(string types)
+		{
+			var compilation = GeneratorProbeHarness.Compile(Probe(types));
+			var (containers, diagnostics) = GeneratorProbeHarness.RunGeneratorAndCaptureContainers(compilation);
+			foreach (var d in diagnostics) { Log($"generator: [{d.Severity}] {d}"); }
+
+			var leaf = containers["ProbeConverters"].IncludedTypes.Single(static t => t.Name == "ProbeLeaf");
+			var members = leaf.Members.Select(static m => $"{m.MemberName}@{m.InheritanceLevel}").ToList();
+			foreach (var member in members) { Log($"member: {member}"); }
+			return members;
+		}
+
+		private const string OverrideHierarchy = """
+				[System.Runtime.Serialization.DataContract]
+				public class ProbeBase
+				{
+					[System.Runtime.Serialization.DataMember]
+					public virtual string? Shared { get; set; }
+
+					[System.Runtime.Serialization.DataMember]
+					public string? Zulu { get; set; }
+				}
+
+				[System.Runtime.Serialization.DataContract]
+				public class ProbeMiddle : ProbeBase
+				{
+					[System.Runtime.Serialization.DataMember]
+					public override string? Shared { get; set; }
+
+					[System.Runtime.Serialization.DataMember]
+					public string? Alpha { get; set; }
+				}
+
+				[System.Runtime.Serialization.DataContract]
+				public sealed class ProbeLeaf : ProbeMiddle
+				{
+					[System.Runtime.Serialization.DataMember]
+					public string? Kilo { get; set; }
+				}
+			""";
+
+		private const string ShadowHierarchy = """
+				[System.Runtime.Serialization.DataContract]
+				public class ProbeBase
+				{
+					[System.Runtime.Serialization.DataMember]
+					public string? Shared { get; set; }
+
+					[System.Runtime.Serialization.DataMember]
+					public string? Zulu { get; set; }
+				}
+
+				[System.Runtime.Serialization.DataContract]
+				public sealed class ProbeLeaf : ProbeBase
+				{
+					[System.Runtime.Serialization.DataMember]
+					public new string? Shared { get; set; }
+
+					[System.Runtime.Serialization.DataMember]
+					public string? Alpha { get; set; }
+				}
+			""";
+
+		[Test]
+		public void Test_An_Overridden_Member_Compiles_And_Is_Emitted_Once()
+		{
+			var (errors, generated) = RunOn(OverrideHierarchy);
+
+			Assert.That(errors.Where(static d => d.Id == "CS0102"), Is.Empty, "the member must not be declared twice in PropertyNames (CS0102)");
+			Assert.That(errors, Is.Empty, "the generated container must compile over a hierarchy that overrides a member");
+
+			Assert.That(
+				Regex.Matches(generated, @"public const string Shared = ").Count,
+				Is.EqualTo(1),
+				"one member name declares one constant, whatever the number of levels that redeclare it");
+		}
+
+		[Test]
+		public void Test_An_Overridden_Member_Stays_At_The_Level_That_Declares_It()
+		{
+			// the reference serializer writes the override with the base level's members, which is what the compat
+			// profile orders by; taking the derived level would move the element in the document
+			Assert.That(ReadLeafMembers(OverrideHierarchy), Is.EqualTo(new[] { "Shared@1", "Zulu@1", "Alpha@2", "Kilo@3" }));
+		}
+
+		[Test]
+		public void Test_A_Shadowed_Member_Compiles_And_Is_Emitted_Once()
+		{
+			var (errors, generated) = RunOn(ShadowHierarchy);
+
+			Assert.That(errors.Where(static d => d.Id == "CS0102"), Is.Empty, "the member must not be declared twice in PropertyNames (CS0102)");
+			Assert.That(errors, Is.Empty, "the generated container must compile over a hierarchy that shadows a member");
+
+			Assert.That(
+				Regex.Matches(generated, @"public const string Shared = ").Count,
+				Is.EqualTo(1),
+				"one member name declares one constant, whatever the number of levels that redeclare it");
+		}
+
+		[Test]
+		public void Test_A_Shadowed_Member_Takes_The_Level_That_Redeclares_It()
+		{
+			// a 'new' member is its own contract member: the accessor reads the derived one, and that is the level
+			// the reference serializer writes it at
+			Assert.That(ReadLeafMembers(ShadowHierarchy), Is.EqualTo(new[] { "Shared@2", "Zulu@1", "Alpha@2" }));
 		}
 
 	}
