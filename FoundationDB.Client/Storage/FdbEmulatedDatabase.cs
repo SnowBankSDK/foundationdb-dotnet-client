@@ -1081,9 +1081,16 @@ namespace FoundationDB.Storage
 			/// <summary>Conflicting read ranges collected by the failed commit, when the <see cref="FdbTransactionOption.ReportConflictingKeys"/> option is set; served through the <c>\xff\xff/transaction/conflicting_keys/</c> special keyspace.</summary>
 			public List<KeyValuePair<Key, Key>>? ConflictingReadRanges { get; private set; }
 
-			public (Snapshot Snapshot, VersionStamp Stamp) ApplyMutations(long commitVersion, Snapshot snapshot, bool reportConflictingKeys = false)
+			public (Snapshot Snapshot, VersionStamp Stamp) ApplyMutations(FdbEmulatedDatabase store, long commitVersion, Snapshot snapshot, bool reportConflictingKeys = false)
 			{
 				var conflicts = snapshot.Conflicts;
+
+				if (this.Writes.Count > 0 && this.Version < store.ConflictFloor)
+				{ // the conflict history below the retention floor is pruned, so a writer this old cannot be
+				  // validated; the real resolver keeps only its MVCC window of history and rejects such a
+				  // commit the same way (fdb 7.4, "Transaction is too old to perform reads or be committed")
+					throw new FdbException(FdbError.TransactionTooOld, $"Transaction is too old to be committed: read version {this.Version} is below the store's conflict-history floor ({store.ConflictFloor})");
+				}
 
 				if (this.ReadConflicts.Count > 0)
 				{
@@ -1117,7 +1124,7 @@ namespace FoundationDB.Storage
 
 					if (this.Writes.Count > 0)
 					{
-						conflicts = conflicts.Copy();
+						conflicts = store.CopyConflictsWithPruning(conflicts);
 						foreach (var x in this.Writes.GetConflictRanges())
 						{
 							conflicts.Mark(arena.InternKey(x.Begin), arena.InternKey(x.End), commitVersion);
@@ -1385,6 +1392,7 @@ namespace FoundationDB.Storage
 			this.RetentionContext.Entries.Add(new(snapshot.Version, this.Time.GetUtcNow()));
 			this.CurrentSnapshotUnsafe = snapshot;
 			this.ReadVersion = snapshot.Version;
+			this.ConflictFloor = snapshot.Version;
 		}
 
 		/// <summary>Policy deciding which published versions stay readable, within the backend's ceiling.</summary>
@@ -1392,6 +1400,40 @@ namespace FoundationDB.Storage
 
 		/// <summary>Reusable retained-set view handed to the policy; only touched under the global write lock.</summary>
 		private FdbSnapshotRetentionContext RetentionContext { get; } = new();
+
+		/// <summary>Oldest published version still retained: the conflict-history floor. A committing writer whose read version is below it fails with <see cref="FdbError.TransactionTooOld"/> (the real resolver only keeps its MVCC window of history), and conflict ranges below it are pruned.</summary>
+		internal long ConflictFloor { get; private set; }
+
+		/// <summary>Number of times the conflict-map prune actually fired; lets a test assert the mechanism ran instead of passing trivially.</summary>
+		internal int ConflictPrunes { get; private set; }
+
+		/// <summary>Conflict-range count of the head snapshot, for tests.</summary>
+		internal int CurrentConflictRangeCount => this.CurrentSnapshotUnsafe.Conflicts.Count;
+
+		/// <summary>Conflict-map size that arms the next prune attempt; doubles from the survivor count after each prune, so the amortized cost stays a constant factor of the copy the prune replaces.</summary>
+		private int ConflictPruneThreshold { get; set; } = 128;
+
+		/// <summary>Copies the head's conflict map for the committing writer, pruning the ranges below <see cref="ConflictFloor"/> once the map has grown past the prune threshold.</summary>
+		/// <remarks>Called under the global write lock. A pruned range cannot influence any future commit: a writer with a read version below the floor is rejected before the conflict check. With <see cref="FdbSnapshotRetention.KeepEverything"/> the floor never moves, nothing is ever pruned, and this is a plain copy.</remarks>
+		internal ColaRangeDictionary<Key, long> CopyConflictsWithPruning(ColaRangeDictionary<Key, long> conflicts)
+		{
+			if (conflicts.Count < this.ConflictPruneThreshold)
+			{
+				return conflicts.Copy();
+			}
+			long floor = this.ConflictFloor;
+			var pruned = new ColaRangeDictionary<Key, long>(Key.Comparer.Default);
+			foreach (var entry in conflicts)
+			{
+				if (entry.Value >= floor)
+				{
+					pruned.Mark(entry.Begin, entry.End, entry.Value);
+				}
+			}
+			this.ConflictPrunes++;
+			this.ConflictPruneThreshold = Math.Max(128, pruned.Count * 2);
+			return pruned;
+		}
 
 		/// <summary>Storage this store's committed state lives in</summary>
 		protected IFdbStorageBackend Backend { get; }
@@ -1659,7 +1701,7 @@ namespace FoundationDB.Storage
 				if (snapshot.Writes.Count != 0)
 				{
 					commitVersion = rv + 1;
-					(updated, stamp) = snapshot.ApplyMutations(commitVersion, current, handler.OptionReportConflictingKeys);
+					(updated, stamp) = snapshot.ApplyMutations(this, commitVersion, current, handler.OptionReportConflictingKeys);
 				}
 				else
 				{
@@ -1889,6 +1931,13 @@ namespace FoundationDB.Storage
 						if (i >= 0) ctx.Entries.RemoveAt(i);
 					}
 				}
+
+				// only a POLICY drop advances the conflict-history floor: the policy expresses the window
+				// semantics (time or count), so what it drops is truly aged out. A ceiling trim above does
+				// not move the floor: a backend that reclaims old PAGES only limits which versions a read
+				// can start at, and a writer with an older read version stays committable against the full
+				// conflict history, which is how the store behaved before the floor existed.
+				this.ConflictFloor = ctx.Entries[0].Version;
 			}
 		}
 
