@@ -248,7 +248,8 @@ namespace SnowBank.Data.Xml.Tests
 			// a contract type roots a document through its own serializer, and DateTimeOffset is a two-member
 			// contract rather than a text scalar: neither has a scalar root wire, and a name is never guessed
 			Assert.That(() => CrystalXml.Scalar.ToText(new Shelf { Label = "x" }), Throws.InstanceOf<CrystalXmlUnknownTypeException>());
-			Assert.That(() => CrystalXml.Scalar.ToText(DateTimeOffset.UnixEpoch), Throws.InstanceOf<CrystalXmlUnknownTypeException>());
+			// the epoch is spelled out: DateTimeOffset.UnixEpoch does not exist on the net472 CLR this file also runs on
+			Assert.That(() => CrystalXml.Scalar.ToText(new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero)), Throws.InstanceOf<CrystalXmlUnknownTypeException>());
 		}
 
 		[Test]
