@@ -188,16 +188,67 @@ namespace SnowBank.Data.Xml.Tests
 			}, v => DcsProbeSerializers.CollectionProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.CollectionProbe.ToXmlText(v));
 		}
 
-		// note: the "List<Shelf> as root" and "string as root" families are not exercised here: registering a
-		// bare collection or scalar type directly with [CrystalSerializable] (no declaring DTO) produces generator
-		// output that fails to compile. See the note above DcsProbeSerializers in DcsProbes.cs; reported to the main
-		// session as a finding, not fixed here, and not a Task 9 DataContract-XML-specific defect (nothing in that
-		// generated, broken code is profile-specific).
+		// note: enrolling a bare collection or scalar type directly stays refused by design (CJSON0019: enroll the
+		// element type, not the collection). Those roots are written by the native root entry points on CrystalXml
+		// instead: the scalar family is exercised below, against the same live oracle.
 
 		[Test]
 		public void Test_Root_Null_Is_Nil()
 		{
 			AssertSameWire<Shelf>(null, v => DcsProbeSerializers.Shelf.ToXmlText(v), v => DcsProbeSchemalessSerializers.Shelf.ToXmlText(v));
+		}
+
+		[Test]
+		public void Test_Scalar_Root_Matches_The_Reference_Wire()
+		{
+			// the native scalar entry points write the reference wire of a bare scalar root: the xsd lexical name in
+			// the Serialization namespace, as pinned by the root facts of DcsNamespaceReferenceFacts. Equivalence is
+			// on expanded names, the namespaced profile's rule.
+			string reference = ReferenceDcsWire.Serialize("hello", typeof(string), strip: false);
+			string actual = CrystalXml.Scalar.ToText("hello");
+			Log("reference : " + reference);
+			Log("generated : " + actual);
+			XmlExpandedNameComparison.AssertEquivalent(reference, actual, "A bare string root must carry the xsd lexical name in the Serialization namespace.");
+
+			reference = ReferenceDcsWire.Serialize(42, typeof(int), strip: false);
+			actual = CrystalXml.Scalar.ToText(42);
+			Log("reference : " + reference);
+			Log("generated : " + actual);
+			XmlExpandedNameComparison.AssertEquivalent(reference, actual, "A bare int root must carry the xsd lexical name in the Serialization namespace.");
+
+			// the eight sinks share one writing core: the byte-exact sinks agree byte for byte
+			Assert.That(CrystalXml.Scalar.ToSlice(42).ToStringUtf8(), Is.EqualTo(actual));
+		}
+
+		[Test]
+		public void Test_Scalar_Root_Null_Is_Nil()
+		{
+			string reference = ReferenceDcsWire.Serialize(null, typeof(string), strip: false);
+			string actual = CrystalXml.Scalar.ToText<string>(null);
+			Log("reference : " + reference);
+			Log("generated : " + actual);
+			XmlExpandedNameComparison.AssertEquivalent(reference, actual, "A null scalar root must write the empty element marked nil.");
+		}
+
+		[Test]
+		public void Test_Scalar_Root_Name_Override_Keeps_The_Serialization_Namespace()
+		{
+			// the caller names the root element, not the shape: the name changes and the namespace does not
+			string actual = CrystalXml.Scalar.ToText("hello", rootName: "Greeting");
+			Log(actual);
+			XmlExpandedNameComparison.AssertEquivalent(
+				"""<Greeting xmlns="http://schemas.microsoft.com/2003/10/Serialization/">hello</Greeting>""",
+				actual,
+				"The rootName override must rename the element and keep the Serialization namespace.");
+		}
+
+		[Test]
+		public void Test_Scalar_Root_Refuses_A_Type_Outside_The_Lexical_Set()
+		{
+			// a contract type roots a document through its own serializer, and DateTimeOffset is a two-member
+			// contract rather than a text scalar: neither has a scalar root wire, and a name is never guessed
+			Assert.That(() => CrystalXml.Scalar.ToText(new Shelf { Label = "x" }), Throws.InstanceOf<CrystalXmlUnknownTypeException>());
+			Assert.That(() => CrystalXml.Scalar.ToText(DateTimeOffset.UnixEpoch), Throws.InstanceOf<CrystalXmlUnknownTypeException>());
 		}
 
 		[Test]
