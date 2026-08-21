@@ -741,7 +741,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 				if (this.WritesXml)
 				{
-					facets.Add($"{ICrystalXmlSerializerFullName}<{typeFullName}>");
+					// the element facet, which extends ICrystalXmlSerializer<T> with the composition surface the
+					// collection root entry points of CrystalXml build on
+					facets.Add($"{ICrystalXmlElementSerializerFullName}<{typeFullName}>");
 				}
 				sb.AppendLine($"public sealed class JsonConverter : {string.Join(", ", facets)}"); //TODO: implements!
 				sb.EnterBlock("JsonConverter");

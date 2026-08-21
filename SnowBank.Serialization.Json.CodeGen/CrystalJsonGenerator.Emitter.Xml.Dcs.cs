@@ -686,6 +686,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.LeaveBlock("WriteXml");
 				sb.NewLine();
 
+				// the two names the collection root entry points compose with
+				sb.InheritDoc();
+				sb.AppendLine($"public {XmlNameFullName} ElementName => {rootRef};");
+				sb.NewLine();
+				sb.InheritDoc();
+				sb.XmlComment("<remarks>The ArrayOfX convention of the reference format, in the contract namespace of <see cref=\"ElementName\"/>.</remarks>");
+				sb.AppendLine($"public string? CollectionRootName => {CSharpCodeBuilder.Constant("ArrayOf" + contractName)};");
+				sb.NewLine();
+
 				// WriteXmlElement(...): the nested entry point, for a parent that already knows the element name
 				sb.XmlComment("<summary>Writes this value as an element of the given name</summary>");
 				sb.XmlComment("<remarks>The nested entry point: a parent converter writing this type as one of its members passes its own cached member name here, so no name is validated or transcoded at write time. The declared type IS this type here, so no type annotation is written.</remarks>");

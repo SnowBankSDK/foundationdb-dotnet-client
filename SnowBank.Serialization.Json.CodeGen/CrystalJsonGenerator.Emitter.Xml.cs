@@ -61,6 +61,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private const string ICrystalXmlSerializerFullName = CrystalXmlNamespaceQualified + ".ICrystalXmlSerializer";
 
+			private const string ICrystalXmlElementSerializerFullName = CrystalXmlNamespaceQualified + ".ICrystalXmlElementSerializer";
+
 			private const string CrystalXmlHelperFullName = CrystalXmlNamespaceQualified + ".CrystalXml";
 
 			private const string CrystalXmlFormattersFullName = CrystalXmlNamespaceQualified + ".CrystalXmlFormatters";
@@ -622,6 +624,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("WriteXmlElement(ref emitter, in __root, value, settings, 0);");
 				sb.LeaveBlock("else");
 				sb.LeaveBlock("WriteXml");
+				sb.NewLine();
+
+				// the two names the collection root entry points compose with
+				sb.InheritDoc();
+				sb.AppendLine($"public {XmlNameFullName} ElementName => {rootRef};");
+				sb.NewLine();
+				sb.InheritDoc();
+				sb.XmlComment("<remarks>The Modern profile has no collection root convention: the caller names such a root.</remarks>");
+				sb.AppendLine("public string? CollectionRootName => null;");
 				sb.NewLine();
 
 				// WriteXmlElement(...): the nested entry point, so a parent can name the child element without re-validating a name

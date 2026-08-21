@@ -190,7 +190,7 @@ namespace SnowBank.Data.Xml.Tests
 
 		// note: enrolling a bare collection or scalar type directly stays refused by design (CJSON0019: enroll the
 		// element type, not the collection). Those roots are written by the native root entry points on CrystalXml
-		// instead: the scalar family is exercised below, against the same live oracle.
+		// instead: the scalar and collection families are exercised below, against the same live oracle.
 
 		[Test]
 		public void Test_Root_Null_Is_Nil()
@@ -249,6 +249,67 @@ namespace SnowBank.Data.Xml.Tests
 			// contract rather than a text scalar: neither has a scalar root wire, and a name is never guessed
 			Assert.That(() => CrystalXml.Scalar.ToText(new Shelf { Label = "x" }), Throws.InstanceOf<CrystalXmlUnknownTypeException>());
 			Assert.That(() => CrystalXml.Scalar.ToText(DateTimeOffset.UnixEpoch), Throws.InstanceOf<CrystalXmlUnknownTypeException>());
+		}
+
+		[Test]
+		public void Test_Collection_Root_Matches_The_Reference_Wire()
+		{
+			// the collection entry points compose the item facet under the profile's ArrayOfX root, and the two
+			// outputs obey the same two acceptance rules as every member wire: expanded names for the namespaced
+			// default, bytes for Schemaless
+			var items = new List<Shelf> { new() { Label = "novels" }, new() { Label = "essays" } };
+
+			string standard = ReferenceDcsWire.Serialize(items, typeof(List<Shelf>), strip: false);
+			string actual = CrystalXml.ToText(DcsProbeSerializers.Shelf.Default, items);
+			Log("reference (standard) : " + standard);
+			Log("generated (default)  : " + actual);
+			XmlExpandedNameComparison.AssertEquivalent(standard, actual, "A List<Shelf> root must be ArrayOfShelf in the item's contract namespace, holding bare Shelf items.");
+
+			string stripped = ReferenceDcsWire.Serialize(items, typeof(List<Shelf>), strip: true);
+			string schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, items);
+			Log("reference (stripped) : " + stripped);
+			Log("generated (schemaless): " + schemaless);
+			Assert.That(schemaless, Is.EqualTo(stripped), "The schemaless collection root must stay byte-identical to the stripped wire.");
+		}
+
+		[Test]
+		public void Test_Collection_Root_Null_And_Empty()
+		{
+			// same truth table as a member: a null sequence is the nil root, an empty one is the empty root
+			string standard = ReferenceDcsWire.Serialize(null, typeof(List<Shelf>), strip: false);
+			string actual = CrystalXml.ToText(DcsProbeSerializers.Shelf.Default, (IEnumerable<Shelf>?) null);
+			Log("reference (standard, null) : " + standard);
+			Log("generated (default, null)  : " + actual);
+			XmlExpandedNameComparison.AssertEquivalent(standard, actual, "A null sequence must write the nil ArrayOfShelf root.");
+
+			string stripped = ReferenceDcsWire.Serialize(null, typeof(List<Shelf>), strip: true);
+			string schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, (IEnumerable<Shelf>?) null);
+			Log("reference (stripped, null) : " + stripped);
+			Log("generated (schemaless, null): " + schemaless);
+			Assert.That(schemaless, Is.EqualTo(stripped));
+
+			stripped = ReferenceDcsWire.Serialize(new List<Shelf>(), typeof(List<Shelf>), strip: true);
+			schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, new List<Shelf>());
+			Log("reference (stripped, empty) : " + stripped);
+			Log("generated (schemaless, empty): " + schemaless);
+			Assert.That(schemaless, Is.EqualTo(stripped));
+		}
+
+		[Test]
+		public void Test_Collection_Root_Name_And_Item_Name_Overrides()
+		{
+			// the caller renames the root, the items, or both: the names change and the namespace does not (shown
+			// on the schemaless output, where the bytes are the whole story)
+			var items = new List<Shelf> { new() { Label = "x" } };
+
+			string schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, items, rootName: "Shelves");
+			Assert.That(schemaless, Is.EqualTo("""<Shelves><Shelf><Label>x</Label></Shelf></Shelves>"""));
+
+			schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, items, rootName: "Shelves", itemName: "Item");
+			Assert.That(schemaless, Is.EqualTo("""<Shelves><Item><Label>x</Label></Item></Shelves>"""));
+
+			// cross-sink agreement: the byte-exact sinks share the writing core
+			Assert.That(CrystalXml.ToSlice(DcsProbeSchemalessSerializers.Shelf.Default, items, rootName: "Shelves", itemName: "Item").ToStringUtf8(), Is.EqualTo(schemaless));
 		}
 
 		[Test]
