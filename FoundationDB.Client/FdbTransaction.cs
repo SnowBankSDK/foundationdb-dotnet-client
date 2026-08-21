@@ -620,7 +620,7 @@ namespace FoundationDB.Client
 		public VersionStamp CreateUniqueVersionStamp()
 		{
 			int userVersion = Interlocked.Increment(ref m_versionStampCounter);
-			if (userVersion > 0xFFF) throw new InvalidOperationException("Cannot generate more than 65535 unique VersionStamps per transaction!");
+			if (userVersion > 0xFFFF) throw new InvalidOperationException("Cannot generate more than 65535 unique VersionStamps per transaction!");
 			return CreateVersionStamp(userVersion);
 		}
 

@@ -72,6 +72,22 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
+		public async Task Test_A_Transaction_Can_Mint_The_Full_UserVersion_Range_Of_Stamps()
+		{
+			// the user version is a 16-bit field: one transaction can mint up to 65,535 unique stamps, and the
+			// 65,536th must fail with the limit named correctly
+			var db = await OpenTestDatabaseAsync();
+			using var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
+			VersionStamp last = default;
+			for (int i = 1; i <= 0xFFFF; i++)
+			{
+				last = tr.CreateUniqueVersionStamp();
+			}
+			Assert.That(last.UserVersion, Is.EqualTo(0xFFFF), "the full 16-bit range must be reachable");
+			Assert.That(() => tr.CreateUniqueVersionStamp(), Throws.InvalidOperationException, "the 65,536th stamp exceeds the 16-bit user version");
+		}
+
+		[Test]
 		public async Task Test_Cancel_After_Dispose_Is_A_Noop()
 		{
 			// At teardown a transaction can be cancelled and disposed at the same time: the client sets the state to
