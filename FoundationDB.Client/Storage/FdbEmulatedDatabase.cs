@@ -481,50 +481,44 @@ namespace FoundationDB.Storage
 					throw new FdbException(FdbError.KeyOutsideLegalRange, $"Key selector {selector} requires access to system keys");
 				}
 
-				var merged = GetMergedVisibleKeys(accessSystemKeys);
-
-				// base position: index of the last key <= pivot (orEqual) or < pivot (!orEqual), -1 when none
-				int baseIndex = -1;
-				for (int i = 0; i < merged.Count; i++)
-				{
-					int cmp = merged[i].CompareTo(selector.Key);
-					if (cmp < 0 || (selector.OrEqual && cmp == 0)) { baseIndex = i; } else { break; }
-				}
-
-				long target = (long) baseIndex + selector.Offset;
-				if (target < 0)
-				{ // before the first visible key
-					return Key.Empty;
-				}
-				if (target >= merged.Count)
-				{ // past the last visible key: clamp like the real cluster does (the walk enters the system range)
-					return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
-				}
-
-				int index = (int) target;
-
-				// the is_kv walk above positioned the anchor (a pending atomic counts as a present
-				// boundary key). fdb getKey is getRange with limit 1 (ReadYourWrites.actor.cpp), so its result is the
-				// nearest content key from the anchor - forward for offset > 0, backward for offset <= 0 - which skips
-				// a CompareAndClear'd key (content-absent though is_kv-present). This content-skip is the getKey result
+				// The walk consumes visible keys away from the pivot, in offset order, over the lazy merged view:
+				// offset >= +1 walks ascending over the keys after the anchor position (the pivot itself belongs to
+				// that side only for a !orEqual selector); offset <= 0 walks descending starting at the anchor (the
+				// pivot itself belongs to it only for an orEqual selector). Exhaustion reproduces the index math of
+				// the eager list: past the last visible key clamps into the system range, before the first is empty.
+				//
+				// the is_kv walk positions the anchor (a pending atomic counts as a present boundary
+				// key). fdb getKey is getRange with limit 1 (ReadYourWrites.actor.cpp), so its result is the nearest
+				// content key from the anchor - forward for offset > 0, backward for offset <= 0 - which skips a
+				// CompareAndClear'd key (content-absent though is_kv-present). This content-skip is the getKey result
 				// step only (contentSkip): a GetRange begin/end bound stops at the raw is_kv anchor - the merged range
 				// scan (OnionIterator) already excludes a CAC'd key, so skipping the bound too would drop a content key
-				// below an end bound, or add one below a begin bound. merged is the is_kv set and content-
-				// present keys are a subset of it, so this is a filtered scan over merged.
-				if (contentSkip)
+				// below an end bound, or add one below a begin bound. The walk is the is_kv set and content-
+				// present keys are a subset of it, so the skip is a filtered continuation of the same walk.
+				if (selector.Offset > 0)
 				{
-					if (selector.Offset > 0)
+					long remaining = selector.Offset;
+					foreach (var key in EnumerateMergedVisibleKeys(selector.Key, includePivot: !selector.OrEqual, ascending: true, accessSystemKeys))
 					{
-						while (index < merged.Count && !IsContentPresentInMergedView(merged[index])) index++;
-						if (index >= merged.Count) return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
+						if (remaining > 1) { remaining--; continue; }
+						if (contentSkip && !IsContentPresentInMergedView(key)) continue;
+						return key;
 					}
-					else
-					{
-						while (index >= 0 && !IsContentPresentInMergedView(merged[index])) index--;
-						if (index < 0) return Key.Empty;
-					}
+					// past the last visible key: clamp like the real cluster does (the walk enters the system range)
+					return accessSystemKeys ? SpecialKeys.SystemEnd : SpecialKeys.SystemPrefix;
 				}
-				return merged[index];
+				else
+				{
+					long remaining = 1L - selector.Offset;
+					foreach (var key in EnumerateMergedVisibleKeys(selector.Key, includePivot: selector.OrEqual, ascending: false, accessSystemKeys))
+					{
+						if (remaining > 1) { remaining--; continue; }
+						if (contentSkip && !IsContentPresentInMergedView(key)) continue;
+						return key;
+					}
+					// before the first visible key
+					return Key.Empty;
+				}
 			}
 
 			/// <summary>Marks the read-conflict range implied by a resolved key selector (the range of keys whose change could alter the resolution).</summary>
@@ -702,35 +696,105 @@ namespace FoundationDB.Storage
 			/// <remarks>Unlike <c>TryGetValue</c>, this never matches a range whose exclusive end equals the key.</remarks>
 			private Mutation? FindCoveringMutation(Key key) => this.Writes.FindCovering(key);
 
-			/// <summary>Computes the ordered list of keys visible in the merged view (committed snapshot + local mutations), without any side effect on the mutation log or the conflict ranges.</summary>
-			private List<Key> GetMergedVisibleKeys(bool accessSystemKeys)
+			/// <summary>Upper fence for an ascending merged walk: strictly above every key the store can hold (the system space ends at <c>\xFF\xFF</c>).</summary>
+			private static readonly Key MergedWalkUpperFence = new(Slice.FromByteString("\xFF\xFF\xFF"));
+
+			/// <summary>Lazily enumerates the keys visible in the merged view (committed snapshot + local mutations), in key order, walking away from <paramref name="pivot"/>.</summary>
+			/// <remarks>The sources are the committed keys and the local mutation entry begins (the only keys a pending
+			/// mutation can create), merged in order with duplicates collapsed; each candidate is then filtered by the
+			/// is_kv visibility rules (<see cref="IsVisibleInMergedView"/>). The laziness is the point: a selector
+			/// resolution consumes only its offset + content-skip neighborhood instead of materializing every visible
+			/// key of the store.</remarks>
+			private IEnumerable<Key> EnumerateMergedVisibleKeys(Key pivot, bool includePivot, bool ascending, bool accessSystemKeys)
 			{
-				var candidates = new SortedSet<Key>();
-				foreach (var kv in this.Inner.Data.IterateOrdered())
+				using var committed = EnumerateCommittedKeysFrom(pivot, includePivot, ascending).GetEnumerator();
+				using var mutations = EnumerateMutationBeginsFrom(pivot, includePivot, ascending).GetEnumerator();
+				bool hasCommitted = committed.MoveNext();
+				bool hasMutation = mutations.MoveNext();
+				while (hasCommitted || hasMutation)
 				{
-					if (!accessSystemKeys && kv.Key.IsSystemKey()) continue;
-					candidates.Add(kv.Key);
-				}
-				foreach (var entry in this.Writes.GetView())
-				{
-					var mutation = entry.Value;
-					if (mutation is null || mutation.Op is Operation.Invalid) continue;
-					if (mutation.Op is Operation.Clear or Operation.ClearRange && mutation.Next is null) continue; // pure clears never create keys; clear-headed chains (clear then atomic) can
-					var key = entry.Begin;
+					Key key;
+					if (!hasMutation || (hasCommitted && (ascending ? committed.Current.CompareTo(mutations.Current) <= 0 : committed.Current.CompareTo(mutations.Current) >= 0)))
+					{
+						key = committed.Current;
+						bool duplicate = hasMutation && key.CompareTo(mutations.Current) == 0;
+						hasCommitted = committed.MoveNext();
+						if (duplicate) hasMutation = mutations.MoveNext();
+					}
+					else
+					{
+						key = mutations.Current;
+						hasMutation = mutations.MoveNext();
+					}
 					if (!accessSystemKeys && key.IsSystemKey()) continue;
-					candidates.Add(key);
+					if (IsVisibleInMergedView(key)) yield return key;
+				}
+			}
+
+			/// <summary>Enumerates the committed keys away from <paramref name="pivot"/>, in walk order.</summary>
+			private IEnumerable<Key> EnumerateCommittedKeysFrom(Key pivot, bool includePivot, bool ascending)
+			{
+				if (ascending)
+				{
+					var begin = includePivot ? pivot : pivot.GetSuccessor(this.Arena);
+					foreach (var kv in this.Inner.Data.Scan(begin, MergedWalkUpperFence, reversed: false))
+					{
+						yield return kv.Key;
+					}
+				}
+				else
+				{
+					var end = includePivot ? pivot.GetSuccessor(this.Arena) : pivot;
+					foreach (var kv in this.Inner.Data.Scan(Key.Empty, end, reversed: true))
+					{
+						yield return kv.Key;
+					}
+				}
+			}
+
+			/// <summary>Enumerates the begins of the key-creating local mutations away from <paramref name="pivot"/>, in walk order.</summary>
+			private IEnumerable<Key> EnumerateMutationBeginsFrom(Key pivot, bool includePivot, bool ascending)
+			{
+				var view = this.Writes.GetView();
+				if (view.Length == 0) yield break;
+
+				// lower bound: first index whose Begin is at or above the pivot
+				int lo = 0, hi = view.Length;
+				while (lo < hi)
+				{
+					int mid = (lo + hi) >> 1;
+					if (view[mid].Begin.CompareTo(pivot) < 0) { lo = mid + 1; } else { hi = mid; }
 				}
 
-				var visible = new List<Key>(candidates.Count);
-				foreach (var key in candidates)
+				if (ascending)
 				{
-					if (IsVisibleInMergedView(key)) visible.Add(key);
+					int start = lo;
+					if (!includePivot && start < view.Length && view[start].Begin.CompareTo(pivot) == 0) start++;
+					for (int i = start; i < view.Length; i++)
+					{
+						if (IsKeyCreatingMutation(view[i].Value)) yield return view[i].Begin;
+					}
 				}
-				return visible;
+				else
+				{
+					int start = (includePivot && lo < view.Length && view[lo].Begin.CompareTo(pivot) == 0) ? lo : lo - 1;
+					for (int i = start; i >= 0; i--)
+					{
+						if (IsKeyCreatingMutation(view[i].Value)) yield return view[i].Begin;
+					}
+				}
+			}
+
+			/// <summary>Whether a pending mutation can create its begin key in the merged view: pure clears never do; clear-headed chains (clear then atomic) can.</summary>
+			private static bool IsKeyCreatingMutation(Mutation? mutation)
+			{
+				if (mutation is null || mutation.Op is Operation.Invalid) return false;
+				if (mutation.Op is Operation.Clear or Operation.ClearRange && mutation.Next is null) return false;
+				return true;
 			}
 
 			/// <summary>Checks whether a key is a present boundary key for selector / range-bound resolution (fdb 7.4.6 <c>RYWIterator::is_kv()</c>): the offset walk counts the key, not its coalesced value.</summary>
-			/// <remarks>This is the selector-walk present-set (used only by <see cref="GetMergedVisibleKeys"/> -> <see cref="ResolveMerged"/>), not read content. A key with a pending write is present unless its net effect is a pure clear (<c>CLEARED_RANGE</c>). Read content (which excludes a CompareAndClear'd key) is a separate scan.</remarks>
+			/// <remarks>This is the selector-walk present-set (used only by <see cref="EnumerateMergedVisibleKeys"/> -> <see cref="ResolveMerged"/>), not read content. A key with a pending write is present unless its net effect is a pure clear (<c>CLEARED_RANGE</c>). Read content (which excludes a CompareAndClear'd key) is a separate scan.</remarks>
 			private bool IsVisibleInMergedView(Key key)
 			{
 				var mutation = FindCoveringMutation(key);
