@@ -373,6 +373,142 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(errors, Is.Empty, "the refused member is not emitted, so the refusal replaces the broken generated code instead of coming on top of it");
 		}
 
+		// --- abstract declared types ------------------------------------------------------------------------------
+		//
+		// Pins CJSON0023: a member whose DECLARED type is abstract or an interface, and whose declared type carries
+		// no [JsonPolymorphic], is written with no discriminator. The writer emits the members of the runtime value,
+		// and nothing in the document names the type that produced them, so a reader handed the declared type back
+		// cannot rebuild the value.
+		//
+		// The warning covers that one shape. A declared type that already carries [JsonPolymorphic] gets its
+		// discriminator, and a collection-shaped interface (IList<T> and friends) is a shape the writer projects
+		// natively: neither is an untagged slot, so neither warns.
+
+		private static string AbstractProbe(string types) => $$"""
+			#nullable enable
+			namespace Probe
+			{
+			{{types}}
+
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
+				[SnowBank.Data.CrystalSerializable(typeof(ProbeHolder))]
+				public static partial class HolderConverters
+				{
+				}
+			}
+			""";
+
+		/// <summary>Runs the generator over a probe holding one member, and returns the CJSON0023 warnings it reported</summary>
+		private List<Diagnostic> RunOnAbstractProbe(string types)
+		{
+			var compilation = GeneratorProbeHarness.Compile(AbstractProbe(types));
+
+			Assert.That(
+				compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error),
+				Is.Empty,
+				"the probe source must compile clean on its own");
+
+			var (_, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+			foreach (var diagnostic in generatorDiagnostics) { Log($"generator: [{diagnostic.Severity}] {diagnostic}"); }
+
+			return generatorDiagnostics.Where(static d => d.Id == "CJSON0023").ToList();
+		}
+
+		[Test]
+		public void Test_An_Abstract_Member_Type_Without_A_Discriminator_Is_Reported()
+		{
+			var warnings = RunOnAbstractProbe("""
+					public abstract class Shape
+					{
+						public string? Label { get; set; }
+					}
+
+					public sealed class Circle : Shape
+					{
+						public double Radius { get; set; }
+					}
+
+					public sealed record ProbeHolder
+					{
+						public Shape? Outline { get; init; }
+					}
+				""");
+
+			Assert.That(warnings, Has.Count.EqualTo(1), "the abstract declared type is the only untagged slot in the probe");
+			Assert.That(warnings[0].Severity, Is.EqualTo(DiagnosticSeverity.Warning), "the document is still written, so this is a warning and not a refusal");
+
+			var message = warnings[0].GetMessage();
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(message, Does.Contain("Probe.ProbeHolder.Outline"), "the message names the member");
+				Assert.That(message, Does.Contain("Probe.Shape"), "the message names the declared type");
+				Assert.That(message, Does.Contain("[JsonPolymorphic]"), "the message names the attribute that declares the tree");
+				Assert.That(message, Does.Contain("[JsonDerivedType]"), "the message names the attribute that declares each derived type");
+			}
+		}
+
+		[Test]
+		public void Test_An_Interface_Member_Type_Without_A_Discriminator_Is_Reported()
+		{
+			// an interface slot is the same untagged slot as an abstract class: the writer has one runtime type to
+			// emit and no name to write for it
+			var warnings = RunOnAbstractProbe("""
+					public interface IOutline
+					{
+						string? Label { get; set; }
+					}
+
+					public sealed record ProbeHolder
+					{
+						public IOutline? Outline { get; init; }
+					}
+				""");
+
+			Assert.That(warnings, Has.Count.EqualTo(1), "the interface declared type is the only untagged slot in the probe");
+			Assert.That(warnings[0].GetMessage(), Does.Contain("Probe.IOutline"), "the message names the declared type");
+		}
+
+		[Test]
+		public void Test_A_Polymorphic_Member_Type_Is_Not_Reported()
+		{
+			var warnings = RunOnAbstractProbe("""
+					[System.Text.Json.Serialization.JsonPolymorphic]
+					[System.Text.Json.Serialization.JsonDerivedType(typeof(Circle), "circle")]
+					public abstract class Shape
+					{
+						public string? Label { get; set; }
+					}
+
+					public sealed class Circle : Shape
+					{
+						public double Radius { get; set; }
+					}
+
+					public sealed record ProbeHolder
+					{
+						public Shape? Outline { get; init; }
+					}
+				""");
+
+			Assert.That(warnings, Is.Empty, "the declared type carries a discriminator, so the document names the derived type that produced the members");
+		}
+
+		[Test]
+		public void Test_A_Collection_Shaped_Interface_Member_Is_Not_Reported()
+		{
+			// IList<T> is abstract, but the writer projects it as an array: the element type is what carries the
+			// values, and there is no derived type to name
+			var warnings = RunOnAbstractProbe("""
+					public sealed record ProbeHolder
+					{
+						public System.Collections.Generic.IList<string>? Tags { get; init; }
+					}
+				""");
+
+			Assert.That(warnings, Is.Empty, "a collection shape is not polymorphism");
+		}
+
 	}
 
 }

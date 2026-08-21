@@ -2178,6 +2178,97 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.ToDisplayString());
 			}
 
+			#region Untagged abstract members...
+
+			/// <summary>Warns (CJSON0023) on a serialized member whose declared type is abstract or an interface, and carries no polymorphic discriminator</summary>
+			/// <remarks>
+			/// <para>The writer picks the members of the runtime value and emits them with no discriminator, so nothing in the document names the type that produced them. A reader handed the declared type back has no way to choose a derived type, and the value cannot be rebuilt.</para>
+			/// <para>Narrow on purpose: a collection or dictionary shape, a member a converter took over, and a type outside the application (the framework namespaces, the CrystalJson DOM) are all left alone, because none of them is a polymorphic slot the author can tag.</para>
+			/// </remarks>
+			private void MaybeReportUntaggedAbstractMember(ISymbol member, TypeMetadata type, ITypeSymbol typeSymbol, string? customConverterType)
+			{
+				if (customConverterType is not null)
+				{ // the converter owns the member's form, discriminator included
+					return;
+				}
+
+				if (typeSymbol is not INamedTypeSymbol declared || declared.TypeKind is not (TypeKind.Class or TypeKind.Interface))
+				{ // an array, a struct, a delegate and an open type parameter are none of them an abstraction to tag
+					return;
+				}
+
+				if (!declared.IsAbstract)
+				{ // a concrete declared type carries the members the writer emits, so the document already matches it
+					return;
+				}
+
+				if (type.ElementType is not null || type.KeyType is not null)
+				{ // IList<T>, ISet<T>, IDictionary<K, V> and friends are SHAPES the writer projects natively, not polymorphism
+					return;
+				}
+
+				if (!IsTypeOfInterest(type, declared))
+				{ // the same gate the crawler applies: the framework namespaces and the CrystalJson DOM are not the author's to annotate
+					return;
+				}
+
+				if (DeclaresPolymorphicDiscriminator(declared))
+				{
+					return;
+				}
+
+				ReportDiagnostic(
+					new(
+						"CJSON0023",
+						"A serialized member declares an abstract type with no polymorphic discriminator",
+						"The member '{0}' declares the {2} '{1}', which carries no [JsonPolymorphic] attribute. The writer emits the members of the runtime value with no discriminator, so a reader cannot bind the document back to '{1}'. Add [JsonPolymorphic] to '{1}', plus one [JsonDerivedType] per derived type.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Warning,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					// the annotation is dropped: the remedy names the type to decorate, and 'Shape?' is not what its declaration says
+					member.ToDisplayString(), declared.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString(), declared.TypeKind == TypeKind.Interface ? "interface" : "abstract class");
+			}
+
+			/// <summary>Tests whether a type is the declared root of a polymorphic tree, or inherits one from a base class or an interface</summary>
+			/// <remarks><c>[JsonDerivedType]</c> counts on its own, because <see cref="ParseTypeMetadata"/> already treats a type carrying one as polymorphic. The walk mirrors <c>CrystalJsonTypeResolver.TryFindJsonPolymorphicAttribute</c>, so the two paths agree on which declared types carry a discriminator.</remarks>
+			private static bool DeclaresPolymorphicDiscriminator(INamedTypeSymbol type)
+			{
+				for (INamedTypeSymbol? current = type; current is not null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+				{
+					if (HasPolymorphicAttribute(current)) return true;
+				}
+
+				foreach (var iface in type.AllInterfaces)
+				{
+					// no polymorphic vocabulary lives under System, and skipping it keeps the walk to the application's own interfaces
+					var ns = iface.ContainingNamespace?.ToDisplayString();
+					if (ns is null || ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal)) continue;
+					if (HasPolymorphicAttribute(iface)) return true;
+				}
+
+				return false;
+
+				static bool HasPolymorphicAttribute(INamedTypeSymbol candidate)
+				{
+					foreach (var attribute in candidate.GetAttributes())
+					{
+						switch (attribute.AttributeClass?.ToDisplayString())
+						{
+							case JsonPolymorphicAttributeFullName:
+							case JsonDerivedTypeAttributeFullName:
+							{
+								return true;
+							}
+						}
+					}
+					return false;
+				}
+			}
+
+			#endregion
+
 			/// <summary>Reports CJSON0022 on an explicit interface implementation that a <c>[DataContract]</c> type opted into its contract with <c>[DataMember]</c></summary>
 			/// <remarks>
 			/// <para><c>DataContractSerializer</c> ignores an explicit implementation on a plain DTO, because the member is private in metadata, and writes one on a <c>[DataContract]</c> type, under the qualified name. Skipping the member silently would write a document short of one element.</para>
@@ -2860,6 +2951,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					customConverterHasDeserializer = nativeConverterHasDeserializer;
 					customConverterIsNullableForm = nativeConverterIsNullableForm;
 				}
+
+				// reported here, past every exclusion above: an ignored member never reaches this point, and the
+				// converter that would answer for the member's form is resolved
+				MaybeReportUntaggedAbstractMember(member, type, typeSymbol, customConverterType);
 
 				if (dataContractMember && dataMemberName is not null)
 				{ // on a [DataContract] type the DataMember rename wins, as it does on the reflection path (attr.Name ?? name)
