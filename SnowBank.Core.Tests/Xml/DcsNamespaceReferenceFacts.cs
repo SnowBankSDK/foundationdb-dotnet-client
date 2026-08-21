@@ -33,18 +33,20 @@ namespace SnowBank.Data.Xml.Tests
 	/// <summary>
 	/// Pins the namespace rules of the reference format. Every fact asserts the raw, unstripped
 	/// <see cref="System.Runtime.Serialization.DataContractSerializer"/> wire
-	/// (<see cref="ReferenceDcsWire.Serialize"/> with <c>strip: false</c>) as a literal string, and eight of the ten
-	/// then assert that the generated default output of <see cref="NamespaceProbeSerializers"/> is equivalent to that
-	/// wire on expanded names (<see cref="XmlExpandedNameComparison"/>).
+	/// (<see cref="ReferenceDcsWire.Serialize"/> with <c>strip: false</c>) as a literal string, and eight of the
+	/// thirteen then assert that the generated default output of <see cref="NamespaceProbeSerializers"/> is equivalent
+	/// to that wire on expanded names (<see cref="XmlExpandedNameComparison"/>).
 	/// </summary>
 	/// <remarks>
 	/// <para>The literal reference assertion is what pins the format; the equivalence assertion is what holds the
 	/// emitter to it. Byte equality between the two is not the rule: this emission omits declarations it can prove
 	/// unused and writes the rest on the first element that needs them, so its bytes differ while every element and
 	/// attribute resolves to the same (namespace, local name) pair.</para>
-	/// <para>Two facts have no equivalence assertion. The <c>xmlns:i</c> fact asserts the opposite property on the
+	/// <para>Five facts have no equivalence assertion. The <c>xmlns:i</c> fact asserts the opposite property on the
 	/// generated side, since pruning an unused declaration is the point. The <c>IsReference</c> fact has no generated
-	/// side at all: CrystalXml does not support <c>z:Id</c>/<c>z:Ref</c>.</para>
+	/// side at all: CrystalXml does not support <c>z:Id</c>/<c>z:Ref</c>. The three root facts at the end measure a
+	/// bare collection, string or scalar at the root of the document, a position for which no converter is generated
+	/// (CJSON0019 refuses the enrolment).</para>
 	/// <para><see cref="DcsWireFidelityFacts"/> covers the axes a stripped wire still shows (member order and renames,
 	/// the nil truth table, collection and dictionary item names, polymorphism discriminators without a namespace,
 	/// scalar lexical forms, enums); this fixture adds only what stripping erases.</para>
@@ -283,6 +285,55 @@ namespace SnowBank.Data.Xml.Tests
 					+ """<A z:Id="i1" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/"><Label>shared</Label></A>"""
 					+ """<B z:Ref="i1" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" />"""
 					+ """</NamespaceRefPairProbe>"""));
+		}
+
+		[Test]
+		public void Test_Collection_Root_Of_Lexical_Items_Takes_The_Arrays_Namespace()
+		{
+			// a bare List<string> at the root of the document: the root element is ArrayOfstring, in the same built-in
+			// collections namespace its items use when the list is a member. The root declares xmlns:i even though
+			// nothing in this document uses it, and a null root writes i:nil before the two declarations, where a nil
+			// member element writes its declarations first.
+			string wire = ReferenceDcsWire.Serialize(new List<string> { "red", "green" }, typeof(List<string>), strip: false);
+			Log(wire);
+			Assert.That(wire, Is.EqualTo("""<ArrayOfstring xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays"><string>red</string><string>green</string></ArrayOfstring>"""));
+
+			string nil = ReferenceDcsWire.Serialize(null, typeof(List<string>), strip: false);
+			Log(nil);
+			Assert.That(nil, Is.EqualTo("""<ArrayOfstring i:nil="true" xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />"""));
+		}
+
+		[Test]
+		public void Test_Collection_Root_Of_Contract_Items_Takes_The_Item_Contract_Namespace()
+		{
+			// a bare List<T> of a [DataContract] type at the root: the root element is ArrayOf followed by the item's
+			// contract name, and the whole document lives in the ITEM's contract namespace, not in the built-in
+			// collections namespace. The item elements carry the bare contract name in that same default namespace.
+			var value = new List<NamespaceChildProbe> { new() { Name = "child" } };
+
+			string wire = ReferenceDcsWire.Serialize(value, typeof(List<NamespaceChildProbe>), strip: false);
+			Log(wire);
+			Assert.That(wire, Is.EqualTo("""<ArrayOfNamespaceChild xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:acme:catalog:2"><NamespaceChild><Name>child</Name></NamespaceChild></ArrayOfNamespaceChild>"""));
+		}
+
+		[Test]
+		public void Test_String_And_Scalar_Roots_Take_The_Serialization_Namespace()
+		{
+			// a bare string or scalar at the root: the element carries the xsd lexical name in the built-in
+			// Serialization namespace, the one the z prefix binds to elsewhere, not the Arrays one and not XMLSchema.
+			// A non-null scalar root is also the one root the reference serializer writes WITHOUT xmlns:i: nothing in
+			// the document can be nil or carry a type annotation.
+			string wire = ReferenceDcsWire.Serialize("hello", typeof(string), strip: false);
+			Log(wire);
+			Assert.That(wire, Is.EqualTo("""<string xmlns="http://schemas.microsoft.com/2003/10/Serialization/">hello</string>"""));
+
+			wire = ReferenceDcsWire.Serialize(42, typeof(int), strip: false);
+			Log(wire);
+			Assert.That(wire, Is.EqualTo("""<int xmlns="http://schemas.microsoft.com/2003/10/Serialization/">42</int>"""));
+
+			string nil = ReferenceDcsWire.Serialize(null, typeof(string), strip: false);
+			Log(nil);
+			Assert.That(nil, Is.EqualTo("""<string i:nil="true" xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.microsoft.com/2003/10/Serialization/" />"""));
 		}
 
 	}
