@@ -447,6 +447,54 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	#endregion
 
+	#region The worked example: one model, three namespaces, both outputs...
+
+	// One model that carries every namespace rule at once: a root with an explicit contract namespace, a nested contract in
+	// a second namespace, a null member, a polymorphic member whose derived type lives in a third namespace, and an
+	// unannotated List<string>, which pulls the built-in collections namespace. The CLR names carry a prefix so they cannot
+	// collide with the other probes, and [DataContract(Name)] keeps the wire names short.
+
+	[DataContract(Name = "Library", Namespace = "urn:acme:biblio")]
+	[KnownType(typeof(WorkedRangeCriterion))]
+	public sealed class WorkedLibrary
+	{
+		[DataMember(Order = 0)] public string? Name { get; set; }
+
+		[DataMember(Order = 1)] public WorkedContact? Owner { get; set; }
+
+		[DataMember(Order = 2)] public WorkedContact? NullChild { get; set; }
+
+		[DataMember(Order = 3)] public WorkedCriterion? CritBase { get; set; }
+
+		[DataMember(Order = 4)] public WorkedCriterion? CritDerived { get; set; }
+
+		[DataMember(Order = 5)] public List<string>? Tags { get; set; }
+	}
+
+	[DataContract(Name = "Contact", Namespace = "urn:acme:annuaire")]
+	public sealed class WorkedContact
+	{
+		[DataMember] public string? Email { get; set; }
+	}
+
+	// two attribute families on purpose: the live DataContractSerializer oracle registers a derived type through
+	// [KnownType], and the generator reads [JsonDerivedType], so a model that both must agree on declares both
+	[DataContract(Name = "Criterion", Namespace = "urn:acme:recherche")]
+	[KnownType(typeof(WorkedRangeCriterion))]
+	[JsonPolymorphic]
+	[JsonDerivedType(typeof(WorkedRangeCriterion), "range")]
+	public class WorkedCriterion
+	{
+	}
+
+	[DataContract(Name = "RangeCriterion", Namespace = "urn:acme:recherche")]
+	public sealed class WorkedRangeCriterion : WorkedCriterion
+	{
+		[DataMember] public int Min { get; set; }
+	}
+
+	#endregion
+
 	#region Test container...
 
 	// note: the "List<Shelf> as root" and "string as root" families (a bare collection or scalar type passed
@@ -487,7 +535,53 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[CrystalSerializable(typeof(PocoJsonRenamedProbe))]
 	[CrystalSerializable(typeof(OverrideLeafProbe))]
 	[CrystalSerializable(typeof(ShadowLeafProbe))]
+	[CrystalSerializable(typeof(WorkedLibrary))]
+	[CrystalSerializable(typeof(WorkedContact))]
+	[CrystalSerializable(typeof(WorkedCriterion))]
+	[CrystalSerializable(typeof(WorkedRangeCriterion))]
 	public static partial class DcsProbeSerializers
+	{
+	}
+
+	// The SCHEMALESS twin of the container above, enrolling the same probes. Every fidelity fact runs against both, so
+	// the two outputs of one profile stay pinned by one instance and one oracle: the default against the standard wire,
+	// this one against the same wire with its namespaces stripped.
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
+	[CrystalXmlOutput(Schemaless = true)]
+	[CrystalSerializable(typeof(NilProbe))]
+	[CrystalSerializable(typeof(Shelf))]
+	[CrystalSerializable(typeof(OrderDefaultProbe))]
+	[CrystalSerializable(typeof(OrderExplicitProbe))]
+	[CrystalSerializable(typeof(OrderDerivedProbe))]
+	[CrystalSerializable(typeof(EmitDefaultProbe))]
+	[CrystalSerializable(typeof(CollectionProbe))]
+	[CrystalSerializable(typeof(DictionaryProbe))]
+	[CrystalSerializable(typeof(HashedDictionaryProbe))]
+	[CrystalSerializable(typeof(CatalogItem))]
+	[CrystalSerializable(typeof(AudioBook))]
+	[CrystalSerializable(typeof(PrintedBook))]
+	[CrystalSerializable(typeof(PolymorphicProbe))]
+	[CrystalSerializable(typeof(RenameProbe))]
+	[CrystalSerializable(typeof(ScalarProbe))]
+	[CrystalSerializable(typeof(Node))]
+	[CrystalSerializable(typeof(SelfRefProbe))]
+	[CrystalSerializable(typeof(EmptyContractProbe))]
+	[CrystalSerializable(typeof(PocoProbe))]
+	[CrystalSerializable(typeof(IgnoreProbe))]
+	[CrystalSerializable(typeof(PrivateMemberProbe))]
+	[CrystalSerializable(typeof(NamedGenericProbe<bool>))]
+	[CrystalSerializable(typeof(KeyedBagProbe))]
+	[CrystalSerializable(typeof(AnyTypeCollectionProbe))]
+	[CrystalSerializable(typeof(ReadOnlyFieldProbe))]
+	[CrystalSerializable(typeof(PocoJsonRenamedProbe))]
+	[CrystalSerializable(typeof(OverrideLeafProbe))]
+	[CrystalSerializable(typeof(ShadowLeafProbe))]
+	[CrystalSerializable(typeof(WorkedLibrary))]
+	[CrystalSerializable(typeof(WorkedContact))]
+	[CrystalSerializable(typeof(WorkedCriterion))]
+	[CrystalSerializable(typeof(WorkedRangeCriterion))]
+	public static partial class DcsProbeSchemalessSerializers
 	{
 	}
 

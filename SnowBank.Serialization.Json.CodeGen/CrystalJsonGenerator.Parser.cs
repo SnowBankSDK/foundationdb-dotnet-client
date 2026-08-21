@@ -303,7 +303,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return null;
 				}
 
-				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, xmlOutputAttribute, wireProfile, propertyNamingPolicy);
+				var (xmlProfile, xmlDictionaryFormat, xmlSchemaless) = ResolveXmlOutput(symbol, xmlOutputAttribute, wireProfile, propertyNamingPolicy);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				Kenobi($"Found {work.Count} root types to include");
@@ -356,6 +356,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					GeneratesJson = formats.GeneratesJson,
 					XmlProfile = xmlProfile,
 					CrystalXmlDictionaryFormat = xmlDictionaryFormat,
+					CrystalXmlSchemaless = xmlSchemaless,
 				};
 			}
 
@@ -576,18 +577,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="xmlOutputAttribute">The container's <c>[CrystalXmlOutput]</c> attribute, or <see langword="null"/> when it has none (XML output is opt-in)</param>
 			/// <param name="wireProfile">The container's resolved JSON format profile, which the default XML profile derives from</param>
 			/// <param name="propertyNamingPolicy">The container's <c>PropertyNamingPolicy</c> option, or <see langword="null"/> for the declared names</param>
-			/// <returns>The resolved profile name and dictionary format name, or <c>(null, null)</c> when the container produces no XML</returns>
+			/// <returns>The resolved profile name, dictionary format name and schemaless flag, or all-null when the container produces no XML</returns>
 			/// <remarks><c>PropertyNameCaseInsensitive</c> is deliberately not an input: it is a deserialization option, and this overlay never reads XML.</remarks>
-			private (string? Profile, string? DictionaryFormat) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? wireProfile, string? propertyNamingPolicy)
+			private (string? Profile, string? DictionaryFormat, bool Schemaless) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? wireProfile, string? propertyNamingPolicy)
 			{
 				if (xmlOutputAttribute is null)
 				{ // no opt-in: the container is JSON-only, and nothing else about it changes
-					return (null, null);
+					return (null, null, false);
 				}
 
 				// the attribute only exposes named properties (its single constructor is parameterless)
 				string? explicitProfile = null;
 				string? dictionaryFormat = null;
+				bool schemaless = false;
 				foreach (var kv in xmlOutputAttribute.NamedArguments)
 				{
 					if (kv.Key == "Profile")
@@ -597,6 +599,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					else if (kv.Key == "DictionaryFormat")
 					{
 						dictionaryFormat = GetEnumMemberName(kv.Value);
+					}
+					else if (kv.Key == "Schemaless")
+					{ // a bool, so it is read straight off the constant instead of through GetEnumMemberName
+						schemaless = (bool) kv.Value.Value!;
 					}
 				}
 
@@ -627,7 +633,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					// the XML request is dropped, and the container keeps generating its JSON: one error to read, plus the
 					// missing-member errors at whatever XML call sites the application already had (the degraded container
 					// emits no XML member at all), which is still smaller than abandoning the container entirely
-					return (null, null);
+					return (null, null, false);
 				}
 
 				if (profile == XmlProfileDataContract && dictionaryFormat is not (null or XmlDictionaryFormatDefault))
@@ -639,9 +645,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 						"the DataContract XML format has exactly one dictionary shape (the KeyValueOfKV entries the reference serializer writes), so there is nothing for this option to select between. Its member-level twin is refused outright on this format (CXML0004)");
 				}
 
-				Kenobi($"Resolved XML output for container {symbol.Name}: profile={profile}; dictionaryFormat={dictionaryFormat ?? XmlDictionaryFormatDefault}");
+				if (schemaless && profile != XmlProfileDataContract)
+				{ // the option strips namespaces, and the Modern format has none: the document is right, only the declaration is not
+					ReportInertXmlSetting(
+						this.ContextClassLocation,
+						symbol.ToDisplayString(),
+						"Schemaless = true",
+						"the Modern XML format writes no namespace and no prefix in the first place, so there is nothing for this option to strip. It belongs on the DataContract format, whose documents carry contract namespaces");
+					schemaless = false;
+				}
 
-				return (profile, dictionaryFormat ?? XmlDictionaryFormatDefault);
+				Kenobi($"Resolved XML output for container {symbol.Name}: profile={profile}; dictionaryFormat={dictionaryFormat ?? XmlDictionaryFormatDefault}; schemaless={schemaless}");
+
+				return (profile, dictionaryFormat ?? XmlDictionaryFormatDefault, schemaless);
 			}
 
 			/// <summary>Returns the name of the enum member an attribute argument was set to, or <see langword="null"/> when the argument is not a known enum member</summary>
@@ -771,7 +787,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// a self-serializable type hosts its own generated code, so it can opt into XML output the same way a
 				// container does; it declares no JSON format profile, so an unspecified profile derives the Modern format
-				var (xmlProfile, xmlDictionaryFormat) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), wireProfile: null, propertyNamingPolicy: null);
+				var (xmlProfile, xmlDictionaryFormat, xmlSchemaless) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), wireProfile: null, propertyNamingPolicy: null);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
@@ -830,6 +846,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					SupportsDynamicallyAccessedMembers = this.KnownSymbols.HasDynamicallyAccessedMembers,
 					XmlProfile = xmlProfile,
 					CrystalXmlDictionaryFormat = xmlDictionaryFormat,
+					CrystalXmlSchemaless = xmlSchemaless,
 				};
 			}
 
@@ -2921,6 +2938,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 						XmlIsAttribute = xmlIsAttribute,
 						XmlItemName = xmlItemName,
 						CrystalXmlDictionaryFormat = xmlDictionaryFormat,
+						DeclaringDataContractNamespace = GetDataContractInfo(member.ContainingType).Namespace,
+						DeclaringTypeNameSpace = member.ContainingType.ContainingNamespace?.ToDisplayString(),
 						DataMemberOrder = dataMemberOrder,
 						EmitDefaultValue = emitDefaultValue,
 #if FULL_DEBUG

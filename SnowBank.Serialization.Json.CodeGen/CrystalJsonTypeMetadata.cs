@@ -82,6 +82,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks><c>"Default"</c> is carried as-is rather than flattened into the profile's shape: the per-profile default and the per-member override both resolve downstream, and collapsing them here would lose the "unset" state.</remarks>
 		public string? CrystalXmlDictionaryFormat { get; init; }
 
+		/// <summary>Whether the container's DataContract XML output is stripped of its namespaces and prefixes</summary>
+		/// <remarks>Already RESOLVED: the option is inert on the Modern format, where the parser reports <c>CXML0012</c> and
+		/// clears it, so <see langword="true"/> here always means the DataContract format with its namespaces stripped.</remarks>
+		public bool CrystalXmlSchemaless { get; init; }
+
 		/// <summary>Specifies whether the container is the serialized type itself (self-serializable mode)</summary>
 		/// <remarks>
 		/// <para>When <c>true</c>, <see cref="Type"/> is a partial application type that acts as its own container: all its generated code lives inside a single reserved nested scope (ex: <c>Widget.Json.ReadOnly</c>), and any other included type (crawled from its members) is hosted inside that scope under its own name (ex: <c>Widget.Json.WidgetPart.ReadOnly</c>; inside the scope, holders cannot shadow the referenced types in the entity's own source).</para>
@@ -289,6 +294,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Value of <c>[DataMember(Order = n)]</c> when <c>n</c> is zero or greater, or <see langword="null"/> when the member declares no order</summary>
 		/// <remarks>A NEGATIVE order is carried as <see langword="null"/>, like <c>DataContractSerializer</c> does: an unordered member sorts by name, which is a different rule from ordering at zero.</remarks>
 		public int? DataMemberOrder { get; init; }
+
+		/// <summary>Contract namespace of the type that DECLARES this member, as its <c>[DataContract(Namespace = ...)]</c> spells it; <see langword="null"/> when that type declares none</summary>
+		/// <remarks>Captured because a member element lives in the namespace of the contract that DECLARES it, not of the type
+		/// being written: a derived type in another namespace still writes its inherited members in the base contract's
+		/// namespace. The empty string is a value here, and means the contract asked for no namespace at all.</remarks>
+		public string? DeclaringDataContractNamespace { get; init; }
+
+		/// <summary>CLR namespace of the type that DECLARES this member, which the DataContract default rule derives a namespace from</summary>
+		/// <remarks>Carried next to <see cref="DeclaringDataContractNamespace"/> and not folded into it, because the defaulting
+		/// rule belongs to the format: this layer records what the declaration says, and the emitter applies the rule.</remarks>
+		public string? DeclaringTypeNameSpace { get; init; }
 
 		/// <summary>Depth of the type that DECLARES this member in the inheritance chain, counted from the topmost base (<c>0</c>) down to the type being serialized</summary>
 		/// <remarks>Captured for the DataContract XML format, whose member order is "every member of the base level first, then the next level": the flat member list cannot be regrouped by level once that fact is lost. The JSON format ignores it.</remarks>

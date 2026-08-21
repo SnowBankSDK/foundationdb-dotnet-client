@@ -31,14 +31,24 @@ namespace SnowBank.Data.Xml.Tests
 	using SnowBank.Data.Xml.Tests.Acme;
 
 	/// <summary>
-	/// Pins the namespace rules of the reference format: every fact here asserts the raw, unstripped
-	/// <see cref="System.Runtime.Serialization.DataContractSerializer"/> wire only
-	/// (<see cref="ReferenceDcsWire.Serialize"/> with <c>strip: false</c>). CrystalXml's generated default profile has
-	/// no namespace vocabulary, so none of the probe types are enrolled with <c>[CrystalSerializable]</c> and no test
-	/// here calls a generated <c>ToXmlText</c>. <see cref="DcsWireFidelityFacts"/> covers the axes a stripped wire
-	/// still shows (member order and renames, the nil truth table, collection and dictionary item names, polymorphism
-	/// discriminators without a namespace, scalar lexical forms, enums); this fixture adds only what stripping erases.
+	/// Pins the namespace rules of the reference format. Every fact asserts the raw, unstripped
+	/// <see cref="System.Runtime.Serialization.DataContractSerializer"/> wire
+	/// (<see cref="ReferenceDcsWire.Serialize"/> with <c>strip: false</c>) as a literal string, and eight of the ten
+	/// then assert that the generated default output of <see cref="NamespaceProbeSerializers"/> is equivalent to that
+	/// wire on expanded names (<see cref="XmlExpandedNameComparison"/>).
 	/// </summary>
+	/// <remarks>
+	/// <para>The literal reference assertion is what pins the format; the equivalence assertion is what holds the
+	/// emitter to it. Byte equality between the two is not the rule: this emission omits declarations it can prove
+	/// unused and writes the rest on the first element that needs them, so its bytes differ while every element and
+	/// attribute resolves to the same (namespace, local name) pair.</para>
+	/// <para>Two facts have no equivalence assertion. The <c>xmlns:i</c> fact asserts the opposite property on the
+	/// generated side, since pruning an unused declaration is the point. The <c>IsReference</c> fact has no generated
+	/// side at all: CrystalXml does not support <c>z:Id</c>/<c>z:Ref</c>.</para>
+	/// <para><see cref="DcsWireFidelityFacts"/> covers the axes a stripped wire still shows (member order and renames,
+	/// the nil truth table, collection and dictionary item names, polymorphism discriminators without a namespace,
+	/// scalar lexical forms, enums); this fixture adds only what stripping erases.</para>
+	/// </remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-XML")]
@@ -49,10 +59,21 @@ namespace SnowBank.Data.Xml.Tests
 		public void Test_Root_Always_Declares_The_Xsi_Instance_Namespace_First()
 		{
 			// xmlns:i is on the root even though this document has no nil and no type, and it is the first attribute
-			string wire = ReferenceDcsWire.Serialize(new NamespaceDefaultProbe { Name = "x" }, typeof(NamespaceDefaultProbe), strip: false);
-			Log(wire);
+			var value = new NamespaceDefaultProbe { Name = "x" };
+
+			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespaceDefaultProbe), strip: false);
+			string generated = NamespaceProbeSerializers.NamespaceDefaultProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(wire, Does.StartWith("""<NamespaceDefaultProbe xmlns:i="http://www.w3.org/2001/XMLSchema-instance" """));
+
+			// the generated side asserts the opposite property, which is the one that makes the two wires differ in
+			// bytes here: nothing in this document uses the instance namespace, so no element declares it. A conformant
+			// reader cannot tell: it resolves prefixes through the declarations in scope, and there is no prefix to
+			// resolve. The declaration appears as soon as an i:nil or an i:type needs it, on the element that carries it.
+			Assert.That(generated, Does.Not.Contain("xmlns:i"));
+			Assert.That(generated, Does.Not.Contain("http://www.w3.org/2001/XMLSchema-instance"));
 		}
 
 		[Test]
@@ -63,19 +84,29 @@ namespace SnowBank.Data.Xml.Tests
 			string expectedNamespace = $"http://schemas.datacontract.org/2004/07/{typeof(NamespaceDefaultProbe).Namespace}";
 			string expected = $"""<NamespaceDefaultProbe xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="{expectedNamespace}"><Name>x</Name></NamespaceDefaultProbe>""";
 
-			string wire = ReferenceDcsWire.Serialize(new NamespaceDefaultProbe { Name = "x" }, typeof(NamespaceDefaultProbe), strip: false);
-			Log(wire);
+			var value = new NamespaceDefaultProbe { Name = "x" };
+
+			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespaceDefaultProbe), strip: false);
+			string generated = NamespaceProbeSerializers.NamespaceDefaultProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(wire, Is.EqualTo(expected));
+			XmlExpandedNameComparison.AssertEquivalent(wire, generated, "The generated output must put the root and its member in the CLR-namespace-derived default namespace.");
 		}
 
 		[Test]
 		public void Test_Explicit_Contract_Namespace_Is_The_Default_Namespace()
 		{
-			string wire = ReferenceDcsWire.Serialize(new NamespaceExplicitProbe { Name = "x" }, typeof(NamespaceExplicitProbe), strip: false);
-			Log(wire);
+			var value = new NamespaceExplicitProbe { Name = "x" };
+
+			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespaceExplicitProbe), strip: false);
+			string generated = NamespaceProbeSerializers.NamespaceExplicitProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(wire, Is.EqualTo("""<NamespaceExplicit xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:acme:catalog:1"><Name>x</Name></NamespaceExplicit>"""));
+			XmlExpandedNameComparison.AssertEquivalent(wire, generated, "The generated output must take [DataContract(Namespace = ...)] as the namespace of the root and of its members.");
 		}
 
 		[Test]
@@ -86,10 +117,15 @@ namespace SnowBank.Data.Xml.Tests
 			string expectedNamespace = $"http://schemas.datacontract.org/2004/07/{typeof(NamespacePocoProbe).Namespace}";
 			string expected = $"""<NamespacePocoProbe xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="{expectedNamespace}"><Name>x</Name></NamespacePocoProbe>""";
 
-			string wire = ReferenceDcsWire.Serialize(new NamespacePocoProbe { Name = "x" }, typeof(NamespacePocoProbe), strip: false);
-			Log(wire);
+			var value = new NamespacePocoProbe { Name = "x" };
+
+			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespacePocoProbe), strip: false);
+			string generated = NamespaceProbeSerializers.NamespacePocoProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(wire, Is.EqualTo(expected));
+			XmlExpandedNameComparison.AssertEquivalent(wire, generated, "The generated output must apply the CLR-namespace-derived default to a type with no [DataContract] too.");
 		}
 
 		[Test]
@@ -112,7 +148,9 @@ namespace SnowBank.Data.Xml.Tests
 			};
 
 			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespaceNestedProbe), strip: false);
-			Log(wire);
+			string generated = NamespaceProbeSerializers.NamespaceNestedProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(
 				wire,
@@ -125,6 +163,12 @@ namespace SnowBank.Data.Xml.Tests
 					+ """<EmptyList xmlns:d2p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />"""
 					+ """<PlainDict xmlns:d2p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays"><d2p1:KeyValueOfstringstring><d2p1:Key>k1</d2p1:Key><d2p1:Value>v1</d2p1:Value></d2p1:KeyValueOfstringstring></PlainDict>"""
 					+ """</NamespaceNestedProbe>"""));
+
+			// this is the case where the two wires differ the most in bytes: the reference serializer declares d2p1 on
+			// every member that names a foreign namespace, including the three that never write an element in it, and it
+			// rebinds the same prefix to three different URIs along the way. The generated output declares each URI once,
+			// on the first element under which it is used. Both documents put the same expanded name on every node.
+			XmlExpandedNameComparison.AssertEquivalent(wire, generated, "The generated output must put the nested contract and the built-in collection contracts in their own namespaces.");
 		}
 
 		[Test]
@@ -141,7 +185,9 @@ namespace SnowBank.Data.Xml.Tests
 			};
 
 			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespacePolyProbe), strip: false);
-			Log(wire);
+			string generated = NamespaceProbeSerializers.NamespacePolyProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(
 				wire,
@@ -151,6 +197,15 @@ namespace SnowBank.Data.Xml.Tests
 					+ """<OtherNamespaceSubtype xmlns:d2p1="urn:acme:catalog:2" i:type="d2p1:NamespaceDerivedOtherNs"><Field>other</Field></OtherNamespaceSubtype>"""
 					+ """<BoxedPrimitive xmlns:d2p1="http://www.w3.org/2001/XMLSchema" i:type="d2p1:string">boxed</BoxedPrimitive>"""
 					+ """</NamespacePolyProbe>"""));
+
+			// The i:type values are compared as qualified names, not as text: each one is resolved through the
+			// declarations in scope on its own element and matched as a (namespace, local name) pair. That is what makes
+			// a bare "NamespaceDerivedSameNs" and a prefixed "p:NamespaceDerivedSameNs" the same annotation, as long as
+			// the prefix and the default namespace lead to the same URI.
+			// OtherNamespaceSubtype is the case that pins the declaring-contract rule: its Field is declared on
+			// NamespaceBase (urn:acme:catalog:1), so the element stays in that namespace even though the runtime type
+			// lives in urn:acme:catalog:2. Only the annotation names the derived contract.
+			XmlExpandedNameComparison.AssertEquivalent(wire, generated, "The generated output must name the same three types in its i:type annotations, and keep every inherited element in the namespace of the contract that declares it.");
 		}
 
 		[Test]
@@ -162,9 +217,12 @@ namespace SnowBank.Data.Xml.Tests
 			var value = new NamespacePolyProbe { BoxedPrimitive = 123 };
 
 			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespacePolyProbe), strip: false);
-			Log(wire);
+			string generated = NamespaceProbeSerializers.NamespacePolyProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(wire, Does.Contain("""<BoxedPrimitive xmlns:d2p1="http://www.w3.org/2001/XMLSchema" i:type="d2p1:int">123</BoxedPrimitive>"""));
+			XmlExpandedNameComparison.AssertEquivalent(wire, generated, "The generated output must annotate a boxed int with the xsd:int qualified name.");
 		}
 
 		[Test]
@@ -175,9 +233,12 @@ namespace SnowBank.Data.Xml.Tests
 			var value = new NamespaceNestedProbe { PlainList = ["a"] };
 
 			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespaceNestedProbe), strip: false);
-			Log(wire);
+			string generated = NamespaceProbeSerializers.NamespaceNestedProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(wire, Does.Contain("""<PlainList xmlns:d2p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays"><d2p1:string>a</d2p1:string></PlainList>"""));
+			XmlExpandedNameComparison.AssertEquivalent(wire, generated, "The generated output must put the items of an unannotated List<string> in the collections namespace.");
 		}
 
 		[Test]
@@ -189,7 +250,9 @@ namespace SnowBank.Data.Xml.Tests
 			var value = new NamespaceOffsetProbe { Offset = new DateTimeOffset(2026, 8, 20, 14, 5, 6, 789, TimeSpan.FromHours(2)) };
 
 			string wire = ReferenceDcsWire.Serialize(value, typeof(NamespaceOffsetProbe), strip: false);
-			Log(wire);
+			string generated = NamespaceProbeSerializers.NamespaceOffsetProbe.ToXmlText(value);
+			Log("reference : " + wire);
+			Log("generated : " + generated);
 
 			Assert.That(
 				wire,
@@ -197,14 +260,16 @@ namespace SnowBank.Data.Xml.Tests
 					"""<NamespaceOffsetProbe xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:acme:catalog:1">"""
 					+ """<Offset xmlns:d2p1="http://schemas.datacontract.org/2004/07/System"><d2p1:DateTime>2026-08-20T12:05:06.789Z</d2p1:DateTime><d2p1:OffsetMinutes>120</d2p1:OffsetMinutes></Offset>"""
 					+ """</NamespaceOffsetProbe>"""));
+			XmlExpandedNameComparison.AssertEquivalent(wire, generated, "The generated output must put DateTimeOffset's two members in the built-in System namespace.");
 		}
 
 		[Test]
 		public void Test_Builtin_Namespace_Serialization_Z_On_IsReference()
 		{
 			// http://schemas.microsoft.com/2003/10/Serialization/ (prefix z), on [DataContract(IsReference = true)]
-			// with a shared instance. This pins the wire vocabulary only: CrystalXml does not support the
-			// object-graph reference mechanism (z:Id/z:Ref tracking), so there is no generated side to compare.
+			// with a shared instance. This pins the wire vocabulary only: CrystalXml does not support the object-graph
+			// reference mechanism (z:Id/z:Ref tracking), so the two probe types stay out of NamespaceProbeSerializers
+			// and this is the one fact in the fixture with no generated side.
 			var shared = new NamespaceSharedProbe { Label = "shared" };
 			var value = new NamespaceRefPairProbe { A = shared, B = shared };
 

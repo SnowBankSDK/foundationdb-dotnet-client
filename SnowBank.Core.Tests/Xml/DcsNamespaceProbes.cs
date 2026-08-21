@@ -29,12 +29,16 @@
 // standard (unstripped) wire, as the stripped facts already do.
 
 // note: these types carry an explicit or default contract namespace on purpose, unlike most of DcsProbes.cs, whose
-// StrippingXmlWriter-compared facts erase namespaces entirely and so stay indifferent to them. None of these types
-// are enrolled with [CrystalSerializable]: DcsNamespaceReferenceFacts.cs only exercises the unstripped reference
-// pipeline (ReferenceDcsWire.Serialize(..., strip: false)), because the generated side has no namespace vocabulary.
+// StrippingXmlWriter-compared facts erase namespaces entirely and so stay indifferent to them. Most of them are
+// enrolled in NamespaceProbeSerializers at the end of this file, so DcsNamespaceReferenceFacts.cs compares the
+// unstripped reference wire (ReferenceDcsWire.Serialize(..., strip: false)) to the generated default output. The two
+// IsReference probes stay out of the container: see the remark on NamespaceSharedProbe.
 namespace SnowBank.Data.Xml.Tests.Acme
 {
 	using System.Runtime.Serialization;
+	using System.Text.Json.Serialization;
+	using SnowBank.Data.Json;
+	using SnowBank.Data.Xml;
 
 	#region Root namespace declaration...
 
@@ -89,9 +93,16 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	#region i:type QNames across namespaces...
 
+	// note: the two attribute families name the same two derived types, one per consumer. The live DCS oracle reads
+	// [KnownType] and knows nothing about [JsonDerivedType]; the generator reads [JsonDerivedType] and knows nothing
+	// about [KnownType]. The JSON tags below never reach the XML wire: the DataContract profile writes the derived
+	// type's contract name as i:type, so the tags only have to be unique.
 	[DataContract(Name = "NamespaceBase", Namespace = "urn:acme:catalog:1")]
 	[KnownType(typeof(NamespaceDerivedSameNs))]
 	[KnownType(typeof(NamespaceDerivedOtherNs))]
+	[JsonPolymorphic]
+	[JsonDerivedType(typeof(NamespaceDerivedSameNs), "same")]
+	[JsonDerivedType(typeof(NamespaceDerivedOtherNs), "other")]
 	public class NamespaceBaseProbe
 	{
 		[DataMember] public string? Field;
@@ -150,6 +161,31 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	{
 		[DataMember(Order = 1)] public NamespaceSharedProbe? A;
 		[DataMember(Order = 2)] public NamespaceSharedProbe? B;
+	}
+
+	#endregion
+
+	#region Test container...
+
+	// The generated side of DcsNamespaceReferenceFacts. Only the DEFAULT output is enrolled here: this fixture is about
+	// the namespaces themselves, and the schemaless output has none, so a schemaless twin would compare nothing.
+	// NamespaceSharedProbe and NamespaceRefPairProbe are left out on purpose: their wire is z:Id/z:Ref, the object-graph
+	// reference mechanism CrystalXml does not support.
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
+	[CrystalXmlOutput]
+	[CrystalSerializable(typeof(NamespaceDefaultProbe))]
+	[CrystalSerializable(typeof(NamespaceExplicitProbe))]
+	[CrystalSerializable(typeof(NamespacePocoProbe))]
+	[CrystalSerializable(typeof(NamespaceChildProbe))]
+	[CrystalSerializable(typeof(NamespaceNestedProbe))]
+	[CrystalSerializable(typeof(NamespaceBaseProbe))]
+	[CrystalSerializable(typeof(NamespaceDerivedSameNs))]
+	[CrystalSerializable(typeof(NamespaceDerivedOtherNs))]
+	[CrystalSerializable(typeof(NamespacePolyProbe))]
+	[CrystalSerializable(typeof(NamespaceOffsetProbe))]
+	public static partial class NamespaceProbeSerializers
+	{
 	}
 
 	#endregion

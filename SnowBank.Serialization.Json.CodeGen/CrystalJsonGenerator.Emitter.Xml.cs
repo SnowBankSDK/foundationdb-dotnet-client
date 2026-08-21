@@ -53,6 +53,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private const string XmlNameFullName = CrystalXmlNamespaceQualified + ".CrystalXmlName";
 
+			private const string XmlNamespaceFullName = CrystalXmlNamespaceQualified + ".CrystalXmlNamespace";
+
+			private const string CrystalXmlNamespacesFullName = CrystalXmlNamespaceQualified + ".CrystalXmlNamespaces";
+
 			private const string IXmlEmitterFullName = CrystalXmlNamespaceQualified + ".ICrystalXmlEmitter";
 
 			private const string ICrystalXmlSerializerFullName = CrystalXmlNamespaceQualified + ".ICrystalXmlSerializer";
@@ -118,6 +122,26 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Default name of a dictionary entry element, when the member declares no <c>ItemName</c></summary>
 			private const string XmlDefaultEntryName = "entry";
 
+			/// <summary>The five namespaces of the DataContract format that no CLR namespace derives</summary>
+			/// <remarks>Spelled out here, and cached on <c>CrystalXmlNamespaces</c> at run time: these are wire values, and the
+			/// generator resolves a shape to one of them without asking the runtime anything.</remarks>
+			private const string XmlSchemaInstanceNamespaceUri = "http://www.w3.org/2001/XMLSchema-instance";
+
+			/// <inheritdoc cref="XmlSchemaInstanceNamespaceUri"/>
+			private const string XmlSchemaNamespaceUri = "http://www.w3.org/2001/XMLSchema";
+
+			/// <inheritdoc cref="XmlSchemaInstanceNamespaceUri"/>
+			private const string XmlArraysNamespaceUri = "http://schemas.microsoft.com/2003/10/Serialization/Arrays";
+
+			/// <inheritdoc cref="XmlSchemaInstanceNamespaceUri"/>
+			private const string XmlSerializationNamespaceUri = "http://schemas.microsoft.com/2003/10/Serialization/";
+
+			/// <inheritdoc cref="XmlSchemaInstanceNamespaceUri"/>
+			private const string XmlSystemContractNamespaceUri = "http://schemas.datacontract.org/2004/07/System";
+
+			/// <summary>Prefix every namespace the DataContract format derives from a CLR namespace starts with</summary>
+			private const string XmlDataContractNamespacePrefix = "http://schemas.datacontract.org/2004/07/";
+
 			#endregion
 
 			/// <summary>Whether this container emits an XML surface at all</summary>
@@ -129,6 +153,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>That format derives every name from the data contract and has its own member order, null policy, dictionary
 			/// shape and scalar forms, so it is emitted by its own section (<c>CrystalJsonGenerator.Emitter.Xml.Dcs.cs</c>).</remarks>
 			private bool WritesXmlDcs => this.Metadata.XmlProfile == XmlProfileDataContract;
+
+			/// <summary>Whether the DataContract format this container emits is stripped of its namespaces and prefixes</summary>
+			/// <remarks>
+			/// <para>This is not a third profile: the emission is the DataContract one throughout, and this selects whether the
+			/// names it bakes carry a contract namespace. Every difference it makes is therefore in one place, the namespace
+			/// resolution (<c>GetXmlDcsNamespaceRef</c>), plus the one attribute whose VALUE is a name.</para>
+			/// <para>Only ever <see langword="true"/> together with <see cref="WritesXmlDcs"/>: the parser clears the option on
+			/// the Modern format, which has no namespace to strip, and reports <c>CXML0012</c> there.</para>
+			/// </remarks>
+			private bool WritesXmlDcsSchemaless => this.WritesXmlDcs && this.Metadata.CrystalXmlSchemaless;
 
 			#region Name table...
 
@@ -144,14 +178,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 				/// <remarks>SHARED with the <see cref="XmlEnumTable"/> of the same converter: the two prefixes are not disjoint (a name spelling out to <c>__xml_enum_Color</c> collides with the lookup method of an enum named <c>Color</c>), and two members of the same generated class carrying one identifier is CS0102.</remarks>
 				private readonly HashSet<string> Taken;
 
-				private readonly List<KeyValuePair<string, string>> Order = [ ];
+				private readonly List<(string Field, string Text, string? Namespace)> Order = [ ];
 
 				public XmlNameTable(HashSet<string> taken) => this.Taken = taken;
 
-				/// <summary>Returns the name of the field holding <paramref name="text"/>, declaring one if this is its first use</summary>
-				public string Ref(string text)
+				/// <summary>Returns the name of the field holding <paramref name="text"/> in no namespace, declaring one if this is its first use</summary>
+				public string Ref(string text) => Ref(text, null);
+
+				/// <summary>Returns the name of the field holding <paramref name="text"/> in a namespace, declaring one if this is its first use</summary>
+				/// <param name="text">Local name, with no prefix: a prefix is the emitter's to choose</param>
+				/// <param name="namespaceRef">Expression naming the namespace (from <see cref="XmlNamespaceTable.Ref"/>), or <see langword="null"/> for no namespace</param>
+				/// <remarks>Two names of the same text in different namespaces are two different names, so the key is the pair.
+				/// That is what a <c>string</c> item element being in the collections namespace under one member and in the XML
+				/// Schema namespace as a type annotation under another comes down to.</remarks>
+				public string Ref(string text, string? namespaceRef)
 				{
-					if (this.Fields.TryGetValue(text, out var existing))
+					string key = namespaceRef is null ? text : text + " " + namespaceRef;
+					if (this.Fields.TryGetValue(key, out var existing))
 					{
 						return existing;
 					}
@@ -162,8 +205,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.Append((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ? c : '_');
 					}
 
-					// two different names can sanitize to the same identifier ("a-b" and "a.b"), so the first one keeps it
-					// and the others get a numeric suffix: the field name is an implementation detail, the mapping must be 1:1
+					// two different names can sanitize to the same identifier ("a-b" and "a.b", or one name in two
+					// namespaces), so the first one keeps it and the others get a numeric suffix: the field name is an
+					// implementation detail, the mapping must be 1:1
 					string candidate = sb.ToString();
 					if (this.Taken.Contains(candidate))
 					{
@@ -175,9 +219,65 @@ namespace SnowBank.Serialization.Json.CodeGen
 						candidate += "_" + n.ToString(CultureInfo.InvariantCulture);
 					}
 
-					this.Fields[text] = candidate;
+					this.Fields[key] = candidate;
 					this.Taken.Add(candidate);
-					this.Order.Add(new(candidate, text));
+					this.Order.Add((candidate, text, namespaceRef));
+					return candidate;
+				}
+
+				/// <summary>Declared fields, in first-use order</summary>
+				public List<(string Field, string Text, string? Namespace)> Entries => this.Order;
+
+			}
+
+			/// <summary>Collects the distinct contract namespaces a generated converter writes, one cached <c>static readonly CrystalXmlNamespace</c> field each</summary>
+			/// <remarks>
+			/// <para>Deduplicated by URI, like the name table is by name: a contract namespace is shared by every type declared
+			/// in one CLR namespace, so a container of thirty types usually writes two or three URIs.</para>
+			/// <para>The namespaces the format uses that no CLR namespace derives take no field at all: they are already cached
+			/// on <c>CrystalXmlNamespaces</c>, so a container refers to those instead of carrying its own copy of the bytes.</para>
+			/// </remarks>
+			private sealed class XmlNamespaceTable
+			{
+
+				private readonly Dictionary<string, string> Fields = new(StringComparer.Ordinal);
+
+				/// <inheritdoc cref="XmlNameTable.Taken" path="/remarks"/>
+				private readonly HashSet<string> Taken;
+
+				private readonly List<KeyValuePair<string, string>> Order = [ ];
+
+				public XmlNamespaceTable(HashSet<string> taken) => this.Taken = taken;
+
+				/// <summary>Returns the expression that names the namespace <paramref name="uri"/>, declaring a field if this is its first use</summary>
+				public string Ref(string uri)
+				{
+					if (GetXmlBuiltinNamespaceRef(uri) is { } builtin)
+					{
+						return builtin;
+					}
+
+					if (this.Fields.TryGetValue(uri, out var existing))
+					{
+						return existing;
+					}
+
+					// numbered rather than derived from the URI: a URI sanitizes into a long identifier that is no more
+					// readable than a number, and the declaration carries the URI as its value anyway
+					string candidate = "__xmlns_" + (this.Order.Count + 1).ToString(CultureInfo.InvariantCulture);
+					if (this.Taken.Contains(candidate))
+					{
+						int n = 2;
+						while (this.Taken.Contains(candidate + "_" + n.ToString(CultureInfo.InvariantCulture)))
+						{
+							++n;
+						}
+						candidate += "_" + n.ToString(CultureInfo.InvariantCulture);
+					}
+
+					this.Fields[uri] = candidate;
+					this.Taken.Add(candidate);
+					this.Order.Add(new(candidate, uri));
 					return candidate;
 				}
 
@@ -186,19 +286,48 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			}
 
-			/// <summary>Emits the cached <see cref="XmlNameTable"/> fields of one converter</summary>
-			/// <remarks>Emitted AFTER the bodies that reference them (C# does not care about declaration order inside a type),
-			/// because the table is filled BY those bodies: any pre-pass would be a second implementation of the same walk,
-			/// free to drift from it.</remarks>
-			private static void WriteXmlNameFields(CSharpCodeBuilder sb, XmlNameTable names)
+			/// <summary>Returns the expression naming one of the format's built-in namespaces, or <see langword="null"/> when the URI is a derived one</summary>
+			private static string? GetXmlBuiltinNamespaceRef(string uri) => uri switch
 			{
+				XmlSchemaInstanceNamespaceUri => CrystalXmlNamespacesFullName + ".XmlSchemaInstance",
+				XmlSchemaNamespaceUri => CrystalXmlNamespacesFullName + ".XmlSchema",
+				XmlArraysNamespaceUri => CrystalXmlNamespacesFullName + ".Arrays",
+				XmlSerializationNamespaceUri => CrystalXmlNamespacesFullName + ".Serialization",
+				XmlSystemContractNamespaceUri => CrystalXmlNamespacesFullName + ".SystemContract",
+				_ => null,
+			};
+
+			/// <summary>Emits the cached namespace and name fields of one converter</summary>
+			/// <remarks>
+			/// <para>Emitted AFTER the bodies that reference them (C# does not care about declaration order inside a type),
+			/// because the tables are filled BY those bodies: any pre-pass would be a second implementation of the same walk,
+			/// free to drift from it.</para>
+			/// <para>The namespaces come first, because a name field's initializer reads one, and static field initializers run
+			/// in the order they are declared.</para>
+			/// </remarks>
+			private void WriteXmlNameFields(CSharpCodeBuilder sb, XmlNameTable names)
+			{
+				if (this.XmlNamespaces.Entries.Count != 0)
+				{
+					sb.Comment("Cached contract namespaces, in both representations, declared before the names that read them");
+					foreach (var entry in this.XmlNamespaces.Entries)
+					{
+						sb.AppendLine($"private static readonly {XmlNamespaceFullName} {entry.Key} = new({CSharpCodeBuilder.Constant(entry.Value)}, {CSharpCodeBuilder.Utf8Constant(entry.Value)});");
+					}
+					sb.NewLine();
+				}
+
 				sb.Comment("Cached element and attribute names, in both representations: the char core copies the string, the byte core copies the frozen UTF-8 blob");
-				foreach (var entry in names.Entries)
+				foreach (var (field, text, namespaceRef) in names.Entries)
 				{
 					// the bytes are spelled out rather than written as "..."u8.ToArray(): UTF-8 string literals are a C# 11 feature,
 					// and XML output must not cost a consumer more language than JSON output does (the generator's floor is C# 9).
 					// The two forms compile to the same blob copy, and the string right before them keeps the line readable.
-					sb.AppendLine($"private static readonly {XmlNameFullName} {entry.Key} = new({CSharpCodeBuilder.Constant(entry.Value)}, {CSharpCodeBuilder.Utf8Constant(entry.Value)});");
+					string representations = $"{CSharpCodeBuilder.Constant(text)}, {CSharpCodeBuilder.Utf8Constant(text)}";
+					sb.AppendLine(
+						namespaceRef is null
+							? $"private static readonly {XmlNameFullName} {field} = new({representations});"
+							: $"private static readonly {XmlNameFullName} {field} = new({representations}, {namespaceRef});");
 				}
 			}
 
@@ -368,6 +497,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Table of the enum lookups of the converter currently being emitted</summary>
 			private XmlEnumTable XmlEnums { get; set; } = new(new(StringComparer.Ordinal));
 
+			/// <summary>Contract namespaces of the converter currently being emitted</summary>
+			/// <remarks>An instance member, unlike the name table, because the namespaces are resolved deep inside the walk (a
+			/// member's declared type, a collection's element type) where threading a second table through every signature
+			/// would say nothing the name table's own parameter does not already say.</remarks>
+			private XmlNamespaceTable XmlNamespaces { get; set; } = new(new(StringComparer.Ordinal));
+
 			/// <summary>Returns the C# keyword of the underlying integer type of an enum</summary>
 			private static string GetXmlEnumUnderlyingKeyword(TypeMetadata type) => type.EnumUnderlyingSpecialType switch
 			{
@@ -460,6 +595,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				var taken = new HashSet<string>(StringComparer.Ordinal);
 				var names = new XmlNameTable(taken);
 				this.XmlEnums = new(taken);
+				this.XmlNamespaces = new(taken);
 				this.XmlNeedsNotSupportedHelper = false;
 				this.XmlNeedsFlagsHelper = false;
 				this.XmlNeedsCycleHelper = false;
@@ -696,7 +832,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="comment">The format's own wording of the rule, which is all that differs between the two profiles</param>
 			/// <remarks>Shared by both formats: a document needs a root, so a null instance is an element and never nothing at all, and
 			/// the two profiles that agree on that must not be free to drift apart in separate copies of the same nine statements.</remarks>
-			private static void WriteXmlNullRootElement(CSharpCodeBuilder sb, XmlNameTable names, string comment)
+			private void WriteXmlNullRootElement(CSharpCodeBuilder sb, XmlNameTable names, string comment)
 			{
 				sb.Comment(comment);
 				sb.AppendLine("if (value is null)");
@@ -704,7 +840,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("emitter.WriteStartElement(in name);");
 				sb.AppendLine($"if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 				sb.EnterBlock();
-				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
+				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.LeaveBlock();
 				sb.AppendLine("emitter.WriteEndElement(in name);");
 				sb.AppendLine("return;");
@@ -747,11 +883,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 			}
 
+			/// <summary>Returns the field holding the name of the null marker, in the namespace the profile writes it in</summary>
+			/// <remarks>The local name is <c>nil</c> on both profiles and under both DataContract outputs; only the namespace
+			/// differs. The DataContract default puts it in the XML Schema instance namespace, so it reaches the wire as
+			/// <c>i:nil</c>; the Modern profile and the schemaless option put it in none, so it reaches the wire bare. Giving the
+			/// namespace to the NAME instead of to the write site is what keeps every caller of this marker unchanged.</remarks>
+			private string XmlNilNameRef(XmlNameTable names)
+				=> this.WritesXmlDcs && !this.WritesXmlDcsSchemaless
+					? names.Ref(XmlNilAttributeName, this.XmlNamespaces.Ref(XmlSchemaInstanceNamespaceUri))
+					: names.Ref(XmlNilAttributeName);
+
 			/// <summary>Writes the <c>nil</c> marker on the element currently open, and closes it</summary>
-			private static void WriteXmlNilElement(CSharpCodeBuilder sb, XmlNameTable names, string nameRef)
+			private void WriteXmlNilElement(CSharpCodeBuilder sb, XmlNameTable names, string nameRef)
 			{
 				sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
-				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
+				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.AppendLine($"emitter.WriteEndElement(in {nameRef});");
 			}
 
@@ -792,7 +938,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Emits what a nullable value writes when it IS null, per its resolved <paramref name="policy"/>: nothing, a nil element, or a nil element only when the settings ask</summary>
 			/// <remarks>Emitted as the <c>else</c> of the non-null branch its two callers already opened, and identical on both formats:
 			/// the profiles differ in how they write a VALUE, not in what they do with its absence.</remarks>
-			private static void WriteXmlNullPolicyBranch(CSharpCodeBuilder sb, XmlNameTable names, string nameRef, XmlNullPolicy policy)
+			private void WriteXmlNullPolicyBranch(CSharpCodeBuilder sb, XmlNameTable names, string nameRef, XmlNullPolicy policy)
 			{
 				switch (policy)
 				{
@@ -1144,7 +1290,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Writes the value of a dictionary entry in one of the attribute shapes: as text content, or as an attribute</summary>
 			/// <remarks>A null value makes the text (or the attribute) absent; the settings can still mark the entry itself nil, which
 			/// is the only unambiguous marker either shape has room for.</remarks>
-			private static void WriteXmlEntryValueText(CSharpCodeBuilder sb, XmlNameTable names, TypeMetadata valueType, string rawExpr, (string Text, bool NeedsEscaping) text, string? asAttribute)
+			private void WriteXmlEntryValueText(CSharpCodeBuilder sb, XmlNameTable names, TypeMetadata valueType, string rawExpr, (string Text, bool NeedsEscaping) text, string? asAttribute)
 			{
 				string write = asAttribute is not null
 					? $"emitter.WriteAttribute(in {asAttribute}, {text.Text});"
@@ -1162,7 +1308,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.LeaveBlock();
 				sb.AppendLine($"else if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 				sb.EnterBlock("else");
-				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
+				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.LeaveBlock("else");
 			}
 

@@ -49,6 +49,24 @@ namespace SnowBank.Data.Xml
 		/// <summary>Default representation for dictionary-like members of this container that do not override it with <see cref="XmlPropertyAttribute.DictionaryFormat"/></summary>
 		public CrystalXmlDictionaryFormat DictionaryFormat { get; set; }
 
+		/// <summary>Strips namespaces and prefixes from the <see cref="CrystalXmlOutputProfile.DataContract"/> output, keeping the rest of that format</summary>
+		/// <remarks>
+		/// <para>Under this option the DataContract profile writes <b>no XML declaration, no prefix and no <c>xmlns</c>, ever</b>:
+		/// element names keep their local name only, the <c>nil</c> and <c>type</c> attributes are written bare, and a
+		/// <c>type</c> value is the local contract name with no namespace half. Everything else about the format is unchanged,
+		/// which is the point: the null markers, the member order, the lexical forms and the <c>KeyValueOfXY</c> entries all
+		/// stay.</para>
+		/// <para>It exists for one reason: an application whose stored documents were written by a namespace-stripping writer
+		/// reads them back by local name. A namespaced document would not match. So this is the output to name when the
+		/// documents already exist, and the default is the output to name for anything new.</para>
+		/// <para>What it costs: <c>type="RangeCriterion"</c> has lost the namespace half of its qualified name, so two derived
+		/// types with the same local name in different contract namespaces become the same annotation on the wire.</para>
+		/// <para>Generation-time, like <see cref="Profile"/>: the generated code bakes its names as frozen literals, so a name
+		/// exists with a namespace or without one and never both. On <see cref="CrystalXmlOutputProfile.Modern"/>, which has no
+		/// namespaces to strip, the option does nothing and the generator says so (<c>CXML0012</c>).</para>
+		/// </remarks>
+		public bool Schemaless { get; set; }
+
 	}
 
 	/// <summary>Mono-format alias that marks a partial class as a container of source-generated <b>XML</b> serializers</summary>
@@ -79,6 +97,9 @@ namespace SnowBank.Data.Xml
 		/// <inheritdoc cref="CrystalXmlOutputAttribute.DictionaryFormat"/>
 		public CrystalXmlDictionaryFormat DictionaryFormat { get; set; }
 
+		/// <inheritdoc cref="CrystalXmlOutputAttribute.Schemaless"/>
+		public bool Schemaless { get; set; }
+
 	}
 
 	/// <summary>Specifies which XML format shape a <see cref="CrystalXmlOutputAttribute"/> container produces</summary>
@@ -92,7 +113,10 @@ namespace SnowBank.Data.Xml
 		/// <summary>The XML a reader of the equivalent JSON would predict: element names follow the same naming policy as the JSON, a <see langword="null"/> member is absent by default, and dictionaries default to <see cref="CrystalXmlDictionaryFormat.Direct"/></summary>
 		Modern,
 
-		/// <summary>The format produced by <see cref="System.Runtime.Serialization.DataContractSerializer"/>: data contract names, ordinal member ordering, explicit <c>nil</c> markers, and unhashed <c>KeyValueOfXY</c> dictionary elements</summary>
+		/// <summary>The format produced by <see cref="System.Runtime.Serialization.DataContractSerializer"/>: contract namespaces, data contract names, ordinal member ordering, <c>i:nil</c> and <c>i:type</c> markers, qualified-name type annotations, and unhashed <c>KeyValueOfXY</c> dictionary elements</summary>
+		/// <remarks>A declaration this output can prove nothing uses is omitted, and the ones that remain are written on the
+		/// first element that needs them, so a document carries fewer declarations than the reference serializer writes and the
+		/// same expanded names. To strip namespaces and prefixes altogether, see <see cref="CrystalXmlOutputAttribute.Schemaless"/>.</remarks>
 		DataContract,
 
 	}
