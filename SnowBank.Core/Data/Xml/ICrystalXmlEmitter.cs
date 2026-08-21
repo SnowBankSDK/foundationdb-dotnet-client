@@ -37,6 +37,14 @@ namespace SnowBank.Data.Xml
 	/// <para>Two families implement it: the text emitter <see cref="CrystalXmlWriter{TRune,TWriter}"/>, which produces
 	/// a byte-exact output, and the infoset emitters, which build a DOM or delegate to <c>System.Xml</c> and therefore
 	/// only guarantee infoset equivalence.</para>
+	/// <para><b>Prefixes never cross this interface.</b> A caller names a namespace, never an alias: the members below take a
+	/// <see cref="CrystalXmlNamespace"/> and the implementation decides which prefix stands for it, because a prefix depends
+	/// on the depth of the element that declares it and on what is already in scope, and neither is knowledge the caller has.
+	/// Any alias reads back to the same expanded name, so nothing in the document's meaning depends on the choice.</para>
+	/// <para>An implementation declares a namespace it needs and has not got, on the element that is currently open, so a
+	/// caller that writes nothing but elements and attributes still produces a well-formed document.
+	/// <see cref="WriteNamespaceDeclaration"/> and <see cref="WriteDefaultNamespaceDeclaration"/> exist for the caller that
+	/// wants a declaration placed higher than its first use, which is what keeps a repeated namespace declared once.</para>
 	/// </remarks>
 	[PublicAPI]
 	public interface ICrystalXmlEmitter
@@ -45,15 +53,75 @@ namespace SnowBank.Data.Xml
 		/// <summary>Opens a new element</summary>
 		/// <param name="name">Name of the element, in both its text and UTF-8 representations</param>
 		/// <remarks>The start tag stays open until content is written or the element is closed, so that
-		/// <see cref="WriteAttribute"/> can still append attributes to it.</remarks>
+		/// <see cref="WriteAttribute(in CrystalXmlName,ReadOnlySpan{char})"/> can still append attributes to it.</remarks>
 		void WriteStartElement(in CrystalXmlName name);
+
+		/// <summary>Opens a new element in an explicit namespace</summary>
+		/// <param name="name">Local name of the element, in both its text and UTF-8 representations</param>
+		/// <param name="ns">Namespace of the element, which takes precedence over the one <paramref name="name"/> carries</param>
+		/// <remarks>This overload exists so that one cached name can be written in more than one namespace: the item name
+		/// <c>string</c> is in the collections namespace under a <c>List&lt;string&gt;</c> and in the XML Schema namespace as the
+		/// value of a type annotation, and caching it twice would be caching the same three bytes twice.</remarks>
+		void WriteStartElement(in CrystalXmlName name, in CrystalXmlNamespace ns);
 
 		/// <summary>Appends an attribute to the start tag that is currently open</summary>
 		/// <param name="name">Name of the attribute, in both its text and UTF-8 representations</param>
 		/// <param name="value">Value of the attribute, escaped by the implementation</param>
-		/// <remarks>Only valid between a <see cref="WriteStartElement"/> and the first content event or
+		/// <remarks>Only valid between a <see cref="WriteStartElement(in CrystalXmlName)"/> and the first content event or
 		/// <see cref="WriteEndElement"/> of that element.</remarks>
 		void WriteAttribute(in CrystalXmlName name, ReadOnlySpan<char> value);
+
+		/// <summary>Appends an attribute in an explicit namespace to the start tag that is currently open</summary>
+		/// <param name="name">Local name of the attribute, in both its text and UTF-8 representations</param>
+		/// <param name="ns">Namespace of the attribute, which takes precedence over the one <paramref name="name"/> carries</param>
+		/// <param name="value">Value of the attribute, escaped by the implementation</param>
+		/// <remarks>An attribute is never in the default namespace: a namespaced attribute always takes a prefix, which is why
+		/// this overload and the one above are not the same call with an empty namespace.</remarks>
+		void WriteAttribute(in CrystalXmlName name, in CrystalXmlNamespace ns, ReadOnlySpan<char> value);
+
+		/// <summary>Appends an attribute whose VALUE is a qualified name</summary>
+		/// <param name="name">Name of the attribute, whose own namespace is the one it carries</param>
+		/// <param name="value">The qualified name the attribute carries: its local name, and the namespace it belongs to</param>
+		/// <inheritdoc cref="WriteQNameAttribute(in CrystalXmlName,in CrystalXmlNamespace,in CrystalXmlName)" path="/remarks"/>
+		void WriteQNameAttribute(in CrystalXmlName name, in CrystalXmlName value);
+
+		/// <summary>Appends an attribute in an explicit namespace whose VALUE is a qualified name</summary>
+		/// <param name="name">Local name of the attribute (<c>type</c>, on the DataContract format)</param>
+		/// <param name="ns">Namespace of the attribute, which takes precedence over the one <paramref name="name"/> carries</param>
+		/// <param name="value">The qualified name the attribute carries: its local name, and the namespace it belongs to</param>
+		/// <remarks>Separate from <see cref="WriteAttribute(in CrystalXmlName,in CrystalXmlNamespace,ReadOnlySpan{char})"/>
+		/// because a qualified name is a namespace and a local name, not text: the implementation resolves the namespace to a
+		/// prefix in scope and writes <c>prefix:Local</c>, so nothing formats a string to describe a name the implementation
+		/// already holds.</remarks>
+		void WriteQNameAttribute(in CrystalXmlName name, in CrystalXmlNamespace ns, in CrystalXmlName value);
+
+		/// <summary>Declares a namespace on the start tag that is currently open, under a prefix the implementation picks</summary>
+		/// <param name="ns">Namespace to declare</param>
+		/// <remarks>
+		/// <para>The declaration covers the open element and everything inside it, so this is how a caller places one
+		/// declaration above several uses instead of letting each use declare its own. A collection wrapper naming its items'
+		/// namespace, or an element whose nested contract lives in another namespace than its own name, are the two shapes
+		/// that need it: without them each child declares the same namespace again.</para>
+		/// <para>Asking for a namespace that is already in scope writes NOTHING. The call means "this namespace is usable
+		/// inside this element", and an inherited declaration already says so; binding a second alias to one namespace would
+		/// only add bytes. So a caller can ask unconditionally, which is what lets one generated body serve both a root
+		/// element (whose namespace its caller already declared) and a nested one (whose caller did not).</para>
+		/// <para>Only valid while the start tag is still open.</para>
+		/// </remarks>
+		void WriteNamespaceDeclaration(in CrystalXmlNamespace ns);
+
+		/// <summary>Declares a namespace as the DEFAULT namespace on the start tag that is currently open</summary>
+		/// <param name="ns">Namespace to declare, or the empty namespace to cancel an inherited default</param>
+		/// <remarks>
+		/// <para>The default namespace covers the ELEMENTS of the open element's subtree, never their attributes. An element
+		/// whose own namespace is the default therefore needs no prefix, which is what makes a document readable.</para>
+		/// <para><b>It does not change the namespace of the element that carries it.</b> An element gets its namespace when it
+		/// is opened, and nothing afterwards moves it. So an element that is itself in the namespace it declares says so at
+		/// <see cref="WriteStartElement(in CrystalXmlName,in CrystalXmlNamespace)"/>, which also declares it when nothing in
+		/// scope binds it. The text emitter would produce the same bytes either way, but the infoset implementations have
+		/// committed the name by then, and a call that means one thing on one sink and another on the next is worth no bytes.</para>
+		/// </remarks>
+		void WriteDefaultNamespaceDeclaration(in CrystalXmlNamespace ns);
 
 		/// <summary>Appends text content to the element that is currently open, escaping it as needed</summary>
 		/// <param name="text">Raw text; the implementation escapes it</param>
