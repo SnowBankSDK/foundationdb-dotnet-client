@@ -39,6 +39,9 @@ namespace FoundationDB.Testing
 		/// <summary>Store that is used by the provider</summary>
 		public FakeDbStore? Store { get; set; }
 
+		/// <summary>Retention policy for published versions. <see langword="null"/> (the default) is the real-cluster behavior: <see cref="FdbSnapshotRetention.KeepWindow"/> over the 5 second <see cref="FdbSnapshotRetention.DefaultWindow"/>, on the store's clock (virtual under a fake provider); a read past the window fails with transaction_too_old. <see cref="FdbSnapshotRetention.KeepEverything"/> is the forensic mode: the whole run stays inspectable. Ignored when <see cref="Store"/> is supplied: a shared store was configured by its creator.</summary>
+		public FdbSnapshotRetentionPolicy? Retention { get; set; }
+
 	}
 
 	/// <summary>Provides access to a simulated in-memory database instance</summary>
@@ -147,7 +150,7 @@ namespace FoundationDB.Testing
 			else
 			{
 				// we create our own local store instance, that is not shared
-				store = new FakeDbStore(this.ProviderOptions.ApiVersion);
+				store = new FakeDbStore(this.ProviderOptions.ApiVersion, retention: this.ProviderOptions.Retention);
 				ownsStore = true;
 			}
 

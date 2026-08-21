@@ -1360,8 +1360,8 @@ namespace FoundationDB.Storage
 		public TimeSpan RetryDelayMaximum { get; set; } = TimeSpan.Zero;
 
 		/// <summary>Opens a store over a given storage backend.</summary>
-		/// <remarks>The backend supplies the committed state, its durability and its retention window; everything else - read-your-writes, conflict detection, watches, versionstamps - is this class and is identical whichever backend is plugged in.</remarks>
-		protected FdbEmulatedDatabase(IFdbStorageBackend backend, int apiVersion, int protocolVersion, long initialVersion, TimeProvider? time)
+		/// <remarks>The backend supplies the committed state, its durability and its retention ceiling; everything else - read-your-writes, conflict detection, watches, versionstamps - is this class and is identical whichever backend is plugged in. The <paramref name="retention"/> policy decides which published versions stay readable within that ceiling; <see langword="null"/> keeps everything the backend can serve.</remarks>
+		protected FdbEmulatedDatabase(IFdbStorageBackend backend, int apiVersion, int protocolVersion, long initialVersion, TimeProvider? time, FdbSnapshotRetentionPolicy? retention = null)
 		{
 			Contract.NotNull(backend);
 			if (protocolVersion < MIN_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be less than the minimum supported version");
@@ -1377,13 +1377,21 @@ namespace FoundationDB.Storage
 			this.ProtocolVersion = protocolVersion;
 			this.Time = time ?? TimeProvider.System;
 			this.Backend = backend;
+			this.RetentionPolicy = retention ?? FdbSnapshotRetention.KeepEverything;
 
 			var snapshot = backend.CreateInitialSnapshot(initialVersion > 0 ? initialVersion : 0xfdb1337000000);
 			Contract.Debug.Assert(snapshot != null);
 			this.Snapshots[snapshot.Version] = snapshot;
+			this.RetentionContext.Entries.Add(new(snapshot.Version, this.Time.GetUtcNow()));
 			this.CurrentSnapshotUnsafe = snapshot;
 			this.ReadVersion = snapshot.Version;
 		}
+
+		/// <summary>Policy deciding which published versions stay readable, within the backend's ceiling.</summary>
+		private FdbSnapshotRetentionPolicy RetentionPolicy { get; }
+
+		/// <summary>Reusable retained-set view handed to the policy; only touched under the global write lock.</summary>
+		private FdbSnapshotRetentionContext RetentionContext { get; } = new();
 
 		/// <summary>Storage this store's committed state lives in</summary>
 		protected IFdbStorageBackend Backend { get; }
@@ -1846,29 +1854,41 @@ namespace FoundationDB.Storage
 
 			this.CurrentSnapshotUnsafe = published;
 			this.Snapshots[commitVersion] = published;
+			this.RetentionContext.Entries.Add(new(commitVersion, this.Time.GetUtcNow()));
 			this.ReadVersion = commitVersion;
 			TrimRetainedSnapshots();
 			return published;
 		}
 
-		/// <summary>Drops the published versions that have fallen out of the backend's retention window; a read at one of them then fails with <see cref="FdbError.TransactionTooOld"/>.</summary>
+		/// <summary>Drops the published versions the backend can no longer serve, then the ones the retention policy reclaims; a read at a dropped version fails with <see cref="FdbError.TransactionTooOld"/>.</summary>
 		private void TrimRetainedSnapshots()
 		{
-			int retained = this.Backend.RetainedVersions;
-			if (retained == int.MaxValue)
-			{ // every version stays readable: the whole history is inspectable, and nothing is ever reclaimed under it
-				return;
+			var ctx = this.RetentionContext;
+
+			// the backend's ceiling first: a backend that reclaims storage can only serve this many versions behind the head, whatever the policy keeps
+			int ceiling = this.Backend.RetainedVersions;
+			if (ceiling != int.MaxValue)
+			{
+				while (ctx.Entries.Count > ceiling + 1)
+				{
+					this.Snapshots.Remove(ctx.Entries[0].Version);
+					ctx.Entries.RemoveAt(0);
+				}
 			}
 
-			// the window is the current version plus `retained` behind it; it is small by construction, so the scan is cheaper than keeping an ordered index
-			while (this.Snapshots.Count > retained + 1)
+			// then the policy, over what remains
+			ctx.Begin(this.Time);
+			this.RetentionPolicy(ctx);
+			if (ctx.Dropped is { Count: > 0 } dropped)
 			{
-				long oldest = long.MaxValue;
-				foreach (var version in this.Snapshots.Keys)
+				foreach (var version in dropped)
 				{
-					if (version < oldest) oldest = version;
+					if (this.Snapshots.Remove(version))
+					{
+						int i = ctx.Entries.FindIndex(e => e.Version == version);
+						if (i >= 0) ctx.Entries.RemoveAt(i);
+					}
 				}
-				this.Snapshots.Remove(oldest);
 			}
 		}
 

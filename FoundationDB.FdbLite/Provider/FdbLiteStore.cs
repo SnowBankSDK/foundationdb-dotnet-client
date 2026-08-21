@@ -35,8 +35,8 @@ namespace FoundationDB.FdbLite
 	public class FdbLiteStore : FdbEmulatedDatabase
 	{
 
-		public FdbLiteStore(FdbLiteEngine engine, int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null, bool disposeEngine = true, bool retainEveryVersion = false)
-			: base(new FdbLiteBackend(engine, disposeEngine, retainEveryVersion), apiVersion, protocolVersion, initialVersion, time)
+		public FdbLiteStore(FdbLiteEngine engine, int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null, bool disposeEngine = true, bool retainEveryVersion = false, FdbSnapshotRetentionPolicy? retention = null)
+			: base(new FdbLiteBackend(engine, disposeEngine, retainEveryVersion), apiVersion, protocolVersion, initialVersion, time, retention)
 		{
 			this.Engine = engine;
 		}
@@ -54,8 +54,9 @@ namespace FoundationDB.FdbLite
 		/// <param name="protocolVersion">The protocol version to use.</param>
 		/// <param name="time">The time provider to use.</param>
 		/// <param name="retainEveryVersion">Keeps every published version readable instead of a cluster-like recent-version window, at the cost of unbounded growth. This is the emulator configuration: it is what makes a store's whole history inspectable from a test.</param>
-		public static FdbLiteStore CreateInMemory(FdbLiteGeometry geometry, int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, TimeProvider? time = null, bool retainEveryVersion = false)
-			=> new(FdbLiteEngine.Create(new FdbLiteHeapPager(geometry)), apiVersion, protocolVersion, time: time, retainEveryVersion: retainEveryVersion);
+		/// <param name="retention">Retention policy over the versions the engine keeps; <see langword="null"/> keeps everything the engine can serve.</param>
+		public static FdbLiteStore CreateInMemory(FdbLiteGeometry geometry, int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, TimeProvider? time = null, bool retainEveryVersion = false, FdbSnapshotRetentionPolicy? retention = null)
+			=> new(FdbLiteEngine.Create(new FdbLiteHeapPager(geometry)), apiVersion, protocolVersion, time: time, retainEveryVersion: retainEveryVersion, retention: retention);
 
 	}
 

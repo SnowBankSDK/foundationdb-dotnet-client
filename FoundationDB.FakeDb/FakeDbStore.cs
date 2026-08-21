@@ -28,18 +28,14 @@ namespace FoundationDB.FakeDb
 {
 	using FoundationDB.Storage;
 
-	/// <summary>The in-memory emulated database: the shared <see cref="FdbEmulatedDatabase"/> base over the default heap-engine backend, keeping every published version.</summary>
+	/// <summary>The in-memory emulated database: the shared <see cref="FdbEmulatedDatabase"/> base over the COLA in-memory backend, retaining the real-cluster 5 second window by default.</summary>
 	/// <remarks>The base carries everything behavioral (read-your-writes, conflicts, watches, versionstamps, retry and buggify); this sibling only chooses the storage a test gets when nothing else is asked for.</remarks>
 	public class FakeDbStore : FdbEmulatedDatabase
 	{
 
-		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null)
-			: base(CreateInMemoryBackend(), apiVersion, protocolVersion, initialVersion, time)
+		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null, FdbSnapshotRetentionPolicy? retention = null)
+			: base(new ColaBackend(), apiVersion, protocolVersion, initialVersion, time, retention ?? FdbSnapshotRetention.KeepWindow(FdbSnapshotRetention.DefaultWindow))
 		{ }
-
-		/// <summary>Builds the storage an emulator gets when nothing else is asked for: the COLA in-memory store, keeping every version.</summary>
-		/// <remarks>The in-memory emulator is a CONFIGURATION of the storage engine rather than a separate implementation of it, so the semantics a test relies on - read-your-writes, conflict detection, watches, versionstamps - are exercised over the same storage that a persistent store uses. Retaining every version is what keeps the whole published history inspectable, and costs unbounded growth, which is the right trade for a store that lives as long as a test.</remarks>
-		private static IFdbStorageBackend CreateInMemoryBackend() => new ColaBackend();
 
 		/// <summary>Opens a store over an explicit storage backend.</summary>
 		protected FakeDbStore(IFdbStorageBackend backend, int apiVersion, int protocolVersion, long initialVersion, TimeProvider? time)

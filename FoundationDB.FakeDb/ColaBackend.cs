@@ -34,7 +34,7 @@ namespace FoundationDB.FakeDb
 
 	/// <summary>The purely in-memory storage backend: COLA ordered dictionaries, no engine, no durability.</summary>
 	/// <remarks>
-	/// <para>The FakeDb sibling's own storage. A published version's store IS the copy that was mutated (no freeze step, nothing durable to order), every published version is retained (the whole history stays inspectable, at unbounded growth, the right trade for a store that lives as long as a test), and pins are no-ops because nothing is ever reclaimed.</para>
+	/// <para>The FakeDb sibling's own storage. A published version's store IS the copy that was mutated (no freeze step, nothing durable to order). By default every published version is retained (the whole history stays inspectable, at unbounded growth, the forensic mode); a bounded <see cref="RetainedVersions"/> window trades that history for bounded memory, and a read past the window fails with <see cref="FdbError.TransactionTooOld"/> like on a real cluster. Pins are no-ops either way: a published snapshot is self-contained, so a transaction already holding one keeps reading it even after the trim, which only refuses to START a read at a trimmed version.</para>
 	/// </remarks>
 	public sealed class ColaBackend : IFdbStorageBackend
 	{
@@ -66,7 +66,7 @@ namespace FoundationDB.FakeDb
 		public IFdbCommittedStore Publish(IFdbCommittedStore committed, long commitVersion) => committed;
 
 		/// <inheritdoc />
-		/// <remarks>Everything is retained: every published version stays readable forever.</remarks>
+		/// <remarks>A published snapshot is self-contained, so this backend can serve any version the store's retention policy keeps.</remarks>
 		public int RetainedVersions => int.MaxValue;
 
 		/// <inheritdoc />
