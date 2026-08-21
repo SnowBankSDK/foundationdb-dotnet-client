@@ -27,6 +27,7 @@
 // ReSharper disable AccessToDisposedClosure
 namespace FoundationDB.Testing.Tests
 {
+	using FoundationDB.FakeDb;
 	using FoundationDB.Client;
 	using FoundationDB.Storage;
 	using Microsoft.Extensions.Time.Testing;
@@ -52,7 +53,7 @@ namespace FoundationDB.Testing.Tests
 				tr.Atomic(Key("k1"), Slice.FromFixed64(0x5D), FdbMutationType.Add);
 
 				// diagnostic: dump the mutation log before the commit
-				var handler = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) FdbTransactionDebugger.GetHandler(tr);
+				var handler = (FakeDbStore.TransactionHandler) FdbTransactionDebugger.GetHandler(tr);
 				var snapshot = handler.GetSnapshotBlocking();
 				foreach (var entry in FakeDbDebugger.GetSnapshotMutations(snapshot).IterateOrdered())
 				{
@@ -68,6 +69,22 @@ namespace FoundationDB.Testing.Tests
 
 			var actual = await db.ReadAsync(tr => tr.GetAsync(Key("k1")), this.Cancellation);
 			Assert.That(actual, Is.EqualTo(Slice.FromFixed64(0x5D)), "the key must exist with the operand value after commit");
+		}
+
+		[Test]
+		public async Task Test_A_Transaction_Can_Mint_The_Full_UserVersion_Range_Of_Stamps()
+		{
+			// the user version is a 16-bit field: one transaction can mint up to 65,535 unique stamps, and the
+			// 65,536th must fail with the limit named correctly
+			var db = await OpenTestDatabaseAsync();
+			using var tr = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
+			VersionStamp last = default;
+			for (int i = 1; i <= 0xFFFF; i++)
+			{
+				last = tr.CreateUniqueVersionStamp();
+			}
+			Assert.That(last.UserVersion, Is.EqualTo(0xFFFF), "the full 16-bit range must be reachable");
+			Assert.That(() => tr.CreateUniqueVersionStamp(), Throws.InvalidOperationException, "the 65,536th stamp exceeds the 16-bit user version");
 		}
 
 		[Test]
@@ -113,7 +130,7 @@ namespace FoundationDB.Testing.Tests
 			tr.Set(Key("k0"), Value("v5"));
 			_ = await tr.GetAsync(Key("k2"));
 
-			var handler = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) FdbTransactionDebugger.GetHandler(tr);
+			var handler = (FakeDbStore.TransactionHandler) FdbTransactionDebugger.GetHandler(tr);
 			var snapshot = handler.GetSnapshotBlocking();
 			foreach (var entry in FakeDbDebugger.GetSnapshotMutations(snapshot).IterateOrdered())
 			{

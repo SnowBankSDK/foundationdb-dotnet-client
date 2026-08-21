@@ -26,6 +26,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FakeDb;
+	using FoundationDB.Storage;
 	using FoundationDB.Testing;
 
 	/// <summary>Base class for scenario fixtures running against the FakeDb emulator (no Docker, no native client): the standard FakeDb conformance head pattern.</summary>

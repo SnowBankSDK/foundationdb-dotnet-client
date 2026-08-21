@@ -3320,7 +3320,8 @@ namespace FoundationDB.Client.Tests
 				Assert.That(tr.Options.RetryLimit, Is.EqualTo(3), "tr.Options.RetryLimit");
 
 				// simulate a retryable error condition
-				throw new FdbException(FdbError.TransactionTooOld);
+				// (the message is spelled out: the code-only ctor resolves it through the native fdb_c library, which is absent on cluster-less machines)
+				throw new FdbException(FdbError.TransactionTooOld, nameof(FdbError.TransactionTooOld));
 			}, go.Token);
 
 			try

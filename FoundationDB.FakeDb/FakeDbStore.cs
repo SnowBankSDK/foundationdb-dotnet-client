@@ -24,33 +24,23 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Client.Tests
+namespace FoundationDB.FakeDb
 {
-	using FoundationDB.FakeDb;
 	using FoundationDB.Storage;
-	using FoundationDB.Testing;
 
-	/// <summary>Repo test-harness policy for FakeDb watch buggify: the repo's own harness backends are watch-realistic BY DEFAULT.</summary>
-	/// <remarks>
-	/// <para>The library default is buggify-off (that decision belongs to each downstream consumer, since the emulator is public), but
-	/// one level up - where we own the tests - the harness backends enable seeded chaos by default so every watch-arming suite exercises
-	/// the weak watch contract (a watch may fire spuriously, and a net-reverted change may never fire). Each test gets a stable,
-	/// per-test-name seed, so a run is reproducible and a failure replays.</para>
-	/// <para>A test that asserts exact, clean watch semantics disables it with one line: <c>store.Buggify.Disable()</c> (or, on a
-	/// conformance head, the fixture's <c>RequireCleanWatches()</c> hook), which documents "this test needs clean watches" at the site.</para>
-	/// <para>Chaos is a no-op for a suite that arms no watches (nothing to fire, no checks to defer), so enabling it on a non-watch
-	/// conformance head is harmless.</para>
-	/// </remarks>
-	internal static class TestBuggify
+	/// <summary>The in-memory emulated database: the shared <see cref="FdbEmulatedDatabase"/> base over the COLA in-memory backend, retaining the real-cluster 5 second window by default.</summary>
+	/// <remarks>The base carries everything behavioral (read-your-writes, conflicts, watches, versionstamps, retry and buggify); this sibling only chooses the storage a test gets when nothing else is asked for.</remarks>
+	public class FakeDbStore : FdbEmulatedDatabase
 	{
 
-		/// <summary>Creates a fresh FakeDb store with watch chaos enabled, seeded from the currently-running test's name.</summary>
-		public static FakeDbStore ChaosStore()
-		{
-			var store = new FakeDbStore();
-			store.Buggify.EnableChaos(NUnit.Framework.TestContext.CurrentContext.Test.FullName);
-			return store;
-		}
+		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null, FdbSnapshotRetentionPolicy? retention = null)
+			: base(new ColaBackend(), apiVersion, protocolVersion, initialVersion, time, retention ?? FdbSnapshotRetention.KeepWindow(FdbSnapshotRetention.DefaultWindow))
+		{ }
+
+		/// <summary>Opens a store over an explicit storage backend.</summary>
+		protected FakeDbStore(IFdbStorageBackend backend, int apiVersion, int protocolVersion, long initialVersion, TimeProvider? time)
+			: base(backend, apiVersion, protocolVersion, initialVersion, time)
+		{ }
 
 	}
 
