@@ -88,7 +88,9 @@ namespace SnowBank.SourceAnalysis
 			if (type is null) throw new ArgumentNullException(nameof(type));
 
 			this.Name = type.Name;
-			this.NameSpace = type.ContainingNamespace?.ToDisplayString() ?? "";
+			// the GLOBAL namespace is a real symbol whose display string is "<global namespace>", not a name:
+			// a type declared there has the empty namespace
+			this.NameSpace = type.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() : "";
 			this.FullName = type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
 			this.FullyQualifiedName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 			this.Assembly = type.ContainingAssembly?.Name ?? "";

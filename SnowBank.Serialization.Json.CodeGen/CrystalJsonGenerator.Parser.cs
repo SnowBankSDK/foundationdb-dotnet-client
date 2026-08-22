@@ -3034,7 +3034,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						XmlItemName = xmlItemName,
 						CrystalXmlDictionaryFormat = xmlDictionaryFormat,
 						DeclaringDataContractNamespace = GetDataContractInfo(member.ContainingType).Namespace,
-						DeclaringTypeNameSpace = member.ContainingType.ContainingNamespace?.ToDisplayString(),
+						DeclaringTypeNameSpace = member.ContainingType.ContainingNamespace is { IsGlobalNamespace: false } declaringNs ? declaringNs.ToDisplayString() : "",
 						DataMemberOrder = dataMemberOrder,
 						EmitDefaultValue = emitDefaultValue,
 #if FULL_DEBUG

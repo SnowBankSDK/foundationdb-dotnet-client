@@ -33,6 +33,14 @@
 // enrolled in NamespaceProbeSerializers at the end of this file, so DcsNamespaceReferenceFacts.cs compares the
 // unstripped reference wire (ReferenceDcsWire.Serialize(..., strip: false)) to the generated default output. The two
 // IsReference probes stay out of the container: see the remark on NamespaceSharedProbe.
+
+/// <summary>Declared in the GLOBAL namespace: there is no CLR namespace to derive a contract namespace from</summary>
+[System.Runtime.Serialization.DataContract]
+public sealed class AcmeGlobalNamespaceProbe
+{
+	[System.Runtime.Serialization.DataMember] public string? Name;
+}
+
 namespace SnowBank.Data.Xml.Tests.Acme
 {
 	using System.Runtime.Serialization;
@@ -165,6 +173,109 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	#endregion
 
+	#region Two declarations on one element...
+
+	/// <summary>The declared contract of a slot whose runtime type lives in a THIRD namespace</summary>
+	[DataContract(Name = "NamespaceTwoDeclsBase", Namespace = "urn:acme:catalog:2")]
+	[KnownType(typeof(NamespaceTwoDeclsDerived))]
+	[JsonPolymorphic]
+	[JsonDerivedType(typeof(NamespaceTwoDeclsDerived), "third")]
+	public class NamespaceTwoDeclsBaseProbe
+	{
+		[DataMember] public string? Field;
+	}
+
+	/// <summary>Lives in a third namespace, so the slot element needs one declaration for the declared contract and another for the <c>i:type</c> QName</summary>
+	[DataContract(Name = "NamespaceTwoDeclsDerived", Namespace = "urn:acme:catalog:3")]
+	public sealed class NamespaceTwoDeclsDerived : NamespaceTwoDeclsBaseProbe;
+
+	[DataContract(Namespace = "urn:acme:catalog:1")]
+	public sealed class NamespaceTwoDeclsProbe
+	{
+		[DataMember] public NamespaceTwoDeclsBaseProbe? Slot;
+	}
+
+	#endregion
+
+	#region A namespace already in scope on an ancestor...
+
+	/// <summary>Same contract namespace as <see cref="NamespaceInScopeChildProbe"/>: its elements sit where that namespace is already in scope</summary>
+	[DataContract(Namespace = "urn:acme:catalog:2")]
+	public sealed class NamespaceInScopeLeafProbe
+	{
+		[DataMember] public string? Tag;
+	}
+
+	[DataContract(Namespace = "urn:acme:catalog:2")]
+	public sealed class NamespaceInScopeChildProbe
+	{
+		[DataMember] public NamespaceInScopeLeafProbe? Leaf;
+	}
+
+	[DataContract(Namespace = "urn:acme:catalog:1")]
+	public sealed class NamespaceInScopeProbe
+	{
+		[DataMember] public NamespaceInScopeChildProbe? Child;
+	}
+
+	#endregion
+
+	#region The empty namespace, stated explicitly, under a namespaced parent...
+
+	/// <summary>The explicitly stated ABSENCE of a namespace, distinct from an unspecified one</summary>
+	[DataContract(Namespace = "")]
+	public sealed class NamespaceEmptyChildProbe
+	{
+		[DataMember] public string? Name;
+	}
+
+	[DataContract(Namespace = "urn:acme:catalog:1")]
+	public sealed class NamespaceEmptyParentProbe
+	{
+		[DataMember] public NamespaceEmptyChildProbe? Child;
+	}
+
+	#endregion
+
+	#region Mixed-namespace service envelope...
+
+	/// <summary>
+	/// Structural twin of a measured service-envelope shape: a generic contract whose declared name expands the
+	/// payload's contract name (<c>Response{0}</c>), in an explicit contract namespace, wrapping a payload type
+	/// that has no contract at all. One document carries three namespace classes: the envelope's explicit one,
+	/// the payload's CLR-derived one, and the error type's CLR-derived one.
+	/// </summary>
+	[DataContract(Name = "Response{0}", Namespace = "urn:acme:services:data")]
+	public class NamespaceEnvelopeBaseProbe
+	{
+		[DataMember(Name = "success")] public bool Success;
+		[DataMember(Name = "message")] public string? Message;
+		[DataMember(Name = "errors")] public List<NamespaceEnvelopeErrorProbe>? Errors;
+	}
+
+	/// <summary>The payload slot: a base-declared member set carried by every closed payload type</summary>
+	[DataContract(Name = "Response{0}", Namespace = "urn:acme:services:data")]
+	public sealed class NamespaceEnvelopeProbe<T> : NamespaceEnvelopeBaseProbe
+	{
+		[DataMember(Name = "d")] public T? Result;
+	}
+
+	/// <summary>No contract at all: the payload lives in the CLR-derived namespace, unlike its envelope</summary>
+	public sealed class NamespaceEnvelopePayloadProbe
+	{
+		public string? Title { get; set; }
+	}
+
+	/// <summary>A contract with no explicit namespace: the third namespace class of the envelope document</summary>
+	[DataContract]
+	public sealed class NamespaceEnvelopeErrorProbe
+	{
+		[DataMember(Name = "id")] public string? Source;
+		[DataMember(Name = "message")] public string? Message;
+	}
+
+	#endregion
+
 	#region Test container...
 
 	// The generated side of DcsNamespaceReferenceFacts. Only the DEFAULT output is enrolled here: this fixture is about
@@ -184,6 +295,18 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[CrystalSerializable(typeof(NamespaceDerivedOtherNs))]
 	[CrystalSerializable(typeof(NamespacePolyProbe))]
 	[CrystalSerializable(typeof(NamespaceOffsetProbe))]
+	// the payload type argument is fully qualified: inside this class's attribute list, the bare name binds to
+	// the generated nested holder of the same name, and a static class cannot be a type argument (CS0718)
+	[CrystalSerializable(typeof(NamespaceEnvelopeProbe<global::SnowBank.Data.Xml.Tests.Acme.NamespaceEnvelopePayloadProbe>))]
+	[CrystalSerializable(typeof(NamespaceTwoDeclsProbe))]
+	[CrystalSerializable(typeof(NamespaceTwoDeclsBaseProbe))]
+	[CrystalSerializable(typeof(NamespaceTwoDeclsDerived))]
+	[CrystalSerializable(typeof(NamespaceInScopeProbe))]
+	[CrystalSerializable(typeof(NamespaceInScopeChildProbe))]
+	[CrystalSerializable(typeof(NamespaceInScopeLeafProbe))]
+	[CrystalSerializable(typeof(NamespaceEmptyParentProbe))]
+	[CrystalSerializable(typeof(NamespaceEmptyChildProbe))]
+	[CrystalSerializable(typeof(global::AcmeGlobalNamespaceProbe))]
 	public static partial class NamespaceProbeSerializers
 	{
 	}
