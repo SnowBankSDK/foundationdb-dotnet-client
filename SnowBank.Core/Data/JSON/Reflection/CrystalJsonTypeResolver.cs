@@ -1334,13 +1334,11 @@ namespace SnowBank.Data.Json
 				{ // DCJS semantics on read: the member must be PRESENT in the document (an explicit null satisfies)
 					flags |= CrystalJsonMemberFlags.RequiredPresence;
 				}
-				if (attr.Name != null)
-				{
-					// one member giving DIFFERENT wire names to different serializers is two contracts on one type
-					// (ex: [DataMember(Name="code")] for the legacy DCJS wire plus a Newtonsoft [JsonProperty("ACTIF")]
-					// for another consumer): refuse loudly instead of silently picking one of the two
-					ThrowIfConflictingForeignWireName(member, attr.Name);
-				}
+				// one member giving different wire names to different serializers is two contracts on one type
+				// (ex: [DataMember(Name="code")] for the legacy DCJS wire plus a Newtonsoft [JsonProperty("ACTIF")]
+				// for another consumer): refuse loudly instead of silently picking one of the two. A bare [DataMember]
+				// names the member after itself, and that implied name counts the same way.
+				ThrowIfConflictingWireName(member, attr.Name ?? member.Name, attr.Name is not null);
 				// check if a custom name is specified
 				name = attr.Name ?? name;
 				return true;
@@ -1628,19 +1626,26 @@ namespace SnowBank.Data.Json
 			}
 		}
 
-		/// <summary>Throws if the member also carries a name-giving attribute of ANOTHER serializer family with a different wire name</summary>
+		/// <summary>Throws if the member also carries a naming attribute whose wire name differs from the one its data contract gives it</summary>
 		/// <remarks>Such a member is one type trying to serve two different wire contracts at once. Whichever name a serializer
 		/// silently picks, one of the two consumers gets the wrong document; the only correct fix is to split the type into one
-		/// DTO per contract. (Attributes are matched by name+namespace, without referencing their packages; same caveat about
-		/// code trimming as the recognition in <see cref="FindPropertyAttribute"/>.)</remarks>
-		private static void ThrowIfConflictingForeignWireName(MemberInfo member, string dataMemberName)
+		/// DTO per contract. The contract name is <c>[DataMember(Name = ...)]</c> when it is spelled and the member's own name
+		/// when it is not, because a bare <c>[DataMember]</c> is still a naming decision. (Foreign attributes are matched by
+		/// name+namespace, without referencing their packages; same caveat about code trimming as the recognition in
+		/// <see cref="FindPropertyAttribute"/>.)</remarks>
+		private static void ThrowIfConflictingWireName(MemberInfo member, string contractName, bool contractNameIsSpelled)
 		{
 			foreach (var attr in member.GetCustomAttributes(true))
 			{
 				var attrType = attr.GetType();
 				string? otherName;
 				string family;
-				if (attrType.Name == "JsonPropertyNameAttribute" && attrType.Namespace == "System.Text.Json.Serialization")
+				if (attr is JsonPropertyAttribute native)
+				{
+					otherName = native.PropertyName;
+					family = "JsonProperty";
+				}
+				else if (attrType.Name == "JsonPropertyNameAttribute" && attrType.Namespace == "System.Text.Json.Serialization")
 				{
 					otherName = (string?) attrType.GetProperty("Name")?.GetValue(attr);
 					family = "JsonPropertyName";
@@ -1655,9 +1660,10 @@ namespace SnowBank.Data.Json
 					continue;
 				}
 
-				if (!string.IsNullOrEmpty(otherName) && !string.Equals(otherName, dataMemberName, StringComparison.Ordinal))
+				if (!string.IsNullOrEmpty(otherName) && !string.Equals(otherName, contractName, StringComparison.Ordinal))
 				{
-					throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' declares two different wire names: [DataMember(Name=\"{dataMemberName}\")] and [{family}(\"{otherName}\")]. One type cannot serve two wire contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.");
+					string spelling = contractNameIsSpelled ? $"[DataMember(Name=\"{contractName}\")]" : "[DataMember], which names it after the member";
+					throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' declares two different wire names: the data contract names it '{contractName}' ({spelling}), and [{family}(\"{otherName}\")] names it '{otherName}'. One type cannot serve two wire contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.");
 				}
 			}
 		}

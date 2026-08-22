@@ -297,6 +297,94 @@ namespace SnowBank.Data.Xml.Tests
 
 		#endregion
 
+		#region Namespaces...
+
+		/// <summary>Adapts a shared conformance scenario into an <see cref="IEmitterScenario"/></summary>
+		private sealed class SharedScenario(CrystalXmlEmitterConformance.IScenario inner) : IEmitterScenario
+		{
+			public void Run<TEmitter>(ref TEmitter emitter) where TEmitter : struct, ICrystalXmlEmitter
+				=> inner.Run(ref emitter);
+		}
+
+		[Test]
+		public void Test_Namespace_Cases_Are_Equivalent_On_Both_Infoset_Emitters()
+		{
+			// the same event sequences the byte-exact core is pinned against, compared here on expanded names instead of
+			// bytes. XNode.DeepEquals cannot serve: it compares namespace declarations as ordinary attributes, and these two
+			// emitters place their own declarations (the DOM one derives them at serialization time and holds none in the
+			// tree at all), so a document identical in meaning fails it. That is the difference the expanded-name comparer
+			// exists to ignore, and it is the same acceptance rule the namespaced format is certified under.
+			foreach (var (label, scenario, expected) in CrystalXmlEmitterConformance.NamespaceCases)
+			{
+				Log($"{label}:");
+				Log($"  {expected}");
+
+				XmlExpandedNameComparison.AssertEquivalent(expected, RenderXDocument(new SharedScenario(scenario)).ToString(), $"CrystalXDocumentEmitter, {label}");
+				XmlExpandedNameComparison.AssertEquivalent(expected, RenderXmlWriterOutput(new SharedScenario(scenario)), $"CrystalXmlWriterEmitter, {label}");
+			}
+		}
+
+		[Test]
+		public void Test_A_Namespaced_Name_Reaches_The_Dom_As_An_Expanded_Name()
+		{
+			// the namespace is not decoration: it is half of the name the DOM keys the node by
+			var document = RenderXDocument(new SharedScenario(CrystalXmlEmitterConformance.NamespaceCase("becomes the default namespace").Scenario));
+			Log(document.ToString());
+
+			var root = document.Root!;
+			Assert.That(root.Name.NamespaceName, Is.EqualTo("urn:acme:biblio"));
+			Assert.That(root.Name.LocalName, Is.EqualTo("Library"));
+			Assert.That(root.Elements().Single().Name.NamespaceName, Is.EqualTo("urn:acme:biblio"), "a child in the same namespace inherits it, prefix or no prefix");
+		}
+
+		[Test]
+		public void Test_A_Namespaced_Attribute_Keeps_Its_Namespace_And_The_Default_One_Does_Not_Apply()
+		{
+			// an unprefixed attribute is in NO namespace whatever default is in scope, which is why an attribute needs its own
+			// resolution rule and cannot borrow the element's
+			var document = RenderXDocument(new SharedScenario(CrystalXmlEmitterConformance.NamespaceCase("conventional prefix").Scenario));
+			Log(document.ToString());
+
+			var nil = document.Root!.Attributes().Single(a => !a.IsNamespaceDeclaration);
+			Assert.That(nil.Name.NamespaceName, Is.EqualTo("http://www.w3.org/2001/XMLSchema-instance"));
+			Assert.That(nil.Name.LocalName, Is.EqualTo("nil"));
+			Assert.That(nil.Value, Is.EqualTo("true"));
+		}
+
+		[Test]
+		public void Test_A_Qualified_Name_Value_Resolves_To_The_Same_Pair_On_Every_Emitter()
+		{
+			// a qualified name means the PAIR (namespace, local name), so what has to agree across emitters is the pair the
+			// value resolves to, never the alias the value happens to be spelled with
+			foreach (var (fragment, expectedNamespace) in new[] { ("bare local name", "urn:acme:biblio"), ("from another namespace is prefixed", "urn:acme:recherche") })
+			{
+				var (label, scenario, _) = CrystalXmlEmitterConformance.NamespaceCase(fragment);
+				Log(label);
+
+				AssertQNameResolvesTo(XDocument.Parse(RenderReferenceWire(new SharedScenario(scenario))), expectedNamespace, "the text emitter");
+				AssertQNameResolvesTo(RenderXDocument(new SharedScenario(scenario)), expectedNamespace, "CrystalXDocumentEmitter");
+				AssertQNameResolvesTo(XDocument.Parse(RenderXmlWriterOutput(new SharedScenario(scenario))), expectedNamespace, "CrystalXmlWriterEmitter");
+			}
+		}
+
+		/// <summary>Resolves the <c>i:type</c> value of the root through the declarations in scope, and asserts the pair it names</summary>
+		private static void AssertQNameResolvesTo(XDocument document, string expectedNamespace, string who)
+		{
+			Log($"  {who}: {document.Root}");
+
+			var root = document.Root!;
+			string value = root.Attribute(XName.Get("type", "http://www.w3.org/2001/XMLSchema-instance"))!.Value;
+
+			int colon = value.IndexOf(':');
+			string localName = colon < 0 ? value : value.Substring(colon + 1);
+			var ns = colon < 0 ? root.GetDefaultNamespace() : root.GetNamespaceOfPrefix(value.Substring(0, colon))!;
+
+			Assert.That(localName, Is.EqualTo("RangeCriterion"), who);
+			Assert.That(ns.NamespaceName, Is.EqualTo(expectedNamespace), who);
+		}
+
+		#endregion
+
 		#region Type plumbing...
 
 		[Test]

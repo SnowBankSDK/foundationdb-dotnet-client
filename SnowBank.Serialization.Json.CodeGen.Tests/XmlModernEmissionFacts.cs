@@ -1111,6 +1111,36 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Throws.InstanceOf<XmlException>()); // the message is VerifyNCName's, naming the offending character
 		}
 
+		[Test]
+		public void Test_A_Collection_Root_Requires_An_Explicit_Name()
+		{
+			// this profile has no ArrayOfX convention: a collection root without a caller-supplied name is refused,
+			// never guessed from a type name
+			var books = new[] { new Book { Id = 1, Title = "x", Tags = [ ] } };
+
+			Assert.That(
+				() => CrystalXml.ToText(AcmeSerializers.Book.Default, books),
+				Throws.InstanceOf<CrystalXmlRootNameException>());
+		}
+
+		[Test]
+		public void Test_A_Named_Collection_Root_Composes_The_Item_Facet()
+		{
+			// the caller names the root; each item keeps the type's own element name, itself overridable
+			var books = new[] { new Book { Id = 1, Title = "x", Tags = [ ] } };
+
+			string xml = CrystalXml.ToText(AcmeSerializers.Book.Default, books, rootName: "books");
+			Log($"XML : {xml}");
+			Assert.That(xml, Is.EqualTo("""<books><book id="1"><title>x</title><tags /><scores /></book></books>"""));
+
+			xml = CrystalXml.ToText(AcmeSerializers.Book.Default, books, rootName: "books", itemName: "item");
+			Assert.That(xml, Is.EqualTo("""<books><item id="1"><title>x</title><tags /><scores /></item></books>"""));
+
+			// a null and an empty sequence follow the null-member rule of the profile: no nil marker by default
+			Assert.That(CrystalXml.ToText(AcmeSerializers.Book.Default, (IEnumerable<Book>?) null, rootName: "books"), Is.EqualTo("<books />"));
+			Assert.That(CrystalXml.ToText(AcmeSerializers.Book.Default, Array.Empty<Book>(), rootName: "books"), Is.EqualTo("<books />"));
+		}
+
 		#endregion
 
 		#region The five outputs...

@@ -16,7 +16,7 @@ Il n'y a délibérément pas de `FromXml` : CrystalXml écrit du XML, il ne le l
 
 ## Vocabulaire déclaratif
 
-Deux niveaux : le *container* dit QUELS formats il produit, les membres disent à quoi ils
+Deux niveaux : le *container* dit quels formats il produit, les membres disent à quoi ils
 ressemblent dans le format XML.
 
 Un *container* est un marqueur neutre vis-à-vis du format, plus un attribut par format de sortie.
@@ -24,7 +24,7 @@ Les types qu'il sérialise sont enrôlés une seule fois, de façon neutre vis-�
 même enrôlement alimente chaque format que le *container* produit.
 
 ```csharp
-// niveau CONTAINER : le marqueur neutre, puis un attribut de sortie par format
+// niveau container : le marqueur neutre, puis un attribut de sortie par format
 [CrystalConverter]                                    // « cette classe héberge du code généré »
 [CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
 [CrystalXmlOutput]                                    // activation : chaque type du container reçoit une sortie XML
@@ -70,6 +70,7 @@ Options de `[CrystalXmlOutput]` / `[CrystalXmlConverter]` :
 |---|---|
 | `Profile` | variante XML ; dérivée par défaut du profil JSON du container (`DataContractCompat` donne le format DCS, standard/Web donne le profil moderne ; pas de sortie JSON signifie le profil moderne) ; surcharge explicite autorisée ; une combinaison incohérente (une politique de nommage à côté du format DCS) est une erreur de build (CXML0001) |
 | `DictionaryFormat` | valeur par défaut du container pour la forme de dictionnaire (voir le profil moderne ci-dessous) |
+| `Schemaless` | format DCS uniquement : reproduit le fil dépouillé sans namespaces, octet pour octet. Sur le profil moderne l'option est inerte, et CXML0012 le dit |
 
 ```csharp
 // niveau MEMBER : tout le XML vit dans [XmlProperty] (namespace SnowBank.Data.Xml)
@@ -104,15 +105,17 @@ l'exécution, jamais un *fallback* silencieux.
         |     where TRune : unmanaged (char|byte)    formes exactes à l'octet, toujours passée par ref
         |     where TWriter : struct, IBufferWriter<TRune>
         |
-        +-- CrystalXDocumentEmitter                        INFOSET : construit le DOM directement
-        +-- CrystalXmlWriterEmitter                        INFOSET : délègue à System.Xml (interop)
+        +-- CrystalXDocumentEmitter                        infoset : construit le DOM directement
+        +-- CrystalXmlWriterEmitter                        infoset : délègue à System.Xml (interop)
 ```
 
 Les noms d'éléments et d'attributs sont précalculés par le générateur en double représentation
-(une *string* plus un littéral UTF-8 figé) dans des champs statiques `CrystalXmlName`, si bien que
-le chemin *byte* ne transcode jamais un nom à l'exécution. Les membres non publics passent par les
-mêmes *thunks* `[UnsafeAccessor]` que du côté JSON. Le polymorphisme est un *switch* généré sur les
-types dérivés connus du graphe ; un type d'exécution hors du graphe lève une exception typée.
+(une *string* plus un littéral UTF-8 figé) dans des champs statiques `CrystalXmlName`, avec le
+namespace de contrat incorporé au nom sur le format DCS, si bien que le chemin *byte* ne transcode
+jamais un nom à l'exécution. Un nom ne porte jamais de préfixe : l'*emitter* attribue les préfixes
+selon ce qui est en portée à sa profondeur. Les membres non publics passent par les mêmes *thunks*
+`[UnsafeAccessor]` que du côté JSON. Le polymorphisme est un *switch* généré sur les types dérivés
+connus du graphe ; un type d'exécution hors du graphe lève une exception typée.
 
 Sorties publiques sur le *holder* généré (aucune ne passe par une autre) :
 
@@ -129,14 +132,49 @@ par défaut viennent du profil du *container* ; `ShowNullMembers`, formats de da
 
 Interfaces miroir du côté JSON : `ICrystalXmlSerializer<T>` (la facette implémentée par les
 *holders* générés ; point d'extension pour les convertisseurs sur mesure par membre, vérifié au
-moment de la génération) et `ICrystalXmlSerializable` (*hook* d'instance : le type écrit son propre
+moment de la génération), `ICrystalXmlElementSerializer<T>` (son extension de composition :
+`WriteXmlElement` plus les deux noms avec lesquels un appelant compose, implémentée par chaque
+convertisseur généré) et `ICrystalXmlSerializable` (*hook* d'instance : le type écrit son propre
 XML).
+
+### Racines collection et scalaire
+
+Une collection ou un scalaire nu ne s'enrôle pas (CJSON0019 le refuse : enrôlez le type d'élément,
+pas la collection). Ces documents passent par des points d'entrée sur `CrystalXml`, qui reflètent
+les huit sorties ci-dessus :
+
+```csharp
+// une séquence d'items de contrat, composée à partir de la facette du type d'item
+string xml = CrystalXml.ToText(LegacySerializers.Shelf.Default, shelves);
+// <ArrayOfShelf xmlns="..."><Shelf>...</Shelf><Shelf>...</Shelf></ArrayOfShelf>
+
+// une racine scalaire nue, sur la classe imbriquée Scalar
+string xml = CrystalXml.Scalar.ToText("hello");
+// <string xmlns="http://schemas.microsoft.com/2003/10/Serialization/">hello</string>
+```
+
+Le nom de racine est résolu, jamais deviné : le `rootName` de l'appelant gagne ; le format DCS se
+rabat sur sa convention `ArrayOfX`, dans le namespace du contrat de l'item ; le profil moderne n'a
+pas de convention, donc une racine collection sans `rootName` lève `CrystalXmlRootNameException`.
+Les éléments d'item gardent le nom d'élément du type d'item, et `itemName` le remplace. Les points
+d'entrée scalaires écrivent le fil de référence des types lexicaux xsd (le nom lexical dans le
+namespace Serialization, nil quand la valeur est null) ; un type hors de cet ensemble lève
+`CrystalXmlUnknownTypeException`. Les scalaires vivent sur la classe imbriquée `CrystalXml.Scalar`
+plutôt qu'en surcharges : une méthode générique prenant un `T?` nu capturerait tous les appels que
+les surcharges à sérialiseur ne prennent pas, et un argument mal typé doit échouer à la
+compilation plutôt qu'à l'écriture.
 
 ## Le profil de compatibilité : le format DCS
 
-La spécification exécutable est une suite d'égalité à l'octet à 28 familles, comparée à un oracle
-`DataContractSerializer` réel (`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs` ; registre de
-couverture à côté, dans `COVERAGE.md`). Points saillants :
+La spécification exécutable est une suite comparée à un oracle `DataContractSerializer` réel
+(`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`, avec les règles de namespaces verrouillées
+dans `DcsNamespaceReferenceFacts.cs` ; registre de couverture à côté, dans `COVERAGE.md`), sous
+deux règles d'acceptation. La sortie par défaut est tenue au fil standard sur les noms étendus :
+cette émission omet les déclarations qu'elle peut prouver inutilisées et écrit les autres sur le
+premier élément qui en a besoin, donc ses octets diffèrent de ceux du sérialiseur de référence
+alors que chaque élément et chaque attribut se résolvent vers la même paire (namespace, nom
+local). La sortie `Schemaless = true` est tenue au fil dépouillé octet pour octet. Points
+saillants :
 
 - Noms de racine et de contrat : `[DataContract(Name=)]` respecté, les génériques composent `XOfY`
   avec expansion `{0}`/`{#}` (empreinte de namespace volontairement omise), types imbriqués
@@ -160,19 +198,34 @@ couverture à côté, dans `COVERAGE.md`). Points saillants :
   vide s'auto-ferme, une *string* vide garde une paire de balises ouvrante et fermante.
 - Dictionnaires : `<KeyValueOfstringstring><Key>..</Key><Value>..</Value></KeyValueOfstringstring>`,
   et `<KeyValueOfstringShelf>` quand la valeur est un type de contrat.
-- Polymorphisme : attribut `type="<contract name>"` seulement quand le contrat d'exécution diffère
-  du contrat déclaré ; le nom d'élément reste celui du type déclaré. Une instance d'une racine
-  polymorphe CONCRÈTE écrit son propre corps, sans annotation, ce que fait l'oracle, et c'est là que
-  ce profil s'écarte volontairement du profil moderne (voir plus bas).
+- Namespaces : le namespace de contrat de l'élément racine (`[DataContract(Namespace = ...)]`,
+  sinon `http://schemas.datacontract.org/2004/07/` plus le namespace CLR) est son namespace par
+  défaut, et un élément membre vit dans le namespace du contrat qui le déclare. Cinq namespaces
+  intégrés couvrent ce qu'aucun namespace CLR ne dérive : XMLSchema-instance (les attributs
+  `i:nil` et `i:type`), XMLSchema (le QName du `i:type` d'un primitif *boxé*), Arrays (les
+  collections et dictionnaires génériques non annotés), Serialization (les racines scalaires
+  nues) et le contrat System (`DateTimeOffset`). Un nom porte le nom local et le namespace, jamais
+  de préfixe : le *writer* attribue les préfixes, garde les déclarations en portée et déclare
+  chaque namespace sur le premier élément qui en a besoin. Le namespace d'instance remonte à la
+  racine quand deux sous-arbres ou plus peuvent porter un marqueur nil ou type.
+- Polymorphisme : attribut `i:type="<QName du contrat>"` seulement quand le contrat d'exécution
+  diffère du contrat déclaré ; le nom d'élément reste celui du type déclaré, dans le namespace du
+  contrat déclarant. Un type dérivé dans le namespace du *slot* écrit un nom local nu ; un type
+  d'un autre namespace écrit un QName préfixé et déclare le préfixe sur le même élément. Une
+  instance d'une racine polymorphe concrète écrit son propre corps, sans annotation, ce que fait
+  l'oracle, et c'est là que ce profil s'écarte volontairement du profil moderne (voir plus bas).
 - Dialecte `ISerializable` : chaque entrée `SerializationInfo` devient un élément nommé d'après la
   clé (encodée), les valeurs déclarées `object` portent un discriminant `type=`.
 - Scalaires : formes lexicales DCS (dates ISO tronquées selon `DateTimeKind`, durées ISO 8601,
   `char` comme son point de code, `decimal` gardant son échelle, doubles en *round-trip*, enums par
   `[EnumMember(Value=)]` ou par nom via un *switch* généré, `DateTimeOffset` comme la structure à
   deux éléments `{DateTime, OffsetMinutes}`, `byte[]` en base64).
-- Texte : pas de déclaration XML, pas de namespaces ni de préfixes (`i:nil` arrive comme `nil`,
-  `i:type` comme `type`), auto-fermeture `<X />` avec une espace, fins de ligne du texte en CRLF
-  brut.
+- Texte : pas de déclaration XML, auto-fermeture `<X />` avec une espace, fins de ligne du texte
+  en CRLF brut.
+- `Schemaless = true` : les namespaces, préfixes et déclarations disparaissent (`i:nil` arrive
+  comme `nil`, `i:type` comme `type`, le discriminant ne garde que son nom local). C'est le fil
+  dépouillé historique que certains consommateurs stockent et analysent, conservé comme option
+  explicite, certifiée à l'octet.
 
 Trois écarts délibérés par rapport au DCS brut, chacun verrouillé par un test dédié, sont des
 exigences :
@@ -187,7 +240,7 @@ exigences :
    `CrystalXmlWriterEmitter`) n'en appliquent rien, le DOM voit les caractères tels quels, et
    `XmlWriter` en répond sous son propre `CheckCharacters`.
 3. Les exceptions typées (`CrystalXmlCycleException`, `CrystalXmlUnknownTypeException`,
-   `NotSupportedException`, `XmlException`) remplacent
+   `CrystalXmlRootNameException`, `NotSupportedException`, `XmlException`) remplacent
    `SerializationException`.
 
 ## Le profil moderne : le XML qu'un lecteur JSON prédirait
@@ -202,7 +255,7 @@ exigences :
 | `"$type": "cat"` | attribut `type="cat"` : le discriminant est une annotation |
 | `[XmlProperty("@id")]` | `<book id="42">` : donnée comme attribut, scalaires seulement ; interdit sur le profil de compatibilité (DCS n'a pas d'attributs utilisateur) |
 
-Une instance d'une racine polymorphe CONCRÈTE est refusée ici avec
+Une instance d'une racine polymorphe concrète est refusée ici avec
 `CrystalXmlUnknownTypeException`, là où le profil de compatibilité écrit le corps propre de la
 racine. Ce format correspond au côté JSON, qui ne porte pas non plus de discriminant pour cette
 valeur : un lecteur ne pourrait pas la distinguer d'un sous-type dont l'annotation aurait disparu,
@@ -254,9 +307,9 @@ au cas par cas :
 |---|---|
 | **diagnostic CXML** | la construction est refusée au moment de la génération, décidable à partir des seules DÉCLARATIONS (un attribut, un type, un nom de contrat). Il pointe la déclaration fautive et porte un remède. Un membre de la plage, CXML0012, est plutôt un Info : il ne refuse rien, il nomme un *setting* que le format résolu ne consulte jamais. |
 | **`#error` dans la source émise** | une impossibilité structurelle découverte pendant l'émission, qu'aucune déclaration n'aurait pu prédire. Gardé aussi comme filet inaccessible sous un diagnostic qui couvre déjà le cas. |
-| **exception typée** | la décision dépend des données : seule la valeur en cours d'écriture peut la prendre (un type d'exécution hors du graphe, une clé de dictionnaire non-NCName, une valeur d'enum non déclarée, un graphe plus profond que le plafond). |
+| **exception typée** | la décision dépend des données : seule la valeur en cours d'écriture peut la prendre (un type d'exécution hors du graphe, une clé de dictionnaire non-NCName, une valeur d'enum non déclarée, un graphe plus profond que le plafond, une racine collection que ni l'appelant ni le profil ne nomment). |
 
-Les règles sur le CONTAINER dans son ensemble (quels formats de sortie il nomme, et si ses
+Les règles sur le container dans son ensemble (quels formats de sortie il nomme, et si ses
 marqueurs se combinent) ne concernent aucun des deux formats, donc elles portent plutôt un
 identifiant neutre :
 
@@ -281,7 +334,7 @@ Les diagnostics au moment du build sur le format XML lui-même vivent dans la pl
 | CXML0009 | un membre projeté en attribut avec un convertisseur sur mesure |
 | CXML0010 | `[CollectionDataContract]` sur le type d'un membre compat |
 | CXML0011 | un dictionnaire dont la forme résolue porte la valeur comme texte (`KeyAttribute`, `KeyValueAttributes`) alors que le type de la valeur n'a pas de forme lexicale |
-| CXML0012 | **Info, pas une erreur** : un *setting* qui a été écrit explicitement, résolu, puis jamais consulté : un `[XmlProperty(ItemName = ...)]` sur un membre sans *items*, sur un membre dont la forme de dictionnaire RÉSOLUE est `Direct` (dont les entrées sont nommées d'après leur propre clé), ou sur un membre dont le type écrit son propre contenu XML (`ICrystalXmlSerializable`, ce qui rend aussi inerte un `DictionaryFormat` au niveau du membre : seul le NOM d'élément vient encore du membre là) ; un `[JsonIgnore(Condition = Never)]` sur un membre projeté en attribut (un attribut n'a pas de forme nil, donc un attribut null est absent de toute façon) ; et un `[CrystalXmlOutput(DictionaryFormat = ...)]` sur un container dont le profil résolu est celui de compatibilité (qui a une seule forme de dictionnaire) |
+| CXML0012 | **Info, pas une erreur** : un *setting* qui a été écrit explicitement, résolu, puis jamais consulté : un `[XmlProperty(ItemName = ...)]` sur un membre sans *items*, sur un membre dont la forme de dictionnaire RÉSOLUE est `Direct` (dont les entrées sont nommées d'après leur propre clé), ou sur un membre dont le type écrit son propre contenu XML (`ICrystalXmlSerializable`, ce qui rend aussi inerte un `DictionaryFormat` au niveau du membre : seul le NOM d'élément vient encore du membre là) ; un `[JsonIgnore(Condition = Never)]` sur un membre projeté en attribut (un attribut n'a pas de forme nil, donc un attribut null est absent de toute façon) ; un `[CrystalXmlOutput(DictionaryFormat = ...)]` sur un container dont le profil résolu est celui de compatibilité (qui a une seule forme de dictionnaire) ; et un `[CrystalXmlOutput(Schemaless = true)]` sur un container dont le profil résolu est le moderne (le fil dépouillé est une variante du format DCS) |
 | CXML0013 | profil de compatibilité uniquement : une PROPRIÉTÉ en lecture seule (get-only, ou *setter* non public sans activation explicite) portant `[DataMember]` sur un type `[DataContract]` : le sérialiseur de référence rejette ce contrat d'emblée (`InvalidDataContractException`, "No set method for property"), donc il n'y a aucun format à reproduire. Ne se déclenche pas sur un CHAMP `[DataMember]` `readonly` (la vérification du DCS ne concerne que les propriétés) ni sur un membre init-only (un *flag* différent ; le DCS l'émet) |
 
 À l'exécution, les graphes plus profonds que `CrystalXml.MaxDepth` (64 niveaux de récursion

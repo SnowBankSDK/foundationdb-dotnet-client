@@ -112,6 +112,10 @@ Named, with owners:
    families therefore belong to a native XML root path, which CrystalXml DOES NOT currently
    have (its XML surface is exclusively generated per-type facets): they are out of scope for
    this generated-converter certification suite and do not count against its family coverage.
+   The reference wire for these roots is measured all the same: three oracle-only facts in
+   `DcsNamespaceReferenceFacts` pin the `ArrayOfX` root names and their namespaces (Arrays for
+   lexical items, the item's contract namespace for contract items, Serialization for a bare
+   string or scalar root).
    The measured corpus does contain `ArrayOf*` roots in real captures, so the stage-B fidelity
    harness will quantify the need; a native XML root path (composing the item type's
    `ICrystalXmlSerializer<T>` facet under an `ArrayOfX` root) is the natural follow-up if the

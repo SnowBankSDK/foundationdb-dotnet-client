@@ -36,8 +36,8 @@ namespace SnowBank.Data.Xml.Tests
 	using System.Xml;
 
 	/// <summary>
-	/// Live-DCS oracle: the actual <see cref="DataContractSerializer"/> writing through a namespace-stripping
-	/// <see cref="XmlWriter"/> decorator, followed by an invalid-character filter.
+	/// Live-DCS oracle: the actual <see cref="DataContractSerializer"/>, optionally writing through a
+	/// namespace-stripping <see cref="XmlWriter"/> decorator, followed by an invalid-character filter.
 	/// </summary>
 	/// <remarks>
 	/// <para>This is the clean-room reimplementation of the reference pipeline that was measured against a real
@@ -51,7 +51,15 @@ namespace SnowBank.Data.Xml.Tests
 	internal static class ReferenceDcsWire
 	{
 		/// <summary>Serializes <paramref name="value"/> through the live <see cref="DataContractSerializer"/> reference pipeline</summary>
-		public static string Serialize(object? value, Type declaredType)
+		/// <param name="value">Value to serialize</param>
+		/// <param name="declaredType">Declared (root) type passed to the <see cref="DataContractSerializer"/> constructor</param>
+		/// <param name="strip">
+		/// <see langword="true"/> (the default) runs the output through <see cref="StrippingXmlWriter"/>, which erases every
+		/// prefix, namespace declaration and <c>xmlns</c> attribute, which is what the default CrystalXml profile emits.
+		/// <see langword="false"/> returns the standard DCS wire unstripped, prefixes and namespace declarations included,
+		/// which is the reference for the namespace facts.
+		/// </param>
+		public static string Serialize(object? value, Type declaredType, bool strip = true)
 		{
 			var ser = new DataContractSerializer(declaredType);
 			var sb = new StringBuilder();
@@ -59,7 +67,8 @@ namespace SnowBank.Data.Xml.Tests
 			// this the oracle emits "\n" on macOS/Linux and disagrees with CrystalXml's fixed CRLF. Fixing it here
 			// keeps the oracle platform-independent.
 			var settings = new XmlWriterSettings { CheckCharacters = false, OmitXmlDeclaration = true, NewLineChars = "\r\n" };
-			using (var writer = new StrippingXmlWriter(XmlWriter.Create(sb, settings)))
+			var baseWriter = XmlWriter.Create(sb, settings);
+			using (XmlWriter writer = strip ? new StrippingXmlWriter(baseWriter) : baseWriter)
 			{
 				ser.WriteObject(writer, value);
 			}

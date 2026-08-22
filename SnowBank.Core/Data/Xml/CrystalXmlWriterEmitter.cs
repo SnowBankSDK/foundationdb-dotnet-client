@@ -49,6 +49,11 @@ namespace SnowBank.Data.Xml
 	/// represent (C0 controls, unpaired surrogate halves, U+FFFE/U+FFFF) reach the wrapped writer unchanged, which answers
 	/// for them under its own <see cref="XmlWriterSettings.CheckCharacters"/> (throws by default); content that may carry
 	/// them must be sanitized before it reaches the emitter.</para>
+	/// <para><b>Namespace declarations and prefixes belong to the wrapped writer.</b> It tracks what is in scope, invents the
+	/// aliases, and places the declarations where its own rules put them, which is what it does for every caller. So
+	/// <see cref="WriteNamespaceDeclaration"/> and <see cref="WriteDefaultNamespaceDeclaration"/> do nothing here: a
+	/// declaration is a statement about the bytes, and the bytes are not this type's to decide. What does reach the wire is
+	/// every namespace a name carries, so the expanded names of the document are exactly the ones that were written.</para>
 	/// <para>This type owns none of the writer's lifetime: the caller flushes and disposes it. Like every
 	/// <see cref="ICrystalXmlEmitter"/>, it must still be passed by <see langword="ref"/> per the interface remarks.</para>
 	/// </remarks>
@@ -69,10 +74,43 @@ namespace SnowBank.Data.Xml
 		}
 
 		/// <inheritdoc />
-		public void WriteStartElement(in CrystalXmlName name) => this.Writer.WriteStartElement(name.Text);
+		public void WriteStartElement(in CrystalXmlName name) => WriteStartElement(in name, name.Namespace);
 
 		/// <inheritdoc />
-		public void WriteAttribute(in CrystalXmlName name, ReadOnlySpan<char> value) => this.Writer.WriteAttributeString(name.Text, value.ToString());
+		/// <remarks>An absent namespace is passed as the EMPTY one, never as <see langword="null"/>. Measured: a null namespace
+		/// lets the wrapped writer put the element in whatever default namespace is in scope, while the empty one puts it in no
+		/// namespace and writes the <c>xmlns=""</c> that cancels the default. A name with no namespace means the second.</remarks>
+		public void WriteStartElement(in CrystalXmlName name, in CrystalXmlNamespace ns) => this.Writer.WriteStartElement(null, name.Text, ns.Text ?? string.Empty);
+
+		/// <inheritdoc />
+		public void WriteAttribute(in CrystalXmlName name, ReadOnlySpan<char> value) => WriteAttribute(in name, name.Namespace, value);
+
+		/// <inheritdoc />
+		public void WriteAttribute(in CrystalXmlName name, in CrystalXmlNamespace ns, ReadOnlySpan<char> value) => this.Writer.WriteAttributeString(null, name.Text, ns.Text, value.ToString());
+
+		/// <inheritdoc />
+		public void WriteQNameAttribute(in CrystalXmlName name, in CrystalXmlName value) => WriteQNameAttribute(in name, name.Namespace, in value);
+
+		/// <inheritdoc />
+		/// <remarks>Routes through <see cref="XmlWriter.WriteQualifiedName"/>, which is the wrapped writer's own support for
+		/// this shape: it resolves the namespace to a prefix in scope, declares one when there is none, and writes the two
+		/// halves. The alias it picks is its own, as with every other prefix on this sink.</remarks>
+		public void WriteQNameAttribute(in CrystalXmlName name, in CrystalXmlNamespace ns, in CrystalXmlName value)
+		{
+			this.Writer.WriteStartAttribute(null, name.Text, ns.Text);
+			this.Writer.WriteQualifiedName(value.Text, value.Namespace.Text);
+			this.Writer.WriteEndAttribute();
+		}
+
+		/// <inheritdoc />
+		/// <remarks>Does nothing: see the type remarks on why the wrapped writer owns every declaration.</remarks>
+		public void WriteNamespaceDeclaration(in CrystalXmlNamespace ns)
+		{ }
+
+		/// <inheritdoc />
+		/// <inheritdoc cref="WriteNamespaceDeclaration" path="/remarks"/>
+		public void WriteDefaultNamespaceDeclaration(in CrystalXmlNamespace ns)
+		{ }
 
 		/// <inheritdoc />
 		public void WriteText(ReadOnlySpan<char> text) => this.Writer.WriteString(text.ToString());

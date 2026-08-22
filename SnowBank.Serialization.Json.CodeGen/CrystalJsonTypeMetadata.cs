@@ -82,6 +82,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks><c>"Default"</c> is carried as-is rather than flattened into the profile's shape: the per-profile default and the per-member override both resolve downstream, and collapsing them here would lose the "unset" state.</remarks>
 		public string? CrystalXmlDictionaryFormat { get; init; }
 
+		/// <summary>Whether the container's DataContract XML output is stripped of its namespaces and prefixes</summary>
+		/// <remarks>Already RESOLVED: the option is inert on the Modern format, where the parser reports <c>CXML0012</c> and
+		/// clears it, so <see langword="true"/> here always means the DataContract format with its namespaces stripped.</remarks>
+		public bool CrystalXmlSchemaless { get; init; }
+
 		/// <summary>Specifies whether the container is the serialized type itself (self-serializable mode)</summary>
 		/// <remarks>
 		/// <para>When <c>true</c>, <see cref="Type"/> is a partial application type that acts as its own container: all its generated code lives inside a single reserved nested scope (ex: <c>Widget.Json.ReadOnly</c>), and any other included type (crawled from its members) is hosted inside that scope under its own name (ex: <c>Widget.Json.WidgetPart.ReadOnly</c>; inside the scope, holders cannot shadow the referenced types in the entity's own source).</para>
@@ -223,6 +228,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <example><c>public string HelloWorld { get; init;}</c> has member name <c>"HelloWorld"</c></example>
 		public required string MemberName { get; init; }
 
+		/// <summary>Name given to the member by the data contract (<c>[DataMember(Name = "...")]</c> on a <c>[DataContract]</c> type), or <see langword="null"/> when the contract does not rename it</summary>
+		/// <remarks>
+		/// <para>Carried apart from <see cref="Name"/> so that the DataContract XML format writes the contract's own name (<see cref="DataMemberName"/>, falling back to <see cref="MemberName"/>) instead of the resolved JSON one. On a <c>[DataContract]</c> type the two agree, because CJSON0011 refuses a member whose JSON naming attribute disagrees with its contract name. On a plain DTO they do not: a <c>[JsonProperty]</c> renames the JSON member of a type that has no contract, and the reference serializer still writes the member's own name.</para>
+		/// <para>Only ever set on a <c>[DataContract]</c> type: the attribute is inert everywhere else, exactly as it is for the reference serializer.</para>
+		/// </remarks>
+		public string? DataMemberName { get; init; }
+
 #if FULL_DEBUG
 		/// <summary>Captured attributes on the member</summary>
 		public required ImmutableEquatableArray<string> Attributes { get; init; }
@@ -282,6 +294,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Value of <c>[DataMember(Order = n)]</c> when <c>n</c> is zero or greater, or <see langword="null"/> when the member declares no order</summary>
 		/// <remarks>A NEGATIVE order is carried as <see langword="null"/>, like <c>DataContractSerializer</c> does: an unordered member sorts by name, which is a different rule from ordering at zero.</remarks>
 		public int? DataMemberOrder { get; init; }
+
+		/// <summary>Contract namespace of the type that DECLARES this member, as its <c>[DataContract(Namespace = ...)]</c> spells it; <see langword="null"/> when that type declares none</summary>
+		/// <remarks>Captured because a member element lives in the namespace of the contract that DECLARES it, not of the type
+		/// being written: a derived type in another namespace still writes its inherited members in the base contract's
+		/// namespace. The empty string is a value here, and means the contract asked for no namespace at all.</remarks>
+		public string? DeclaringDataContractNamespace { get; init; }
+
+		/// <summary>CLR namespace of the type that DECLARES this member, which the DataContract default rule derives a namespace from</summary>
+		/// <remarks>Carried next to <see cref="DeclaringDataContractNamespace"/> and not folded into it, because the defaulting
+		/// rule belongs to the format: this layer records what the declaration says, and the emitter applies the rule.</remarks>
+		public string? DeclaringTypeNameSpace { get; init; }
 
 		/// <summary>Depth of the type that DECLARES this member in the inheritance chain, counted from the topmost base (<c>0</c>) down to the type being serialized</summary>
 		/// <remarks>Captured for the DataContract XML format, whose member order is "every member of the base level first, then the next level": the flat member list cannot be regrouped by level once that fact is lost. The JSON format ignores it.</remarks>
@@ -372,6 +395,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		{
 			sb.Append(indent).Append("Name = ").AppendLine(this.Name);
 			sb.Append(indent).Append("MemberName = ").AppendLine(this.MemberName);
+			if (this.DataMemberName is not null) sb.Append(indent).Append("DataMemberName = ").AppendLine(this.DataMemberName);
 			if (this.IsField) sb.Append(indent).AppendLine("IsField = true");
 			if (this.IsNotNull) sb.Append(indent).AppendLine("IsNotNull = true");
 			if (this.IsReadOnly) sb.Append(indent).AppendLine("IsReadOnly = true");

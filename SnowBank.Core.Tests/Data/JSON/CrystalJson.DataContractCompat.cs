@@ -609,6 +609,15 @@ namespace SnowBank.Data.Json.Tests
 			public string? Code { get; set; }
 		}
 
+		/// <summary>Bare <c>[DataMember]</c>: the contract names the member after itself, and a foreign attribute renaming it is the same double contract</summary>
+		[DataContract]
+		public sealed class BareDoubleContractDto
+		{
+			[DataMember]
+			[Newtonsoft.Json.JsonProperty("ACTIF")]
+			public string? Code { get; set; }
+		}
+
 		/// <summary>Both attributes agree on the wire name: a common belt-and-suspenders migration state, and legal</summary>
 		[DataContract]
 		public sealed class AgreeingNamesDto
@@ -711,6 +720,13 @@ namespace SnowBank.Data.Json.Tests
 				() => CrystalJson.Serialize(new DoubleContractStjDto { Code = "c-1" }),
 				Throws.Exception.With.Message.Contains("CODE_X"),
 				"a conflicting [JsonPropertyName] is the same defect with another serializer");
+
+			// a bare [DataMember] names the member after itself, and that implied name counts: this pair used to slip
+			// under the refusal, and the foreign name then won the resolution silently
+			Assert.That(
+				() => CrystalJson.Serialize(new BareDoubleContractDto { Code = "c-1" }),
+				Throws.Exception.With.Message.Contains("Code").And.Message.Contains("ACTIF").And.Message.Contains("split"),
+				"a bare [DataMember] next to a renaming attribute is the same double contract");
 		}
 
 		[Test]

@@ -27,6 +27,7 @@
 namespace SnowBank.Data.Xml.Tests
 {
 	using System.Buffers;
+	using System.Xml;
 	using NUnit.Framework;
 	using SnowBank.Data.Xml;
 
@@ -551,6 +552,61 @@ namespace SnowBank.Data.Xml.Tests
 			AssertDocument(new NameScenario(accented), "<Clé />");
 		}
 
+		[Test]
+		public void Test_XmlName_Carries_An_Optional_Namespace()
+		{
+			// a name built the way it always was has no namespace, so nothing about an existing call site changes
+			Assert.That(CrystalXmlName.Create("Tags").Namespace.IsNone, Is.True);
+			Assert.That(new CrystalXmlName("Tags", "Tags"u8.ToArray()).Namespace.IsNone, Is.True);
+
+			var namespaced = CrystalXmlName.Create("Email", "urn:acme:annuaire");
+			Assert.That(namespaced.Text, Is.EqualTo("Email"), "the local name keeps no prefix: a prefix belongs to the emitter");
+			Assert.That(namespaced.Namespace.Text, Is.EqualTo("urn:acme:annuaire"));
+			Assert.That(namespaced.Namespace.Utf8.ToArray(), Is.EqualTo("urn:acme:annuaire"u8.ToArray()));
+
+			// the local name is still validated as an NCName, so a qualified name cannot be smuggled in as one
+			Assert.That(() => CrystalXmlName.Create("d2p1:Email", "urn:acme:annuaire"), Throws.InstanceOf<XmlException>());
+		}
+
+		[Test]
+		public void Test_XmlNamespace_Validates_Its_Uri()
+		{
+			// the empty URI is the explicitly stated absence of a namespace, and is legal: it is what xmlns="" declares
+			var empty = CrystalXmlNamespace.Create("");
+			Assert.That(empty.IsEmpty, Is.True);
+			Assert.That(empty.IsNone, Is.False, "the empty URI and no URI at all are different states");
+			Assert.That(CrystalXmlNamespace.None.IsNone, Is.True);
+
+			// both spellings a data contract produces are absolute URIs, and both are accepted
+			Assert.That(CrystalXmlNamespace.Create("urn:acme:catalog:1").Text, Is.EqualTo("urn:acme:catalog:1"));
+			Assert.That(CrystalXmlNamespace.Create("http://schemas.datacontract.org/2004/07/Acme").Text, Is.EqualTo("http://schemas.datacontract.org/2004/07/Acme"));
+
+			// a relative reference is refused rather than written into a document no reader can resolve
+			Assert.That(() => CrystalXmlNamespace.Create("acme/catalog"), Throws.InstanceOf<ArgumentException>());
+
+			// and so is a URI carrying a character an attribute value would have to escape: an emitter writes a URI verbatim
+			Assert.That(() => CrystalXmlNamespace.Create("urn:acme:a&b"), Throws.InstanceOf<ArgumentException>());
+
+			// two namespaces are the same namespace when their URI is the same text
+			Assert.That(CrystalXmlNamespace.Create("urn:acme:biblio"), Is.EqualTo(CrystalXmlNamespace.Create("urn:acme:biblio")));
+			Assert.That(CrystalXmlNamespace.Create("urn:acme:biblio"), Is.Not.EqualTo(CrystalXmlNamespace.Create("urn:acme:annuaire")));
+		}
+
+		[Test]
+		public void Test_The_Builtin_Namespaces_Are_The_Five_The_Format_Uses()
+		{
+			// pinned as text: these five URIs are wire values, not names this repo is free to spell differently
+			Assert.That(CrystalXmlNamespaces.XmlSchemaInstance.Text, Is.EqualTo("http://www.w3.org/2001/XMLSchema-instance"));
+			Assert.That(CrystalXmlNamespaces.XmlSchema.Text, Is.EqualTo("http://www.w3.org/2001/XMLSchema"));
+			Assert.That(CrystalXmlNamespaces.Arrays.Text, Is.EqualTo("http://schemas.microsoft.com/2003/10/Serialization/Arrays"));
+			Assert.That(CrystalXmlNamespaces.Serialization.Text, Is.EqualTo("http://schemas.microsoft.com/2003/10/Serialization/"));
+			Assert.That(CrystalXmlNamespaces.SystemContract.Text, Is.EqualTo("http://schemas.datacontract.org/2004/07/System"));
+
+			// the two conventional prefixes, which every emitter honors
+			Assert.That(CrystalXmlNamespaces.XmlSchemaInstancePrefix, Is.EqualTo("i"));
+			Assert.That(CrystalXmlNamespaces.SerializationPrefix, Is.EqualTo("z"));
+		}
+
 		private sealed class NameScenario(CrystalXmlName name) : IXmlScenario
 		{
 			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
@@ -596,6 +652,123 @@ namespace SnowBank.Data.Xml.Tests
 				writer.WriteText("a<b");
 				writer.WriteEndElement(in Root);
 				Assert.That(sink.WrittenSpan.ToString(), Is.EqualTo("<r>a&lt;b</r>"));
+			}
+		}
+
+		#endregion
+
+		#region Namespaces, prefixes and declarations...
+
+		/// <summary>Runs a shared conformance scenario on both cores, and compares the document to the byte-exact expectation</summary>
+		private static void AssertScenarioWire(string label, CrystalXmlEmitterConformance.IScenario scenario, string expected)
+		{
+			{
+				var sink = new CrystalXmlEmitterConformance.GrowableBuffer<char>();
+				var inner = new CrystalXmlEmitterConformance.SinkRef<char>(sink);
+				var writer = new CrystalXmlWriter<char, CrystalXmlEmitterConformance.SinkRef<char>>(ref inner);
+				scenario.Run(ref writer);
+				Assert.That(sink.WrittenSpan.ToString(), Is.EqualTo(expected), $"char core: {label}");
+			}
+			{
+				var sink = new CrystalXmlEmitterConformance.GrowableBuffer<byte>();
+				var inner = new CrystalXmlEmitterConformance.SinkRef<byte>(sink);
+				var writer = new CrystalXmlWriter<byte, CrystalXmlEmitterConformance.SinkRef<byte>>(ref inner);
+				scenario.Run(ref writer);
+				Assert.That(Encoding.UTF8.GetString(sink.WrittenSpan.ToArray()), Is.EqualTo(expected), $"byte core, decoded from UTF-8: {label}");
+			}
+		}
+
+		[Test]
+		public void Test_Namespace_Cases_Produce_The_Expected_Wire_On_Both_Cores()
+		{
+			foreach (var (label, scenario, expected) in CrystalXmlEmitterConformance.NamespaceCases)
+			{
+				Log($"{label}:");
+				Log($"  {expected}");
+				AssertScenarioWire(label, scenario, expected);
+			}
+		}
+
+		[Test]
+		public void Test_A_Document_Without_Namespaces_Is_Unchanged()
+		{
+			// the whole namespace machinery is invisible to a caller that names none: no prefix, no xmlns, and the same
+			// document the writer produced before it had any namespace vocabulary at all
+			string doc = RenderChars(new DeclarationScenario());
+			Assert.That(doc, Is.EqualTo("<r c=\"1\"><c>hello</c></r>"));
+			Assert.That(doc, Does.Not.Contain("xmlns"));
+			Assert.That(doc, Does.Not.Contain(":"));
+		}
+
+		[Test]
+		public void Test_A_Name_Carrying_Its_Own_Namespace_Needs_No_Explicit_One()
+		{
+			// the overloads without a namespace argument read the one the NAME carries, which is what a cached static name
+			// built by the generator holds
+			AssertDocument(new NameWithNamespaceScenario(), """<Book xmlns="urn:acme:biblio" />""");
+		}
+
+		private sealed class NameWithNamespaceScenario : IXmlScenario
+		{
+			private static readonly CrystalXmlName Book = CrystalXmlName.Create("Book", "urn:acme:biblio");
+
+			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
+				where TRune : unmanaged
+				where TWriter : struct, IBufferWriter<TRune>
+			{
+				writer.WriteStartElement(in Book);
+				writer.WriteEndElement(in Book);
+			}
+		}
+
+		[Test]
+		public void Test_A_Deep_Prefix_Carries_Its_Own_Depth()
+		{
+			// the depth in a d{depth}p{n} prefix is the depth of the element carrying the declaration, so it is a number and
+			// not a single digit once a document nests past nine levels
+			AssertDocument(new DeepNestingScenario(), BuildDeepExpectation());
+		}
+
+		private static string BuildDeepExpectation()
+		{
+			// ten nested elements in the root's namespace, then one in another namespace at depth 11
+			var sb = new StringBuilder();
+			sb.Append("""<n xmlns="urn:acme:biblio">""");
+			for (int i = 1; i < DeepNestingScenario.Levels; i++)
+			{
+				sb.Append("<n>");
+			}
+			sb.Append("""<d11p1:leaf xmlns:d11p1="urn:acme:annuaire" />""");
+			for (int i = 1; i < DeepNestingScenario.Levels; i++)
+			{
+				sb.Append("</n>");
+			}
+			sb.Append("</n>");
+			return sb.ToString();
+		}
+
+		private sealed class DeepNestingScenario : IXmlScenario
+		{
+			public const int Levels = 10;
+
+			private static readonly CrystalXmlName Node = CrystalXmlName.Create("n");
+
+			private static readonly CrystalXmlName Leaf = CrystalXmlName.Create("leaf");
+
+			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
+				where TRune : unmanaged
+				where TWriter : struct, IBufferWriter<TRune>
+			{
+				for (int i = 0; i < Levels; i++)
+				{
+					writer.WriteStartElement(in Node, in CrystalXmlEmitterConformance.Biblio);
+				}
+				writer.WriteStartElement(in Leaf, in CrystalXmlEmitterConformance.Annuaire);
+				writer.WriteEndElement(in Leaf);
+				for (int i = 0; i < Levels; i++)
+				{
+					writer.WriteEndElement(in Node);
+				}
 			}
 		}
 

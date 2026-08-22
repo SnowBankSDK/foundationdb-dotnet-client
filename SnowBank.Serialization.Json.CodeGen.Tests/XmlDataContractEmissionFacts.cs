@@ -415,9 +415,28 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 
 	}
 
+	/// <summary>Declares its own contract namespace, and holds the three members whose namespace treatment differs</summary>
+	/// <remarks><see cref="Nested"/> is a cross-namespace member, since <see cref="Shelf"/> derives its contract namespace
+	/// from the CLR namespace; <see cref="NullableCount"/> carries the null marker; <see cref="Boxed"/> carries the type
+	/// annotation. This probe exists for the namespaced default, so it must not be enrolled in a schemaless container.</remarks>
+	[DataContract(Namespace = "urn:acme:legacy:catalog")]
+	public sealed class NamespacedProbe
+	{
+		[DataMember] public string? Label;
+		[DataMember] public Shelf? Nested;
+		[DataMember] public int? NullableCount;
+		[DataMember] public object? Boxed;
+	}
+
+	// Schemaless, because every expectation in this fixture is a measured namespace-free document. What the fixture pins
+	// is the emission SHAPE (member order, contract names, element shapes, the acted deviations), and the option leaves
+	// all of that untouched: it only strips the prefixes and the xmlns declarations. The namespaced default output is
+	// certified elsewhere, against a live DataContractSerializer, by SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs and
+	// SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs. NamespacedSerializers below keeps a sample of that default
+	// inside this fixture too.
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
-	[CrystalXmlOutput]
+	[CrystalXmlOutput(Schemaless = true)]
 	[CrystalSerializable(typeof(Chassis))]
 	[CrystalSerializable(typeof(Sedan))]
 	[CrystalSerializable(typeof(Estate))]
@@ -463,9 +482,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// XW-Q11, which later narrowed CJSON0013 so the DataContractCompat JSON profile itself also tolerates the flag
 	/// alone (see <see cref="LegacyCaseInsensitiveWireSerializers"/> and <see cref="LegacyCaseInsensitiveDualSerializers"/>).</para>
 	/// </remarks>
+	// Schemaless too: its facts compare its documents to the ones LegacySerializers writes, character for character
 	[CrystalConverter]
 	[CrystalJsonOutput(PropertyNameCaseInsensitive = true)]
-	[CrystalXmlOutput(Profile = CrystalXmlOutputProfile.DataContract)]
+	[CrystalXmlOutput(Profile = CrystalXmlOutputProfile.DataContract, Schemaless = true)]
 	[CrystalSerializable(typeof(Shelf))]
 	[CrystalSerializable(typeof(ScalarProbe))]
 	public static partial class LegacyCaseInsensitiveSerializers
@@ -493,12 +513,27 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// tripped the same trigger as a genuine naming-policy contradiction). Both its JSON and its derived DataContract
 	/// XML must be byte-identical to <see cref="LegacySerializers"/>, which carries the same types without the flag.
 	/// </remarks>
+	// Schemaless too, for the same reason: its XML facts compare its documents to the ones LegacySerializers writes
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
-	[CrystalXmlOutput]
+	[CrystalXmlOutput(Schemaless = true)]
 	[CrystalSerializable(typeof(Shelf))]
 	[CrystalSerializable(typeof(ScalarProbe))]
 	public static partial class LegacyCaseInsensitiveDualSerializers
+	{
+	}
+
+	/// <summary>The same compat XML format with no <c>Schemaless</c>, so it writes the namespaced default of the profile</summary>
+	/// <remarks>Two probes, which is what the three namespace facts below need. The wider certification of this output is
+	/// SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs and SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs, which
+	/// compare it to a live <see cref="System.Runtime.Serialization.DataContractSerializer"/>. This container keeps a
+	/// sample of it next to the schemaless documents, so the fixture shows both outputs of the one profile.</remarks>
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
+	[CrystalXmlOutput]
+	[CrystalSerializable(typeof(NamespacedProbe))]
+	[CrystalSerializable(typeof(Shelf))]
+	public static partial class NamespacedSerializers
 	{
 	}
 
@@ -525,6 +560,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	/// documents structurally, family by family.</para>
 	/// <para>Three strings deliberately differ from that measured output, and each has its own fact saying so: the
 	/// unhashed dictionary entry names, the sanitized control characters, and the typed exceptions.</para>
+	/// <para>Those documents are the schemaless output of the profile, which is what <see cref="LegacySerializers"/> asks
+	/// for. The namespaced default has its own region and its own container, <see cref="NamespacedSerializers"/>, and its
+	/// wider certification against a live serializer is <c>SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs</c> and
+	/// <c>SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs</c>.</para>
 	/// </remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
@@ -585,6 +624,51 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(LegacyCaseInsensitiveDualSerializers.Shelf.ToXmlText(shelf), Is.EqualTo(LegacySerializers.Shelf.ToXmlText(shelf)));
 				Assert.That(LegacyCaseInsensitiveDualSerializers.ScalarProbe.ToXmlText(scalars), Is.EqualTo(LegacySerializers.ScalarProbe.ToXmlText(scalars)));
 			}
+		}
+
+		#endregion
+
+		#region The namespaced default of the same profile...
+
+		[Test]
+		public void Test_The_Namespaced_Default_Declares_The_Contract_Namespace_On_The_Root()
+		{
+			// PINS: the root declares its own contract namespace as the default namespace, and a member of the root
+			// inherits it, so it carries no prefix. Nulls are dropped here to keep the document to that one rule. The
+			// root of this shape also declares the instance namespace, whose markers the third fact below covers.
+			var probe = new NamespacedProbe { Label = "novels" };
+
+			string xml = NamespacedSerializers.NamespacedProbe.ToXmlText(probe, CrystalJsonSettings.Json.WithoutNullMembers());
+			Log($"XML : {xml}");
+
+			Assert.That(xml, Is.EqualTo("""<NamespacedProbe xmlns="urn:acme:legacy:catalog" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Label>novels</Label></NamespacedProbe>"""));
+		}
+
+		[Test]
+		public void Test_The_Namespaced_Default_Prefixes_A_Cross_Namespace_Member()
+		{
+			// PINS: the member element stays in the DECLARING contract's namespace, and the nested contract's own members
+			// move to the nested namespace behind a d{depth}p{n} prefix declared on the element that opens it.
+			var probe = new NamespacedProbe { Nested = new Shelf { Label = "novels" } };
+
+			string xml = NamespacedSerializers.NamespacedProbe.ToXmlText(probe, CrystalJsonSettings.Json.WithoutNullMembers());
+			Log($"XML : {xml}");
+
+			Assert.That(xml, Is.EqualTo("""<NamespacedProbe xmlns="urn:acme:legacy:catalog" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Nested xmlns:d2p1="http://schemas.datacontract.org/2004/07/SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy"><d2p1:Label>novels</d2p1:Label></Nested></NamespacedProbe>"""));
+		}
+
+		[Test]
+		public void Test_The_Namespaced_Default_Writes_The_Nil_And_Type_Markers_In_The_Instance_Namespace()
+		{
+			// PINS: the null marker is i:nil and the type annotation is i:type, both bound to the XML Schema instance
+			// namespace the root declares. The i:type value is a qualified name: a boxed string is the xsd:string
+			// contract, so the annotation carries a prefix declared on the element that holds the value.
+			var probe = new NamespacedProbe { Label = "novels", Boxed = "boxed string" };
+
+			string xml = NamespacedSerializers.NamespacedProbe.ToXmlText(probe);
+			Log($"XML : {xml}");
+
+			Assert.That(xml, Is.EqualTo("""<NamespacedProbe xmlns="urn:acme:legacy:catalog" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Boxed xmlns:d2p1="http://www.w3.org/2001/XMLSchema" i:type="d2p1:string">boxed string</Boxed><Label>novels</Label><Nested i:nil="true" /><NullableCount i:nil="true" /></NamespacedProbe>"""));
 		}
 
 		#endregion

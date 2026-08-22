@@ -46,7 +46,7 @@ namespace SnowBank.Data.Xml
 	/// emitters instead, and only guarantee infoset equivalence, not a byte-exact output.</para>
 	/// </remarks>
 	[PublicAPI]
-	public static class CrystalXml
+	public static partial class CrystalXml
 	{
 
 		/// <summary>Maximum nesting depth a generated XML emission may reach before it raises <see cref="CrystalXmlCycleException"/></summary>

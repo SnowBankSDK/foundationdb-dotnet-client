@@ -118,7 +118,9 @@ deux chemins :
 Quand plusieurs attributs de nommage s'accordent, le nom effectif vient du plus prioritaire :
 CrystalJson `[JsonProperty]`, puis `[JsonPropertyName]`, puis Newtonsoft `[JsonProperty]`. Deux
 attributs de nommage qui divergent sont une erreur de *build* (`CJSON0011`) : un type ne peut pas servir
-deux contrats de sortie. Un `[JsonConverter]` étranger qui nomme un type n'implémentant pas le contrat
+deux contrats de sortie. Un `[DataMember]` sur un type `[DataContract]` compte comme l'un d'eux même
+nu, parce qu'il nomme le membre d'après lui-même : un `[JsonProperty]` qui renomme ce même membre est
+le même conflit. Un `[JsonConverter]` étranger qui nomme un type n'implémentant pas le contrat
 de convertisseur CrystalJson est ignoré, pas une erreur, donc un *DTO* à moitié porté reste
 sérialisable. Le [guide de migration](../releases/7.4.3.md) donne les règles d'*interop*
 complètes.

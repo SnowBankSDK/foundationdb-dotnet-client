@@ -111,7 +111,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			{
 				Assert.That(generated.Contains("public void WriteXml<TEmitter>"), Is.EqualTo(expected), $"the converter {constraint} carry the XML write body");
 				Assert.That(generated.Contains("ToXmlText("), Is.EqualTo(expected), $"the holder {constraint} expose the XML text output");
-				Assert.That(generated.Contains("ICrystalXmlSerializer"), Is.EqualTo(expected), $"the converter {constraint} carry the XML facet");
+				Assert.That(generated.Contains("ICrystalXmlElementSerializer"), Is.EqualTo(expected), $"the converter {constraint} carry the XML element facet");
+				Assert.That(generated.Contains("ElementName =>"), Is.EqualTo(expected), $"the converter {constraint} expose its element name");
+				Assert.That(generated.Contains("CollectionRootName =>"), Is.EqualTo(expected), $"the converter {constraint} expose its collection root name");
 			}
 		}
 
