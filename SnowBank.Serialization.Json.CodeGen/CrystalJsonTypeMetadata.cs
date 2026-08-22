@@ -62,7 +62,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		/// <summary>Name of the output profile baked into the container's generated entry points (<c>"DataContractCompat"</c>), or <see langword="null"/> for the standard format</summary>
 		/// <remarks>The profile only replaces the "caller passed no settings" fallback of the generated entry points; explicitly passed settings always win entirely.</remarks>
-		public string? WireProfile { get; init; }
+		public string? OutputProfile { get; init; }
 
 		/// <summary>The container produces the JSON format: the entry points (<c>Serialize</c>, <c>Pack</c>, <c>Unpack</c>, <c>ToJsonText</c>, ...), the <c>IJsonConverter</c> facet, the type definition, the proxies and the container's <c>TypeMapper</c></summary>
 		/// <remarks>
@@ -73,8 +73,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		/// <summary>Name of the resolved XML format profile of this container (<c>"Modern"</c> or <c>"DataContract"</c>), or <see langword="null"/> when the container produces no XML output</summary>
 		/// <remarks>
-		/// <para>XML output is strictly opt-in: only a container decorated with <c>[CrystalXmlOutput]</c> gets a non-null profile. The value is already RESOLVED: an explicit <c>Profile</c> wins, otherwise it is derived from <see cref="WireProfile"/> (the DCJS JSON format derives the DataContract XML format, anything else derives the Modern one).</para>
-		/// <para>Typed as a string, like <see cref="WireProfile"/>: the metadata layer stays symbol-free, so the whole record keeps a cheap structural equality for the incremental pipeline.</para>
+		/// <para>XML output is strictly opt-in: only a container decorated with <c>[CrystalXmlOutput]</c> gets a non-null profile. The value is already RESOLVED: an explicit <c>Profile</c> wins, otherwise it is derived from <see cref="OutputProfile"/> (the DCJS JSON format derives the DataContract XML format, anything else derives the Modern one).</para>
+		/// <para>Typed as a string, like <see cref="OutputProfile"/>: the metadata layer stays symbol-free, so the whole record keeps a cheap structural equality for the incremental pipeline.</para>
 		/// </remarks>
 		public string? XmlProfile { get; init; }
 

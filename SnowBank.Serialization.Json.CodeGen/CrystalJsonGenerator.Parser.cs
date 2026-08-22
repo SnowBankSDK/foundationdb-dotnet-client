@@ -83,7 +83,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			public const string JsonDerivedTypeAttributeFullName = "System.Text.Json.Serialization.JsonDerivedTypeAttribute";
 
 			/// <summary>Name of the JSON format profile that serves the legacy DCJS format, and the only one the default XML profile derives the DataContract format from</summary>
-			private const string WireProfileDataContractCompat = "DataContractCompat";
+			private const string OutputProfileDataContractCompat = "DataContractCompat";
 
 			/// <summary>Members of <c>CrystalXmlOutputProfile</c>, as stored in the metadata (the enum lives in SnowBank.Core, which an analyzer cannot reference)</summary>
 			private const string XmlProfileDefault = "Default";
@@ -168,7 +168,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				bool caseInsensitiveNames = false;
 				string? propertyNamingPolicy = null;
-				string? wireProfile = null;
+				string? outputProfile = null;
 				AttributeData? xmlOutputAttribute = formats.XmlOutput;
 
 				// key: fullyQualifiedName
@@ -249,7 +249,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							}
 							case 2: // CrystalJsonSerializerDefaults.DataContractCompat
 							{ // the profile governs value formats only: the DCJS format uses the declared member names
-								wireProfile = WireProfileDataContractCompat;
+								outputProfile = OutputProfileDataContractCompat;
 								break;
 							}
 						}
@@ -283,7 +283,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					Kenobi($"Using defaults for container {symbol.Name}: caseInsensitive={caseInsensitiveNames}; namingPolicy={propertyNamingPolicy}");
 				}
 
-				if (wireProfile != null && propertyNamingPolicy != null)
+				if (outputProfile != null && propertyNamingPolicy != null)
 				{ // the DCJS format has no naming policy: a NAMING POLICY next to the profile changes the WRITTEN
 					// names, a genuine contradiction with a format that writes the declared names, refused at build time
 					//note: PropertyNameCaseInsensitive is deliberately NOT a trigger. It is a READ-side tolerance -
@@ -299,11 +299,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 							isEnabledByDefault: true
 						),
 						this.ContextClassLocation,
-						symbol.ToDisplayString(), wireProfile);
+						symbol.ToDisplayString(), outputProfile);
 					return null;
 				}
 
-				var (xmlProfile, xmlDictionaryFormat, xmlSchemaless) = ResolveXmlOutput(symbol, xmlOutputAttribute, wireProfile, propertyNamingPolicy);
+				var (xmlProfile, xmlDictionaryFormat, xmlSchemaless) = ResolveXmlOutput(symbol, xmlOutputAttribute, outputProfile, propertyNamingPolicy);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				Kenobi($"Found {work.Count} root types to include");
@@ -352,7 +352,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					SupportsUnsafeAccessors = this.KnownSymbols.HasUnsafeAccessor,
 					SupportsJsonProxies = this.KnownSymbols.SupportsJsonProxies,
 					SupportsDynamicallyAccessedMembers = this.KnownSymbols.HasDynamicallyAccessedMembers,
-					WireProfile = wireProfile,
+					OutputProfile = outputProfile,
 					GeneratesJson = formats.GeneratesJson,
 					XmlProfile = xmlProfile,
 					CrystalXmlDictionaryFormat = xmlDictionaryFormat,
@@ -575,11 +575,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Resolves the XML format of a container from its <c>[CrystalXmlOutput]</c> attribute, reporting <c>CXML0001</c> when the resolved format cannot honor the container's naming policy</summary>
 			/// <param name="symbol">Container being parsed (used to name it in the diagnostic)</param>
 			/// <param name="xmlOutputAttribute">The container's <c>[CrystalXmlOutput]</c> attribute, or <see langword="null"/> when it has none (XML output is opt-in)</param>
-			/// <param name="wireProfile">The container's resolved JSON format profile, which the default XML profile derives from</param>
+			/// <param name="outputProfile">The container's resolved JSON format profile, which the default XML profile derives from</param>
 			/// <param name="propertyNamingPolicy">The container's <c>PropertyNamingPolicy</c> option, or <see langword="null"/> for the declared names</param>
 			/// <returns>The resolved profile name, dictionary format name and schemaless flag, or all-null when the container produces no XML</returns>
 			/// <remarks><c>PropertyNameCaseInsensitive</c> is deliberately not an input: it is a deserialization option, and this overlay never reads XML.</remarks>
-			private (string? Profile, string? DictionaryFormat, bool Schemaless) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? wireProfile, string? propertyNamingPolicy)
+			private (string? Profile, string? DictionaryFormat, bool Schemaless) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? outputProfile, string? propertyNamingPolicy)
 			{
 				if (xmlOutputAttribute is null)
 				{ // no opt-in: the container is JSON-only, and nothing else about it changes
@@ -609,7 +609,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// an explicit profile wins; 'Default' (or unspecified) derives the XML format from the JSON one
 				string profile =
 					explicitProfile is null or XmlProfileDefault
-						? (wireProfile == WireProfileDataContractCompat ? XmlProfileDataContract : XmlProfileModern)
+						? (outputProfile == OutputProfileDataContractCompat ? XmlProfileDataContract : XmlProfileModern)
 						: explicitProfile;
 
 				if (profile == XmlProfileDataContract && propertyNamingPolicy != null)
@@ -787,7 +787,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// a self-serializable type hosts its own generated code, so it can opt into XML output the same way a
 				// container does; it declares no JSON format profile, so an unspecified profile derives the Modern format
-				var (xmlProfile, xmlDictionaryFormat, xmlSchemaless) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), wireProfile: null, propertyNamingPolicy: null);
+				var (xmlProfile, xmlDictionaryFormat, xmlSchemaless) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), outputProfile: null, propertyNamingPolicy: null);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				var includedTypes = new List<CrystalJsonTypeMetadata>();

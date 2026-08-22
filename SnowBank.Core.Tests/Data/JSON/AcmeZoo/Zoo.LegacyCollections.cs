@@ -31,7 +31,7 @@ namespace Acme.Zoo.Cases.LegacyArrayList
 
 	/// <summary>Non-generic <c>ArrayList</c> members, holding heterogeneous values the way an
 	/// untyped collection invites. The interesting question for a replacement is not whether the
-	/// list round-trips but what happens to the element types, since nothing on the wire records
+	/// list round-trips but what happens to the element types, since nothing in the output records
 	/// what they were: a reader has only the JSON scalar kinds to work from.</summary>
 	[DataContract]
 	public class CounterSeriesDto

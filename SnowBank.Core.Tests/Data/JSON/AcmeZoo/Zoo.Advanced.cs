@@ -232,7 +232,7 @@ namespace Acme.Zoo.Cases.ExtensibleDataObject
 	/// <summary>IExtensibleDataObject: unknown members are retained and re-emitted, which is
 	/// how a contract survives a version it does not know about. 29 occurrences.
 	/// <para>This case doubles as the duplicate-key probe. The second input carries an
-	/// unknown member whose name equals a declared member's wire name in a different case
+	/// unknown member whose name equals a declared member's output name in a different case
 	/// ("Known" vs "known"), which is the only realistic path to a duplicate key in DCJS
 	/// output that I could construct. If it stays clean, key-order irrelevance can be
 	/// asserted without reservation.</para></summary>
@@ -283,9 +283,9 @@ namespace Acme.Zoo.Cases.DiagnosticDoubleContract
 
 	/// <summary>Diagnostic case. The expected outcome is a loud failure, not a match.
 	/// <para>Found in the wild: 2307 members carry both [DataMember] and [JsonProperty],
-	/// and 1726 of those give each attribute a different wire name. One DTO, two serializers,
+	/// and 1726 of those give each attribute a different output name. One DTO, two serializers,
 	/// two different documents: the lowercase name is the client-facing contract served by
-	/// DCJS, the uppercase one is the field name of a legacy back-end wire served by
+	/// DCJS, the uppercase one is the field name of a legacy back-end output served by
 	/// Newtonsoft.</para>
 	/// <para>This is an architecture defect rather than a compatibility target. It cannot be
 	/// carried over as-is, because a serializer that understands both attribute families will
@@ -325,7 +325,7 @@ namespace Acme.Zoo.Cases.DiagnosticDoubleContract
 	}
 
 	/// <summary>Legacy back-end half of the split.</summary>
-	public class LegacyWireDto
+	public class LegacyOutputDto
 	{
 		[JsonProperty(PropertyName = "ACTIF")]
 		public bool Enabled { get; set; }
@@ -354,7 +354,7 @@ namespace Acme.Zoo.Cases.DiagnosticDoubleContract
 
 		/// <summary>The same instance serialized by the other library. Put the two outputs side
 		/// by side and the defect stops being an assertion: DCJS honours its own attribute and
-		/// ignores the other, Newtonsoft does the reverse, so one DTO has two incompatible wire
+		/// ignores the other, Newtonsoft does the reverse, so one DTO has two incompatible output
 		/// contracts and no single serializer can serve both.</summary>
 		public static string NewtonsoftJson()
 		{

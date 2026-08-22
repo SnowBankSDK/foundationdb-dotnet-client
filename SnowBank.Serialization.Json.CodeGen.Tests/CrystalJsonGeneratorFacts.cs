@@ -1441,7 +1441,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			var stjOps = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
 
-			// the same payload feeds several deserializers: numeric enums are the wire that all of them read without
+			// the same payload feeds several deserializers: numeric enums are the output that all of them read without
 			// extra configuration. The document is camelCase (Web container), so the REFLECTION legs read it with
 			// case-insensitive matching - a case-sensitive read would bind nothing (and throws on the `required` Id)
 			var json = CrystalJson.Serialize(user, GeneratedConverters.MyAwesomeUser.Default, CrystalJsonSettings.Json.WithEnumAsNumbers());

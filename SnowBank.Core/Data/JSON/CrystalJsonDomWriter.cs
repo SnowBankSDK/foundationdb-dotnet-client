@@ -934,7 +934,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (member.Attributes?.EnumFormat is JsonEnumFormat.String or JsonEnumFormat.Number && value is Enum enumValue)
-			{ // [JsonProperty(EnumFormat = ...)] forces the wire form for this member, same as on the text route
+			{ // [JsonProperty(EnumFormat = ...)] forces the output form for this member, same as on the text route
 				return member.Attributes.EnumFormat == JsonEnumFormat.String
 					? CrystalJsonEnumCache.GetLiteral(enumValue.GetType(), enumValue, m_enumCamelCased)
 					: CrystalJsonEnumCache.GetNumber(enumValue.GetType(), enumValue);
@@ -953,7 +953,7 @@ namespace SnowBank.Data.Json
 		#region Copy/Pasta from CrystalJsonWriter
 
 		/// <summary>Maximum nesting depth this writer will descend into before refusing to go deeper</summary>
-		/// <remarks>Shared with every other serialization wire (see <see cref="CrystalJsonWriter.MaxDepth"/>). This is the
+		/// <remarks>Shared with every other serialization output (see <see cref="CrystalJsonWriter.MaxDepth"/>). This is the
 		/// shallowest of the recursions that cap protects (three frames per level), so it is the one whose stack margin the
 		/// shared value is chosen against.</remarks>
 		private const int MaximumObjectGraphDepth = CrystalJsonWriter.MaxDepth;

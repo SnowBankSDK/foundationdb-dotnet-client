@@ -53,7 +53,7 @@ namespace SnowBank.Data.Xml
 	/// <para><b>Line-ending normalization is applied by hand.</b> <see cref="XContainer.Add(object)"/> stores a string
 	/// verbatim, without the XML 1.0 section 2.11 end-of-line normalization (<c>\r\n</c> or lone <c>\r</c> becomes <c>\n</c>) that
 	/// <see cref="XDocument.Parse(string)"/> applies. This emitter replicates it itself, so that
-	/// <c>XNode.DeepEquals(emitter.ToDocument(), XDocument.Parse(referenceWire))</c> holds for any text containing a line
+	/// <c>XNode.DeepEquals(emitter.ToDocument(), XDocument.Parse(referenceOutput))</c> holds for any text containing a line
 	/// break.</para>
 	/// <para><b>Namespace declarations are the DOM's business, not this emitter's.</b> An element and an attribute each carry
 	/// their namespace in their <see cref="XName"/>, and <see cref="XElement.ToString()"/> derives the declarations and the

@@ -103,10 +103,10 @@ namespace SnowBank.SourceAnalysis
 
 		/// <summary>Value of the <c>[DataContract(Name = ...)]</c> attribute on an ENUM type, if any</summary>
 		/// <remarks>
-		/// <para>An enum is the one kind of type a wire has to be able to name from a reference alone: it is never registered as a
-		/// container type of its own (it has no members to serialize), yet a wire that names types after their data contract has to
+		/// <para>An enum is the one kind of type a format has to be able to name from a reference alone: it is never registered as a
+		/// container type of its own (it has no members to serialize), yet a format that names types after their data contract has to
 		/// spell it under its renamed contract everywhere that name is composed (a collection item, a <c>KeyValueOfXY</c> entry, a
-		/// generic argument). Every other kind reaches such a wire as a full <see cref="TypeMetadata"/>.</para>
+		/// generic argument). Every other kind reaches such a format as a full <see cref="TypeMetadata"/>.</para>
 		/// <para><see langword="null"/> for anything that is not an enum, and for an enum with no declared name: the attribute walk
 		/// is deliberately NOT paid on every type reference.</para>
 		/// </remarks>
@@ -170,14 +170,14 @@ namespace SnowBank.SourceAnalysis
 		/// <summary>Constant value of the field, formatted in the invariant culture (the underlying integer, as text)</summary>
 		public required string Value { get; init; }
 
-		/// <summary>Value of the <c>[EnumMember(Value = ...)]</c> attribute on the field, if any (the DataContract wire token)</summary>
+		/// <summary>Value of the <c>[EnumMember(Value = ...)]</c> attribute on the field, if any (the DataContract output token)</summary>
 		public string? EnumMemberValue { get; init; }
 
 		/// <summary>The field carries an <c>[EnumMember]</c> attribute, with or without a <c>Value</c></summary>
 		/// <remarks>Distinct from <see cref="EnumMemberValue"/>, which only records a renaming: on a <c>[DataContract]</c> enum the bare attribute is what makes the member serializable at all, so its PRESENCE has to survive on its own.</remarks>
 		public bool HasEnumMemberAttribute { get; init; }
 
-		/// <summary>Value of the <c>[JsonStringEnumMemberName("...")]</c> attribute on the field, if any (the System.Text.Json 9+ wire token)</summary>
+		/// <summary>Value of the <c>[JsonStringEnumMemberName("...")]</c> attribute on the field, if any (the System.Text.Json 9+ output token)</summary>
 		public string? JsonStringEnumMemberName { get; init; }
 
 	}
@@ -259,7 +259,7 @@ namespace SnowBank.SourceAnalysis
 			}
 
 			// the chain of types this one is declared inside, outermost first, joined with '.' (null for a top-level type):
-			// a wire that names a type after its DECLARATION (the DataContract wire spells a nested type "Outer.Inner")
+			// a format that names a type after its DECLARATION (the DataContract format spells a nested type "Outer.Inner")
 			// cannot rebuild it from Name, which is the simple name only
 			if (type.ContainingType is not null)
 			{
@@ -375,7 +375,7 @@ namespace SnowBank.SourceAnalysis
 					: this.FullyQualifiedName;
 		}
 
-		/// <summary>Collects the declared members of an enum type, with any custom wire token declared on their fields</summary>
+		/// <summary>Collects the declared members of an enum type, with any custom output token declared on their fields</summary>
 		/// <remarks>Tokens are matched by attribute NAME and namespace, so no reference (and no version floor) on System.Text.Json is required, and a hand-written or injected clone of either attribute is matched too. This mirrors what the runtime enum cache does on the JSON side.</remarks>
 		private static void CaptureEnumMembers(ITypeSymbol type, out ImmutableEquatableArray<EnumMemberMetadata> members, out bool isFlags, out SpecialType underlyingSpecialType, out bool isDataContractEnum)
 		{
@@ -509,15 +509,15 @@ namespace SnowBank.SourceAnalysis
 		public ImmutableEquatableArray<TypeRef> Interfaces { get; } //HACKHACK: temporary, while we are debugging this thing!
 
 		/// <summary>Names of the types this one is declared inside, outermost first, joined with <c>'.'</c> (ex: <c>"Outer.Middle"</c> for <c>Outer.Middle.Inner</c>), or <see langword="null"/> for a top-level type</summary>
-		/// <remarks>Captured because a wire can name a type after its DECLARATION rather than after its simple name: the DataContract wire spells a nested type <c>Outer.Inner</c>, which <see cref="Name"/> alone cannot rebuild.</remarks>
+		/// <remarks>Captured because a format can name a type after its DECLARATION rather than after its simple name: the DataContract format spells a nested type <c>Outer.Inner</c>, which <see cref="Name"/> alone cannot rebuild.</remarks>
 		public string? DeclaringTypeNames { get; }
 
 		/// <summary>The type implements <see cref="System.Runtime.Serialization.ISerializable"/>, directly or through a base type or interface</summary>
-		/// <remarks>Resolved over ALL interfaces, not just the declared ones: a type that inherits the interface from its base class serializes through the same dialect, and missing that would silently produce a different wire.</remarks>
+		/// <remarks>Resolved over ALL interfaces, not just the declared ones: a type that inherits the interface from its base class serializes through the same dialect, and missing that would silently produce a different output.</remarks>
 		public bool ImplementsISerializable { get; }
 
 		/// <summary>This is an enum type carrying <c>[DataContract]</c>, which makes <c>[EnumMember]</c> the opt-in signal of each of its members</summary>
-		/// <remarks>Only ever set for an enum. On such a type the DataContract wire refuses a value whose member carries no <c>[EnumMember]</c>, instead of falling back to the declared name.</remarks>
+		/// <remarks>Only ever set for an enum. On such a type the DataContract format refuses a value whose member carries no <c>[EnumMember]</c>, instead of falling back to the declared name.</remarks>
 		public bool IsDataContractEnum { get; }
 
 		public override string ToString() => $"{{ Name = {this.Name}, Kind = {TypeKind}, Special = {SpecialType}{(IsSealed?", Sealed" : "")}{(IsRecord?", Record" : "")}, FullName = {this.Ref.FullName}}}";
@@ -601,7 +601,7 @@ namespace SnowBank.SourceAnalysis
 
 		public bool IsEnum() => this.TypeKind is TypeKind.Enum;
 
-		/// <summary>If this is an enum, its declared members in declaration order (with any custom wire token); otherwise empty</summary>
+		/// <summary>If this is an enum, its declared members in declaration order (with any custom output token); otherwise empty</summary>
 		public ImmutableEquatableArray<EnumMemberMetadata> EnumMembers { get; }
 
 		/// <summary>If this is an enum, whether it carries <c>[Flags]</c>, so that an undeclared value may be a combination of declared ones</summary>

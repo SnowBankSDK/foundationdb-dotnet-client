@@ -36,7 +36,7 @@ namespace SnowBank.Data.Xml
 	/// <para>A namespace carries no prefix. The prefix an element or attribute is written under depends on the depth of the
 	/// element that declares it and on what is already in scope, so it belongs to the emitter and is assigned there; the
 	/// same namespace value is reused across documents and depths without change.</para>
-	/// <para>Three states, and they are distinct on the wire:</para>
+	/// <para>Three states, and they are distinct in the output:</para>
 	/// <list type="bullet">
 	/// <item><see cref="None"/> (the <see langword="default"/> value): no namespace was specified. An element in this state
 	/// inherits whatever default namespace is in scope, and an attribute in this state is in no namespace at all.</item>

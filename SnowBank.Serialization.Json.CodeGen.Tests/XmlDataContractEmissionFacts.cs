@@ -168,7 +168,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 		[DataMember] public object? AsObjectNull;
 	}
 
-	/// <summary>A renamed contract and renamed members, which sort by their WIRE name</summary>
+	/// <summary>A renamed contract and renamed members, which sort by their OUTPUT name</summary>
 	[DataContract(Name = "RenamedContract", Namespace = "urn:acme:renamed")]
 	public sealed class RenameProbe
 	{
@@ -431,7 +431,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	// Schemaless, because every expectation in this fixture is a measured namespace-free document. What the fixture pins
 	// is the emission SHAPE (member order, contract names, element shapes, the acted deviations), and the option leaves
 	// all of that untouched: it only strips the prefixes and the xmlns declarations. The namespaced default output is
-	// certified elsewhere, against a live DataContractSerializer, by SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs and
+	// certified elsewhere, against a live DataContractSerializer, by SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs and
 	// SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs. NamespacedSerializers below keeps a sample of that default
 	// inside this fixture too.
 	[CrystalConverter]
@@ -480,7 +480,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// parser's metadata: its documents must be the ones <see cref="LegacySerializers"/> writes, character for character.</para>
 	/// <para>The JSON profile is the STANDARD one, with the compat XML format asked for explicitly: this predates
 	/// XW-Q11, which later narrowed CJSON0013 so the DataContractCompat JSON profile itself also tolerates the flag
-	/// alone (see <see cref="LegacyCaseInsensitiveWireSerializers"/> and <see cref="LegacyCaseInsensitiveDualSerializers"/>).</para>
+	/// alone (see <see cref="LegacyCaseInsensitiveOutputSerializers"/> and <see cref="LegacyCaseInsensitiveDualSerializers"/>).</para>
 	/// </remarks>
 	// Schemaless too: its facts compare its documents to the ones LegacySerializers writes, character for character
 	[CrystalConverter]
@@ -492,7 +492,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	{
 	}
 
-	/// <summary>The compat WIRE itself (not just the derived XML format) declared next to <c>PropertyNameCaseInsensitive</c>, with no XML output at all (XW-Q11)</summary>
+	/// <summary>The compat OUTPUT itself (not just the derived XML format) declared next to <c>PropertyNameCaseInsensitive</c>, with no XML output at all (XW-Q11)</summary>
 	/// <remarks>
 	/// <para>Strict on output, lenient on input: <c>PropertyNameCaseInsensitive</c> is a READ-side tolerance for
 	/// incoming member names, and changes nothing about what the DataContractCompat format WRITES. CJSON0013 refuses
@@ -503,7 +503,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
 	[CrystalSerializable(typeof(Shelf))]
 	[CrystalSerializable(typeof(ScalarProbe))]
-	public static partial class LegacyCaseInsensitiveWireSerializers
+	public static partial class LegacyCaseInsensitiveOutputSerializers
 	{
 	}
 
@@ -525,7 +525,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 
 	/// <summary>The same compat XML format with no <c>Schemaless</c>, so it writes the namespaced default of the profile</summary>
 	/// <remarks>Two probes, which is what the three namespace facts below need. The wider certification of this output is
-	/// SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs and SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs, which
+	/// SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs and SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs, which
 	/// compare it to a live <see cref="System.Runtime.Serialization.DataContractSerializer"/>. This container keeps a
 	/// sample of it next to the schemaless documents, so the fixture shows both outputs of the one profile.</remarks>
 	[CrystalConverter]
@@ -562,7 +562,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	/// unhashed dictionary entry names, the sanitized control characters, and the typed exceptions.</para>
 	/// <para>Those documents are the schemaless output of the profile, which is what <see cref="LegacySerializers"/> asks
 	/// for. The namespaced default has its own region and its own container, <see cref="NamespacedSerializers"/>, and its
-	/// wider certification against a live serializer is <c>SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs</c> and
+	/// wider certification against a live serializer is <c>SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs</c> and
 	/// <c>SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs</c>.</para>
 	/// </remarks>
 	[TestFixture]
@@ -574,7 +574,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		#region PropertyNameCaseInsensitive (the narrowed CXML0001)...
 
 		[Test]
-		public void Test_Case_Insensitive_Names_Leave_The_Compat_Wire_Untouched()
+		public void Test_Case_Insensitive_Names_Leave_The_Compat_Output_Untouched()
 		{
 			// the container compiled at all, which is half the claim (CXML0001 no longer refuses the flag alone);
 			// the other half is that the flag changed nothing about what gets written
@@ -591,10 +591,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
-		#region PropertyNameCaseInsensitive next to the compat WIRE itself (the narrowed CJSON0013, XW-Q11)...
+		#region PropertyNameCaseInsensitive next to the compat OUTPUT itself (the narrowed CJSON0013, XW-Q11)...
 
 		[Test]
-		public void Test_Case_Insensitive_Names_Leave_The_Compat_Wire_Untouched_On_The_Json_Side()
+		public void Test_Case_Insensitive_Names_Leave_The_Compat_Output_Untouched_On_The_Json_Side()
 		{
 			// the container compiled at all, which is half the claim (CJSON0013 no longer refuses the flag alone
 			// when it is not paired with a naming policy); the other half is that the flag changed nothing about
@@ -604,13 +604,13 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(LegacyCaseInsensitiveWireSerializers.Shelf.ToJsonText(shelf), Is.EqualTo(LegacySerializers.Shelf.ToJsonText(shelf)));
-				Assert.That(LegacyCaseInsensitiveWireSerializers.ScalarProbe.ToJsonText(scalars), Is.EqualTo(LegacySerializers.ScalarProbe.ToJsonText(scalars)));
+				Assert.That(LegacyCaseInsensitiveOutputSerializers.Shelf.ToJsonText(shelf), Is.EqualTo(LegacySerializers.Shelf.ToJsonText(shelf)));
+				Assert.That(LegacyCaseInsensitiveOutputSerializers.ScalarProbe.ToJsonText(scalars), Is.EqualTo(LegacySerializers.ScalarProbe.ToJsonText(scalars)));
 			}
 		}
 
 		[Test]
-		public void Test_The_Dual_Wire_Container_Compiles_And_Matches_Both_Wires_Byte_For_Byte()
+		public void Test_The_Dual_Output_Container_Compiles_And_Matches_Both_Outputs_Byte_For_Byte()
 		{
 			// the natural container from the owner's question: the compat format, PropertyNameCaseInsensitive, AND
 			// its derived XML output, all on one container - refused before XW-Q11, now compiles with no diagnostic
@@ -855,7 +855,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			string xml = LegacySerializers.RenameProbe.ToXmlText(new RenameProbe { Original = "o", Dashed = "d", Required = "r", Plain = "p" });
 			Log($"XML : {xml}");
 
-			// measured: the root takes the contract name, and the members sort by their WIRE name in ORDINAL order, which
+			// measured: the root takes the contract name, and the members sort by their OUTPUT name in ORDINAL order, which
 			// puts the two capitalized ones before the two lowercase ones
 			Assert.That(xml, Is.EqualTo("""<RenamedContract><Plain>p</Plain><Required>r</Required><renamed_member>o</renamed_member><with-dash>d</with-dash></RenamedContract>"""));
 		}
@@ -1061,7 +1061,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		#region Dispatch order over a three-level hierarchy...
 
 		[Test]
-		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Compat_Wire()
+		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Compat_Output()
 		{
 			// that this fixture COMPILED is already half the fact: a switch emitted in registration order would have put
 			// 'case Sedan' first, making 'case Estate' unreachable (CS8120) and failing the build outright
@@ -1321,7 +1321,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_The_Json_Wire_Of_The_Same_Container_Is_Untouched()
+		public void Test_The_Json_Output_Of_The_Same_Container_Is_Untouched()
 		{
 			// the two formats disagree on purpose where the two PROFILES disagree: the DCJS JSON writes an enum as a number
 			// and a date in the Microsoft form, while the XML of the same value writes the enum's label and the ISO form.

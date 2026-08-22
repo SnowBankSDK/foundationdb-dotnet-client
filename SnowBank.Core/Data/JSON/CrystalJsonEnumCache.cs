@@ -34,7 +34,7 @@ namespace SnowBank.Data.Json
 	/// <remarks>
 	/// <para>Caches pre-allocated <see cref="JsonString"/> literals for each value of an enum type, in both the canonical and camelCased forms,
 	/// plus a case-insensitive reverse map used to parse strings back into values.</para>
-	/// <para>Custom wire tokens are recognized on the enum's own fields: <c>[JsonStringEnumMemberName("...")]</c> (System.Text.Json 9+, matched
+	/// <para>Custom output tokens are recognized on the enum's own fields: <c>[JsonStringEnumMemberName("...")]</c> (System.Text.Json 9+, matched
 	/// by name so that no reference or version floor is required on any target) and <c>[EnumMember(Value = "...")]</c> (the DataContract spelling,
 	/// which Newtonsoft's <c>StringEnumConverter</c> also honors). The STJ spelling wins when both are present. Names explicitly set via attributes
 	/// are never camelCased, consistent with <c>JsonPropertyNameAttribute</c> semantics in System.Text.Json.</para>
@@ -60,7 +60,7 @@ namespace SnowBank.Data.Json
 			/// <summary>The enum carries <c>[Flags]</c>, so undeclared values may compose from declared fields</summary>
 			public required bool IsFlags { get; init; }
 
-			/// <summary>At least one field carries a custom wire token (<c>[JsonStringEnumMemberName]</c> or <c>[EnumMember(Value=...)]</c>)</summary>
+			/// <summary>At least one field carries a custom output token (<c>[JsonStringEnumMemberName]</c> or <c>[EnumMember(Value=...)]</c>)</summary>
 			public required bool HasCustomTokens { get; init; }
 
 			/// <summary>Canonical literal for each declared value: the custom token if any, otherwise the .NET name</summary>
@@ -102,7 +102,7 @@ namespace SnowBank.Data.Json
 			return GetCacheForType(typeof(TEnum));
 		}
 
-		/// <summary>Looks for custom wire tokens on an enum field</summary>
+		/// <summary>Looks for custom output tokens on an enum field</summary>
 		/// <remarks>
 		/// <para>Recognition is by attribute name and namespace, so it works on every target (no STJ reference or version floor required),
 		/// and also matches hand-written or generator-injected definitions of the same attributes.</para>
@@ -154,7 +154,7 @@ namespace SnowBank.Data.Json
 			int count = names.Length;
 			var underlyingCode = Type.GetTypeCode(Enum.GetUnderlyingType(enumType));
 
-			// collect the custom wire tokens, if any: the canonical one (written), and any losing spelling (still accepted on read)
+			// collect the custom output tokens, if any: the canonical one (written), and any losing spelling (still accepted on read)
 			var tokens = new string?[count];
 			var altTokens = new string?[count];
 			bool hasCustomTokens = false;

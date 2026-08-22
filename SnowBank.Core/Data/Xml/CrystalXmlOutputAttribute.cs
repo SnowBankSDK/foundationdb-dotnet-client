@@ -60,7 +60,7 @@ namespace SnowBank.Data.Xml
 		/// reads them back by local name. A namespaced document would not match. So this is the output to name when the
 		/// documents already exist, and the default is the output to name for anything new.</para>
 		/// <para>What it costs: <c>type="RangeCriterion"</c> has lost the namespace half of its qualified name, so two derived
-		/// types with the same local name in different contract namespaces become the same annotation on the wire.</para>
+		/// types with the same local name in different contract namespaces become the same annotation in the output.</para>
 		/// <para>Generation-time, like <see cref="Profile"/>: the generated code bakes its names as frozen literals, so a name
 		/// exists with a namespace or without one and never both. On <see cref="CrystalXmlOutputProfile.Modern"/>, which has no
 		/// namespaces to strip, the option does nothing and the generator says so (<c>CXML0012</c>).</para>

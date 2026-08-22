@@ -68,7 +68,7 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		/// <summary>Renders <paramref name="scenario"/> through the byte-exact char core: the reference this fixture treats as ground truth</summary>
-		private static string RenderReferenceWire(IEmitterScenario scenario)
+		private static string RenderReferenceOutput(IEmitterScenario scenario)
 		{
 			var sink = new CrystalXmlEmitterConformance.GrowableBuffer<char>();
 			var inner = new CrystalXmlEmitterConformance.SinkRef<char>(sink);
@@ -103,14 +103,14 @@ namespace SnowBank.Data.Xml.Tests
 		/// text: infoset equivalence, not byte equivalence, is what this fixture pins.</remarks>
 		private static void AssertInfosetEquivalent(IEmitterScenario scenario)
 		{
-			string referenceWire = RenderReferenceWire(scenario);
-			var expected = XDocument.Parse(referenceWire);
+			string referenceOutput = RenderReferenceOutput(scenario);
+			var expected = XDocument.Parse(referenceOutput);
 
 			var fromXDocument = RenderXDocument(scenario);
 			Assert.That(
 				XNode.DeepEquals(fromXDocument, expected),
 				Is.True,
-				() => $"CrystalXDocumentEmitter infoset mismatch.\nReference format: {referenceWire}\nExpected: {expected}\nActual:   {fromXDocument}"
+				() => $"CrystalXDocumentEmitter infoset mismatch.\nReference format: {referenceOutput}\nExpected: {expected}\nActual:   {fromXDocument}"
 			);
 
 			string xmlWriterOutput = RenderXmlWriterOutput(scenario);
@@ -118,7 +118,7 @@ namespace SnowBank.Data.Xml.Tests
 			Assert.That(
 				XNode.DeepEquals(fromXmlWriter, expected),
 				Is.True,
-				() => $"CrystalXmlWriterEmitter infoset mismatch.\nReference format: {referenceWire}\nXmlWriter output: {xmlWriterOutput}\nExpected: {expected}\nActual:   {fromXmlWriter}"
+				() => $"CrystalXmlWriterEmitter infoset mismatch.\nReference format: {referenceOutput}\nXmlWriter output: {xmlWriterOutput}\nExpected: {expected}\nActual:   {fromXmlWriter}"
 			);
 		}
 
@@ -361,7 +361,7 @@ namespace SnowBank.Data.Xml.Tests
 				var (label, scenario, _) = CrystalXmlEmitterConformance.NamespaceCase(fragment);
 				Log(label);
 
-				AssertQNameResolvesTo(XDocument.Parse(RenderReferenceWire(new SharedScenario(scenario))), expectedNamespace, "the text emitter");
+				AssertQNameResolvesTo(XDocument.Parse(RenderReferenceOutput(new SharedScenario(scenario))), expectedNamespace, "the text emitter");
 				AssertQNameResolvesTo(RenderXDocument(new SharedScenario(scenario)), expectedNamespace, "CrystalXDocumentEmitter");
 				AssertQNameResolvesTo(XDocument.Parse(RenderXmlWriterOutput(new SharedScenario(scenario))), expectedNamespace, "CrystalXmlWriterEmitter");
 			}

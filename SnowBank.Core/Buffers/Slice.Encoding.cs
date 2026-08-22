@@ -1559,7 +1559,7 @@ namespace System
 		/// <summary>Decode a slice as a UTF-8 string for DISPLAY purposes, replacing any invalid byte with the Unicode replacement character (<c>U+FFFD</c>) instead of throwing.</summary>
 		/// <returns>Decoded string, or <see langword="null"/> if the slice is <see cref="Nil"/>. Any UTF-8 BOM is removed, matching <see cref="ToStringUtf8"/>.</returns>
 		/// <remarks>
-		/// <para>Unlike <see cref="ToStringUtf8"/>, this method NEVER throws on invalid UTF-8: it exists for diagnostic dumps and logging of arbitrary wire bytes whose encoding is not guaranteed.</para>
+		/// <para>Unlike <see cref="ToStringUtf8"/>, this method NEVER throws on invalid UTF-8: it exists for diagnostic dumps and logging of arbitrary output bytes whose encoding is not guaranteed.</para>
 		/// <para>Do NOT use it to decode data that must round-trip: a genuine parse should use the strict <see cref="ToStringUtf8"/> and fail on invalid bytes.</para>
 		/// </remarks>
 		[Pure]

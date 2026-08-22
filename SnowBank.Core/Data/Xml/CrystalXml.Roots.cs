@@ -37,7 +37,7 @@ namespace SnowBank.Data.Xml
 	{
 
 		// The entry points for documents whose root is not a generated contract type: a bare sequence of contract items
-		// (composed out of the item type's ICrystalXmlElementSerializer<T> facet), and a bare scalar. Both write the wire
+		// (composed out of the item type's ICrystalXmlElementSerializer<T> facet), and a bare scalar. Both write the output
 		// the reference DataContractSerializer writes for the same declared type, as pinned by the root facts of
 		// DcsNamespaceReferenceFacts: a sequence root is ArrayOfX in the item's namespace, a scalar root is the xsd
 		// lexical name in the Serialization namespace. A root name is resolved, never guessed: the caller's rootName
@@ -236,9 +236,9 @@ namespace SnowBank.Data.Xml
 			/// <param name="value">Value to serialize, or <see langword="null"/> for the empty root element, marked nil when the settings ask for null members</param>
 			/// <param name="settings">Optional settings; the reference DataContract behavior is the default</param>
 			/// <param name="rootName">Optional name for the root element, in place of the type's xsd lexical name; the root stays in the Serialization namespace either way</param>
-			/// <remarks>These entry points write the wire the reference <c>DataContractSerializer</c> writes for the same declared
+			/// <remarks>These entry points write the output the reference <c>DataContractSerializer</c> writes for the same declared
 			/// type: the xsd lexical name in the built-in Serialization namespace, as pinned by the root facts of
-			/// <c>DcsNamespaceReferenceFacts</c>. A type outside the lexical set has no scalar wire and is refused.</remarks>
+			/// <c>DcsNamespaceReferenceFacts</c>. A type outside the lexical set has no scalar output and is refused.</remarks>
 			/// <exception cref="CrystalXmlUnknownTypeException">If <typeparamref name="T"/> is not one of the lexical scalar types</exception>
 			public static string ToText<T>(T? value, CrystalJsonSettings? settings = null, string? rootName = null)
 			{
@@ -355,10 +355,10 @@ namespace SnowBank.Data.Xml
 				string? lexicalName = GetLexicalRootName<T>();
 				if (lexicalName is null)
 				{
-					throw new CrystalXmlUnknownTypeException(typeof(T), $"Type '{typeof(T).Name}' is not one of the xsd lexical scalar types, so it has no scalar root wire. A contract type roots a document through its own serializer.");
+					throw new CrystalXmlUnknownTypeException(typeof(T), $"Type '{typeof(T).Name}' is not one of the xsd lexical scalar types, so it has no scalar root output. A contract type roots a document through its own serializer.");
 				}
 
-				// this is the reference DataContract wire, so its defaults apply: a null root is marked nil unless the settings drop null members
+				// this is the reference DataContract output, so its defaults apply: a null root is marked nil unless the settings drop null members
 				settings ??= CrystalJsonSettings.DataContractCompat;
 
 				// the caller names the root element, not the shape: the name changes and the Serialization namespace does not

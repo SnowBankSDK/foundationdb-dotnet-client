@@ -79,7 +79,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			""";
 
 		/// <summary>Pins that an indexer is never treated as serialization state: its member name is <c>this[]</c>, which is not an identifier a generated constant can carry (CS1001)</summary>
-		/// <remarks>An indexer is not serialization state on any wire, and the reference serializer ignores it. One shared collection type carrying an indexer breaks every container that reaches it.</remarks>
+		/// <remarks>An indexer is not serialization state on any output, and the reference serializer ignores it. One shared collection type carrying an indexer breaks every container that reaches it.</remarks>
 		[Test]
 		public void Test_An_Indexer_Is_Not_Serialized_And_Generated_Code_Compiles()
 		{

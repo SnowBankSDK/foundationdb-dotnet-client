@@ -482,7 +482,7 @@ namespace SnowBank.Data.Json
 
 		private static readonly JsonEncodedPropertyName s_pairValueName = new("Value");
 
-		/// <summary>Visit a typed dictionary using the legacy DataContractJsonSerializer wire shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
+		/// <summary>Visit a typed dictionary using the legacy DataContractJsonSerializer output shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
 		/// <remarks>Used when <see cref="CrystalJsonSettings.DictionariesAsPairArrays"/> is set (interop with clients that cannot read a JSON object map)</remarks>
 		private static void VisitDictionaryAsPairs<TKey, TValue>(IEnumerable<KeyValuePair<TKey, TValue>> items, CrystalJsonWriter writer)
 		{
@@ -510,7 +510,7 @@ namespace SnowBank.Data.Json
 			writer.EndArray(state);
 		}
 
-		/// <summary>Visit a non-generic dictionary using the legacy DataContractJsonSerializer wire shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
+		/// <summary>Visit a non-generic dictionary using the legacy DataContractJsonSerializer output shape: <c>[ { "Key": ..., "Value": ... }, ... ]</c></summary>
 		/// <remarks>Used when <see cref="CrystalJsonSettings.DictionariesAsPairArrays"/> is set (interop with clients that cannot read a JSON object map)</remarks>
 		private static void VisitDictionaryAsPairs(IDictionary dictionary, Type keyType, Type valueType, CrystalJsonWriter writer)
 		{
@@ -1660,7 +1660,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (writer.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS output shape was requested
 				writer.MarkVisited(items);
 				VisitDictionaryAsPairs(items, writer);
 				writer.Leave(items);
@@ -1699,7 +1699,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (writer.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS output shape was requested
 				writer.MarkVisited(items);
 				VisitDictionaryAsPairs(items, writer);
 				writer.Leave(items);
@@ -1825,7 +1825,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (writer.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS output shape was requested
 				writer.MarkVisited(items);
 				VisitDictionaryAsPairs(items, writer);
 				writer.Leave(items);
@@ -1900,7 +1900,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (writer.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS output shape was requested
 				writer.MarkVisited(dictionary);
 				VisitDictionaryAsPairs(dictionary, keyType, valueType, writer);
 				writer.Leave(dictionary);
@@ -1962,7 +1962,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (writer.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS output shape was requested
 				writer.MarkVisited(dictionary);
 				VisitDictionaryAsPairs(dictionary, typeof(string), valueType, writer);
 				writer.Leave(dictionary);
@@ -2009,7 +2009,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (writer.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS output shape was requested
 				writer.MarkVisited(dictionary);
 				VisitDictionaryAsPairs(dictionary, writer);
 				writer.Leave(dictionary);
@@ -2056,7 +2056,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (writer.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS output shape was requested
 				writer.MarkVisited(dictionary);
 				VisitDictionaryAsPairs(dictionary, typeof(int), valueType, writer);
 				writer.Leave(dictionary);
@@ -2103,7 +2103,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (writer.Settings.DictionariesAsPairArrays)
-			{ // the legacy DCJS wire shape was requested
+			{ // the legacy DCJS output shape was requested
 				writer.MarkVisited(dictionary);
 				VisitDictionaryAsPairs(dictionary, writer);
 				writer.Leave(dictionary);

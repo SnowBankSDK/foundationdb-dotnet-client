@@ -16,7 +16,7 @@ namespace Acme.Zoo.Cases.MemberNameRename
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>The single most common shape in the application: every member renamed to a
-	/// short lowercase wire name. Note the wire order is alphabetical on the renamed name,
+	/// short lowercase output name. Note the output order is alphabetical on the renamed name,
 	/// not declaration order.</summary>
 	[DataContract]
 	public class RenamedMemberDto

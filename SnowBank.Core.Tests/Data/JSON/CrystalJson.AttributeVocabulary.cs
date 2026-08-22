@@ -29,7 +29,7 @@ namespace SnowBank.Data.Json.Tests
 	using SnowBank.Data;
 	using SnowBank.Data.Xml;
 
-	/// <summary>DTO shared by every container of <see cref="AttributeVocabularyFacts"/>, so that the wires they produce are directly comparable</summary>
+	/// <summary>DTO shared by every container of <see cref="AttributeVocabularyFacts"/>, so that the outputs they produce are directly comparable</summary>
 	public sealed record VocabularyDto
 	{
 
@@ -60,12 +60,12 @@ namespace SnowBank.Data.Json.Tests
 	[CrystalSerializable(typeof(VocabularyDto))]
 	public static partial class XmlOnlySerializers { }
 
-	/// <summary>A dual-wire container over the same DTO, whose XML output must match the XML-only one</summary>
+	/// <summary>A dual-output container over the same DTO, whose XML output must match the XML-only one</summary>
 	[CrystalConverter]
 	[CrystalJsonOutput]
 	[CrystalXmlOutput]
 	[CrystalSerializable(typeof(VocabularyDto))]
-	public static partial class DualWireSerializers { }
+	public static partial class DualSerializers { }
 
 	/// <summary>Pins the container attribute vocabulary at RUNTIME: the obsolete and modern spellings produce the same bytes, and an XML-only container produces the same XML as a dual one</summary>
 	/// <remarks>The generator's own truth table (which surface each combination emits) is pinned by <c>ContainerOutputMatrixFacts</c> in the CodeGen test suite; this fixture pins what the emitted code actually writes.</remarks>
@@ -95,8 +95,8 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_Obsolete_And_Modern_Spellings_Produce_Identical_Bytes()
 		{
-			// "alias" is a promise about the wire, not only about the vocabulary: the same DTO through either container
-			// must produce the same bytes, or an application would change its wire simply by migrating its attributes
+			// "alias" is a promise about the output, not only about the vocabulary: the same DTO through either container
+			// must produce the same bytes, or an application would change its output simply by migrating its attributes
 			var dto = MakeSample();
 
 			var legacy = LegacySpellingSerializers.VocabularyDto.ToJsonBytes(dto);
@@ -105,7 +105,7 @@ namespace SnowBank.Data.Json.Tests
 			Log($"legacy: {legacy.Length} bytes");
 			Log($"modern: {modern.Length} bytes");
 
-			Assert.That(modern, Is.EqualTo(legacy), "migrating [CrystalJsonSerializable] to [CrystalSerializable] must not change one byte of the wire");
+			Assert.That(modern, Is.EqualTo(legacy), "migrating [CrystalJsonSerializable] to [CrystalSerializable] must not change one byte of the output");
 		}
 
 		[Test]
@@ -115,11 +115,11 @@ namespace SnowBank.Data.Json.Tests
 			var dto = MakeSample();
 
 			var xmlOnly = XmlOnlySerializers.VocabularyDto.ToXmlText(dto);
-			var dual = DualWireSerializers.VocabularyDto.ToXmlText(dto);
+			var dual = DualSerializers.VocabularyDto.ToXmlText(dto);
 
 			Log(xmlOnly);
 
-			Assert.That(xmlOnly, Is.EqualTo(dual), "the XML wire does not depend on whether the container also produces JSON");
+			Assert.That(xmlOnly, Is.EqualTo(dual), "the XML output does not depend on whether the container also produces JSON");
 		}
 
 	}

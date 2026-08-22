@@ -50,7 +50,7 @@ namespace SnowBank.Data.Json.Tests
 	public sealed class CrystalJsonMemberConverterFacts : SimpleTest
 	{
 
-		/// <summary>Legacy-style scalar converter: bool on the wire as "0"/"1" strings (tolerant read)</summary>
+		/// <summary>Legacy-style scalar converter: bool in the output as "0"/"1" strings (tolerant read)</summary>
 		public sealed class BoolAsBitStringConverter : IJsonMemberConverter<bool>
 		{
 
@@ -93,7 +93,7 @@ namespace SnowBank.Data.Json.Tests
 			public static int UnpackCalls;
 
 			public JsonValue Pack(ref CrystalJsonPackContext context, DateTime? instance)
-				// the legacy body wrote "" for a null member; that form must stay unreachable, the pipeline owns the null-member wire
+				// the legacy body wrote "" for a null member; that form must stay unreachable, the pipeline owns the null-member output
 				=> instance is { } value ? JsonString.Return(value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)) : throw new InvalidOperationException("Pack must never see a null member");
 
 			public DateTime? Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
@@ -125,7 +125,7 @@ namespace SnowBank.Data.Json.Tests
 
 		}
 
-		/// <summary>Type-level converter target: the whole struct has a custom scalar wire form</summary>
+		/// <summary>Type-level converter target: the whole struct has a custom scalar output form</summary>
 		[STJ.JsonConverter(typeof(TemperatureConverter))]
 		public readonly record struct Temperature(double Celsius);
 
@@ -188,14 +188,14 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_Nullable_Form_Converter_Write_Of_Null_Stays_Pipeline_Controlled()
 		{
 			// the T? declaration transfers the READ side only: Pack never sees null (the converter throws if it ever
-			// does), so its legacy null-write form is unreachable by design, and the null-member wire follows the settings
+			// does), so its legacy null-write form is unreachable by design, and the null-member output follows the settings
 			var dto = new LegacyOptionalDateDto { When = null, Plain = 1 };
 
 			var obj = CrystalJson.Parse(CrystalJson.Serialize(dto)).AsObject();
 			Assert.That(obj.ContainsKey("When"), Is.False, "a null member is omitted by default, never written as the converter's \"\" form");
 
 			var objNulls = CrystalJson.Parse(CrystalJson.Serialize(dto, CrystalJsonSettings.Json.WithNullMembers())).AsObject();
-			Assert.That(objNulls.ContainsKey("When"), Is.True, "WithNullMembers() governs the null-member wire");
+			Assert.That(objNulls.ContainsKey("When"), Is.True, "WithNullMembers() governs the null-member output");
 			Assert.That(objNulls["When"].IsNull, Is.True, "the pipeline writes JSON null, not the converter's \"\" form");
 
 			// a PRESENT value still routes through the converter
@@ -219,9 +219,9 @@ namespace SnowBank.Data.Json.Tests
 			var obj = CrystalJson.Parse(CrystalJson.Serialize(dto)).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(obj["Enabled"], Is.InstanceOf<JsonString>(), "the member converter must shape the wire (STJ spelling)");
+				Assert.That(obj["Enabled"], Is.InstanceOf<JsonString>(), "the member converter must shape the output (STJ spelling)");
 				Assert.That(obj.Get<string>("Enabled"), Is.EqualTo("1"));
-				Assert.That(obj["Archived"], Is.InstanceOf<JsonString>(), "the member converter must shape the wire (Newtonsoft spelling)");
+				Assert.That(obj["Archived"], Is.InstanceOf<JsonString>(), "the member converter must shape the output (Newtonsoft spelling)");
 				Assert.That(obj.Get<string>("Archived"), Is.EqualTo("0"));
 				Assert.That(obj.Get<string>("Optional"), Is.EqualTo("1"), "a converter for T must lift over a T? member");
 				Assert.That(obj["Plain"], Is.InstanceOf<JsonBoolean>(), "members without a converter are untouched");
@@ -332,7 +332,7 @@ namespace SnowBank.Data.Json.Tests
 			var obj = CrystalJson.Parse(CrystalJson.Serialize(dto)).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(obj.Get<string>("Enabled"), Is.EqualTo("1"), "[JsonConvertWith] must shape the wire");
+				Assert.That(obj.Get<string>("Enabled"), Is.EqualTo("1"), "[JsonConvertWith] must shape the output");
 				Assert.That(obj.Get<string>("Mixed"), Is.EqualTo("1"), "the native attribute must win over a foreign spelling on the same member");
 				Assert.That(obj.Get<string>("Optional"), Is.EqualTo("0"), "a converter for T lifts over a T? member");
 			}

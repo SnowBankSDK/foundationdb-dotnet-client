@@ -29,7 +29,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	#region Probe types...
 
-	public sealed record ProbeNamedWireFormDto
+	public sealed record ProbeNamedOutputFormDto
 	{
 
 		// the POSITIONAL form: [JsonProperty("...")]
@@ -51,8 +51,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	#endregion
 
 	[CrystalJsonConverter]
-	[CrystalSerializable(typeof(ProbeNamedWireFormDto))]
-	public static partial class ProbeNamedWireFormHost
+	[CrystalSerializable(typeof(ProbeNamedOutputFormDto))]
+	public static partial class ProbeNamedOutputFormHost
 	{
 	}
 
@@ -62,22 +62,22 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
 	[Parallelizable(ParallelScope.All)]
-	public sealed class NamedWireFormProbeFacts : SimpleTest
+	public sealed class NamedOutputFormProbeFacts : SimpleTest
 	{
 
 		[Test]
 		public void Test_Generated_Serialize_Honors_The_Named_Form()
 		{
-			var dto = new ProbeNamedWireFormDto { Field = "a", SubField = "b", Day = DayOfWeek.Friday, Plain = "c" };
+			var dto = new ProbeNamedOutputFormDto { Field = "a", SubField = "b", Day = DayOfWeek.Friday, Plain = "c" };
 
-			var obj = JsonObject.Parse(ProbeNamedWireFormHost.ProbeNamedWireFormDto.ToJsonText(dto));
+			var obj = JsonObject.Parse(ProbeNamedOutputFormHost.ProbeNamedOutputFormDto.ToJsonText(dto));
 			Log(obj.ToJsonText());
 
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(obj["CHAMP"], IsJson.EqualTo("a"), "the positional spelling renames the member");
 				Assert.That(obj["SOUSCHAMP"], IsJson.EqualTo("b"), "the named spelling must rename the member too");
-				Assert.That(obj.ContainsKey("SubField"), Is.False, "the raw C# name must not reach the wire");
+				Assert.That(obj.ContainsKey("SubField"), Is.False, "the raw C# name must not reach the output");
 				Assert.That(obj["JOUR"], IsJson.EqualTo("Friday"), "the name is honored next to the other named arguments of the same attribute");
 				Assert.That(obj.ContainsKey("Day"), Is.False);
 				Assert.That(obj["Plain"], IsJson.EqualTo("c"), "a member without the attribute keeps its declared name");
@@ -87,13 +87,13 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Generated_Pack_Honors_The_Named_Form()
 		{
-			var dto = new ProbeNamedWireFormDto { Field = "a", SubField = "b" };
+			var dto = new ProbeNamedOutputFormDto { Field = "a", SubField = "b" };
 
-			var obj = ProbeNamedWireFormHost.ProbeNamedWireFormDto.Pack(dto).AsObject();
+			var obj = ProbeNamedOutputFormHost.ProbeNamedOutputFormDto.Pack(dto).AsObject();
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(obj["SOUSCHAMP"], IsJson.EqualTo("b"), "the DOM route takes the same wire name as the text route");
+				Assert.That(obj["SOUSCHAMP"], IsJson.EqualTo("b"), "the DOM route takes the same output name as the text route");
 				Assert.That(obj.ContainsKey("SubField"), Is.False);
 			}
 		}
@@ -101,7 +101,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Generated_Reads_Bind_The_Named_Form()
 		{
-			var dto = ProbeNamedWireFormHost.ProbeNamedWireFormDto.Deserialize("""{ "CHAMP": "a", "SOUSCHAMP": "b", "JOUR": "Friday", "Plain": "c" }""");
+			var dto = ProbeNamedOutputFormHost.ProbeNamedOutputFormDto.Deserialize("""{ "CHAMP": "a", "SOUSCHAMP": "b", "JOUR": "Friday", "Plain": "c" }""");
 
 			using (Assert.EnterMultipleScope())
 			{
@@ -116,10 +116,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Both_Paths_Produce_The_Same_Bytes()
 		{
 			// the reflection bridge always read the PropertyName property, whichever spelling filled it:
-			// separate green suites never prove the two paths agree on the wire
-			var dto = new ProbeNamedWireFormDto { Field = "a", SubField = "b", Day = DayOfWeek.Monday, Plain = "c" };
+			// separate green suites never prove the two paths agree in the output
+			var dto = new ProbeNamedOutputFormDto { Field = "a", SubField = "b", Day = DayOfWeek.Monday, Plain = "c" };
 
-			var generated = ProbeNamedWireFormHost.ProbeNamedWireFormDto.ToJsonText(dto);
+			var generated = ProbeNamedOutputFormHost.ProbeNamedOutputFormDto.ToJsonText(dto);
 			var reflection = CrystalJson.Serialize(dto);
 
 			Assert.That(generated, Is.EqualTo(reflection));

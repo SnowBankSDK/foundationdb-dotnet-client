@@ -92,7 +92,7 @@ Or add the reference to the service project file:
 </ItemGroup>
 ```
 
-The native client sets the wire protocol, so its version tracks the cluster, not the SDK packages.
+The native client sets the output protocol, so its version tracks the cluster, not the SDK packages.
 `FoundationDB.Aspire` stays at the library version (`7.4.2`), and `FoundationDB.Client.Native` follows
 `clusterVersion`. If you later target a 7.3 cluster, set `apiVersion` to `730` and `clusterVersion` to
 a `7.3.x` in step 2, and change this pin to `7.3.*`: the two always move together. A mismatch is the

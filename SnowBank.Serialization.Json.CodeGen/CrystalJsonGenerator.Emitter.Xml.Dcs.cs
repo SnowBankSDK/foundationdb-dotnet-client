@@ -614,7 +614,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Returns the members of a type in the exact order the DataContract format writes them</summary>
 			/// <remarks>
 			/// <para>Base level first (recursively), then, inside each level, the members with no declared <c>Order</c> sorted by
-			/// their WIRE name in ordinal order, then the <c>Order</c> groups ascending with ordinal ties. Ordering by the output name
+			/// their OUTPUT name in ordinal order, then the <c>Order</c> groups ascending with ordinal ties. Ordering by the output name
 			/// and not by the C# name matters: <c>[DataMember(Name = "renamed_member")]</c> sorts where the output spells it.</para>
 			/// <para>Read-only (get-only, or non-public-setter with no opt-in) PROPERTIES are dropped: the reference serializer's
 			/// no-set-method check is property-only. On a POCO it just omits them (only public get+set members are taken); on a
@@ -626,15 +626,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// are unaffected either way, because <see cref="CrystalJsonMemberMetadata.IsReadOnly"/> is <see langword="false"/> for
 			/// them (a separate <see cref="CrystalJsonMemberMetadata.IsInitOnly"/> flag), matching DCS emitting them.</para>
 			/// </remarks>
-			private static List<(CrystalJsonMemberMetadata Member, string WireName)> GetXmlDcsOrderedMembers(CrystalJsonTypeMetadata typeDef)
+			private static List<(CrystalJsonMemberMetadata Member, string OutputName)> GetXmlDcsOrderedMembers(CrystalJsonTypeMetadata typeDef)
 			{
 				return typeDef.Members
 					.Where(m => !m.IsReadOnly || (m.IsField && typeDef.HasDataContract))
-					.Select(m => (Member: m, WireName: GetXmlDcsMemberName(m)))
+					.Select(m => (Member: m, OutputName: GetXmlDcsMemberName(m)))
 					.OrderBy(x => x.Member.InheritanceLevel)
 					.ThenBy(x => x.Member.DataMemberOrder.HasValue ? 1 : 0)
 					.ThenBy(x => x.Member.DataMemberOrder ?? 0)
-					.ThenBy(x => x.WireName, StringComparer.Ordinal)
+					.ThenBy(x => x.OutputName, StringComparer.Ordinal)
 					.ToList();
 			}
 
@@ -858,9 +858,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
-				foreach (var (member, wireName) in GetXmlDcsOrderedMembers(typeDef))
+				foreach (var (member, outputName) in GetXmlDcsOrderedMembers(typeDef))
 				{
-					WriteXmlDcsMember(sb, names, typeDef, member, wireName);
+					WriteXmlDcsMember(sb, names, typeDef, member, outputName);
 				}
 			}
 
@@ -901,15 +901,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 			#region Members...
 
 			/// <summary>Writes one member of a type, in the shape its declared type calls for</summary>
-			private void WriteXmlDcsMember(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member, string wireName)
+			private void WriteXmlDcsMember(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member, string outputName)
 			{
 				// a member element lives in the namespace of the type that DECLARES it, so the namespace of the member's own
 				// type never reaches this element: it reaches the elements the nested body writes inside it
-				string nameRef = names.Ref(wireName, GetXmlDcsMemberNamespaceRef(member, typeDef.Type));
+				string nameRef = names.Ref(outputName, GetXmlDcsMemberNamespaceRef(member, typeDef.Type));
 				string local = "__x_" + member.MemberName;
 
 				sb.NewLine();
-				sb.Comment($"{member.Type.Name} {member.MemberName} => <{wireName}>{(member.DataMemberOrder is { } order ? $" [Order = {order}]" : "")}{(!member.EmitDefaultValue ? " [EmitDefaultValue = false]" : "")}");
+				sb.Comment($"{member.Type.Name} {member.MemberName} => <{outputName}>{(member.DataMemberOrder is { } order ? $" [Order = {order}]" : "")}{(!member.EmitDefaultValue ? " [EmitDefaultValue = false]" : "")}");
 				sb.AppendLine($"var {local} = {GetXmlMemberReadExpr(typeDef, member)};");
 
 				// [DataMember(EmitDefaultValue = false)] and [JsonIgnore(Condition = WhenWritingDefault)] both mean "a value equal

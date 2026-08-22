@@ -364,7 +364,7 @@ namespace Acme.Zoo.Cases.EnumPlainAndEnumMember
 				{
 					"{\"stateWithValue\":5,\"stateWithoutValue\":9,\"plain\":2}",
 					// A numeric value outside the declared set: DCJS accepts it silently, and a member cast to an
-					// undeclared value is how one reaches the wire. The string form a modern serializer emits is
+					// undeclared value is how one reaches the output. The string form a modern serializer emits is
 					// deliberately not listed: DCJS throws on it, so no producer wrote it into this application's data.
 					"{\"stateWithValue\":4242}"
 				};

@@ -595,7 +595,7 @@ namespace SnowBank.Data.Xml.Tests
 		[Test]
 		public void Test_The_Builtin_Namespaces_Are_The_Five_The_Format_Uses()
 		{
-			// pinned as text: these five URIs are wire values, not names this repo is free to spell differently
+			// pinned as text: these five URIs are output values, not names this repo is free to spell differently
 			Assert.That(CrystalXmlNamespaces.XmlSchemaInstance.Text, Is.EqualTo("http://www.w3.org/2001/XMLSchema-instance"));
 			Assert.That(CrystalXmlNamespaces.XmlSchema.Text, Is.EqualTo("http://www.w3.org/2001/XMLSchema"));
 			Assert.That(CrystalXmlNamespaces.Arrays.Text, Is.EqualTo("http://schemas.microsoft.com/2003/10/Serialization/Arrays"));
@@ -660,7 +660,7 @@ namespace SnowBank.Data.Xml.Tests
 		#region Namespaces, prefixes and declarations...
 
 		/// <summary>Runs a shared conformance scenario on both cores, and compares the document to the byte-exact expectation</summary>
-		private static void AssertScenarioWire(string label, CrystalXmlEmitterConformance.IScenario scenario, string expected)
+		private static void AssertScenarioOutput(string label, CrystalXmlEmitterConformance.IScenario scenario, string expected)
 		{
 			{
 				var sink = new CrystalXmlEmitterConformance.GrowableBuffer<char>();
@@ -679,13 +679,13 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		[Test]
-		public void Test_Namespace_Cases_Produce_The_Expected_Wire_On_Both_Cores()
+		public void Test_Namespace_Cases_Produce_The_Expected_Output_On_Both_Cores()
 		{
 			foreach (var (label, scenario, expected) in CrystalXmlEmitterConformance.NamespaceCases)
 			{
 				Log($"{label}:");
 				Log($"  {expected}");
-				AssertScenarioWire(label, scenario, expected);
+				AssertScenarioOutput(label, scenario, expected);
 			}
 		}
 
@@ -783,7 +783,7 @@ namespace SnowBank.Data.Xml.Tests
 		/// The event sequences and the null/""/typical-value pin cases live on <see cref="CrystalXmlEmitterConformance"/>, shared with
 		/// the infoset emitters' own fixture, so all three families are proven against the identical cases.</remarks>
 		[Test]
-		public void Test_Interface_Constrained_Caller_Gets_The_Same_Wire_As_The_Struct()
+		public void Test_Interface_Constrained_Caller_Gets_The_Same_Output_As_The_Struct()
 		{
 			// null through the interface must self-close, and an empty string must expand, on BOTH cores
 			foreach (var (text, expected) in CrystalXmlEmitterConformance.TextCases)

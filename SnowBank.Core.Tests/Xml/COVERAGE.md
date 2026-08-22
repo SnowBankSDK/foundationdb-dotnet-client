@@ -3,7 +3,7 @@
 Every row of the measured DCS feature matrix (the Acme corpus instrument: 4 802 captures, 82 883
 elements, 18 focused probes, measured 2026-08-03) mapped to the test that covers it here. Test
 names are given as `Fixture.Method`; fixtures live in `SnowBank.Core.Tests/Xml/` (oracle suite,
-byte-compared against a live `DataContractSerializer` via `ReferenceDcsWire`) and in
+byte-compared against a live `DataContractSerializer` via `ReferenceDcsOutput`) and in
 `SnowBank.Serialization.Json.CodeGen.Tests` (generated-emission suites, structural pins).
 Uncovered or reduced traits are named in the Gaps section - a gap named here is a finding, not a
 hidden hole.
@@ -12,38 +12,38 @@ hidden hole.
 
 | Trait | Covering tests |
 |---|---|
-| `nil="true"` truth table (null vs empty string vs empty collection vs null nullable) | `DcsWireFidelityFacts.Test_Nil_Truth_Table`; `XmlDataContractEmissionFacts.Test_Nil_Truth_Table` |
+| `nil="true"` truth table (null vs empty string vs empty collection vs null nullable) | `DcsOutputFidelityFacts.Test_Nil_Truth_Table`; `XmlDataContractEmissionFacts.Test_Nil_Truth_Table` |
 | `<EmptyString></EmptyString>` vs `<EmptyList />` byte difference | inside both nil truth tables (literal expected strings) |
-| `type=` only when runtime contract differs from declared; element keeps declared name | `DcsWireFidelityFacts.Test_Polymorphism_Discriminator`; `XmlDataContractEmissionFacts.Test_Polymorphism_Annotates_The_Runtime_Contract` |
-| `type=` from the ISerializable dialect (object-declared values) | `DcsWireFidelityFacts.Test_ISerializable_Dialect_Keys_Become_Element_Names`, `.Test_Deviation_3_Undeclared_Runtime_Type_In_An_AnyType_Slot`; `XmlDataContractEmissionFacts.Test_ISerializable_Dialect_Names_Elements_After_The_Entry_Keys` |
+| `type=` only when runtime contract differs from declared; element keeps declared name | `DcsOutputFidelityFacts.Test_Polymorphism_Discriminator`; `XmlDataContractEmissionFacts.Test_Polymorphism_Annotates_The_Runtime_Contract` |
+| `type=` from the ISerializable dialect (object-declared values) | `DcsOutputFidelityFacts.Test_ISerializable_Dialect_Keys_Become_Element_Names`, `.Test_Deviation_3_Undeclared_Runtime_Type_In_An_AnyType_Slot`; `XmlDataContractEmissionFacts.Test_ISerializable_Dialect_Names_Elements_After_The_Entry_Keys` |
 | no `xmlns`, no prefixes, no `z:Id`/`z:Ref` | every byte-equality fact (the oracle format is prefix-free; any emitted prefix would fail equality) |
 
 ## 2. Member ordering
 
 | Trait | Covering tests |
 |---|---|
-| default ordinal-alphabetical in the output name | `DcsWireFidelityFacts.Test_Member_Order_Default_Is_Ordinal_Alphabetical` |
-| unordered members first, then `Order=` groups, alphabetical ties | `DcsWireFidelityFacts.Test_Member_Order_Explicit_Groups_After_Unordered`; `XmlDataContractEmissionFacts.Test_Member_Order_Explicit_Groups_Come_After_The_Unordered_Ones` |
-| base-class members first | `DcsWireFidelityFacts.Test_Member_Order_Base_Level_Comes_First`; `XmlDataContractEmissionFacts.Test_Member_Order_Base_Level_Comes_First` |
-| ordinal sort on the CONTRACT name (uppercase before lowercase, renames included) | `DcsWireFidelityFacts.Test_Renamed_Contract_And_Members` |
+| default ordinal-alphabetical in the output name | `DcsOutputFidelityFacts.Test_Member_Order_Default_Is_Ordinal_Alphabetical` |
+| unordered members first, then `Order=` groups, alphabetical ties | `DcsOutputFidelityFacts.Test_Member_Order_Explicit_Groups_After_Unordered`; `XmlDataContractEmissionFacts.Test_Member_Order_Explicit_Groups_Come_After_The_Unordered_Ones` |
+| base-class members first | `DcsOutputFidelityFacts.Test_Member_Order_Base_Level_Comes_First`; `XmlDataContractEmissionFacts.Test_Member_Order_Base_Level_Comes_First` |
+| ordinal sort on the CONTRACT name (uppercase before lowercase, renames included) | `DcsOutputFidelityFacts.Test_Renamed_Contract_And_Members` |
 
 ## 3. Collections and dictionaries
 
 | Trait | Covering tests |
 |---|---|
-| item element = item type's contract name (`string`, `int`, `dateTime`, `Shelf`) | `DcsWireFidelityFacts.Test_Collection_Item_Element_Names`; `XmlDataContractEmissionFacts.Test_Collection_Item_Element_Names` |
+| item element = item type's contract name (`string`, `int`, `dateTime`, `Shelf`) | `DcsOutputFidelityFacts.Test_Collection_Item_Element_Names`; `XmlDataContractEmissionFacts.Test_Collection_Item_Element_Names` |
 | nested list item = `ArrayOfstring` | same two facts (the `Nested` member) |
 | empty collection self-closes | nil truth tables + `Test_Collection_Item_Element_Names` |
-| dictionary `KeyValueOfXY` + `Key`/`Value` children (`KeyValueOfstringstring`, `KeyValueOfintstring`, `KeyValueOfstringArrayOfstring`, `KeyValueOfstringShelf`) | `DcsWireFidelityFacts.Test_Dictionary_Entry_Shapes`; `XmlDataContractEmissionFacts.Test_Dictionary_Entry_Shapes` |
-| namespace-hash digest divergence (acted deviation 1: `KeyValueOfstringShelf`, not `KeyValueOfstringShelfQU_P9Vt29`) | `DcsWireFidelityFacts.Test_Dictionary_Digest_Divergence_Is_Exactly_The_Hash_Suffix` (strip-and-compare); `XmlDataContractEmissionFacts.Test_Deviation_1_Dictionary_Entry_Names_Carry_No_Digest` |
+| dictionary `KeyValueOfXY` + `Key`/`Value` children (`KeyValueOfstringstring`, `KeyValueOfintstring`, `KeyValueOfstringArrayOfstring`, `KeyValueOfstringShelf`) | `DcsOutputFidelityFacts.Test_Dictionary_Entry_Shapes`; `XmlDataContractEmissionFacts.Test_Dictionary_Entry_Shapes` |
+| namespace-hash digest divergence (acted deviation 1: `KeyValueOfstringShelf`, not `KeyValueOfstringShelfQU_P9Vt29`) | `DcsOutputFidelityFacts.Test_Dictionary_Digest_Divergence_Is_Exactly_The_Hash_Suffix` (strip-and-compare); `XmlDataContractEmissionFacts.Test_Deviation_1_Dictionary_Entry_Names_Carry_No_Digest` |
 | renamed enum contract in item and entry names | `XmlDataContractEmissionFacts.Test_A_Renamed_Enum_Contract_Names_The_Items_And_The_Dictionary_Entries` |
-| composed generic contract names (`XOfY`, `{0}`, `{#}`, digest omitted, encode-once) | `XmlDataContractEmissionFacts.Test_Composed_Contract_Names`, `.Test_Composed_Contract_Names_As_Roots`, `.Test_Named_Generic_Expands_Its_Braces`; `DcsWireFidelityFacts.Test_Named_Generic_Expands_Braces` |
+| composed generic contract names (`XOfY`, `{0}`, `{#}`, digest omitted, encode-once) | `XmlDataContractEmissionFacts.Test_Composed_Contract_Names`, `.Test_Composed_Contract_Names_As_Roots`, `.Test_Named_Generic_Expands_Its_Braces`; `DcsOutputFidelityFacts.Test_Named_Generic_Expands_Braces` |
 
 ## 4. EmitDefaultValue, absent vs null
 
 | Trait | Covering tests |
 |---|---|
-| `EmitDefaultValue=false` members absent at CLR default (null, zero, false, MinValue) | `DcsWireFidelityFacts.Test_EmitDefaultValue_False_Omits_Default_And_Null`; `XmlDataContractEmissionFacts.Test_EmitDefaultValue_False_Omits_Default_And_Null` |
+| `EmitDefaultValue=false` members absent at CLR default (null, zero, false, MinValue) | `DcsOutputFidelityFacts.Test_EmitDefaultValue_False_Omits_Default_And_Null`; `XmlDataContractEmissionFacts.Test_EmitDefaultValue_False_Omits_Default_And_Null` |
 | three distinguishable member states (value / nil / absent) | the two facts above plus the nil truth tables |
 | `WithoutNullMembers()` drops nil elements (opt-in, audited) | `XmlDataContractEmissionFacts.Test_Without_Null_Members_Drops_The_Nil_Elements`, `.Test_A_Null_Root_Without_Null_Members_Is_An_Empty_Element` (the `AcmeRenderFacts` all-null run exercises nil members, NOT this setting) |
 
@@ -51,35 +51,35 @@ hidden hole.
 
 | Trait | Covering tests |
 |---|---|
-| the full scalar table (bool lowercase, decimal scale, `1.2E-09`, `INF`/`NaN`, dates per Kind, `PT1H33M30S`, char as code point, base64, enum labels, Uri, Guid) | `DcsWireFidelityFacts.Test_Scalar_Lexical_Forms`; `XmlDataContractEmissionFacts.Test_Scalar_Lexical_Forms`; unit-level: `ScalarFormatterFacts.*` (per-formatter, both profiles) |
-| `DateTimeKind.Local` machine-offset dependence reproduced (known product defect kept) | `DcsWireFidelityFacts.Test_Local_Kind_DateTime_Is_Machine_Dependent_And_Reproduced`; `ScalarFormatterFacts.Test_DateTime_Local_Kind_Uses_The_Machine_Offset` |
+| the full scalar table (bool lowercase, decimal scale, `1.2E-09`, `INF`/`NaN`, dates per Kind, `PT1H33M30S`, char as code point, base64, enum labels, Uri, Guid) | `DcsOutputFidelityFacts.Test_Scalar_Lexical_Forms`; `XmlDataContractEmissionFacts.Test_Scalar_Lexical_Forms`; unit-level: `ScalarFormatterFacts.*` (per-formatter, both profiles) |
+| `DateTimeKind.Local` machine-offset dependence reproduced (known product defect kept) | `DcsOutputFidelityFacts.Test_Local_Kind_DateTime_Is_Machine_Dependent_And_Reproduced`; `ScalarFormatterFacts.Test_DateTime_Local_Kind_Uses_The_Machine_Offset` |
 | `DateTimeOffset` two-element `{DateTime, OffsetMinutes}` structure | inside both `Test_Scalar_Lexical_Forms` facts |
 | `[EnumMember(Value=)]` labels; undeclared enum values; flags | `XmlDataContractEmissionFacts.Test_Deviation_3_An_Undeclared_Enum_Value_Raises_A_Typed_Exception`, `.Test_Deviation_3_An_Undeclared_Flags_Combination_Raises_A_Typed_Exception` (compat refuses, deviation 3); modern numeric fallback: `XmlModernEmissionFacts.Test_An_Undeclared_Enum_Value_Falls_Back_To_Its_Numeric_Form`, `.Test_An_Undeclared_Flags_Combination_Is_Refused_Loudly` |
 | escaping (`&lt;` `&amp;`, bare quotes in text, raw CRLF, tab) | runtime writer suites (Core-XML subset, ported byte-for-byte from the spike escaping spec); end-to-end inside every byte-equality fact |
-| control characters sanitized at the value (acted deviation 2) + strict reproduction mode | `DcsWireFidelityFacts.Test_Deviation_2_Sanitized_Control_Characters_Differ_From_The_Reference_Wire`, `.Test_Deviation_2_StrictControlCharacters_Mode_Matches_The_Reference_Wire_Exactly`; `XmlDataContractEmissionFacts.Test_Deviation_2_Control_Characters_Are_Sanitized_At_The_Value` |
+| control characters sanitized at the value (acted deviation 2) + strict reproduction mode | `DcsOutputFidelityFacts.Test_Deviation_2_Sanitized_Control_Characters_Differ_From_The_Reference_Output`, `.Test_Deviation_2_StrictControlCharacters_Mode_Matches_The_Reference_Output_Exactly`; `XmlDataContractEmissionFacts.Test_Deviation_2_Control_Characters_Are_Sanitized_At_The_Value` |
 
 ## 6. Nesting, self-reference, shared instances, cycles
 
 | Trait | Covering tests |
 |---|---|
-| structural recursion on self-referential types; shared instance written twice in full | `DcsWireFidelityFacts.Test_SelfReference_And_Shared_Instances` |
-| a cycle throws in both pipelines (acted deviation 3: `SerializationException` vs `CrystalXmlCycleException`) | `DcsWireFidelityFacts.Test_Cycle_Throws_In_Both_Pipelines`; `XmlDataContractEmissionFacts.Test_A_Reference_Cycle_Throws_Instead_Of_Overflowing_The_Stack` (+ modern twin) |
+| structural recursion on self-referential types; shared instance written twice in full | `DcsOutputFidelityFacts.Test_SelfReference_And_Shared_Instances` |
+| a cycle throws in both pipelines (acted deviation 3: `SerializationException` vs `CrystalXmlCycleException`) | `DcsOutputFidelityFacts.Test_Cycle_Throws_In_Both_Pipelines`; `XmlDataContractEmissionFacts.Test_A_Reference_Cycle_Throws_Instead_Of_Overflowing_The_Stack` (+ modern twin) |
 | deep acyclic graphs: cap boundary pinned (exactly `MaxDepth` serializes, `MaxDepth+1` throws) | `XmlDataContractEmissionFacts.Test_A_Deep_Acyclic_Chain_Up_To_The_Cap_Is_Written_In_Full`, `.Test_A_Deep_Acyclic_Chain_Past_The_Cap_Throws_The_Same_Typed_Exception` (+ modern twins) |
 
 ## 7. Contract-shape details
 
 | Trait | Covering tests |
 |---|---|
-| `[DataContract(Name=)]` renames the root | `DcsWireFidelityFacts.Test_Renamed_Contract_And_Members`; `XmlDataContractEmissionFacts.Test_Renamed_Contract_And_Members` |
+| `[DataContract(Name=)]` renames the root | `DcsOutputFidelityFacts.Test_Renamed_Contract_And_Members`; `XmlDataContractEmissionFacts.Test_Renamed_Contract_And_Members` |
 | `[DataMember(Name=)]` verbatim, including non-C# names (`with-dash`) | same two facts |
-| `[IgnoreDataMember]` and unannotated members absent | `DcsWireFidelityFacts.Test_IgnoreDataMember_And_Unannotated_Are_Absent` |
+| `[IgnoreDataMember]` and unannotated members absent | `DcsOutputFidelityFacts.Test_IgnoreDataMember_And_Unannotated_Are_Absent` |
 | `IsRequired=true` changes nothing on write | inside `Test_Renamed_Contract_And_Members` (the `Required` member) |
-| private `[DataMember]` serialized (UnsafeAccessor thunks) | `DcsWireFidelityFacts.Test_Private_DataMember_Is_Serialized` |
-| POCO mode (no `[DataContract]`): public read/write, alphabetical | `DcsWireFidelityFacts.Test_Poco_Mode_Public_ReadWrite_Alphabetical`, `.Test_Poco_Mode_Null_Member` |
-| POCO mode omits a get-only property (family 20) | `DcsWireFidelityFacts.Test_Poco_Mode_ReadOnly_Member_Is_Absent` |
-| `[DataContract]` with no members self-closes | `DcsWireFidelityFacts.Test_Empty_Contract_Self_Closes` |
-| root name override | `DcsWireFidelityFacts.Test_Root_Name_Override`; `XmlDataContractEmissionFacts.Test_The_Root_Name_Can_Be_Overridden` |
-| ISerializable dialect: keys become element names, non-NCName keys encoded | `DcsWireFidelityFacts.Test_ISerializable_Dialect_Keys_Become_Element_Names`, `.Test_ISerializable_Dialect_Non_NCName_Key` |
+| private `[DataMember]` serialized (UnsafeAccessor thunks) | `DcsOutputFidelityFacts.Test_Private_DataMember_Is_Serialized` |
+| POCO mode (no `[DataContract]`): public read/write, alphabetical | `DcsOutputFidelityFacts.Test_Poco_Mode_Public_ReadWrite_Alphabetical`, `.Test_Poco_Mode_Null_Member` |
+| POCO mode omits a get-only property (family 20) | `DcsOutputFidelityFacts.Test_Poco_Mode_ReadOnly_Member_Is_Absent` |
+| `[DataContract]` with no members self-closes | `DcsOutputFidelityFacts.Test_Empty_Contract_Self_Closes` |
+| root name override | `DcsOutputFidelityFacts.Test_Root_Name_Override`; `XmlDataContractEmissionFacts.Test_The_Root_Name_Can_Be_Overridden` |
+| ISerializable dialect: keys become element names, non-NCName keys encoded | `DcsOutputFidelityFacts.Test_ISerializable_Dialect_Keys_Become_Element_Names`, `.Test_ISerializable_Dialect_Non_NCName_Key` |
 
 ## End to end (the Acme simulation)
 
@@ -97,7 +97,7 @@ Named, with owners:
 1. NOT REPRODUCED BY DESIGN - a collection (or any type the container does not declare) in an
    `object`-typed slot: reflection-free generated code cannot name `ArrayOfstring` at run time;
    refused with a typed exception, pinned by
-   `DcsWireFidelityFacts.Test_Deviation_3_Undeclared_Runtime_Type_In_An_AnyType_Slot` and
+   `DcsOutputFidelityFacts.Test_Deviation_3_Undeclared_Runtime_Type_In_An_AnyType_Slot` and
    `XmlDataContractEmissionFacts.Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Refused_In_An_AnyType_Slot`.
 2. NOT REPRODUCED BY DESIGN - `[CollectionDataContract]` on a compat member's type: refused with
    CXML0010 (`XmlPropertyMetadataFacts.Test_A_CollectionDataContract_Member_On_A_DataContract_Container_Is_A_Build_Error`)
@@ -112,7 +112,7 @@ Named, with owners:
    families therefore belong to a native XML root path, which CrystalXml DOES NOT currently
    have (its XML surface is exclusively generated per-type facets): they are out of scope for
    this generated-converter certification suite and do not count against its family coverage.
-   The reference wire for these roots is measured all the same: three oracle-only facts in
+   The reference output for these roots is measured all the same: three oracle-only facts in
    `DcsNamespaceReferenceFacts` pin the `ArrayOfX` root names and their namespaces (Arrays for
    lexical items, the item's contract namespace for contract items, Serialization for a bare
    string or scalar root).
@@ -127,7 +127,7 @@ Named, with owners:
    read-only members too - measured, not assumed: the reference serializer omits them on a POCO,
    and rejects a read-only `[DataMember]` on a `[DataContract]` type outright
    (`InvalidDataContractException`, "No set method for property"). Pinned by
-   `DcsWireFidelityFacts.Test_Poco_Mode_ReadOnly_Member_Is_Absent`.
+   `DcsOutputFidelityFacts.Test_Poco_Mode_ReadOnly_Member_Is_Absent`.
 4. REDUCED - the ISerializable family lost its `KeyedBag<List<string>>` half (gap 1's shape);
    `type="ArrayOfstring"` on an ISerializable value is pinned by the deviation-3 fact instead.
 5. COVERED (this ledger's own probe) - `List<object>` as a collection member (matrix:
@@ -137,7 +137,7 @@ Named, with owners:
    `AsObjectInt`), not the undeclared-runtime-type error of gap 1 (which fires only when the
    OBJECT SLOT ITSELF holds an unregistered collection/composed type, not a plain boxed scalar
    inside a declared `List<object>`). Pinned by
-   `DcsWireFidelityFacts.Test_Collection_Of_Object_Items_Are_AnyType`.
+   `DcsOutputFidelityFacts.Test_Collection_Of_Object_Items_Are_AnyType`.
 6. OUT OF SCOPE, MEASURED ABSENT - `[DataContract(IsReference=true)]` / `z:Id`/`z:Ref` object
    tracking: exactly one declaration in the measured solution, zero format occurrences, no support
    and no test.

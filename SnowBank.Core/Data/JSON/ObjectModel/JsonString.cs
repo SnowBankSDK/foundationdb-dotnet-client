@@ -964,7 +964,7 @@ namespace SnowBank.Data.Json
 				}
 				else if (type.IsEnum)
 				{
-					// honors custom wire tokens ([JsonStringEnumMemberName], [EnumMember(Value=...)]); plain Enum.Parse otherwise
+					// honors custom output tokens ([JsonStringEnumMemberName], [EnumMember(Value=...)]); plain Enum.Parse otherwise
 					return CrystalJsonEnumCache.ParseBoxed(type, m_value);
 				}
 				else if (typeof(decimal) == type)

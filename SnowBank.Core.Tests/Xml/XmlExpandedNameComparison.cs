@@ -24,7 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is compiled for the net472 validation target too: see the remark on ReferenceDcsWire.cs.
+// This file is compiled for the net472 validation target too: see the remark on ReferenceDcsOutput.cs.
 
 namespace SnowBank.Data.Xml.Tests
 {

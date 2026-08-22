@@ -32,7 +32,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	/// <summary>Pins that a <c>[DataContract]</c> type IS enrolled in a generated container, and that the generated converter applies the DataContract contract model rather than the plain-DTO one</summary>
 	/// <remarks>
 	/// <para>This fixture replaces the interim <c>CJSON0014</c> refusal. That diagnostic existed because generated converters
-	/// did not implement the DataContract membership model, so enrolling such a type would have produced a wire that silently
+	/// did not implement the DataContract membership model, so enrolling such a type would have produced an output that silently
 	/// differed from the reflection path. The model is implemented now, so the refusal is retired and its absence is pinned here.</para>
 	/// <para>The behavioural comparison (generated vs reflection vs the live legacy serializer) lives in
 	/// <see cref="DataContractCompatProbeFacts"/>; this fixture only covers what the BUILD reports.</para>

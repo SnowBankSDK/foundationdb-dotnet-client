@@ -24,14 +24,14 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file is compiled for the net472 validation target too: see the remark on ReferenceDcsWire.cs. The oracle is
+// This file is compiled for the net472 validation target too: see the remark on ReferenceDcsOutput.cs. The oracle is
 // a live DCS on both CLRs, so the facts in DcsNamespaceReferenceFacts.cs also show that the two agree on the
-// standard (unstripped) wire, as the stripped facts already do.
+// standard (unstripped) output, as the stripped facts already do.
 
 // note: these types carry an explicit or default contract namespace on purpose, unlike most of DcsProbes.cs, whose
 // StrippingXmlWriter-compared facts erase namespaces entirely and so stay indifferent to them. Most of them are
 // enrolled in NamespaceProbeSerializers at the end of this file, so DcsNamespaceReferenceFacts.cs compares the
-// unstripped reference wire (ReferenceDcsWire.Serialize(..., strip: false)) to the generated default output. The two
+// unstripped reference output (ReferenceDcsOutput.Serialize(..., strip: false)) to the generated default output. The two
 // IsReference probes stay out of the container: see the remark on NamespaceSharedProbe.
 
 /// <summary>Declared in the GLOBAL namespace: there is no CLR namespace to derive a contract namespace from</summary>
@@ -103,7 +103,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	// note: the two attribute families name the same two derived types, one per consumer. The live DCS oracle reads
 	// [KnownType] and knows nothing about [JsonDerivedType]; the generator reads [JsonDerivedType] and knows nothing
-	// about [KnownType]. The JSON tags below never reach the XML wire: the DataContract profile writes the derived
+	// about [KnownType]. The JSON tags below never reach the XML output: the DataContract profile writes the derived
 	// type's contract name as i:type, so the tags only have to be unique.
 	[DataContract(Name = "NamespaceBase", Namespace = "urn:acme:catalog:1")]
 	[KnownType(typeof(NamespaceDerivedSameNs))]
@@ -155,7 +155,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	/// <summary>
 	/// Reference-vocabulary probe only: CrystalXml does not support <c>[DataContract(IsReference = true)]</c> and its
-	/// <c>z:Id</c>/<c>z:Ref</c> wire. This type pins the built-in Serialization namespace, not the object-graph
+	/// <c>z:Id</c>/<c>z:Ref</c> output. This type pins the built-in Serialization namespace, not the object-graph
 	/// reference mechanism.
 	/// </summary>
 	[DataContract(Name = "NamespaceShared", Namespace = "urn:acme:catalog:1", IsReference = true)]
@@ -280,7 +280,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	// The generated side of DcsNamespaceReferenceFacts. Only the DEFAULT output is enrolled here: this fixture is about
 	// the namespaces themselves, and the schemaless output has none, so a schemaless twin would compare nothing.
-	// NamespaceSharedProbe and NamespaceRefPairProbe are left out on purpose: their wire is z:Id/z:Ref, the object-graph
+	// NamespaceSharedProbe and NamespaceRefPairProbe are left out on purpose: their output is z:Id/z:Ref, the object-graph
 	// reference mechanism CrystalXml does not support.
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]

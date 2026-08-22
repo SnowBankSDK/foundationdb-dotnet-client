@@ -33,7 +33,7 @@ namespace System
 	using SnowBank.Buffers.Binary;
 	using SnowBank.Data.Binary;
 
-	/// <summary>Represents an 80-bit UUID that is stored in high-endian format on the wire</summary>
+	/// <summary>Represents an 80-bit UUID that is stored in high-endian format in the output</summary>
 	[DebuggerDisplay("[{ToString(),nq}]")]
 	[ImmutableObject(true), PublicAPI, Serializable]
 	public readonly struct Uuid80 : IFormattable, IEquatable<Uuid80>, IComparable<Uuid80>, IEquatable<Slice>, ISliceSerializable, ISpanEncodable

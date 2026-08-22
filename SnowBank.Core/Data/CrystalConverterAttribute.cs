@@ -29,7 +29,7 @@ namespace SnowBank.Data
 
 	/// <summary>Marks a partial class as a container of source-generated serializers, for one or more output formats</summary>
 	/// <remarks>
-	/// <para>This marker is format-neutral: it says that the class hosts generated code, and nothing about the wire(s) it produces. Each format is requested by its own output attribute (<c>[CrystalJsonOutput]</c>, <c>[CrystalXmlOutput]</c>), and a container that names none of them is refused (<c>CRYS0001</c>): a container that produces nothing is never what the author meant.</para>
+	/// <para>This marker is format-neutral: it says that the class hosts generated code, and nothing about the output(s) it produces. Each format is requested by its own output attribute (<c>[CrystalJsonOutput]</c>, <c>[CrystalXmlOutput]</c>), and a container that names none of them is refused (<c>CRYS0001</c>): a container that produces nothing is never what the author meant.</para>
 	/// <para>The types to serialize are enrolled with one <see cref="CrystalSerializableAttribute"/> per "root" type; nested and referenced types are discovered automatically.</para>
 	/// <para>Sample: <code>
 	/// [CrystalConverter]
@@ -42,7 +42,7 @@ namespace SnowBank.Data
 	///		// generated code will be inserted here
 	/// }
 	/// </code></para>
-	/// <para>The mono-format aliases <c>[CrystalJsonConverter]</c> and <c>[CrystalXmlConverter]</c> bundle this marker with a single output format, for the common case of a container that only ever produces one wire.</para>
+	/// <para>The mono-format aliases <c>[CrystalJsonConverter]</c> and <c>[CrystalXmlConverter]</c> bundle this marker with a single output format, for the common case of a container that only ever produces one output.</para>
 	/// <para>Do not subclass: the source generator matches exact attribute metadata names, a derived attribute is invisible to it.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]
@@ -57,7 +57,7 @@ namespace SnowBank.Data
 
 	/// <summary>Base class of the attributes that request one output format from a <see cref="CrystalConverterAttribute"/> container</summary>
 	/// <remarks>
-	/// <para>Each format contributes one derived attribute carrying its own parameters (<c>[CrystalJsonOutput]</c> for the JSON wire, <c>[CrystalXmlOutput]</c> for the XML one). A container generates exactly the formats it names, and nothing else.</para>
+	/// <para>Each format contributes one derived attribute carrying its own parameters (<c>[CrystalJsonOutput]</c> for the JSON output, <c>[CrystalXmlOutput]</c> for the XML one). A container generates exactly the formats it names, and nothing else.</para>
 	/// <para>This base exists purely for documentation and discoverability (it groups the output attributes under a common ancestor so a reader can find them all from one place). The source generator does not walk this hierarchy: it matches each output attribute by its exact metadata name, so deriving a new output attribute from this base does not enroll it as a recognized format - the generator would never see it.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]

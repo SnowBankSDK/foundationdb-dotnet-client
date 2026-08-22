@@ -34,7 +34,7 @@ namespace System
 	using SnowBank.Data.Binary;
 	using SnowBank.Text;
 
-	/// <summary>Represents a 48-bit UUID that is stored in high-endian format on the wire</summary>
+	/// <summary>Represents a 48-bit UUID that is stored in high-endian format in the output</summary>
 	[DebuggerDisplay("[{ToString(),nq}]")]
 	[ImmutableObject(true), PublicAPI, Serializable]
 	public readonly struct Uuid48 : IEquatable<Uuid48>, IComparable<Uuid48>, IEquatable<ulong>, IComparable<ulong>, IEquatable<long>, IComparable<long>, IEquatable<uint>, IComparable<uint>, IEquatable<int>, IComparable<int>, IEquatable<Slice>, ISpanFormattable, ISpanEncodable

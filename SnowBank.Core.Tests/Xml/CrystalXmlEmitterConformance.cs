@@ -50,7 +50,7 @@ namespace SnowBank.Data.Xml.Tests
 		public static readonly CrystalXmlName Root = CrystalXmlName.Create("r");
 
 		/// <summary><see cref="ICrystalXmlEmitter.WriteText(string?)"/> pin cases: <see langword="null"/> self-closes, <c>""</c> expands, ordinary text escapes</summary>
-		public static readonly (string? Text, string ExpectedWire)[] TextCases =
+		public static readonly (string? Text, string ExpectedOutput)[] TextCases =
 		[
 			(null, "<r />"),
 			("", "<r></r>"),
@@ -58,7 +58,7 @@ namespace SnowBank.Data.Xml.Tests
 		];
 
 		/// <summary><see cref="ICrystalXmlEmitter.WriteRawAscii(string?)"/> pin cases: <see langword="null"/> self-closes, <c>""</c> expands, pre-validated ASCII passes through</summary>
-		public static readonly (string? Ascii, string ExpectedWire)[] RawCases =
+		public static readonly (string? Ascii, string ExpectedOutput)[] RawCases =
 		[
 			(null, "<r />"),
 			("", "<r></r>"),
@@ -104,12 +104,12 @@ namespace SnowBank.Data.Xml.Tests
 
 		/// <summary>Namespace pin cases: an event sequence, and the byte-exact document the text emitter produces for it</summary>
 		/// <remarks>
-		/// <para>Replayed by <c>CrystalXmlWriterFacts</c> against the exact wire, and by <c>InfosetEmitterFacts</c> against the
-		/// parse of that wire, so the three emitter families cannot drift apart on namespaces any more than they can on text.</para>
-		/// <para>Each expected wire states a decision of the text emitter: which prefix a namespace gets, where a missing
+		/// <para>Replayed by <c>CrystalXmlWriterFacts</c> against the exact output, and by <c>InfosetEmitterFacts</c> against the
+		/// parse of that output, so the three emitter families cannot drift apart on namespaces any more than they can on text.</para>
+		/// <para>Each expected output states a decision of the text emitter: which prefix a namespace gets, where a missing
 		/// declaration lands, and what an inherited default does to a name that has no namespace of its own.</para>
 		/// </remarks>
-		public static readonly (string Label, IScenario Scenario, string ExpectedWire)[] NamespaceCases =
+		public static readonly (string Label, IScenario Scenario, string ExpectedOutput)[] NamespaceCases =
 		[
 			("the root's own namespace becomes the default namespace", new RootNamespaceScenario(), """<Library xmlns="urn:acme:biblio"><Name>Centrale</Name></Library>"""),
 			("a cross-namespace grandchild declares a prefix numbered by ITS depth", new CrossNamespaceScenario(), """<Library xmlns="urn:acme:biblio"><Owner><d3p1:Email xmlns:d3p1="urn:acme:annuaire">x@y.fr</d3p1:Email></Owner></Library>"""),
@@ -127,7 +127,7 @@ namespace SnowBank.Data.Xml.Tests
 		/// <summary>Returns the namespace case whose label contains <paramref name="fragment"/></summary>
 		/// <remarks>Selected by label rather than by index, so that adding a case cannot silently repoint a fixture at a
 		/// different scenario.</remarks>
-		public static (string Label, IScenario Scenario, string ExpectedWire) NamespaceCase(string fragment)
+		public static (string Label, IScenario Scenario, string ExpectedOutput) NamespaceCase(string fragment)
 		{
 			foreach (var entry in NamespaceCases)
 			{

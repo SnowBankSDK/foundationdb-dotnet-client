@@ -167,7 +167,7 @@ compilation plutôt qu'à l'écriture.
 ## Le profil de compatibilité : le format DCS
 
 La spécification exécutable est une suite comparée à un oracle `DataContractSerializer` réel
-(`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`, avec les règles de namespaces verrouillées
+(`SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs`, avec les règles de namespaces verrouillées
 dans `DcsNamespaceReferenceFacts.cs` ; registre de couverture à côté, dans `COVERAGE.md`), sous
 deux règles d'acceptation. La sortie par défaut est tenue au fil standard sur les noms étendus :
 cette émission omet les déclarations qu'elle peut prouver inutilisées et écrit les autres sur le

@@ -757,7 +757,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Json_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Wire()
+		public void Test_A_Json_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Output()
 		{
 			// the DataContract format runs every name through XmlConvert.EncodeLocalName, which has a legal spelling for
 			// any input: refusing there would block a legacy DTO that DataContractSerializer serializes today
@@ -796,7 +796,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Wire()
+		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Output()
 		{
 			// same asymmetry as the member names: the compat format encodes what it cannot spell
 			AssertNotReported(Probe("""
@@ -1655,7 +1655,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_GetOnly_DataMember_Property_On_A_Poco_Container_Is_Not_Reported()
 		{
 			// no [DataContract] on the type: the member is silently omitted from the output instead (pinned on the
-			// format side by Test_Poco_Mode_ReadOnly_Member_Is_Absent in DcsWireFidelityFacts)
+			// format side by Test_Poco_Mode_ReadOnly_Member_Is_Absent in DcsOutputFidelityFacts)
 			AssertNotReported(
 				Probe(
 					"""
@@ -1684,8 +1684,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_ReadOnly_DataMember_Field_On_A_DataContract_Container_Is_Not_Reported()
 		{
 			// the no-set-method check DCS applies is property-only: a readonly FIELD is a different, valid shape,
-			// and DCS emits it (pinned in the output side by Test_ReadOnly_DataMember_Field_Is_On_The_Wire in
-			// DcsWireFidelityFacts)
+			// and DCS emits it (pinned in the output side by Test_ReadOnly_DataMember_Field_Is_In_The_Output in
+			// DcsOutputFidelityFacts)
 			AssertNotReported(
 				Probe(
 					"""

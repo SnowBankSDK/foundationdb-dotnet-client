@@ -914,7 +914,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		#region Dispatch order over a three-level hierarchy...
 
 		[Test]
-		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Modern_Wire()
+		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Modern_Output()
 		{
 			// that this fixture COMPILED is already half the fact: a switch emitted in registration order would have put
 			// 'case Sedan' first, making 'case Estate' unreachable (CS8120) and failing the build outright
@@ -933,7 +933,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Json_Wire()
+		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Json_Output()
 		{
 			// the same ordering rule, on the sensitive format: both JSON write routes (text and DOM) go through their own switch
 			var leaf = new Estate { Vin = "V1", Doors = 5, Volume = 1600 };
@@ -1072,7 +1072,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Is_Refused_On_This_Wire()
+		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Is_Refused_On_This_Output()
 		{
 			// DELIBERATE DIVERGENCE from the compat format, which writes the root's own body for this exact value.
 			// The modern format matches the JSON side instead: an instance of the root type carries no discriminator

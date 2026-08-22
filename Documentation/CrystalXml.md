@@ -64,7 +64,7 @@ parameter). A container that needs both a JSON naming policy and its XML mirror 
 |---|---|
 | `Profile` | XML variant; derived from the container's JSON profile by default (`DataContractCompat` gives the DCS format, standard/Web gives the modern profile; no JSON output means the modern profile); explicit override allowed; an incoherent combination (a naming policy next to the DCS format) is a build error (CXML0001) |
 | `DictionaryFormat` | container default for the dictionary shape (see the modern profile below) |
-| `Schemaless` | DCS format only: reproduces the namespace-free stripped wire, byte for byte. On the modern profile the option is inert, and CXML0012 says so |
+| `Schemaless` | DCS format only: reproduces the namespace-free stripped output, byte for byte. On the modern profile the option is inert, and CXML0012 says so |
 
 ```csharp
 // MEMBER level: everything XML lives in [XmlProperty] (namespace SnowBank.Data.Xml)
@@ -149,7 +149,7 @@ The root name is resolved, never guessed: the caller's `rootName` wins; the DCS 
 to its `ArrayOfX` convention, in the item contract's namespace; the modern profile has no
 convention, so a collection root without a `rootName` raises `CrystalXmlRootNameException`. The
 item elements keep the item type's own element name, and `itemName` overrides it. The scalar
-entry points write the reference wire of the xsd lexical types (the lexical name in the
+entry points write the reference output of the xsd lexical types (the lexical name in the
 Serialization namespace, nil when null); a type outside that set raises
 `CrystalXmlUnknownTypeException`. Scalars live on the nested `CrystalXml.Scalar` class rather
 than as overloads: a generic method taking a bare `T?` would capture every call the serializer
@@ -158,13 +158,13 @@ overloads do not, and a mistyped argument must fail to compile rather than fail 
 ## The compat profile: the DCS format
 
 The executable spec is a suite against a live `DataContractSerializer` oracle
-(`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`, with the namespace rules pinned in
+(`SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs`, with the namespace rules pinned in
 `DcsNamespaceReferenceFacts.cs`; coverage ledger next to them in `COVERAGE.md`), under two
-acceptance rules. The default output is held to the standard wire on expanded names: this emission
+acceptance rules. The default output is held to the standard format on expanded names: this emission
 omits the declarations it can prove unused and writes the rest on the first element that needs
 them, so its bytes differ from the reference serializer's while every element and attribute
 resolves to the same (namespace, local name) pair. The `Schemaless = true` output is held to the
-stripped wire byte for byte. Highlights:
+stripped output byte for byte. Highlights:
 
 - Root and contract names: `[DataContract(Name=)]` honored, generics compose `XOfY` with
   `{0}`/`{#}` expansion (namespace digest deliberately omitted), nested types `Outer.Inner`,
@@ -210,7 +210,7 @@ stripped wire byte for byte. Highlights:
 - Text: no XML declaration, self-closing `<X />` with a space, text line endings as raw CRLF.
 - `Schemaless = true`: the namespaces, prefixes and declarations disappear (`i:nil` arrives as
   `nil`, `i:type` as `type`, the discriminator keeps only its local name). This is the historical
-  stripped wire some consumers store and parse, kept as an explicit, byte-certified option.
+  stripped output some consumers store and parse, kept as an explicit, byte-certified option.
 
 Three deliberate deviations from raw DCS, each pinned by a dedicated test, are requirements:
 
@@ -314,7 +314,7 @@ Build-time diagnostics about the XML format itself live in the CXML range:
 | CXML0009 | an attribute-projected member with a custom converter |
 | CXML0010 | `[CollectionDataContract]` on a compat member's type |
 | CXML0011 | a dictionary whose resolved shape carries the value as text (`KeyAttribute`, `KeyValueAttributes`) while the value type has no lexical form |
-| CXML0012 | **Info, not an error** - a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, on a member whose RESOLVED dictionary shape is `Direct` (whose entries are named after their own key), or on a member whose type writes its own XML content (`ICrystalXmlSerializable`, which also makes a member-level `DictionaryFormat` inert - only the element NAME still comes from the member there); a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way); a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape); and a `[CrystalXmlOutput(Schemaless = true)]` on a container whose resolved profile is the modern one (the stripped wire is a variant of the DCS format) |
+| CXML0012 | **Info, not an error** - a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, on a member whose RESOLVED dictionary shape is `Direct` (whose entries are named after their own key), or on a member whose type writes its own XML content (`ICrystalXmlSerializable`, which also makes a member-level `DictionaryFormat` inert - only the element NAME still comes from the member there); a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way); a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape); and a `[CrystalXmlOutput(Schemaless = true)]` on a container whose resolved profile is the modern one (the stripped output is a variant of the DCS format) |
 | CXML0013 | compat profile only - a read-only (get-only, or non-public-setter with no opt-in) PROPERTY carrying `[DataMember]` on a `[DataContract]` type: the reference serializer rejects that contract outright (`InvalidDataContractException`, "No set method for property"), so there is no format to reproduce. Does not fire on a `readonly` `[DataMember]` FIELD (DCS's check is property-only) or on an init-only member (a different flag; DCS emits it) |
 
 At run time, graphs deeper than `CrystalXml.MaxDepth` (64 levels of generated recursion, the

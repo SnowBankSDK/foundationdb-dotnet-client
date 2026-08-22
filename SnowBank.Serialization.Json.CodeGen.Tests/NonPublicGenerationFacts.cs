@@ -100,7 +100,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			var nudge = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0012");
 			Assert.That(nudge, Is.Not.Null, "an internal member with no include/exclude signal diverges between the paths, and the divergence must be observable");
-			Assert.That(nudge!.Severity, Is.EqualTo(DiagnosticSeverity.Warning), "a suppressible warning, not an error: existing generated wires depend on the inclusion");
+			Assert.That(nudge!.Severity, Is.EqualTo(DiagnosticSeverity.Warning), "a suppressible warning, not an error: existing generated outputs depend on the inclusion");
 			var message = nudge.GetMessage();
 			using (Assert.EnterMultipleScope())
 			{

@@ -9,7 +9,7 @@
 //   ISerializable on a type that also carries [DataContract] : zero types (7 files carry both
 //     mechanisms on two distinct types each: property-set system, directory user, security
 //     identifier, portal history)
-// Rare does not mean safe: each produces a wire shape nothing else in the corpus produces.
+// Rare does not mean safe: each produces an output shape nothing else in the corpus produces.
 
 namespace Acme.Zoo.Cases.ContractIsReference
 {
@@ -18,9 +18,9 @@ namespace Acme.Zoo.Cases.ContractIsReference
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>IsReference=true makes DCJS emit object identity on the wire: the first
+	/// <summary>IsReference=true makes DCJS emit object identity in the output: the first
 	/// occurrence carries an id, later occurrences become a back-reference instead of a repeated
-	/// copy. That turns a shared reference into a wire-level construct, and it means the document
+	/// copy. That turns a shared reference into an output-level construct, and it means the document
 	/// cannot be understood one member at a time.
 	/// <para>One occurrence in the application, so the question for the replacement is not
 	/// "reproduce this" but "what did the author intend": either genuine shared identity that
@@ -82,7 +82,7 @@ namespace Acme.Zoo.Cases.SerializableWithDataContract
 	/// one class.
 	/// <para>What this case pins is which contract wins. The two describe different shapes:
 	/// GetObjectData writes the names it chooses, the [DataMember] declarations say something
-	/// else. Only one of them reaches the wire, and knowing which one tells the replacement
+	/// else. Only one of them reaches the output, and knowing which one tells the replacement
 	/// whether the hand-written ISerializable code is load-bearing or dead weight that can be
 	/// dropped. The members are deliberately given different names in the two mechanisms so the
 	/// answer is unambiguous in the captured output.</para></summary>

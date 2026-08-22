@@ -254,21 +254,21 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 			var xslt = LoadAccountExportXslt();
 			var account = MakePopulatedAccount();
 
-			string crystalXmlWire = AcmeAccountSerializers.ClientAccount.ToXmlText(account);
-			string dcsWire = ReferenceDcsWire.Serialize(account, typeof(ClientAccount));
+			string crystalXmlOutput = AcmeAccountSerializers.ClientAccount.ToXmlText(account);
+			string dcsOutput = ReferenceDcsOutput.Serialize(account, typeof(ClientAccount));
 
 			// direct format assertion: this DTO graph uses the compat profile only (no AccountPropertyBag member is
 			// exercised through the ISerializable path in this specific fixture instance's populated members that
 			// differ from the DCS-native shape), so the whole document should be byte-for-byte identical, not merely
 			// HTML-equivalent after the lossy XSLT projection below.
-			Assert.That(crystalXmlWire, Is.EqualTo(dcsWire),
-				$"CrystalXml format:\n{crystalXmlWire}\n\nDCS format:\n{dcsWire}");
+			Assert.That(crystalXmlOutput, Is.EqualTo(dcsOutput),
+				$"CrystalXml format:\n{crystalXmlOutput}\n\nDCS format:\n{dcsOutput}");
 
-			string crystalXmlHtml = Render(xslt, crystalXmlWire);
-			string dcsHtml = Render(xslt, dcsWire);
+			string crystalXmlHtml = Render(xslt, crystalXmlOutput);
+			string dcsHtml = Render(xslt, dcsOutput);
 
 			Assert.That(crystalXmlHtml, Is.EqualTo(dcsHtml),
-				$"CrystalXml format:\n{crystalXmlWire}\n\nDCS format:\n{dcsWire}\n\nCrystalXml HTML:\n{crystalXmlHtml}\n\nDCS HTML:\n{dcsHtml}");
+				$"CrystalXml format:\n{crystalXmlOutput}\n\nDCS format:\n{dcsOutput}\n\nCrystalXml HTML:\n{crystalXmlHtml}\n\nDCS HTML:\n{dcsHtml}");
 		}
 
 		[Test]
@@ -277,18 +277,18 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 			var xslt = LoadAccountExportXslt();
 			var account = MakeAllNullAccount();
 
-			string crystalXmlWire = AcmeAccountSerializers.ClientAccount.ToXmlText(account);
-			string dcsWire = ReferenceDcsWire.Serialize(account, typeof(ClientAccount));
+			string crystalXmlOutput = AcmeAccountSerializers.ClientAccount.ToXmlText(account);
+			string dcsOutput = ReferenceDcsOutput.Serialize(account, typeof(ClientAccount));
 
 			// direct format assertion: see the populated-account counterpart above.
-			Assert.That(crystalXmlWire, Is.EqualTo(dcsWire),
-				$"CrystalXml format:\n{crystalXmlWire}\n\nDCS format:\n{dcsWire}");
+			Assert.That(crystalXmlOutput, Is.EqualTo(dcsOutput),
+				$"CrystalXml format:\n{crystalXmlOutput}\n\nDCS format:\n{dcsOutput}");
 
-			string crystalXmlHtml = Render(xslt, crystalXmlWire);
-			string dcsHtml = Render(xslt, dcsWire);
+			string crystalXmlHtml = Render(xslt, crystalXmlOutput);
+			string dcsHtml = Render(xslt, dcsOutput);
 
 			Assert.That(crystalXmlHtml, Is.EqualTo(dcsHtml),
-				$"CrystalXml format:\n{crystalXmlWire}\n\nDCS format:\n{dcsWire}\n\nCrystalXml HTML:\n{crystalXmlHtml}\n\nDCS HTML:\n{dcsHtml}");
+				$"CrystalXml format:\n{crystalXmlOutput}\n\nDCS format:\n{dcsOutput}\n\nCrystalXml HTML:\n{crystalXmlHtml}\n\nDCS HTML:\n{dcsHtml}");
 		}
 
 		#endregion

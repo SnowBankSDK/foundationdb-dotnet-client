@@ -52,7 +52,7 @@ namespace SnowBank.Data.Xml
 	/// <para><b>Namespace declarations and prefixes belong to the wrapped writer.</b> It tracks what is in scope, invents the
 	/// aliases, and places the declarations where its own rules put them, which is what it does for every caller. So
 	/// <see cref="WriteNamespaceDeclaration"/> and <see cref="WriteDefaultNamespaceDeclaration"/> do nothing here: a
-	/// declaration is a statement about the bytes, and the bytes are not this type's to decide. What does reach the wire is
+	/// declaration is a statement about the bytes, and the bytes are not this type's to decide. What does reach the output is
 	/// every namespace a name carries, so the expanded names of the document are exactly the ones that were written.</para>
 	/// <para>This type owns none of the writer's lifetime: the caller flushes and disposes it. Like every
 	/// <see cref="ICrystalXmlEmitter"/>, it must still be passed by <see langword="ref"/> per the interface remarks.</para>

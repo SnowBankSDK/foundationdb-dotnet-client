@@ -44,7 +44,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	{
 
 		/// <summary>The container attributes of a probe that produces the DataContract XML format next to the DCJS JSON format</summary>
-		private const string BothWiresContainer = """
+		private const string BothOutputsContainer = """
 				[SnowBank.Data.CrystalConverter]
 				[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
 				[SnowBank.Data.Xml.CrystalXmlOutput]
@@ -64,7 +64,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			{{members}}
 				}
 
-			{{BothWiresContainer}}
+			{{BothOutputsContainer}}
 				[SnowBank.Data.CrystalSerializable(typeof(ProbeDto))]
 				public static partial class ProbeConverters
 				{

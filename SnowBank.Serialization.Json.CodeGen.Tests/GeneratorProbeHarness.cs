@@ -64,7 +64,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		/// <para>Metadata is imported with <see cref="MetadataImportOptions.All"/>: with the default import, Roslyn drops the
 		/// private members of a REFERENCED assembly, so a private <c>[DataMember]</c> silently vanishes from the contract and a
 		/// private setter makes its property look read-only. A certification host that references the product as compiled
-		/// assemblies needs the same option, or its mismatches measure the rig instead of the wire.</para>
+		/// assemblies needs the same option, or its mismatches measure the rig instead of the output.</para>
 		/// </remarks>
 		public static CSharpCompilation Compile(string source, CSharpParseOptions parseOptions, string assemblyName = "ProbeAssembly")
 			=> CSharpCompilation.Create(

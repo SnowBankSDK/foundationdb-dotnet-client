@@ -103,7 +103,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				{
 				}
 
-				// a container that resolves to the DataContract XML wire, whose emission does not exist yet: it must degrade
+				// a container that resolves to the DataContract XML output, whose emission does not exist yet: it must degrade
 				// to a clean JSON-only container (no half-written XML surface), which is what compiling it here proves
 				[SnowBank.Data.CrystalConverter]
 				[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
@@ -398,7 +398,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		/// <summary>An XML-only container, below the C# 11 proxy floor</summary>
-		/// <remarks>Same graph as <see cref="LegacyProbeSource"/>, but the container only ever asks for the XML wire, via the <c>[CrystalXmlConverter]</c> alias.</remarks>
+		/// <remarks>Same graph as <see cref="LegacyProbeSource"/>, but the container only ever asks for the XML output, via the <c>[CrystalXmlConverter]</c> alias.</remarks>
 		private const string LegacyXmlOnlyProbeSource = """
 			namespace Probe.LegacyXmlOnly
 			{
@@ -480,7 +480,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		/// <summary>Pins the generator-side UTF-8 encoder (<see cref="SnowBank.SourceAnalysis.CSharpCodeBuilder.Utf8Constant"/>) against a non-ASCII name</summary>
-		/// <remarks>Backs the XML name table (<c>[XmlProperty]</c> / <c>[DataMember]</c> names): the byte array it spells out must be byte-for-byte what <see cref="System.Text.Encoding.UTF8"/> itself produces, since the wire cannot depend on how the generator encoded the literal.</remarks>
+		/// <remarks>Backs the XML name table (<c>[XmlProperty]</c> / <c>[DataMember]</c> names): the byte array it spells out must be byte-for-byte what <see cref="System.Text.Encoding.UTF8"/> itself produces, since the output cannot depend on how the generator encoded the literal.</remarks>
 		[Test]
 		public void Test_Utf8Constant_Encodes_Non_Ascii_Names()
 		{

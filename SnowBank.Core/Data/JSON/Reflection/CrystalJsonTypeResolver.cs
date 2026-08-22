@@ -557,7 +557,7 @@ namespace SnowBank.Data.Json
 						else if (type.IsGenericInstanceOf(typeof(Dictionary<,>)) || type.IsGenericInstanceOf(typeof(ImmutableDictionary<,>)))
 						{
 							// dictionaries normally bind from a JSON object, but the dictionary binder also accepts the
-							// legacy DCJS wire shape [ { "Key": ..., "Value": ... }, ... ]: defer to it when it exists
+							// legacy DCJS output shape [ { "Key": ..., "Value": ... }, ... ]: defer to it when it exists
 							return (resolver, array) =>
 							{
 								if (array is not null
@@ -657,8 +657,8 @@ namespace SnowBank.Data.Json
 			if (type.IsConcrete() && type.GetConstructor(Type.EmptyTypes) != null)
 			{
 				if (type.IsAssignableTo<IDictionary>())
-				{ // non-generic dictionary (Hashtable, ...) read from the legacy DCJS wire shape [ { "Key": .., "Value": .. } ]:
-				  // defer to the object-route binder, which tolerates that wire
+				{ // non-generic dictionary (Hashtable, ...) read from the legacy DCJS output shape [ { "Key": .., "Value": .. } ]:
+				  // defer to the object-route binder, which tolerates that output
 					return (resolver, array) =>
 					{
 						if (array is null) return null;
@@ -1160,8 +1160,8 @@ namespace SnowBank.Data.Json
 		[UsedImplicitly]
 		public static Stack<TOutput> FillStack<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
 		{
-			// the wire holds the enumeration order (top of the stack first): push in reverse so that
-			// serializing the result again produces the same wire (round-trip preserves the order)
+			// the output holds the enumeration order (top of the stack first): push in reverse so that
+			// serializing the result again produces the same output (round-trip preserves the order)
 			var type = typeof(TOutput);
 			var stack = new Stack<TOutput>(array.Count);
 			for (int i = array.Count - 1; i >= 0; i--)
@@ -1210,7 +1210,7 @@ namespace SnowBank.Data.Json
 		[UsedImplicitly]
 		public static ConcurrentStack<TOutput> FillConcurrentStack<TInput, TOutput>(IList<TInput> array, [InstantHandle] Func<Type, TInput, object> convert)
 		{
-			// same round-trip-preserving rule as FillStack: the wire holds the top of the stack first
+			// same round-trip-preserving rule as FillStack: the output holds the top of the stack first
 			var type = typeof(TOutput);
 			var stack = new ConcurrentStack<TOutput>();
 			for (int i = array.Count - 1; i >= 0; i--)
@@ -1314,8 +1314,8 @@ namespace SnowBank.Data.Json
 						}
 						default:
 						{ // "Always", or an attribute without a Condition: this is the exclusion form, and next to an
-							// include signal it is two wire contracts on one member: refuse loudly (the dual-output
-							// DTO is not supported; same family as the conflicting-wire-names guard)
+							// include signal it is two output contracts on one member: refuse loudly (the dual-output
+							// DTO is not supported; same family as the conflicting-output-names guard)
 							ThrowIfIgnoreConflictsWithIncludeSignal(member);
 							return false;
 						}
@@ -1334,11 +1334,11 @@ namespace SnowBank.Data.Json
 				{ // DCJS semantics on read: the member must be PRESENT in the document (an explicit null satisfies)
 					flags |= CrystalJsonMemberFlags.RequiredPresence;
 				}
-				// one member giving different wire names to different serializers is two contracts on one type
-				// (ex: [DataMember(Name="code")] for the legacy DCJS wire plus a Newtonsoft [JsonProperty("ACTIF")]
+				// one member giving different output names to different serializers is two contracts on one type
+				// (ex: [DataMember(Name="code")] for the legacy DCJS output plus a Newtonsoft [JsonProperty("ACTIF")]
 				// for another consumer): refuse loudly instead of silently picking one of the two. A bare [DataMember]
 				// names the member after itself, and that implied name counts the same way.
-				ThrowIfConflictingWireName(member, attr.Name ?? member.Name, attr.Name is not null);
+				ThrowIfConflictingOutputName(member, attr.Name ?? member.Name, attr.Name is not null);
 				// check if a custom name is specified
 				name = attr.Name ?? name;
 				return true;
@@ -1404,8 +1404,8 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Throws when a member excluded by an unconditional <c>[JsonIgnore]</c> also carries an include signal (<c>[DataMember]</c>, <c>[JsonInclude]</c>, or a <c>[JsonProperty]</c>-style naming attribute)</summary>
 		/// <remarks>
-		/// <para>The population that writes both attributes is the dual-output DTO (one wire carried the member, the other did not), and a dual-output DTO is not supported: the remedy is the split, one DTO per serializer.</para>
-		/// <para>The message must never suggest adding a <c>Condition</c>: a Condition turns the member into an INCLUDED member with a write rule, so it would resolve the error while shipping the member onto the second wire for the first time. The source generator reports the same conflict as error <c>CJSON0008</c>.</para>
+		/// <para>The population that writes both attributes is the dual-output DTO (one output carried the member, the other did not), and a dual-output DTO is not supported: the remedy is the split, one DTO per serializer.</para>
+		/// <para>The message must never suggest adding a <c>Condition</c>: a Condition turns the member into an INCLUDED member with a write rule, so it would resolve the error while shipping the member onto the second output for the first time. The source generator reports the same conflict as error <c>CJSON0008</c>.</para>
 		/// </remarks>
 		private static void ThrowIfIgnoreConflictsWithIncludeSignal(MemberInfo member)
 		{
@@ -1418,7 +1418,7 @@ namespace SnowBank.Data.Json
 			{
 				// compat-surface wording: a DCJS veteran must recognize the two-serializer setup this pattern
 				// comes from, instead of concluding the library is broken; a modern developer just follows the fix
-				throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' carries an unconditional [JsonIgnore] next to [{includeSignal}]. In a DCJS-era two-serializer setup this pair put the member on one wire and kept it off the other; that dual-output pattern is not supported here, because one type cannot serve two wire contracts at once: split it into one DTO per serializer, each with a single coherent set of attributes. If one of the two attributes is simply a mistake, remove it.");
+				throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' carries an unconditional [JsonIgnore] next to [{includeSignal}]. In a DCJS-era two-serializer setup this pair put the member on one output and kept it off the other; that dual-output pattern is not supported here, because one type cannot serve two output contracts at once: split it into one DTO per serializer, each with a single coherent set of attributes. If one of the two attributes is simply a mistake, remove it.");
 			}
 		}
 
@@ -1469,7 +1469,7 @@ namespace SnowBank.Data.Json
 					return bridge;
 				}
 				// a converter type we cannot execute (a real STJ/Newtonsoft converter): ignore the attribute,
-				// which is exactly what happened before member converters existed (the site keeps its default wire)
+				// which is exactly what happened before member converters existed (the site keeps its default format)
 			}
 			return null;
 		}
@@ -1594,7 +1594,7 @@ namespace SnowBank.Data.Json
 			// several JSON naming attributes on one member with DIFFERENT names is a dual-output DTO: refuse it, as the
 			// generated converter does at build time. Precedence when they AGREE is CrystalJson [JsonProperty] > STJ
 			// [JsonPropertyName] > Newtonsoft [JsonProperty]; a disagreement is the defect, and the fix is to split it.
-			ThrowIfConflictingJsonWireNames(member, nativeJsonProperty?.PropertyName, stjName, newtonsoftName);
+			ThrowIfConflictingJsonOutputNames(member, nativeJsonProperty?.PropertyName, stjName, newtonsoftName);
 
 			// return by priority, faking a [JsonProperty("...")] over the foreign name when there is no native one
 			if (nativeJsonProperty is not null) return nativeJsonProperty;
@@ -1605,35 +1605,35 @@ namespace SnowBank.Data.Json
 			return null;
 		}
 
-		/// <summary>Throws if a member carries several JSON naming attributes with different wire names (a dual-output DTO)</summary>
+		/// <summary>Throws if a member carries several JSON naming attributes with different output names (a dual-output DTO)</summary>
 		/// <remarks>Precedence when they agree is CrystalJson <c>[JsonProperty]</c> then System.Text.Json <c>[JsonPropertyName]</c> then Newtonsoft <c>[JsonProperty]</c>. A disagreement is the defect, and the generated converter refuses the same shape at build time (<c>CJSON0011</c>).</remarks>
-		private static void ThrowIfConflictingJsonWireNames(MemberInfo member, string? nativeName, string? stjName, string? newtonsoftName)
+		private static void ThrowIfConflictingJsonOutputNames(MemberInfo member, string? nativeName, string? stjName, string? newtonsoftName)
 		{
 			string? reference = null;
 			string? referenceFamily = null;
-			foreach (var (wireName, family) in new[] { (nativeName, "JsonProperty"), (stjName, "JsonPropertyName"), (newtonsoftName, "Newtonsoft.Json.JsonProperty") })
+			foreach (var (outputName, family) in new[] { (nativeName, "JsonProperty"), (stjName, "JsonPropertyName"), (newtonsoftName, "Newtonsoft.Json.JsonProperty") })
 			{
-				if (string.IsNullOrEmpty(wireName)) continue;
+				if (string.IsNullOrEmpty(outputName)) continue;
 				if (reference is null)
 				{
-					reference = wireName;
+					reference = outputName;
 					referenceFamily = family;
 				}
-				else if (!string.Equals(wireName, reference, StringComparison.Ordinal))
+				else if (!string.Equals(outputName, reference, StringComparison.Ordinal))
 				{
-					throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' declares two different wire names: [{referenceFamily}(\"{reference}\")] and [{family}(\"{wireName}\")]. One type cannot serve two wire contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.");
+					throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' declares two different output names: [{referenceFamily}(\"{reference}\")] and [{family}(\"{outputName}\")]. One type cannot serve two output contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.");
 				}
 			}
 		}
 
-		/// <summary>Throws if the member also carries a naming attribute whose wire name differs from the one its data contract gives it</summary>
-		/// <remarks>Such a member is one type trying to serve two different wire contracts at once. Whichever name a serializer
+		/// <summary>Throws if the member also carries a naming attribute whose output name differs from the one its data contract gives it</summary>
+		/// <remarks>Such a member is one type trying to serve two different output contracts at once. Whichever name a serializer
 		/// silently picks, one of the two consumers gets the wrong document; the only correct fix is to split the type into one
 		/// DTO per contract. The contract name is <c>[DataMember(Name = ...)]</c> when it is spelled and the member's own name
 		/// when it is not, because a bare <c>[DataMember]</c> is still a naming decision. (Foreign attributes are matched by
 		/// name+namespace, without referencing their packages; same caveat about code trimming as the recognition in
 		/// <see cref="FindPropertyAttribute"/>.)</remarks>
-		private static void ThrowIfConflictingWireName(MemberInfo member, string contractName, bool contractNameIsSpelled)
+		private static void ThrowIfConflictingOutputName(MemberInfo member, string contractName, bool contractNameIsSpelled)
 		{
 			foreach (var attr in member.GetCustomAttributes(true))
 			{
@@ -1663,7 +1663,7 @@ namespace SnowBank.Data.Json
 				if (!string.IsNullOrEmpty(otherName) && !string.Equals(otherName, contractName, StringComparison.Ordinal))
 				{
 					string spelling = contractNameIsSpelled ? $"[DataMember(Name=\"{contractName}\")]" : "[DataMember], which names it after the member";
-					throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' declares two different wire names: the data contract names it '{contractName}' ({spelling}), and [{family}(\"{otherName}\")] names it '{otherName}'. One type cannot serve two wire contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.");
+					throw new JsonSerializationException($"Member '{member.DeclaringType?.GetFriendlyName()}.{member.Name}' declares two different output names: the data contract names it '{contractName}' ({spelling}), and [{family}(\"{otherName}\")] names it '{otherName}'. One type cannot serve two output contracts at once: split it into one DTO per serializer, each carrying a single naming attribute.");
 				}
 			}
 		}
@@ -2873,7 +2873,7 @@ namespace SnowBank.Data.Json
 				if (v is not JsonObject obj)
 				{
 					if (v is JsonArray arr)
-					{ // tolerate the legacy DCJS wire shape
+					{ // tolerate the legacy DCJS output shape
 						var items = (IDictionary) generator();
 						FillDictionaryFromLegacyPairs(items, arr, typeof(string), GetConverterFor(valueType, r), r);
 						return items;
@@ -2901,7 +2901,7 @@ namespace SnowBank.Data.Json
 				if (v is not JsonObject obj)
 				{
 					if (v is JsonArray arr)
-					{ // tolerate the legacy DCJS wire shape
+					{ // tolerate the legacy DCJS output shape
 						var items = (IDictionary) generator();
 						FillDictionaryFromLegacyPairs(items, arr, typeof(int), GetConverterFor(valueType, r), r);
 						return items;
@@ -2928,7 +2928,7 @@ namespace SnowBank.Data.Json
 				if (v is not JsonObject obj)
 				{
 					if (v is JsonArray arr)
-					{ // tolerate the legacy DCJS wire shape
+					{ // tolerate the legacy DCJS output shape
 						var items = (IDictionary) generator();
 						FillDictionaryFromLegacyPairs(items, arr, keyType, GetConverterFor(valueType, r), r);
 						return items;
@@ -2948,7 +2948,7 @@ namespace SnowBank.Data.Json
 			};
 		}
 
-		/// <summary>Fills a dictionary from the legacy DataContractJsonSerializer wire shape (<c>[ { "Key": ..., "Value": ... }, ... ]</c>)</summary>
+		/// <summary>Fills a dictionary from the legacy DataContractJsonSerializer output shape (<c>[ { "Key": ..., "Value": ... }, ... ]</c>)</summary>
 		/// <remarks>
 		/// <para>Only reached when the input is a JSON array, which the object-map binder otherwise rejects, so the regular path pays no cost.</para>
 		/// <para>Every element must be an object with a key member and a value member. Both spellings are accepted:

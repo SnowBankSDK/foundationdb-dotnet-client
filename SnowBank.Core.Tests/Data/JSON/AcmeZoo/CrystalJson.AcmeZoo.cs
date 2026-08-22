@@ -30,8 +30,8 @@ namespace SnowBank.Data.Json.Tests
 	using System.Reflection;
 
 	/// <summary>Runs the Acme DCJS sample zoo (33 synthetic cases mirroring a real DataContract corpus) against
-	/// CrystalJson, and pins a per-case expectation: what round-trips, what reads back from the legacy wire, and what
-	/// is refused. The wire in <c>zoo.json</c> was captured from the real DataContractJsonSerializer, and is identical
+	/// CrystalJson, and pins a per-case expectation: what round-trips, what reads back from the legacy output, and what
+	/// is refused. The output in <c>zoo.json</c> was captured from the real DataContractJsonSerializer, and is identical
 	/// on .NET Framework 4.7.2 and .NET 10.
 	/// <para>The corpus is generated, and each expectation is derived from the reference behavior; an expectation that
 	/// disagrees with the committed code is the thing to fix.</para>
@@ -54,7 +54,7 @@ namespace SnowBank.Data.Json.Tests
 
 			public required string Kind { get; init; }
 
-			public required string DcjsWire { get; init; }
+			public required string DcjsOutput { get; init; }
 
 			public string? DcjsError { get; init; }
 
@@ -64,7 +64,7 @@ namespace SnowBank.Data.Json.Tests
 		private static Dictionary<string, ZooCase>? CachedCases;
 
 		/// <summary>Discovers the cases by the zoo convention (a type named 'Sample' under Acme.Zoo.Cases.*) and joins
-		/// them with the metadata + captured wire from the embedded <c>zoo.json</c></summary>
+		/// them with the metadata + captured output from the embedded <c>zoo.json</c></summary>
 		private static Dictionary<string, ZooCase> LoadZoo()
 		{
 			if (CachedCases is not null) return CachedCases;
@@ -93,7 +93,7 @@ namespace SnowBank.Data.Json.Tests
 					RootType = (Type) sample.GetProperty("RootType", BindingFlags.Static | BindingFlags.Public)!.GetValue(null)!,
 					Create = () => sample.GetMethod("Create", BindingFlags.Static | BindingFlags.Public)!.Invoke(null, null)!,
 					Kind = meta.Get<string>("kind"),
-					DcjsWire = meta.Get<string?>("expected", null) ?? "",
+					DcjsOutput = meta.Get<string?>("expected", null) ?? "",
 					DcjsError = meta.Get<string?>("expectedError", null),
 					LegacyDocuments = (sample.GetProperty("LegacyDocuments", BindingFlags.Static | BindingFlags.Public)?.GetValue(null) as string[]) ?? [ ],
 				});
@@ -116,8 +116,8 @@ namespace SnowBank.Data.Json.Tests
 			/// <summary>CrystalJson can read back its own output into the root type, and re-serializing yields the same text</summary>
 			public bool SelfRoundTrips { get; init; } = true;
 
-			/// <summary>CrystalJson binds the captured DCJS wire into the root type</summary>
-			public bool ReadsDcjsWire { get; init; } = true;
+			/// <summary>CrystalJson binds the captured DCJS output into the root type</summary>
+			public bool ReadsDcjsOutput { get; init; } = true;
 
 			/// <summary>CrystalJson binds every legacy at-rest document of the case</summary>
 			public bool ReadsLegacyDocuments { get; init; } = true;
@@ -134,12 +134,12 @@ namespace SnowBank.Data.Json.Tests
 			// document does not read back into an abstract declared type.
 			["poly-known-type-abstract"] = new()
 			{
-				SelfRoundTrips = false, ReadsDcjsWire = false, ReadsLegacyDocuments = false,
+				SelfRoundTrips = false, ReadsDcjsOutput = false, ReadsLegacyDocuments = false,
 				Because = "no [KnownType] support: abstract members need [JsonPolymorphic]/[JsonDerivedType]",
 			},
 			["poly-serializer-known-types"] = new()
 			{
-				SelfRoundTrips = false, ReadsDcjsWire = false,
+				SelfRoundTrips = false, ReadsDcjsOutput = false,
 				Because = "same stance for knownTypes passed to the serializer constructor",
 			},
 
@@ -147,8 +147,8 @@ namespace SnowBank.Data.Json.Tests
 			// is [DataMember(Name)] when spelled and the member's own name when bare; the remedy is to split the DTO.
 			["diagnostic-double-contract"] = new()
 			{
-				Writes = false, SelfRoundTrips = false, ReadsDcjsWire = false,
-				Because = "conflicting wire names are refused by design (split the DTO)",
+				Writes = false, SelfRoundTrips = false, ReadsDcjsOutput = false,
+				Because = "conflicting output names are refused by design (split the DTO)",
 			},
 
 			// the four callbacks are invoked now, but only in the modern signatures. This corpus case carries the
@@ -156,7 +156,7 @@ namespace SnowBank.Data.Json.Tests
 			// the whole type is refused until its callbacks are converted (the migration guide's sweep recipe).
 			["lifecycle-callbacks"] = new()
 			{
-				Writes = false, SelfRoundTrips = false, ReadsDcjsWire = false, ReadsLegacyDocuments = false,
+				Writes = false, SelfRoundTrips = false, ReadsDcjsOutput = false, ReadsLegacyDocuments = false,
 				Because = "the legacy StreamingContext callback signature is refused by design (drop the parameter, or take JsonValue/JsonObject/JsonArray)",
 			},
 		};
@@ -183,12 +183,12 @@ namespace SnowBank.Data.Json.Tests
 			var verdict = DerivedExpectations.TryGetValue(id, out var expected) ? expected : new Verdict();
 
 			// 1. write direction, default settings
-			string? cjWire = null;
+			string? cjOutput = null;
 			try
 			{
-				cjWire = CrystalJson.Serialize(testCase.Create(), testCase.RootType);
-				Log($"cj : {cjWire}");
-				Log($"dcj: {(testCase.DcjsError is null ? testCase.DcjsWire : $"<threw: {testCase.DcjsError}>")}");
+				cjOutput = CrystalJson.Serialize(testCase.Create(), testCase.RootType);
+				Log($"cj : {cjOutput}");
+				Log($"dcj: {(testCase.DcjsError is null ? testCase.DcjsOutput : $"<threw: {testCase.DcjsError}>")}");
 				Assert.That(verdict.Writes, Is.True, $"serialization succeeded but the corpus expected a refusal ({verdict.Because})");
 			}
 			catch (Exception e) when (e is not AssertionException)
@@ -198,27 +198,27 @@ namespace SnowBank.Data.Json.Tests
 			}
 
 			// 2. self round-trip: read back our own output, re-serialize, compare
-			if (cjWire is not null)
+			if (cjOutput is not null)
 			{
 				TryStep(
 					() =>
 					{
-						var bound = CrystalJson.Parse(cjWire).Bind(testCase.RootType)!;
-						Assert.That(CrystalJson.Serialize(bound, testCase.RootType), Is.EqualTo(cjWire), "the self round-trip must be stable");
+						var bound = CrystalJson.Parse(cjOutput).Bind(testCase.RootType)!;
+						Assert.That(CrystalJson.Serialize(bound, testCase.RootType), Is.EqualTo(cjOutput), "the self round-trip must be stable");
 					},
 					verdict.SelfRoundTrips, "self round-trip", verdict.Because);
 			}
 
-			// 3. read direction: the captured DCJS wire must bind (this is what sits in the application's database)
-			if (testCase.DcjsError is null && !string.IsNullOrEmpty(testCase.DcjsWire) && verdict.Writes)
+			// 3. read direction: the captured DCJS output must bind (this is what sits in the application's database)
+			if (testCase.DcjsError is null && !string.IsNullOrEmpty(testCase.DcjsOutput) && verdict.Writes)
 			{
 				TryStep(
 					() =>
 					{
-						var bound = CrystalJson.Parse(testCase.DcjsWire).Bind(testCase.RootType);
+						var bound = CrystalJson.Parse(testCase.DcjsOutput).Bind(testCase.RootType);
 						Assert.That(bound, Is.Not.Null);
 					},
-					verdict.ReadsDcjsWire, "read of the DCJS wire", verdict.Because);
+					verdict.ReadsDcjsOutput, "read of the DCJS output", verdict.Because);
 			}
 
 			// 4. every legacy at-rest document must bind
@@ -235,14 +235,14 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Zoo_NonPublic_DataMembers_Are_On_The_Wire()
+		public void Test_Zoo_NonPublic_DataMembers_Are_In_The_Output()
 		{
 			// hybrid rule: [DataMember] on a non-public member of a [DataContract] type serializes automatically,
-			// so the CrystalJson wire for this case carries the same members and values as the captured DCJS wire
+			// so the CrystalJson output for this case carries the same members and values as the captured DCJS output
 			// (the generic runner only proves the binding; this pins the write-side content)
 			var testCase = LoadZoo()["member-non-public"];
 			var cj = CrystalJson.Parse(CrystalJson.Serialize(testCase.Create(), testCase.RootType));
-			Assert.That(cj, IsJson.EqualTo(CrystalJson.Parse(testCase.DcjsWire)));
+			Assert.That(cj, IsJson.EqualTo(CrystalJson.Parse(testCase.DcjsOutput)));
 		}
 
 		private static void TryStep(Action step, bool expectedToWork, string label, string? because)

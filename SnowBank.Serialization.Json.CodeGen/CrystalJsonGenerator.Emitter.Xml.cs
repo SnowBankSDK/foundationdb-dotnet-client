@@ -125,7 +125,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private const string XmlDefaultEntryName = "entry";
 
 			/// <summary>The five namespaces of the DataContract format that no CLR namespace derives</summary>
-			/// <remarks>Spelled out here, and cached on <c>CrystalXmlNamespaces</c> at run time: these are wire values, and the
+			/// <remarks>Spelled out here, and cached on <c>CrystalXmlNamespaces</c> at run time: these are output values, and the
 			/// generator resolves a shape to one of them without asking the runtime anything.</remarks>
 			private const string XmlSchemaInstanceNamespaceUri = "http://www.w3.org/2001/XMLSchema-instance";
 
@@ -896,8 +896,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Returns the field holding the name of the null marker, in the namespace the profile writes it in</summary>
 			/// <remarks>The local name is <c>nil</c> on both profiles and under both DataContract outputs; only the namespace
-			/// differs. The DataContract default puts it in the XML Schema instance namespace, so it reaches the wire as
-			/// <c>i:nil</c>; the Modern profile and the schemaless option put it in none, so it reaches the wire bare. Giving the
+			/// differs. The DataContract default puts it in the XML Schema instance namespace, so it reaches the output as
+			/// <c>i:nil</c>; the Modern profile and the schemaless option put it in none, so it reaches the output bare. Giving the
 			/// namespace to the NAME instead of to the write site is what keeps every caller of this marker unchanged.</remarks>
 			private string XmlNilNameRef(XmlNameTable names)
 				=> this.WritesXmlDcs && !this.WritesXmlDcsSchemaless

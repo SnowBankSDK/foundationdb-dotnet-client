@@ -43,12 +43,12 @@ namespace SnowBank.Data.Xml.Tests
 	/// <para>This is the clean-room reimplementation of the reference pipeline that was measured against a real
 	/// <see cref="DataContractSerializer"/> (writer with 2 args, <c>CheckCharacters = false</c>,
 	/// <c>OmitXmlDeclaration = true</c>, followed by a post-serialization filter). Every format fidelity test in
-	/// <c>DcsWireFidelityFacts</c> compares the CrystalXml emitter's output against THIS output, byte for byte: the
+	/// <c>DcsOutputFidelityFacts</c> compares the CrystalXml emitter's output against THIS output, byte for byte: the
 	/// suite stays provable without any dependency on application-specific behavior.</para>
 	/// <para>Recorded the of a live DataContractSerializer, used as the conformance oracle; comments translated to
 	/// English.</para>
 	/// </remarks>
-	internal static class ReferenceDcsWire
+	internal static class ReferenceDcsOutput
 	{
 		/// <summary>Serializes <paramref name="value"/> through the live <see cref="DataContractSerializer"/> reference pipeline</summary>
 		/// <param name="value">Value to serialize</param>
@@ -56,7 +56,7 @@ namespace SnowBank.Data.Xml.Tests
 		/// <param name="strip">
 		/// <see langword="true"/> (the default) runs the output through <see cref="StrippingXmlWriter"/>, which erases every
 		/// prefix, namespace declaration and <c>xmlns</c> attribute, which is what the default CrystalXml profile emits.
-		/// <see langword="false"/> returns the standard DCS wire unstripped, prefixes and namespace declarations included,
+		/// <see langword="false"/> returns the standard DCS output unstripped, prefixes and namespace declarations included,
 		/// which is the reference for the namespace facts.
 		/// </param>
 		public static string Serialize(object? value, Type declaredType, bool strip = true)

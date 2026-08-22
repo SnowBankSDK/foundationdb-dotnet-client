@@ -43,10 +43,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public string? MaybeNull { get; set; }
 	}
 
-	/// <summary>The legacy-wire container: serves an unchanged DCJS reader, one endpoint at a time (the not-yet-ported services of a WCF portage)</summary>
+	/// <summary>The legacy-output container: serves an unchanged DCJS reader, one endpoint at a time (the not-yet-ported services of a WCF portage)</summary>
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalSerializable(typeof(ProfiledOrder))]
-	public static partial class LegacyWireConverters
+	public static partial class LegacyConverters
 	{
 		// generated code goes here!
 	}
@@ -54,14 +54,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	/// <summary>The modern container over the SAME types: the target state once a service is ported (delete the legacy container when the portage completes)</summary>
 	[CrystalJsonConverter]
 	[CrystalSerializable(typeof(ProfiledOrder))]
-	public static partial class ModernWireConverters
+	public static partial class ModernConverters
 	{
 		// generated code goes here!
 	}
 
 	#endregion
 
-	/// <summary>Pins the container-level <c>DataContractCompat</c> profile: the baked default wire, the pass-through of explicit settings, the loud incompatibility failure, and the dual-container pattern</summary>
+	/// <summary>Pins the container-level <c>DataContractCompat</c> profile: the baked default format, the pass-through of explicit settings, the loud incompatibility failure, and the dual-container pattern</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -78,10 +78,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		};
 
 		[Test]
-		public void Test_Profiled_Container_Emits_The_Legacy_Wire_By_Default()
+		public void Test_Profiled_Container_Emits_The_Legacy_Output_By_Default()
 		{
-			// no settings passed: the container's baked profile IS the default wire
-			var json = LegacyWireConverters.ProfiledOrder.ToJsonText(MakeSample());
+			// no settings passed: the container's baked profile IS the default format
+			var json = LegacyConverters.ProfiledOrder.ToJsonText(MakeSample());
 			Log(json);
 			var obj = CrystalJson.Parse(json).AsObject();
 			using (Assert.EnterMultipleScope())
@@ -95,10 +95,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Unprofiled_Container_Over_The_Same_Types_Emits_The_Modern_Wire()
+		public void Test_Unprofiled_Container_Over_The_Same_Types_Emits_The_Modern_Output()
 		{
-			// the dual-container pattern: the SAME type serves both wires, one container each
-			var json = ModernWireConverters.ProfiledOrder.ToJsonText(MakeSample());
+			// the dual-container pattern: the SAME type serves both outputs, one container each
+			var json = ModernConverters.ProfiledOrder.ToJsonText(MakeSample());
 			Log(json);
 			var obj = CrystalJson.Parse(json).AsObject();
 			using (Assert.EnterMultipleScope())
@@ -115,7 +115,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// runtime-honorable value-format settings pass through ENTIRELY (no merging): an explicit caller
 			// choice is auditable, a merged one is not
-			var json = LegacyWireConverters.ProfiledOrder.ToJsonText(MakeSample(), CrystalJsonSettings.Json);
+			var json = LegacyConverters.ProfiledOrder.ToJsonText(MakeSample(), CrystalJsonSettings.Json);
 			var obj = CrystalJson.Parse(json).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
@@ -127,7 +127,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Combining_The_Profile_With_A_Naming_Option_Is_A_Build_Error()
 		{
-			// the DCJS wire has no naming policy: [CrystalJsonConverter(DataContractCompat)] next to a camelCase
+			// the DCJS output has no naming policy: [CrystalJsonConverter(DataContractCompat)] next to a camelCase
 			// or case-insensitive naming option is a contradiction, refused at generation time (CJ3-3)
 			var compilation = GeneratorProbeHarness.Compile("""
 				namespace Probe
@@ -157,12 +157,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Passed_Naming_Settings_Are_Honored_Not_Silently_Ignored()
 		{
-			// the no-silent-wrong-wire doctrine, in the direction that exists in this design: the emitted names
+			// the no-silent-wrong-output doctrine, in the direction that exists in this design: the emitted names
 			// carry both casings, so a camelCase request against a profiled container is HONORED at runtime (the
 			// settings replace the profile entirely, names included) - never silently answered with the baked
 			// casing. The only true conflict (baking the profile AND a naming option into one container) is a
 			// build error, pinned separately.
-			var json = LegacyWireConverters.ProfiledOrder.ToJsonText(MakeSample(), CrystalJsonSettings.Json.CamelCased());
+			var json = LegacyConverters.ProfiledOrder.ToJsonText(MakeSample(), CrystalJsonSettings.Json.CamelCased());
 			Log(json);
 			var obj = CrystalJson.Parse(json).AsObject();
 			using (Assert.EnterMultipleScope())

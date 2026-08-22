@@ -10,7 +10,7 @@
 // Dictionary 43. [CollectionDataContract] 217 (ItemName 124, KeyName/ValueName 28 each).
 //
 // The application never sets UseSimpleDictionaryFormat (0 occurrences in the entire source
-// tree), and that shapes this whole category. Every dictionary on the wire is therefore in
+// tree), and that shapes this whole category. Every dictionary in the output is therefore in
 // DCJS's default key/value-pair array form.
 
 namespace Acme.Zoo.Cases.CollectionOfTMember
@@ -162,7 +162,7 @@ namespace Acme.Zoo.Cases.DictionaryStringKey
 		public static object Create()
 		{
 			var map = new Dictionary<string, string>();
-			// Insertion order is deliberately not sorted, to expose whether the wire order
+			// Insertion order is deliberately not sorted, to expose whether the output order
 			// follows insertion (it does, for DCJS) or is normalized.
 			map["zeta"] = "last";
 			map["alpha"] = "first";

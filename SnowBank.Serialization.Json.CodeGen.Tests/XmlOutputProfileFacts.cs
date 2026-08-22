@@ -71,7 +71,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			}
 			foreach (var (name, metadata) in containers)
 			{
-				Log($"container: {name}: XmlProfile={metadata.XmlProfile ?? "<null>"}; CrystalXmlDictionaryFormat={metadata.CrystalXmlDictionaryFormat ?? "<null>"}; WireProfile={metadata.WireProfile ?? "<null>"}");
+				Log($"container: {name}: XmlProfile={metadata.XmlProfile ?? "<null>"}; CrystalXmlDictionaryFormat={metadata.CrystalXmlDictionaryFormat ?? "<null>"}; OutputProfile={metadata.OutputProfile ?? "<null>"}");
 			}
 			return (containers, diagnostics);
 		}
@@ -115,7 +115,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(metadata.WireProfile, Is.EqualTo("DataContractCompat"), "sanity: the JSON profile the derivation reads");
+				Assert.That(metadata.OutputProfile, Is.EqualTo("DataContractCompat"), "sanity: the JSON profile the derivation reads");
 				Assert.That(metadata.XmlProfile, Is.EqualTo("DataContract"), "the DCJS JSON format derives the DataContract XML format");
 			}
 		}
@@ -132,7 +132,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(metadata.WireProfile, Is.Null, "sanity: the standard JSON format");
+				Assert.That(metadata.OutputProfile, Is.Null, "sanity: the standard JSON format");
 				Assert.That(metadata.XmlProfile, Is.EqualTo("Modern"));
 			}
 		}
@@ -167,7 +167,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(metadata.WireProfile, Is.EqualTo("DataContractCompat"), "the JSON format is unchanged");
+				Assert.That(metadata.OutputProfile, Is.EqualTo("DataContractCompat"), "the JSON format is unchanged");
 				Assert.That(metadata.XmlProfile, Is.EqualTo("Modern"), "the explicit XML profile wins over the derivation");
 			}
 		}
@@ -184,7 +184,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(metadata.WireProfile, Is.Null, "the JSON format is unchanged");
+				Assert.That(metadata.OutputProfile, Is.Null, "the JSON format is unchanged");
 				Assert.That(metadata.XmlProfile, Is.EqualTo("DataContract"));
 			}
 		}

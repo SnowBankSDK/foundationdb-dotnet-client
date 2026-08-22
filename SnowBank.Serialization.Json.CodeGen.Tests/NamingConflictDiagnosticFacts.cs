@@ -76,8 +76,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		private static void AssertNamingConflict(ImmutableArray<Diagnostic> diagnostics)
 		{
 			var conflict = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0011");
-			Assert.That(conflict, Is.Not.Null, "the generator must report CJSON0011 for the member declaring two different wire names");
-			Assert.That(conflict!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "two different wire names on one member is an error, not a warning");
+			Assert.That(conflict, Is.Not.Null, "the generator must report CJSON0011 for the member declaring two different output names");
+			Assert.That(conflict!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "two different output names on one member is an error, not a warning");
 			Assert.That(conflict.GetMessage(), Does.Contain("one DTO per serializer"), "the remedy is the split (the same greppable phrase as the rest of the conflicting-name family)");
 		}
 

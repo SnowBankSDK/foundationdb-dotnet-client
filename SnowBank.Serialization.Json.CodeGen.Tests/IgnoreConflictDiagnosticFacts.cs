@@ -77,8 +77,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(message, Does.Contain(includeSignal), "the message names the include signal");
-				Assert.That(message, Does.Contain("one DTO per serializer"), "the primary remedy is the split (the same greppable phrase as the conflicting-wire-names family)");
-				Assert.That(message, Does.Not.Contain("Condition"), "a Condition suggestion would resolve the error while shipping the member onto the second wire");
+				Assert.That(message, Does.Contain("one DTO per serializer"), "the primary remedy is the split (the same greppable phrase as the conflicting-output-names family)");
+				Assert.That(message, Does.Not.Contain("Condition"), "a Condition suggestion would resolve the error while shipping the member onto the second output");
 			}
 		}
 

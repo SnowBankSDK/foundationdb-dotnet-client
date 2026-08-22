@@ -281,7 +281,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(bound, Is.Not.Null);
 			Assert.That(bound!["X1"].Model, Is.EqualTo("laser"));
 
-			// duplicate keys in the wire must fail loudly, never silently drop an item
+			// duplicate keys in the output must fail loudly, never silently drop an item
 			Assert.That(() => CrystalJson.Deserialize<DeviceIndex>("""[ { "Serial": "X1" }, { "Serial": "X1" } ]"""), Throws.Exception);
 		}
 
@@ -300,16 +300,16 @@ namespace SnowBank.Data.Json.Tests
 			// queues serialize front-first, and round-trip in the same order
 			var queue = CrystalJson.Deserialize<Queue<int>>("[ 1, 2, 3 ]");
 			Assert.That(queue, Is.InstanceOf<Queue<int>>().And.EqualTo((int[]) [ 1, 2, 3 ]));
-			Assert.That(queue.Dequeue(), Is.EqualTo(1), "the wire order is the dequeue order");
+			Assert.That(queue.Dequeue(), Is.EqualTo(1), "the output order is the dequeue order");
 			Assert.That(CrystalJson.Serialize(new Queue<int>([ 1, 2, 3 ])), Is.EqualTo("[ 1, 2, 3 ]"));
 
-			// stacks serialize top-first, and the round-trip PRESERVES the wire (unlike legacy serializers that reversed it)
+			// stacks serialize top-first, and the round-trip PRESERVES the output (unlike legacy serializers that reversed it)
 			var stack = new Stack<int>();
 			stack.Push(1); stack.Push(2); stack.Push(3);
 			var json = CrystalJson.Serialize(stack);
-			Assert.That(json, Is.EqualTo("[ 3, 2, 1 ]"), "top of the stack comes first on the wire");
+			Assert.That(json, Is.EqualTo("[ 3, 2, 1 ]"), "top of the stack comes first in the output");
 			var stack2 = CrystalJson.Deserialize<Stack<int>>(json);
-			Assert.That(stack2.Peek(), Is.EqualTo(3), "the first wire element is the top of the stack");
+			Assert.That(stack2.Peek(), Is.EqualTo(3), "the first output element is the top of the stack");
 			Assert.That(CrystalJson.Serialize(stack2), Is.EqualTo(json), "round-trip preserves the order");
 
 			// concurrent variants follow the same rules; a bag preserves the CONTENT (it is unordered by contract)
@@ -367,7 +367,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(table["b"], Is.EqualTo("two"));
 			Assert.That(CrystalJson.Serialize(table), Is.EqualTo("""{ "a": 1, "b": "two" }""").Or.EqualTo("""{ "b": "two", "a": 1 }"""));
 
-			// ... and also accepts the legacy DCJS wire shape [ { "Key": .., "Value": .. } ]
+			// ... and also accepts the legacy DCJS output shape [ { "Key": .., "Value": .. } ]
 			var fromPairs = CrystalJson.Deserialize<System.Collections.Hashtable>("""[ { "Key": "a", "Value": 1 } ]""");
 			Assert.That(fromPairs["a"], Is.EqualTo(1));
 
