@@ -1133,6 +1133,8 @@ namespace FoundationDB.Client
 			int iteration = 1;
 			var cursor = beginInclusive;
 			long visited = 0;
+			// a page can report more data while the limit is already reached, so the budget shrinks with every page
+			int remaining = options.Limit ?? 0;
 
 			while (true)
 			{
@@ -1143,6 +1145,16 @@ namespace FoundationDB.Client
 				if (!result.HasMore)
 				{ // we are done
 					break;
+				}
+
+				if (remaining > 0)
+				{
+					remaining -= result.Count;
+					if (remaining <= 0)
+					{ // the limit is reached
+						break;
+					}
+					options = options.WithLimit(remaining);
 				}
 
 				// update the cursor to continue reading after the last key of this chunk

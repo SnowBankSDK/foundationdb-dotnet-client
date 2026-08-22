@@ -1650,6 +1650,47 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		public async Task Test_Visit_Range_Honors_The_Limit_Across_Pages()
+		{
+			// a visit with a Limit smaller than the range must stop at the limit, even when the first page
+			// reports more data: the remaining budget shrinks with every page instead of restarting at the limit
+
+			const int N = 1000;
+			const int LIMIT = 10;
+
+			using (var db = await OpenTestPartitionAsync())
+			{
+				await CleanLocation(db);
+
+				await db.WriteAsync(async tr =>
+				{
+					var folder = await db.Root.Resolve(tr);
+					foreach (int i in Enumerable.Range(0, N))
+					{
+						tr.Set(folder.Key(i), Slice.FromInt32(i));
+					}
+				}, this.Cancellation);
+
+				using (var tr = db.BeginTransaction(this.Cancellation))
+				{
+					var folder = await db.Root.Resolve(tr);
+
+					var seen = new List<int>();
+					var visited = await tr.VisitRangeAsync(folder.Key(0), folder.Key(N), seen, (state, k, v) => state.Add(v.ToInt32()), new FdbRangeOptions { Limit = LIMIT });
+
+					Assert.That(visited, Is.EqualTo(LIMIT), "the visit must stop at the limit");
+					Assert.That(seen, Is.EqualTo(Enumerable.Range(0, LIMIT).ToList()), "the first LIMIT keys, in order");
+
+					// a limit larger than the range visits everything once
+					seen.Clear();
+					visited = await tr.VisitRangeAsync(folder.Key(0), folder.Key(N), seen, (state, k, v) => state.Add(v.ToInt32()), new FdbRangeOptions { Limit = N + 5 });
+					Assert.That(visited, Is.EqualTo(N));
+					Assert.That(seen.Count, Is.EqualTo(N));
+				}
+			}
+		}
+
+		[Test]
 		public async Task Test_Range_Query_Supports_Composed_Linq_Operators()
 		{
 			// pins GetRange(...).Where(...).Select(...).ToListAsync() in both operator orders: the query's Where
