@@ -30,9 +30,13 @@ namespace SnowBank.Data.Json.Tests
 	using System.Reflection;
 
 	/// <summary>Runs the Acme DCJS sample zoo (33 synthetic cases mirroring a real DataContract corpus) against
-	/// CrystalJson, and pins a per-case verdict: what round-trips, what reads back from the legacy wire, and what is
-	/// refused or diverges BY RULING. The wire in <c>zoo.json</c> was captured from the real DataContractJsonSerializer
-	/// (identical on .NET Framework 4.7.2 and .NET 10, measured).</summary>
+	/// CrystalJson, and pins a per-case expectation: what round-trips, what reads back from the legacy wire, and what
+	/// is refused. The wire in <c>zoo.json</c> was captured from the real DataContractJsonSerializer, and is identical
+	/// on .NET Framework 4.7.2 and .NET 10.
+	/// <para>The corpus is generated, and each expectation is derived from the reference behavior; an expectation that
+	/// disagrees with the committed code is the thing to fix.</para>
+	/// <para>The read assertions only check that the bind returns non-null, so a <c>true</c> means the bind did not
+	/// throw, not that every value survived.</para></summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -101,15 +105,15 @@ namespace SnowBank.Data.Json.Tests
 
 		public static IEnumerable<string> AllCaseIds => LoadZoo().Keys.OrderBy(x => x, StringComparer.Ordinal);
 
-		#region Verdicts...
+		#region Derived expectations...
 
-		/// <summary>What CrystalJson is expected to do with a case, given the rulings of 2026-07-30</summary>
+		/// <summary>What CrystalJson is expected to do with a case; derived, not authoritative</summary>
 		public sealed record Verdict
 		{
 			/// <summary>Serializing Create() with default settings succeeds</summary>
 			public bool Writes { get; init; } = true;
 
-			/// <summary>CrystalJson can read back its OWN output into the root type, and re-serializing yields the same text</summary>
+			/// <summary>CrystalJson can read back its own output into the root type, and re-serializing yields the same text</summary>
 			public bool SelfRoundTrips { get; init; } = true;
 
 			/// <summary>CrystalJson binds the captured DCJS wire into the root type</summary>
@@ -118,35 +122,36 @@ namespace SnowBank.Data.Json.Tests
 			/// <summary>CrystalJson binds every legacy at-rest document of the case</summary>
 			public bool ReadsLegacyDocuments { get; init; } = true;
 
-			/// <summary>The reason for any 'false' above: the ruling or documented divergence this case pins</summary>
+			/// <summary>The reason for any 'false' above: the derived expectation or documented divergence this case pins</summary>
 			public string? Because { get; init; }
 		}
 
-		/// <summary>The per-case rulings: everything not listed here is expected to fully work</summary>
-		private static readonly Dictionary<string, Verdict> Rulings = new(StringComparer.Ordinal)
+		/// <summary>The per-case derived expectations: everything not listed here is expected to fully work</summary>
+		private static readonly Dictionary<string, Verdict> DerivedExpectations = new(StringComparer.Ordinal)
 		{
-			// [KnownType] is ruled won't-implement (WCF-era artifact): CrystalJson emits no discriminator and does not
-			// consult "__type"; polymorphic members need [JsonPolymorphic]/[JsonDerivedType] (Acme: 10 sites, 6 base types)
+			// [KnownType] gets no support: no discriminator is emitted and "__type" is not consulted; derived types
+			// are declared with [JsonDerivedType]. An untagged write emits the runtime type's members, and that
+			// document does not read back into an abstract declared type.
 			["poly-known-type-abstract"] = new()
 			{
 				SelfRoundTrips = false, ReadsDcjsWire = false, ReadsLegacyDocuments = false,
-				Because = "[KnownType] won't-implement: abstract members need [JsonPolymorphic]/[JsonDerivedType]",
+				Because = "no [KnownType] support: abstract members need [JsonPolymorphic]/[JsonDerivedType]",
 			},
 			["poly-serializer-known-types"] = new()
 			{
 				SelfRoundTrips = false, ReadsDcjsWire = false,
-				Because = "same ruling for knownTypes passed to the serializer constructor",
+				Because = "same stance for knownTypes passed to the serializer constructor",
 			},
 
-			// one member, two serializers, two names: refused loudly since the double-contract guard (runtime +
-			// generator error CJSON0011); the fix on the application side is to split the DTO in two
+			// one member, two serializers, two names is a double contract, refused on both paths. The contract name
+			// is [DataMember(Name)] when spelled and the member's own name when bare; the remedy is to split the DTO.
 			["diagnostic-double-contract"] = new()
 			{
 				Writes = false, SelfRoundTrips = false, ReadsDcjsWire = false,
 				Because = "conflicting wire names are refused by design (split the DTO)",
 			},
 
-			// the four callbacks ARE invoked now, but only in the modern signatures. This corpus case carries the
+			// the four callbacks are invoked now, but only in the modern signatures. This corpus case carries the
 			// legacy void M(StreamingContext) shape, which every DCJS callsite uses because DCJS requires it, so
 			// the whole type is refused until its callbacks are converted (the migration guide's sweep recipe).
 			["lifecycle-callbacks"] = new()
@@ -162,7 +167,7 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_Zoo_Is_Complete()
 		{
 			var zoo = LoadZoo();
-			// 33 since the 2026-07-31 re-import: `legacy-arraylist-members` was written after the first hand-off
+			// 33 since the re-import: `legacy-arraylist-members` was written after the first hand-off
 			Assert.That(zoo, Has.Count.EqualTo(33));
 			Assert.That(zoo.Values.Count(c => c.Kind == "compatibility"), Is.EqualTo(27));
 			Assert.That(zoo.Values.Count(c => c.Kind == "non-equivalence"), Is.EqualTo(2));
@@ -175,7 +180,7 @@ namespace SnowBank.Data.Json.Tests
 		{
 			var zoo = LoadZoo();
 			var testCase = zoo[id];
-			var verdict = Rulings.TryGetValue(id, out var ruled) ? ruled : new Verdict();
+			var verdict = DerivedExpectations.TryGetValue(id, out var expected) ? expected : new Verdict();
 
 			// 1. write direction, default settings
 			string? cjWire = null;
@@ -184,7 +189,7 @@ namespace SnowBank.Data.Json.Tests
 				cjWire = CrystalJson.Serialize(testCase.Create(), testCase.RootType);
 				Log($"cj : {cjWire}");
 				Log($"dcj: {(testCase.DcjsError is null ? testCase.DcjsWire : $"<threw: {testCase.DcjsError}>")}");
-				Assert.That(verdict.Writes, Is.True, $"serialization succeeded but the ruling expected a refusal ({verdict.Because})");
+				Assert.That(verdict.Writes, Is.True, $"serialization succeeded but the corpus expected a refusal ({verdict.Because})");
 			}
 			catch (Exception e) when (e is not AssertionException)
 			{
@@ -234,7 +239,7 @@ namespace SnowBank.Data.Json.Tests
 		{
 			// hybrid rule: [DataMember] on a non-public member of a [DataContract] type serializes automatically,
 			// so the CrystalJson wire for this case carries the same members and values as the captured DCJS wire
-			// (the generic runner only proves BINDING; this pins the write-side content)
+			// (the generic runner only proves the binding; this pins the write-side content)
 			var testCase = LoadZoo()["member-non-public"];
 			var cj = CrystalJson.Parse(CrystalJson.Serialize(testCase.Create(), testCase.RootType));
 			Assert.That(cj, IsJson.EqualTo(CrystalJson.Parse(testCase.DcjsWire)));
@@ -245,7 +250,7 @@ namespace SnowBank.Data.Json.Tests
 			try
 			{
 				step();
-				Assert.That(expectedToWork, Is.True, $"{label} succeeded, but the ruling expected a failure ({because})");
+				Assert.That(expectedToWork, Is.True, $"{label} succeeded, but the corpus expected a failure ({because})");
 			}
 			catch (AssertionException)
 			{

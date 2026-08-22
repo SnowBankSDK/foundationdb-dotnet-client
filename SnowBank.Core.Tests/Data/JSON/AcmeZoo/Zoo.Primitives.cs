@@ -32,7 +32,7 @@ namespace Acme.Zoo.Cases.PrimitiveScalars
 		[DataMember(Name = "intMax")]
 		public int IntMax { get; set; }
 
-		/// <summary>Above 2^53: exact in C#, NOT exactly representable by a JavaScript number.</summary>
+		/// <summary>Above 2^53: exact in C#, not exactly representable by a JavaScript number.</summary>
 		[DataMember(Name = "longAbove2Pow53")]
 		public long LongAbove2Pow53 { get; set; }
 
@@ -108,11 +108,11 @@ namespace Acme.Zoo.Cases.PrimitiveDateTimeKinds
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>Every DateTime kind the application really stores, plus DateTimeOffset.
-	/// TIMEZONE SENSITIVE: DCJS embeds the generating machine's UTC offset for Local and
+	/// Timezone sensitive: DCJS embeds the generating machine's UTC offset for Local and
 	/// Unspecified kinds, so these two members only reproduce byte-for-byte in the timezone
 	/// recorded in the manifest. That dependency is the point of the case, not a flaw.
 	/// Consequence for the replacement: an offsetless ISO 8601 rendering of an Unspecified
-	/// date is interpreted as LOCAL time by a browser, so the client computes an instant
+	/// date is interpreted as local time by a browser, so the client computes an instant
 	/// shifted by its own UTC offset. No C# binding test can observe that.</summary>
 	[DataContract]
 	public class DateKindsDto
@@ -189,7 +189,7 @@ namespace Acme.Zoo.Cases.PrimitiveStringEscaping
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>Everything that makes a JSON writer choose an escaping style. Escaping style
-	/// is absorbed by the equivalence rubric, so these are here to prove the DECODED value
+	/// is absorbed by the equivalence rubric, so these are here to prove the decoded value
 	/// survives, not to compare escape sequences.</summary>
 	[DataContract]
 	public class EscapingDto
@@ -215,7 +215,7 @@ namespace Acme.Zoo.Cases.PrimitiveStringEscaping
 		[DataMember(Name = "rightToLeft")]
 		public string RightToLeft { get; set; }
 
-		/// <summary>A single astral character, i.e. a UTF-16 surrogate PAIR. This is where
+		/// <summary>A single astral character, i.e. a UTF-16 surrogate pair. This is where
 		/// "sort keys ordinally" stops being a single well-defined instruction, because
 		/// UTF-16 code-unit order and UTF-8 byte order disagree above the BMP.</summary>
 		[DataMember(Name = "astralChar")]
@@ -272,7 +272,7 @@ namespace Acme.Zoo.Cases.PrimitiveStringEscaping
 			{
 				return new[]
 				{
-					// A string member whose CONTENT looks like a date. It must come back a
+					// A string member whose content looks like a date. It must come back a
 					// string, not silently become a DateTime.
 					"{\"looksLikeADate\":\"2026-07-30T12:34:56Z\",\"looksLikeMicrosoftDate\":\"\\/Date(1784507696000)\\/\"}"
 				};
@@ -363,8 +363,9 @@ namespace Acme.Zoo.Cases.EnumPlainAndEnumMember
 				return new[]
 				{
 					"{\"stateWithValue\":5,\"stateWithoutValue\":9,\"plain\":2}",
-					// The string form a modern serializer would emit.
-					// A numeric value OUTSIDE the declared set: tolerated, or rejected?
+					// A numeric value outside the declared set: DCJS accepts it silently, and a member cast to an
+					// undeclared value is how one reaches the wire. The string form a modern serializer emits is
+					// deliberately not listed: DCJS throws on it, so no producer wrote it into this application's data.
 					"{\"stateWithValue\":4242}"
 				};
 			}
@@ -379,7 +380,7 @@ namespace Acme.Zoo.Cases.EnumFlags
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>[Flags]. The rubric treats numeric and string enum renderings as equivalent
-	/// for a scalar enum; for a flags enum they are NOT, because a client doing a bitwise
+	/// for a scalar enum; for a flags enum it does not, because a client doing a bitwise
 	/// test against a combined numeric value cannot do anything with "Read, Write".</summary>
 	[DataContract]
 	[Flags]

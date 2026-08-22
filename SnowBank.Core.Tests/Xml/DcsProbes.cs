@@ -315,6 +315,47 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		public void SetSecret(string? value) => this.secret = value;
 	}
 
+	/// <summary>Three levels, the middle one overriding a member of the base. The reference serializer writes the
+	/// member once, with the members of the level that declares it.</summary>
+	[DataContract]
+	public class OverrideBaseProbe
+	{
+		[DataMember] public virtual string? Shared { get; set; }
+		[DataMember] public string? Zulu { get; set; }
+	}
+
+	/// <inheritdoc cref="OverrideBaseProbe"/>
+	[DataContract]
+	public class OverrideMiddleProbe : OverrideBaseProbe
+	{
+		[DataMember] public override string? Shared { get; set; }
+		[DataMember] public string? Alpha { get; set; }
+	}
+
+	/// <inheritdoc cref="OverrideBaseProbe"/>
+	[DataContract]
+	public sealed class OverrideLeafProbe : OverrideMiddleProbe
+	{
+		[DataMember] public string? Kilo { get; set; }
+	}
+
+	/// <summary>A member shadowed by a <c>new</c> one. The reference serializer treats the two as two contract members
+	/// and writes both; one C# accessor per name can only read the derived one (acted deviation 4).</summary>
+	[DataContract]
+	public class ShadowBaseProbe
+	{
+		[DataMember] public string? Shared { get; set; }
+		[DataMember] public string? Zulu { get; set; }
+	}
+
+	/// <inheritdoc cref="ShadowBaseProbe"/>
+	[DataContract]
+	public sealed class ShadowLeafProbe : ShadowBaseProbe
+	{
+		[DataMember] public new string? Shared { get; set; }
+		[DataMember] public string? Alpha { get; set; }
+	}
+
 	/// <summary>Pins the CRITICAL fix: a <c>readonly</c> <c>[DataMember]</c> FIELD, constructor-assigned. The reference
 	/// serializer's no-set-method check is property-only (it never looks at fields), so it emits this member; the
 	/// generator's own read-only filter used to drop it regardless of field-vs-property, which silently dropped it from
@@ -433,6 +474,8 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[CrystalSerializable(typeof(KeyedBagProbe))]
 	[CrystalSerializable(typeof(AnyTypeCollectionProbe))]
 	[CrystalSerializable(typeof(ReadOnlyFieldProbe))]
+	[CrystalSerializable(typeof(OverrideLeafProbe))]
+	[CrystalSerializable(typeof(ShadowLeafProbe))]
 	public static partial class DcsProbeSerializers
 	{
 	}

@@ -983,6 +983,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// the hierarchy comes back topmost-base first, so the index of the level IS the inheritance depth the
 				// DataContract format orders by (see CrystalJsonMemberMetadata.InheritanceLevel)
 				int inheritanceLevel = -1;
+				// position of each collected member in 'members', so that a member redeclared further down the hierarchy
+				// replaces the one it redeclares instead of being appended next to it
+				var memberIndexes = new Dictionary<string, int>(StringComparer.Ordinal);
 				foreach (var current in GetTypeHierarchy(type))
 				{
 					++inheritanceLevel;
@@ -996,12 +999,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{
 								memberDef = memberDef with { InheritanceLevel = inheritanceLevel };
 								Kenobi($"Inspected member {member.Name} with type {memberDef.Type.FullName}, N={memberDef.Type.NullableOfType?.FullName}, E={memberDef.Type.ElementType?.FullName}, K={memberDef.Type.KeyType?.FullName}, V={memberDef.Type.ValueType?.FullName}");
-								if (member.Name == "Id")
+								if (memberIndexes.TryGetValue(memberDef.MemberName, out int redeclared))
 								{
-									indexOfId = members.Count;
+									// a member redeclared further down the hierarchy is one member: the generated code declares one
+									// constant per member name (two would be CS0102), and the accessor reads the most derived declaration.
+									// An 'override' keeps the level of the declaration it overrides, which is where the reference
+									// serializer writes it; a 'new' member is a distinct contract member and takes its own level.
+									members[redeclared] = member.IsOverride ? memberDef with { InheritanceLevel = members[redeclared].InheritanceLevel } : memberDef;
 								}
-								members.Add(memberDef);
-								// a member shadowed by a 'new' one appears twice: the most derived wins, which is the one that lands in the document
+								else
+								{
+									if (member.Name == "Id")
+									{
+										indexOfId = members.Count;
+									}
+									memberIndexes[memberDef.MemberName] = members.Count;
+									members.Add(memberDef);
+								}
 								memberSymbols[memberDef.MemberName] = member;
 							}
 							else
@@ -1811,10 +1825,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 						continue;
 					}
 
-					// a member shadowing an inherited one of the same name (the 'new' keyword) appears twice in the
-					// hierarchy walk: that is one member, not a collision
-					if (previous == member.MemberName) continue;
-
 					ReportDiagnostic(
 						new(
 							"CXML0005",
@@ -2148,6 +2158,117 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.ToDisplayString());
 			}
 
+			#region Untagged abstract members...
+
+			/// <summary>Warns (CJSON0023) on a serialized member whose declared type is abstract or an interface, and carries no polymorphic discriminator</summary>
+			/// <remarks>
+			/// <para>The writer picks the members of the runtime value and emits them with no discriminator, so nothing in the document names the type that produced them. A reader handed the declared type back has no way to choose a derived type, and the value cannot be rebuilt.</para>
+			/// <para>Narrow on purpose: a collection or dictionary shape, a member a converter took over, and a type outside the application (the framework namespaces, the CrystalJson DOM) are all left alone, because none of them is a polymorphic slot the author can tag.</para>
+			/// </remarks>
+			private void MaybeReportUntaggedAbstractMember(ISymbol member, TypeMetadata type, ITypeSymbol typeSymbol, string? customConverterType)
+			{
+				if (customConverterType is not null)
+				{ // the converter owns the member's form, discriminator included
+					return;
+				}
+
+				if (typeSymbol is not INamedTypeSymbol declared || declared.TypeKind is not (TypeKind.Class or TypeKind.Interface))
+				{ // an array, a struct, a delegate and an open type parameter are none of them an abstraction to tag
+					return;
+				}
+
+				if (!declared.IsAbstract)
+				{ // a concrete declared type carries the members the writer emits, so the document already matches it
+					return;
+				}
+
+				if (type.ElementType is not null || type.KeyType is not null)
+				{ // IList<T>, ISet<T>, IDictionary<K, V> and friends are SHAPES the writer projects natively, not polymorphism
+					return;
+				}
+
+				if (!IsTypeOfInterest(type, declared))
+				{ // the same gate the crawler applies: the framework namespaces and the CrystalJson DOM are not the author's to annotate
+					return;
+				}
+
+				if (DeclaresPolymorphicDiscriminator(declared))
+				{
+					return;
+				}
+
+				ReportDiagnostic(
+					new(
+						"CJSON0023",
+						"A serialized member declares an abstract type with no polymorphic discriminator",
+						"The member '{0}' declares the {2} '{1}', which carries no [JsonPolymorphic] attribute. The writer emits the members of the runtime value with no discriminator, so a reader cannot bind the document back to '{1}'. Add [JsonPolymorphic] to '{1}', plus one [JsonDerivedType] per derived type.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Warning,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					// the annotation is dropped: the remedy names the type to decorate, and 'Shape?' is not what its declaration says
+					member.ToDisplayString(), declared.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString(), declared.TypeKind == TypeKind.Interface ? "interface" : "abstract class");
+			}
+
+			/// <summary>Tests whether a type is the declared root of a polymorphic tree, or inherits one from a base class or an interface</summary>
+			/// <remarks><c>[JsonDerivedType]</c> counts on its own, because <see cref="ParseTypeMetadata"/> already treats a type carrying one as polymorphic. The walk mirrors <c>CrystalJsonTypeResolver.TryFindJsonPolymorphicAttribute</c>, so the two paths agree on which declared types carry a discriminator.</remarks>
+			private static bool DeclaresPolymorphicDiscriminator(INamedTypeSymbol type)
+			{
+				for (INamedTypeSymbol? current = type; current is not null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+				{
+					if (HasPolymorphicAttribute(current)) return true;
+				}
+
+				foreach (var iface in type.AllInterfaces)
+				{
+					// no polymorphic vocabulary lives under System, and skipping it keeps the walk to the application's own interfaces
+					var ns = iface.ContainingNamespace?.ToDisplayString();
+					if (ns is null || ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal)) continue;
+					if (HasPolymorphicAttribute(iface)) return true;
+				}
+
+				return false;
+
+				static bool HasPolymorphicAttribute(INamedTypeSymbol candidate)
+				{
+					foreach (var attribute in candidate.GetAttributes())
+					{
+						switch (attribute.AttributeClass?.ToDisplayString())
+						{
+							case JsonPolymorphicAttributeFullName:
+							case JsonDerivedTypeAttributeFullName:
+							{
+								return true;
+							}
+						}
+					}
+					return false;
+				}
+			}
+
+			#endregion
+
+			/// <summary>Reports CJSON0022 on an explicit interface implementation that a <c>[DataContract]</c> type opted into its contract with <c>[DataMember]</c></summary>
+			/// <remarks>
+			/// <para><c>DataContractSerializer</c> ignores an explicit implementation on a plain DTO, because the member is private in metadata, and writes one on a <c>[DataContract]</c> type, under the qualified name. Skipping the member silently would write a document short of one element.</para>
+			/// <para>Mangling the qualified name into an identifier would still give an element name that cannot match the reference format's, so the declaration is refused instead.</para>
+			/// </remarks>
+			private void ReportExplicitInterfaceDataMember(ISymbol member)
+			{
+				ReportDiagnostic(
+					new(
+						"CJSON0022",
+						"An explicit interface implementation cannot be a data member",
+						"The member '{0}' is an explicit interface implementation carrying [DataMember], so it belongs to the data contract, but generated code cannot declare an accessor for a qualified member name. Promote it to a normal member (the explicit implementation can then delegate to it), or move the contract onto a DTO of its own.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					member.Locations.Length > 0 ? member.Locations[0] : null,
+					member.ToDisplayString());
+			}
+
 			/// <summary>Reports CJSON0020 (informational, once per container) when the generated JSON proxy surface (ToReadOnly/ToMutable, the ReadOnly/Writable proxy types) is left out</summary>
 			/// <remarks>
 			/// <para>Generating the proxy surface needs static abstract interface members, which require both a .NET 7+ runtime (the proxy interfaces are absent from the lite <c>netstandard2.0</c> build) and C# 11 (a consumer below that floor cannot implement them even when they are visible). <see cref="KnownTypeSymbols.SupportsJsonProxies"/> is the single source of truth for that combined test.</para>
@@ -2201,6 +2322,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (property.IsStatic)
 						{ // static members are never serialization state; an instance accessor over one would not compile (CS0176)
+							return default;
+						}
+						if (property.IsIndexer)
+						{ // an indexer is not serialization state either, and the reference serializer ignores it; its member name is "this[]", which no generated constant can carry (CS1001)
+							return default;
+						}
+						if (!property.ExplicitInterfaceImplementations.IsDefaultOrEmpty)
+						{ // an explicit implementation is private in metadata, so the reference serializer ignores it on a plain DTO; its member name is the qualified interface member, which is neither a legal identifier for the accessor thunk nor the metadata name that thunk asks for
+							if (dataContractMember)
+							{ // on a [DataContract] type membership is accessibility-blind, so this member is in the contract and the reference serializer writes it: refuse the declaration instead of writing a document short of one element
+								ReportExplicitInterfaceDataMember(member);
+							}
 							return default;
 						}
 						if (property.IsImplicitlyDeclared)
@@ -2793,6 +2926,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 					customConverterHasDeserializer = nativeConverterHasDeserializer;
 					customConverterIsNullableForm = nativeConverterIsNullableForm;
 				}
+
+				// reported here, past every exclusion above: an ignored member never reaches this point, and the
+				// converter that would answer for the member's form is resolved
+				MaybeReportUntaggedAbstractMember(member, type, typeSymbol, customConverterType);
 
 				if (dataContractMember && dataMemberName is not null)
 				{ // on a [DataContract] type the DataMember rename wins, as it does on the reflection path (attr.Name ?? name)

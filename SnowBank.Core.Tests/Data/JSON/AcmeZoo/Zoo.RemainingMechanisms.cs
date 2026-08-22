@@ -6,8 +6,9 @@
 // The two DataContract mechanisms the rest of the corpus did not represent. Both are rare,
 // and both were measured rather than assumed:
 //   IsReference=true : exactly 1 occurrence in the whole source tree
-//   ISerializable on a type that ALSO carries [DataContract] : 7 files, among them the
-//     property-set system, the directory user, the security identifier and the portal history
+//   ISerializable on a type that also carries [DataContract] : zero types (7 files carry both
+//     mechanisms on two distinct types each: property-set system, directory user, security
+//     identifier, portal history)
 // Rare does not mean safe: each produces a wire shape nothing else in the corpus produces.
 
 namespace Acme.Zoo.Cases.ContractIsReference
@@ -17,7 +18,7 @@ namespace Acme.Zoo.Cases.ContractIsReference
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>IsReference=true makes DCJS emit object IDENTITY on the wire: the first
+	/// <summary>IsReference=true makes DCJS emit object identity on the wire: the first
 	/// occurrence carries an id, later occurrences become a back-reference instead of a repeated
 	/// copy. That turns a shared reference into a wire-level construct, and it means the document
 	/// cannot be understood one member at a time.
@@ -38,7 +39,7 @@ namespace Acme.Zoo.Cases.ContractIsReference
 		[DataMember(Name = "first")]
 		public SharedNodeDto First { get; set; }
 
-		/// <summary>Deliberately the SAME instance as First.</summary>
+		/// <summary>Deliberately the same instance as First.</summary>
 		[DataMember(Name = "second")]
 		public SharedNodeDto Second { get; set; }
 
@@ -76,14 +77,14 @@ namespace Acme.Zoo.Cases.SerializableWithDataContract
 	using System.Runtime.Serialization.Json;
 	using System.Security.Permissions;
 
-	/// <summary>A type that implements ISerializable AND carries [DataContract]. Seven files in
+	/// <summary>A type that implements ISerializable and carries [DataContract]. Seven files in
 	/// the application do this, including the property-set system, so it is not an accident of
 	/// one class.
-	/// <para>What this case pins is WHICH CONTRACT WINS. The two describe different shapes:
+	/// <para>What this case pins is which contract wins. The two describe different shapes:
 	/// GetObjectData writes the names it chooses, the [DataMember] declarations say something
 	/// else. Only one of them reaches the wire, and knowing which one tells the replacement
 	/// whether the hand-written ISerializable code is load-bearing or dead weight that can be
-	/// dropped. The members are deliberately given DIFFERENT names in the two mechanisms so the
+	/// dropped. The members are deliberately given different names in the two mechanisms so the
 	/// answer is unambiguous in the captured output.</para></summary>
 	[Serializable]
 	[DataContract]

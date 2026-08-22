@@ -2251,7 +2251,7 @@ namespace SnowBank.Data.Json
 						}
 					}
 
-					if (!found) throw new InvalidOperationException("Cannot resolve intermediate type {} in polymorphic chain under {} because there is not JsonDerivedType attribute for this specific type.");
+					if (!found) throw new InvalidOperationException($"Cannot resolve intermediate type '{type.GetFriendlyName()}' in the polymorphic chain under '{parent.GetFriendlyName()}' because there is no JsonDerivedType attribute for this specific type.");
 					baseType = parent;
 				}
 			}
@@ -2293,7 +2293,7 @@ namespace SnowBank.Data.Json
 						}
 					}
 
-					if (!found) throw new InvalidOperationException("Cannot resolve intermediate type {} in polymorphic chain under {} because there is not JsonDerivedType attribute for this specific type.");
+					if (!found) throw new InvalidOperationException($"Cannot resolve intermediate type '{type.GetFriendlyName()}' in the polymorphic chain under '{parent.GetFriendlyName()}' because there is no JsonDerivedType attribute for this specific type.");
 					baseType = parent;
 				}
 			}
