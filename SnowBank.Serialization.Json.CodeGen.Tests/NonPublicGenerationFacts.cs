@@ -190,6 +190,85 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(errors, Is.Empty, "the full generated output must compile against the lite netstandard2.0 build of SnowBank.Core, with the proxy surface excluded");
 		}
 
+		private const string MetadataDtoSource = """
+			namespace Probe
+			{
+
+				[System.Runtime.Serialization.DataContract]
+				public sealed class MetadataDto
+				{
+					[System.Runtime.Serialization.DataMember]
+					private string? Secret { get; set; }
+
+					[System.Runtime.Serialization.DataMember]
+					public int Counted { get; private set; }
+
+					[System.Runtime.Serialization.DataMember]
+					public string? Plain { get; set; }
+				}
+
+			}
+			""";
+
+		private const string MetadataContainerSource = """
+			namespace Probe
+			{
+
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.CrystalSerializable(typeof(Probe.MetadataDto))]
+				public static partial class MetadataConverters
+				{
+				}
+
+			}
+			""";
+
+		[Test]
+		public void Test_A_Private_DataMember_In_A_Referenced_Assembly_Is_Generable()
+		{
+			// a certification host references the product as compiled assemblies, and Roslyn's default metadata
+			// import drops private members: a private [DataMember] vanishes from the contract and a private setter
+			// makes its property look read-only (CXML0013). The harness imports all members, and this fact is what
+			// notices that option regressing.
+			var dtoReference = GeneratorProbeHarness.CompileToReference(MetadataDtoSource, "ProbeDtoAssembly");
+
+			var compilation = GeneratorProbeHarness.Compile(MetadataContainerSource, assemblyName: "ProbeConsumerAssembly").AddReferences(dtoReference);
+			var (output, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+
+			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "every member of the referenced contract is visible, so nothing is refused and nothing nudges");
+
+			var generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
+			Assert.That(generated, Does.Contain("Secret"), "the private [DataMember] of the referenced type must be part of the contract");
+			Assert.That(generated, Does.Contain("Counted"), "the private-setter [DataMember] of the referenced type must be writable, not read-only");
+			Assert.That(generated, Does.Contain("UnsafeAccessor"), "the non-public members go through the zero-cost thunks");
+
+			Assert.That(output.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty, "the emitted thunks must compile clean against the metadata reference");
+		}
+
+		[Test]
+		public void Test_The_Default_Metadata_Import_Loses_The_Same_Members()
+		{
+			// the measurement this fixture's .All import exists to fix, pinned so the contrast stays observable: the
+			// same contract through a DEFAULT-import compilation loses its private member and refuses the
+			// private-setter property as read-only. If Roslyn ever changes the default, this fact says so.
+			var dtoReference = GeneratorProbeHarness.CompileToReference(MetadataDtoSource, "ProbeDtoAssembly");
+
+			var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);
+			var compilation = CSharpCompilation.Create(
+				"ProbeConsumerAssembly",
+				syntaxTrees: [ CSharpSyntaxTree.ParseText(MetadataContainerSource, parseOptions) ],
+				references: [ ..GeneratorProbeHarness.References, dtoReference ],
+				options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+			var (output, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+
+			Assert.That(diagnostics.Select(static d => d.Id), Does.Contain("CXML0013"), "under the default import the private setter is invisible, so the property looks read-only and is refused");
+
+			var generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
+			Assert.That(generated, Does.Not.Contain("Secret"), "under the default import the private member does not exist at all");
+		}
+
 		/// <summary>Builds a netstandard2.0 reference set (the SDK's bundled `ref/netstandard.dll` facade + the lite build of SnowBank.Core and its own dependency closure), or <see langword="null"/> when either is absent</summary>
 		/// <remarks>The whole output directory is referenced, not just <c>SnowBank.Core.dll</c>: its netstandard2.0 build pulls in <c>System.Memory</c>, <c>System.Buffers</c> and <c>System.Runtime.CompilerServices.Unsafe</c> (the BCL polyfill packages), and the generated code (spans, <c>ArrayPool</c>, <c>Unsafe</c>) resolves the same types from those assemblies exactly as a real consumer project would.</remarks>
 		private static IReadOnlyList<MetadataReference>? TryBuildNetStandard20References()
