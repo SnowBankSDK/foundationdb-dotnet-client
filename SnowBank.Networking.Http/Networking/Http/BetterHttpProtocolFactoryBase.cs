@@ -90,8 +90,8 @@ namespace SnowBank.Networking.Http
 
 			OnAfterConfigure(options);
 
-			// per-call configure = protocol/client behavior only; wire policy = the named policy. Fail loudly on the rest:
-			// wire policy set here can never reach the shared pooled transport, and silence would be a silent break.
+			// per-call configure = protocol/client behavior only; transport policy = the named policy. Fail loudly on the rest:
+			// transport policy set here can never reach the shared pooled transport, and silence would be a silent break.
 			options.EnsureOnlyProtocolBehavior($"{GetType().Name}.CreateClient");
 
 			// a plain factory client over the name's pooled chain, carrying the protocol options as its per-instance

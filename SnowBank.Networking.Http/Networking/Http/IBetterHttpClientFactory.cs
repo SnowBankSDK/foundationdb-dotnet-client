@@ -52,7 +52,7 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Creates a new client bound to a base address, with per-shell options, over a named policy.</summary>
 		/// <param name="baseAddress">Base address applied to the transient shell (relative request paths resolve against it). Never touches the pooled chain.</param>
-		/// <param name="shell">Per-shell options (default headers, request version, hooks, request options) applied to THIS client only. Wire policy stays on the named policy.</param>
+		/// <param name="shell">Per-shell options (default headers, request version, hooks, request options) applied to THIS client only. Transport policy stays on the named policy.</param>
 		/// <param name="name">Optional client name; the default client is used when <c>null</c>.</param>
 		/// <returns>A transient shell carrying the per-shell options over the name's pooled chain.</returns>
 		BetterHttpClient CreateClient(Uri baseAddress, BetterHttpShellOptions shell, string? name = null);

@@ -88,7 +88,7 @@ namespace SnowBank.Networking.PacketCapture
 				StackTrace = manager.Options.CaptureStackTraces ? new StackTrace(2).ToString() : null,
 			};
 
-			// intercept the request body (the bytes serialized to the wire during the send). A streaming/duplex request body
+			// intercept the request body (the bytes serialized to the transport during the send). A streaming/duplex request body
 			// (e.g. gRPC) keeps being written long after the response headers return, so we must NOT wrap it: the interceptor
 			// is restored and disposed as soon as the headers arrive (see CompleteRequestCapture), and disposing its mirror
 			// while the body is still being pumped would throw and tear the request mid-flight. Such a body is left untouched.

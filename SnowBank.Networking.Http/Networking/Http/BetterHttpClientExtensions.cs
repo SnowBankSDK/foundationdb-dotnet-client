@@ -319,7 +319,7 @@ namespace SnowBank.Networking.Http
 		/// <summary>Creates a client over a name's pooled chain, carrying per-call settings.</summary>
 		/// <param name="services">Service provider of the host.</param>
 		/// <param name="baseAddress">Optional base address applied to this client instance (relative request paths resolve against it). Never touches the pooled chain.</param>
-		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to the named policy registered with <c>AddBetterHttpClient(name, ...)</c>.</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Transport policy throws; it belongs to the named policy registered with <c>AddBetterHttpClient(name, ...)</c>.</param>
 		/// <param name="name">Client name whose policy drives the pooled chain; the default client when <see langword="null"/>.</param>
 		/// <remarks>
 		/// <para>This is the successor of the retired shell factory: the returned client is a plain factory client whose runtime carries the overlay, honored by the <c>SendAsync</c> extensions and the in-chain pipeline handler. Disposing it never tears down the shared sockets.</para>

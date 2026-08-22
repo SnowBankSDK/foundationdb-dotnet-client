@@ -35,7 +35,7 @@ namespace SnowBank.Testing.Framework.Tests
 	using SnowBank.Networking.PacketCapture;
 
 	/// <summary>Tests for the diagnostic packet dump (<see cref="CapturedPacket.GetBasicDump"/>): it renders arbitrary
-	/// captured wire bytes for a human and MUST NEVER throw, whatever the body contains.</summary>
+	/// captured transport bytes for a human and MUST NEVER throw, whatever the body contains.</summary>
 	[TestFixture]
 	public class CapturedPacketFacts : SimpleTest
 	{
