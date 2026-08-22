@@ -64,6 +64,7 @@ parameter). A container that needs both a JSON naming policy and its XML mirror 
 |---|---|
 | `Profile` | XML variant; derived from the container's JSON profile by default (`DataContractCompat` gives the DCS format, standard/Web gives the modern profile; no JSON output means the modern profile); explicit override allowed; an incoherent combination (a naming policy next to the DCS format) is a build error (CXML0001) |
 | `DictionaryFormat` | container default for the dictionary shape (see the modern profile below) |
+| `Schemaless` | DCS format only: reproduces the namespace-free stripped wire, byte for byte. On the modern profile the option is inert, and CXML0012 says so |
 
 ```csharp
 // MEMBER level: everything XML lives in [XmlProperty] (namespace SnowBank.Data.Xml)
@@ -102,10 +103,12 @@ error (the CXML diagnostic range) or a typed runtime exception, never a silent f
 ```
 
 Element and attribute names are precomputed by the generator in dual representation (a string
-plus a frozen UTF-8 literal) inside static `CrystalXmlName` fields, so the byte path never transcodes a
-name at run time. Non-public members go through the same `[UnsafeAccessor]` thunks as the JSON
-side. Polymorphism is a generated switch over the graph's known derived types; a runtime type
-outside the graph raises a typed exception.
+plus a frozen UTF-8 literal) inside static `CrystalXmlName` fields, with the contract namespace
+baked into the name on the DCS format, so the byte path never transcodes a name at run time. A
+name never holds a prefix: the emitter assigns prefixes by what is in scope at its depth.
+Non-public members go through the same `[UnsafeAccessor]` thunks as the JSON side. Polymorphism
+is a generated switch over the graph's known derived types; a runtime type outside the graph
+raises a typed exception.
 
 Public outputs on the generated holder (none goes through another):
 
@@ -122,13 +125,46 @@ from the container profile; `ShowNullMembers`, date/duration/enum formats).
 
 Mirror interfaces of the JSON side: `ICrystalXmlSerializer<T>` (the facet implemented by
 generated holders; extension point for per-member custom converters, verified at generation
-time) and `ICrystalXmlSerializable` (instance hook: the type writes its own XML).
+time), `ICrystalXmlElementSerializer<T>` (its composition extension: `WriteXmlElement` plus the
+two names a caller composes with, implemented by every generated converter) and
+`ICrystalXmlSerializable` (instance hook: the type writes its own XML).
+
+### Collection and scalar roots
+
+A bare collection or scalar cannot be enrolled (CJSON0019 refuses it: enroll the element type,
+not the collection). Those documents go through entry points on `CrystalXml` instead, mirroring
+the eight outputs above:
+
+```csharp
+// a sequence of contract items, composed out of the item type's facet
+string xml = CrystalXml.ToText(LegacySerializers.Shelf.Default, shelves);
+// <ArrayOfShelf xmlns="..."><Shelf>...</Shelf><Shelf>...</Shelf></ArrayOfShelf>
+
+// a bare scalar root, on the nested Scalar class
+string xml = CrystalXml.Scalar.ToText("hello");
+// <string xmlns="http://schemas.microsoft.com/2003/10/Serialization/">hello</string>
+```
+
+The root name is resolved, never guessed: the caller's `rootName` wins; the DCS format falls back
+to its `ArrayOfX` convention, in the item contract's namespace; the modern profile has no
+convention, so a collection root without a `rootName` raises `CrystalXmlRootNameException`. The
+item elements keep the item type's own element name, and `itemName` overrides it. The scalar
+entry points write the reference wire of the xsd lexical types (the lexical name in the
+Serialization namespace, nil when null); a type outside that set raises
+`CrystalXmlUnknownTypeException`. Scalars live on the nested `CrystalXml.Scalar` class rather
+than as overloads: a generic method taking a bare `T?` would capture every call the serializer
+overloads do not, and a mistyped argument must fail to compile rather than fail at write time.
 
 ## The compat profile: the DCS format
 
-The executable spec is a 28-family byte-equality suite against a live `DataContractSerializer`
-oracle (`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`; coverage ledger next to it in
-`COVERAGE.md`). Highlights:
+The executable spec is a suite against a live `DataContractSerializer` oracle
+(`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`, with the namespace rules pinned in
+`DcsNamespaceReferenceFacts.cs`; coverage ledger next to them in `COVERAGE.md`), under two
+acceptance rules. The default output is held to the standard wire on EXPANDED NAMES: this emission
+omits the declarations it can prove unused and writes the rest on the first element that needs
+them, so its bytes differ from the reference serializer's while every element and attribute
+resolves to the same (namespace, local name) pair. The `Schemaless = true` output is held to the
+stripped wire BYTE FOR BYTE. Highlights:
 
 - Root and contract names: `[DataContract(Name=)]` honored, generics compose `XOfY` with
   `{0}`/`{#}` expansion (namespace digest deliberately omitted), nested types `Outer.Inner`,
@@ -149,18 +185,32 @@ oracle (`SnowBank.Core.Tests/Xml/DcsWireFidelityFacts.cs`; coverage ledger next 
   self-closes, empty string keeps a start+end tag pair.
 - Dictionaries: `<KeyValueOfstringstring><Key>..</Key><Value>..</Value></KeyValueOfstringstring>`,
   and `<KeyValueOfstringShelf>` when the value is a contract type.
-- Polymorphism: `type="<contract name>"` attribute only when the runtime contract differs from
-  the declared one; the element name stays that of the declared type. An instance of a CONCRETE
-  polymorphic root writes its own body, unannotated - which is what the oracle does, and where
-  this profile deliberately parts ways with the modern one (see below).
+- Namespaces: the root element's contract namespace (`[DataContract(Namespace = ...)]`, else
+  `http://schemas.datacontract.org/2004/07/` plus the CLR namespace) is its default namespace,
+  and a member element lives in the namespace of the contract that DECLARES it. Five built-in
+  namespaces cover what no CLR namespace derives: XMLSchema-instance (the `i:nil` and `i:type`
+  attributes), XMLSchema (the QName of a boxed primitive's `i:type`), Arrays (unannotated generic
+  collections and dictionaries), Serialization (bare scalar roots), and the System contract
+  (`DateTimeOffset`). A name holds the local name and the namespace, never a prefix: the writer
+  assigns prefixes, keeps declarations in scope, and declares each namespace on the first element
+  that needs it. The instance namespace hoists to the root when two or more subtrees can carry a
+  nil or type marker.
+- Polymorphism: `i:type="<contract QName>"` attribute only when the runtime contract differs from
+  the declared one; the element name stays that of the declared type, in the DECLARING contract's
+  namespace. A derived type in the slot's own namespace writes a bare local name; one in another
+  namespace writes a prefixed QName and declares the prefix on the same element. An instance of a
+  CONCRETE polymorphic root writes its own body, unannotated - which is what the oracle does, and
+  where this profile deliberately parts ways with the modern one (see below).
 - `ISerializable` dialect: each `SerializationInfo` entry becomes an element named after the
   (encoded) key, values declared `object` carry a `type=` discriminator.
 - Scalars: DCS lexical forms (ISO dates truncated per `DateTimeKind`, ISO 8601 durations,
   `char` as its code point, `decimal` keeping scale, round-trip doubles, enums by
   `[EnumMember(Value=)]` or name via a generated switch, `DateTimeOffset` as the two-element
   `{DateTime, OffsetMinutes}` structure, `byte[]` as base64).
-- Text: no XML declaration, no namespaces or prefixes (`i:nil` arrives as `nil`, `i:type` as
-  `type`), self-closing `<X />` with a space, text line endings as raw CRLF.
+- Text: no XML declaration, self-closing `<X />` with a space, text line endings as raw CRLF.
+- `Schemaless = true`: the namespaces, prefixes and declarations disappear (`i:nil` arrives as
+  `nil`, `i:type` as `type`, the discriminator keeps only its local name). This is the historical
+  stripped wire some consumers store and parse, kept as an explicit, byte-certified option.
 
 Three deliberate deviations from raw DCS, each pinned by a dedicated test, are requirements:
 
@@ -172,7 +222,7 @@ Three deliberate deviations from raw DCS, each pinned by a dedicated test, are r
    The infoset emitters (`CrystalXDocumentEmitter`, `CrystalXmlWriterEmitter`) apply none of it - the DOM sees
    the characters verbatim, and `XmlWriter` answers for them under its own `CheckCharacters`.
 3. Typed exceptions (`CrystalXmlCycleException`, `CrystalXmlUnknownTypeException`,
-   `NotSupportedException`, `XmlException`) replace
+   `CrystalXmlRootNameException`, `NotSupportedException`, `XmlException`) replace
    `SerializationException`.
 
 ## The modern profile: the XML a JSON reader would predict
@@ -238,7 +288,7 @@ Three ways a construct is refused, and which one applies is a rule, not a case-b
 |---|---|
 | **CXML diagnostic** | the construct is refused at generation time, decidable from the DECLARATIONS alone (an attribute, a type, a contract name). It points at the offending declaration and carries a remedy. One member of the range, CXML0012, is an Info instead: it does not refuse anything, it names a setting the resolved format never consults. |
 | **`#error` in the emitted source** | a structural impossibility discovered inside emission, which no declaration could have predicted. Also kept as an unreachable backstop under a diagnostic that already covers the case. |
-| **typed exception** | the decision is data-dependent: only the value being written can make it (a runtime type outside the graph, a non-NCName dictionary key, an undeclared enum value, a graph deeper than the cap). |
+| **typed exception** | the decision is data-dependent: only the value being written can make it (a runtime type outside the graph, a non-NCName dictionary key, an undeclared enum value, a graph deeper than the cap, a collection root that neither the caller nor the profile names). |
 
 The rules about the CONTAINER as a whole - which output formats it names, and whether its markers
 combine - are not about either format, so they carry a neutral id instead:
@@ -264,7 +314,7 @@ Build-time diagnostics about the XML format itself live in the CXML range:
 | CXML0009 | an attribute-projected member with a custom converter |
 | CXML0010 | `[CollectionDataContract]` on a compat member's type |
 | CXML0011 | a dictionary whose resolved shape carries the value as text (`KeyAttribute`, `KeyValueAttributes`) while the value type has no lexical form |
-| CXML0012 | **Info, not an error** - a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, on a member whose RESOLVED dictionary shape is `Direct` (whose entries are named after their own key), or on a member whose type writes its own XML content (`ICrystalXmlSerializable`, which also makes a member-level `DictionaryFormat` inert - only the element NAME still comes from the member there); a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way); and a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape) |
+| CXML0012 | **Info, not an error** - a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, on a member whose RESOLVED dictionary shape is `Direct` (whose entries are named after their own key), or on a member whose type writes its own XML content (`ICrystalXmlSerializable`, which also makes a member-level `DictionaryFormat` inert - only the element NAME still comes from the member there); a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way); a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape); and a `[CrystalXmlOutput(Schemaless = true)]` on a container whose resolved profile is the modern one (the stripped wire is a variant of the DCS format) |
 | CXML0013 | compat profile only - a read-only (get-only, or non-public-setter with no opt-in) PROPERTY carrying `[DataMember]` on a `[DataContract]` type: the reference serializer rejects that contract outright (`InvalidDataContractException`, "No set method for property"), so there is no format to reproduce. Does not fire on a `readonly` `[DataMember]` FIELD (DCS's check is property-only) or on an init-only member (a different flag; DCS emits it) |
 
 At run time, graphs deeper than `CrystalXml.MaxDepth` (64 levels of generated recursion, the
