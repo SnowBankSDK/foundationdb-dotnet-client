@@ -76,6 +76,14 @@ namespace SnowBank.Networking.Http
 		/// <summary>Default cookie container that will be used by each request.</summary>
 		public CookieContainer? Cookies { get; set; }
 
+		/// <summary>Specifies whether the handler chain uses cookies for this client name.</summary>
+		/// <remarks>
+		/// <para><c>null</c> keeps the historical behavior: cookies are configured only when <see cref="Cookies"/> is supplied, and the transport keeps its own default otherwise.</para>
+		/// <para><c>false</c> forces cookies OFF for this client, whatever the transport default is; combining it with a non-null <see cref="Cookies"/> is a configuration error.</para>
+		/// <para><c>true</c> turns cookies on: when <see cref="Cookies"/> is null, a fresh container is created and stored on these options, so the same client name keeps its cookie state across chain rebuilds and never shares it with another name on the pooled transport.</para>
+		/// </remarks>
+		public bool? UseCookies { get; set; }
+
 		/// <summary>Default credentials that will be used by each request.</summary>
 		public IBetterCredentials? Credentials { get; set; }
 
@@ -85,6 +93,14 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Specifies the proxy information used by the client.</summary>
 		public IWebProxy? Proxy { get; set; }
+
+		/// <summary>Specifies whether the handler chain uses a proxy for this client name.</summary>
+		/// <remarks>
+		/// <para><c>null</c> keeps the historical behavior: a proxy is configured only when <see cref="Proxy"/> or <see cref="DefaultProxyCredentials"/> is supplied, and the transport keeps its own default otherwise.</para>
+		/// <para><c>false</c> forces the proxy OFF for this client, system proxy included; combining it with a non-null <see cref="Proxy"/> is a configuration error.</para>
+		/// <para><c>true</c> turns the proxy on: with a null <see cref="Proxy"/>, the system proxy applies, matching the <see cref="System.Net.Http.SocketsHttpHandler.UseProxy"/> semantics.</para>
+		/// </remarks>
+		public bool? UseProxy { get; set; }
 
 		/// <summary>Default credentials used to authenticate against a proxy.</summary>
 		public ICredentials? DefaultProxyCredentials { get; set; }
@@ -296,21 +312,55 @@ namespace SnowBank.Networking.Http
 		/// <remarks><para>If the top handler is <see cref="HttpClientHandler"/> it will be configured directly; otherwise, it will be wrapped with an instance of <see cref="CookieContainerMessageHandler"/> that will handle the <c>Cookie</c> and <c>Set-Cookie</c> headers automatically.</para></remarks>
 		protected virtual HttpMessageHandler ConfigureCookies(HttpMessageHandler handler)
 		{
-			if (this.Cookies is not null)
+			if (this.UseCookies == false)
+			{
+				if (this.Cookies is not null)
+				{
+					throw new InvalidOperationException("UseCookies = false conflicts with a non-null Cookies container: remove one of the two.");
+				}
+				switch (handler)
+				{
+					case BetterHttpClientHandler clientHandler:
+					{
+						clientHandler.UseCookies = false;
+						return clientHandler;
+					}
+					case HttpClientHandler clientHandler:
+					{
+						clientHandler.UseCookies = false;
+						return clientHandler;
+					}
+					default:
+					{ // nothing to disable: this chain never had cookie handling added on top of it
+						return handler;
+					}
+				}
+			}
+
+			var cookies = this.Cookies;
+			if (cookies is null && this.UseCookies == true)
+			{ // cookies requested with no container: mint one and keep it on the options, so the same
+			  // client name keeps its cookie state across chain rebuilds and never shares it with
+			  // another name on the pooled transport
+				cookies = new CookieContainer();
+				this.Cookies = cookies;
+			}
+
+			if (cookies is not null)
 			{
 				switch (handler)
 				{
 					case BetterHttpClientHandler clientHandler:
 					{
 						clientHandler.UseCookies = true;
-						clientHandler.CookieContainer = this.Cookies;
+						clientHandler.CookieContainer = cookies;
 
 						return clientHandler;
 					}
 					case HttpClientHandler clientHandler:
 					{
 						clientHandler.UseCookies = true;
-						clientHandler.CookieContainer = this.Cookies;
+						clientHandler.CookieContainer = cookies;
 
 						return clientHandler;
 					}
@@ -320,7 +370,7 @@ namespace SnowBank.Networking.Http
 					}
 					default:
 					{
-						return new CookieContainerMessageHandler(this.Cookies, handler);
+						return new CookieContainerMessageHandler(cookies, handler);
 					}
 				}
 			}
@@ -329,6 +379,48 @@ namespace SnowBank.Networking.Http
 
 		protected virtual HttpMessageHandler ConfigureProxy(HttpMessageHandler handler)
 		{
+			if (this.UseProxy == false)
+			{
+				if (this.Proxy is not null)
+				{
+					throw new InvalidOperationException("UseProxy = false conflicts with a non-null Proxy: remove one of the two.");
+				}
+				switch (handler)
+				{
+					case BetterHttpClientHandler clientHandler:
+					{
+						clientHandler.UseProxy = false;
+						return clientHandler;
+					}
+					case HttpClientHandler clientHandler:
+					{
+						clientHandler.UseProxy = false;
+						return clientHandler;
+					}
+					default:
+					{ // nothing to disable: this chain has no proxy handling of its own
+						return handler;
+					}
+				}
+			}
+
+			if (this.UseProxy == true && this.Proxy is null)
+			{ // proxy requested with none supplied: the system proxy applies
+				switch (handler)
+				{
+					case BetterHttpClientHandler clientHandler:
+					{
+						clientHandler.UseProxy = true;
+						break;
+					}
+					case HttpClientHandler clientHandler:
+					{
+						clientHandler.UseProxy = true;
+						break;
+					}
+				}
+			}
+
 			if (this.Proxy is not null || this.DefaultProxyCredentials is not null)
 			{
 				switch (handler)

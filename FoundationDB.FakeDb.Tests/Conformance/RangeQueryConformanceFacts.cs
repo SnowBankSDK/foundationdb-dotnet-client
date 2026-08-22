@@ -1654,10 +1654,9 @@ namespace FoundationDB.Client.Tests
 		[Test]
 		public async Task Test_Range_Query_Supports_Composed_Linq_Operators()
 		{
-			// pins GetRange(...).Where(...).Select(...).ToListAsync(): the range query's Where used to tunnel back
-			// into the dispatching AsyncQuery.Where extension, which dispatched back to the query's own Where, an
-			// infinite mutual recursion that killed the process with a stack overflow before any read ran. The
-			// recursion was in the composition itself, so it reproduced on every backend.
+			// pins GetRange(...).Where(...).Select(...).ToListAsync() in both operator orders: the query's Where
+			// must build its own iterator rather than tunnel into the AsyncQuery.Where extension, which dispatches
+			// back to the query for any IAsyncLinqQuery source
 			const int N = 50;
 
 			using (var db = await OpenTestPartitionAsync())
