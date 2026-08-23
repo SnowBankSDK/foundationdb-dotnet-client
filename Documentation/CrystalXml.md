@@ -125,14 +125,46 @@ Public outputs on the generated holder (none goes through another):
 | `WriteXmlTo(Stream / IBufferWriter<byte>, value)` | byte core |
 | `ToXDocument(value)` / `WriteXmlTo(XmlWriter, value)` | infoset emitters - infoset-level guarantees only, never byte-exact |
 
-Every output accepts an optional `rootName` and optional `CrystalJsonSettings` (defaults come
-from the container profile; `ShowNullMembers`, date/duration/enum formats).
+Every output accepts an optional `rootName` and an optional `CrystalXmlSettings` (see
+[Runtime output options](#runtime-output-options-crystalxmlsettings) below). A `null` settings
+uses the default baked from the container's `[CrystalXmlOutput]` attribute.
 
 Mirror interfaces of the JSON side: `ICrystalXmlSerializer<T>` (the facet implemented by
 generated holders; extension point for per-member custom converters, verified at generation
 time), `ICrystalXmlElementSerializer<T>` (its composition extension: `WriteXmlElement` plus the
 two names a caller composes with, implemented by every generated converter) and
 `ICrystalXmlSerializable` (instance hook: the type writes its own XML).
+
+### Runtime output options: `CrystalXmlSettings`
+
+`CrystalXmlSettings` is a `readonly struct` over a flags field. It configures the writer, and every
+`CrystalXml` entry point takes an optional one. Two presets seed a chain of `With...` builders:
+`CrystalXmlSettings.General` (the default, the general format) and
+`CrystalXmlSettings.DataContractCompat` (the DCS format, null members shown). Start from the preset
+that matches the container's format, then chain the writer-level knobs.
+
+```csharp
+string xml = CrystalXml.ToText(
+    OrderSerializers.Order.Default,
+    order,
+    CrystalXmlSettings.DataContractCompat.WithIndented().WithNewLine(CrystalXmlNewLine.Lf)
+);
+```
+
+| Setting | Builder | Effect |
+|---|---|---|
+| `Indented` | `WithIndented()` | indents the document; the default is compact (one line) |
+| `NewLine` | `WithNewLine(Crlf \| Lf)` | the line ending between indented elements; `Crlf` by default. The writer never reads the host's `Environment.NewLine` |
+| `EmptyElementStyle` | `WithEmptyElementStyle(SelfClosing \| Paired)` | `<foo/>` (default) or `<foo></foo>` for an empty element |
+| `WriteXmlDeclaration` | `WithXmlDeclaration()` | adds the `<?xml ...?>` line |
+| `ShowNullMembers` | `WithNullMembers()` / `WithoutNullMembers()` | writes a null member as an `i:nil` element instead of skipping it; on for `DataContractCompat`, off for `General` |
+
+The format itself (`Profile`, `OmitNamespaces`) comes from the `[CrystalXmlOutput]` attribute and is
+baked into the generated element names, so it is chosen at generation time, not flipped at run time.
+`Encoding` is not part of the struct: it is a parameter on the byte entry points (`ToBytes`, `ToSlice`,
+`WriteTo(Stream)`), defaulting to UTF-8 with no byte order mark; the string entry points return UTF-16.
+`WriteTo(Stream)` with a non-default encoding buffers the whole document before it writes; the default
+path streams.
 
 ### Collection and scalar roots
 
