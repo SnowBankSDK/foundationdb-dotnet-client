@@ -94,5 +94,7 @@
 - name: Release notes
   nameFr: Notes de version
   items:
+    - name: "7.4.4"
+      href: releases/7.4.4.md
     - name: "7.4.3"
       href: releases/7.4.3.md
