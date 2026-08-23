@@ -117,7 +117,7 @@ namespace SnowBank.Data.Xml
 	}
 
 	/// <summary>Error thrown when a root element has no name: the serializer declares no default, and the caller passed none</summary>
-	/// <remarks>A name is never guessed. The Modern profile writes no default name for a collection root, so a caller on that
+	/// <remarks>A name is never guessed. The General profile writes no default name for a collection root, so a caller on that
 	/// profile passes an explicit <c>rootName</c>; the DataContract profile falls back to its <c>ArrayOfX</c> convention when
 	/// the item contract can express one.</remarks>
 	[Serializable]

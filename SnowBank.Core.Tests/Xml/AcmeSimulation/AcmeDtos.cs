@@ -182,12 +182,12 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 
 	#region Test container...
 
-	// Schemaless, because this container simulates a consuming application whose stored documents and whose XSLT were
-	// both written against a namespace-free output: the transform matches element names with no prefix, so a namespaced
-	// document renders nothing. That is what the option is for, and this simulation is what proves it.
+	// Namespace-free, because this container simulates a consuming application whose stored documents and whose XSLT
+	// were both written against a namespace-free output: the transform matches element names with no prefix, so a
+	// namespaced document renders nothing. That is what the option is for, and this simulation is what proves it.
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
-	[CrystalXmlOutput(Schemaless = true)]
+	[CrystalXmlOutput(OmitNamespaces = true)]
 	[CrystalSerializable(typeof(ClientAccount))]
 	[CrystalSerializable(typeof(Address))]
 	[CrystalSerializable(typeof(Loan))]

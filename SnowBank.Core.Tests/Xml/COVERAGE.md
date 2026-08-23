@@ -54,7 +54,7 @@ hidden hole.
 | the full scalar table (bool lowercase, decimal scale, `1.2E-09`, `INF`/`NaN`, dates per Kind, `PT1H33M30S`, char as code point, base64, enum labels, Uri, Guid) | `DcsOutputFidelityFacts.Test_Scalar_Lexical_Forms`; `XmlDataContractEmissionFacts.Test_Scalar_Lexical_Forms`; unit-level: `ScalarFormatterFacts.*` (per-formatter, both profiles) |
 | `DateTimeKind.Local` machine-offset dependence reproduced (known product defect kept) | `DcsOutputFidelityFacts.Test_Local_Kind_DateTime_Is_Machine_Dependent_And_Reproduced`; `ScalarFormatterFacts.Test_DateTime_Local_Kind_Uses_The_Machine_Offset` |
 | `DateTimeOffset` two-element `{DateTime, OffsetMinutes}` structure | inside both `Test_Scalar_Lexical_Forms` facts |
-| `[EnumMember(Value=)]` labels; undeclared enum values; flags | `XmlDataContractEmissionFacts.Test_Deviation_3_An_Undeclared_Enum_Value_Raises_A_Typed_Exception`, `.Test_Deviation_3_An_Undeclared_Flags_Combination_Raises_A_Typed_Exception` (compat refuses, deviation 3); modern numeric fallback: `XmlModernEmissionFacts.Test_An_Undeclared_Enum_Value_Falls_Back_To_Its_Numeric_Form`, `.Test_An_Undeclared_Flags_Combination_Is_Refused_Loudly` |
+| `[EnumMember(Value=)]` labels; undeclared enum values; flags | `XmlDataContractEmissionFacts.Test_Deviation_3_An_Undeclared_Enum_Value_Raises_A_Typed_Exception`, `.Test_Deviation_3_An_Undeclared_Flags_Combination_Raises_A_Typed_Exception` (compat refuses, deviation 3); general numeric fallback: `XmlGeneralEmissionFacts.Test_An_Undeclared_Enum_Value_Falls_Back_To_Its_Numeric_Form`, `.Test_An_Undeclared_Flags_Combination_Is_Refused_Loudly` |
 | escaping (`&lt;` `&amp;`, bare quotes in text, raw CRLF, tab) | runtime writer suites (Core-XML subset, ported byte-for-byte from the spike escaping spec); end-to-end inside every byte-equality fact |
 | control characters sanitized at the value (acted deviation 2) + strict reproduction mode | `DcsOutputFidelityFacts.Test_Deviation_2_Sanitized_Control_Characters_Differ_From_The_Reference_Output`, `.Test_Deviation_2_StrictControlCharacters_Mode_Matches_The_Reference_Output_Exactly`; `XmlDataContractEmissionFacts.Test_Deviation_2_Control_Characters_Are_Sanitized_At_The_Value` |
 
@@ -63,8 +63,8 @@ hidden hole.
 | Trait | Covering tests |
 |---|---|
 | structural recursion on self-referential types; shared instance written twice in full | `DcsOutputFidelityFacts.Test_SelfReference_And_Shared_Instances` |
-| a cycle throws in both pipelines (acted deviation 3: `SerializationException` vs `CrystalXmlCycleException`) | `DcsOutputFidelityFacts.Test_Cycle_Throws_In_Both_Pipelines`; `XmlDataContractEmissionFacts.Test_A_Reference_Cycle_Throws_Instead_Of_Overflowing_The_Stack` (+ modern twin) |
-| deep acyclic graphs: cap boundary pinned (exactly `MaxDepth` serializes, `MaxDepth+1` throws) | `XmlDataContractEmissionFacts.Test_A_Deep_Acyclic_Chain_Up_To_The_Cap_Is_Written_In_Full`, `.Test_A_Deep_Acyclic_Chain_Past_The_Cap_Throws_The_Same_Typed_Exception` (+ modern twins) |
+| a cycle throws in both pipelines (acted deviation 3: `SerializationException` vs `CrystalXmlCycleException`) | `DcsOutputFidelityFacts.Test_Cycle_Throws_In_Both_Pipelines`; `XmlDataContractEmissionFacts.Test_A_Reference_Cycle_Throws_Instead_Of_Overflowing_The_Stack` (+ general twin) |
+| deep acyclic graphs: cap boundary pinned (exactly `MaxDepth` serializes, `MaxDepth+1` throws) | `XmlDataContractEmissionFacts.Test_A_Deep_Acyclic_Chain_Up_To_The_Cap_Is_Written_In_Full`, `.Test_A_Deep_Acyclic_Chain_Past_The_Cap_Throws_The_Same_Typed_Exception` (+ general twins) |
 
 ## 7. Contract-shape details
 

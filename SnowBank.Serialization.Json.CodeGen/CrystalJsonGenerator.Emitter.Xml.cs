@@ -40,7 +40,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <para>Split out of <c>CrystalJsonGenerator.Emitter.cs</c> so that the XML format stays legible next to the JSON one
 		/// rather than interleaved with it, and so that the second profile (the DataContract format) has an obvious home.</para>
 		/// <para>The profile dispatch happens in exactly two places: <see cref="Emitter.WritesXml"/> decides whether a container
-		/// produces XML at all, and <see cref="Emitter.WritesXmlDcs"/> picks between this section (the modern format) and
+		/// produces XML at all, and <see cref="Emitter.WritesXmlDcs"/> picks between this section (the general format) and
 		/// <c>CrystalJsonGenerator.Emitter.Xml.Dcs.cs</c> (the DataContract format). What the two share - the name and enum
 		/// tables, the holder helpers, the scalar formatter selection - lives here.</para>
 		/// </remarks>
@@ -73,7 +73,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private const string CrystalXmlMaxDepthFullName = CrystalXmlHelperFullName + ".MaxDepth";
 
-			private const string CrystalJsonSettingsExtensionsFullName = "global::" + KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSettingsExtensions";
+			private const string CrystalXmlSettingsExtensionsFullName = "global::" + KnownTypeSymbols.CrystalXmlSettingsExtensionsFullName;
 
 			private const string XDocumentFullName = "global::System.Xml.Linq.XDocument";
 
@@ -91,9 +91,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#region Resolved names (mirrors the parser's own constants)...
 
-			private const string XmlProfileModern = "Modern";
+			private const string XmlProfileGeneral = "General";
 
-			/// <inheritdoc cref="XmlProfileModern"/>
+			/// <inheritdoc cref="XmlProfileGeneral"/>
 			private const string XmlProfileDataContract = "DataContract";
 
 			private const string XmlDictionaryFormatDefault = "Default";
@@ -149,9 +149,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Whether this container emits an XML surface at all</summary>
 			/// <remarks>Both profiles share the holder helpers, the <c>ICrystalXmlSerializer&lt;T&gt;</c> facet and the two write
 			/// methods; only the BODY of those methods differs, which is what <see cref="WritesXmlDcs"/> selects.</remarks>
-			private bool WritesXml => this.Metadata.XmlProfile is XmlProfileModern or XmlProfileDataContract;
+			private bool WritesXml => this.Metadata.XmlProfile is XmlProfileGeneral or XmlProfileDataContract;
 
-			/// <summary>Whether this container emits the DataContract (compat) XML format rather than the modern one</summary>
+			/// <summary>Whether this container emits the DataContract (compat) XML format rather than the general one</summary>
 			/// <remarks>That format derives every name from the data contract and has its own member order, null policy, dictionary
 			/// shape and scalar forms, so it is emitted by its own section (<c>CrystalJsonGenerator.Emitter.Xml.Dcs.cs</c>).</remarks>
 			private bool WritesXmlDcs => this.Metadata.XmlProfile == XmlProfileDataContract;
@@ -162,9 +162,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// names it bakes carry a contract namespace. Every difference it makes is therefore in one place, the namespace
 			/// resolution (<c>GetXmlDcsNamespaceRef</c>), plus the one attribute whose VALUE is a name.</para>
 			/// <para>Only ever <see langword="true"/> together with <see cref="WritesXmlDcs"/>: the parser clears the option on
-			/// the Modern format, which has no namespace to strip, and reports <c>CXML0012</c> there.</para>
+			/// the General format, which has no namespace to strip, and reports <c>CXML0012</c> there.</para>
 			/// </remarks>
-			private bool WritesXmlDcsSchemaless => this.WritesXmlDcs && this.Metadata.CrystalXmlSchemaless;
+			private bool WritesXmlDcsOmitNamespaces => this.WritesXmlDcs && this.Metadata.CrystalXmlOmitNamespaces;
 
 			#region Name table...
 
@@ -415,7 +415,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					else
 					{
-						WriteXmlModernEnumHelper(sb, entry.Key, entry.Value);
+						WriteXmlGeneralEnumHelper(sb, entry.Key, entry.Value);
 					}
 				}
 			}
@@ -454,8 +454,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 			}
 
-			/// <summary>Emits the label lookup of one enum, on the modern format</summary>
-			private void WriteXmlModernEnumHelper(CSharpCodeBuilder sb, string methodName, TypeMetadata type)
+			/// <summary>Emits the label lookup of one enum, on the general format</summary>
+			private void WriteXmlGeneralEnumHelper(CSharpCodeBuilder sb, string methodName, TypeMetadata type)
 			{
 				string fullName = type.FullyQualifiedName;
 				string numeric = FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value");
@@ -465,7 +465,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					methodName,
 					type,
 					$"Labels of {type.Name}, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache",
-					// every declared member is in the output here: the modern profile has no membership rule of its own
+					// every declared member is in the output here: the general profile has no membership rule of its own
 					static _ => true,
 					GetXmlEnumLabel,
 					() =>
@@ -535,48 +535,65 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#region Holder helpers (the eight outputs)...
 
+			/// <summary>Returns the settings expression a generated XML holder helper uses when the caller passed none: the container's baked format profile</summary>
+			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging), the XML twin of <see cref="GetSettingsFallbackExpr"/>.
+			/// A namespace-free DataContract container (<see cref="WritesXmlDcsOmitNamespaces"/>) appends <c>WithOmitNamespaces()</c> so the baked
+			/// default stays self-consistent with the names this container actually writes.</remarks>
+			private string GetXmlSettingsFallbackExpr(string settingsVar)
+			{
+				string profile = $"{KnownTypeSymbols.CrystalXmlSettingsFullName}.{(this.WritesXmlDcs ? "DataContractCompat" : "General")}";
+				if (this.WritesXmlDcsOmitNamespaces)
+				{
+					profile += ".WithOmitNamespaces()";
+				}
+				return $"{settingsVar} ?? {profile}";
+			}
+
 			/// <summary>Emits the eight XML output entry points on the type's holder, each delegating to the matching <c>CrystalXml</c> helper</summary>
 			/// <remarks>None of them goes through another: every one owns its own sink lifecycle inside <c>CrystalXml</c>, so a
-			/// text document never round-trips through UTF-8 (or the other way around) just to reach a different overload.</remarks>
+			/// text document never round-trips through UTF-8 (or the other way around) just to reach a different overload.
+			/// A <see langword="null"/> settings argument resolves to the container's baked format profile (see <see cref="GetXmlSettingsFallbackExpr"/>),
+			/// not to the raw <see langword="null"/>: only an explicit caller value overrides it.</remarks>
 			private void WriteXmlStaticHelpers(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef, string typeCref)
 			{
 				string instanceType = typeDef.Type.FullyQualifiedName + (typeDef.Type.IsValueType() ? "" : "?");
-				string tail = $"{KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, string? rootName = default";
+				string tail = $"{KnownTypeSymbols.CrystalXmlSettingsFullName}? settings = default, string? rootName = default";
+				string settingsExpr = GetXmlSettingsFallbackExpr("settings");
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a string of XML text</summary>");
-				sb.AppendLine($"public static string ToXmlText({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToText(Default, instance, settings, rootName);");
+				sb.AppendLine($"public static string ToXmlText({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToText(Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a UTF-8 encoded <see cref=\"{KnownTypeSymbols.SliceFullName}\"/> of XML</summary>");
-				sb.AppendLine($"public static {KnownTypeSymbols.SliceFullName} ToXmlSlice({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToSlice(Default, instance, settings, rootName);");
+				sb.AppendLine($"public static {KnownTypeSymbols.SliceFullName} ToXmlSlice({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToSlice(Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a UTF-8 encoded byte array of XML</summary>");
-				sb.AppendLine($"public static byte[] ToXmlBytes({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToBytes(Default, instance, settings, rootName);");
+				sb.AppendLine($"public static byte[] ToXmlBytes({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToBytes(Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> as UTF-8 encoded XML into the specified stream</summary>");
 				sb.XmlComment("<remarks>The stream is not owned by this call: the caller flushes and disposes it.</remarks>");
-				sb.AppendLine($"public static void WriteXmlTo({StreamFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, settings, rootName);");
+				sb.AppendLine($"public static void WriteXmlTo({StreamFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> as XML text into the specified writer</summary>");
 				sb.XmlComment("<remarks>The writer is not owned by this call: the caller flushes and disposes it.</remarks>");
-				sb.AppendLine($"public static void WriteXmlTo({TextWriterFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, settings, rootName);");
+				sb.AppendLine($"public static void WriteXmlTo({TextWriterFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> as UTF-8 encoded XML into the specified buffer writer</summary>");
-				sb.AppendLine($"public static void WriteXmlTo({IBufferWriterOfByteFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, settings, rootName);");
+				sb.AppendLine($"public static void WriteXmlTo({IBufferWriterOfByteFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into the specified <see cref=\"T:System.Xml.XmlWriter\"/></summary>");
 				sb.XmlComment("<remarks>Only infoset equivalence with the byte-exact output is guaranteed here: the concrete bytes depend on how the writer was configured.</remarks>");
-				sb.AppendLine($"public static void WriteXmlTo({XmlWriterFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, settings, rootName);");
+				sb.AppendLine($"public static void WriteXmlTo({XmlWriterFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into an in-memory <see cref=\"T:System.Xml.Linq.XDocument\"/></summary>");
 				sb.XmlComment("<remarks>Only infoset equivalence with the byte-exact output is guaranteed here (no indentation or line-ending promise): this is the XML counterpart of <c>Pack</c>.</remarks>");
-				sb.AppendLine($"public static {XDocumentFullName} ToXDocument({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToXDocument(Default, instance, settings, rootName);");
+				sb.AppendLine($"public static {XDocumentFullName} ToXDocument({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToXDocument(Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 			}
 
@@ -603,7 +620,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				this.XmlNeedsCycleHelper = false;
 				var type = typeDef.Type;
 				string valueType = type.FullyQualifiedName + (type.IsValueType() ? "" : "?");
-				string settingsType = KnownTypeSymbols.CrystalJsonSettingsFullName;
+				string settingsType = KnownTypeSymbols.CrystalXmlSettingsFullName;
 
 				string rootRef = names.Ref(ResolveXmlRootName(sb, typeDef));
 
@@ -631,7 +648,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"public {XmlNameFullName} ElementName => {rootRef};");
 				sb.NewLine();
 				sb.InheritDoc();
-				sb.XmlComment("<remarks>The Modern profile has no collection root convention: the caller names such a root.</remarks>");
+				sb.XmlComment("<remarks>The General profile has no collection root convention: the caller names such a root.</remarks>");
 				sb.AppendLine("public string? CollectionRootName => null;");
 				sb.NewLine();
 
@@ -849,7 +866,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("if (value is null)");
 				sb.EnterBlock();
 				sb.AppendLine("emitter.WriteStartElement(in name);");
-				sb.AppendLine($"if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+				sb.AppendLine($"if ({CrystalXmlSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 				sb.EnterBlock();
 				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.LeaveBlock();
@@ -865,7 +882,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <c>StackOverflowException</c> that .NET cannot catch and that takes the whole process down. Counting the levels
 			/// costs one comparison against a constant per element on the happy path, allocates nothing, and needs no reflection.</para>
 			/// <para>Measured before this guard existed: a two-node cycle overflowed after ~2300 nested <c>WriteXmlElement</c>
-			/// frames on the modern profile and ~4600 on the compat one (one frame per level). The cap lives in
+			/// frames on the general profile and ~4600 on the compat one (one frame per level). The cap lives in
 			/// <c>CrystalXml.MaxDepth</c>, whose own documentation justifies the value.</para>
 			/// </remarks>
 			private void WriteXmlDepthGuard(CSharpCodeBuilder sb, TypeMetadata type)
@@ -897,10 +914,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Returns the field holding the name of the null marker, in the namespace the profile writes it in</summary>
 			/// <remarks>The local name is <c>nil</c> on both profiles and under both DataContract outputs; only the namespace
 			/// differs. The DataContract default puts it in the XML Schema instance namespace, so it reaches the output as
-			/// <c>i:nil</c>; the Modern profile and the schemaless option put it in none, so it reaches the output bare. Giving the
+			/// <c>i:nil</c>; the General profile and the omit-namespaces option put it in none, so it reaches the output bare. Giving the
 			/// namespace to the NAME instead of to the write site is what keeps every caller of this marker unchanged.</remarks>
 			private string XmlNilNameRef(XmlNameTable names)
-				=> this.WritesXmlDcs && !this.WritesXmlDcsSchemaless
+				=> this.WritesXmlDcs && !this.WritesXmlDcsOmitNamespaces
 					? names.Ref(XmlNilAttributeName, this.XmlNamespaces.Ref(XmlSchemaInstanceNamespaceUri))
 					: names.Ref(XmlNilAttributeName);
 
@@ -963,7 +980,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					case XmlNullPolicy.NilWhenSettingsAsk:
 					{
-						sb.AppendLine($"else if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+						sb.AppendLine($"else if ({CrystalXmlSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 						sb.EnterBlock("else");
 						WriteXmlNilElement(sb, names, nameRef);
 						sb.LeaveBlock("else");
@@ -1317,7 +1334,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock();
 				sb.AppendLine(write);
 				sb.LeaveBlock();
-				sb.AppendLine($"else if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+				sb.AppendLine($"else if ({CrystalXmlSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 				sb.EnterBlock("else");
 				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.LeaveBlock("else");
@@ -1429,7 +1446,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Returns the call to the profile's formatter for one scalar family</summary>
 			/// <remarks>The two profiles share every lexical form except <c>char</c>, so only that family selects per profile.</remarks>
 			private string FormatXmlScalar(string family, string valueExpr) => family == "Char"
-				? $"{CrystalXmlFormattersFullName}.{(this.WritesXmlDcs ? "FormatDcsChar" : "FormatModernChar")}({valueExpr})"
+				? $"{CrystalXmlFormattersFullName}.{(this.WritesXmlDcs ? "FormatDcsChar" : "FormatGeneralChar")}({valueExpr})"
 				: $"{CrystalXmlFormattersFullName}.Format{family}({valueExpr})";
 
 			#endregion

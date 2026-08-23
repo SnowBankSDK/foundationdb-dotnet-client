@@ -52,7 +52,7 @@ namespace SnowBank.Data.Xml.Tests
 		/// <summary>Compares BOTH outputs of the DataContract profile against the live-DCS oracle in its two modes</summary>
 		/// <param name="value">Instance to serialize</param>
 		/// <param name="toXmlText">The default output, which carries contract namespaces</param>
-		/// <param name="toSchemalessXmlText">The output under <c>Schemaless = true</c>, which carries none</param>
+		/// <param name="toNamespaceFreeXmlText">The output under <c>OmitNamespaces = true</c>, which carries none</param>
 		/// <remarks>
 		/// <para>Two outputs, two acceptance rules, one instance and one oracle:</para>
 		/// <list type="bullet">
@@ -60,12 +60,12 @@ namespace SnowBank.Data.Xml.Tests
 		/// there: this emission omits the declarations it can prove unused and writes the rest on the first element that needs
 		/// them, so its bytes differ from the reference serializer's while every element and attribute resolves to the same
 		/// (namespace, local name) pair. That is what a reader sees, and it is what is asserted.</item>
-		/// <item>the SCHEMALESS output is compared to the stripped output BYTE FOR BYTE. There is nothing to normalize away
+		/// <item>the NAMESPACE-FREE output is compared to the stripped output BYTE FOR BYTE. There is nothing to normalize away
 		/// once the namespaces are gone, and those bytes are what the stored documents of a consuming application contain.</item>
 		/// </list>
 		/// <para>Both outputs are logged, so a failure on either rule is read against the other two.</para>
 		/// </remarks>
-		private static void AssertSameOutput<T>(T? value, Func<T?, string> toXmlText, Func<T?, string> toSchemalessXmlText)
+		private static void AssertSameOutput<T>(T? value, Func<T?, string> toXmlText, Func<T?, string> toNamespaceFreeXmlText)
 		{
 			string standard = ReferenceDcsOutput.Serialize(value, typeof(T), strip: false);
 			string actual = toXmlText(value);
@@ -74,10 +74,10 @@ namespace SnowBank.Data.Xml.Tests
 			XmlExpandedNameComparison.AssertEquivalent(standard, actual, $"The default DataContract output of {typeof(T).Name} must be expanded-name equivalent to the standard format.");
 
 			string stripped = ReferenceDcsOutput.Serialize(value, typeof(T), strip: true);
-			string schemaless = toSchemalessXmlText(value);
+			string namespaceFree = toNamespaceFreeXmlText(value);
 			Log("reference (stripped) : " + stripped);
-			Log("generated (schemaless): " + schemaless);
-			Assert.That(schemaless, Is.EqualTo(stripped), "The schemaless DataContract output must stay byte-identical to the stripped output.");
+			Log("generated (namespace-free): " + namespaceFree);
+			Assert.That(namespaceFree, Is.EqualTo(stripped), "The namespace-free DataContract output must stay byte-identical to the stripped output.");
 		}
 
 		#region Nil, order, defaults...
@@ -101,14 +101,14 @@ namespace SnowBank.Data.Xml.Tests
 				FullList = ["a", "b"],
 				NullBytes = null,
 				EmptyBytes = [],
-			}, v => DcsProbeSerializers.NilProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.NilProbe.ToXmlText(v));
+			}, v => DcsProbeSerializers.NilProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.NilProbe.ToXmlText(v));
 		}
 
 		[Test]
 		public void Test_Member_Order_Default_Is_Ordinal_Alphabetical()
 		{
 			// Declared Zulu, Alpha, Mike, Bravo; the output emits Alpha, Bravo, Mike, Zulu.
-			AssertSameOutput(new OrderDefaultProbe { Zulu = "z", Alpha = "a", Mike = "m", Bravo = "b" }, v => DcsProbeSerializers.OrderDefaultProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.OrderDefaultProbe.ToXmlText(v));
+			AssertSameOutput(new OrderDefaultProbe { Zulu = "z", Alpha = "a", Mike = "m", Bravo = "b" }, v => DcsProbeSerializers.OrderDefaultProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.OrderDefaultProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -118,21 +118,21 @@ namespace SnowBank.Data.Xml.Tests
 			AssertSameOutput(new OrderExplicitProbe
 			{
 				Alpha = "a3", Zulu = "z1", Mike = "m2", Bravo = "b2", NoOrderYankee = "y", NoOrderCharlie = "c",
-			}, v => DcsProbeSerializers.OrderExplicitProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.OrderExplicitProbe.ToXmlText(v));
+			}, v => DcsProbeSerializers.OrderExplicitProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.OrderExplicitProbe.ToXmlText(v));
 		}
 
 		[Test]
 		public void Test_Member_Order_Base_Level_Comes_First()
 		{
 			// Base members (including its ordered ones) come before derived members.
-			AssertSameOutput(new OrderDerivedProbe { ZuluFromBase = "bz", OrderedFromBase = "bo", AlphaFromDerived = "da" }, v => DcsProbeSerializers.OrderDerivedProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.OrderDerivedProbe.ToXmlText(v));
+			AssertSameOutput(new OrderDerivedProbe { ZuluFromBase = "bz", OrderedFromBase = "bo", AlphaFromDerived = "da" }, v => DcsProbeSerializers.OrderDerivedProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.OrderDerivedProbe.ToXmlText(v));
 		}
 
 		[Test]
 		public void Test_EmitDefaultValue_False_Omits_Default_And_Null()
 		{
 			// Only KeptZeroInt (0), KeptNullString (nil) and SetInt (7) appear in the output.
-			AssertSameOutput(new EmitDefaultProbe { SetInt = 7 }, v => DcsProbeSerializers.EmitDefaultProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.EmitDefaultProbe.ToXmlText(v));
+			AssertSameOutput(new EmitDefaultProbe { SetInt = 7 }, v => DcsProbeSerializers.EmitDefaultProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.EmitDefaultProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -140,7 +140,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// the reference serializer reads the data contract and nothing else, and a plain DTO has none: the element
 			// keeps the declared member name whatever the JSON attribute spells
-			AssertSameOutput(new PocoJsonRenamedProbe { SubscriptionCode = "sc-1", Label = "l" }, v => DcsProbeSerializers.PocoJsonRenamedProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.PocoJsonRenamedProbe.ToXmlText(v));
+			AssertSameOutput(new PocoJsonRenamedProbe { SubscriptionCode = "sc-1", Label = "l" }, v => DcsProbeSerializers.PocoJsonRenamedProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.PocoJsonRenamedProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -159,7 +159,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// three levels, the middle one overriding a member of the base: the reference serializer writes the member
 			// once, with the base level's members, not with the level that overrides it
-			AssertSameOutput(new OverrideLeafProbe { Shared = "s", Zulu = "z", Alpha = "a", Kilo = "k" }, v => DcsProbeSerializers.OverrideLeafProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.OverrideLeafProbe.ToXmlText(v));
+			AssertSameOutput(new OverrideLeafProbe { Shared = "s", Zulu = "z", Alpha = "a", Kilo = "k" }, v => DcsProbeSerializers.OverrideLeafProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.OverrideLeafProbe.ToXmlText(v));
 		}
 
 		#endregion
@@ -185,7 +185,7 @@ namespace SnowBank.Data.Xml.Tests
 				Dates = [new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Unspecified)],
 				WithNullItem = ["present", null!],
 				DeclaredAsInterface = new List<string> { "via-interface" },
-			}, v => DcsProbeSerializers.CollectionProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.CollectionProbe.ToXmlText(v));
+			}, v => DcsProbeSerializers.CollectionProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.CollectionProbe.ToXmlText(v));
 		}
 
 		// note: enrolling a bare collection or scalar type directly stays refused by design (CJSON0019: enroll the
@@ -195,7 +195,7 @@ namespace SnowBank.Data.Xml.Tests
 		[Test]
 		public void Test_Root_Null_Is_Nil()
 		{
-			AssertSameOutput<Shelf>(null, v => DcsProbeSerializers.Shelf.ToXmlText(v), v => DcsProbeSchemalessSerializers.Shelf.ToXmlText(v));
+			AssertSameOutput<Shelf>(null, v => DcsProbeSerializers.Shelf.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.Shelf.ToXmlText(v));
 		}
 
 		[Test]
@@ -257,7 +257,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// the collection entry points compose the item facet under the profile's ArrayOfX root, and the two
 			// outputs obey the same two acceptance rules as every member output: expanded names for the namespaced
-			// default, bytes for Schemaless
+			// default, bytes for the namespace-free option
 			var items = new List<Shelf> { new() { Label = "novels" }, new() { Label = "essays" } };
 
 			string standard = ReferenceDcsOutput.Serialize(items, typeof(List<Shelf>), strip: false);
@@ -267,10 +267,10 @@ namespace SnowBank.Data.Xml.Tests
 			XmlExpandedNameComparison.AssertEquivalent(standard, actual, "A List<Shelf> root must be ArrayOfShelf in the item's contract namespace, holding bare Shelf items.");
 
 			string stripped = ReferenceDcsOutput.Serialize(items, typeof(List<Shelf>), strip: true);
-			string schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, items);
+			string namespaceFree = CrystalXml.ToText(DcsProbeNamespaceFreeSerializers.Shelf.Default, items);
 			Log("reference (stripped) : " + stripped);
-			Log("generated (schemaless): " + schemaless);
-			Assert.That(schemaless, Is.EqualTo(stripped), "The schemaless collection root must stay byte-identical to the stripped output.");
+			Log("generated (namespace-free): " + namespaceFree);
+			Assert.That(namespaceFree, Is.EqualTo(stripped), "The namespace-free collection root must stay byte-identical to the stripped output.");
 		}
 
 		[Test]
@@ -284,33 +284,33 @@ namespace SnowBank.Data.Xml.Tests
 			XmlExpandedNameComparison.AssertEquivalent(standard, actual, "A null sequence must write the nil ArrayOfShelf root.");
 
 			string stripped = ReferenceDcsOutput.Serialize(null, typeof(List<Shelf>), strip: true);
-			string schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, (IEnumerable<Shelf>?) null);
+			string namespaceFree = CrystalXml.ToText(DcsProbeNamespaceFreeSerializers.Shelf.Default, (IEnumerable<Shelf>?) null);
 			Log("reference (stripped, null) : " + stripped);
-			Log("generated (schemaless, null): " + schemaless);
-			Assert.That(schemaless, Is.EqualTo(stripped));
+			Log("generated (namespace-free, null): " + namespaceFree);
+			Assert.That(namespaceFree, Is.EqualTo(stripped));
 
 			stripped = ReferenceDcsOutput.Serialize(new List<Shelf>(), typeof(List<Shelf>), strip: true);
-			schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, new List<Shelf>());
+			namespaceFree = CrystalXml.ToText(DcsProbeNamespaceFreeSerializers.Shelf.Default, new List<Shelf>());
 			Log("reference (stripped, empty) : " + stripped);
-			Log("generated (schemaless, empty): " + schemaless);
-			Assert.That(schemaless, Is.EqualTo(stripped));
+			Log("generated (namespace-free, empty): " + namespaceFree);
+			Assert.That(namespaceFree, Is.EqualTo(stripped));
 		}
 
 		[Test]
 		public void Test_Collection_Root_Name_And_Item_Name_Overrides()
 		{
 			// the caller renames the root, the items, or both: the names change and the namespace does not (shown
-			// on the schemaless output, where the bytes are the whole story)
+			// on the namespace-free output, where the bytes are the whole story)
 			var items = new List<Shelf> { new() { Label = "x" } };
 
-			string schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, items, rootName: "Shelves");
-			Assert.That(schemaless, Is.EqualTo("""<Shelves><Shelf><Label>x</Label></Shelf></Shelves>"""));
+			string namespaceFree = CrystalXml.ToText(DcsProbeNamespaceFreeSerializers.Shelf.Default, items, rootName: "Shelves");
+			Assert.That(namespaceFree, Is.EqualTo("""<Shelves><Shelf><Label>x</Label></Shelf></Shelves>"""));
 
-			schemaless = CrystalXml.ToText(DcsProbeSchemalessSerializers.Shelf.Default, items, rootName: "Shelves", itemName: "Item");
-			Assert.That(schemaless, Is.EqualTo("""<Shelves><Item><Label>x</Label></Item></Shelves>"""));
+			namespaceFree = CrystalXml.ToText(DcsProbeNamespaceFreeSerializers.Shelf.Default, items, rootName: "Shelves", itemName: "Item");
+			Assert.That(namespaceFree, Is.EqualTo("""<Shelves><Item><Label>x</Label></Item></Shelves>"""));
 
 			// cross-sink agreement: the byte-exact sinks share the writing core
-			Assert.That(CrystalXml.ToSlice(DcsProbeSchemalessSerializers.Shelf.Default, items, rootName: "Shelves", itemName: "Item").ToStringUtf8(), Is.EqualTo(schemaless));
+			Assert.That(CrystalXml.ToSlice(DcsProbeNamespaceFreeSerializers.Shelf.Default, items, rootName: "Shelves", itemName: "Item").ToStringUtf8(), Is.EqualTo(namespaceFree));
 		}
 
 		[Test]
@@ -325,7 +325,7 @@ namespace SnowBank.Data.Xml.Tests
 				PlainMap = new() { ["k1"] = "v1", ["k2"] = "v2" },
 				IntKeyMap = new() { [7] = "seven" },
 				EmptyMap = [],
-			}, v => DcsProbeSerializers.DictionaryProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.DictionaryProbe.ToXmlText(v));
+			}, v => DcsProbeSerializers.DictionaryProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.DictionaryProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -337,10 +337,10 @@ namespace SnowBank.Data.Xml.Tests
 			// digest from the reference output yields the CrystalXml output, byte for byte.
 			var value = new HashedDictionaryProbe { ObjectMap = new() { ["o1"] = new Shelf { Label = "ol1" } } };
 			string reference = ReferenceDcsOutput.Serialize(value, typeof(HashedDictionaryProbe));
-			string actual = DcsProbeSchemalessSerializers.HashedDictionaryProbe.ToXmlText(value);
+			string actual = DcsProbeNamespaceFreeSerializers.HashedDictionaryProbe.ToXmlText(value);
 			Log("reference (standard) : " + ReferenceDcsOutput.Serialize(value, typeof(HashedDictionaryProbe), strip: false));
 			Log("reference (stripped) : " + reference);
-			Log("generated (schemaless): " + actual);
+			Log("generated (namespace-free): " + actual);
 			Log("generated (default)   : " + DcsProbeSerializers.HashedDictionaryProbe.ToXmlText(value));
 
 			var digest = System.Text.RegularExpressions.Regex.Match(reference, "KeyValueOfstringShelf([0-9A-Za-z_]{8})");
@@ -379,7 +379,7 @@ namespace SnowBank.Data.Xml.Tests
 				AsObjectInt = 123,
 				AsObjectLong = 123L,
 				AsObjectNull = null,
-			}, v => DcsProbeSerializers.PolymorphicProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.PolymorphicProbe.ToXmlText(v));
+			}, v => DcsProbeSerializers.PolymorphicProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.PolymorphicProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -387,7 +387,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// Root <RenamedContract>; members sorted by their OUTPUT name ordinally: Plain, Required, renamed_member,
 			// with-dash.
-			AssertSameOutput(new RenameProbe { Original = "o", Dashed = "d", Required = "r", Plain = "p" }, v => DcsProbeSerializers.RenameProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.RenameProbe.ToXmlText(v));
+			AssertSameOutput(new RenameProbe { Original = "o", Dashed = "d", Required = "r", Plain = "p" }, v => DcsProbeSerializers.RenameProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.RenameProbe.ToXmlText(v));
 		}
 
 		#endregion
@@ -438,7 +438,7 @@ namespace SnowBank.Data.Xml.Tests
 				Unicode = "café, éèê, 中文, emoji 😀",
 				ControlChars = "beforeafter", // note: kept inert here; the real control chars are pinned in the dedicated Shelf-based deviation 2 tests below
 				InitOnlyMember = "init-value", // MINOR pin: init-only is a different flag from read-only; DCS emits it, and so does the generated format
-			}, v => DcsProbeSerializers.ScalarProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.ScalarProbe.ToXmlText(v));
+			}, v => DcsProbeSerializers.ScalarProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.ScalarProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -446,7 +446,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// Kind=Local appends the machine's UTC offset; both pipelines run on the same machine so the bytes must
 			// still agree (the non-determinism itself is a recorded product finding, not something this test hides).
-			AssertSameOutput(new ScalarProbe { DateUnspecified = new DateTime(2026, 8, 3, 14, 5, 6, 789, DateTimeKind.Local) }, v => DcsProbeSerializers.ScalarProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.ScalarProbe.ToXmlText(v));
+			AssertSameOutput(new ScalarProbe { DateUnspecified = new DateTime(2026, 8, 3, 14, 5, 6, 789, DateTimeKind.Local) }, v => DcsProbeSerializers.ScalarProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.ScalarProbe.ToXmlText(v));
 		}
 
 		#endregion
@@ -468,7 +468,7 @@ namespace SnowBank.Data.Xml.Tests
 				},
 				SharedA = shared,
 				SharedB = shared,
-			}, v => DcsProbeSerializers.SelfRefProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.SelfRefProbe.ToXmlText(v));
+			}, v => DcsProbeSerializers.SelfRefProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.SelfRefProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -498,21 +498,21 @@ namespace SnowBank.Data.Xml.Tests
 		[Test]
 		public void Test_Empty_Contract_Self_Closes()
 		{
-			AssertSameOutput(new EmptyContractProbe(), v => DcsProbeSerializers.EmptyContractProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.EmptyContractProbe.ToXmlText(v));
+			AssertSameOutput(new EmptyContractProbe(), v => DcsProbeSerializers.EmptyContractProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.EmptyContractProbe.ToXmlText(v));
 		}
 
 		[Test]
 		public void Test_Poco_Mode_Public_ReadWrite_Alphabetical()
 		{
 			// No [DataContract]: public get+set properties only, alphabetical.
-			AssertSameOutput(new PocoProbe { Zulu = "z", Alpha = "a", Number = 5, Items = ["i1"] }, v => DcsProbeSerializers.PocoProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.PocoProbe.ToXmlText(v));
+			AssertSameOutput(new PocoProbe { Zulu = "z", Alpha = "a", Number = 5, Items = ["i1"] }, v => DcsProbeSerializers.PocoProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.PocoProbe.ToXmlText(v));
 		}
 
 		[Test]
 		public void Test_Poco_Mode_Null_Member()
 		{
 			// Pins whether POCO mode emits nil for a null member (measured against the live oracle, not assumed).
-			AssertSameOutput(new PocoProbe { Zulu = null, Alpha = "a", Number = 0, Items = null }, v => DcsProbeSerializers.PocoProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.PocoProbe.ToXmlText(v));
+			AssertSameOutput(new PocoProbe { Zulu = null, Alpha = "a", Number = 0, Items = null }, v => DcsProbeSerializers.PocoProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.PocoProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -523,7 +523,7 @@ namespace SnowBank.Data.Xml.Tests
 			// InvalidDataContractException, "No set method for property".)
 			var probe = new PocoProbe { Zulu = "z", Alpha = "a", Number = 5, Items = ["i1"] };
 
-			string actual = DcsProbeSchemalessSerializers.PocoProbe.ToXmlText(probe);
+			string actual = DcsProbeNamespaceFreeSerializers.PocoProbe.ToXmlText(probe);
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(actual, Is.EqualTo(ReferenceDcsOutput.Serialize(probe, typeof(PocoProbe))));
@@ -534,7 +534,7 @@ namespace SnowBank.Data.Xml.Tests
 		[Test]
 		public void Test_IgnoreDataMember_And_Unannotated_Are_Absent()
 		{
-			AssertSameOutput(new IgnoreProbe { Kept = "k", Ignored = "i", NotAnnotated = "n" }, v => DcsProbeSerializers.IgnoreProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.IgnoreProbe.ToXmlText(v));
+			AssertSameOutput(new IgnoreProbe { Kept = "k", Ignored = "i", NotAnnotated = "n" }, v => DcsProbeSerializers.IgnoreProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.IgnoreProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -543,7 +543,7 @@ namespace SnowBank.Data.Xml.Tests
 			// [DataMember] on a private field IS in the output (measured DCS behavior on [DataContract] types).
 			var probe = new PrivateMemberProbe { Visible = "v" };
 			probe.SetSecret("s3cr3t");
-			AssertSameOutput(probe, v => DcsProbeSerializers.PrivateMemberProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.PrivateMemberProbe.ToXmlText(v));
+			AssertSameOutput(probe, v => DcsProbeSerializers.PrivateMemberProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.PrivateMemberProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -553,7 +553,7 @@ namespace SnowBank.Data.Xml.Tests
 			// fields), so a readonly [DataMember] FIELD on a [DataContract] type IS in the output. The generator's own
 			// read-only filter used to drop every read-only member regardless of field-vs-property, which silently
 			// dropped this member from the compat format.
-			AssertSameOutput(new ReadOnlyFieldProbe("fixed-value") { Normal = "n" }, v => DcsProbeSerializers.ReadOnlyFieldProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.ReadOnlyFieldProbe.ToXmlText(v));
+			AssertSameOutput(new ReadOnlyFieldProbe("fixed-value") { Normal = "n" }, v => DcsProbeSerializers.ReadOnlyFieldProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.ReadOnlyFieldProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -561,7 +561,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// [DataContract(Name = "Envelope{0}")] on a generic type: {0} expands to the argument's contract name ->
 			// root <Envelopeboolean>.
-			AssertSameOutput(new NamedGenericProbe<bool> { Payload = true }, v => DcsProbeSerializers.NamedGenericProbe_Boolean.ToXmlText(v), v => DcsProbeSchemalessSerializers.NamedGenericProbe_Boolean.ToXmlText(v));
+			AssertSameOutput(new NamedGenericProbe<bool> { Payload = true }, v => DcsProbeSerializers.NamedGenericProbe_Boolean.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.NamedGenericProbe_Boolean.ToXmlText(v));
 		}
 
 		#endregion
@@ -576,7 +576,7 @@ namespace SnowBank.Data.Xml.Tests
 			var probe = new KeyedBagProbe { Properties = new KeyedBag<string>() };
 			probe.Properties.Add("origin", "acme-main");
 			probe.Properties.Add("channel", "web");
-			AssertSameOutput(probe, v => DcsProbeSerializers.KeyedBagProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.KeyedBagProbe.ToXmlText(v));
+			AssertSameOutput(probe, v => DcsProbeSerializers.KeyedBagProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.KeyedBagProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -586,7 +586,7 @@ namespace SnowBank.Data.Xml.Tests
 			// must agree byte for byte, whatever that behavior is.
 			var probe = new KeyedBagProbe { Properties = new KeyedBag<string>() };
 			probe.Properties.Add("not a name", "v");
-			AssertSameOutput(probe, v => DcsProbeSerializers.KeyedBagProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.KeyedBagProbe.ToXmlText(v));
+			AssertSameOutput(probe, v => DcsProbeSerializers.KeyedBagProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.KeyedBagProbe.ToXmlText(v));
 		}
 
 		[Test]
@@ -631,7 +631,7 @@ namespace SnowBank.Data.Xml.Tests
 			AssertSameOutput(new AnyTypeCollectionProbe
 			{
 				Results = [null!, "s1", 42],
-			}, v => DcsProbeSerializers.AnyTypeCollectionProbe.ToXmlText(v), v => DcsProbeSchemalessSerializers.AnyTypeCollectionProbe.ToXmlText(v));
+			}, v => DcsProbeSerializers.AnyTypeCollectionProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.AnyTypeCollectionProbe.ToXmlText(v));
 		}
 
 		#endregion
@@ -642,7 +642,7 @@ namespace SnowBank.Data.Xml.Tests
 		public void Test_Root_Name_Override()
 		{
 			// The rootName override renames the root element only; body unchanged.
-			string actual = DcsProbeSchemalessSerializers.Shelf.ToXmlText(new Shelf { Label = "x" }, rootName: "data");
+			string actual = DcsProbeNamespaceFreeSerializers.Shelf.ToXmlText(new Shelf { Label = "x" }, rootName: "data");
 			Assert.That(actual, Is.EqualTo("""<data><Label>x</Label></data>"""));
 		}
 
@@ -655,7 +655,7 @@ namespace SnowBank.Data.Xml.Tests
 			var value = new ShadowLeafProbe { Shared = "s", Zulu = "z", Alpha = "a" };
 
 			string reference = ReferenceDcsOutput.Serialize(value, typeof(ShadowLeafProbe));
-			string actual = DcsProbeSchemalessSerializers.ShadowLeafProbe.ToXmlText(value);
+			string actual = DcsProbeNamespaceFreeSerializers.ShadowLeafProbe.ToXmlText(value);
 			Log($"reference: {reference}");
 			Log($"actual:    {actual}");
 
@@ -672,7 +672,7 @@ namespace SnowBank.Data.Xml.Tests
 			// document no conformant XML reader accepts. CrystalXml drops them at the value level instead, by default.
 			var value = new Shelf { Label = "before\u0001\u0008after" };
 			string reference = ReferenceDcsOutput.Serialize(value, typeof(Shelf));
-			string actual = DcsProbeSchemalessSerializers.Shelf.ToXmlText(value);
+			string actual = DcsProbeNamespaceFreeSerializers.Shelf.ToXmlText(value);
 
 			Assert.That(reference, Is.EqualTo("""<Shelf><Label>before&#x1;&#x8;after</Label></Shelf>"""), "the reference format still emits the unparseable character references");
 			Assert.That(actual, Is.EqualTo("""<Shelf><Label>beforeafter</Label></Shelf>"""), "the sanitized default drops the control characters at the value level");
@@ -692,7 +692,7 @@ namespace SnowBank.Data.Xml.Tests
 			string strict;
 			try
 			{
-				DcsProbeSchemalessSerializers.Shelf.Default.WriteXml(ref emitter, value);
+				DcsProbeNamespaceFreeSerializers.Shelf.Default.WriteXml(ref emitter, value);
 				strict = emitter.Writer.ToStringAndDispose();
 			}
 			catch
@@ -724,7 +724,7 @@ namespace SnowBank.Data.Xml.Tests
 				Tags = ["red", "green"],
 			};
 
-			AssertSameOutput(value, v => DcsProbeSerializers.WorkedLibrary.ToXmlText(v), v => DcsProbeSchemalessSerializers.WorkedLibrary.ToXmlText(v));
+			AssertSameOutput(value, v => DcsProbeSerializers.WorkedLibrary.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.WorkedLibrary.ToXmlText(v));
 
 			// the whole difference from the reference output above, and the whole of it: NullChild and CritBase have lost a
 			// d2p1 declaration that nothing under them ever used, and the root declares its two namespaces in the other
@@ -740,12 +740,12 @@ namespace SnowBank.Data.Xml.Tests
 			// and the same model under the option: the DCS-isms stay (nil, type), the namespaces are gone, and the type
 			// annotation has lost the namespace half of its qualified name
 			Assert.That(
-				DcsProbeSchemalessSerializers.WorkedLibrary.ToXmlText(value),
+				DcsProbeNamespaceFreeSerializers.WorkedLibrary.ToXmlText(value),
 				Is.EqualTo(
 					"""
 					<Library><Name>Centrale</Name><Owner><Email>x@y.fr</Email></Owner><NullChild nil="true" /><CritBase /><CritDerived type="RangeCriterion"><Min>3</Min></CritDerived><Tags><string>red</string><string>green</string></Tags></Library>
 					"""),
-				"the schemaless output");
+				"the namespace-free output");
 		}
 
 		#endregion

@@ -59,7 +59,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 	// code every fact below executes is the code the generator emitted for them, compiled by the same build
 
 	/// <summary>An example DTO with an attribute-projected scalar, a string, a wrapped
-	/// collection, a dictionary in the modern default shape, and a null member that stays out of both formats</summary>
+	/// collection, a dictionary in the general default shape, and a null member that stays out of both formats</summary>
 	public sealed record Book
 	{
 
@@ -301,7 +301,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 		public int Seconds { get; init; }
 	}
 
-	/// <summary>A CONCRETE polymorphic root: an instance of the root type itself is a case the modern switch deliberately does not carry</summary>
+	/// <summary>A CONCRETE polymorphic root: an instance of the root type itself is a case the general switch deliberately does not carry</summary>
 	[JsonDerivedType(typeof(Coupe), "coupe")]
 	public record Vehicle
 	{
@@ -323,7 +323,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 		public bool Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
 			=> value is JsonString s ? s.Value is "1" : value.ToBoolean();
 
-		public void WriteXml<TEmitter>(ref TEmitter emitter, bool value, CrystalJsonSettings? settings = null, string? rootName = null)
+		public void WriteXml<TEmitter>(ref TEmitter emitter, bool value, CrystalXmlSettings? settings = null, string? rootName = null)
 			where TEmitter : struct, ICrystalXmlEmitter
 		{
 			var name = CrystalXmlName.Create(rootName ?? "bit");
@@ -496,14 +496,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using SnowBank.Data.Xml;
 	using SnowBank.Serialization.Json.CodeGen.Tests.Acme;
 
-	/// <summary>Runs the code the generator emitted for the MODERN XML profile</summary>
+	/// <summary>Runs the code the generator emitted for the GENERAL XML profile</summary>
 	/// <remarks>Every fact here executes generated code: the probe types live in this project, which references the
 	/// generator as an analyzer on itself, so a wrong emission is either a build failure or a failing assertion, never
 	/// a difference of opinion about what the generator would have produced.</remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
-	public sealed class XmlModernEmissionFacts : SimpleTest
+	public sealed class XmlGeneralEmissionFacts : SimpleTest
 	{
 
 		private static Book MakeBook() => new()
@@ -556,7 +556,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_A_Null_Member_Becomes_Nil_With_Null_Members()
 		{
-			string xml = AcmeSerializers.Book.ToXmlText(MakeBook(), CrystalJsonSettings.Json.WithNullMembers());
+			string xml = AcmeSerializers.Book.ToXmlText(MakeBook(), CrystalXmlSettings.General.WithNullMembers());
 			Log($"XML : {xml}");
 
 			// nil is the only unambiguous marker: an empty element would be indistinguishable from an empty string
@@ -569,7 +569,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(AcmeSerializers.Book.ToXmlText(null), Is.EqualTo("<book />"), "a document needs a root element");
-				Assert.That(AcmeSerializers.Book.ToXmlText(null, CrystalJsonSettings.Json.WithNullMembers()), Is.EqualTo("""<book nil="true" />"""), "and it follows the same nil rule as a null member");
+				Assert.That(AcmeSerializers.Book.ToXmlText(null, CrystalXmlSettings.General.WithNullMembers()), Is.EqualTo("""<book nil="true" />"""), "and it follows the same nil rule as a null member");
 			}
 		}
 
@@ -580,7 +580,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			{
 				// Never = present even as a null, whatever the settings say; WhenWritingNull = absent, same
 				Assert.That(AcmeSerializers.Flags.ToXmlText(new Flags()), Is.EqualTo("""<flags><always nil="true" /></flags>"""));
-				Assert.That(AcmeSerializers.Flags.ToXmlText(new Flags(), CrystalJsonSettings.Json.WithNullMembers()), Is.EqualTo("""<flags><always nil="true" /><plain nil="true" /></flags>"""));
+				Assert.That(AcmeSerializers.Flags.ToXmlText(new Flags(), CrystalXmlSettings.General.WithNullMembers()), Is.EqualTo("""<flags><always nil="true" /><plain nil="true" /></flags>"""));
 				Assert.That(AcmeSerializers.Flags.ToXmlText(new Flags() { Always = "a", Sometimes = "b", Plain = "c" }), Is.EqualTo("<flags><always>a</always><sometimes>b</sometimes><plain>c</plain></flags>"));
 			}
 		}
@@ -618,7 +618,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(AcmeSerializers.Shelf.ToXmlText(new Shelf()), Is.EqualTo("<shelf />"), "absent by default, like any null member");
-				Assert.That(AcmeSerializers.Shelf.ToXmlText(new Shelf(), CrystalJsonSettings.Json.WithNullMembers()), Is.EqualTo("""<shelf><labels nil="true" /><codes nil="true" /></shelf>"""), "and nil when the settings ask");
+				Assert.That(AcmeSerializers.Shelf.ToXmlText(new Shelf(), CrystalXmlSettings.General.WithNullMembers()), Is.EqualTo("""<shelf><labels nil="true" /><codes nil="true" /></shelf>"""), "and nil when the settings ask");
 			}
 		}
 
@@ -914,7 +914,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		#region Dispatch order over a three-level hierarchy...
 
 		[Test]
-		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_Modern_Output()
+		public void Test_A_Registered_Subclass_Of_A_Concrete_Intermediate_Reaches_Its_Own_Body_On_The_General_Output()
 		{
 			// that this fixture COMPILED is already half the fact: a switch emitted in registration order would have put
 			// 'case Sedan' first, making 'case Estate' unreachable (CS8120) and failing the build outright
@@ -1075,7 +1075,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Is_Refused_On_This_Output()
 		{
 			// DELIBERATE DIVERGENCE from the compat format, which writes the root's own body for this exact value.
-			// The modern format matches the JSON side instead: an instance of the root type carries no discriminator
+			// The general format matches the JSON side instead: an instance of the root type carries no discriminator
 			// there either, so a reader could not tell it from a subtype whose annotation went missing. It is refused
 			// rather than written under a shape the reader cannot interpret.
 			Assert.That(

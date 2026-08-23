@@ -60,6 +60,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Member-level XML vocabulary: every XML-only concern lives here, so the JSON attributes are never modified by the XML feature</summary>
 		public const string XmlPropertyAttributeFullName = CrystalXmlNamespace + ".XmlPropertyAttribute";
 
+		/// <summary>Runtime settings type for the generated XML output, the XML twin of <see cref="CrystalJsonSettingsFullName"/></summary>
+		public const string CrystalXmlSettingsFullName = CrystalXmlNamespace + ".CrystalXmlSettings";
+
+		/// <summary>Extension methods over <see cref="CrystalXmlSettingsFullName"/> (for example <c>IncludesNullMembers</c>)</summary>
+		public const string CrystalXmlSettingsExtensionsFullName = CrystalXmlNamespace + ".CrystalXmlSettingsExtensions";
+
 		public const string CrystalJsonFullName = CrystalJsonNamespace + ".CrystalJson";
 		public const string CrystalJsonConverterAttributeFullName = CrystalJsonNamespace + ".CrystalJsonConverterAttribute";
 		public const string JsonPropertyAttributeFullName = CrystalJsonNamespace + ".JsonPropertyAttribute";

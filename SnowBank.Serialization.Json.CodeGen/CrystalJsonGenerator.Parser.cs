@@ -85,13 +85,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Name of the JSON format profile that serves the legacy DCJS format, and the only one the default XML profile derives the DataContract format from</summary>
 			private const string OutputProfileDataContractCompat = "DataContractCompat";
 
-			/// <summary>Members of <c>CrystalXmlOutputProfile</c>, as stored in the metadata (the enum lives in SnowBank.Core, which an analyzer cannot reference)</summary>
-			private const string XmlProfileDefault = "Default";
+			/// <summary>Members of the resolved XML format profile, as stored in the metadata (mirrors <c>CrystalXmlSerializerDefaults</c>, which lives in SnowBank.Core and an analyzer cannot reference)</summary>
+			private const string XmlProfileGeneral = "General";
 
-			/// <inheritdoc cref="XmlProfileDefault"/>
-			private const string XmlProfileModern = "Modern";
-
-			/// <inheritdoc cref="XmlProfileDefault"/>
+			/// <inheritdoc cref="XmlProfileGeneral"/>
 			private const string XmlProfileDataContract = "DataContract";
 
 			/// <summary>Member of <c>CrystalXmlDictionaryFormat</c> meaning "not overridden by this container"</summary>
@@ -104,7 +101,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <inheritdoc cref="XmlDictionaryFormatKeyAttribute"/>
 			private const string XmlDictionaryFormatKeyValueAttributes = "KeyValueAttributes";
 
-			/// <summary>The dictionary shape of the modern profile when neither the member nor the container overrides it</summary>
+			/// <summary>The dictionary shape of the general profile when neither the member nor the container overrides it</summary>
 			private const string XmlDictionaryFormatDirect = "Direct";
 
 			/// <summary>Table of known symbols from this compilation</summary>
@@ -303,7 +300,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return null;
 				}
 
-				var (xmlProfile, xmlDictionaryFormat, xmlSchemaless) = ResolveXmlOutput(symbol, xmlOutputAttribute, outputProfile, propertyNamingPolicy);
+				var (xmlProfile, xmlDictionaryFormat, xmlOmitNamespaces) = ResolveXmlOutput(symbol, xmlOutputAttribute, outputProfile, propertyNamingPolicy);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				Kenobi($"Found {work.Count} root types to include");
@@ -356,7 +353,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					GeneratesJson = formats.GeneratesJson,
 					XmlProfile = xmlProfile,
 					CrystalXmlDictionaryFormat = xmlDictionaryFormat,
-					CrystalXmlSchemaless = xmlSchemaless,
+					CrystalXmlOmitNamespaces = xmlOmitNamespaces,
 				};
 			}
 
@@ -577,39 +574,61 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="xmlOutputAttribute">The container's <c>[CrystalXmlOutput]</c> attribute, or <see langword="null"/> when it has none (XML output is opt-in)</param>
 			/// <param name="outputProfile">The container's resolved JSON format profile, which the default XML profile derives from</param>
 			/// <param name="propertyNamingPolicy">The container's <c>PropertyNamingPolicy</c> option, or <see langword="null"/> for the declared names</param>
-			/// <returns>The resolved profile name, dictionary format name and schemaless flag, or all-null when the container produces no XML</returns>
+			/// <returns>The resolved profile name, dictionary format name and omit-namespaces flag, or all-null when the container produces no XML</returns>
 			/// <remarks><c>PropertyNameCaseInsensitive</c> is deliberately not an input: it is a deserialization option, and this overlay never reads XML.</remarks>
-			private (string? Profile, string? DictionaryFormat, bool Schemaless) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? outputProfile, string? propertyNamingPolicy)
+			private (string? Profile, string? DictionaryFormat, bool OmitNamespaces) ResolveXmlOutput(INamedTypeSymbol symbol, AttributeData? xmlOutputAttribute, string? outputProfile, string? propertyNamingPolicy)
 			{
 				if (xmlOutputAttribute is null)
 				{ // no opt-in: the container is JSON-only, and nothing else about it changes
 					return (null, null, false);
 				}
 
-				// the attribute only exposes named properties (its single constructor is parameterless)
+				// we want to extract the generation preset (CrystalXmlSerializerDefaults), or overrides through named properties
+				// the attribute is either the [CrystalXmlOutput] of a neutral container, or the [CrystalXmlConverter] alias, which carries the very same parameters
 				string? explicitProfile = null;
+				if (xmlOutputAttribute.ConstructorArguments.Length > 0)
+				{
+					var ctorArg = xmlOutputAttribute.ConstructorArguments[0];
+					string? memberName = GetEnumMemberName(ctorArg);
+					Kenobi($"Found XML defaults for container {symbol.Name}: {ctorArg.Value} => {memberName ?? "?"}");
+
+					// resolved by member NAME, like the named-argument path below: reordering the runtime enum cannot
+					// silently change what a positional [CrystalXmlOutput(...)] argument resolves to. The ordinal switch
+					// is only a fallback for a TypedConstant the name lookup could not match (leave explicitProfile null
+					// for Inherit, so the derived profile below applies).
+					explicitProfile = memberName switch
+					{
+						"General" => XmlProfileGeneral,
+						"DataContractCompat" => XmlProfileDataContract,
+						"Inherit" => null,
+						null => (ctorArg.Value as int?) switch
+						{
+							1 => XmlProfileGeneral,
+							2 => XmlProfileDataContract,
+							_ => null, // CrystalXmlSerializerDefaults.Inherit, or out of range
+						},
+						_ => null, // an enum member this switch does not know: treat as Inherit rather than fail generation
+					};
+				}
+
 				string? dictionaryFormat = null;
-				bool schemaless = false;
+				bool omitNamespaces = false;
 				foreach (var kv in xmlOutputAttribute.NamedArguments)
 				{
-					if (kv.Key == "Profile")
-					{
-						explicitProfile = GetEnumMemberName(kv.Value);
-					}
-					else if (kv.Key == "DictionaryFormat")
+					if (kv.Key == "DictionaryFormat")
 					{
 						dictionaryFormat = GetEnumMemberName(kv.Value);
 					}
-					else if (kv.Key == "Schemaless")
+					else if (kv.Key == "OmitNamespaces")
 					{ // a bool, so it is read straight off the constant instead of through GetEnumMemberName
-						schemaless = (bool) kv.Value.Value!;
+						omitNamespaces = (bool) kv.Value.Value!;
 					}
 				}
 
-				// an explicit profile wins; 'Default' (or unspecified) derives the XML format from the JSON one
+				// an explicit profile wins; unspecified (Inherit) derives the XML format from the JSON one
 				string profile =
-					explicitProfile is null or XmlProfileDefault
-						? (outputProfile == OutputProfileDataContractCompat ? XmlProfileDataContract : XmlProfileModern)
+					explicitProfile is null
+						? (outputProfile == OutputProfileDataContractCompat ? XmlProfileDataContract : XmlProfileGeneral)
 						: explicitProfile;
 
 				if (profile == XmlProfileDataContract && propertyNamingPolicy != null)
@@ -622,7 +641,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						new(
 							"CXML0001",
 							"The DataContract XML format cannot be combined with a naming policy",
-							"The container '{0}' produces the DataContract XML format, whose element names come from the data contract; combining it with a camelCase (or other) naming policy is refused. Remove the naming policy, use the Modern XML format (which follows the naming policy), or produce the DataContract format from a separate container (the dual-container pattern).",
+							"The container '{0}' produces the DataContract XML format, whose element names come from the data contract; combining it with a camelCase (or other) naming policy is refused. Remove the naming policy, use the General XML format (which follows the naming policy), or produce the DataContract format from a separate container (the dual-container pattern).",
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Error,
 							isEnabledByDefault: true
@@ -645,19 +664,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 						"the DataContract XML format has exactly one dictionary shape (the KeyValueOfKV entries the reference serializer writes), so there is nothing for this option to select between. Its member-level twin is refused outright on this format (CXML0004)");
 				}
 
-				if (schemaless && profile != XmlProfileDataContract)
-				{ // the option strips namespaces, and the Modern format has none: the document is right, only the declaration is not
+				if (omitNamespaces && profile != XmlProfileDataContract)
+				{ // the option strips namespaces, and the General format has none: the document is right, only the declaration is not
 					ReportInertXmlSetting(
 						this.ContextClassLocation,
 						symbol.ToDisplayString(),
-						"Schemaless = true",
-						"the Modern XML format writes no namespace and no prefix in the first place, so there is nothing for this option to strip. It belongs on the DataContract format, whose documents carry contract namespaces");
-					schemaless = false;
+						"OmitNamespaces = true",
+						"the General XML format writes no namespace and no prefix in the first place, so there is nothing for this option to strip. It belongs on the DataContract format, whose documents carry contract namespaces");
+					omitNamespaces = false;
 				}
 
-				Kenobi($"Resolved XML output for container {symbol.Name}: profile={profile}; dictionaryFormat={dictionaryFormat ?? XmlDictionaryFormatDefault}; schemaless={schemaless}");
+				Kenobi($"Resolved XML output for container {symbol.Name}: profile={profile}; dictionaryFormat={dictionaryFormat ?? XmlDictionaryFormatDefault}; omitNamespaces={omitNamespaces}");
 
-				return (profile, dictionaryFormat ?? XmlDictionaryFormatDefault, schemaless);
+				return (profile, dictionaryFormat ?? XmlDictionaryFormatDefault, omitNamespaces);
 			}
 
 			/// <summary>Returns the name of the enum member an attribute argument was set to, or <see langword="null"/> when the argument is not a known enum member</summary>
@@ -786,8 +805,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				// a self-serializable type hosts its own generated code, so it can opt into XML output the same way a
-				// container does; it declares no JSON format profile, so an unspecified profile derives the Modern format
-				var (xmlProfile, xmlDictionaryFormat, xmlSchemaless) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), outputProfile: null, propertyNamingPolicy: null);
+				// container does; it declares no JSON format profile, so an unspecified profile derives the General format
+				var (xmlProfile, xmlDictionaryFormat, xmlOmitNamespaces) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), outputProfile: null, propertyNamingPolicy: null);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
 
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
@@ -846,7 +865,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					SupportsDynamicallyAccessedMembers = this.KnownSymbols.HasDynamicallyAccessedMembers,
 					XmlProfile = xmlProfile,
 					CrystalXmlDictionaryFormat = xmlDictionaryFormat,
-					CrystalXmlSchemaless = xmlSchemaless,
+					CrystalXmlOmitNamespaces = xmlOmitNamespaces,
 				};
 			}
 
@@ -1452,7 +1471,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							new(
 								"CXML0004",
 								"The member-level XML vocabulary cannot be combined with the DataContract XML format",
-								"The member '{0}' carries [XmlProperty({1})], but its container produces the DataContract XML format, whose names all come from the data contract, which has no notion of a user-data XML attribute, and which has a single dictionary shape: the setting cannot be honored. Remove it (the contract already decides), or publish the Modern XML format, which does honor it, from a separate container (the dual-container pattern).",
+								"The member '{0}' carries [XmlProperty({1})], but its container produces the DataContract XML format, whose names all come from the data contract, which has no notion of a user-data XML attribute, and which has a single dictionary shape: the setting cannot be honored. Remove it (the contract already decides), or publish the General XML format, which does honor it, from a separate container (the dual-container pattern).",
 								"SnowBank.Serialization.Json.CodeGen",
 								DiagnosticSeverity.Error,
 								isEnabledByDefault: true
@@ -1599,12 +1618,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Reports <c>CXML0007</c> when a type's <c>[DataContract(Name = ...)]</c> would name the ROOT element with something no XML parser accepts</summary>
 			/// <remarks>
-			/// <para>MODERN format only, and only for a contract name: the compat format runs every name through <c>XmlConvert.EncodeLocalName</c>, and a name derived from the C# type name is a legal NCName by construction.</para>
+			/// <para>GENERAL format only, and only for a contract name: the compat format runs every name through <c>XmlConvert.EncodeLocalName</c>, and a name derived from the C# type name is a legal NCName by construction.</para>
 			/// <para>Decidable from the declaration alone, which is why it is a diagnostic and not the <c>#error</c> the emitter used to carry (the member-level equivalent has been CXML0007 all along, and the two shapes deserve the same treatment). The emitter keeps its <c>#error</c> as an unreachable backstop.</para>
 			/// </remarks>
 			private void ReportInvalidRootXmlName(INamedTypeSymbol type, string? dataContractName, string xmlProfile)
 			{
-				if (xmlProfile != XmlProfileModern || dataContractName is null) return;
+				if (xmlProfile != XmlProfileGeneral || dataContractName is null) return;
 				if (IsValidXmlName(dataContractName, out var why)) return;
 
 				ReportDiagnostic(
@@ -1622,7 +1641,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Reports <c>CXML0006</c> on a sequence whose items are themselves bare sequences, with no intermediate type to name the inner items</summary>
 			/// <remarks>
-			/// <para>MODERN format only. The DataContract format derives a name for every level from the contract (an inner sequence of strings becomes <c>ArrayOfstring</c> holding <c>string</c> items), so the shape is decidable there and the compat emitter names it instead of refusing it; refusing it would block porting a legacy DTO that <c>DataContractSerializer</c> serializes today.</para>
+			/// <para>GENERAL format only. The DataContract format derives a name for every level from the contract (an inner sequence of strings becomes <c>ArrayOfstring</c> holding <c>string</c> items), so the shape is decidable there and the compat emitter names it instead of refusing it; refusing it would block porting a legacy DTO that <c>DataContractSerializer</c> serializes today.</para>
 			/// <para>A DICTIONARY is not a bare sequence on either side of this test: its entries are named by the resolved dictionary format, so it always has names to give, which is exactly what a bare sequence lacks. Nor is a <c>byte[]</c> or a <c>string</c>, which are scalars on this format however enumerable C# considers them.</para>
 			/// </remarks>
 			private void ReportBareNestedCollection(ISymbol member, TypeMetadata type)
@@ -1645,7 +1664,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Reports <c>CXML0011</c> on a dictionary member whose resolved shape carries the VALUE as text, when the value type has no lexical form</summary>
 			/// <remarks>
-			/// <para>MODERN format only: the compat format has exactly one dictionary shape (<c>KeyValueOfXY</c> with <c>Key</c>/<c>Value</c> child ELEMENTS), which always has room for a nested value.</para>
+			/// <para>GENERAL format only: the compat format has exactly one dictionary shape (<c>KeyValueOfXY</c> with <c>Key</c>/<c>Value</c> child ELEMENTS), which always has room for a nested value.</para>
 			/// <para>Decidable from the declarations alone (the member's <c>DictionaryFormat</c>, else the container's, else the profile default), which is why it is a diagnostic and not the <c>#error</c> the emitter used to carry. The <c>#error</c> stays in the emitter as an unreachable backstop, so a future shape that forgets this check still cannot emit a mangled document.</para>
 			/// <para>The KEY position is NOT checked here: a key's lexical form is fixed by the key type, and a key that has none is already refused elsewhere; what varies per shape is only where the VALUE lands.</para>
 			/// </remarks>
@@ -1812,7 +1831,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <para>Elements and attributes are checked SEPARATELY, because in XML they do not share a namespace: an attribute and a child element may legitimately carry the same name, and refusing that pair would be a false positive on a perfectly readable document.</para>
 			/// <para>Only member-versus-member: a collision with a polymorphic type's discriminator cannot be seen from here, because a derived type does not know its own hierarchy. It is checked over the whole container instead, by <see cref="ReportDiscriminatorXmlNameCollisions"/>, and reported under the same id.</para>
 			/// <para>The REMEDY is profile-aware, because the obvious one is not available on both: on the DataContract format an <c>[XmlProperty]</c> rename is itself refused (CXML0004), so the fix has to point at the <c>[DataMember(Name = ...)]</c> that owns the colliding name.</para>
-			/// <para>This is also where the EFFECTIVE XML name of every member is validated on the modern format (CXML0007). <c>ResolveXmlMember</c> only sees the names an <c>[XmlProperty]</c> declares, so a member that inherits its XML name from its JSON one (<c>[JsonPropertyName("$id")]</c>, or a raw member name the naming policy leaves alone) would otherwise reach the emitter unchecked and land in the document verbatim. The compat format is immune: it runs every name through <c>XmlConvert.EncodeLocalName</c>, which has a legal spelling for any input.</para>
+			/// <para>This is also where the EFFECTIVE XML name of every member is validated on the general format (CXML0007). <c>ResolveXmlMember</c> only sees the names an <c>[XmlProperty]</c> declares, so a member that inherits its XML name from its JSON one (<c>[JsonPropertyName("$id")]</c>, or a raw member name the naming policy leaves alone) would otherwise reach the emitter unchecked and land in the document verbatim. The compat format is immune: it runs every name through <c>XmlConvert.EncodeLocalName</c>, which has a legal spelling for any input.</para>
 			/// </remarks>
 			private void ReportDuplicateXmlNames(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members, Dictionary<string, ISymbol> memberSymbols, string xmlProfile)
 			{
@@ -1827,14 +1846,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				foreach (var member in members)
 				{
-					// the same name the emitter writes: the data contract's on the compat format, the JSON name on the modern
+					// the same name the emitter writes: the data contract's on the compat format, the JSON name on the general
 					// one (which is what an XML name derives from there when the member does not override it)
 					string effective =
 						member.CrystalXmlName
 						?? (xmlProfile == XmlProfileDataContract ? member.DataMemberName ?? member.MemberName : member.Name);
 					var seen = member.XmlIsAttribute ? attributes : elements;
 
-					if (xmlProfile == XmlProfileModern && member.CrystalXmlName is null && memberSymbols.TryGetValue(member.MemberName, out var symbol))
+					if (xmlProfile == XmlProfileGeneral && member.CrystalXmlName is null && memberSymbols.TryGetValue(member.MemberName, out var symbol))
 					{ // the name was NOT declared for XML: it fell back to the JSON one, which nothing has validated yet
 						ValidateDerivedXmlName(symbol, effective);
 					}
@@ -1871,7 +1890,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Reports <c>CXML0005</c> when a member of a derived type resolves to the XML name the type discriminator will occupy</summary>
 			/// <remarks>
-			/// <para>MODERN format only: this is the output that writes the discriminator as an XML ATTRIBUTE on every derived element,
+			/// <para>GENERAL format only: this is the output that writes the discriminator as an XML ATTRIBUTE on every derived element,
 			/// named after the JSON discriminator property with its leading <c>'$'</c> removed. Two attributes of one name on one
 			/// element is not even a well-formed document, and nothing downstream would say so.</para>
 			/// <para>Run over the WHOLE container rather than per type, because a derived type does not know its own hierarchy: the
@@ -1881,7 +1900,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// </remarks>
 			private void ReportDiscriminatorXmlNameCollisions(List<CrystalJsonTypeMetadata> includedTypes, HashSet<INamedTypeSymbol> mappedTypes, string xmlProfile)
 			{
-				if (xmlProfile != XmlProfileModern) return;
+				if (xmlProfile != XmlProfileGeneral) return;
 
 				var byRef = new Dictionary<TypeRef, CrystalJsonTypeMetadata>();
 				foreach (var includedType in includedTypes)
@@ -2989,16 +3008,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 						(xmlName, xmlIsAttribute, xmlItemName, xmlDictionaryFormat) = ResolveXmlMember(member, type, xmlProfile, xmlRawName, xmlAttributeSpelled, xmlAttributeValue, xmlItemName, xmlDictionaryFormat, out xmlRefused);
 					}
 
-					// structural, so it applies to every member of the MODERN format, annotated or not; skipped for a member
+					// structural, so it applies to every member of the GENERAL format, annotated or not; skipped for a member
 					// whose settings were already refused, so that one member never collects two stacked errors
-					if (!xmlRefused && xmlProfile == XmlProfileModern)
+					if (!xmlRefused && xmlProfile == XmlProfileGeneral)
 					{
 						ReportBareNestedCollection(member, type);
 						ReportUnprojectableDictionaryValue(member, type, xmlDictionaryFormat);
 					}
 
 					if (!xmlRefused && xmlProfile == XmlProfileDataContract)
-					{ // structural, and compat-only: the modern format never reads [CollectionDataContract] in the first place
+					{ // structural, and compat-only: the general format never reads [CollectionDataContract] in the first place
 						ReportUnsupportedCollectionDataContract(member, typeSymbol);
 
 						if (hasDataContract && isReadOnly && !isField)

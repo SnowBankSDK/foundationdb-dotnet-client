@@ -279,7 +279,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	#region Test container...
 
 	// The generated side of DcsNamespaceReferenceFacts. Only the DEFAULT output is enrolled here: this fixture is about
-	// the namespaces themselves, and the schemaless output has none, so a schemaless twin would compare nothing.
+	// the namespaces themselves, and the namespace-free output has none, so a namespace-free twin would compare nothing.
 	// NamespaceSharedProbe and NamespaceRefPairProbe are left out on purpose: their output is z:Id/z:Ref, the object-graph
 	// reference mechanism CrystalXml does not support.
 	[CrystalConverter]

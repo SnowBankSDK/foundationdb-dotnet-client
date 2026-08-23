@@ -55,7 +55,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Name of the attribute carrying the contract name of the runtime type, when it differs from the declared one</summary>
 			/// <remarks>The reference format writes <c>i:type</c>, and the namespace-stripping writer this profile replicates leaves
-			/// the local name only. It is a FIXED name here, unlike the modern format's, which follows the JSON discriminator.</remarks>
+			/// the local name only. It is a FIXED name here, unlike the general format's, which follows the JSON discriminator.</remarks>
 			private const string XmlDcsTypeAttributeName = "type";
 
 			/// <summary>Names of the two child elements of a dictionary entry</summary>
@@ -71,7 +71,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>The compat XML format inherits the null policy of its JSON profile, whose <c>ShowNullMembers</c> is ON: a null
 			/// member is <c>&lt;X nil="true" /&gt;</c> by default. A caller passing <c>WithoutNullMembers()</c> drops those elements,
 			/// which changes what an XSLT existence test sees and has to be audited before use.</remarks>
-			private const string XmlDcsDefaultSettings = KnownTypeSymbols.CrystalJsonSettingsFullName + ".DataContractCompat";
+			private const string XmlDcsDefaultSettings = KnownTypeSymbols.CrystalXmlSettingsFullName + ".DataContractCompat";
 
 			private const string SerializationInfoFullName = "global::System.Runtime.Serialization.SerializationInfo";
 
@@ -363,7 +363,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Returns the expression naming the contract namespace of a type, or <see langword="null"/> when it has none</summary>
 			/// <remarks>
-			/// <para>The one place the profile's two outputs differ: under the schemaless option this returns
+			/// <para>The one place the profile's two outputs differ: under the omit-namespaces option this returns
 			/// <see langword="null"/> for every type, so every name the emission bakes is a local name and the document carries
 			/// no namespace, no prefix and no declaration. Everything else about the emission is the same code.</para>
 			/// <para><see langword="null"/> is also what the empty contract namespace resolves to, which
@@ -371,7 +371,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// </remarks>
 			private string? GetXmlDcsNamespaceRef(TypeMetadata type)
 			{
-				if (this.WritesXmlDcsSchemaless)
+				if (this.WritesXmlDcsOmitNamespaces)
 				{
 					return null;
 				}
@@ -394,7 +394,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// </remarks>
 			private string? GetXmlDcsMemberNamespaceRef(CrystalJsonMemberMetadata member, TypeMetadata fallback)
 			{
-				if (this.WritesXmlDcsSchemaless)
+				if (this.WritesXmlDcsOmitNamespaces)
 				{
 					return null;
 				}
@@ -408,13 +408,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return uri.Length == 0 ? null : this.XmlNamespaces.Ref(uri);
 			}
 
-			/// <summary>Returns the expression naming one of the format's built-in namespaces, or <see langword="null"/> under the schemaless option</summary>
-			private string? GetXmlDcsBuiltinNamespaceRef(string uri) => this.WritesXmlDcsSchemaless ? null : this.XmlNamespaces.Ref(uri);
+			/// <summary>Returns the expression naming one of the format's built-in namespaces, or <see langword="null"/> under the omit-namespaces option</summary>
+			private string? GetXmlDcsBuiltinNamespaceRef(string uri) => this.WritesXmlDcsOmitNamespaces ? null : this.XmlNamespaces.Ref(uri);
 
 			/// <summary>Returns the expression naming the XML Schema instance namespace, which carries <c>nil</c> and <c>type</c></summary>
 			private string? GetXmlDcsInstanceNamespaceRef() => GetXmlDcsBuiltinNamespaceRef(XmlSchemaInstanceNamespaceUri);
 
-			/// <summary>Emits the type annotation of one contract: a qualified name by default, a bare local name under the schemaless option</summary>
+			/// <summary>Emits the type annotation of one contract: a qualified name by default, a bare local name under the omit-namespaces option</summary>
 			/// <param name="sb">Destination builder</param>
 			/// <param name="names">Name table of the converter being emitted</param>
 			/// <param name="contractName">Local contract name of the runtime type</param>
@@ -424,13 +424,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// the emitter's qualified-name member: the pair (namespace, local name) IS the discriminator a reader matches, and
 			/// the prefix it appears under is the emitter's to pick. Formatting the pair into a string here would name a prefix
 			/// this code cannot know.</para>
-			/// <para>Under the schemaless option the value keeps its local half only, which is what the stored documents carry.
+			/// <para>Under the omit-namespaces option the value keeps its local half only, which is what the stored documents carry.
 			/// The cost is stated on the option: two derived types with the same local name in different contract namespaces
 			/// become one annotation.</para>
 			/// </remarks>
 			private void WriteXmlDcsTypeAnnotation(CSharpCodeBuilder sb, XmlNameTable names, string contractName, string? contractNamespace)
 			{
-				if (this.WritesXmlDcsSchemaless)
+				if (this.WritesXmlDcsOmitNamespaces)
 				{
 					sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlDcsTypeAttributeName)}, {CSharpCodeBuilder.Constant(contractName)});");
 					return;
@@ -658,7 +658,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				var type = typeDef.Type;
 				string valueType = type.FullyQualifiedName + (type.IsValueType() ? "" : "?");
-				string settingsType = KnownTypeSymbols.CrystalJsonSettingsFullName;
+				string settingsType = KnownTypeSymbols.CrystalXmlSettingsFullName;
 
 				string contractName = ResolveXmlDcsRootName(sb, typeDef);
 				string? contractNamespace = GetXmlDcsNamespaceRef(type);
@@ -838,7 +838,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// entries even though it implements <c>ISerializable</c>).</para>
 			/// <para>A registered type that DERIVES from a collection therefore gets the collection's contract name as its root
 			/// (<c>ArrayOfstring</c>) and an empty body, since it has no serialized member of its own. That is the same shape the
-			/// modern profile produces for it, and the reference format would write the items.</para>
+			/// general profile produces for it, and the reference format would write the items.</para>
 			/// </remarks>
 			private void WriteXmlDcsBody(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef)
 			{
@@ -915,7 +915,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// [DataMember(EmitDefaultValue = false)] and [JsonIgnore(Condition = WhenWritingDefault)] both mean "a value equal
 				// to the default writes NOTHING at all, not even a nil element" - but they do NOT agree on which default.
 				// DCS compares against the CLR default of the type, full stop, and this format reproduces DCS: hence default!,
-				// where the modern emitter compares against the member's DECLARED default (GetForgivingDefaultLiteral).
+				// where the general emitter compares against the member's DECLARED default (GetForgivingDefaultLiteral).
 				// A member declaring `= 5` is therefore omitted at 0 here, and omitted at 5 there. Deliberate: byte
 				// compatibility is what this profile exists for, and the reference format has no notion of a declared default.
 				bool guarded = !member.EmitDefaultValue || member.IgnoreCondition == "WhenWritingDefault";
@@ -1092,7 +1092,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Writes a sequence: one element per item, named after the ITEM type's contract</summary>
 			/// <remarks>An empty sequence writes the self-closing wrapper, and a nested sequence names its items after the inner
-			/// collection's own contract (<c>ArrayOfstring</c>), which is why this format has no equivalent of the modern profile's
+			/// collection's own contract (<c>ArrayOfstring</c>), which is why this format has no equivalent of the general profile's
 			/// refusal to nest bare collections (CXML0006).</remarks>
 			private void WriteXmlDcsSequenceContent(CSharpCodeBuilder sb, XmlNameTable names, TypeMetadata type, string valueExpr, string nameRef, string scope)
 			{
@@ -1178,7 +1178,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock("case");
 				sb.Comment("a null in an anyType slot is nil, under the same rule as a null member");
 				sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
-				sb.AppendLine($"if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+				sb.AppendLine($"if ({CrystalXmlSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 				sb.EnterBlock();
 				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.LeaveBlock();
@@ -1284,7 +1284,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Emits the label lookup of one enum, on the DataContract format</summary>
 			/// <remarks>
 			/// <para>The label is the <c>[EnumMember(Value = ...)]</c> token when the member declares one, and the declared name
-			/// otherwise. The System.Text.Json token that the modern format prefers is deliberately NOT read here: the output this
+			/// otherwise. The System.Text.Json token that the general format prefers is deliberately NOT read here: the output this
 			/// profile reproduces never saw it.</para>
 			/// <para>On a <c>[DataContract]</c> enum only the members carrying <c>[EnumMember]</c> are serializable, so the others get
 			/// no case at all and land in the refusal arm, exactly as the reference serializer refuses them.</para>
@@ -1379,7 +1379,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Name of the emitted undeclared-flags refusal of THIS format</summary>
-			/// <remarks>Deliberately not the modern format's <c>FailXmlUndeclaredFlags</c>, which carries the same concept under an
+			/// <remarks>Deliberately not the general format's <c>FailXmlUndeclaredFlags</c>, which carries the same concept under an
 			/// INCOMPATIBLE signature (it returns the <c>string</c> a switch arm evaluates to, where this one is a statement that
 			/// returns nothing). No generated class holds both today - a container resolves to exactly one profile - but two same-named
 			/// helpers with different signatures is a collision waiting for the first piece of code that emits both.</remarks>

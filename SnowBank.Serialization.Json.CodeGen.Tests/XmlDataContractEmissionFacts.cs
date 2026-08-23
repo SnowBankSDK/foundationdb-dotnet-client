@@ -418,7 +418,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// <summary>Declares its own contract namespace, and holds the three members whose namespace treatment differs</summary>
 	/// <remarks><see cref="Nested"/> is a cross-namespace member, since <see cref="Shelf"/> derives its contract namespace
 	/// from the CLR namespace; <see cref="NullableCount"/> carries the null marker; <see cref="Boxed"/> carries the type
-	/// annotation. This probe exists for the namespaced default, so it must not be enrolled in a schemaless container.</remarks>
+	/// annotation. This probe exists for the namespaced default, so it must not be enrolled in a namespace-free container.</remarks>
 	[DataContract(Namespace = "urn:acme:legacy:catalog")]
 	public sealed class NamespacedProbe
 	{
@@ -428,15 +428,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 		[DataMember] public object? Boxed;
 	}
 
-	// Schemaless, because every expectation in this fixture is a measured namespace-free document. What the fixture pins
-	// is the emission SHAPE (member order, contract names, element shapes, the acted deviations), and the option leaves
-	// all of that untouched: it only strips the prefixes and the xmlns declarations. The namespaced default output is
-	// certified elsewhere, against a live DataContractSerializer, by SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs and
-	// SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs. NamespacedSerializers below keeps a sample of that default
-	// inside this fixture too.
+	// Namespace-free, because every expectation in this fixture is a measured namespace-free document. What the fixture
+	// pins is the emission SHAPE (member order, contract names, element shapes, the acted deviations), and the option
+	// leaves all of that untouched: it only strips the prefixes and the xmlns declarations. The namespaced default output
+	// is certified elsewhere, against a live DataContractSerializer, by SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs
+	// and SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs. NamespacedSerializers below keeps a sample of that
+	// default inside this fixture too.
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
-	[CrystalXmlOutput(Schemaless = true)]
+	[CrystalXmlOutput(OmitNamespaces = true)]
 	[CrystalSerializable(typeof(Chassis))]
 	[CrystalSerializable(typeof(Sedan))]
 	[CrystalSerializable(typeof(Estate))]
@@ -482,10 +482,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// XW-Q11, which later narrowed CJSON0013 so the DataContractCompat JSON profile itself also tolerates the flag
 	/// alone (see <see cref="LegacyCaseInsensitiveOutputSerializers"/> and <see cref="LegacyCaseInsensitiveDualSerializers"/>).</para>
 	/// </remarks>
-	// Schemaless too: its facts compare its documents to the ones LegacySerializers writes, character for character
+	// Namespace-free too: its facts compare its documents to the ones LegacySerializers writes, character for character
 	[CrystalConverter]
 	[CrystalJsonOutput(PropertyNameCaseInsensitive = true)]
-	[CrystalXmlOutput(Profile = CrystalXmlOutputProfile.DataContract, Schemaless = true)]
+	[CrystalXmlOutput(CrystalXmlSerializerDefaults.DataContractCompat, OmitNamespaces = true)]
 	[CrystalSerializable(typeof(Shelf))]
 	[CrystalSerializable(typeof(ScalarProbe))]
 	public static partial class LegacyCaseInsensitiveSerializers
@@ -513,21 +513,21 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// tripped the same trigger as a genuine naming-policy contradiction). Both its JSON and its derived DataContract
 	/// XML must be byte-identical to <see cref="LegacySerializers"/>, which carries the same types without the flag.
 	/// </remarks>
-	// Schemaless too, for the same reason: its XML facts compare its documents to the ones LegacySerializers writes
+	// Namespace-free too, for the same reason: its XML facts compare its documents to the ones LegacySerializers writes
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
-	[CrystalXmlOutput(Schemaless = true)]
+	[CrystalXmlOutput(OmitNamespaces = true)]
 	[CrystalSerializable(typeof(Shelf))]
 	[CrystalSerializable(typeof(ScalarProbe))]
 	public static partial class LegacyCaseInsensitiveDualSerializers
 	{
 	}
 
-	/// <summary>The same compat XML format with no <c>Schemaless</c>, so it writes the namespaced default of the profile</summary>
+	/// <summary>The same compat XML format with no <c>OmitNamespaces</c>, so it writes the namespaced default of the profile</summary>
 	/// <remarks>Two probes, which is what the three namespace facts below need. The wider certification of this output is
 	/// SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs and SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs, which
 	/// compare it to a live <see cref="System.Runtime.Serialization.DataContractSerializer"/>. This container keeps a
-	/// sample of it next to the schemaless documents, so the fixture shows both outputs of the one profile.</remarks>
+	/// sample of it next to the namespace-free documents, so the fixture shows both outputs of the one profile.</remarks>
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
 	[CrystalXmlOutput]
@@ -560,7 +560,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	/// documents structurally, family by family.</para>
 	/// <para>Three strings deliberately differ from that measured output, and each has its own fact saying so: the
 	/// unhashed dictionary entry names, the sanitized control characters, and the typed exceptions.</para>
-	/// <para>Those documents are the schemaless output of the profile, which is what <see cref="LegacySerializers"/> asks
+	/// <para>Those documents are the namespace-free output of the profile, which is what <see cref="LegacySerializers"/> asks
 	/// for. The namespaced default has its own region and its own container, <see cref="NamespacedSerializers"/>, and its
 	/// wider certification against a live serializer is <c>SnowBank.Core.Tests/Xml/DcsOutputFidelityFacts.cs</c> and
 	/// <c>SnowBank.Core.Tests/Xml/DcsNamespaceReferenceFacts.cs</c>.</para>
@@ -638,7 +638,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// root of this shape also declares the instance namespace, whose markers the third fact below covers.
 			var probe = new NamespacedProbe { Label = "novels" };
 
-			string xml = NamespacedSerializers.NamespacedProbe.ToXmlText(probe, CrystalJsonSettings.Json.WithoutNullMembers());
+			string xml = NamespacedSerializers.NamespacedProbe.ToXmlText(probe, CrystalXmlSettings.DataContractCompat.WithoutNullMembers());
 			Log($"XML : {xml}");
 
 			Assert.That(xml, Is.EqualTo("""<NamespacedProbe xmlns="urn:acme:legacy:catalog" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Label>novels</Label></NamespacedProbe>"""));
@@ -651,7 +651,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// move to the nested namespace behind a d{depth}p{n} prefix declared on the element that opens it.
 			var probe = new NamespacedProbe { Nested = new Shelf { Label = "novels" } };
 
-			string xml = NamespacedSerializers.NamespacedProbe.ToXmlText(probe, CrystalJsonSettings.Json.WithoutNullMembers());
+			string xml = NamespacedSerializers.NamespacedProbe.ToXmlText(probe, CrystalXmlSettings.DataContractCompat.WithoutNullMembers());
 			Log($"XML : {xml}");
 
 			Assert.That(xml, Is.EqualTo("""<NamespacedProbe xmlns="urn:acme:legacy:catalog" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Nested xmlns:d2p1="http://schemas.datacontract.org/2004/07/SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy"><d2p1:Label>novels</d2p1:Label></Nested></NamespacedProbe>"""));
@@ -741,7 +741,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Without_Null_Members_Drops_The_Nil_Elements()
 		{
 			// the profile default is ShowNullMembers ON; a caller can turn it off, which is what an XSLT existence test sees
-			string xml = LegacySerializers.NilProbe.ToXmlText(new NilProbe { SetString = "value" }, CrystalJsonSettings.Json.WithoutNullMembers());
+			string xml = LegacySerializers.NilProbe.ToXmlText(new NilProbe { SetString = "value" }, CrystalXmlSettings.DataContractCompat.WithoutNullMembers());
 			Log($"XML : {xml}");
 
 			Assert.That(xml, Is.EqualTo("""<NilProbe><SetString>value</SetString></NilProbe>"""));
@@ -817,7 +817,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Writes_Its_Own_Body()
 		{
-			// DELIBERATE DIVERGENCE from the modern format, which refuses this exact value with
+			// DELIBERATE DIVERGENCE from the general format, which refuses this exact value with
 			// CrystalXmlUnknownTypeException. Here the live DCS oracle writes the root's own body, unannotated (the
 			// runtime contract IS the declared one), and byte compatibility is what this profile exists for.
 			Assert.That(
@@ -956,7 +956,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// NOT a fidelity claim: the reference format has no equivalent of WithoutNullMembers and always writes the nil
 			// attribute. What is pinned here is that the setting reaches the ROOT too, and that a document is still
 			// produced (an empty output would be unparseable, which is worse than a nil-less element)
-			string xml = LegacySerializers.Shelf.ToXmlText(null, CrystalJsonSettings.Json.WithoutNullMembers());
+			string xml = LegacySerializers.Shelf.ToXmlText(null, CrystalXmlSettings.DataContractCompat.WithoutNullMembers());
 			Log($"XML : {xml}");
 
 			Assert.That(xml, Is.EqualTo("""<Shelf />"""));

@@ -33,7 +33,7 @@ namespace SnowBank.Data.Xml
 	/// <remarks>
 	/// <para>Every form below was measured against a live <see cref="System.Runtime.Serialization.DataContractSerializer"/>
 	/// and reproduces its text exactly. The two output profiles share every lexical form except <see cref="char"/>, which is
-	/// the only type with a per-profile pair (<see cref="FormatDcsChar"/> / <see cref="FormatModernChar"/>).</para>
+	/// the only type with a per-profile pair (<see cref="FormatDcsChar"/> / <see cref="FormatGeneralChar"/>).</para>
 	/// <para>Not covered here: plain <see cref="string"/> content (written straight through <c>WriteText</c>) and enum
 	/// labels (resolved by the generator from the declared member names, not a lexical formatting rule).</para>
 	/// </remarks>
@@ -99,8 +99,8 @@ namespace SnowBank.Data.Xml
 		/// <summary>DCS form: the character's UTF-16 code unit as a decimal integer (e.g. <c>'A'</c> -&gt; <c>"65"</c>)</summary>
 		public static string FormatDcsChar(char value) => ((int) value).ToString(CultureInfo.InvariantCulture);
 
-		/// <summary>Modern form: the character itself, as a one-character string (e.g. <c>'A'</c> -&gt; <c>"A"</c>)</summary>
-		public static string FormatModernChar(char value) => value.ToString();
+		/// <summary>General form: the character itself, as a one-character string (e.g. <c>'A'</c> -&gt; <c>"A"</c>)</summary>
+		public static string FormatGeneralChar(char value) => value.ToString();
 
 		#endregion
 

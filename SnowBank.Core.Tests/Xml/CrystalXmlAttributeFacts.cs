@@ -51,8 +51,8 @@ namespace SnowBank.Data.Xml.Tests
 		public void Test_CrystalXmlOutput_Defaults_Derive_From_Container()
 		{
 			var attr = new CrystalXmlOutputAttribute();
-			Assert.That(attr.Profile, Is.EqualTo(CrystalXmlOutputProfile.Default));
 			Assert.That(attr.DictionaryFormat, Is.EqualTo(CrystalXmlDictionaryFormat.Default));
+			Assert.That(attr.OmitNamespaces, Is.False);
 		}
 
 		[Test]

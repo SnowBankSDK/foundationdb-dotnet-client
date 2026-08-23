@@ -37,8 +37,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	public sealed class XmlPropertyMetadataFacts : SimpleTest
 	{
 
-		/// <summary>The container attributes of a probe that produces the Modern XML format (the default shape these facts exercise)</summary>
-		private const string ModernContainer = """
+		/// <summary>The container attributes of a probe that produces the General XML format (the default shape these facts exercise)</summary>
+		private const string GeneralContainer = """
 				[SnowBank.Data.CrystalConverter]
 				[SnowBank.Data.Json.CrystalJsonOutput]
 				[SnowBank.Data.Xml.CrystalXmlOutput]
@@ -57,7 +57,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			""";
 
 		/// <summary>Wraps a set of DTO members into a compilable probe (the DTO, a couple of satellite types, and the container that enrols it)</summary>
-		private static string Probe(string members, string containerAttributes = ModernContainer, string dtoAttributes = "") => $$"""
+		private static string Probe(string members, string containerAttributes = GeneralContainer, string dtoAttributes = "") => $$"""
 			namespace Probe
 			{
 
@@ -731,7 +731,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_Json_Name_That_Is_Not_An_Xml_Name_Is_A_Build_Error()
 		{
 			// the member declares NOTHING for XML, so its XML name falls back to the JSON one: "$id" is a perfectly good
-			// JSON property name and produces "<$id>", which no XML parser accepts. Nothing else on the modern format
+			// JSON property name and produces "<$id>", which no XML parser accepts. Nothing else on the general format
 			// escapes or encodes it, so this is the only place it can be caught
 			var refusal = AssertRefusal(Probe("""
 						[System.Text.Json.Serialization.JsonPropertyName("$id")]
@@ -778,7 +778,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// alone: a diagnostic on the type, not an #error buried in the emitted source
 			var refusal = AssertRefusal(Probe("""
 						public int Id { get; set; }
-				""", ModernContainer, "[System.Runtime.Serialization.DataContract(Name = \"not a name\")]"), "CXML0007");
+				""", GeneralContainer, "[System.Runtime.Serialization.DataContract(Name = \"not a name\")]"), "CXML0007");
 
 			using (Assert.EnterMultipleScope())
 			{
@@ -792,7 +792,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			AssertNotReported(Probe("""
 						public int Id { get; set; }
-				""", ModernContainer, "[System.Runtime.Serialization.DataContract(Name = \"Account\")]"), "CXML0007");
+				""", GeneralContainer, "[System.Runtime.Serialization.DataContract(Name = \"Account\")]"), "CXML0007");
 		}
 
 		[Test]
@@ -1002,9 +1002,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_The_Same_Vocabulary_On_A_Modern_Container_Is_Not_Reported()
+		public void Test_The_Same_Vocabulary_On_A_General_Container_Is_Not_Reported()
 		{
-			// the non-triggering shape: exactly what the Modern format exists to honor
+			// the non-triggering shape: exactly what the General format exists to honor
 			AssertNotReported(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("@id")]
 						public int Id { get; set; }
@@ -1132,7 +1132,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_The_Collision_Remedy_Points_At_XmlProperty_On_A_Modern_Container()
+		public void Test_The_Collision_Remedy_Points_At_XmlProperty_On_A_General_Container()
 		{
 			var refusal = AssertRefusal(Probe("""
 						public int Alpha { get; set; }
@@ -1141,7 +1141,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public int Other { get; set; }
 				"""), "CXML0005");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("XmlProperty"), "the Modern format honors an XML-only rename, so that is the remedy to name");
+			Assert.That(refusal.GetMessage(), Does.Contain("XmlProperty"), "the General format honors an XML-only rename, so that is the remedy to name");
 		}
 
 		[Test]
@@ -1376,7 +1376,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		/// <summary>Wraps a converter for <c>bool</c> implementing the facets named in <paramref name="interfaces"/>, applied to a member of the probe's DTO</summary>
 		/// <param name="memberAttributes">Extra attributes on the converted member, written at the member's own indentation (this is how the attribute-projected shape is built)</param>
-		private static string ConverterProbe(string interfaces, string containerAttributes = ModernContainer, string memberAttributes = "") => $$"""
+		private static string ConverterProbe(string interfaces, string containerAttributes = GeneralContainer, string memberAttributes = "") => $$"""
 			namespace Probe
 			{
 
@@ -1388,7 +1388,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 					public bool Unpack(SnowBank.Data.Json.JsonValue value, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver) => value.ToBoolean();
 
-					public void WriteXml<TEmitter>(ref TEmitter emitter, bool value, SnowBank.Data.Json.CrystalJsonSettings? settings = null, string? rootName = null)
+					public void WriteXml<TEmitter>(ref TEmitter emitter, bool value, SnowBank.Data.Xml.CrystalXmlSettings? settings = null, string? rootName = null)
 						where TEmitter : struct, SnowBank.Data.Xml.ICrystalXmlEmitter
 					{
 						var name = SnowBank.Data.Xml.CrystalXmlName.Create(rootName ?? "bit");
@@ -1599,9 +1599,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_CollectionDataContract_Member_On_A_Modern_Container_Is_Not_Reported()
+		public void Test_A_CollectionDataContract_Member_On_A_General_Container_Is_Not_Reported()
 		{
-			// the modern format never reads that attribute in the first place: its names come from the member vocabulary
+			// the general format never reads that attribute in the first place: its names come from the member vocabulary
 			AssertNotReported(
 				Probe(
 					"""
@@ -1698,9 +1698,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_GetOnly_DataMember_Property_On_A_DataContract_Type_With_A_Modern_Container_Is_Not_Reported()
+		public void Test_A_GetOnly_DataMember_Property_On_A_DataContract_Type_With_A_General_Container_Is_Not_Reported()
 		{
-			// the modern format carries no read-only restriction at all: CXML0013 is compat-only, and does not fire
+			// the general format carries no read-only restriction at all: CXML0013 is compat-only, and does not fire
 			// merely because the TYPE carries [DataContract] - only the container's resolved XML profile matters
 			AssertNotReported(
 				Probe(

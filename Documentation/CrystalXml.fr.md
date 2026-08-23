@@ -37,7 +37,7 @@ public static partial class LegacyRenderSerializers { }
 | `[CrystalConverter]` | `SnowBank.Data` | le marqueur de container ; ne dit rien sur les formats |
 | `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrôle un type racine ; répétable ; alimente chaque format de sortie |
 | `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | demande le format JSON, et porte ses paramètres (profil, politique de nommage, insensibilité à la casse) |
-| `[CrystalXmlOutput(...)]` | `SnowBank.Data.Xml` | demande le format XML, et porte ses paramètres (`Profile`, `DictionaryFormat`) |
+| `[CrystalXmlOutput(...)]` | `SnowBank.Data.Xml` | demande le format XML, et porte ses paramètres (le préréglage de format, `DictionaryFormat`) |
 | `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias mono-format : `[CrystalConverter]` + `[CrystalJsonOutput]` avec les mêmes paramètres |
 | `[CrystalXmlConverter(...)]` | `SnowBank.Data.Xml` | alias mono-format : `[CrystalConverter]` + `[CrystalXmlOutput]` avec les mêmes paramètres |
 
@@ -59,18 +59,22 @@ l'enrôlement n'a jamais été spécifique à JSON.
 | `[CrystalConverter]` seul | **refusé** (CRYS0001) : un container qui ne nomme aucun format de sortie ne génère rien |
 | plusieurs marqueurs de container sur une même classe | **refusé** (CRYS0003) |
 
-Un *container* XML uniquement n'a aucun profil JSON dont dériver, donc un `Profile` non spécifié se
-résout vers le profil moderne, et ses noms d'éléments sont les noms de membres déclarés (la
-politique de nommage est un paramètre de `[CrystalJsonOutput]`). Un *container* qui a besoin à la
+Un *container* XML uniquement n'a aucun profil JSON dont dériver, donc `[CrystalXmlOutput]` sans
+paramètre se résout vers le format général, et ses noms d'éléments sont les noms de membres déclarés
+(la politique de nommage est un paramètre de `[CrystalJsonOutput]`). Un *container* qui a besoin à la
 fois d'une politique de nommage JSON et de son miroir XML déclare les deux sorties.
 
-Options de `[CrystalXmlOutput]` / `[CrystalXmlConverter]` :
+`[CrystalXmlOutput]` / `[CrystalXmlConverter]` choisissent le format par un préréglage du
+constructeur : `[CrystalXmlOutput(CrystalXmlSerializerDefaults.General)]` ou
+`[CrystalXmlOutput(CrystalXmlSerializerDefaults.DataContractCompat)]`. La forme sans paramètre (`Inherit`) dérive
+le format du profil JSON du container (un profil JSON `DataContractCompat` donne le format DCS, tout
+le reste donne le format général). Une combinaison incohérente (une politique de nommage à côté du
+format DCS) est une erreur de build (CXML0001). Les options nommées :
 
 | Option | Signification |
 |---|---|
-| `Profile` | variante XML ; dérivée par défaut du profil JSON du container (`DataContractCompat` donne le format DCS, standard/Web donne le profil moderne ; pas de sortie JSON signifie le profil moderne) ; surcharge explicite autorisée ; une combinaison incohérente (une politique de nommage à côté du format DCS) est une erreur de build (CXML0001) |
-| `DictionaryFormat` | valeur par défaut du container pour la forme de dictionnaire (voir le profil moderne ci-dessous) |
-| `Schemaless` | format DCS uniquement : reproduit le fil dépouillé sans namespaces, octet pour octet. Sur le profil moderne l'option est inerte, et CXML0012 le dit |
+| `DictionaryFormat` | valeur par défaut du container pour la forme de dictionnaire (voir le profil général ci-dessous) |
+| `OmitNamespaces` | format DCS uniquement : reproduit le fil dépouillé sans namespaces, octet pour octet. Sur le profil général l'option est inerte, et CXML0012 le dit |
 
 ```csharp
 // niveau MEMBER : tout le XML vit dans [XmlProperty] (namespace SnowBank.Data.Xml)
@@ -80,7 +84,7 @@ Options de `[CrystalXmlOutput]` / `[CrystalXmlConverter]` :
 
 Échelle de résolution par *setting* (jamais tout ou rien) :
 
-1. les valeurs par défaut du profil du *container* (compat ou moderne) ;
+1. les valeurs par défaut du profil du *container* (compat ou général) ;
 2. `[JsonProperty]` / `[JsonPropertyName]` : fournissent le nom, pris tel quel (jamais remodelé
    par la politique de nommage) ;
 3. `[XmlProperty]` : surcharge finale, option par option (un `ItemName` seul laisse le nom
@@ -154,7 +158,7 @@ string xml = CrystalXml.Scalar.ToText("hello");
 ```
 
 Le nom de racine est résolu, jamais deviné : le `rootName` de l'appelant gagne ; le format DCS se
-rabat sur sa convention `ArrayOfX`, dans le namespace du contrat de l'item ; le profil moderne n'a
+rabat sur sa convention `ArrayOfX`, dans le namespace du contrat de l'item ; le profil général n'a
 pas de convention, donc une racine collection sans `rootName` lève `CrystalXmlRootNameException`.
 Les éléments d'item gardent le nom d'élément du type d'item, et `itemName` le remplace. Les points
 d'entrée scalaires écrivent le fil de référence des types lexicaux xsd (le nom lexical dans le
@@ -173,7 +177,7 @@ deux règles d'acceptation. La sortie par défaut est tenue au fil standard sur 
 cette émission omet les déclarations qu'elle peut prouver inutilisées et écrit les autres sur le
 premier élément qui en a besoin, donc ses octets diffèrent de ceux du sérialiseur de référence
 alors que chaque élément et chaque attribut se résolvent vers la même paire (namespace, nom
-local). La sortie `Schemaless = true` est tenue au fil dépouillé octet pour octet. Points
+local). La sortie `OmitNamespaces = true` est tenue au fil dépouillé octet pour octet. Points
 saillants :
 
 - Noms de racine et de contrat : `[DataContract(Name=)]` respecté, les génériques composent `XOfY`
@@ -213,7 +217,7 @@ saillants :
   contrat déclarant. Un type dérivé dans le namespace du *slot* écrit un nom local nu ; un type
   d'un autre namespace écrit un QName préfixé et déclare le préfixe sur le même élément. Une
   instance d'une racine polymorphe concrète écrit son propre corps, sans annotation, ce que fait
-  l'oracle, et c'est là que ce profil s'écarte volontairement du profil moderne (voir plus bas).
+  l'oracle, et c'est là que ce profil s'écarte volontairement du profil général (voir plus bas).
 - Dialecte `ISerializable` : chaque entrée `SerializationInfo` devient un élément nommé d'après la
   clé (encodée), les valeurs déclarées `object` portent un discriminant `type=`.
 - Scalaires : formes lexicales DCS (dates ISO tronquées selon `DateTimeKind`, durées ISO 8601,
@@ -222,7 +226,7 @@ saillants :
   deux éléments `{DateTime, OffsetMinutes}`, `byte[]` en base64).
 - Texte : pas de déclaration XML, auto-fermeture `<X />` avec une espace, fins de ligne du texte
   en CRLF brut.
-- `Schemaless = true` : les namespaces, préfixes et déclarations disparaissent (`i:nil` arrive
+- `OmitNamespaces = true` : les namespaces, préfixes et déclarations disparaissent (`i:nil` arrive
   comme `nil`, `i:type` comme `type`, le discriminant ne garde que son nom local). C'est le fil
   dépouillé historique que certains consommateurs stockent et analysent, conservé comme option
   explicite, certifiée à l'octet.
@@ -243,15 +247,15 @@ exigences :
    `CrystalXmlRootNameException`, `NotSupportedException`, `XmlException`) remplacent
    `SerializationException`.
 
-## Le profil moderne : le XML qu'un lecteur JSON prédirait
+## Le profil général : le XML qu'un lecteur JSON prédirait
 
-| JSON | XML moderne |
+| JSON | XML général |
 |---|---|
 | `{"title": "x"}` | `<title>x</title>` : même échelle de nommage que le JSON |
 | racine | le nom du type via la même échelle ; `rootName` optionnel par appel |
 | membre null | absent (comme JSON par défaut) ; `WithNullMembers()` donne `<x nil="true" />` ; `[JsonIgnore(Condition = ...)]` par membre respecté |
 | `"tags": ["a","b"]` | non encapsulé par défaut : `<tags>a</tags><tags>b</tags>` ; `[XmlProperty(ItemName = "tag")]` encapsule : `<tags><tag>a</tag>...</tags>` ; une collection imbriquée nue (`List<List<T>>`) est une erreur de build (CXML0006) : introduisez un type intermédiaire |
-| dictionnaire | `CrystalXmlDictionaryFormat { Default, Direct, KeyAttribute, KeyValueAttributes, KeyValueElements }` ; la valeur par défaut moderne est `Direct` (`<scores><math>12</math></scores>`, clé non-NCName = exception typée à l'exécution) |
+| dictionnaire | `CrystalXmlDictionaryFormat { Default, Direct, KeyAttribute, KeyValueAttributes, KeyValueElements }` ; la valeur par défaut générale est `Direct` (`<scores><math>12</math></scores>`, clé non-NCName = exception typée à l'exécution) |
 | `"$type": "cat"` | attribut `type="cat"` : le discriminant est une annotation |
 | `[XmlProperty("@id")]` | `<book id="42">` : donnée comme attribut, scalaires seulement ; interdit sur le profil de compatibilité (DCS n'a pas d'attributs utilisateur) |
 
@@ -261,7 +265,7 @@ racine. Ce format correspond au côté JSON, qui ne porte pas non plus de discri
 valeur : un lecteur ne pourrait pas la distinguer d'un sous-type dont l'annotation aurait disparu,
 donc elle est refusée plutôt qu'écrite sous une forme que personne ne peut interpréter.
 
-Contrairement au profil de compatibilité, le format moderne ne porte aucune restriction sur les
+Contrairement au profil de compatibilité, le format général ne porte aucune restriction sur les
 membres en lecture seule : une propriété get-only, un champ `readonly` et un membre init-only sont
 tous émis, à l'image du format JSON (qui ne filtre jamais non plus sur le caractère lecture seule,
 seul le désérialiseur généré s'abstient d'en réassigner un).
@@ -271,7 +275,7 @@ seul le désérialiseur généré s'abstient d'en réassigner un).
 ```csharp
 [CrystalConverter]
 [CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]      // camelCase
-[CrystalXmlOutput]                                          // Profile dérivé : moderne
+[CrystalXmlOutput]                                          // format dérivé : général
 [CrystalSerializable(typeof(Book))]
 public static partial class AcmeSerializers { }
 
@@ -328,13 +332,13 @@ Les diagnostics au moment du build sur le format XML lui-même vivent dans la pl
 | CXML0003 | projection en attribut d'un membre sans forme lexicale |
 | CXML0004 | le vocabulaire de nommage XML sur le profil de compatibilité |
 | CXML0005 | deux membres se résolvant vers le même nom XML, discriminant compris |
-| CXML0006 | une collection imbriquée nue sur le profil moderne |
-| CXML0007 | tout nom qui n'est pas un NCName légal : un nom `[XmlProperty]` ou `ItemName` déclaré, un `@` seul, la contradiction `"@x"` + `Attribute = false`, un nom de membre DÉRIVÉ de son nom JSON, et un `[DataContract(Name = ...)]` qui nommerait l'élément racine. Profil moderne uniquement pour les cas dérivé et racine : le format de compatibilité encode chaque nom via `XmlConvert.EncodeLocalName` |
+| CXML0006 | une collection imbriquée nue sur le profil général |
+| CXML0007 | tout nom qui n'est pas un NCName légal : un nom `[XmlProperty]` ou `ItemName` déclaré, un `@` seul, la contradiction `"@x"` + `Attribute = false`, un nom de membre DÉRIVÉ de son nom JSON, et un `[DataContract(Name = ...)]` qui nommerait l'élément racine. Profil général uniquement pour les cas dérivé et racine : le format de compatibilité encode chaque nom via `XmlConvert.EncodeLocalName` |
 | CXML0008 | un convertisseur de membre sans la facette XML |
 | CXML0009 | un membre projeté en attribut avec un convertisseur sur mesure |
 | CXML0010 | `[CollectionDataContract]` sur le type d'un membre compat |
 | CXML0011 | un dictionnaire dont la forme résolue porte la valeur comme texte (`KeyAttribute`, `KeyValueAttributes`) alors que le type de la valeur n'a pas de forme lexicale |
-| CXML0012 | **Info, pas une erreur** : un *setting* qui a été écrit explicitement, résolu, puis jamais consulté : un `[XmlProperty(ItemName = ...)]` sur un membre sans *items*, sur un membre dont la forme de dictionnaire RÉSOLUE est `Direct` (dont les entrées sont nommées d'après leur propre clé), ou sur un membre dont le type écrit son propre contenu XML (`ICrystalXmlSerializable`, ce qui rend aussi inerte un `DictionaryFormat` au niveau du membre : seul le NOM d'élément vient encore du membre là) ; un `[JsonIgnore(Condition = Never)]` sur un membre projeté en attribut (un attribut n'a pas de forme nil, donc un attribut null est absent de toute façon) ; un `[CrystalXmlOutput(DictionaryFormat = ...)]` sur un container dont le profil résolu est celui de compatibilité (qui a une seule forme de dictionnaire) ; et un `[CrystalXmlOutput(Schemaless = true)]` sur un container dont le profil résolu est le moderne (le fil dépouillé est une variante du format DCS) |
+| CXML0012 | **Info, pas une erreur** : un *setting* qui a été écrit explicitement, résolu, puis jamais consulté : un `[XmlProperty(ItemName = ...)]` sur un membre sans *items*, sur un membre dont la forme de dictionnaire RÉSOLUE est `Direct` (dont les entrées sont nommées d'après leur propre clé), ou sur un membre dont le type écrit son propre contenu XML (`ICrystalXmlSerializable`, ce qui rend aussi inerte un `DictionaryFormat` au niveau du membre : seul le NOM d'élément vient encore du membre là) ; un `[JsonIgnore(Condition = Never)]` sur un membre projeté en attribut (un attribut n'a pas de forme nil, donc un attribut null est absent de toute façon) ; un `[CrystalXmlOutput(DictionaryFormat = ...)]` sur un container dont le profil résolu est celui de compatibilité (qui a une seule forme de dictionnaire) ; et un `[CrystalXmlOutput(OmitNamespaces = true)]` sur un container dont le profil résolu est le général (le fil dépouillé est une variante du format DCS) |
 | CXML0013 | profil de compatibilité uniquement : une PROPRIÉTÉ en lecture seule (get-only, ou *setter* non public sans activation explicite) portant `[DataMember]` sur un type `[DataContract]` : le sérialiseur de référence rejette ce contrat d'emblée (`InvalidDataContractException`, "No set method for property"), donc il n'y a aucun format à reproduire. Ne se déclenche pas sur un CHAMP `[DataMember]` `readonly` (la vérification du DCS ne concerne que les propriétés) ni sur un membre init-only (un *flag* différent ; le DCS l'émet) |
 
 À l'exécution, les graphes plus profonds que `CrystalXml.MaxDepth` (64 niveaux de récursion

@@ -27,6 +27,7 @@
 namespace SnowBank.Data.Xml
 {
 	using System.Buffers;
+	using System.Text;
 	using System.Xml;
 	using System.Xml.Linq;
 	using SnowBank.Buffers;
@@ -42,7 +43,7 @@ namespace SnowBank.Data.Xml
 	/// means nobody outside this file has to know the rule exists.</para>
 	/// <para><see cref="ToText{T}"/> and <see cref="ToSlice{T}"/>/<see cref="ToBytes{T}"/> go through the byte-exact
 	/// <see cref="CrystalXmlWriter{TRune,TWriter}"/>. <see cref="ToXDocument{T}"/> and the <see cref="XmlWriter"/> overload of
-	/// <see cref="WriteTo{T}(XmlWriter,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/> go through the infoset
+	/// <see cref="WriteTo{T}(XmlWriter,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/> go through the infoset
 	/// emitters instead, and only guarantee infoset equivalence, not a byte-exact output.</para>
 	/// </remarks>
 	[PublicAPI]
@@ -68,11 +69,11 @@ namespace SnowBank.Data.Xml
 		/// <param name="value">Value to serialize, or <see langword="null"/> to write the empty/self-closing root element</param>
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
-		public static string ToText<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
+		public static string ToText<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 		{
 			Contract.NotNull(serializer);
 			var sink = new ValueStringWriter();
-			var emitter = new CrystalXmlWriter<char, ValueStringWriter>(ref sink);
+			var emitter = new CrystalXmlWriter<char, ValueStringWriter>(ref sink, settings: settings ?? CrystalXmlSettings.General);
 			try
 			{
 				serializer.WriteXml(ref emitter, value, settings, rootName);
@@ -86,29 +87,36 @@ namespace SnowBank.Data.Xml
 			}
 		}
 
-		/// <summary>Serializes <paramref name="value"/> to a UTF-8 encoded <see cref="Slice"/></summary>
+		/// <summary>Serializes <paramref name="value"/> to a <see cref="Slice"/> of XML</summary>
 		/// <typeparam name="T">Type of the value being serialized</typeparam>
 		/// <param name="serializer">Serializer that knows how to write a <typeparamref name="T"/></param>
 		/// <param name="value">Value to serialize, or <see langword="null"/> to write the empty/self-closing root element</param>
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
-		public static Slice ToSlice<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
+		/// <param name="encoding">Encoding of the returned bytes, defaulting to UTF-8 with no byte-order mark. The writer
+		/// always produces UTF-8 internally; a non-default encoding transcodes the finished buffer once, so the UTF-8 path
+		/// stays untouched. When <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> is set, the declaration names this
+		/// encoding.</param>
+		public static Slice ToSlice<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null, Encoding? encoding = null)
 		{
 			Contract.NotNull(serializer);
+			bool isUtf8 = IsDefaultOrUtf8(encoding);
 			var sink = new SliceWriter();
-			var emitter = new CrystalXmlWriter<byte, SliceWriter>(ref sink);
+			var emitter = new CrystalXmlWriter<byte, SliceWriter>(ref sink, settings: settings ?? CrystalXmlSettings.General, declarationEncoding: isUtf8 ? null : encoding!.WebName);
 			serializer.WriteXml(ref emitter, value, settings, rootName);
-			return emitter.Writer.ToSlice();
+			var slice = emitter.Writer.ToSlice();
+			return isUtf8 ? slice : TranscodeFromUtf8(slice, encoding!);
 		}
 
-		/// <summary>Serializes <paramref name="value"/> to a UTF-8 encoded <see cref="byte"/> array</summary>
+		/// <summary>Serializes <paramref name="value"/> to a <see cref="byte"/> array of XML</summary>
 		/// <typeparam name="T">Type of the value being serialized</typeparam>
 		/// <param name="serializer">Serializer that knows how to write a <typeparamref name="T"/></param>
 		/// <param name="value">Value to serialize, or <see langword="null"/> to write the empty/self-closing root element</param>
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
-		public static byte[] ToBytes<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
-			=> ToSlice(serializer, value, settings, rootName).ToArray();
+		/// <inheritdoc cref="ToSlice{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)" path="/param[@name='encoding']"/>
+		public static byte[] ToBytes<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null, Encoding? encoding = null)
+			=> ToSlice(serializer, value, settings, rootName, encoding).ToArray();
 
 		/// <summary>Serializes <paramref name="value"/> as UTF-8 encoded XML into <paramref name="destination"/></summary>
 		/// <typeparam name="T">Type of the value being serialized</typeparam>
@@ -117,6 +125,7 @@ namespace SnowBank.Data.Xml
 		/// <param name="value">Value to serialize, or <see langword="null"/> to write the empty/self-closing root element</param>
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
+		/// <inheritdoc cref="ToSlice{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)" path="/param[@name='encoding']"/>
 		/// <remarks>
 		/// <para>Writes synchronously through a pooled <see cref="byte"/> buffer (<see cref="StreamBufferProxy"/>), draining
 		/// to <paramref name="destination"/> via <see cref="Stream.Write(byte[],int,int)"/> whenever the buffer would need to
@@ -127,14 +136,25 @@ namespace SnowBank.Data.Xml
 		/// <see cref="ArrayPool{Byte}.Shared"/>, the still-buffered tail is <b>not</b> written to <paramref name="destination"/>
 		/// (chunks already pushed out by an earlier growth-triggered drain stay written), and the caller always sees the
 		/// original exception, never a cleanup failure. This method never closes, disposes, or otherwise completes
-		/// <paramref name="destination"/>: ownership stays with the caller for the whole call.</para>
+		/// <paramref name="destination"/>: ownership stays with the caller for the whole call. A non-default
+		/// <paramref name="encoding"/> takes the simpler <see cref="ToSlice{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/>
+		/// path instead, building the whole buffer before writing it out in one call, so nothing reaches
+		/// <paramref name="destination"/> at all if <paramref name="serializer"/> throws.</para>
 		/// </remarks>
-		public static void WriteTo<T>(Stream destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
+		public static void WriteTo<T>(Stream destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null, Encoding? encoding = null)
 		{
 			Contract.NotNull(destination);
 			Contract.NotNull(serializer);
+
+			if (!IsDefaultOrUtf8(encoding))
+			{
+				var slice = ToSlice(serializer, value, settings, rootName, encoding);
+				destination.Write(slice.Array, slice.Offset, slice.Count);
+				return;
+			}
+
 			var sink = new StreamBufferProxy(destination);
-			var emitter = new CrystalXmlWriter<byte, StreamBufferProxy>(ref sink);
+			var emitter = new CrystalXmlWriter<byte, StreamBufferProxy>(ref sink, settings: settings ?? CrystalXmlSettings.General);
 			try
 			{
 				serializer.WriteXml(ref emitter, value, settings, rootName);
@@ -158,16 +178,16 @@ namespace SnowBank.Data.Xml
 		/// <para>Writes through a pooled <see cref="char"/> buffer (<see cref="TextWriterBufferProxy"/>), draining to
 		/// <paramref name="destination"/> via <see cref="TextWriter.Write(char[],int,int)"/> whenever the buffer would need
 		/// to grow.</para>
-		/// <para>Same failure-path contract as <see cref="WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>:
+		/// <para>Same failure-path contract as <see cref="WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>:
 		/// on failure the pooled buffer is always returned, the un-drained tail is not written, and the caller sees the
 		/// original exception; either way <paramref name="destination"/> is never closed or disposed.</para>
 		/// </remarks>
-		public static void WriteTo<T>(TextWriter destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
+		public static void WriteTo<T>(TextWriter destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 		{
 			Contract.NotNull(destination);
 			Contract.NotNull(serializer);
 			var sink = new TextWriterBufferProxy(destination);
-			var emitter = new CrystalXmlWriter<char, TextWriterBufferProxy>(ref sink);
+			var emitter = new CrystalXmlWriter<char, TextWriterBufferProxy>(ref sink, settings: settings ?? CrystalXmlSettings.General);
 			try
 			{
 				serializer.WriteXml(ref emitter, value, settings, rootName);
@@ -191,12 +211,12 @@ namespace SnowBank.Data.Xml
 		/// on <c>TWriter</c>; see the remarks on <see cref="BufferWriterProxy{TRune}"/>. This overload owns no pooled resource
 		/// of its own, so on failure whatever <paramref name="serializer"/> already wrote through
 		/// <paramref name="destination"/> simply stays there.</remarks>
-		public static void WriteTo<T>(IBufferWriter<byte> destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
+		public static void WriteTo<T>(IBufferWriter<byte> destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 		{
 			Contract.NotNull(destination);
 			Contract.NotNull(serializer);
 			var sink = new BufferWriterProxy<byte>(destination);
-			var emitter = new CrystalXmlWriter<byte, BufferWriterProxy<byte>>(ref sink);
+			var emitter = new CrystalXmlWriter<byte, BufferWriterProxy<byte>>(ref sink, settings: settings ?? CrystalXmlSettings.General);
 			serializer.WriteXml(ref emitter, value, settings, rootName);
 		}
 
@@ -212,7 +232,7 @@ namespace SnowBank.Data.Xml
 		/// <param name="rootName">Optional override for the name of the root element</param>
 		/// <remarks>Only infoset equivalence with the byte-exact output is guaranteed here, not a byte-exact document: see
 		/// the remarks on <see cref="CrystalXDocumentEmitter"/>.</remarks>
-		public static XDocument ToXDocument<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
+		public static XDocument ToXDocument<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 		{
 			Contract.NotNull(serializer);
 			var emitter = new CrystalXDocumentEmitter();
@@ -229,12 +249,34 @@ namespace SnowBank.Data.Xml
 		/// <param name="rootName">Optional override for the name of the root element</param>
 		/// <remarks>Only infoset equivalence with the byte-exact output is guaranteed here: the concrete bytes depend on
 		/// how <paramref name="destination"/> was configured. See the remarks on <see cref="CrystalXmlWriterEmitter"/>.</remarks>
-		public static void WriteTo<T>(XmlWriter destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalJsonSettings? settings = null, string? rootName = null)
+		public static void WriteTo<T>(XmlWriter destination, ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 		{
 			Contract.NotNull(destination);
 			Contract.NotNull(serializer);
 			var emitter = new CrystalXmlWriterEmitter(destination);
 			serializer.WriteXml(ref emitter, value, settings, rootName);
+		}
+
+		#endregion
+
+		#region Encoding...
+
+		/// <summary>Whether <paramref name="encoding"/> needs no transcoding, because the writer already produces that encoding</summary>
+		/// <remarks>The writer's byte core always produces UTF-8, so both <see langword="null"/> (the "use the default"
+		/// spelling) and an explicit UTF-8 encoding take the untranscoded, streaming-capable path: a caller that names UTF-8
+		/// by hand should not pay for a decode-then-re-encode round trip, nor lose <see cref="WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/>'s
+		/// streaming behavior, for asking for exactly what already happens by default.</remarks>
+		private static bool IsDefaultOrUtf8(Encoding? encoding) => encoding is null || encoding.CodePage == 65001;
+
+		/// <summary>Re-encodes a UTF-8 buffer produced by the byte-exact writer into <paramref name="encoding"/></summary>
+		/// <remarks>The writer always produces UTF-8 internally; a non-default encoding is applied once, on the finished
+		/// buffer, so the UTF-8 hot path stays untouched. Writes no preamble: a caller that wants the declaration to state
+		/// the encoding sets <see cref="CrystalXmlSettings.WriteXmlDeclaration"/>, which the writer already did while
+		/// producing <paramref name="utf8"/>.</remarks>
+		private static Slice TranscodeFromUtf8(Slice utf8, Encoding encoding)
+		{
+			string text = utf8.ToStringUtf8() ?? string.Empty;
+			return Slice.FromBytes(encoding.GetBytes(text));
 		}
 
 		#endregion
@@ -270,7 +312,7 @@ namespace SnowBank.Data.Xml
 		/// <para><see cref="Stream"/> is a push-based sink, not an <see cref="IBufferWriter{T}"/>: writes accumulate in a
 		/// rented array that is drained synchronously whenever it would need to grow, and once more at the end via
 		/// <see cref="Drain"/> (success) or <see cref="Abandon"/> (failure); the exact contract of each is on
-		/// <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>.</para>
+		/// <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>.</para>
 		/// <para><b>Single-owner discipline.</b> <see cref="Buffer"/> is returned to <see cref="ArrayPool{Byte}.Shared"/> in
 		/// exactly one place each (<see cref="Drain"/> and <see cref="Abandon"/>), and both null the field before writing
 		/// anything, so no code path can return the same array twice.</para>
@@ -353,7 +395,7 @@ namespace SnowBank.Data.Xml
 			}
 
 			/// <summary>Returns the buffer to the pool WITHOUT writing the still-pending tail: the failure-path cleanup</summary>
-			/// <remarks>Deliberately writes nothing: the failure-path contract on <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>
+			/// <remarks>Deliberately writes nothing: the failure-path contract on <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>
 			/// forbids writing content after the serializer has thrown.</remarks>
 			public void Abandon()
 			{
@@ -373,7 +415,7 @@ namespace SnowBank.Data.Xml
 		/// discipline (<see cref="Buffer"/> is returned to <see cref="ArrayPool{Char}.Shared"/> in exactly one place each in
 		/// <see cref="Drain"/> and <see cref="Abandon"/>, both nulling the field first), draining to a <see cref="TextWriter"/>
 		/// instead of a <see cref="Stream"/>. The exact contract is on
-		/// <see cref="CrystalXml.WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>.</remarks>
+		/// <see cref="CrystalXml.WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>.</remarks>
 		private struct TextWriterBufferProxy : IBufferWriter<char>
 		{
 
@@ -452,7 +494,7 @@ namespace SnowBank.Data.Xml
 			}
 
 			/// <summary>Returns the buffer to the pool WITHOUT writing the still-pending tail: the failure-path cleanup</summary>
-			/// <remarks>Deliberately writes nothing: the failure-path contract on <see cref="CrystalXml.WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalJsonSettings?,string?)"/>
+			/// <remarks>Deliberately writes nothing: the failure-path contract on <see cref="CrystalXml.WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>
 			/// forbids writing content after the serializer has thrown.</remarks>
 			public void Abandon()
 			{

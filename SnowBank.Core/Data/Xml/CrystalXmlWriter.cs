@@ -37,16 +37,21 @@ namespace SnowBank.Data.Xml
 	/// <para>Replicates, byte for byte, the output produced by <c>DataContractSerializer</c> writing through an
 	/// <c>XmlWriter</c> (settings <c>CheckCharacters = false</c>, <c>OmitXmlDeclaration = true</c>, no indentation) followed
 	/// by an invalid-character filter.</para>
-	/// <para>Byte-compatibility rules, all measured against that reference implementation:</para>
+	/// <para>Byte-compatibility rules, all measured against that reference implementation and all in force under the default
+	/// <see cref="CrystalXmlSettings"/> (compact, self-closing, no declaration):</para>
 	/// <list type="number">
-	/// <item>No XML declaration: the document starts with the root element.</item>
+	/// <item>No XML declaration: the document starts with the root element. A caller that sets
+	/// <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> gets one <c>&lt;?xml version="1.0" encoding="..."?&gt;</c> line
+	/// before the root, naming whatever encoding the finished output is in; version and encoding only, no <c>standalone</c>.</item>
 	/// <item>A prefix and an <c>xmlns</c> declaration appear exactly where a caller names a namespace, and nowhere else, so a
 	/// caller that names none produces a document with no prefix and no declaration in it. This writer decides what a prefix
 	/// is called and where a missing declaration goes (see the section on namespaces below); it does not decide whether an
 	/// element has a namespace.</item>
 	/// <item>Text content escapes <c>&amp;</c> <c>&lt;</c> <c>&gt;</c>, and only those; the quote characters stay raw.</item>
 	/// <item>In text content, every line ending (<c>\r\n</c>, a lone <c>\r</c>, a lone <c>\n</c>) becomes a <b>raw</b>
-	/// <c>\r\n</c>, never a character reference; a TAB stays raw.</item>
+	/// <c>\r\n</c>, never a character reference; a TAB stays raw. This normalization is fixed and does not depend on
+	/// <see cref="CrystalXmlSettings.NewLine"/>, which only ever governs the structural whitespace <see cref="CrystalXmlSettings.Indented"/>
+	/// inserts between elements, never a value's own text.</item>
 	/// <item>Attribute values escape <c>&amp;</c> <c>&lt;</c> <c>&quot;</c> but <b>not</b> <c>&gt;</c>.</item>
 	/// <item>Attribute values write TAB, LF and CR as the character references <c>&amp;#x9;</c>, <c>&amp;#xA;</c> and
 	/// <c>&amp;#xD;</c>; no line-ending normalization happens inside an attribute.</item>
@@ -58,7 +63,15 @@ namespace SnowBank.Data.Xml
 	/// 4-byte sequence on the UTF-8 core, never CESU-8).</item>
 	/// <item>U+FFFE and U+FFFF are dropped, like the reference filter does.</item>
 	/// <item>An element with no content self-closes as <c>&lt;Name /&gt;</c>, with a space before the slash; writing an
-	/// <b>empty</b> string as content forces the expanded form <c>&lt;Name&gt;&lt;/Name&gt;</c>.</item>
+	/// <b>empty</b> string as content forces the expanded form <c>&lt;Name&gt;&lt;/Name&gt;</c>. A caller that sets
+	/// <see cref="CrystalXmlSettings.EmptyElementStyle"/> to <see cref="CrystalXmlEmptyElementStyle.Paired"/> gets the
+	/// expanded form for the genuinely empty case too, so every element with no content reads <c>&lt;Name&gt;&lt;/Name&gt;</c>.</item>
+	/// <item>When <see cref="CrystalXmlSettings.Indented"/> is set, every child element starts on its own line, indented one
+	/// TAB per nesting level, and an element's end tag gets its own line too, but only when that element opened at least one
+	/// child element. An element whose content is text (or nothing) always stays on one line: indentation never touches a
+	/// value. The writer is forward-only and cannot retract output it already wrote, so an element whose first child element
+	/// precedes its own text keeps the indentation already written before that child; the child text values themselves are
+	/// never altered.</item>
 	/// </list>
 	/// <para><b>Namespaces and prefixes.</b> A caller names namespaces; this writer names prefixes. Two rules, both chosen so
 	/// that a document reads like the one the reference implementation writes:</para>
@@ -114,6 +127,26 @@ namespace SnowBank.Data.Xml
 		/// certification harness, which compares against captured legacy output, should turn this on.</remarks>
 		public readonly bool StrictControlCharacters;
 
+		/// <summary>When <see langword="true"/>, the output is pretty-printed across multiple lines instead of written compact on one line</summary>
+		/// <remarks>Element content only: an element whose content is text (or nothing) always stays on one line, so a value
+		/// never gains or loses whitespace because of this setting. See <see cref="CrystalXmlSettings.Indented"/>.</remarks>
+		private readonly bool Indented;
+
+		/// <summary>Structural line ending written between elements, consulted only when <see cref="Indented"/> is set</summary>
+		private readonly CrystalXmlNewLine NewLine;
+
+		/// <summary>How an element with no content at all is written</summary>
+		private readonly CrystalXmlEmptyElementStyle EmptyElementStyle;
+
+		/// <summary>True until the <c>&lt;?xml ...?&gt;</c> declaration has been written, or for the whole document when none is requested</summary>
+		private bool DeclarationPending;
+
+		/// <summary>IANA name written into the declaration's <c>encoding</c> attribute</summary>
+		/// <remarks>Fixed at construction: the char core always writes <c>utf-16</c> (a <see cref="string"/> is UTF-16), and
+		/// the byte core writes <c>utf-8</c> unless the caller names a different target encoding for a later transcoding
+		/// pass over the finished buffer.</remarks>
+		private readonly string DeclarationEncoding;
+
 		/// <summary>Number of elements currently open</summary>
 		public int Depth { get; private set; }
 
@@ -123,8 +156,15 @@ namespace SnowBank.Data.Xml
 		/// <summary>True when the current element has received content (text, raw content, or a child element)</summary>
 		private bool HasContent;
 
+		/// <summary>True when the current element has received at least one child element (as opposed to only text or raw content)</summary>
+		/// <remarks>Decides indentation before an element's own end tag: an element whose content is text stays on one line,
+		/// so only an element that opened at least one child gets its end tag pushed to its own indented line. Reset for
+		/// each new element the same way <see cref="HasContent"/> is, and read back by <see cref="WriteEndElement"/> before
+		/// it is overwritten for the parent.</remarks>
+		private bool HasElementContent;
+
 		/// <summary>Namespace declarations currently in scope, outermost first, or <see langword="null"/> while the document has used no namespace</summary>
-		/// <remarks>Allocated on the first declaration, so a document without namespaces (which is every document the modern
+		/// <remarks>Allocated on the first declaration, so a document without namespaces (which is every document the general
 		/// format produces) pays nothing for this machinery.</remarks>
 		private XmlScope[]? Scopes;
 
@@ -136,6 +176,14 @@ namespace SnowBank.Data.Xml
 		/// instead of resolving the namespace a second time. An absent entry reads as "no prefix", which is why the array is
 		/// only allocated once an element actually takes one.</remarks>
 		private XmlPrefix[]? ElementPrefixes;
+
+		/// <summary>Whether the element at a given depth has received direct text or raw content, indexed by depth minus one</summary>
+		/// <remarks>Unlike <see cref="HasContent"/> and <see cref="HasElementContent"/>, which are flat fields safely shared
+		/// across nesting levels (every child element unconditionally forces them true for its parent on close, so any value
+		/// a deeper element left behind is re-asserted true regardless), this one cannot be flat: a later sibling must see
+		/// whether the CURRENT element has text, not whether some earlier child happened to have text of its own. Tracked
+		/// per depth for the same reason <see cref="ElementPrefixes"/> is.</remarks>
+		private bool[]? HasTextContentByDepth;
 
 		/// <summary>Number of depth-numbered prefixes already minted on the start tag that is still open</summary>
 		/// <remarks>This is the <c>n</c> of a <c>d{depth}p{n}</c> prefix. It counts only depth-numbered prefixes: a
@@ -149,8 +197,16 @@ namespace SnowBank.Data.Xml
 		/// on the <c>netstandard2.0</c> and <c>net8.0</c> targets).</param>
 		/// <param name="strictControlCharacters">When <see langword="true"/>, reproduce the legacy character-reference
 		/// treatment of C0 control characters instead of dropping them. See <see cref="StrictControlCharacters"/>.</param>
+		/// <param name="settings">Writer-level output options: <see cref="CrystalXmlSettings.Indented"/>,
+		/// <see cref="CrystalXmlSettings.NewLine"/>, <see cref="CrystalXmlSettings.EmptyElementStyle"/> and
+		/// <see cref="CrystalXmlSettings.WriteXmlDeclaration"/>. Defaults to <see cref="CrystalXmlSettings.General"/>, which
+		/// reproduces today's compact, self-closing, declaration-less output.</param>
+		/// <param name="declarationEncoding">IANA name written into the declaration's <c>encoding</c> attribute, when
+		/// <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> is set. Defaults to <c>utf-16</c> on the char core and
+		/// <c>utf-8</c> on the byte core; a caller transcoding the finished byte buffer to another encoding passes that
+		/// encoding's own name here instead.</param>
 		/// <exception cref="NotSupportedException">If <typeparamref name="TRune"/> is neither <see cref="char"/> nor <see cref="byte"/>.</exception>
-		public CrystalXmlWriter(ref TWriter writer, bool strictControlCharacters = false)
+		public CrystalXmlWriter(ref TWriter writer, bool strictControlCharacters = false, CrystalXmlSettings settings = default, string? declarationEncoding = null)
 		{
 			if (typeof(TRune) != typeof(char) && typeof(TRune) != typeof(byte))
 			{
@@ -159,12 +215,19 @@ namespace SnowBank.Data.Xml
 
 			this.Writer = writer;
 			this.StrictControlCharacters = strictControlCharacters;
+			this.Indented = settings.Indented;
+			this.NewLine = settings.NewLine;
+			this.EmptyElementStyle = settings.EmptyElementStyle;
+			this.DeclarationPending = settings.WriteXmlDeclaration;
+			this.DeclarationEncoding = declarationEncoding ?? (typeof(TRune) == typeof(char) ? "utf-16" : "utf-8");
 			this.Depth = 0;
 			this.TagPending = false;
 			this.HasContent = false;
+			this.HasElementContent = false;
 			this.Scopes = null;
 			this.ScopeCount = 0;
 			this.ElementPrefixes = null;
+			this.HasTextContentByDepth = null;
 			this.PendingDeclarations = 0;
 		}
 
@@ -181,6 +244,17 @@ namespace SnowBank.Data.Xml
 		{
 			CloseTagIfPending();
 			int depth = this.Depth + 1;
+
+			if (depth == 1)
+			{ // the root element: the declaration, if any, comes first and nothing else precedes it
+				WriteDeclarationIfPending();
+			}
+			else if (this.Indented && !GetHasTextContent(this.Depth))
+			{ // every other element starts its own line, indented one level past its parent, unless the parent already
+			  // holds text: indentation never touches a value, so a mixed-content parent stays compact from here on
+				WriteNewLineAndIndent(this.Depth);
+			}
+
 			this.PendingDeclarations = 0;
 
 			// the prefix has to be known before the name is written, and the declaration that binds it can only be written
@@ -194,6 +268,11 @@ namespace SnowBank.Data.Xml
 			this.Depth = depth;
 			this.TagPending = true;
 			this.HasContent = false;
+			this.HasElementContent = false;
+			if (this.Indented)
+			{ // the flags are only ever read while indenting, so a compact document never allocates the per-depth array
+				SetHasTextContent(depth, false);
+			}
 			SetElementPrefix(depth, in prefix);
 
 			if (declare)
@@ -277,6 +356,10 @@ namespace SnowBank.Data.Xml
 			CloseTagIfPending();
 			// even an empty span counts: it is what forces the expanded <Name></Name> form
 			this.HasContent = true;
+			if (this.Indented)
+			{
+				SetHasTextContent(this.Depth, true);
+			}
 			WriteEscaped(text, inAttribute: false);
 		}
 
@@ -299,6 +382,10 @@ namespace SnowBank.Data.Xml
 #endif
 			CloseTagIfPending();
 			this.HasContent = true;
+			if (this.Indented)
+			{
+				SetHasTextContent(this.Depth, true);
+			}
 			WriteAscii(ascii);
 		}
 
@@ -317,16 +404,23 @@ namespace SnowBank.Data.Xml
 			Contract.Debug.Requires(this.Depth > 0, "There is no open element to close");
 			int depth = this.Depth;
 			--this.Depth;
+			bool hadElementContent = this.HasElementContent;
+			bool hadTextContent = GetHasTextContent(depth);
 
-			if (this.TagPending && !this.HasContent)
+			if (this.TagPending && !this.HasContent && this.EmptyElementStyle == CrystalXmlEmptyElementStyle.SelfClosing)
 			{
-				// no content at all: self-closing form, including the space the reference writer emits
+				// no content at all, and the caller wants the self-closing form: including the space the reference writer emits
 				WriteAscii(" />");
 				this.TagPending = false;
 			}
 			else
 			{
 				CloseTagIfPending();
+				if (this.Indented && hadElementContent && !hadTextContent)
+				{ // this element had at least one child element and no text of its own, so its end tag gets its own
+				  // indented line; text content, wherever it fell among the children, keeps the whole element compact
+					WriteNewLineAndIndent(depth - 1);
+				}
 				WriteAscii("</");
 				WritePrefix(GetElementPrefix(depth));
 				WriteName(in name);
@@ -335,6 +429,7 @@ namespace SnowBank.Data.Xml
 
 			// whatever happens, the parent element now has content: this child
 			this.HasContent = true;
+			this.HasElementContent = true;
 
 			// the declarations this element carried go out of scope with it
 			PopScopes(depth);
@@ -346,6 +441,35 @@ namespace SnowBank.Data.Xml
 			{
 				WriteAscii(">");
 				this.TagPending = false;
+			}
+		}
+
+		/// <summary>Writes the <c>&lt;?xml ...?&gt;</c> declaration once, if the caller asked for one, before the root element</summary>
+		private void WriteDeclarationIfPending()
+		{
+			if (!this.DeclarationPending) return;
+			this.DeclarationPending = false;
+
+			WriteAscii("<?xml version=\"1.0\" encoding=\"");
+			WriteAscii(this.DeclarationEncoding.AsSpan());
+			WriteAscii("\"?>");
+
+			if (this.Indented)
+			{ // compact output has no separator at all: the root element follows immediately
+				WriteStructuralNewLine();
+			}
+		}
+
+		/// <summary>Writes <see cref="NewLine"/></summary>
+		private void WriteStructuralNewLine() => WriteAscii(this.NewLine == CrystalXmlNewLine.Lf ? "\n" : "\r\n");
+
+		/// <summary>Writes <see cref="NewLine"/> followed by <paramref name="tabs"/> TAB characters, one per nesting level</summary>
+		private void WriteNewLineAndIndent(int tabs)
+		{
+			WriteStructuralNewLine();
+			for (int i = 0; i < tabs; i++)
+			{
+				WriteAscii("\t");
 			}
 		}
 
@@ -607,6 +731,40 @@ namespace SnowBank.Data.Xml
 		{
 			var prefixes = this.ElementPrefixes;
 			return prefixes is not null && depth <= prefixes.Length ? prefixes[depth - 1] : XmlPrefix.Default;
+		}
+
+		/// <summary>Records whether the element at <paramref name="depth"/> has received direct text or raw content</summary>
+		private void SetHasTextContent(int depth, bool value)
+		{
+			if (depth == 0)
+			{ // depth 0 is outside the document element and has no slot in the array; top-level text has nothing to record
+				return;
+			}
+
+			var flags = this.HasTextContentByDepth;
+			if (flags is null)
+			{
+				if (!value)
+				{ // an absent array already reads as false everywhere, so there is nothing to allocate for
+					return;
+				}
+				this.HasTextContentByDepth = flags = new bool[Math.Max(depth, 8)];
+			}
+			else if (depth > flags.Length)
+			{
+				var grown = new bool[Math.Max(depth, flags.Length * 2)];
+				Array.Copy(flags, grown, flags.Length);
+				this.HasTextContentByDepth = flags = grown;
+			}
+
+			flags[depth - 1] = value;
+		}
+
+		/// <summary>Returns whether the element at <paramref name="depth"/> has received direct text or raw content</summary>
+		private bool GetHasTextContent(int depth)
+		{
+			var flags = this.HasTextContentByDepth;
+			return flags is not null && depth <= flags.Length && flags[depth - 1];
 		}
 
 		#endregion

@@ -543,12 +543,12 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	{
 	}
 
-	// The SCHEMALESS twin of the container above, enrolling the same probes. Every fidelity fact runs against both, so
+	// The NAMESPACE-FREE twin of the container above, enrolling the same probes. Every fidelity fact runs against both, so
 	// the two outputs of one profile stay pinned by one instance and one oracle: the default against the standard format,
 	// this one against the same output with its namespaces stripped.
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
-	[CrystalXmlOutput(Schemaless = true)]
+	[CrystalXmlOutput(OmitNamespaces = true)]
 	[CrystalSerializable(typeof(NilProbe))]
 	[CrystalSerializable(typeof(Shelf))]
 	[CrystalSerializable(typeof(OrderDefaultProbe))]
@@ -581,7 +581,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[CrystalSerializable(typeof(WorkedContact))]
 	[CrystalSerializable(typeof(WorkedCriterion))]
 	[CrystalSerializable(typeof(WorkedRangeCriterion))]
-	public static partial class DcsProbeSchemalessSerializers
+	public static partial class DcsProbeNamespaceFreeSerializers
 	{
 	}
 

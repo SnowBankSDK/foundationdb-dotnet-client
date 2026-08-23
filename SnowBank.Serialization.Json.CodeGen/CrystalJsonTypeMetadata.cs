@@ -71,9 +71,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// </remarks>
 		public bool GeneratesJson { get; init; } = true;
 
-		/// <summary>Name of the resolved XML format profile of this container (<c>"Modern"</c> or <c>"DataContract"</c>), or <see langword="null"/> when the container produces no XML output</summary>
+		/// <summary>Name of the resolved XML format profile of this container (<c>"General"</c> or <c>"DataContract"</c>), or <see langword="null"/> when the container produces no XML output</summary>
 		/// <remarks>
-		/// <para>XML output is strictly opt-in: only a container decorated with <c>[CrystalXmlOutput]</c> gets a non-null profile. The value is already RESOLVED: an explicit <c>Profile</c> wins, otherwise it is derived from <see cref="OutputProfile"/> (the DCJS JSON format derives the DataContract XML format, anything else derives the Modern one).</para>
+		/// <para>XML output is strictly opt-in: only a container decorated with <c>[CrystalXmlOutput]</c> gets a non-null profile. The value is already RESOLVED: an explicit <c>Profile</c> wins, otherwise it is derived from <see cref="OutputProfile"/> (the DCJS JSON format derives the DataContract XML format, anything else derives the General one).</para>
 		/// <para>Typed as a string, like <see cref="OutputProfile"/>: the metadata layer stays symbol-free, so the whole record keeps a cheap structural equality for the incremental pipeline.</para>
 		/// </remarks>
 		public string? XmlProfile { get; init; }
@@ -83,9 +83,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public string? CrystalXmlDictionaryFormat { get; init; }
 
 		/// <summary>Whether the container's DataContract XML output is stripped of its namespaces and prefixes</summary>
-		/// <remarks>Already RESOLVED: the option is inert on the Modern format, where the parser reports <c>CXML0012</c> and
+		/// <remarks>Already RESOLVED: the option is inert on the General format, where the parser reports <c>CXML0012</c> and
 		/// clears it, so <see langword="true"/> here always means the DataContract format with its namespaces stripped.</remarks>
-		public bool CrystalXmlSchemaless { get; init; }
+		public bool CrystalXmlOmitNamespaces { get; init; }
 
 		/// <summary>Specifies whether the container is the serialized type itself (self-serializable mode)</summary>
 		/// <remarks>
