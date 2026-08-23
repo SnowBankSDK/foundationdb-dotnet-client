@@ -127,7 +127,7 @@ Public outputs on the generated holder (none goes through another):
 
 Every output accepts an optional `rootName` and an optional `CrystalXmlSettings` (see
 [Runtime output options](#runtime-output-options-crystalxmlsettings) below). A `null` settings
-uses the default baked from the container's `[CrystalXmlOutput]` attribute.
+uses the container's default, generated from its `[CrystalXmlOutput]` attribute.
 
 Mirror interfaces of the JSON side: `ICrystalXmlSerializer<T>` (the facet implemented by
 generated holders; extension point for per-member custom converters, verified at generation
@@ -137,11 +137,11 @@ two names a caller composes with, implemented by every generated converter) and
 
 ### Runtime output options: `CrystalXmlSettings`
 
-`CrystalXmlSettings` is a `readonly struct` over a flags field. It configures the writer, and every
-`CrystalXml` entry point takes an optional one. Two presets seed a chain of `With...` builders:
-`CrystalXmlSettings.General` (the default, the general format) and
+`CrystalXmlSettings` is a `readonly struct` that wraps a flags field. It configures the writer, and
+every `CrystalXml` entry point takes an optional one. Two presets are the starting points for the
+`With...` builder methods: `CrystalXmlSettings.General` (the default, the general format) and
 `CrystalXmlSettings.DataContractCompat` (the DCS format, null members shown). Start from the preset
-that matches the container's format, then chain the writer-level knobs.
+that matches the container's format, then chain the options you need.
 
 ```csharp
 string xml = CrystalXml.ToText(
@@ -160,11 +160,11 @@ string xml = CrystalXml.ToText(
 | `ShowNullMembers` | `WithNullMembers()` / `WithoutNullMembers()` | writes a null member as an `i:nil` element instead of skipping it; on for `DataContractCompat`, off for `General` |
 
 The format itself (`Profile`, `OmitNamespaces`) comes from the `[CrystalXmlOutput]` attribute and is
-baked into the generated element names, so it is chosen at generation time, not flipped at run time.
+part of the generated element names, so it is fixed at generation time and cannot change at run time.
 `Encoding` is not part of the struct: it is a parameter on the byte entry points (`ToBytes`, `ToSlice`,
-`WriteTo(Stream)`), defaulting to UTF-8 with no byte order mark; the string entry points return UTF-16.
-`WriteTo(Stream)` with a non-default encoding buffers the whole document before it writes; the default
-path streams.
+`WriteTo(Stream)`), and defaults to UTF-8 with no byte order mark. The string entry points return
+UTF-16. `WriteTo(Stream)` with a non-default encoding buffers the whole document before it writes;
+with the default encoding it streams directly.
 
 ### Collection and scalar roots
 
