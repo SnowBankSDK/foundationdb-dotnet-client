@@ -81,6 +81,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Return a visitor that is able to serialize instances of the specified type</summary>
 		/// <param name="type">Type as declared in the parent (compile time) or actual instance type (at runtime)</param>
 		/// <param name="atRuntime"><see langword="false"/> when performing the initial mapping (compile time), <see langword="true"/> when calling at runtime with the actual instance type</param>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		public static CrystalJsonTypeVisitor GetVisitorForType(Type type, bool atRuntime = false)
 		{
 			bool cacheable = !atRuntime || type.IsConcrete();
@@ -100,6 +101,7 @@ namespace SnowBank.Data.Json
 		/// <param name="type">Type as declared in the parent (compile time) or actual instance type (at runtime)</param>
 		/// <param name="atRuntime"><see langword="false"/> when performing the initial mapping (compile time), <see langword="true"/> when calling at runtime with the actual instance type</param>
 		/// <returns>Delegate that can convert instances of this type into JSON</returns>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeVisitor CreateVisitorForType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods | DynamicallyAccessedMemberTypes.Interfaces)] Type type, bool atRuntime)
 		{
 			//	Type		Primitive	ValueType	Class	Enum	Interface
@@ -253,6 +255,7 @@ namespace SnowBank.Data.Json
 			writer.WriteValue(value as string);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeVisitor? TryGetSerializeMethodVisitor([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type type)
 		{
 			//Duck Typing: we recognize the following patterns
@@ -276,6 +279,7 @@ namespace SnowBank.Data.Json
 			return null;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeVisitor? TryGetBindableMethodVisitor([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type type)
 		{
 			//Duck Typing: we recognize the following patterns
@@ -363,6 +367,7 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Create a visitor for <c>Nullable&lt;T&gt;</c> (int?, bool?, TimeSpan?, Enum?, ...)</summary>
 		/// <returns>Delegate that can serialize values of this type into JSON</returns>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeVisitor CreateVisitorForNullableType(Type type, Type? realType)
 		{
 			realType ??= Nullable.GetUnderlyingType(type) ?? throw new InvalidOperationException("Could not get underlying type for " + type.GetFriendlyName());
@@ -379,6 +384,8 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Create a visitor for <c>KeyValuePair&lt;TKey, TValue&gt;</c></summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeVisitor CreateVisitorForKeyValuePairType(Type type)
 		{
 			var args = type.GetGenericArguments();
@@ -538,6 +545,8 @@ namespace SnowBank.Data.Json
 			writer.EndArray(state);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeVisitor CreateVisitorForImmutableArrayType(Type type)
 		{
 			var args = type.GetGenericArguments();
@@ -580,6 +589,8 @@ namespace SnowBank.Data.Json
 			writer.EndArray(state);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeVisitor CreateVisitorForArraySegmentType(Type type)
 		{
 			var args = type.GetGenericArguments();
@@ -630,6 +641,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Create a visitor for common value types (Datetime, TimeSpan, Guid, struct, enum, ...)</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeVisitor CreateVisitorForValueType(Type type)
 		{
 			if (type == typeof (DateTime))
@@ -803,6 +815,7 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Create a visitor for enumerable types (arrays, lists, dictionaries, sets, ...)</summary>
 		/// <param name="type">Type that implements IEnumerable</param>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeVisitor CreateVisitorForEnumerableType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type type)
 		{
 			if (type.IsAssignableTo<System.Collections.Specialized.NameObjectCollectionBase>())
@@ -943,6 +956,7 @@ namespace SnowBank.Data.Json
 			return (v, _, _, writer) => VisitDictionary_StringKeyAndValue((IDictionary<string, string?>?) v , writer);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeVisitor CreateIDictionaryVisitor_StringKey(Type valueType)
 		{
 			var visitor = GetVisitorForType(valueType, atRuntime: false);
@@ -954,6 +968,7 @@ namespace SnowBank.Data.Json
 			return (v, _, _, writer) => VisitDictionary_Int32Key_StringValue((IDictionary<int, string?>?) v, writer);
 		}
 		
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeVisitor CreateIDictionaryVisitor_Int32Key(Type valueType)
 		{
 			var visitor = GetVisitorForType(valueType, atRuntime: false);
@@ -1008,6 +1023,8 @@ namespace SnowBank.Data.Json
 
 
 		/// <summary>Create a visitor for a types that follows the JsonPack static pattern</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeVisitor CreateVisitorForStaticBindableMethod(Type type, MethodInfo method)
 		{
 			Contract.Debug.Requires(type != null && method != null);
@@ -1037,6 +1054,8 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Create a visitor for a types that follows the JsonPack instance pattern</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeVisitor CreateVisitorForInstanceBindableMethod(Type type, MethodInfo method)
 		{
 #if DEBUG_JSON_CONVERTER
@@ -1407,6 +1426,8 @@ namespace SnowBank.Data.Json
 			writer.Leave(enumerable);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeVisitor CompileGenericVisitorMethod(string methodName, string visitorName, Type type)
 		{
 			// (v, t, r, w) => method(v, t, r, w)
@@ -1423,6 +1444,7 @@ namespace SnowBank.Data.Json
 #endif
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static void VisitArrayInternal<T>(object? value, Type declaredType, Type? runtimeType, CrystalJsonWriter writer)
 		{
 			if (value == null)
@@ -1460,6 +1482,7 @@ namespace SnowBank.Data.Json
 			writer.EndArray(state);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static void VisitListInternal<T>(object? value, Type declaredType, Type? runtimeType, CrystalJsonWriter writer)
 		{
 			if (value == null)
@@ -2145,6 +2168,8 @@ namespace SnowBank.Data.Json
 		#region VarTuples...
 
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static CrystalJsonTypeVisitor CreateVisitorForSTupleType(Type type)
 		{
 			Contract.Debug.Requires(type != null && typeof(IVarTuple).IsAssignableFrom(type));
@@ -2374,6 +2399,8 @@ namespace SnowBank.Data.Json
 #if !NETSTANDARD2_0
 		// System.Runtime.CompilerServices.ITuple is not visible to netstandard2.0
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static CrystalJsonTypeVisitor CreateVisitorForITupleType(Type type)
 		{
 			Contract.Debug.Requires(type != null);
@@ -2438,6 +2465,8 @@ namespace SnowBank.Data.Json
 		}
 #else
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static CrystalJsonTypeVisitor CreateVisitorForITupleType(Type type)
 		{
 			Contract.Debug.Requires(type != null);
@@ -2755,6 +2784,7 @@ namespace SnowBank.Data.Json
 		/// <param name="declaringType">Type as declared in the parent object, must be 'object'</param>
 		/// <param name="runtimeType">Actual type, found at runtime</param>
 		/// <param name="writer">Serialization context</param>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static void VisitObjectAtRuntime(object? value, Type declaringType, Type? runtimeType, CrystalJsonWriter writer)
 		{
 			// If we end up here, this is a member is declared as "object" in the containing struct or class, ie: (declaringType == typeof(object)
@@ -2788,6 +2818,7 @@ namespace SnowBank.Data.Json
 		/// <param name="declaringType">Type as declared in the parent object, must be an interface.</param>
 		/// <param name="runtimeType">Actual type, found at runtime</param>
 		/// <param name="writer">Serialization context</param>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static void VisitInterfaceAtRuntime(object? value, Type declaringType, Type? runtimeType, CrystalJsonWriter writer)
 		{
 			// if we end up here, the member is declared as an interface, and we need to look up its actual runtime type, to select the correct writer.

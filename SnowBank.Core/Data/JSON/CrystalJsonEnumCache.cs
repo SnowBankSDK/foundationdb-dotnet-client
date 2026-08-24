@@ -26,6 +26,7 @@
 
 namespace SnowBank.Data.Json
 {
+	using System.Diagnostics.CodeAnalysis;
 	using System.Globalization;
 	using System.Reflection;
 	using SnowBank.Runtime;
@@ -108,6 +109,7 @@ namespace SnowBank.Data.Json
 		/// and also matches hand-written or generator-injected definitions of the same attributes.</para>
 		/// <para>When both spellings are present, the System.Text.Json one is the canonical (written) token; the other is still accepted on read.</para>
 		/// </remarks>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static void FindCustomTokens(FieldInfo field, out string? stjName, out string? enumMemberValue)
 		{
 			stjName = null;
@@ -140,6 +142,8 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Generates the literal cache for all the values of a specific Enum type</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static EnumCache AddEnumToCache(Type enumType)
 		{
 			Contract.Debug.Requires(enumType != null);

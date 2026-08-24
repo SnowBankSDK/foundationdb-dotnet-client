@@ -383,6 +383,8 @@ namespace SnowBank.Data.Json
 		public object? BindJsonArray(Type? type, JsonArray? array)
 			=> DefaultArrayBinders.GetOrAdd(type ?? typeof(object), JsonArrayBinderCallback)(this, array);
 
+		[RequiresUnreferencedCode("JSON array binding uses reflection over the collection and element types; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder(Type? type)
 		{
 #if DEBUG_JSON_BINDER
@@ -749,12 +751,14 @@ namespace SnowBank.Data.Json
 			return (resolver, array) => ConvertToSTuple(type, array, resolver.BindJsonValue);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder_ITuple(Type type)
 		{
 			var filler = CreateBinderForValueTuple(type);
 			return (resolver, array) => filler(array, type, resolver);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder_Filler(string filler, Type elementType)
 		{
 			return (resolver, array) => resolver.InvokeFiller(filler, elementType, array);
@@ -770,6 +774,8 @@ namespace SnowBank.Data.Json
 			return (_, array) => throw JsonBindingException.CannotBindJsonArrayToThisType(array, type);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder_AddableCollection(Type type, Type elementType)
 		{
 			var m = typeof(CrystalJsonTypeResolver)
@@ -808,6 +814,7 @@ namespace SnowBank.Data.Json
 			return collection;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static MethodInfo? FindSingleParameterAddMethod(Type type)
 		{
 			// prefer a typed overload (Add(string), Add(Foo)) over the untyped Add(object)
@@ -833,6 +840,8 @@ namespace SnowBank.Data.Json
 			return res;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static Func<CrystalJsonTypeResolver, JsonArray?, object?> CreateDefaultJsonArrayBinder_DuckAddCollection(Type type, Type elementType)
 		{
 			// compile: (collection, item) => ((TCollection) collection).Add((TElement) item)
@@ -905,6 +914,7 @@ namespace SnowBank.Data.Json
 
 		private Func<Type, JsonValue?, object?>? m_cachedValueBinder;
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private object? InvokeFiller(
 			string name,
 			Type type,
@@ -919,6 +929,7 @@ namespace SnowBank.Data.Json
 		private static readonly QuasiImmutableCache<string, MethodInfo> s_fillers = new(null, StringComparer.Ordinal, null);
 
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static MethodInfo GetFillerMethod(
 			Type resolverType,
@@ -931,6 +942,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static MethodInfo MakeFillerMethod(
 			Type resolverType,
@@ -1272,6 +1284,7 @@ namespace SnowBank.Data.Json
 
 		#endregion
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static bool FilterMemberByAttributes(MemberInfo member, bool hasDataContract, ref string name, ref object? defaultValue, ref CrystalJsonMemberFlags flags)
 		{
 			// [JsonBooleanLiterals(null, ...)] means "do not emit for false", which is the SAME rule as
@@ -1423,6 +1436,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Returns a visitor that routes through a <c>[JsonConverter(typeof(...))]</c> attribute declared on the type itself, if any</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal static CrystalJsonTypeVisitor? TryGetAttributeConverterVisitor(Type type)
 		{
 			var converter = FindCustomJsonConverter(type, type);
@@ -1434,6 +1448,7 @@ namespace SnowBank.Data.Json
 		/// <param name="target">Member or type the attribute decorates</param>
 		/// <param name="targetType">Type of the converted values (the member's type, or the decorated type itself)</param>
 		/// <returns>A bridge over the converter instance, or <c>null</c> if there is no such attribute, or if it names a type we cannot run (e.g. a real STJ or Newtonsoft converter), which keeps the pre-existing behavior for those sites</returns>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static IJsonMemberConverterBridge? FindCustomJsonConverter(MemberInfo target, Type targetType)
 		{
 			// the native [JsonConvertWith(typeof(...))] wins over every other converter signal, and fails loudly when
@@ -1480,6 +1495,8 @@ namespace SnowBank.Data.Json
 		/// the bridge fails loudly on any attempt to use the missing direction.</para>
 		/// <para>Accepts a dedicated <see cref="IJsonMemberConverter{T}"/> implementation and a source-generated <see cref="IJsonConverter{T}"/> alike.</para>
 		/// </remarks>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static IJsonMemberConverterBridge? TryCreateConverterBridge(Type converterType, Type targetType)
 		{
 			// the EXACT form wins: a converter declared for T? takes responsibility for the nullable case itself
@@ -1542,6 +1559,7 @@ namespace SnowBank.Data.Json
 			return true;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static JsonPropertyAttribute? FindPropertyAttribute(MemberInfo member)
 		{
 #if !NETSTANDARD2_0
@@ -1633,6 +1651,7 @@ namespace SnowBank.Data.Json
 		/// when it is not, because a bare <c>[DataMember]</c> is still a naming decision. (Foreign attributes are matched by
 		/// name+namespace, without referencing their packages; same caveat about code trimming as the recognition in
 		/// <see cref="FindPropertyAttribute"/>.)</remarks>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static void ThrowIfConflictingOutputName(MemberInfo member, string contractName, bool contractNameIsSpelled)
 		{
 			foreach (var attr in member.GetCustomAttributes(true))
@@ -1673,6 +1692,7 @@ namespace SnowBank.Data.Json
 		/// <para>Supported signatures: <c>void M()</c> on all four, and <c>void M(JsonValue|JsonObject|JsonArray)</c> on the deserialize pair, which receives the document being bound.</para>
 		/// <para>The legacy <c>void M(StreamingContext)</c> shape is REFUSED here, at contract-build time, so the check is paid once per type and never per invocation. Generated converters refuse the same shape at compile time, with the same message.</para>
 		/// </remarks>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static (Action<object>? OnSerializing, Action<object>? OnSerialized, Action<object, JsonValue?>? OnDeserializing, Action<object, JsonValue?>? OnDeserialized) GetSerializationCallbacks(Type type)
 		{
 			Action<object>? onSerializing = null, onSerialized = null;
@@ -1773,6 +1793,7 @@ namespace SnowBank.Data.Json
 			return Expression.Lambda<Action<object, JsonValue?>>(body, true, [ prmInstance, prmDocument ]).Compile();
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonMemberDefinition[] GetMembersFromReflection(Type type)
 		{
 			Contract.NotNull(type);
@@ -2060,6 +2081,8 @@ namespace SnowBank.Data.Json
 #endif
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static Action<object, object?>? TryCompileAdderForReadOnlyCollection(
 			PropertyInfo? property
 		)
@@ -2116,6 +2139,7 @@ namespace SnowBank.Data.Json
 
 #if !NETSTANDARD2_0
 		// System.Text.Json interop is disabled on the netstandard2.0 build: [JsonPolymorphic]/[JsonDerivedType] on consumer DTOs are not recognized there
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static bool TryFindJsonPolymorphicAttribute(Type type, [MaybeNullWhen(false)] out System.Text.Json.Serialization.JsonPolymorphicAttribute attr, [MaybeNullWhen(false)] out Type parent)
 		{
 			attr = type.GetCustomAttribute<System.Text.Json.Serialization.JsonPolymorphicAttribute>(inherit: false);
@@ -2210,9 +2234,15 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Extracts the type definition via reflection, and generate a list of compiled binders</summary>
 		/// <param name="type">Class, struct, interface. Primitive type are not supported</param>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private CrystalJsonTypeDefinition CreateFromReflection(Type type)
 		{
 			Contract.Debug.Requires(type != null && !type.IsPrimitive);
+
+			if (CrystalJson.DisableReflection)
+			{ // diagnostic: fail loudly instead of silently reflecting a type that has no source-generated converter
+				throw new JsonReflectionDisabledException(type);
+			}
 
 			JsonEncodedPropertyName? typeDiscriminatorProperty = null;
 			JsonValue? typeDiscriminatorValue = null;
@@ -2386,6 +2416,7 @@ namespace SnowBank.Data.Json
 		/// <param name="nullableType">Nullable type (ex: Nullable&lt;AcmeStruct&gt;)</param>
 		/// <param name="definition">Definition of the underlying type (AcmeStruct)</param>
 		/// <returns>Definition that uses the underlying definition to bind a Nullable version of this type</returns>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private CrystalJsonTypeDefinition CreateNullableTypeWrapper(Type nullableType, CrystalJsonTypeDefinition definition)
 		{
 			Contract.NotNull(nullableType);
@@ -2404,11 +2435,13 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static Func<object> RequireGeneratorForType(Type type)
 		{
 			return type.CompileGenerator() ?? throw new InvalidOperationException($"Could not find any parameterless constructor required to deserialize instances of type '{type.GetFriendlyName()}'");
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeBinder? FindCustomBinder(
 			Type type,
@@ -2495,6 +2528,7 @@ namespace SnowBank.Data.Json
 			return null;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static ConstructorInfo? FindJsonConstructor(Type type)
 		{
 			foreach (var ctor in type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
@@ -2529,6 +2563,7 @@ namespace SnowBank.Data.Json
 			return true;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeBinder? CreateBinderForAnonymousType(Type type, CrystalJsonMemberDefinition[] members)
 		{
 			// enumerate the properties
@@ -2726,6 +2761,7 @@ namespace SnowBank.Data.Json
 			return Expression.Lambda<CrystalJsonTypeBinder>(body, "<>_" + type.Name + "_JsonSerialize", true, [ prmValue, prmBindingType, prmResolver ]).Compile();
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeBinder? CreateBinderForImmutableDictionary(Type type)
 		{
@@ -2810,6 +2846,7 @@ namespace SnowBank.Data.Json
 			return instance.ToImmutable();
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static CrystalJsonTypeBinder? CreateBinderForDictionary(Type type, Func<object> generator)
 		{
 			// get the type of keys and values
@@ -2850,6 +2887,8 @@ namespace SnowBank.Data.Json
 			return null;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeBinder CreateBinderForReadOnlyDictionary(Type type)
 		{
 			var args = type.GetGenericArguments();
@@ -2974,6 +3013,8 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		private static InvalidOperationException FailCannotDeserializeNotJsonObject(Type t) => new($"Cannot deserialize {t.GetFriendlyName()} type because input value is not a JsonObject");
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeBinder? CreateBinderForKeyValuePair(Type type)
 		{
 			var args = type.GetGenericArguments();
@@ -3030,6 +3071,8 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		private static InvalidOperationException FailCannotDeserializeNotJsonArrayPair(Type t) => new($"Cannot deserialize {t.GetFriendlyName()} type because input value is not a JsonArray with 2 elements");
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static CrystalJsonTypeBinder CreateBinderForValueTuple(Type type)
 		{
 			// we want to generate: (value, ..., resolver) => (object) ValueTuple.Create(..., array[i].As<Ti>(resolver), ...)

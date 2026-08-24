@@ -179,6 +179,7 @@ namespace SnowBank.Data.Json
 			return ParseObjectInternal(ref context, value, declaredType, runtimeType);
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal JsonValue ParseObjectInternal(ref VisitingContext context, object? value, Type declaredType, Type? runtimeType)
 		{
 			Contract.Debug.Requires(declaredType != null);
@@ -463,6 +464,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertValueTypeObject(ref VisitingContext context, object value, Type type, [MaybeNullWhen(false)] out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && type != null);
@@ -636,6 +638,7 @@ namespace SnowBank.Data.Json
 			return false;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal JsonValue VisitKeyValuePair(ref VisitingContext context, object value, Type type)
 		{
 			return s_cachedKeyValuePairVisitors.GetOrAdd(type, CompileKeyValuePairVisitor)(this, ref context, value);
@@ -645,6 +648,8 @@ namespace SnowBank.Data.Json
 
 		private static readonly QuasiImmutableCache<Type, KeyValuePairVisitor> s_cachedKeyValuePairVisitors = new(TypeEqualityComparer.Default);
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static KeyValuePairVisitor CompileKeyValuePairVisitor(Type kvType)
 		{
 			// (writer, ref context, obj) =>  VisitKeyValuePair<TKey, TValue>(writer, (KeyValuePair<TKey, TValue) obj)
@@ -685,6 +690,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertDictionaryObject(ref VisitingContext context, IDictionary<string, object?> value, Type type, out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && type != null);
@@ -723,6 +729,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertDictionaryObject(ref VisitingContext context, IDictionary value, Type type, out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && type != null);
@@ -777,6 +784,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertListObject(ref VisitingContext context, IList values, Type listType, out JsonValue result)
 		{
 			Contract.Debug.Requires(values != null && listType != null);
@@ -812,6 +820,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertEnumerableObject(ref VisitingContext context, IEnumerable values, Type sequenceType, out JsonValue result)
 		{
 			Contract.Debug.Requires(values != null && sequenceType != null);
@@ -846,6 +855,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertFromTypeDefinition(ref VisitingContext context, object? value, Type declaredType, Type? runtimeType, [MaybeNullWhen(false)] out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && declaredType != null && runtimeType != null);
@@ -926,6 +936,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Converts a member's (non-null) value, applying the per-member overrides that the generic conversion cannot see (custom converter, forced enum format)</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private JsonValue PackMemberValue(ref VisitingContext context, CrystalJsonMemberDefinition member, object value)
 		{
 			if (member.CustomConverter != null)
