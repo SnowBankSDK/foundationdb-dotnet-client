@@ -32,7 +32,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 	/// <summary>Helper class for serializing and deserializing values of type <typeparamref name="T"/> using the tuple binary format</summary>
 	/// <typeparam name="T">Type of values to be serialized</typeparam>
-	public static class TuplePacker<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
+	public static class TuplePacker<T>
 	{
 
 		internal static readonly (TuplePackers.Encoder<T> Direct, TuplePackers.SpanEncoder<T> Span) Encoders = TuplePackers.GetSerializer<T>();

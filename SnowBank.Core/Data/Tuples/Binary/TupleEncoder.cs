@@ -1473,7 +1473,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded value of the first item in the tuple</returns>
 		[Pure]
 		public static T1? DecodeFirst<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1
+			T1
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize)
 		{
@@ -1496,8 +1496,8 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the first two elements in the tuple</returns>
 		[Pure]
 		public static (T1?, T2?) DecodeFirst<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2
+			T1,
+			T2
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize)
 		{
@@ -1524,9 +1524,9 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the first three elements in the tuple</returns>
 		[Pure]
 		public static (T1?, T2?, T3?) DecodeFirst<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3
+			T1,
+			T2,
+			T3
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize)
 		{
@@ -1555,10 +1555,10 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the first four elements in the tuple</returns>
 		[Pure]
 		public static (T1?, T2?, T3?, T4?) DecodeFirst<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4
+			T1,
+			T2,
+			T3,
+			T4
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize)
 		{
@@ -1587,7 +1587,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded value of the last item in the tuple</returns>
 		/// <exception cref="InvalidOperationException">If the decoded tuple does not have the expected size</exception>
 		[Pure]
-		public static T1? DecodeLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1>
+		public static T1? DecodeLast<T1>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize)
 		{
 			if (packedKey.Length == 0) ThrowCannotUnpackEmptyTuple();
@@ -1610,8 +1610,8 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <exception cref="InvalidOperationException">If the decoded tuple does not have the expected size</exception>
 		[Pure]
 		public static (T1?, T2?) DecodeLast<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2
+			T1,
+			T2
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize)
 		{
@@ -1639,9 +1639,9 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <exception cref="InvalidOperationException">If the decoded tuple does not have the expected size</exception>
 		[Pure]
 		public static (T1?, T2?, T3?) DecodeLast<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3
+			T1,
+			T2,
+			T3
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize)
 		{
@@ -1671,10 +1671,10 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <exception cref="InvalidOperationException">If the decoded tuple does not have the expected size</exception>
 		[Pure]
 		public static (T1?, T2?, T3?, T4?) DecodeLast<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4
+			T1,
+			T2,
+			T3,
+			T4
 		>(ReadOnlySpan<byte> packedKey, int? expectedSize)
 		{
 			if (packedKey.Length == 0) ThrowCannotUnpackEmptyTuple();
@@ -1705,7 +1705,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded value of the last item in the tuple</returns>
 		[Pure]
 		public static bool TryDecodeFirst<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1
+			T1
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize, out T1? item1)
 		{
@@ -1735,8 +1735,8 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the last 2 elements in the tuple</returns>
 		[Pure]
 		public static bool TryDecodeFirst<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2
+			T1,
+			T2
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize, out T1? item1, out T2? item2)
 		{
@@ -1770,9 +1770,9 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the last 3 elements in the tuple</returns>
 		[Pure]
 		public static bool TryDecodeFirst<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3
+			T1,
+			T2,
+			T3
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize, out T1? item1, out T2? item2, out T3? item3)
 		{
@@ -1810,10 +1810,10 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the last 4 elements in the tuple</returns>
 		[Pure]
 		public static bool TryDecodeFirst<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4
+			T1,
+			T2,
+			T3,
+			T4
 		>(ReadOnlySpan<byte> packedKey, int? expectedSize, out T1? item1, out T2? item2, out T3? item3, out T4? item4)
 		{
 			Contract.Debug.Requires(expectedSize is null or >= 4);
@@ -1850,7 +1850,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded value of the last item in the tuple</returns>
 		[Pure]
 		public static bool TryDecodeLast<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1
+			T1
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize, out T1? item1)
 		{
@@ -1880,8 +1880,8 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the last 2 elements in the tuple</returns>
 		[Pure]
 		public static bool TryDecodeLast<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2
+			T1,
+			T2
 		>
 			(ReadOnlySpan<byte> packedKey, int? expectedSize, out T1? item1, out T2? item2)
 		{
@@ -1915,9 +1915,9 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the last 3 elements in the tuple</returns>
 		[Pure]
 		public static bool TryDecodeLast<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3
+			T1,
+			T2,
+			T3
 		>(ReadOnlySpan<byte> packedKey, int? expectedSize, out T1? item1, out T2? item2, out T3? item3)
 		{
 			Contract.Debug.Requires(expectedSize is null or >= 3);
@@ -1954,10 +1954,10 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded values of the last 4 elements in the tuple</returns>
 		[Pure]
 		public static bool TryDecodeLast<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4
+			T1,
+			T2,
+			T3,
+			T4
 		>(ReadOnlySpan<byte> packedKey, int? expectedSize, out T1? item1, out T2? item2, out T3? item3, out T4? item4)
 		{
 			Contract.Debug.Requires(expectedSize is null or >= 4);
@@ -2022,7 +2022,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty or has more than one element.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1
+			T1
 		>(ref TupleReader reader, out ValueTuple<T1?> tuple)
 		{
 			if (!TryDecodeNext(ref reader, out tuple.Item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2031,7 +2031,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Unpacks the value of a singleton tuple</summary>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1
+			T1
 		>(ref TupleReader reader, out T1? item1)
 		{
 			if (!TryDecodeNext(ref reader, out item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2046,7 +2046,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <return>False if the tuple is empty, or has more than one element; otherwise, false.</return>
 		[Pure]
 		public static bool TryDecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TKey
+			TKey
 		>(ref TupleReader reader, out TKey? key, out Exception? error)
 		{
 			return TryDecodeNext(ref reader, out key, out error)
@@ -2062,8 +2062,8 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty of has more than two elements.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2
+			T1,
+			T2
 		>(ref TupleReader reader, out (T1?, T2?) tuple)
 		{
 			if (!TryDecodeNext(ref reader, out tuple.Item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2072,8 +2072,8 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2
+			T1,
+			T2
 		>(ref TupleReader reader, out T1? item1, out T2? item2)
 		{
 			if (!TryDecodeNext(ref reader, out item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2090,9 +2090,9 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty of has more than three elements.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3
+			T1,
+			T2,
+			T3
 		>(ref TupleReader reader, out (T1?, T2?, T3?) tuple)
 		{
 			if (!TryDecodeNext(ref reader, out tuple.Item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2102,9 +2102,9 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3
+			T1,
+			T2,
+			T3
 		>
 			(ref TupleReader reader, out T1? item1, out T2? item2, out T3? item3)
 		{
@@ -2123,10 +2123,10 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty of has more than four elements.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4
+			T1,
+			T2,
+			T3,
+			T4
 		>
 			(ref TupleReader reader, out (T1?, T2?, T3?, T4?) tuple)
 		{
@@ -2138,10 +2138,10 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4
+			T1,
+			T2,
+			T3,
+			T4
 		>(ref TupleReader reader, out T1? item1, out T2? item2, out T3? item3, out T4? item4)
 		{
 			if (!TryDecodeNext(ref reader, out item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2160,11 +2160,11 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty of has more than five elements.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5
+			T1,
+			T2,
+			T3,
+			T4,
+			T5
 		>(ref TupleReader reader, out (T1?, T2?, T3?, T4?, T5?) tuple)
 		{
 			if (!TryDecodeNext(ref reader, out tuple.Item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2176,11 +2176,11 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5
+			T1,
+			T2,
+			T3,
+			T4,
+			T5
 		>
 			(ref TupleReader reader, out T1? item1, out T2? item2, out T3? item3, out T4? item4, out T5? item5)
 		{
@@ -2201,12 +2201,12 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty of has more than six elements.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6
 		>
 			(ref TupleReader reader, out (T1?, T2?, T3?, T4?, T5?, T6?) tuple)
 		{
@@ -2220,12 +2220,12 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6
 		>
 			(ref TupleReader reader, out T1? item1, out T2? item2, out T3? item3, out T4? item4, out T5? item5, out T6? item6)
 		{
@@ -2247,13 +2247,13 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty of has more than six elements.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7
 		>(ref TupleReader reader, out (T1?, T2?, T3?, T4?, T5?, T6?, T7?) tuple)
 		{
 			if (!TryDecodeNext(ref reader, out tuple.Item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2267,13 +2267,13 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7
 		>(ref TupleReader reader, out T1? item1, out T2? item2, out T3? item3, out T4? item4, out T5? item5, out T6? item6, out T7? item7)
 		{
 			if (!TryDecodeNext(ref reader, out item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2295,14 +2295,14 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty of has more than six elements.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7,
+			T8
 		>(ref TupleReader reader, out (T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?) tuple)
 		{
 			if (!TryDecodeNext(ref reader, out tuple.Item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2317,14 +2317,14 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7,
+			T8
 		>
 			(ref TupleReader reader, out T1? item1, out T2? item2, out T3? item3, out T4? item4, out T5? item5, out T6? item6, out T7? item7, out T8? item8)
 		{
@@ -2344,15 +2344,15 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="tuple">Receives the decoded tuple</param>
 		/// <remarks>Throws an exception if the tuple is empty of has more than six elements.</remarks>
 		public static void DecodeKey<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T9
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7,
+			T8,
+			T9
 		>(ref TupleReader reader, out (T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?, T9?) tuple)
 		{
 			if (!TryDecodeNext(ref reader, out tuple.Item1, out var error)) ThrowFailedToDecode(1, error);
@@ -2368,15 +2368,15 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		public static void DecodeKey<
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T9
+				T1,
+				T2,
+				T3,
+				T4,
+				T5,
+				T6,
+				T7,
+				T8,
+				T9
 			>
 			(ref TupleReader reader, out T1? item1, out T2? item2, out T3? item3, out T4? item4, out T5? item5, out T6? item6, out T7? item7, out T8? item8, out T9? item9)
 		{
@@ -2422,7 +2422,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="value">If decoding succeeded, receives the decoded value.</param>
 		/// <param name="error">If non-null, error that describes why the decoding failed</param>
 		/// <returns><c>true</c> if the decoded succeeded (and <paramref name="value"/> receives the decoded value); otherwise, <c>false</c> if the tuple has reached the end or the next item is malformed.</returns>
-		public static bool TryDecodeNext<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
+		public static bool TryDecodeNext<T>
 			(ref TupleReader reader, out T? value, out Exception? error)
 		{
 			if (!reader.HasMore)

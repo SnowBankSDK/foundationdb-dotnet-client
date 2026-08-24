@@ -147,7 +147,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Reusable action that knows how to serialize values of type <typeparamref name="T"/> into binary buffers, or that throws an exception if the type is not supported</returns>
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		[RequiresUnreferencedCode("If some of the generic arguments are annotated (either with DynamicallyAccessedMembersAttribute, or generic constraints), trimming can't validate that the requirements of those annotations are met.")]
-		internal static (Encoder<T>, SpanEncoder<T>) GetSerializer<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+		internal static (Encoder<T>, SpanEncoder<T>) GetSerializer<T>()
 		{
 			//note: this method is only called once per initializing of TuplePackers<T> to create the cached delegate.
 
@@ -334,9 +334,7 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		internal static void SerializeTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
-			(TupleWriter writer, T value)
+		internal static void SerializeTo<T>(TupleWriter writer, T value)
 		{
 #if !DEBUG
 			//<JIT_HACK>
@@ -403,7 +401,29 @@ namespace SnowBank.Data.Tuples.Binary
 			//</JIT_HACK>
 #endif
 
-			// invoke the encoder directly
+			// tuples and packable types write themselves through the instance interface, no reflection
+			if (typeof(T).IsAssignableTo(typeof(ITuplePackable)))
+			{
+				if (value is null)
+				{
+					writer.WriteNil();
+					return;
+				}
+				var packable = (ITuplePackable) value;
+				if (typeof(T).IsAssignableTo(typeof(IVarTuple)))
+				{ // a nested tuple item is written as an embedded tuple
+					var tw = writer.BeginTuple();
+					packable.PackTo(tw);
+					tw.EndTuple();
+				}
+				else
+				{ // a custom packable writes its own items into the current tuple
+					packable.PackTo(writer);
+				}
+				return;
+			}
+
+			// invoke the encoder directly (reflection fallback for the remaining types)
 			TuplePacker<T>.Encoders.Direct(writer, value);
 		}
 
@@ -413,9 +433,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="value">Nullable value to serialize</param>
 		/// <remarks>Uses the underlying type's serializer if the value is not null</remarks>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static void SerializeNullableTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
-			(TupleWriter writer, T? value)
+		public static void SerializeNullableTo<T>(TupleWriter writer, T? value)
 			where T : struct
 		{
 			if (value is not null)
@@ -434,18 +452,14 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="value">Nullable value to serialize</param>
 		/// <remarks>Uses the underlying type's serializer if the value is not null</remarks>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static bool TrySerializeNullableTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
-			(ref TupleSpanWriter writer, in T? value)
+		public static bool TrySerializeNullableTo<T>(ref TupleSpanWriter writer, in T? value)
 			where T : struct
 		{
 			return value is null ? writer.TryWriteNil() : TrySerializeTo(ref writer, value.Value);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		internal static bool TrySerializeTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
-			(ref TupleSpanWriter writer, in T value)
+		internal static bool TrySerializeTo<T>(ref TupleSpanWriter writer, in T value)
 		{
 #if !DEBUG
 			//<JIT_HACK>
@@ -508,7 +522,20 @@ namespace SnowBank.Data.Tuples.Binary
 			//</JIT_HACK>
 #endif
 
-			// invoke the encoder directly
+			// tuples and packable types write themselves through the instance interface, no reflection
+			if (typeof(T).IsAssignableTo(typeof(ITupleSpanPackable)))
+			{
+				if (value is null)
+				{
+					return writer.TryWriteNil();
+				}
+				var packable = (ITupleSpanPackable) value;
+				return typeof(T).IsAssignableTo(typeof(IVarTuple))
+					? TupleParser.TryBeginTuple(ref writer) && packable.TryPackTo(ref writer) && TupleParser.TryEndTuple(ref writer) // embedded nested tuple
+					: packable.TryPackTo(ref writer); // custom packable writes its own items
+			}
+
+			// invoke the encoder directly (reflection fallback for the remaining types)
 			return TuplePacker<T>.Encoders.Span(ref writer, value);
 		}
 
