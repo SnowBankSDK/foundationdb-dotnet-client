@@ -76,21 +76,20 @@ namespace SnowBank.Data.Json
 
 		private static readonly QuasiImmutableCache<Type, CrystalJsonTypeVisitor> s_typeVisitorCache = new(TypeEqualityComparer.Default);
 
-		private static readonly Func<Type, bool, CrystalJsonTypeVisitor> CreateVisitorForTypeCallback = CreateVisitorForType;
-
 		/// <summary>Return a visitor that is able to serialize instances of the specified type</summary>
 		/// <param name="type">Type as declared in the parent (compile time) or actual instance type (at runtime)</param>
 		/// <param name="atRuntime"><see langword="false"/> when performing the initial mapping (compile time), <see langword="true"/> when calling at runtime with the actual instance type</param>
-		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		public static CrystalJsonTypeVisitor GetVisitorForType(Type type, bool atRuntime = false)
 		{
+			if (!CrystalJson.IsReflectionSupported) throw new JsonReflectionDisabledException(type);
+
 			bool cacheable = !atRuntime || type.IsConcrete();
 
 			if (cacheable)
 			{ // we can cache the visitor for this type
 			  //TODO: handle a different cache between atRuntime == true/false ?
 			  //note: currently, the only ones that call with atRuntime==true are VisitObjectAtRuntime and VisitInterfaceAtRuntime
-				return s_typeVisitorCache.GetOrAdd(type, CreateVisitorForTypeCallback, atRuntime);
+				return s_typeVisitorCache.GetOrAdd(type, CreateVisitorForType, atRuntime);
 			}
 
 			// Cannot be cached, will be created everytime... :/

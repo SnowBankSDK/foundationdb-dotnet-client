@@ -4412,9 +4412,8 @@ namespace SnowBank.Data.Json
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public override object? ToObject()
 		{
-#pragma warning disable IL2026
+			if (!CrystalJson.IsReflectionSupported) throw new JsonReflectionDisabledException(typeof(object));
 			return CrystalJsonParser.DeserializeCustomClassOrStruct(this, typeof(object), CrystalJson.DefaultResolver);
-#pragma warning restore IL2026
 		}
 
 		/// <inheritdoc />

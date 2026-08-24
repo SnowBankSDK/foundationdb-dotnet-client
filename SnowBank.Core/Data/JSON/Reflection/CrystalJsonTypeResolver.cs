@@ -180,7 +180,7 @@ namespace SnowBank.Data.Json
 		}
 
 		private static readonly Func<Type, CrystalJsonTypeResolver, CrystalJsonTypeDefinition?> ResolveNewTypeHandler =
-			static (t, self) => self.ResolveJsonTypeNoCache(t);
+			static (t, self) => CrystalJson.IsReflectionSupported ? self.ResolveJsonTypeNoCache(t) : throw new JsonReflectionDisabledException(t);
 
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		[RequiresUnreferencedCode(AotMessages.TypeMightBeRemoved)]
@@ -373,15 +373,17 @@ namespace SnowBank.Data.Json
 				return value.ToDateTimeOffset();
 			}
 
+			if (!CrystalJson.IsReflectionSupported) throw new JsonReflectionDisabledException(type);
 			return CrystalJsonParser.DeserializeCustomClassOrStruct(value, type, this);
 		}
 
 		private static readonly QuasiImmutableCache<Type, Func<CrystalJsonTypeResolver, JsonArray?, object?>> DefaultArrayBinders = new(TypeEqualityComparer.Default);
 
-		private static readonly Func<Type, Func<CrystalJsonTypeResolver, JsonArray?, object?>> JsonArrayBinderCallback = CreateDefaultJsonArrayBinder;
-
 		public object? BindJsonArray(Type? type, JsonArray? array)
-			=> DefaultArrayBinders.GetOrAdd(type ?? typeof(object), JsonArrayBinderCallback)(this, array);
+		{
+			if (!CrystalJson.IsReflectionSupported) throw new JsonReflectionDisabledException(type ?? typeof(object));
+			return DefaultArrayBinders.GetOrAdd(type ?? typeof(object), CreateDefaultJsonArrayBinder)(this, array);
+		}
 
 		[RequiresUnreferencedCode("JSON array binding uses reflection over the collection and element types; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]

@@ -179,7 +179,6 @@ namespace SnowBank.Data.Json
 			return ParseObjectInternal(ref context, value, declaredType, runtimeType);
 		}
 
-		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal JsonValue ParseObjectInternal(ref VisitingContext context, object? value, Type declaredType, Type? runtimeType)
 		{
 			Contract.Debug.Requires(declaredType != null);
@@ -212,7 +211,7 @@ namespace SnowBank.Data.Json
 			}
 			else if (runtimeType.IsValueType)
 			{ // struct, datetime, guids, ...
-				if (TryConvertValueTypeObject(ref context, value, runtimeType, out result))
+				if (CrystalJson.IsReflectionSupported && TryConvertValueTypeObject(ref context, value, runtimeType, out result))
 				{
 					return result;
 				}
@@ -224,7 +223,7 @@ namespace SnowBank.Data.Json
 				  // instead of silently flattening the shape; jagged arrays (T[][]) are fine
 					throw new JsonSerializationException($"Cannot serialize multi-dimensional array of type '{runtimeType.GetFriendlyName()}': arrays with more than one dimension have no JSON representation, convert to a jagged array (T[][]) instead.");
 				}
-				if (TryConvertListObject(ref context, (IList) value, runtimeType, out result))
+				if (CrystalJson.IsReflectionSupported && TryConvertListObject(ref context, (IList) value, runtimeType, out result))
 				{
 					return result;
 				}
@@ -237,7 +236,7 @@ namespace SnowBank.Data.Json
 
 			if (value is IDictionary<string, object?> dict)
 			{ // matches Dictionary<string, object> as well as ExpandoObject
-				if (TryConvertDictionaryObject(ref context, dict, runtimeType, out result))
+				if (CrystalJson.IsReflectionSupported && TryConvertDictionaryObject(ref context, dict, runtimeType, out result))
 				{
 					return result;
 				}
@@ -252,7 +251,7 @@ namespace SnowBank.Data.Json
 			{
 				if (value is IDictionary idict)
 				{ // => { K: V }
-					if (TryConvertDictionaryObject(ref context, idict, runtimeType, out result))
+					if (CrystalJson.IsReflectionSupported && TryConvertDictionaryObject(ref context, idict, runtimeType, out result))
 					{
 						return result;
 					}
@@ -260,7 +259,7 @@ namespace SnowBank.Data.Json
 
 				if (value is IList ilist)
 				{ // => [ x, y, ... ]
-					if (TryConvertListObject(ref context, ilist, runtimeType, out result))
+					if (CrystalJson.IsReflectionSupported && TryConvertListObject(ref context, ilist, runtimeType, out result))
 					{
 						return result;
 					}
@@ -271,7 +270,7 @@ namespace SnowBank.Data.Json
 					return CrystalJsonVisitor.ConvertTupleToJson(tuple);
 				}
 
-				if (TryConvertEnumerableObject(ref context, enmr, runtimeType, out result))
+				if (CrystalJson.IsReflectionSupported && TryConvertEnumerableObject(ref context, enmr, runtimeType, out result))
 				{ // => [ x, y, ...]
 					return result;
 				}
@@ -334,7 +333,7 @@ namespace SnowBank.Data.Json
 			}
 
 
-			if (TryConvertFromTypeDefinition(ref context, value, declaredType, runtimeType, out result))
+			if (CrystalJson.IsReflectionSupported && TryConvertFromTypeDefinition(ref context, value, declaredType, runtimeType, out result))
 			{
 				return result;
 			}

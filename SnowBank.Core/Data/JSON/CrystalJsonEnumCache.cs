@@ -86,6 +86,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Get the literal cache for a specific enum type</summary>
+		[System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Enum name and value reflection over an enum type that the application references keeps its fields, so it stays trim-safe.")]
 		public static EnumCache GetCacheForType(Type enumType)
 		{
 			var types = TypeCache;

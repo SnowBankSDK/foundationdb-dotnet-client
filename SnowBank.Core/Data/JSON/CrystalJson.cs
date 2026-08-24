@@ -56,6 +56,22 @@ namespace SnowBank.Data.Json
 		/// type definition, so every reflected type trips on first use.</remarks>
 		public static bool DisableReflection { get; set; }
 
+		/// <summary>Name of the trimmer/runtime feature switch that controls <see cref="IsReflectionSupported"/>.</summary>
+		internal const string ReflectionSupportSwitchName = "SnowBank.Data.Json.CrystalJson.IsReflectionSupported";
+
+		/// <summary>Whether the runtime reflection (de)serialization path is available.</summary>
+		/// <remarks>Defaults to <see langword="true"/>. An application that publishes trimmed or Native AoT can set the
+		/// MSBuild feature <c>SnowBank.Data.Json.CrystalJson.IsReflectionSupported=false</c> (or the matching runtime
+		/// config switch): the trimmer then substitutes this property to <see langword="false"/> and removes the whole
+		/// reflection subtree, so a source-generated consumer builds with no trim warnings. Every reflection entry point
+		/// is guarded by this property, so with reflection off a reflected type throws <see cref="JsonReflectionDisabledException"/>.</remarks>
+#if NET9_0_OR_GREATER
+		[System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(ReflectionSupportSwitchName)]
+		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute))]
+		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute))]
+#endif
+		public static bool IsReflectionSupported => AppContext.TryGetSwitch(ReflectionSupportSwitchName, out var enabled) ? enabled : true;
+
 		/// <summary>Options when save JSON to disk</summary>
 		[Flags]
 		public enum SaveOptions
