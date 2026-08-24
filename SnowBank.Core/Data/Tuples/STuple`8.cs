@@ -220,7 +220,7 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index) => index switch
+		public TItem? Get<TItem>(int index) => index switch
 		{
 			0 or -8 => TypeConverters.Convert<T1, TItem?>(this.Item1),
 			1 or -7 => TypeConverters.Convert<T2, TItem?>(this.Item2),
@@ -235,15 +235,15 @@ namespace SnowBank.Data.Tuples
 
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index)
+		public TItem? Get<TItem>(Index index)
 			=> Get<TItem>(index.GetOffset(8));
 
 		/// <inheritdoc />
-		TItem? IVarTuple.GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		TItem? IVarTuple.GetFirst<TItem>()
 			where TItem : default => TypeConverters.Convert<T1, TItem?>(this.Item1);
 
 		/// <inheritdoc />
-		TItem? IVarTuple.GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		TItem? IVarTuple.GetLast<TItem>()
 			where TItem : default => TypeConverters.Convert<T8, TItem?>(this.Item8);
 
 		/// <summary>Return the value of the last item in the tuple</summary>
@@ -266,7 +266,7 @@ namespace SnowBank.Data.Tuples
 		/// <returns>New tuple with one extra item</returns>
 		/// <remarks>If <paramref name="value"/> is a tuple, and you want to append the *items*  of this tuple, and not the tuple itself, please call <see cref="Concat"/>!</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public IVarTuple Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T9>(T9 value)
+		public IVarTuple Append<T9>(T9 value)
 		{
 			// the caller probably cares about the return type, since it is using a struct, but whatever tuple type we use will end up boxing this tuple on the heap, and we will lose type information.
 			// but, by returning a LinkedTuple<T9>, the tuple will still remember the exact type, and efficiently serializer/convert the values (without having to guess the type)

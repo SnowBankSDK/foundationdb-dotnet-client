@@ -117,7 +117,7 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index)
+		public TItem? Get<TItem>(int index)
 		{
 			if (index == this.HeadCount || index == -1) return TypeConverters.Convert<T, TItem?>(this.Tail);
 			if (index < -1) index++;
@@ -126,15 +126,15 @@ namespace SnowBank.Data.Tuples
 		
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index)
+		public TItem? Get<TItem>(Index index)
 			=> Get<TItem>(index.GetOffset(this.Count));
 
 		/// <inheritdoc />
-		public TItem? GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		public TItem? GetFirst<TItem>()
 			=> this.HeadCount > 0 ? this.Head.GetFirst<TItem>() : TypeConverters.Convert<T, TItem?>(this.Tail);
 
 		/// <inheritdoc />
-		public TItem? GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		public TItem? GetLast<TItem>()
 			=> TypeConverters.Convert<T, TItem?>(this.Tail);
 
 		public T Last
@@ -145,7 +145,7 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		public IVarTuple Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(TItem value)
+		public IVarTuple Append<TItem>(TItem value)
 		{
 			return STuple.Concat(this.Head, new STuple<T, TItem>(this.Tail, value));
 		}

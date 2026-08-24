@@ -270,7 +270,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Always)]
-		public T? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(int index)
+		public T? Get<T>(int index)
 		{
 			//REVIEW: consider dropping the negative indexing? We have Index now for this use-case!
 			return TuplePacker<T>.Deserialize(GetSlice(index));
@@ -287,7 +287,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <para><c>("Hello", "World", 123,).Get&lt;int&gt;(^1) => 123</c></para>
 		/// <para><c>("Hello", "World", 123,).Get&lt;string&gt;(^1) => "123"</c></para>
 		/// </example>
-		public T? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(Index index)
+		public T? Get<T>(Index index)
 		{
 			return TuplePacker<T>.Deserialize(m_slices.Span[index]);
 		}
@@ -301,7 +301,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <para><c>(123, 456).First&lt;string&gt;() => "123"</c></para>
 		/// </example>
 		[EditorBrowsable(EditorBrowsableState.Always)]
-		public T? GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+		public T? GetFirst<T>()
 		{
 			var slices = m_slices.Span;
 			return slices.Length != 0 ? TuplePacker<T>.Deserialize(slices[0]) : throw TupleHelpers.FailTupleIsEmpty();
@@ -316,7 +316,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <para><c>(123, 456).Last&lt;string&gt;() => "456"</c></para>
 		/// </example>
 		[EditorBrowsable(EditorBrowsableState.Always)]
-		public T? GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+		public T? GetLast<T>()
 		{
 			var slices = m_slices.Span;
 			return slices.Length != 0 ? TuplePacker<T>.Deserialize(slices[^1]) : throw TupleHelpers.FailTupleIsEmpty();
@@ -405,7 +405,7 @@ namespace SnowBank.Data.Tuples.Binary
 		[Pure]
 		public TupleSegmentType GetElementType(Index index) => (TupleSegmentType) GetSlice(index)[0];
 
-		IVarTuple IVarTuple.Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]T>(T value) => throw new NotSupportedException();
+		IVarTuple IVarTuple.Append<T>(T value) => throw new NotSupportedException();
 
 		IVarTuple IVarTuple.Concat(IVarTuple tuple) => throw new NotSupportedException();
 

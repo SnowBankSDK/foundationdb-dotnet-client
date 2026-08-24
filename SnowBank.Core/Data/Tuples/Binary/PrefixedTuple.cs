@@ -133,24 +133,24 @@ namespace SnowBank.Data.Tuples.Binary
 		//REVIEW: should we allow this? this silently drops the prefix from the result...
 
 		/// <inheritdoc />
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index)
+		public TItem? Get<TItem>(int index)
 			=> m_items.Get<TItem>(index);
 
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index)
+		public TItem? Get<TItem>(Index index)
 			=> m_items.Get<TItem>(index);
 
 		/// <inheritdoc />
-		public T? GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+		public T? GetFirst<T>()
 			=> m_items.GetFirst<T>();
 
 		/// <inheritdoc />
-		public T? GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+		public T? GetLast<T>()
 			=> m_items.GetLast<T>();
 
 		/// <inheritdoc />
-		IVarTuple IVarTuple.Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(T value)
+		IVarTuple IVarTuple.Append<T>(T value)
 			where T : default
 			=> Append<T>(value);
 
@@ -158,7 +158,7 @@ namespace SnowBank.Data.Tuples.Binary
 		IVarTuple IVarTuple.Concat(IVarTuple tuple)
 			=> Concat(tuple);
 
-		public PrefixedTuple Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(T value)
+		public PrefixedTuple Append<T>(T value)
 		{
 			return new PrefixedTuple(m_prefix, m_items.Append<T>(value));
 		}

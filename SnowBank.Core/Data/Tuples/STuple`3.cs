@@ -143,7 +143,7 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index) => index switch
+		public TItem? Get<TItem>(int index) => index switch
 		{
 			0  => TypeConverters.Convert<T1, TItem?>(this.Item1),
 			1  => TypeConverters.Convert<T2, TItem?>(this.Item2),
@@ -156,13 +156,13 @@ namespace SnowBank.Data.Tuples
 
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index)
+		public TItem? Get<TItem>(Index index)
 			=> Get<TItem>(index.GetOffset(3));
 
-		TItem? IVarTuple.GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		TItem? IVarTuple.GetFirst<TItem>()
 			where TItem : default => TypeConverters.Convert<T1, TItem?>(this.Item1);
 
-		TItem? IVarTuple.GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		TItem? IVarTuple.GetLast<TItem>()
 			where TItem : default => TypeConverters.Convert<T3, TItem?>(this.Item3);
 
 		/// <summary>Return the value of the last item in the tuple</summary>
@@ -181,7 +181,7 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		IVarTuple IVarTuple.Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4>(T4 value) where T4 : default
+		IVarTuple IVarTuple.Append<T4>(T4 value) where T4 : default
 		{
 			// here, the caller doesn't care about the exact tuple type, so we simply return a boxed List Tuple.
 			return new LinkedTuple<T4>(this, value);

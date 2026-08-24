@@ -209,7 +209,7 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index)
+		public TItem? Get<TItem>(int index)
 		{
 			index = TupleHelpers.MapIndex(index, this.Count);
 			return index < this.HeadCount ? this.Head.Get<TItem>(index) : this.Tail.Get<TItem>(index - this.HeadCount);
@@ -217,19 +217,19 @@ namespace SnowBank.Data.Tuples
 
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index)
+		public TItem? Get<TItem>(Index index)
 			=> Get<TItem>(index.GetOffset(this.Count));
 
 		/// <inheritdoc />
-		public T? GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+		public T? GetFirst<T>()
 			=> this.HeadCount > 0 ? this.Head.GetFirst<T>() : this.Tail.GetFirst<T>();
 
 		/// <inheritdoc />
-		public T? GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+		public T? GetLast<T>()
 			=> this.HeadCount >= this.Count ? this.Head.GetLast<T>() : this.Tail.GetLast<T>();
 
 		/// <inheritdoc />
-		IVarTuple IVarTuple.Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(T value)
+		IVarTuple IVarTuple.Append<T>(T value)
 			=> new LinkedTuple<T>(this, value);
 
 		public LinkedTuple<T> Append<T>(T value)
