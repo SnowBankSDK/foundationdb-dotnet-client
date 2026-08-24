@@ -45,6 +45,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Internal helper that serializes the content of a Tuple into a TupleWriter, meant to be called by implementers of <see cref="IVarTuple"/> types.</summary>
 		/// <remarks>Warning: This method will call into <see cref="ITuplePackable.PackTo"/> if <paramref name="tuple"/> implements <see cref="ITuplePackable"/></remarks>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "the reflective slow path runs only for IVarTuple types that do not implement ITupleSpanPackable")]
 		internal static void WriteTo<TTuple>(TupleWriter writer, in TTuple? tuple)
 			where TTuple : IVarTuple?
 		{
@@ -86,6 +87,7 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		[MustUseReturnValue, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "the reflective slow path runs only for IVarTuple types that do not implement ITupleSpanPackable")]
 		internal static bool TryWriteTo<TTuple>(ref TupleSpanWriter writer, in TTuple tuple)
 			where TTuple : IVarTuple?
 		{

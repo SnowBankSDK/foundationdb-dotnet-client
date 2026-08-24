@@ -32,6 +32,8 @@ namespace SnowBank.Data.Tuples.Binary
 
 	/// <summary>Helper class for serializing and deserializing values of type <typeparamref name="T"/> using the tuple binary format</summary>
 	/// <typeparam name="T">Type of values to be serialized</typeparam>
+	[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "reflective per-type tuple encoder/decoder cache, populated only for element types with no compile-time fast path")]
+	[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "reflective per-type tuple encoder/decoder cache, populated only for element types with no compile-time fast path")]
 	public static class TuplePacker<T>
 	{
 

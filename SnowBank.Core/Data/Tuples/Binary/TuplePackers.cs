@@ -1320,6 +1320,9 @@ namespace SnowBank.Data.Tuples.Binary
 		// this only exists so that we can add this attribute for AoT
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)]
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "reflective tuple-shape lookup over TuplePackers members; the reflective methods it retains are only reached for tuple element types with no compile-time fast path")]
+		[UnconditionalSuppressMessage("Trimming", "IL2111", Justification = "reflective tuple-shape lookup over TuplePackers members; the reflective methods it retains are only reached for tuple element types with no compile-time fast path")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "reflective tuple-shape lookup over TuplePackers members; the reflective methods it retains are only reached for tuple element types with no compile-time fast path")]
 		private static Type GetTuplePackersType() => typeof(TuplePackers);
 		
 #pragma warning restore IL2026
@@ -1353,6 +1356,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		[Pure]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		[UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "reflective per-arity tuple deserializer lookup; runs only for tuple types with no compile-time fast path")]
 		private static Delegate MakeSTupleDeserializer(Type type)
 		{
 			Contract.Debug.Requires(type != null);
@@ -1383,6 +1387,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		[Pure]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		[UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "reflective per-arity tuple deserializer lookup; runs only for tuple types with no compile-time fast path")]
 		private static Delegate MakeValueTupleDeserializer(Type type)
 		{
 			Contract.Debug.Requires(type != null);
