@@ -221,6 +221,8 @@ namespace SnowBank.Linq
 			public static MethodInfo GetSumMethod() => s_sumAsyncImplMethod ??= CreateTrampoline();
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
+			[UnconditionalSuppressMessage("Trimming", "IL2091", Justification = "generic-math dispatch; the concrete numeric types use a compile-time fast path, only user INumberBase<T> types reach reflection")]
+			[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "generic-math dispatch; the concrete numeric types use a compile-time fast path, only user INumberBase<T> types reach reflection")]
 			private static MethodInfo CreateTrampoline()
 			{
 				var nullable = Nullable.GetUnderlyingType(typeof(T));
@@ -240,6 +242,7 @@ namespace SnowBank.Linq
 		/// <returns>Sum of the results in the query, if <typeparamref name="T"/> is supported</returns>
 		/// <exception cref="NotSupportedException">If <typeparamref name="T"/> does not implement <see cref="INumberBase{T}"/></exception>
 		/// <remarks>This method can be used by generic iterators that cannot place a constraint on the types of their element, but still be able to provide summing if the type supports it.</remarks>
+		[UnconditionalSuppressMessage("Trimming", "IL2087", Justification = "generic-math dispatch; the concrete numeric types use a compile-time fast path, only user INumberBase<T> types reach reflection")]
 		public static Task<T> SumUnconstrainedAsync<T>(IAsyncLinqQuery<T> source)
 		{
 			if (default(T) is not null)

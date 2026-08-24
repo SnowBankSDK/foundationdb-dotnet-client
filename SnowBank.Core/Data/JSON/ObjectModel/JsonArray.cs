@@ -5023,6 +5023,9 @@ namespace SnowBank.Data.Json
 
 		/// <inheritdoc />
 		[EditorBrowsable(EditorBrowsableState.Never)]
+		[UnconditionalSuppressMessage("Trimming", "IL2087", Justification = "element-type comparison for collections that are not one of the fast-path shapes")]
+		[UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "element-type comparison for collections that are not one of the fast-path shapes")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "element-type comparison for collections that are not one of the fast-path shapes")]
 		public override bool ValueEquals<TCollection>(TCollection? value, IEqualityComparer<TCollection>? comparer = null)
 			where TCollection : default
 		{
@@ -5079,7 +5082,6 @@ namespace SnowBank.Data.Json
 				var type = typeof(TCollection);
 				if (type.IsEnumerableType(out var itemType))
 				{
-#pragma warning disable IL2060, IL3050
 					if (type.IsArray)
 					{ // optimized for arrays
 						return (bool) (s_helperArray ??= GetArrayComparisonHelper()).MakeGenericMethod(itemType).Invoke(self, [ value ])!;
@@ -5089,7 +5091,6 @@ namespace SnowBank.Data.Json
 						// TODO: call the IEnumerable<T> variant
 						return (bool) (s_helperEnumerable ??= GetEnumerableComparisonHelper()).MakeGenericMethod(itemType).Invoke(self, [ value ])!;
 					}
-#pragma warning restore IL2060, IL3050
 				}
 
 				var x = self.Bind<TCollection>();

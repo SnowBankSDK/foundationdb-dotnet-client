@@ -260,6 +260,8 @@ namespace SnowBank.Runtime
 		/// <returns>"string", "int", "FooBar", "FooBar.NestedBaz", "List&lt;int>", "Dictionary&lt;string, Something&lt;Foo, Bar>>"</returns>
 		/// <remarks>This name will NOT be in a format that easily allows retrieve it later, and should mostly be used in error message, logs or debug messages.</remarks>
 		[Pure]
+		[UnconditionalSuppressMessage("Trimming", "IL2055", Justification = "builds the closed generic type only to read its name; no member is accessed at runtime")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "builds the closed generic type only to read its name; no member is accessed at runtime")]
 		public static string GetCompilableTypeName(Type type, bool omitNamespace, bool global)
 		{
 			Contract.NotNull(type);
@@ -345,11 +347,7 @@ namespace SnowBank.Runtime
 					Array.Copy(innerArgs, 0, concreteArgs, 0, concreteArgs.Length);
 
 					//note: we only make a generic version of the type to get its name, and will not invoke any member at runtime
-					#pragma warning disable IL3050
-					#pragma warning disable IL2055
 					outer = outer.MakeGenericType(concreteArgs);
-					#pragma warning restore IL2055
-					#pragma warning restore IL3050
 					
 					outerOffset = outerArgs.Length;
 				}
