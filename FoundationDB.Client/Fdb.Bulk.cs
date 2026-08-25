@@ -380,7 +380,7 @@ namespace FoundationDB.Client
 
 				using (var trans = db.BeginTransaction(ct))
 				{
-					long? timerStart = db.Time.GetTimestamp(); // null once stopped, mirroring Stopwatch.Reset() (stops and never restarts)
+					long timerStart = db.Time.GetTimestamp(); // measures the time since the start, or since the last commit
 
 					async Task CommitBatch()
 					{
@@ -423,7 +423,7 @@ namespace FoundationDB.Client
 						// success!
 						batch.Clear();
 						trans.Reset();
-						timerStart = null;
+						timerStart = db.Time.GetTimestamp(); // restart the cadence: commit again if the next batch also runs late
 					}
 
 					foreach (var item in source)
@@ -447,7 +447,7 @@ namespace FoundationDB.Client
 						// commit the batch if ...
 						if (trans.Size >= sizeThreshold      // transaction is starting to get big...
 						 || batch.Count >= batchCount        // too many items would need to be retried...
-						 || (timerStart is long ts && db.Time.GetElapsedTime(ts).TotalSeconds >= 4)  // it's getting late...
+						 || db.Time.GetElapsedTime(timerStart).TotalSeconds >= 4  // it's getting late...
 						)
 						{
 							await CommitBatch().ConfigureAwait(false);
@@ -692,7 +692,7 @@ namespace FoundationDB.Client
 
 				using (var trans = db.BeginTransaction(ct))
 				{
-					long? timerStart = db.Time.GetTimestamp(); // null once stopped, mirroring Stopwatch.Reset() (stops and never restarts)
+					long timerStart = db.Time.GetTimestamp(); // measures the time since the start, or since the last commit
 
 					async Task CommitBatch()
 					{
@@ -740,7 +740,7 @@ namespace FoundationDB.Client
 						// success!
 						chunk.Clear();
 						trans.Reset();
-						timerStart = null;
+						timerStart = db.Time.GetTimestamp(); // restart the cadence: commit again if the next batch also runs late
 					}
 
 					int offset = 0; // offset of the current batch in the chunk
@@ -772,7 +772,7 @@ namespace FoundationDB.Client
 
 							// commit the batch if ...
 							if (trans.Size >= sizeThreshold         // transaction is starting to get big...
-							 || (timerStart is long ts && db.Time.GetElapsedTime(ts).TotalSeconds >= 4))    // it's getting late...
+							 || db.Time.GetElapsedTime(timerStart).TotalSeconds >= 4)    // it's getting late...
 							{
 								await CommitBatch().ConfigureAwait(false);
 

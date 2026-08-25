@@ -29,6 +29,7 @@ namespace FoundationDB.Testing.Tests
 	using System.Collections.Generic;
 	using System.Linq;
 	using FoundationDB.Client;
+	using Microsoft.Extensions.Time.Testing;
 
 	/// <summary>Data-correctness guard for the bulk operations after their timers moved from <see cref="System.Diagnostics.Stopwatch"/>
 	/// to the database <see cref="System.TimeProvider"/>. The repository's own <c>DatabaseBulkFacts</c> is currently disabled, so
@@ -101,6 +102,52 @@ namespace FoundationDB.Testing.Tests
 #pragma warning restore CS0618
 
 			Assert.That(seen, Is.EqualTo(300), "the batched read must visit every item across its generations");
+		}
+
+		[Test]
+		public async Task Test_Bulk_Insert_Commit_Cadence_Fires_For_Every_Slow_Batch()
+		{
+			// The four-second "it's getting late, commit now" trigger must restart after each commit, so it
+			// fires for every slow batch, not only the first. A source that advances virtual time by 2.5s per
+			// item crosses the trigger about every other item. The old behavior used Stopwatch.Reset (stop,
+			// never restart), so the trigger fired once and then a single final commit flushed the rest.
+			var fake = new FakeTimeProvider();
+			var store = new FakeDbStore(time: fake);
+			using var db = store.OpenDatabase(null, readOnly: false);
+
+			IEnumerable<int> Slow()
+			{
+				for (int i = 0; i < 8; i++)
+				{
+					fake.Advance(TimeSpan.FromSeconds(2.5));
+					yield return i;
+				}
+			}
+
+			// Count commit boundaries: after a commit the bulk loop resets the shared transaction, so the next
+			// item's body sees Size == 0. The values are tiny and BatchCount is high, so neither the size nor
+			// the count trigger can fire; only the time cadence commits.
+			long boundaries = 0;
+			bool wroteSinceReset = false;
+			await Fdb.Bulk.InsertAsync(
+				db,
+				Slow(),
+				(i, tr) =>
+				{
+					if (tr.Size == 0 && wroteSinceReset) boundaries++;
+					tr.Set(Key("c" + i.ToString("D2")), Value(i.ToString()));
+					wroteSinceReset = true;
+				},
+				new Fdb.Bulk.WriteOptions { BatchCount = 1000 },
+				this.Cancellation);
+
+			Assert.That(boundaries, Is.GreaterThanOrEqualTo(2), "the commit cadence must restart after each commit and fire for every slow batch, not only the first");
+
+			for (int i = 0; i < 8; i++)
+			{
+				var v = await db.ReadAsync(tr => tr.GetAsync(Key("c" + i.ToString("D2"))), this.Cancellation);
+				Assert.That(v.ToStringUtf8(), Is.EqualTo(i.ToString()), $"item {i} must round-trip through the bulk insert");
+			}
 		}
 
 	}
