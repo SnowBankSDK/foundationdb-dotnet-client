@@ -380,7 +380,7 @@ namespace FoundationDB.Client
 
 				using (var trans = db.BeginTransaction(ct))
 				{
-					var timer = Stopwatch.StartNew();
+					long? timerStart = db.Time.GetTimestamp(); // null once stopped, mirroring Stopwatch.Reset() (stops and never restarts)
 
 					async Task CommitBatch()
 					{
@@ -423,7 +423,7 @@ namespace FoundationDB.Client
 						// success!
 						batch.Clear();
 						trans.Reset();
-						timer.Reset();
+						timerStart = null;
 					}
 
 					foreach (var item in source)
@@ -447,7 +447,7 @@ namespace FoundationDB.Client
 						// commit the batch if ...
 						if (trans.Size >= sizeThreshold      // transaction is starting to get big...
 						 || batch.Count >= batchCount        // too many items would need to be retried...
-						 || timer.Elapsed.TotalSeconds >= 4  // it's getting late...
+						 || (timerStart is long ts && db.Time.GetElapsedTime(ts).TotalSeconds >= 4)  // it's getting late...
 						)
 						{
 							await CommitBatch().ConfigureAwait(false);
@@ -692,7 +692,7 @@ namespace FoundationDB.Client
 
 				using (var trans = db.BeginTransaction(ct))
 				{
-					var timer = Stopwatch.StartNew();
+					long? timerStart = db.Time.GetTimestamp(); // null once stopped, mirroring Stopwatch.Reset() (stops and never restarts)
 
 					async Task CommitBatch()
 					{
@@ -740,7 +740,7 @@ namespace FoundationDB.Client
 						// success!
 						chunk.Clear();
 						trans.Reset();
-						timer.Reset();
+						timerStart = null;
 					}
 
 					int offset = 0; // offset of the current batch in the chunk
@@ -772,7 +772,7 @@ namespace FoundationDB.Client
 
 							// commit the batch if ...
 							if (trans.Size >= sizeThreshold         // transaction is starting to get big...
-							 || timer.Elapsed.TotalSeconds >= 4)    // it's getting late...
+							 || (timerStart is long ts && db.Time.GetElapsedTime(ts).TotalSeconds >= 4))    // it's getting late...
 							{
 								await CommitBatch().ConfigureAwait(false);
 
@@ -912,20 +912,23 @@ namespace FoundationDB.Client
 				/// <summary>Current batch size target</summary>
 				public int Step { get; internal set; }
 
-				/// <summary>Global timer, from the start of the bulk operation</summary>
-				internal Stopwatch TotalTimer { get; }
+				/// <summary>Time source used to measure the elapsed timers below</summary>
+				internal TimeProvider Time { get; }
 
-				/// <summary>Timer started at the start of each transaction</summary>
-				internal Stopwatch GenerationTimer { get; }
+				/// <summary>Timestamp captured at the start of the bulk operation</summary>
+				internal long TotalStart { get; }
+
+				/// <summary>Timestamp captured at the start of the current transaction window</summary>
+				internal long GenerationStart { get; set; }
 
 				/// <summary>Cooldown timer used for scaling up and down the step size</summary>
 				public int Cooldown { get; internal set; }
 
 				/// <summary>Total elapsed time since the start of this bulk operation</summary>
-				public TimeSpan ElapsedTotal => this.TotalTimer.Elapsed;
+				public TimeSpan ElapsedTotal => this.Time.GetElapsedTime(this.TotalStart);
 
 				/// <summary>Elapsed time since the start of the current transaction window</summary>
-				public TimeSpan ElapsedGeneration => this.GenerationTimer.Elapsed;
+				public TimeSpan ElapsedGeneration => this.Time.GetElapsedTime(this.GenerationStart);
 
 				/// <summary>Returns true if all values processed up to this point used the same transaction, or false if more than one transaction was used.</summary>
 				public bool IsTransactional => this.Generation == 0;
@@ -942,13 +945,14 @@ namespace FoundationDB.Client
 				/// <summary>Gets or sets the abort flag</summary>
 				public bool Abort { get; set; }
 
-				internal BatchOperationContext(IFdbReadOnlyTransaction trans, int batchSize, Stopwatch totalTimer, Stopwatch generationTimer)
+				internal BatchOperationContext(IFdbReadOnlyTransaction trans, int batchSize, TimeProvider time)
 				{
-					Contract.Debug.Requires(trans != null && batchSize > 0 && totalTimer != null && generationTimer != null);
+					Contract.Debug.Requires(trans != null && batchSize > 0 && time != null);
 					this.Transaction = trans;
 					this.Step = batchSize;
-					this.TotalTimer = totalTimer;
-					this.GenerationTimer = generationTimer;
+					this.Time = time;
+					this.TotalStart = time.GetTimestamp();
+					this.GenerationStart = time.GetTimestamp();
 				}
 
 			}
@@ -1168,11 +1172,9 @@ namespace FoundationDB.Client
 
 				using (var iterator = source.GetEnumerator())
 				{
-					var totalTimer = Stopwatch.StartNew();
-
 					using (var trans = db.BeginReadOnlyTransaction(ct))
 					{
-						var ctx = new BatchOperationContext(trans, batchSize, totalTimer, Stopwatch.StartNew());
+						var ctx = new BatchOperationContext(trans, batchSize, db.Time);
 
 						try
 						{
@@ -1205,7 +1207,7 @@ namespace FoundationDB.Client
 									FdbException? error = null;
 									try
 									{
-										var sw = Stopwatch.StartNew();
+										var swStart = db.Time.GetTimestamp();
 										if (bodyAsyncWithContextAndState != null)
 										{
 											localValue = await bodyAsyncWithContextAndState(items, ctx, localValue).ConfigureAwait(false);
@@ -1223,7 +1225,7 @@ namespace FoundationDB.Client
 											Contract.Debug.Assert(bodyWithContext != null);
 											bodyWithContext(items, ctx);
 										}
-										sw.Stop();
+										var swElapsed = db.Time.GetElapsedTime(swStart);
 
 										if (!ctx.Abort)
 										{
@@ -1232,7 +1234,7 @@ namespace FoundationDB.Client
 											{
 												// scale up the batch size if everything was super quick !
 												if (ctx.Cooldown > 0) ctx.Cooldown--;
-												if (ctx.Cooldown <= 0 && sw.Elapsed.TotalSeconds < (5.0 - ctx.ElapsedGeneration.TotalSeconds) / 2)//REVIEW: magical number!
+												if (ctx.Cooldown <= 0 && swElapsed.TotalSeconds < (5.0 - ctx.ElapsedGeneration.TotalSeconds) / 2)//REVIEW: magical number!
 												{
 													ctx.Step = Math.Min(ctx.Step * 2, DefaultMaximumBatchSize); //REVIEW: magical number!
 													//REVIEW: magical number!
@@ -1257,7 +1259,7 @@ namespace FoundationDB.Client
 										if (error.Code == FdbError.TransactionTooOld)
 										{ // this generation lasted too long, we need to start a new one and try again...
 											trans.Reset();
-											ctx.GenerationTimer.Restart();
+											ctx.GenerationStart = ctx.Time.GetTimestamp();
 											ctx.Generation++;
 
 											// scale back batch size
@@ -1271,7 +1273,7 @@ namespace FoundationDB.Client
 										else
 										{ // the error may be retry-able...
 											await trans.OnErrorAsync(error.Code).ConfigureAwait(false);
-											ctx.GenerationTimer.Restart();
+											ctx.GenerationStart = ctx.Time.GetTimestamp();
 											ctx.Generation++;
 											//REVIEW: magical number!
 											if (ctx.Cooldown < 2) ctx.Cooldown = 2;
