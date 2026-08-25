@@ -61,6 +61,20 @@ namespace SnowBank.Data.Json
 			this.JsonResolver = jsonResolver ?? CrystalJson.DefaultResolver;
 		}
 
+		// Renders the body through a source-generated converter (trim-safe). The closure receives the target
+		// encoding and returns the encoded bytes; the reflection fields above are unused on this path.
+		private CrystalJsonContent(object? inputValue, Type inputType, MediaTypeHeaderValue? mediaType, Func<Encoding?, SliceOwner> converterRenderer)
+		{
+			this.Value = inputValue;
+			this.ObjectType = inputType;
+			this.Headers.ContentType = mediaType ?? new("application/json") { CharSet = "utf-8" };
+			this.JsonSettings = CrystalJsonSettings.JsonIndented;
+			this.JsonResolver = CrystalJson.DefaultResolver;
+			this.ConverterRenderer = converterRenderer;
+		}
+
+		private readonly Func<Encoding?, SliceOwner>? ConverterRenderer;
+
 		/// <summary>Instance that will be returned in the body as serialized JSON</summary>
 		public object? Value { get; }
 
@@ -103,6 +117,23 @@ namespace SnowBank.Data.Json
 		public static CrystalJsonContent Create<T>(T? inputValue, MediaTypeHeaderValue? mediaType = null, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			=> new CrystalJsonContent(inputValue, typeof(T), mediaType, settings, resolver);
 
+		/// <summary>Creates a <see cref="CrystalJsonContent"/> that serializes <paramref name="value"/> of type <typeparamref name="T"/> through a source-generated converter.</summary>
+		/// <typeparam name="T">Type of the instance</typeparam>
+		/// <param name="value">Instance to serialize</param>
+		/// <param name="serializer">Source-generated serializer for <typeparamref name="T"/> (for example <c>MyConverters.T.Default</c>). This is the trim-safe and AoT-safe path.</param>
+		/// <param name="mediaType">Media type reported in the <c>Content-Type</c> header. Uses <c>"application/json; charset=utf-8"</c> by default.</param>
+		/// <param name="settings">Custom JSON serialization settings. Uses <see cref="CrystalJsonSettings.Json"/> by default.</param>
+		/// <param name="resolver">Custom JSON type resolver used for nested types. Uses <see cref="CrystalJson.DefaultResolver"/> by default.</param>
+		public static CrystalJsonContent Create<T>(T? value, IJsonSerializer<T> serializer, MediaTypeHeaderValue? mediaType = null, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
+		{
+			Contract.NotNull(serializer);
+			var jsonSettings = settings ?? CrystalJsonSettings.JsonIndented;
+			return new CrystalJsonContent(value, typeof(T), mediaType, (encoding) =>
+				encoding is null || Encoding.UTF8.Equals(encoding)
+					? CrystalJson.ToSlice(value, serializer, ArrayPool<byte>.Shared, jsonSettings, resolver)
+					: SliceOwner.Create(encoding.GetBytes(CrystalJson.Serialize(value, serializer, jsonSettings, resolver)).AsSlice()));
+		}
+
 		internal const string ReflectionMessage = "JSON body serialization uses reflection over the value type. Enroll the type with [CrystalJsonConverter] and build the content from the source-generated converter output.";
 
 		private SliceOwner CachedBytes;
@@ -120,7 +151,13 @@ namespace SnowBank.Data.Json
 
 			try
 			{
-				if (targetEncoding != null && !Encoding.UTF8.Equals(targetEncoding))
+				if (this.ConverterRenderer is not null)
+				{ // source-generated converter path (trim-safe)
+					var owner = this.ConverterRenderer(targetEncoding);
+					activity?.SetTag("json.length", owner.Count);
+					return owner;
+				}
+				else if (targetEncoding != null && !Encoding.UTF8.Equals(targetEncoding))
 				{ // exotic encoding!
 					string jsonText = CrystalJson.Serialize(this.Value, this.ObjectType, this.JsonSettings, this.JsonResolver);
 					var bytes = targetEncoding.GetBytes(jsonText).AsSlice();

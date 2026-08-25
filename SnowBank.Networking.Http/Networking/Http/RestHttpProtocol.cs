@@ -216,6 +216,14 @@ namespace SnowBank.Networking.Http
 		public Task PostJsonAsync<TRequest>(Uri uri, TRequest request, Action<BetterHttpClientContext> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		/// <summary>Sends a POST whose JSON body is serialized through a source-generated serializer (trim-safe).</summary>
+		public Task<TResult> PostJsonAsync<TRequest, TResult>(string uri, TRequest request, IJsonSerializer<TRequest> serializer, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
+			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request, serializer)), handler, ct);
+
+		/// <summary>Sends a POST whose JSON body is serialized through a source-generated serializer (trim-safe).</summary>
+		public Task<TResult> PostJsonAsync<TRequest, TResult>(Uri uri, TRequest request, IJsonSerializer<TRequest> serializer, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
+			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request, serializer)), handler, ct);
+
 		#endregion
 
 		#endregion
@@ -257,6 +265,14 @@ namespace SnowBank.Networking.Http
 		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PutJsonAsync<TRequest>(Uri uri, TRequest request, Func<BetterHttpClientContext, Task> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePutRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
+
+		/// <summary>Sends a PUT whose JSON body is serialized through a source-generated serializer (trim-safe).</summary>
+		public Task<TResult> PutJsonAsync<TRequest, TResult>(string uri, TRequest request, IJsonSerializer<TRequest> serializer, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
+			=> this.Http.SendAsync(this.Http.CreatePutRequest(uri, CrystalJsonContent.Create(request, serializer)), handler, ct);
+
+		/// <summary>Sends a PUT whose JSON body is serialized through a source-generated serializer (trim-safe).</summary>
+		public Task<TResult> PutJsonAsync<TRequest, TResult>(Uri uri, TRequest request, IJsonSerializer<TRequest> serializer, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
+			=> this.Http.SendAsync(this.Http.CreatePutRequest(uri, CrystalJsonContent.Create(request, serializer)), handler, ct);
 
 		#endregion
 
@@ -329,6 +345,14 @@ namespace SnowBank.Networking.Http
 		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PatchJsonAsync<TRequest>(Uri uri, TRequest request, Action<BetterHttpClientContext> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
+
+		/// <summary>Sends a PATCH whose JSON body is serialized through a source-generated serializer (trim-safe).</summary>
+		public Task<TResult> PatchJsonAsync<TRequest, TResult>(string uri, TRequest request, IJsonSerializer<TRequest> serializer, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
+			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request, serializer)), handler, ct);
+
+		/// <summary>Sends a PATCH whose JSON body is serialized through a source-generated serializer (trim-safe).</summary>
+		public Task<TResult> PatchJsonAsync<TRequest, TResult>(Uri uri, TRequest request, IJsonSerializer<TRequest> serializer, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
+			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request, serializer)), handler, ct);
 
 		#endregion
 

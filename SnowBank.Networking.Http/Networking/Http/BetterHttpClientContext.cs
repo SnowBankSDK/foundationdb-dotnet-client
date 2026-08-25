@@ -322,6 +322,58 @@ namespace SnowBank.Networking.Http
 			}
 		}
 
+		/// <summary>Reads the response body and binds it into an instance of type <typeparamref name="TResult"/> with a source-generated deserializer (trim-safe).</summary>
+		/// <param name="deserializer">Source-generated deserializer for <typeparamref name="TResult"/> (for example <c>MyConverters.T.Default</c>)</param>
+		/// <param name="settings">Custom JSON parsing settings</param>
+		public async Task<TResult?> ReadAsJsonAsync<TResult>(IJsonDeserializer<TResult> deserializer, CrystalJsonSettings? settings = null)
+		{
+			Contract.NotNull(deserializer);
+			this.Cancellation.ThrowIfCancellationRequested();
+			using var activity = BetterHttpInstrumentation.ActivitySource.StartActivity("JSON Parse");
+
+			try
+			{
+				using (var ms = DefaultPool.GetStream())
+				{
+					await CopyToAsync(ms).ConfigureAwait(false);
+					var parsed = CrystalJson.Parse(ms.ToSlice(), settings);
+					return parsed.IsNullOrMissing() ? default : deserializer.Unpack(parsed, null);
+				}
+			}
+			catch (Exception ex)
+			{
+				activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+				activity?.AddException(ex);
+				throw;
+			}
+		}
+
+		/// <summary>Reads the response body and binds it into an instance of type <typeparamref name="TResult"/> using the converters registered in <paramref name="resolver"/> (trim-safe with a source-generated resolver).</summary>
+		/// <param name="resolver">Source-generated type resolver, for example a container's <c>GetResolver()</c>, that knows the response types</param>
+		/// <param name="settings">Custom JSON parsing settings</param>
+		/// <remarks>Use when the exact response type is not named at the call site (a polymorphic body, or a type resolved through its container).</remarks>
+		public async Task<TResult?> ReadAsJsonAsync<TResult>(ICrystalJsonTypeResolver resolver, CrystalJsonSettings? settings = null)
+		{
+			Contract.NotNull(resolver);
+			this.Cancellation.ThrowIfCancellationRequested();
+			using var activity = BetterHttpInstrumentation.ActivitySource.StartActivity("JSON Parse");
+
+			try
+			{
+				using (var ms = DefaultPool.GetStream())
+				{
+					await CopyToAsync(ms).ConfigureAwait(false);
+					return CrystalJson.Parse(ms.ToSlice(), settings).As<TResult>(default, resolver);
+				}
+			}
+			catch (Exception ex)
+			{
+				activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+				activity?.AddException(ex);
+				throw;
+			}
+		}
+
 		#endregion
 
 		#region XML Helpers...

@@ -91,6 +91,34 @@ namespace SnowBank.Networking.Http
 			return CrystalJson.Deserialize(bytes.AsSlice(), default(T), settings, resolver);
 		}
 
+		/// <summary>Reads the body of the response and binds it into an instance of type <typeparamref name="T"/> with a source-generated deserializer (trim-safe).</summary>
+		/// <param name="content">Response content</param>
+		/// <param name="deserializer">Source-generated deserializer for <typeparamref name="T"/> (for example <c>MyConverters.T.Default</c>)</param>
+		/// <param name="ct">Token used to cancel the read</param>
+		public static async Task<T?> ReadFromCrystalJsonAsync<T>(this HttpContent content, IJsonDeserializer<T> deserializer, CancellationToken ct)
+		{
+			Contract.NotNull(content);
+			Contract.NotNull(deserializer);
+
+			var bytes = await content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+			var parsed = CrystalJson.Parse(bytes.AsSlice());
+			return parsed.IsNullOrMissing() ? default : deserializer.Unpack(parsed, null);
+		}
+
+		/// <summary>Reads the body of the response and binds it into an instance of type <typeparamref name="T"/> using the converters registered in <paramref name="resolver"/> (trim-safe with a source-generated resolver).</summary>
+		/// <param name="content">Response content</param>
+		/// <param name="resolver">Source-generated type resolver, for example a container's <c>GetResolver()</c>, that knows the response types</param>
+		/// <param name="ct">Token used to cancel the read</param>
+		/// <remarks>Use when the exact response type is not named at the call site (a polymorphic body, or a type resolved through its container).</remarks>
+		public static async Task<T?> ReadFromCrystalJsonAsync<T>(this HttpContent content, ICrystalJsonTypeResolver resolver, CancellationToken ct)
+		{
+			Contract.NotNull(content);
+			Contract.NotNull(resolver);
+
+			var bytes = await content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+			return CrystalJson.Parse(bytes.AsSlice()).As<T>(default, resolver);
+		}
+
 	}
 
 }
