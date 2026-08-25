@@ -122,6 +122,29 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		public async Task Test_Timeout_Runs_On_The_Injected_Clock()
+		{
+			// the availability wait must measure the timeout on the injected time provider, so a test can drive it with
+			// virtual time: advancing a fake clock past the timeout ends the wait, without burning the real timeout.
+
+			var fake = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+			var cli = new FakeFdbCli();
+			cli.Enqueue(0, ConfigureCreated);
+			for (int i = 0; i < 1000; i++)
+			{
+				cli.Enqueue(0, StatusUnavailable);
+			}
+
+			var task = Fdb.Provisioning.EnsureDatabaseConfiguredAsync(cli.Run, TimeSpan.FromSeconds(30), probeInterval: TimeSpan.FromSeconds(1), time: fake, ct: this.Cancellation);
+
+			// advance virtual time past the 30 s timeout; on the injected clock this must end the wait
+			await AdvanceAndPump(fake, TimeSpan.FromSeconds(40), TimeSpan.FromSeconds(1));
+
+			Assert.That(task.IsCompleted, Is.True, "advancing past the timeout on the injected clock must end the wait");
+			Assert.ThrowsAsync<InvalidOperationException>(async () => await task, "the database never became available, so it must time out");
+		}
+
+		[Test]
 		public async Task Test_Probe_Retries_Until_Available()
 		{
 			var cli = new FakeFdbCli();
