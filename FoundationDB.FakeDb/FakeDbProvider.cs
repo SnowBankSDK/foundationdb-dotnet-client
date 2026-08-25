@@ -37,6 +37,9 @@ namespace FoundationDB.Testing
 		/// <summary>Store that is used by the provider</summary>
 		public FakeDbStore? Store { get; set; }
 
+		/// <summary>Time source for the simulated database. Highest precedence, before the DI-resolved provider and the system clock.</summary>
+		public TimeProvider? Time { get; set; }
+
 	}
 
 	/// <summary>Provides access to a simulated in-memory database instance</summary>
@@ -44,12 +47,14 @@ namespace FoundationDB.Testing
 	public class FakeDbProvider : IFdbDatabaseProvider
 	{
 
-		public FakeDbProvider(IOptions<FakeDbProviderOptions> optionsAccessor)
+		public FakeDbProvider(IOptions<FakeDbProviderOptions> optionsAccessor, TimeProvider? timeProvider = null)
 		{
 			Contract.NotNull(optionsAccessor);
 			this.Cancellation = this.LifeTime.Token;
 			this.ProviderOptions = optionsAccessor.Value;
 			this.Root = new(this.ProviderOptions.ConnectionOptions.Root ?? FdbPath.Root);
+			// precedence: the explicit option, else the DI-resolved provider, else the system clock
+			this.Time = this.ProviderOptions.Time ?? timeProvider ?? TimeProvider.System;
 		}
 
 		public static IFdbDatabaseProvider Create(FakeDbProviderOptions options)
@@ -59,6 +64,9 @@ namespace FoundationDB.Testing
 		}
 
 		private FakeDbStore? Store { get; set; }
+
+		/// <summary>Resolved time source for the databases this provider opens (see <see cref="FakeDbProviderOptions.Time"/>).</summary>
+		private TimeProvider Time { get; }
 
 		private IFdbDatabase? Db { get; set; }
 
@@ -145,7 +153,7 @@ namespace FoundationDB.Testing
 			else
 			{
 				// we create our own local store instance, that is not shared
-				store = new FakeDbStore(this.ProviderOptions.ApiVersion);
+				store = new FakeDbStore(this.ProviderOptions.ApiVersion, time: this.Time);
 				ownsStore = true;
 			}
 
@@ -193,16 +201,17 @@ namespace FoundationDB.Testing
 	public static class FakeDbDependencyInjectionExtensions
 	{
 
-		public static IServiceCollection AddFakeDb(this IServiceCollection services, int apiVersion, FdbPath root = default, Action<FakeDbProviderOptions>? configure = null)
+		public static IServiceCollection AddFakeDb(this IServiceCollection services, int apiVersion, FdbPath root = default, Action<FakeDbProviderOptions>? configure = null, TimeProvider? time = null)
 		{
 			Contract.NotNull(services);
 			Contract.GreaterThan(apiVersion, 0, nameof(apiVersion));
 
-			services.AddSingleton<IFdbDatabaseProvider, FakeDbProvider>();
+			services.AddSingleton<IFdbDatabaseProvider>(static sp => new FakeDbProvider(sp.GetRequiredService<IOptions<FakeDbProviderOptions>>(), sp.GetService<TimeProvider>()));
 			services.Configure<FakeDbProviderOptions>(c =>
 			{
 				c.ApiVersion = apiVersion;
 				c.ConnectionOptions.Root = root;
+				c.Time = time; // explicit override, wins over the DI-resolved provider when set
 				configure?.Invoke(c);
 			});
 			return services;
@@ -213,7 +222,7 @@ namespace FoundationDB.Testing
 			Contract.NotNull(services);
 			Contract.NotNull(store);
 
-			services.AddSingleton<IFdbDatabaseProvider, FakeDbProvider>();
+			services.AddSingleton<IFdbDatabaseProvider>(static sp => new FakeDbProvider(sp.GetRequiredService<IOptions<FakeDbProviderOptions>>(), sp.GetService<TimeProvider>()));
 			services.Configure<FakeDbProviderOptions>(c =>
 			{
 				c.Store = store;

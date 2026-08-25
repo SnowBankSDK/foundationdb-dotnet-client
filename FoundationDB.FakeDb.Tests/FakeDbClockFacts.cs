@@ -28,6 +28,7 @@ namespace FoundationDB.Testing.Tests
 {
 	using FoundationDB.Client;
 	using FoundationDB.Filters.Logging;
+	using Microsoft.Extensions.DependencyInjection;
 	using Microsoft.Extensions.Time.Testing;
 
 	/// <summary>Tests that the database <see cref="System.TimeProvider"/> (<see cref="IFdbDatabase.Time"/>) drives managed
@@ -96,6 +97,25 @@ namespace FoundationDB.Testing.Tests
 			Assert.That(captured.StoppedUtc!.Value.Year, Is.EqualTo(2000), "StoppedUtc must come from the database clock");
 			Assert.That(captured.CommittedUtc, Is.Not.Null, "the committed write must carry a CommittedUtc");
 			Assert.That(captured.CommittedUtc!.Value.Year, Is.EqualTo(2000), "CommittedUtc must come from the database clock");
+		}
+
+		[Test]
+		public async Task Test_AddFakeDb_Resolves_The_Registered_TimeProvider()
+		{
+			// A FakeDb provider must source its clock from DI (GetService<TimeProvider>()), so a test that registers one
+			// shared provider has it flow onto the database without wiring it twice.
+
+			var fake = new FakeTimeProvider();
+			var services = new ServiceCollection();
+			services.AddSingleton<TimeProvider>(fake);
+			services.AddFakeDb(730, FdbPath.Root);
+			using var sp = services.BuildServiceProvider();
+
+			var provider = sp.GetRequiredService<IFdbDatabaseProvider>();
+			provider.Start();
+			var db = await provider.GetDatabase(this.Cancellation);
+
+			Assert.That(db.Time, Is.SameAs(fake), "the FakeDb provider must resolve the DI-registered TimeProvider onto the database");
 		}
 
 	}
