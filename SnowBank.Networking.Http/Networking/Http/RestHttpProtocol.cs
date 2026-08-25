@@ -26,10 +26,14 @@
 
 namespace SnowBank.Networking.Http
 {
+	using System.Diagnostics.CodeAnalysis;
+
 	/// <summary>Generic HTTP protocol that exposes all HTTP verbs without any custom processing</summary>
 	[PublicAPI]
 	public class RestHttpProtocol : IBetterHttpProtocol
 	{
+
+		internal const string JsonReflectionMessage = "JSON body serialization uses reflection over the request type. Enroll the type with [CrystalJsonConverter] and send the source-generated converter output as content (for example a StringContent built from the generated ToJsonText), and read the response with GetJsonAsync plus the generated Unpack.";
 
 		public RestHttpProtocol(HttpClient httpClient, RestHttpClientOptions options)
 		{
@@ -188,21 +192,27 @@ namespace SnowBank.Networking.Http
 
 		#region POST Json...
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task<TResult> PostJsonAsync<TRequest, TResult>(string uri, TRequest request, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task<TResult> PostJsonAsync<TRequest, TResult>(Uri uri, TRequest request, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PostJsonAsync<TRequest>(string uri, TRequest request, Func<BetterHttpClientContext, Task> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PostJsonAsync<TRequest>(Uri uri, TRequest request, Func<BetterHttpClientContext, Task> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PostJsonAsync<TRequest>(string uri, TRequest request, Action<BetterHttpClientContext> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PostJsonAsync<TRequest>(Uri uri, TRequest request, Action<BetterHttpClientContext> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePostRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
@@ -232,15 +242,19 @@ namespace SnowBank.Networking.Http
 
 		#region PUT Json...
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task<TResult> PutJsonAsync<TRequest, TResult>(string uri, TRequest request, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePutRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task<TResult> PutJsonAsync<TRequest, TResult>(Uri uri, TRequest request, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePutRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PutJsonAsync<TRequest>(string uri, TRequest request, Func<BetterHttpClientContext, Task> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePutRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PutJsonAsync<TRequest>(Uri uri, TRequest request, Func<BetterHttpClientContext, Task> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePutRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
@@ -292,21 +306,27 @@ namespace SnowBank.Networking.Http
 
 		#region PATCH Json...
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task<TResult> PatchJsonAsync<TRequest, TResult>(string uri, TRequest request, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task<TResult> PatchJsonAsync<TRequest, TResult>(Uri uri, TRequest request, Func<BetterHttpClientContext, Task<TResult>> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PatchJsonAsync<TRequest>(string uri, TRequest request, Func<BetterHttpClientContext, Task> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PatchJsonAsync<TRequest>(Uri uri, TRequest request, Func<BetterHttpClientContext, Task> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PatchJsonAsync<TRequest>(string uri, TRequest request, Action<BetterHttpClientContext> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 
+		[RequiresUnreferencedCode(JsonReflectionMessage), RequiresDynamicCode(JsonReflectionMessage)]
 		public Task PatchJsonAsync<TRequest>(Uri uri, TRequest request, Action<BetterHttpClientContext> handler, CancellationToken ct)
 			=> this.Http.SendAsync(this.Http.CreatePatchRequest(uri, CrystalJsonContent.Create(request)), handler, ct);
 

@@ -27,6 +27,7 @@
 namespace SnowBank.Data.Json
 {
 	using System.Buffers;
+	using System.Diagnostics.CodeAnalysis;
 	using System.IO;
 	using System.Net.Http.Headers;
 	using SnowBank.Runtime;
@@ -86,6 +87,8 @@ namespace SnowBank.Data.Json
 		/// <param name="mediaType">Media type reported in the <c>Content-Type</c> header. Uses <c>"application/json; charset=utf-8"</c> by default.</param>
 		/// <param name="settings">Custom JSON serialization settings. Uses <see cref="CrystalJsonSettings.Json"/> by default.</param>
 		/// <param name="resolver">Custom JSON type resolver. Uses <see cref="CrystalJson.DefaultResolver"/> by default.</param>
+		[RequiresUnreferencedCode(ReflectionMessage)]
+		[RequiresDynamicCode(ReflectionMessage)]
 		public static CrystalJsonContent Create(object? inputValue, Type inputType, MediaTypeHeaderValue? mediaType = null, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			=> new CrystalJsonContent(inputValue, inputType, mediaType, settings, resolver);
 
@@ -95,11 +98,20 @@ namespace SnowBank.Data.Json
 		/// <param name="mediaType">Media type reported in the <c>Content-Type</c> header. Uses <c>"application/json; charset=utf-8"</c> by default.</param>
 		/// <param name="settings">Custom JSON serialization settings. Uses <see cref="CrystalJsonSettings.Json"/> by default.</param>
 		/// <param name="resolver">Custom JSON type resolver. Uses <see cref="CrystalJson.DefaultResolver"/> by default.</param>
+		[RequiresUnreferencedCode(ReflectionMessage)]
+		[RequiresDynamicCode(ReflectionMessage)]
 		public static CrystalJsonContent Create<T>(T? inputValue, MediaTypeHeaderValue? mediaType = null, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			=> new CrystalJsonContent(inputValue, typeof(T), mediaType, settings, resolver);
 
+		internal const string ReflectionMessage = "JSON body serialization uses reflection over the value type. Enroll the type with [CrystalJsonConverter] and build the content from the source-generated converter output.";
+
 		private SliceOwner CachedBytes;
 
+		// The reflection call here is reachable only through the Create(object, Type) and Create<T> factories, both
+		// [RequiresUnreferencedCode] so the caller is already warned, or through Create(JsonValue) whose value is a
+		// JSON DOM node that serializes without member reflection.
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reachable only via the [RequiresUnreferencedCode] Create factories, or a JsonValue DOM node.")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Reachable only via the [RequiresDynamicCode] Create factories, or a JsonValue DOM node.")]
 		private SliceOwner RenderBytes()
 		{
 			using var activity = ActivitySource.StartActivity("JSON Serialize");

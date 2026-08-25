@@ -26,11 +26,14 @@
 
 namespace SnowBank.Networking.Http
 {
+	using System.Diagnostics.CodeAnalysis;
 
 	/// <summary>Extension methods for deserializing HTTP response bodies into JSON</summary>
 	[PublicAPI]
 	public static class CrystalJsonContentExtensions
 	{
+
+		internal const string ReflectionMessage = "JSON body deserialization uses reflection to bind the target type. Enroll the type with [CrystalJsonConverter] and read the DOM with ReadFromCrystalJsonObjectAsync, then bind it with the source-generated converter.";
 
 		/// <summary>Reads the body of the response as a JSON Object</summary>
 		public static Task<JsonObject?> ReadFromCrystalJsonObjectAsync(this HttpContent content, CancellationToken ct)
@@ -58,12 +61,16 @@ namespace SnowBank.Networking.Http
 		}
 
 		/// <summary>Reads the body of the response as a JSON value, converted into an instance of type <typeparamref name="T"/></summary>
+		[RequiresUnreferencedCode(ReflectionMessage)]
+		[RequiresDynamicCode(ReflectionMessage)]
 		public static Task<T?> ReadFromCrystalJsonAsync<T>(this HttpContent content, CancellationToken ct)
 		{
 			return ReadFromCrystalJsonAsync<T>(content, null, null, ct);
 		}
 
 		/// <summary>Reads the body of the response as a JSON value, converted into an instance of type <typeparamref name="T"/></summary>
+		[RequiresUnreferencedCode(ReflectionMessage)]
+		[RequiresDynamicCode(ReflectionMessage)]
 		public static Task<T?> ReadFromCrystalJsonAsync<T>(this HttpContent content, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver, CancellationToken ct)
 		{
 			Contract.NotNull(content);
@@ -75,6 +82,8 @@ namespace SnowBank.Networking.Http
 		}
 
 		/// <summary>Reads the body of the response as a JSON value, converted into an instance of type <typeparamref name="T"/></summary>
+		[RequiresUnreferencedCode(ReflectionMessage)]
+		[RequiresDynamicCode(ReflectionMessage)]
 		private static async Task<T?> ReadFromJsonAsyncCore<T>(HttpContent content, Encoding? sourceEncoding, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver, CancellationToken ct)
 		{
 			var bytes  = await content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);

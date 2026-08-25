@@ -26,11 +26,14 @@
 
 namespace SnowBank.SDK.AspNetCore.Common.Json
 {
+	using System.Diagnostics.CodeAnalysis;
 
 	/// <summary>Extension methods for working with <see cref="HttpClient"/></summary>
 	[PublicAPI]
 	public static class CrystalJsonHttpMessageExtensions
 	{
+
+		internal const string ReflectionMessage = "JSON body serialization uses reflection over the value type. Enroll the type with [CrystalJsonConverter] and post the source-generated converter output (for example a StringContent built from the generated ToJsonText), or pass a JsonValue built from the DOM.";
 
 		/// <summary>Sends a POST request with a value encoded as JSON bytes</summary>
 		/// <typeparam name="TValue">Type of the value</typeparam>
@@ -40,6 +43,7 @@ namespace SnowBank.SDK.AspNetCore.Common.Json
 		/// <param name="options">JSON serialization settings. Uses <see cref="CrystalJsonSettings.Json"/> by default.</param>
 		/// <param name="cancellationToken">Token used to cancel the request.</param>
 		/// <returns>The task object representing the asynchronous operation.</returns>
+		[RequiresUnreferencedCode(ReflectionMessage), RequiresDynamicCode(ReflectionMessage)]
 		public static Task<HttpResponseMessage> PostAsCrystalJsonAsync<TValue>(this HttpClient client, string? requestUri, TValue value, CrystalJsonSettings? options = null, CancellationToken cancellationToken = default)
 		{
 			Contract.NotNull(client);
@@ -71,6 +75,7 @@ namespace SnowBank.SDK.AspNetCore.Common.Json
 		/// <param name="options">JSON serialization settings. Uses <see cref="CrystalJsonSettings.Json"/> by default.</param>
 		/// <param name="cancellationToken">Token used to cancel the request.</param>
 		/// <returns>The task object representing the asynchronous operation.</returns>
+		[RequiresUnreferencedCode(ReflectionMessage), RequiresDynamicCode(ReflectionMessage)]
 		public static Task<HttpResponseMessage> PostAsCrystalJsonAsync<TValue>(this HttpClient client, Uri? requestUri, TValue value, CrystalJsonSettings? options = null, CancellationToken cancellationToken = default)
 		{
 			Contract.NotNull(client);
@@ -101,6 +106,7 @@ namespace SnowBank.SDK.AspNetCore.Common.Json
 		/// <param name="value">Value that will be encoded as JSON</param>
 		/// <param name="cancellationToken">Token used to cancel the request.</param>
 		/// <returns>The task object representing the asynchronous operation.</returns>
+		[RequiresUnreferencedCode(ReflectionMessage), RequiresDynamicCode(ReflectionMessage)]
 		public static Task<HttpResponseMessage> PostAsCrystalJsonAsync<TValue>(this HttpClient client, string? requestUri, TValue value, CancellationToken cancellationToken)
 			=> client.PostAsCrystalJsonAsync(requestUri, value, options: null, cancellationToken);
 
@@ -120,6 +126,7 @@ namespace SnowBank.SDK.AspNetCore.Common.Json
 		/// <param name="value">Value that will be encoded as JSON</param>
 		/// <param name="cancellationToken">Token used to cancel the request.</param>
 		/// <returns>The task object representing the asynchronous operation.</returns>
+		[RequiresUnreferencedCode(ReflectionMessage), RequiresDynamicCode(ReflectionMessage)]
 		public static Task<HttpResponseMessage> PostAsCrystalJsonAsync<TValue>(this HttpClient client, Uri? requestUri, TValue value, CancellationToken cancellationToken)
 			=> client.PostAsCrystalJsonAsync(requestUri, value, options: null, cancellationToken);
 

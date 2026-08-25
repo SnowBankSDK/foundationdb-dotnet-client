@@ -298,6 +298,8 @@ namespace SnowBank.Networking.Http
 		}
 
 		/// <summary>Reads the response body as a JSON document, and converts the result into an instance of type <typeparamref name="TResult"/></summary>
+		[RequiresUnreferencedCode("JSON body deserialization uses reflection to bind the target type. Read the DOM with ReadAsJsonObjectAsync/ReadAsJsonArrayAsync, then bind it with a source-generated [CrystalJsonConverter] converter.")]
+		[RequiresDynamicCode("JSON body deserialization uses reflection to bind the target type. Read the DOM with ReadAsJsonObjectAsync/ReadAsJsonArrayAsync, then bind it with a source-generated [CrystalJsonConverter] converter.")]
 		public async Task<TResult?> ReadAsJsonAsync<TResult>(CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			this.Cancellation.ThrowIfCancellationRequested();
