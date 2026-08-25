@@ -7,7 +7,7 @@ This page takes you from a running cluster to your first read and write. It assu
 
 If you skipped those, start there. The examples below use the local Docker cluster from Cluster setup (`docker:docker@127.0.0.1:4500`, FoundationDB 7.4). Using your own cluster instead? Swap the connection string and match the API level (see [Cluster setup](cluster-setup.md)).
 
-> Runnable versions of the samples on this page are in [`samples/getting-started/`](../samples/getting-started/).
+> Runnable versions of the samples on this page are in [`samples/getting-started/`](../../samples/getting-started/).
 
 ## 1. Install the packages
 

@@ -107,7 +107,7 @@ stockent et transmettent, donc une valeur sérialisée directement vers une `Sli
 `byte[]` que ces couches feraient sinon. Pour un chemin chaud, `ToSlice` avec un `ArrayPool<byte>`
 rend un `SliceOwner` qui loue son *buffer* et le rend quand vous le disposez, ce qui alloue le moins.
 `Slice`, `SliceOwner` et les *buffers* en *pool* ont leur propre guide,
-[Données binaires (Slice et Buffers)](../guide/slices-and-buffers.md).
+[Données binaires (Slice et Buffers)](../slices-and-buffers.md).
 
 ## Le relire
 

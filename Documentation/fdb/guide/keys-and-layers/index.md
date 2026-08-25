@@ -5,7 +5,7 @@ one flat map of bytes, and every table, index, and document collection is a patt
 of it. This page explains why keys are tuple-encoded, what a subspace and the Directory layer are,
 and what a Layer is; for the task recipes (building keys, resolving subspaces, writing a Layer,
 picking a value encoding) see [How-to guides](how-to.md), and for the tuple encoding in depth see the
-[reference](reference.md).
+[reference](../../../snowbank/tuples.md).
 
 ## One flat, sorted map of bytes
 
@@ -32,7 +32,7 @@ as long as the bytes came from the tuple encoder.
 
 Each element opens with a one-byte type marker, then its value bytes. The markers sort the types into
 a fixed order, and the value bytes order values within a type. This is the whole mechanism behind
-ordered keys; the [reference](reference.md) covers the encoding, the tuple variants, and the decoding
+ordered keys; the [reference](../../../snowbank/tuples.md) covers the encoding, the tuple variants, and the decoding
 helpers in full.
 
 Keys are also lazy. `subspace.Key("user", 123)` is a small struct that remembers its parts and renders

@@ -1,6 +1,6 @@
 # Clés, valeurs et *Layers* : ce que c'est et pourquoi
 
-C'est le premier sujet à bien maîtriser, et la source la plus fréquente d'usage incorrect. La base de données est une seule *map* plate d'octets, et chaque table, index et collection de documents est un *pattern* que vous construisez par-dessus. Cette page explique pourquoi les clés sont encodées en tuples, ce que sont un *subspace* et le *Directory layer*, et ce qu'est un *Layer* ; pour les recettes concrètes (construire des clés, résoudre des *subspaces*, écrire un *Layer*, choisir un encodage de valeur) voir les [guides pratiques](how-to.md), et pour l'encodage en tuple en détail voir la [référence](reference.md).
+C'est le premier sujet à bien maîtriser, et la source la plus fréquente d'usage incorrect. La base de données est une seule *map* plate d'octets, et chaque table, index et collection de documents est un *pattern* que vous construisez par-dessus. Cette page explique pourquoi les clés sont encodées en tuples, ce que sont un *subspace* et le *Directory layer*, et ce qu'est un *Layer* ; pour les recettes concrètes (construire des clés, résoudre des *subspaces*, écrire un *Layer*, choisir un encodage de valeur) voir les [guides pratiques](how-to.md), et pour l'encodage en tuple en détail voir la [référence](../../../snowbank/tuples.md).
 
 ## Une seule *map* plate et triée d'octets
 
@@ -12,7 +12,7 @@ La base de données stocke des octets et ne les inspecte jamais. Vous ne manipul
 
 Les tuples, c'est ainsi que vous choisissez les octets de la clé. L'encodage en tuple transforme des valeurs typées (chaînes, entiers, GUID, `VersionStamp`) en octets dont l'ordre correspond à l'ordre logique des valeurs. `(42, "a")` se trie toujours avant `(42, "b")`, qui se trie avant `(43, ...)`. Cette propriété est la raison pour laquelle les tuples sont l'encodage de clé par défaut : le tri que la base de données vous donne gratuitement est le tri que votre application veut, tant que les octets proviennent de l'encodeur de tuples.
 
-Chaque élément commence par un marqueur de type d'un octet, puis ses octets de valeur. Les marqueurs trient les types dans un ordre fixe, et les octets de valeur ordonnent les valeurs au sein d'un type. C'est tout le mécanisme derrière les clés ordonnées ; la [référence](reference.md) couvre en détail l'encodage, les variantes de tuples et les *helpers* de décodage.
+Chaque élément commence par un marqueur de type d'un octet, puis ses octets de valeur. Les marqueurs trient les types dans un ordre fixe, et les octets de valeur ordonnent les valeurs au sein d'un type. C'est tout le mécanisme derrière les clés ordonnées ; la [référence](../../../snowbank/tuples.md) couvre en détail l'encodage, les variantes de tuples et les *helpers* de décodage.
 
 Les clés sont aussi *lazy*. `subspace.Key("user", 123)` est un petit `struct` qui retient ses parties et ne les rend en octets qu'au moment où la transaction en a besoin. Vous passez l'objet clé directement à `tr.GetAsync`, `tr.Set` ou `tr.Clear` ; vous ne le pré-sérialisez pas avec `.ToSlice()` pour ensuite faire circuler des octets. Le `struct` *lazy* laisse le *binding* rendre dans des *buffers* poolés au point d'utilisation, et il garde les parties typées disponibles le plus longtemps possible.
 

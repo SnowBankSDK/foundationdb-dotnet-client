@@ -21,6 +21,6 @@ Ce minimalisme vous laisse deux responsabilités : l'encodage des clés et le mo
 - **Nouveau sur FoundationDB ?** Commencez par [Prérequis](prerequisites.md), puis [Fonctionnement](foundationdb-101.md) et [Installer un cluster](cluster-setup.md).
 - [Prise en main](getting-started.md) : installez les *packages* et exécutez vos premières lecture et écriture.
 - [Guide → Clés et *Layers*](guide/keys-and-layers/index.md) : la chose la plus importante à apprendre en premier.
-- [Aspire](aspire/index.md) : lancez un *cluster* local et câblez-le automatiquement dans vos services. Le [README](../README.md) contient les détails de déploiement et de *build*.
+- [Aspire](aspire/index.md) : lancez un *cluster* local et câblez-le automatiquement dans vos services. Le [README](../../README.md) contient les détails de déploiement et de *build*.
 
 > **Une note sur le périmètre :** FoundationDB a des limites bien connues à prendre en compte dès le premier jour : une transaction dure au plus ~5 secondes, une valeur est plafonnée à 100 Ko, une clé à 10 Ko, et une même transaction écrit au plus 10 Mo. Le guide [Transactions](guide/transactions/index.md) explique pourquoi elles existent et comment vivre avec.

@@ -4,7 +4,7 @@ Les gestes de tous les jours, une section par tâche. Cette page suppose que vou
 CrystalJson et pourquoi il a un DOM (Document Object Model), des *proxies* et deux chemins de
 sérialisation ; sinon, lisez [l'explication](index.fr.md) d'abord. Porter un parc
 `DataContractJsonSerializer` ou Newtonsoft est un projet à part entière ; le
-[guide de migration](../releases/7.4.3.md) couvre les diagnostics et les changements de
+[guide de migration](../../releases/7.4.3.md) couvre les diagnostics et les changements de
 comportement que vous rencontrerez. Les tables complètes des attributs, des *settings* et des
 diagnostics sont dans la [référence](reference.fr.md).
 

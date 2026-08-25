@@ -118,7 +118,7 @@ vais-je obtenir » ne doit jamais dépendre du chemin. Les deux membres ci-dessu
 inclusion-plus-ignore-inconditionnel est refusée (`CJSON0008`). Le remède est toujours la
 scission : un *DTO* par contrat de format, chacun portant un seul jeu cohérent d'attributs. La
 même politique rejette la signature de *callback* de l'ère `DataContractJsonSerializer` plutôt que
-de l'approximer. Le [guide de migration](../releases/7.4.3.md) documente chaque refus
+de l'approximer. Le [guide de migration](../../releases/7.4.3.md) documente chaque refus
 avec son identifiant de diagnostic et son remède.
 
 Notez que le *DTO* à double sortie est un besoin différent de servir des consommateurs *legacy* et

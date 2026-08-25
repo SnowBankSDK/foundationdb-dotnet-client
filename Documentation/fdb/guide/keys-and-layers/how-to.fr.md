@@ -4,7 +4,7 @@ Chaque section ici décrit une tâche avec l'API *key/value*. Elles supposent qu
 base de données ouverte (un `IFdbDatabaseProvider`), telle que configurée dans
 [Prise en main](../../getting-started.md). Pour comprendre pourquoi les clés sont des tuples, ce
 qu'est un *subspace*, et pourquoi un *Layer* ne détient aucun état par transaction, voyez
-[l'explication](index.md) ; pour l'encodage des tuples en détail, voyez la [référence](reference.md).
+[l'explication](index.md) ; pour l'encodage des tuples en détail, voyez la [référence](../../../snowbank/tuples.md).
 
 ## Construire une clé
 
@@ -121,7 +121,7 @@ au *pattern* d'accès :
 | Texte | `FdbValue.ToTextUtf8(s)` / `ToTextUtf16(s)` |
 | Un compteur que vous muterez atomiquement | `FdbValue.ToFixed64LittleEndian(n)` (le little-endian de taille fixe est requis pour `AtomicAdd64`) |
 | Un tuple | `FdbValue.FromTuple(("a", 1))` |
-| Document JSON | `FdbValue.ToJson(obj)`, voir [CrystalJson](../../crystaljson/index.md) |
+| Document JSON | `FdbValue.ToJson(obj)`, voir [CrystalJson](../../../snowbank/crystaljson/index.md) |
 
 Pour relire : `slice.ToInt64()`, `slice.ToStringUtf8()`, `CrystalJson.Deserialize<T>(slice)` (qui
 associe une clé manquante ou vide à `null`), etc.
@@ -135,7 +135,7 @@ Book? loaded = CrystalJson.Deserialize<Book>(await tr.GetAsync(subspace.Key("D",
 ```
 
 CrystalJson est une *stack* JSON généraliste avec son propre guide : le DOM, le *source generator* et
-les *settings* sont dans [CrystalJson](../../crystaljson/index.md).
+les *settings* sont dans [CrystalJson](../../../snowbank/crystaljson/index.md).
 
 ## Écrire un *Layer*
 

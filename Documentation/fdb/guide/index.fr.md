@@ -7,9 +7,9 @@ Il est organisé en quatre parties :
 1. **[Clés, valeurs et *Layers*](keys-and-layers/index.md)** : comment les données sont encodées, et comment empaqueter l'accès aux données dans un *Layer* réutilisable. Commencez ici.
 2. **[Transactions](transactions/index.md)** : la *retry loop*, l'idempotence, les conflits, les opérations atomiques et les *watches*.
 3. **[Layers avancés](advanced-layers/index.md)** : comment le *cluster* traite une transaction, comment rendre les *Layers* rapides, et les *patterns* difficiles des systèmes distribués (*change feeds*, *leases*, rétention, *fencing*).
-4. **[Données binaires (Slice et Buffers)](slices-and-buffers.md)** : la boîte à outils au niveau des octets sous tout le reste, `Slice` et `SliceReader`/`SliceWriter`, les *buffers* poolés, et les encodages d'entiers. Utilisez-la quand vous écrivez des codecs de valeurs personnalisés.
+4. **[Données binaires (Slice et Buffers)](../../snowbank/slices-and-buffers.md)** : la boîte à outils au niveau des octets sous tout le reste, `Slice` et `SliceReader`/`SliceWriter`, les *buffers* poolés, et les encodages d'entiers. Utilisez-la quand vous écrivez des codecs de valeurs personnalisés.
 
-> Ces guides sont le pendant, destiné aux humains, des *skills* orientés agents sous [`.claude/skills/`](../../.claude/skills/), et chaque exemple de code reflète les *samples* vérifiés à la compilation dans [`samples/SkillValidation/`](../../samples/SkillValidation/).
+> Ces guides sont le pendant, destiné aux humains, des *skills* orientés agents sous [`.claude/skills/`](../../../.claude/skills/), et chaque exemple de code reflète les *samples* vérifiés à la compilation dans [`samples/SkillValidation/`](../../../samples/SkillValidation/).
 
 ## Le modèle mental en un écran
 

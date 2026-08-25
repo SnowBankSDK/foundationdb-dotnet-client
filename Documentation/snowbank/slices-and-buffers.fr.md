@@ -1,6 +1,6 @@
 # Données binaires : Slice et *buffers*
 
-Presque tout dans cette *stack* finit par devenir des octets : les clés, les valeurs, les éléments encodés en tuple. Le type que vous utilisez pour contenir et manipuler ces octets est **`Slice`**, et ce guide explique comment l'utiliser correctement (avec ses compagnons `SliceReader`, `SliceWriter`, `SliceOwner`). C'est la fondation sous [Clés, valeurs et *Layers*](keys-and-layers/index.md).
+Presque tout dans cette *stack* finit par devenir des octets : les clés, les valeurs, les éléments encodés en tuple. Le type que vous utilisez pour contenir et manipuler ces octets est **`Slice`**, et ce guide explique comment l'utiliser correctement (avec ses compagnons `SliceReader`, `SliceWriter`, `SliceOwner`). C'est la fondation sous [Clés, valeurs et *Layers*](../fdb/guide/keys-and-layers/index.md).
 
 ## Ce qu'est `Slice`
 

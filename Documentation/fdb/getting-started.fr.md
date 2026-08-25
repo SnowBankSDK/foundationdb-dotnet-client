@@ -7,7 +7,7 @@ Cette page vous mène d'un *cluster* en fonctionnement à vos premières lecture
 
 Si vous avez sauté ces étapes, commencez par là. Les exemples ci-dessous utilisent le *cluster* Docker local de la page Installer un cluster (`docker:docker@127.0.0.1:4500`, FoundationDB 7.4). Vous utilisez plutôt votre propre *cluster* ? Remplacez la chaîne de connexion et alignez le niveau d'API (voir [Installer un cluster](cluster-setup.md)).
 
-> Des versions exécutables des exemples de cette page se trouvent dans [`samples/getting-started/`](../samples/getting-started/).
+> Des versions exécutables des exemples de cette page se trouvent dans [`samples/getting-started/`](../../samples/getting-started/).
 
 ## 1. Installer les *packages*
 

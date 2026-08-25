@@ -105,7 +105,7 @@ using SliceOwner owner = CrystalJson.ToSlice(book, ArrayPool<byte>.Shared);   //
 so a value serialized straight to a `Slice` skips the `byte[]` copy those layers would otherwise make.
 For a hot path, `ToSlice` with an `ArrayPool<byte>` returns a `SliceOwner` that rents its buffer and
 gives it back when you dispose it, which allocates the least. `Slice`, `SliceOwner` and the pooled
-buffers have their own guide, [Binary Data (Slice and Buffers)](../guide/slices-and-buffers.md).
+buffers have their own guide, [Binary Data (Slice and Buffers)](../slices-and-buffers.md).
 
 ## Read it back
 

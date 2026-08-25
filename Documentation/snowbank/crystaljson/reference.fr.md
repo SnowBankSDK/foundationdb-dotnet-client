@@ -4,7 +4,7 @@ Les tables de référence du travail quotidien : le *setup* du générateur de s
 vous posez sur un type, les *settings* que vous passez à un appel, et les diagnostics de *build* que vous
 pouvez rencontrer. Pour les guides pratiques, voir [Travailler avec CrystalJson](serializing.fr.md) ;
 pour la conception, voir [Ce que c'est, et pourquoi](index.fr.md). Quand un comportement a changé
-entre deux versions, le [guide de migration 7.4.2 vers 7.4.3](../releases/7.4.3.md) porte
+entre deux versions, le [guide de migration 7.4.2 vers 7.4.3](../../releases/7.4.3.md) porte
 l'histoire complète, et cette page y renvoie plutôt que de la répéter.
 
 Tous les exemples utilisent `using SnowBank.Data.Json;`.
@@ -55,7 +55,7 @@ produit, et quels types elle enrôle.
 | `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrôle un type ; répétable ; alimente chaque format que le *container* produit |
 | `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | demande le format JSON et porte ses paramètres (profil, politique de nommage) |
 | `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias : `[CrystalConverter]` + `[CrystalJsonOutput]` avec les mêmes paramètres, pour un *container* JSON seul |
-| `[CrystalJsonSelfSerializable]` | `SnowBank.Data.Json` | méta-attribut pour les types auto-sérialisables (un type sert de son propre *container*) ; voir le [guide de migration](../releases/7.4.3.md#new-apis) |
+| `[CrystalJsonSelfSerializable]` | `SnowBank.Data.Json` | méta-attribut pour les types auto-sérialisables (un type sert de son propre *container*) ; voir le [guide de migration](../../releases/7.4.3.md#new-apis) |
 
 Un profil passé à `[CrystalJsonOutput(...)]` ou `[CrystalJsonConverter(...)]` fixe la forme de sortie
 par défaut du *container*, `CrystalJsonSerializerDefaults.Web` pour le *camelCase*,
@@ -97,7 +97,7 @@ Attention au piège de nommage : `Never` veut dire « ne jamais ignorer ».
 Pour les types `[DataContract]`, `[DataMember(Name = ...)]` renomme et
 `[DataMember(IsRequired = true)]` fait *throw* à la lecture quand le membre est absent. Les *containers*
 générés appliquent le modèle d'appartenance DataContract depuis la 7.4.3 ; le
-[guide de migration](../releases/7.4.3.md#breaking-changes) en donne le détail.
+[guide de migration](../../releases/7.4.3.md#breaking-changes) en donne le détail.
 
 ### Attributs d'autres sérialiseurs
 
@@ -122,7 +122,7 @@ deux contrats de sortie. Un `[DataMember]` sur un type `[DataContract]` compte c
 nu, parce qu'il nomme le membre d'après lui-même : un `[JsonProperty]` qui renomme ce même membre est
 le même conflit. Un `[JsonConverter]` étranger qui nomme un type n'implémentant pas le contrat
 de convertisseur CrystalJson est ignoré, pas une erreur, donc un *DTO* à moitié porté reste
-sérialisable. Le [guide de migration](../releases/7.4.3.md) donne les règles d'*interop*
+sérialisable. Le [guide de migration](../../releases/7.4.3.md) donne les règles d'*interop*
 complètes.
 
 ## *Settings*
@@ -176,7 +176,7 @@ pas `WithTrailingData()` (qui parse la première valeur et jette le reste).
 Les codes `CJSON####` ci-dessous sont ceux qu'un auteur normal rencontre en écrivant des *DTO*. Chacun
 est rapporté au même endroit par les deux chemins : le générateur émet le diagnostic, et le chemin
 par réflexion *throw* le même message quand il construit le contrat du type. Le
-[guide de migration](../releases/7.4.3.md) donne le traitement complet de chacun.
+[guide de migration](../../releases/7.4.3.md) donne le traitement complet de chacun.
 
 | Id | Sévérité | Refuse | Remède |
 |---|---|---|---|
@@ -194,4 +194,4 @@ par réflexion *throw* le même message quand il construit le contrat du type. L
 
 Les diagnostics des types auto-sérialisables (`CJSON0004` à `CJSON0007`, `CJSON0020`, `CJSON0021`) et
 les codes du générateur XML (`CRYS####`, `CXML####`) sont couverts dans le
-[guide de migration](../releases/7.4.3.md) et [CrystalXml](../CrystalXml.md).
+[guide de migration](../../releases/7.4.3.md) et [CrystalXml](../CrystalXml.md).

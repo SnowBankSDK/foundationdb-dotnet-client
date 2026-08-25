@@ -31,7 +31,7 @@ Comme les conflits sont tranchés au niveau des *resolvers* sur les *read-confli
 
 ## Synthèse : construire un *change feed*
 
-Un *change feed* permet à d'autres nœuds d'observer un flux de changements et de maintenir en mémoire une vue de l'état distant. Il compose toutes les primitives ci-dessus. Une implémentation complète, vérifiée à la compilation, se trouve dans [`samples/SkillValidation/BookStore.ChangeFeed.cs`](../../../samples/SkillValidation/BookStore.ChangeFeed.cs).
+Un *change feed* permet à d'autres nœuds d'observer un flux de changements et de maintenir en mémoire une vue de l'état distant. Il compose toutes les primitives ci-dessus. Une implémentation complète, vérifiée à la compilation, se trouve dans [`samples/SkillValidation/BookStore.ChangeFeed.cs`](../../../../samples/SkillValidation/BookStore.ChangeFeed.cs).
 
 Tout le protocole est une seule boucle en régime permanent, avec un contrôle de *fencing* qui transforme un *range* manqué en resynchronisation propre au lieu d'une perte de données silencieuse :
 

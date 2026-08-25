@@ -7,9 +7,9 @@ It is organized in four parts:
 1. **[Keys, Values & Layers](keys-and-layers/index.md)**: how data is encoded, and how to package data access into a reusable *Layer*. Start here.
 2. **[Transactions](transactions/index.md)**: the retry loop, idempotency, conflicts, atomic operations, and watches.
 3. **[Advanced Layers](advanced-layers/index.md)**: how the cluster processes a transaction, how to make layers fast, and the hard distributed-systems patterns (change feeds, leases, retention, fencing).
-4. **[Binary Data (Slice & Buffers)](slices-and-buffers.md)**: the byte-level toolkit beneath everything else, `Slice` and `SliceReader`/`SliceWriter`, pooled buffers, and the integer encodings. Reach for it when you write custom value codecs.
+4. **[Binary Data (Slice & Buffers)](../../snowbank/slices-and-buffers.md)**: the byte-level toolkit beneath everything else, `Slice` and `SliceReader`/`SliceWriter`, pooled buffers, and the integer encodings. Reach for it when you write custom value codecs.
 
-> These guides are the human-facing companion to the agent-oriented skills under [`.claude/skills/`](../../.claude/skills/), and every code example mirrors the compile-checked samples in [`samples/SkillValidation/`](../../samples/SkillValidation/).
+> These guides are the human-facing companion to the agent-oriented skills under [`.claude/skills/`](../../../.claude/skills/), and every code example mirrors the compile-checked samples in [`samples/SkillValidation/`](../../../samples/SkillValidation/).
 
 ## The mental model in one screen
 

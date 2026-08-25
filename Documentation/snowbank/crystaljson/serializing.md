@@ -3,7 +3,7 @@
 The everyday gestures, one section per task. This page assumes you know what CrystalJson is and
 why it has a DOM (Document Object Model), proxies and two serialization paths; if not, read
 [the explanation](index.md) first. Porting a `DataContractJsonSerializer` or Newtonsoft estate is
-its own project; the [migration guide](../releases/7.4.3.md) covers the diagnostics and
+its own project; the [migration guide](../../releases/7.4.3.md) covers the diagnostics and
 behavior changes you will hit. The complete attribute, settings and diagnostics tables are in the
 [reference](reference.md).
 

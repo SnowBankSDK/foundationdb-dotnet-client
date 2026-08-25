@@ -1,96 +1,103 @@
-- name: Introduction
-  href: introduction.md
-- name: Setup
-  nameFr: Installation
+- name: Overview
+  nameFr: Vue d'ensemble
+  href: index.md
+- name: FoundationDB
   items:
-    - name: Prerequisites
-      nameFr: Prérequis
-      href: prerequisites.md
-    - name: How it connects
-      nameFr: Fonctionnement
-      href: foundationdb-101.md
-    - name: Cluster setup
-      nameFr: Installer un cluster
-      href: cluster-setup.md
-- name: Getting Started
-  nameFr: Prise en main
-  href: getting-started.md
-- name: Aspire
-  items:
-    - name: Overview
-      nameFr: Vue d'ensemble
-      href: aspire/index.md
+    - name: Introduction
+      href: fdb/introduction.md
+    - name: Setup
+      nameFr: Installation
+      items:
+        - name: Prerequisites
+          nameFr: Prérequis
+          href: fdb/prerequisites.md
+        - name: How it connects
+          nameFr: Fonctionnement
+          href: fdb/foundationdb-101.md
+        - name: Cluster setup
+          nameFr: Installer un cluster
+          href: fdb/cluster-setup.md
     - name: Getting Started
       nameFr: Prise en main
-      href: aspire/getting-started.md
-    - name: How-to
-      nameFr: Guides pratiques
-      href: aspire/how-to.md
-    - name: Reference
-      nameFr: Référence
-      href: aspire/reference.md
-- name: Guide
+      href: fdb/getting-started.md
+    - name: Aspire
+      items:
+        - name: Overview
+          nameFr: Vue d'ensemble
+          href: fdb/aspire/index.md
+        - name: Getting Started
+          nameFr: Prise en main
+          href: fdb/aspire/getting-started.md
+        - name: How-to
+          nameFr: Guides pratiques
+          href: fdb/aspire/how-to.md
+        - name: Reference
+          nameFr: Référence
+          href: fdb/aspire/reference.md
+    - name: Guide
+      items:
+        - name: Overview
+          nameFr: Vue d'ensemble
+          href: fdb/guide/index.md
+        - name: Keys & Layers
+          nameFr: Clés et Layers
+          href: fdb/guide/keys-and-layers/index.md
+          items:
+            - name: Overview
+              nameFr: Vue d'ensemble
+              href: fdb/guide/keys-and-layers/index.md
+            - name: How-to
+              nameFr: Guides pratiques
+              href: fdb/guide/keys-and-layers/how-to.md
+        - name: Transactions
+          href: fdb/guide/transactions/index.md
+          items:
+            - name: Overview
+              nameFr: Vue d'ensemble
+              href: fdb/guide/transactions/index.md
+            - name: How-to
+              nameFr: Guides pratiques
+              href: fdb/guide/transactions/how-to.md
+            - name: Reference
+              nameFr: Référence
+              href: fdb/guide/transactions/reference.md
+        - name: Advanced Layers
+          nameFr: Layers avancés
+          href: fdb/guide/advanced-layers/index.md
+          items:
+            - name: How it works
+              nameFr: Fonctionnement
+              href: fdb/guide/advanced-layers/index.md
+            - name: Building layers
+              nameFr: Créer des Layers
+              href: fdb/guide/advanced-layers/how-to.md
+- name: SnowBank
   items:
     - name: Overview
       nameFr: Vue d'ensemble
-      href: guide/index.md
-    - name: Keys & Layers
-      nameFr: Clés et Layers
-      href: guide/keys-and-layers/index.md
-      items:
-        - name: Overview
-          nameFr: Vue d'ensemble
-          href: guide/keys-and-layers/index.md
-        - name: How-to
-          nameFr: Guides pratiques
-          href: guide/keys-and-layers/how-to.md
-    - name: Transactions
-      href: guide/transactions/index.md
-      items:
-        - name: Overview
-          nameFr: Vue d'ensemble
-          href: guide/transactions/index.md
-        - name: How-to
-          nameFr: Guides pratiques
-          href: guide/transactions/how-to.md
-        - name: Reference
-          nameFr: Référence
-          href: guide/transactions/reference.md
-    - name: Advanced Layers
-      nameFr: Layers avancés
-      href: guide/advanced-layers/index.md
-      items:
-        - name: How it works
-          nameFr: Fonctionnement
-          href: guide/advanced-layers/index.md
-        - name: Building layers
-          nameFr: Créer des Layers
-          href: guide/advanced-layers/how-to.md
-- name: Working with data
-  nameFr: Travailler avec les données
-  items:
+      href: snowbank/index.md
     - name: Slices & Buffers
       nameFr: Slices et Buffers
-      href: guide/slices-and-buffers.md
+      href: snowbank/slices-and-buffers.md
     - name: Tuples
-      href: guide/keys-and-layers/reference.md
+      href: snowbank/tuples.md
     - name: JSON
-      href: crystaljson/index.md
+      href: snowbank/crystaljson/index.md
       items:
         - name: Overview
           nameFr: Vue d'ensemble
-          href: crystaljson/index.md
+          href: snowbank/crystaljson/index.md
         - name: Getting Started
           nameFr: Prise en main
-          href: crystaljson/getting-started.md
+          href: snowbank/crystaljson/getting-started.md
         - name: Usage
           nameFr: Utilisation
-          href: crystaljson/serializing.md
+          href: snowbank/crystaljson/serializing.md
         - name: Reference
           nameFr: Référence
-          href: crystaljson/reference.md
+          href: snowbank/crystaljson/reference.md
     - name: XML
-      href: CrystalXml.md
+      href: snowbank/CrystalXml.md
 - name: Release notes
   nameFr: Notes de version
   items:

@@ -1,6 +1,6 @@
 # Binary Data: Slice & Buffers
 
-Almost everything in this stack eventually becomes bytes: keys, values, tuple-encoded elements. The type you use to hold and manipulate those bytes is **`Slice`**, and this guide explains how to use it (and its companions `SliceReader`, `SliceWriter`, `SliceOwner`) correctly. It's the foundation under [Keys, Values & Layers](keys-and-layers/index.md).
+Almost everything in this stack eventually becomes bytes: keys, values, tuple-encoded elements. The type you use to hold and manipulate those bytes is **`Slice`**, and this guide explains how to use it (and its companions `SliceReader`, `SliceWriter`, `SliceOwner`) correctly. It's the foundation under [Keys, Values & Layers](../fdb/guide/keys-and-layers/index.md).
 
 ## What `Slice` is
 

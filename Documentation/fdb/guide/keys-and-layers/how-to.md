@@ -3,7 +3,7 @@
 Each section here is one task against the key/value API. They assume you already have an open database
 (an `IFdbDatabaseProvider`), as set up in [Getting started](../../getting-started.md). For why keys
 are tuples, what a subspace is, and why a Layer holds no per-transaction state, see
-[the explanation](index.md); for the tuple encoding in depth, see the [reference](reference.md).
+[the explanation](index.md); for the tuple encoding in depth, see the [reference](../../../snowbank/tuples.md).
 
 ## Build a key
 
@@ -116,7 +116,7 @@ Values are produced by the `FdbValue.*` factories. Pick the factory that matches
 | Text | `FdbValue.ToTextUtf8(s)` / `ToTextUtf16(s)` |
 | A counter you'll mutate atomically | `FdbValue.ToFixed64LittleEndian(n)` (fixed little-endian is required for `AtomicAdd64`) |
 | A tuple | `FdbValue.FromTuple(("a", 1))` |
-| JSON document | `FdbValue.ToJson(obj)`, see [CrystalJson](../../crystaljson/index.md) |
+| JSON document | `FdbValue.ToJson(obj)`, see [CrystalJson](../../../snowbank/crystaljson/index.md) |
 
 Reading back: `slice.ToInt64()`, `slice.ToStringUtf8()`, `CrystalJson.Deserialize<T>(slice)` (which
 maps a missing/empty key to `null`), etc.
@@ -130,7 +130,7 @@ Book? loaded = CrystalJson.Deserialize<Book>(await tr.GetAsync(subspace.Key("D",
 ```
 
 CrystalJson is a general-purpose JSON stack with its own guide: the DOM, the source generator and
-the settings are in [CrystalJson](../../crystaljson/index.md).
+the settings are in [CrystalJson](../../../snowbank/crystaljson/index.md).
 
 ## Write a Layer
 

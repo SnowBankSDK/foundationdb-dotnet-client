@@ -31,7 +31,7 @@ Because conflicts are decided at the resolvers on read-conflict ranges, a key th
 
 ## Capstone: building a change feed
 
-A change feed lets other nodes observe a stream of changes and maintain an in-memory view of remote state. It composes every primitive above. A full, compile-checked implementation lives in [`samples/SkillValidation/BookStore.ChangeFeed.cs`](../../../samples/SkillValidation/BookStore.ChangeFeed.cs).
+A change feed lets other nodes observe a stream of changes and maintain an in-memory view of remote state. It composes every primitive above. A full, compile-checked implementation lives in [`samples/SkillValidation/BookStore.ChangeFeed.cs`](../../../../samples/SkillValidation/BookStore.ChangeFeed.cs).
 
 The whole protocol is one steady-state loop, with a fencing check that turns a missed range into a clean resync instead of silent data loss:
 

@@ -3,7 +3,7 @@
 The lookup tables for everyday work: the source generator setup, the attributes you put on a type,
 the settings you pass to a call, and the build diagnostics you might hit. For the task guides see
 [Working with CrystalJson](serializing.md); for the design see [What it is and why](index.md). Where
-a behavior changed between releases, the [7.4.2 to 7.4.3 migration guide](../releases/7.4.3.md)
+a behavior changed between releases, the [7.4.2 to 7.4.3 migration guide](../../releases/7.4.3.md)
 carries the full story, and this page links to it rather than repeating it.
 
 Every example uses `using SnowBank.Data.Json;`.
@@ -53,7 +53,7 @@ produces, and which types it enrolls.
 | `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrolls a type; repeatable; feeds every format the container produces |
 | `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | requests the JSON format and carries its parameters (profile, naming policy) |
 | `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias: `[CrystalConverter]` + `[CrystalJsonOutput]` with the same parameters, for a JSON-only container |
-| `[CrystalJsonSelfSerializable]` | `SnowBank.Data.Json` | meta-attribute for self-serializable types (a type acts as its own container); see the [migration guide](../releases/7.4.3.md#new-apis) |
+| `[CrystalJsonSelfSerializable]` | `SnowBank.Data.Json` | meta-attribute for self-serializable types (a type acts as its own container); see the [migration guide](../../releases/7.4.3.md#new-apis) |
 
 A profile passed to `[CrystalJsonOutput(...)]` or `[CrystalJsonConverter(...)]` sets the container's
 default output form, `CrystalJsonSerializerDefaults.Web` for camelCase, `.DataContractCompat` for the
@@ -94,7 +94,7 @@ Note the naming trap: `Never` means "never ignore".
 
 For `[DataContract]` types, `[DataMember(Name = ...)]` renames and `[DataMember(IsRequired = true)]`
 makes an absent member throw on read. Generated containers apply the DataContract membership model as
-of 7.4.3; the [migration guide](../releases/7.4.3.md#breaking-changes) has the details.
+of 7.4.3; the [migration guide](../../releases/7.4.3.md#breaking-changes) has the details.
 
 ### Attributes from other serializers
 
@@ -118,7 +118,7 @@ A `[DataMember]` on a `[DataContract]` type counts as one of them even when it i
 the member after itself: a `[JsonProperty]` that renames the same member is the same conflict.
 A foreign `[JsonConverter]` naming a type that does not implement the CrystalJson converter contract is
 ignored, not an error, so a half-ported DTO stays serializable. The
-[migration guide](../releases/7.4.3.md) has the full interop rules.
+[migration guide](../../releases/7.4.3.md) has the full interop rules.
 
 ## Settings
 
@@ -170,7 +170,7 @@ To read several consecutive documents out of one buffer, use `CrystalJson.ParseF
 The `CJSON####` codes below are the ones a normal author hits while writing DTOs. Each is reported at
 the same place by both paths: the generator emits the diagnostic, and the reflection path throws the
 same message when it builds the type's contract. The
-[migration guide](../releases/7.4.3.md) has the full treatment of each.
+[migration guide](../../releases/7.4.3.md) has the full treatment of each.
 
 | Id | Severity | Refuses | Remedy |
 |---|---|---|---|
@@ -188,4 +188,4 @@ same message when it builds the type's contract. The
 
 The self-serializable diagnostics (`CJSON0004` to `CJSON0007`, `CJSON0020`, `CJSON0021`) and the XML
 generator codes (`CRYS####`, `CXML####`) are covered in the
-[migration guide](../releases/7.4.3.md) and [CrystalXml](../CrystalXml.md).
+[migration guide](../../releases/7.4.3.md) and [CrystalXml](../CrystalXml.md).
