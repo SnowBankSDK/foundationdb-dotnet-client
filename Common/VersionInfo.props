@@ -1,7 +1,7 @@
 <Project>
 
 	<PropertyGroup>
-		<VersionPrefix>7.4.4</VersionPrefix>
+		<VersionPrefix>7.4.5</VersionPrefix>
 		<VersionSuffix></VersionSuffix>
 		<Authors>SnowBank SAS</Authors>
 		<PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
