@@ -4,7 +4,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>{{ title }} | SnowBank SDK</title>
-	<link rel="stylesheet" href="/main.css">
+	<link rel="stylesheet" href="{{ base }}/main.css">
 	<style>
 		/* Base rules Bootstrap normally supplies. main.css only defines the --bs-* / --sb-* tokens
 		   (under [data-bs-theme]); these apply them, plus the two-column docs layout. Everything is in
@@ -195,8 +195,8 @@
 </head>
 <body>
 	<header class="site-header">
-		<a class="brand" href="/">
-			<img src="/logo.png" width="26" height="26" alt="SnowBank SDK">
+		<a class="brand" href="{{ base }}/">
+			<img src="{{ base }}/logo.png" width="26" height="26" alt="SnowBank SDK">
 			<span>SnowBank SDK</span>
 		</a>
 		<div class="search" id="docsearch">
@@ -332,7 +332,7 @@
 		})();
 	</script>
 {{ if has_island }}
-	<script src="/d3.min.js" defer></script>
+	<script src="{{ base }}/d3.min.js" defer></script>
 	<script>
 		// Island animation: a slow, numbered walkthrough of a FoundationDB transaction. The SVG is
 		// already painted at its final size (SSR'd); d3 loads deferred and only moves packets inside the

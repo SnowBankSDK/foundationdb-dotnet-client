@@ -16,30 +16,56 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace SnowBank.DocGen
 {
-	// Spike: render FoundationDB/Documentation/Tuples.md to a static, reflow-free HTML page with the
-	// existing SnowBank CSS, the custom fdb-* blocks rendered at build time, and the nav baked in.
-	//   dotnet run                -> render to Sandbox/DocGenSpike/out/
-	//   dotnet run -- --serve 8080 -> render, then serve out/ over http (the preview pane blocks file://)
+	// Static site generator: renders a repo's Documentation/ (guides + reflected API reference + a French
+	// /fr/ twin) to reflow-free HTML under artifacts/_site. The nav, the fdb-* blocks, mermaid diagrams and
+	// syntax highlighting are all baked at build time, so a page ships no page-assembly script.
+	//   dotnet run                     -> render (repo root found by walking up to Documentation/docgen.json)
+	//   dotnet run -- --root <dir>     -> render the repo at <dir> (a parent repo pointing here as a submodule)
+	//   dotnet run -- --base-path /foo -> prefix root-absolute links for a site served under /foo (Pages subpath)
+	//   dotnet run -- --serve 8080     -> render, then serve artifacts/_site over http (the preview blocks file://)
 	public static class Program
 	{
 		public static int Main(string[] args)
 		{
 			string? rootArg = null;
 			int? servePort = null;
+			string? basePathArg = null;
 			for (int i = 0; i < args.Length; i++)
 			{
 				if (args[i] == "--root" && i + 1 < args.Length) rootArg = args[++i];
+				else if (args[i] == "--base-path" && i + 1 < args.Length) basePathArg = args[++i];
 				else if (args[i] == "--serve") servePort = i + 1 < args.Length && int.TryParse(args[i + 1], out var p) ? p : 8080;
 			}
 			var root = rootArg != null ? Path.GetFullPath(rootArg) : FindRoot();
 			var docs = Path.Combine(root, "Documentation");
 			var outDir = Path.Combine(root, "artifacts", "_site");
 			var config = DocGenConfig.Load(docs);
+			// CLI --base-path overrides docgen.json (pass "" to force a root build for local preview)
+			BasePath = NormalizeBasePath(basePathArg ?? config.BasePath);
+			RepoUrl = (config.RepoUrl ?? "").TrimEnd('/');
 
 			Render(root, docs, outDir, config);
 
 			if (servePort is int port) Serve(outDir, port);
 			return 0;
+		}
+
+		// Site mount prefix for a GitHub Pages project subpath, e.g. "/foundationdb-dotnet-client"; empty is a
+		// domain root. Prepended to every root-absolute URL the generator emits (nav, assets, API links, the
+		// search index and its fetch). In-body markdown links stay relative, so they need no prefix.
+		private static string BasePath = "";
+
+		// Repo web root (docgen.json "repoUrl", e.g. https://github.com/org/repo). In-body links that escape
+		// Documentation/ point at source files the site does not render (README, samples); they are rewritten
+		// to this repo so they resolve instead of 404. Empty disables the rewrite (such links stay relative).
+		private static string RepoUrl = "";
+
+		private static string NormalizeBasePath(string? p)
+		{
+			if (string.IsNullOrWhiteSpace(p)) return "";
+			p = p.Trim().Replace('\\', '/');
+			if (!p.StartsWith('/')) p = "/" + p;
+			return p.TrimEnd('/');
 		}
 
 		private static void Render(string root, string docs, string outDir, DocGenConfig config)
@@ -54,6 +80,14 @@ namespace SnowBank.DocGen
 			File.Copy(Path.Combine(toolDir, "assets", "main.css"), Path.Combine(outDir, "main.css"), overwrite: true);
 			var logo = Path.Combine(docs, "images", "logo.png");
 			if (File.Exists(logo)) File.Copy(logo, Path.Combine(outDir, "logo.png"), overwrite: true);
+			// serve the whole images/ folder so any doc (a page, the landing diagram) can reference images/<file>.
+			// Mirror it into the French tree too, so a /fr/ page's relative images/<file> resolves the same way.
+			var imagesDir = Path.Combine(docs, "images");
+			if (Directory.Exists(imagesDir))
+			{
+				CopyDir(imagesDir, Path.Combine(outDir, "images"));
+				CopyDir(imagesDir, Path.Combine(outDir, "fr", "images"));
+			}
 			var d3 = Path.Combine(toolDir, "assets", "d3.min.js");
 			if (File.Exists(d3)) File.Copy(d3, Path.Combine(outDir, "d3.min.js"), overwrite: true);
 
@@ -121,8 +155,8 @@ namespace SnowBank.DocGen
 				.ToList();
 			if (apiAssemblies.Count > 0)
 			{
-				var types = ApiDocs.Extract(apiAssemblies);
-				mdByHref["api/index.md"] = ApiDocs.RenderIndex(types);
+				var types = ApiDocs.Extract(apiAssemblies, BasePath);
+				mdByHref["api/index.md"] = ApiDocs.RenderIndex(types, BasePath);
 				pages.Add(("api/index.md", "API Reference"));
 				apiHrefs.Add("api/index.md");
 				foreach (var t in types)
@@ -132,12 +166,12 @@ namespace SnowBank.DocGen
 					pages.Add((href, t.Display));
 					apiHrefs.Add(href);
 					var typeName = t.Display.Split('<')[0];             // FdbKey, or Fdb.Bulk for a nested type
-					if (!apiByName.ContainsKey(typeName)) apiByName[typeName] = "/api/" + t.Slug + ".html";
+					if (!apiByName.ContainsKey(typeName)) apiByName[typeName] = BasePath + "/api/" + t.Slug + ".html";
 					int dot = typeName.LastIndexOf('.');
 					var lastSeg = dot >= 0 ? typeName[(dot + 1)..] : typeName;
 					foreach (var m in t.Members)
 					{
-						var mhref = "/api/" + t.Slug + ".html#" + m.Anchor;
+						var mhref = BasePath + "/api/" + t.Slug + ".html#" + m.Anchor;
 						if (!apiByMember.ContainsKey(typeName + "." + m.Name)) apiByMember[typeName + "." + m.Name] = mhref;
 						if (!apiByMember.ContainsKey(lastSeg + "." + m.Name)) apiByMember[lastSeg + "." + m.Name] = mhref;
 					}
@@ -175,11 +209,11 @@ namespace SnowBank.DocGen
 				// Parse once so the "In this article" ids match the auto-identifier ids on the rendered
 				// headings; rewrite inter-page .md links to .html before rendering the body.
 				var doc = Markdig.Markdown.Parse(mdText, pipeline);
-				RewriteMdLinks(doc);
+				RewriteMdLinks(doc, href);
 				AlignNumericColumns(doc);
 				if (!apiHrefs.Contains(href)) AutoLinkSymbols(doc, apiByName, apiByMember); // link inline-code symbols in guides
 
-				index.Add(new SearchDoc("/" + HrefToHtml(href), name, PageHeadings(doc), PlainText(doc)));
+				index.Add(new SearchDoc(BasePath + "/" + HrefToHtml(href), name, PageHeadings(doc), PlainText(doc)));
 
 				var body = RenderBody(doc, pipeline);
 				var model = new ScriptObject
@@ -190,9 +224,10 @@ namespace SnowBank.DocGen
 					["on_this_page"] = BuildOnThisPage(doc),
 					["has_island"] = body.Contains("class=\"island "), // load d3 + the island script only where used
 					["lang"] = "en",
-					["search_index"] = "/search-index.json",
-					["en_url"] = "/" + HrefToHtml(href),
-					["fr_url"] = "/fr/" + HrefToHtml(href),
+					["base"] = BasePath,
+					["search_index"] = BasePath + "/search-index.json",
+					["en_url"] = BasePath + "/" + HrefToHtml(href),
+					["fr_url"] = BasePath + "/fr/" + HrefToHtml(href),
 					["has_fr"] = !apiHrefs.Contains(href), // API reference is English-only
 				};
 				var ctx = new TemplateContext();
@@ -229,11 +264,11 @@ namespace SnowBank.DocGen
 						: "> Cette page n'est pas encore traduite. La version anglaise est affichée ci-dessous.\n\n" + enText;
 					var doc = Markdig.Markdown.Parse(src, pipeline);
 					AlignFrenchAnchors(enText, src, doc, pipeline); // keep heading ids/anchors on the English slugs so links survive translation
-					RewriteMdLinks(doc);
+					RewriteMdLinks(doc, href);
 					AlignNumericColumns(doc);
 					AutoLinkSymbols(doc, apiByName, apiByMember);
 					var htmlHref = HrefToHtml(href);
-					indexFr.Add(new SearchDoc("/fr/" + htmlHref, frName, PageHeadings(doc), PlainText(doc)));
+					indexFr.Add(new SearchDoc(BasePath + "/fr/" + htmlHref, frName, PageHeadings(doc), PlainText(doc)));
 					var body = RenderBody(doc, pipeline);
 					var model = new ScriptObject
 					{
@@ -243,9 +278,10 @@ namespace SnowBank.DocGen
 						["on_this_page"] = BuildOnThisPage(doc),
 						["has_island"] = body.Contains("class=\"island "),
 						["lang"] = "fr",
-						["search_index"] = "/search-index.fr.json",
-						["en_url"] = "/" + htmlHref,
-						["fr_url"] = "/fr/" + htmlHref,
+						["base"] = BasePath,
+						["search_index"] = BasePath + "/search-index.fr.json",
+						["en_url"] = BasePath + "/" + htmlHref,
+						["fr_url"] = BasePath + "/fr/" + htmlHref,
 						["has_fr"] = true,
 					};
 					var ctx = new TemplateContext();
@@ -469,10 +505,21 @@ namespace SnowBank.DocGen
 
 		// Emit dir/index.html as a copy of the landing page, so a static host serves "/" (and the logo's
 		// href="/") without a directory listing or 404. No-op if the landing was not rendered in this dir.
+		// Copy a directory tree into the output, so bundled assets (images) are served alongside the pages.
+		private static void CopyDir(string src, string dst)
+		{
+			Directory.CreateDirectory(dst);
+			foreach (var f in Directory.GetFiles(src)) File.Copy(f, Path.Combine(dst, Path.GetFileName(f)), overwrite: true);
+			foreach (var d in Directory.GetDirectories(src)) CopyDir(d, Path.Combine(dst, Path.GetFileName(d)));
+		}
+
 		private static void CopyAsIndex(string dir, string landingHtml)
 		{
 			var src = Path.Combine(dir, landingHtml.Replace('/', Path.DirectorySeparatorChar));
-			if (File.Exists(src)) File.Copy(src, Path.Combine(dir, "index.html"), overwrite: true);
+			var dest = Path.Combine(dir, "index.html");
+			// when the landing page is itself index.md the copy would be onto itself: leave the rendered file
+			if (File.Exists(src) && !string.Equals(Path.GetFullPath(src), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase))
+				File.Copy(src, dest, overwrite: true);
 		}
 
 		// The docs write <PackageReference Include="..." /> with no Version (the repo builds under central
@@ -624,16 +671,75 @@ namespace SnowBank.DocGen
 		}
 
 		// Rewrite inter-page markdown links (foo.md, ../bar.md#anchor) to .html, leaving the path relative
-		// to the page (correct when served) and skipping absolute/external links.
-		private static void RewriteMdLinks(MarkdownObject root)
+		// to the page (correct when served) and skipping absolute/external links. A link to a French twin
+		// (bar.fr.md) drops the .fr infix, because the /fr/ tree emits pages under the plain name (bar.html);
+		// the relative link then resolves to the sibling inside /fr/.
+		private static void RewriteMdLinks(MarkdownObject root, string pageHref)
 		{
+			var slash = pageHref.LastIndexOf('/');
+			var pageDir = slash >= 0 ? pageHref[..slash] : ""; // the page's directory within Documentation/
 			foreach (var link in root.Descendants<LinkInline>())
 			{
 				var url = link.Url;
 				if (string.IsNullOrEmpty(url)) continue;
-				if (url.StartsWith("http://") || url.StartsWith("https://") || url.StartsWith("mailto:") || url.StartsWith("//")) continue;
-				link.Url = Regex.Replace(url, @"\.md(#|$)", ".html$1");
+				// leave absolute, external, anchor-only, and already-root-absolute links (e.g. the API cref
+				// links, which are emitted root-absolute) alone; only relative links get resolved below
+				if (url.StartsWith("http://") || url.StartsWith("https://") || url.StartsWith("mailto:") || url.StartsWith("#") || url.StartsWith("/")) continue;
+				var repo = RepoLinkOrNull(pageDir, url);
+				if (repo != null) { link.Url = repo; continue; } // a link out of Documentation/ -> the source on the repo host
+				var api = ApiLinkOrNull(pageDir, url);
+				if (api != null) { link.Url = api; continue; } // the API reference is English-only; link there root-absolute
+				link.Url = Regex.Replace(url, @"(?:\.fr)?\.md(#|$)", ".html$1");
 			}
+		}
+
+		// The API reference is generated once, in English, under /api/. A relative link to it from a French
+		// page would resolve to a nonexistent /fr/api/ page, so point every api/ link at the root-absolute
+		// English tree (under BasePath), the same rule the nav uses.
+		private static string? ApiLinkOrNull(string pageDir, string url)
+		{
+			var hash = url.IndexOf('#');
+			var path = hash >= 0 ? url[..hash] : url;
+			var frag = hash >= 0 ? url[hash..] : "";
+			if (path.Length == 0) return null;
+			var resolved = NormalizeRelPath((pageDir.Length > 0 ? pageDir + "/" : "") + path);
+			if (!resolved.StartsWith("api/", StringComparison.Ordinal)) return null;
+			return BasePath + "/" + HrefToHtml(resolved) + frag;
+		}
+
+		// A relative link that resolves ABOVE Documentation/ points at a repo file the site does not render
+		// (README, samples, .claude/skills). Rewrite it to that file on the repo host so it resolves; return
+		// null for links that stay inside Documentation/ (handled as a normal .md -> .html rewrite) or when no
+		// repoUrl is configured.
+		private static string? RepoLinkOrNull(string pageDir, string url)
+		{
+			if (RepoUrl.Length == 0) return null;
+			var path = url.Split('#')[0].Split('?')[0];
+			if (path.Length == 0) return null;
+			var resolved = NormalizeRelPath((pageDir.Length > 0 ? pageDir + "/" : "") + path);
+			if (!resolved.StartsWith("../", StringComparison.Ordinal)) return null; // stays inside Documentation/
+			var repoPath = resolved;
+			while (repoPath.StartsWith("../", StringComparison.Ordinal)) repoPath = repoPath[3..]; // drop the hop(s) out of Documentation/
+			var lastSeg = repoPath.Length == 0 ? "" : repoPath[(repoPath.LastIndexOf('/') + 1)..];
+			var kind = !path.EndsWith("/") && lastSeg.Contains('.') ? "blob" : "tree"; // a file gets /blob/HEAD, a directory /tree/HEAD
+			return RepoUrl + "/" + kind + "/HEAD/" + repoPath;
+		}
+
+		// Collapse "." and ".." in a slash path, keeping the leading ".." that escape the starting directory.
+		private static string NormalizeRelPath(string p)
+		{
+			var parts = new List<string>();
+			foreach (var seg in p.Split('/'))
+			{
+				if (seg.Length == 0 || seg == ".") continue;
+				if (seg == "..")
+				{
+					if (parts.Count > 0 && parts[^1] != "..") parts.RemoveAt(parts.Count - 1);
+					else parts.Add("..");
+				}
+				else parts.Add(seg);
+			}
+			return string.Join("/", parts);
 		}
 
 		// ---- build-time search index ----
@@ -785,12 +891,12 @@ namespace SnowBank.DocGen
 			sb.Append("</ul>");
 		}
 
-		// Nav links are root-absolute so the one shared sidebar resolves from any page depth.
+		// Nav links are root-absolute (under BasePath) so the one shared sidebar resolves from any page depth.
 		private static string Href(string? md, bool french)
 			{
 				if (md == null) return "#";
 				var html = "/" + Regex.Replace(md, @"\.md($|#)", ".html$1"); // handles "api/index.md#anchor" too
-				return french && !md.StartsWith("api/", StringComparison.Ordinal) ? "/fr" + html : html;
+				return BasePath + (french && !md.StartsWith("api/", StringComparison.Ordinal) ? "/fr" + html : html);
 			}
 
 		private static string EscHtml(string s)
@@ -821,6 +927,8 @@ namespace SnowBank.DocGen
 		{
 			public string Version { get; set; } = "0.0.0";
 			public string ApiTfm { get; set; } = "net10.0";
+			public string BasePath { get; set; } = ""; // site mount prefix for a Pages subpath, e.g. "/foundationdb-dotnet-client"; empty = domain root
+			public string RepoUrl { get; set; } = ""; // repo web root; in-body links escaping Documentation/ are rewritten to the source here
 			public List<string> BinRoots { get; set; } = new() { "artifacts/bin" };
 			public List<string> Assemblies { get; set; } = new();
 
