@@ -1842,7 +1842,7 @@ namespace FoundationDB.Client
 					(tr, _) => tr.m_handler.CommitAsync(tr.m_cancellation),
 					(tr, cmd, log) =>
 					{
-						log.CommittedUtc = DateTimeOffset.UtcNow;
+						log.CommittedUtc = tr.Database.Time.GetUtcNow();
 						var cv = tr.GetCommittedVersion();
 						log.CommittedVersion = cv;
 						cmd.CommitVersion = cv;

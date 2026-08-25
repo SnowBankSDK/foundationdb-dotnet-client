@@ -27,13 +27,15 @@
 namespace FoundationDB.Testing.Tests
 {
 	using FoundationDB.Client;
+	using FoundationDB.Filters.Logging;
 	using Microsoft.Extensions.Time.Testing;
 
-	/// <summary>Tests that a watch idle-timeout is measured on the database <see cref="System.TimeProvider"/>, so a FakeDb
-	/// built on a fake clock can drive the timeout with virtual time instead of the wall clock.</summary>
+	/// <summary>Tests that the database <see cref="System.TimeProvider"/> (<see cref="IFdbDatabase.Time"/>) drives managed
+	/// time reads: the watch idle-timeout and the transaction-log absolute stamps. A FakeDb built on a fake clock then
+	/// virtualizes them, instead of reading the wall clock.</summary>
 	[TestFixture]
 	[Category("FakeDb-Client")]
-	public class FakeDbWatchClockFacts : FakeDbTest
+	public class FakeDbClockFacts : FakeDbTest
 	{
 
 		[Test]
@@ -70,6 +72,30 @@ namespace FoundationDB.Testing.Tests
 			await AdvanceAndPump(fake, TimeSpan.FromSeconds(25), TimeSpan.FromSeconds(5));
 			Assert.That(waitTask.IsCompleted, Is.True, "the timeout elapsed on the database clock, so the wait completed");
 			Assert.That(await waitTask, Is.False, "the watch did not fire; WaitAsync reports the timeout");
+		}
+
+		[Test]
+		public async Task Test_Transaction_Log_Timestamps_Use_The_Database_Clock()
+		{
+			// The transaction-log absolute stamps (StartedUtc/StoppedUtc/CommittedUtc) must read the database time provider,
+			// so a FakeDb on a fake clock produces deterministic, virtualized log timestamps instead of wall-clock ones. The
+			// FakeTimeProvider default epoch is 2000-01-01 UTC, far from the real wall clock, so the year discriminates.
+
+			var fake = new FakeTimeProvider();
+			var store = new FakeDbStore(time: fake);
+			using var db = store.OpenDatabase(null, readOnly: false);
+
+			FdbTransactionLog? captured = null;
+			db.SetDefaultLogHandler(log => captured = log);
+
+			await db.WriteAsync(tr => tr.Set(Key("k1"), Value("v1")), this.Cancellation);
+
+			Assert.That(captured, Is.Not.Null, "the log handler must capture the completed transaction");
+			Assert.That(captured!.StartedUtc.Year, Is.EqualTo(2000), "StartedUtc must come from the database clock (the fake epoch), not the wall clock");
+			Assert.That(captured.StoppedUtc, Is.Not.Null, "the stopped transaction must carry a StoppedUtc");
+			Assert.That(captured.StoppedUtc!.Value.Year, Is.EqualTo(2000), "StoppedUtc must come from the database clock");
+			Assert.That(captured.CommittedUtc, Is.Not.Null, "the committed write must carry a CommittedUtc");
+			Assert.That(captured.CommittedUtc!.Value.Year, Is.EqualTo(2000), "CommittedUtc must come from the database clock");
 		}
 
 	}

@@ -451,7 +451,7 @@ namespace FoundationDB.Filters.Logging
 			}
 
 			this.StopTimestamp = Stopwatch.GetTimestamp();
-			this.StoppedUtc = DateTimeOffset.UtcNow; //TODO: use a configurable clock?
+			this.StoppedUtc = trans.Database.Time.GetUtcNow();
 			this.Completed = true;
 			return true;
 		}

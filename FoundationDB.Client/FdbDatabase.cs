@@ -223,7 +223,7 @@ namespace FoundationDB.Client
 			trans.UseSettings(this.Options);
 			if (this.DefaultLogHandler != null)
 			{
-				var now = DateTimeOffset.UtcNow; //TODO: use IClock or TimeProvider!
+				var now = this.Time.GetUtcNow();
 				trans.SetLogHandler(this.DefaultLogHandler, this.DefaultLogOptions ?? new(), now);
 			}
 		}
