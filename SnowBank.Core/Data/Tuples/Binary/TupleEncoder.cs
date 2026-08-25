@@ -24,10 +24,6 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-#pragma warning disable IL2026 // Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code
-#pragma warning disable IL2091 // Target generic argument does not satisfy 'DynamicallyAccessedMembersAttribute' in target method or type. The generic parameter of the source method or type does not have matching annotations.
-#pragma warning disable IL3050 // Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.
-
 namespace SnowBank.Data.Tuples.Binary
 {
 	using System.Buffers;
@@ -46,6 +42,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <remarks>Warning: This method will call into <see cref="ITuplePackable.PackTo"/> if <paramref name="tuple"/> implements <see cref="ITuplePackable"/></remarks>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "the reflective slow path runs only for IVarTuple types that do not implement ITupleSpanPackable")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "the reflective slow path runs only for IVarTuple types that do not implement ITupleSpanPackable")]
 		internal static void WriteTo<TTuple>(TupleWriter writer, in TTuple? tuple)
 			where TTuple : IVarTuple?
 		{
@@ -88,6 +85,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		[MustUseReturnValue, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "the reflective slow path runs only for IVarTuple types that do not implement ITupleSpanPackable")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "the reflective slow path runs only for IVarTuple types that do not implement ITupleSpanPackable")]
 		internal static bool TryWriteTo<TTuple>(ref TupleSpanWriter writer, in TTuple tuple)
 			where TTuple : IVarTuple?
 		{

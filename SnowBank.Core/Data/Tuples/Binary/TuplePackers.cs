@@ -171,6 +171,13 @@ namespace SnowBank.Data.Tuples.Binary
 			return (ref _, in _) => throw new InvalidOperationException($"Does not know how to serialize values of type '{typeof(T).Name}' into keys");
 		}
 
+		/// <summary>Builds the exception thrown when an exotic tuple element type would need the reflective builder while reflection is disabled.</summary>
+		[Pure]
+		private static NotSupportedException MakeReflectionDisabledException(Type type)
+		{
+			return new NotSupportedException($"Cannot build a tuple encoder or decoder for type '{type.GetFriendlyName()}' because tuple reflection is disabled (the feature switch '{TuPack.ReflectionSupportSwitchName}' is off). This type has no compile-time fast path. Use a well-known key element type, or keep reflection enabled.");
+		}
+
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		[RequiresUnreferencedCode("If some of the generic arguments are annotated (either with DynamicallyAccessedMembersAttribute, or generic constraints), trimming can't validate that the requirements of those annotations are met.")]
 		private static (Delegate? Direct, Delegate? Span) GetSerializerFor(
@@ -199,6 +206,7 @@ namespace SnowBank.Data.Tuples.Binary
 			var nullableType = Nullable.GetUnderlyingType(type);
 			if (nullableType != null)
 			{ // nullable types can reuse the underlying type serializer
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				var directMethod = GetTuplePackersType().GetMethod(nameof(SerializeNullableTo), BindingFlags.Static | BindingFlags.Public);
 				var spanMethod = GetTuplePackersType().GetMethod(nameof(TrySerializeNullableTo), BindingFlags.Static | BindingFlags.Public);
 				if (directMethod != null)
@@ -221,6 +229,7 @@ namespace SnowBank.Data.Tuples.Binary
 			// maybe it is an IVarTuple ?
 			if (type.IsAssignableTo(typeof(IVarTuple)))
 			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				if (type.IsAssignableTo(typeof(ITuplePackable)))
 				{ // most tuples implement ITupleFormattable directly!
 
@@ -268,6 +277,8 @@ namespace SnowBank.Data.Tuples.Binary
 			// is it a custom type that can pack its items?
 			if (type.IsAssignableTo(typeof(ITuplePackable)))
 			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
+
 				// this is NOT a tuple, but a custom type that can also "pack itself"
 
 				var directMethod = GetTuplePackersType().GetMethod(nameof(SerializePackableItemsTo), BindingFlags.Static | BindingFlags.Public);
@@ -292,6 +303,7 @@ namespace SnowBank.Data.Tuples.Binary
 			// ValueTuple<T..>
 			if (type == typeof(ValueTuple) || (type.Name.StartsWith(nameof(System.ValueTuple) + "`", StringComparison.Ordinal) && type.Namespace == "System"))
 			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				var typeArgs = type.GetGenericArguments();
 				var directMethod = FindValueTupleSerializerMethod(typeArgs);
 				var spanMethod = FindValueTupleSpanSerializerMethod(typeArgs);
@@ -842,6 +854,11 @@ namespace SnowBank.Data.Tuples.Binary
 		[RequiresUnreferencedCode("If some of the generic arguments are annotated (either with DynamicallyAccessedMembersAttribute, or generic constraints), trimming can't validate that the requirements of those annotations are met.")]
 		private static Encoder<object> CreateBoxedEncoder(Type type)
 		{
+			if (!TuPack.IsReflectionSupported)
+			{ // reflection off: the boxed slow path has no compile-time fast path, fail loudly instead of building a reflective encoder
+				throw MakeReflectionDisabledException(type);
+			}
+
 			var m = typeof(TuplePacker<>).MakeGenericType(type).GetMethod(nameof(TuplePacker<>.SerializeBoxedTo));
 			Contract.Debug.Assert(m != null);
 
@@ -856,6 +873,11 @@ namespace SnowBank.Data.Tuples.Binary
 		[RequiresUnreferencedCode("If some of the generic arguments are annotated (either with DynamicallyAccessedMembersAttribute, or generic constraints), trimming can't validate that the requirements of those annotations are met.")]
 		private static SpanEncoder<object> CreateBoxedSpanEncoder(Type type)
 		{
+			if (!TuPack.IsReflectionSupported)
+			{ // reflection off: the boxed slow path has no compile-time fast path, fail loudly instead of building a reflective encoder
+				throw MakeReflectionDisabledException(type);
+			}
+
 			var m = typeof(TuplePacker<>).MakeGenericType(type).GetMethod(nameof(TuplePacker<>.TrySerializeBoxedTo));
 			Contract.Debug.Assert(m != null);
 
@@ -1270,7 +1292,8 @@ namespace SnowBank.Data.Tuples.Binary
 			// Nullable<T>
 			var underlyingType = Nullable.GetUnderlyingType(typeof(T));
 			if (underlyingType != null && WellKnownUnpackers.TryGetValue(underlyingType, out decoder))
-			{ 
+			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				return (Decoder<T>) MakeNullableDeserializer(type, underlyingType, decoder);
 			}
 
@@ -1279,12 +1302,14 @@ namespace SnowBank.Data.Tuples.Binary
 			{
 				if (type.IsValueType && type.IsGenericType && type.Name.StartsWith(nameof(STuple) + "`", StringComparison.Ordinal))
 				{
+					if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 					return (Decoder<T>) MakeSTupleDeserializer(type);
 				}
 			}
 
 			if ((type.Name == nameof(ValueTuple) || type.Name.StartsWith(nameof(ValueTuple) + "`", StringComparison.Ordinal)) && type.Namespace == "System")
 			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				return (Decoder<T>) MakeValueTupleDeserializer(type);
 			}
 
@@ -1293,6 +1318,8 @@ namespace SnowBank.Data.Tuples.Binary
 				return MakeNotSupportedDeserializer<T>();
 			}
 			// when all else fails...
+			// NOTE: the only caller passes required: true. If a required: false caller is reintroduced, add a
+			// reflection guard before this fallback so an exotic decode with reflection off still fails loudly.
 			return MakeConvertBoxedDeserializer<T>();
 		}
 
@@ -1315,8 +1342,6 @@ namespace SnowBank.Data.Tuples.Binary
 			return slice.Length == 0 || slice[0] == TupleTypes.Nil;
 		}
 
-#pragma warning disable IL2026
-		
 		// this only exists so that we can add this attribute for AoT
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)]
@@ -1324,8 +1349,6 @@ namespace SnowBank.Data.Tuples.Binary
 		[UnconditionalSuppressMessage("Trimming", "IL2111", Justification = "reflective tuple-shape lookup over TuplePackers members; the reflective methods it retains are only reached for tuple element types with no compile-time fast path")]
 		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "reflective tuple-shape lookup over TuplePackers members; the reflective methods it retains are only reached for tuple element types with no compile-time fast path")]
 		private static Type GetTuplePackersType() => typeof(TuplePackers);
-		
-#pragma warning restore IL2026
 
 		[Pure]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
