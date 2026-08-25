@@ -1912,7 +1912,7 @@ namespace FoundationDB.Testing
 			bool hasPartition = root.Path.Count != 0;
 
 			IFdbDatabaseHandler handler = ownsStore ? this : new NonOwningHandler(this);
-			return FdbDatabase.Create(handler, directory, root, !hasPartition && readOnly, this.LifeTime.Token);
+			return FdbDatabase.Create(handler, directory, root, !hasPartition && readOnly, this.LifeTime.Token, this.Time);
 		}
 
 		/// <summary>Handler that shares a <see cref="FakeDbStore"/> without owning it: its <see cref="Dispose"/> is a no-op, so one database's disposal leaves the shared store alive for the other databases. Every other member forwards to the store, so the shared store still fails all databases when its own owner disposes it (which cancels the shared lifetime), matching a real cluster where one database handle's disposal never severs another's connection.</summary>
