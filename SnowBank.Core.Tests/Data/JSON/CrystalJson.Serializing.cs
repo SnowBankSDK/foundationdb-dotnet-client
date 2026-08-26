@@ -1385,7 +1385,7 @@ namespace SnowBank.Data.Json.Tests
 			Assume.That(typeof(DummyJsonEnum).IsPrimitive, Is.False);
 			Assume.That(typeof(DummyJsonEnum).IsEnum, Is.True);
 
-			// As Integers (the numeric wire is now the opt-in; strings are the default)
+			// As Integers (the numeric output is now the opt-in; strings are the default)
 
 			var numbers = CrystalJsonSettings.Json.WithEnumAsNumbers();
 

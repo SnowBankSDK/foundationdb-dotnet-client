@@ -2237,7 +2237,7 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Verifies that a member declared <c>[DataMember(IsRequired = true)]</c> is PRESENT in the document</summary>
 		/// <param name="obj">Object being bound</param>
-		/// <param name="fieldName">Name of the field on the wire</param>
+		/// <param name="fieldName">Name of the field in the output</param>
 		/// <exception cref="JsonBindingException"> if <paramref name="fieldName"/> is absent from <paramref name="obj"/>.</exception>
 		/// <remarks>
 		/// <para>An explicit <c>null</c> SATISFIES this contract, which is what <c>DataContractJsonSerializer</c> does; only absence is refused. The C# <c>required</c> keyword is stricter and refuses null as well.</para>
@@ -2367,7 +2367,7 @@ namespace SnowBank.Data.Json
 			return FailConverterMissingDeserializerFacet<T>(converterType);
 		}
 
-		/// <summary>Packs an enum value into its string form, honoring any custom wire tokens declared on the enum's fields</summary>
+		/// <summary>Packs an enum value into its string form, honoring any custom output tokens declared on the enum's fields</summary>
 		/// <remarks>Used by generated converters for members carrying <c>[JsonProperty(EnumFormat = JsonEnumFormat.String)]</c>.</remarks>
 		[Pure]
 		public static JsonValue PackEnumString<TEnum>(TEnum value)

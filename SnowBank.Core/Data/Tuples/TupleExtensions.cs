@@ -98,7 +98,7 @@ namespace SnowBank.Data.Tuples
 		public static IVarTuple Append<T1, T2>(this IVarTuple tuple, T1 value1, T2 value2)
 		{
 			Contract.NotNull(tuple);
-			return new JoinedTuple<IVarTuple, STuple<T1, T2>>(tuple, STuple.Create(value1, value2));
+			return STuple.JoinTuples(tuple, STuple.Create(value1, value2));
 		}
 
 		/// <summary>Appends two values at the end of a tuple</summary>
@@ -106,49 +106,49 @@ namespace SnowBank.Data.Tuples
 			where THead : IVarTuple
 		{
 			Contract.NotNull(tuple);
-			return new JoinedTuple<THead, STuple<T1, T2>>(tuple, STuple.Create(value1, value2));
+			return STuple.JoinTuples(tuple, STuple.Create(value1, value2));
 		}
 
 		/// <summary>Appends three values at the end of a tuple</summary>
 		public static IVarTuple Append<T1, T2, T3>(this IVarTuple tuple, T1 value1, T2 value2, T3 value3)
 		{
 			Contract.NotNull(tuple);
-			return new JoinedTuple<IVarTuple, STuple<T1, T2, T3>>(tuple, STuple.Create(value1, value2, value3));
+			return STuple.JoinTuples(tuple, STuple.Create(value1, value2, value3));
 		}
 
 		/// <summary>Appends four values at the end of a tuple</summary>
 		public static IVarTuple Append<T1, T2, T3, T4>(this IVarTuple tuple, T1 value1, T2 value2, T3 value3, T4 value4)
 		{
 			Contract.NotNull(tuple);
-			return new JoinedTuple<IVarTuple, STuple<T1, T2, T3, T4>>(tuple, STuple.Create(value1, value2, value3, value4));
+			return STuple.JoinTuples(tuple, STuple.Create(value1, value2, value3, value4));
 		}
 
 		/// <summary>Appends four values at the end of a tuple</summary>
 		public static IVarTuple Append<T1, T2, T3, T4, T5>(this IVarTuple tuple, T1 value1, T2 value2, T3 value3, T4 value4, T5 value5)
 		{
 			Contract.NotNull(tuple);
-			return new JoinedTuple<IVarTuple, STuple<T1, T2, T3, T4, T5>>(tuple, STuple.Create(value1, value2, value3, value4, value5));
+			return STuple.JoinTuples(tuple, STuple.Create(value1, value2, value3, value4, value5));
 		}
 
 		/// <summary>Appends four values at the end of a tuple</summary>
 		public static IVarTuple Append<T1, T2, T3, T4, T5, T6>(this IVarTuple tuple, T1 value1, T2 value2, T3 value3, T4 value4, T5 value5, T6 value6)
 		{
 			Contract.NotNull(tuple);
-			return new JoinedTuple<IVarTuple, STuple<T1, T2, T3, T4, T5, T6>>(tuple, STuple.Create(value1, value2, value3, value4, value5, value6));
+			return STuple.JoinTuples(tuple, STuple.Create(value1, value2, value3, value4, value5, value6));
 		}
 
 		/// <summary>Appends four values at the end of a tuple</summary>
 		public static IVarTuple Append<T1, T2, T3, T4, T5, T6, T7>(this IVarTuple tuple, T1 value1, T2 value2, T3 value3, T4 value4, T5 value5, T6 value6, T7 value7)
 		{
 			Contract.NotNull(tuple);
-			return new JoinedTuple<IVarTuple, STuple<T1, T2, T3, T4, T5, T6, T7>>(tuple, STuple.Create(value1, value2, value3, value4, value5, value6, value7));
+			return STuple.JoinTuples(tuple, STuple.Create(value1, value2, value3, value4, value5, value6, value7));
 		}
 
 		/// <summary>Appends four values at the end of a tuple</summary>
 		public static IVarTuple Append<T1, T2, T3, T4, T5, T6, T7, T8>(this IVarTuple tuple, T1 value1, T2 value2, T3 value3, T4 value4, T5 value5, T6 value6, T7 value7, T8 value8)
 		{
 			Contract.NotNull(tuple);
-			return new JoinedTuple<IVarTuple, STuple<T1, T2, T3, T4, T5, T6, T7, T8>>(tuple, STuple.Create(value1, value2, value3, value4, value5, value6, value7, value8));
+			return STuple.JoinTuples(tuple, STuple.Create(value1, value2, value3, value4, value5, value6, value7, value8));
 		}
 
 		/// <summary>Returns a substring of the current tuple</summary>

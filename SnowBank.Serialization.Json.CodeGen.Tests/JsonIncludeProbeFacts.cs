@@ -92,7 +92,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			// the two paths agree on membership and values (member ORDER may differ: reflection lists fields
 			// before properties, the generator keeps declaration order; order is not part of the contract)
-			Assert.That(JsonObject.Parse(json), IsJson.EqualTo(JsonObject.Parse(CrystalJson.Serialize(dto))), "generated and reflection wires must agree on content");
+			Assert.That(JsonObject.Parse(json), IsJson.EqualTo(JsonObject.Parse(CrystalJson.Serialize(dto))), "generated and reflection outputs must agree on content");
 		}
 
 		[Test]

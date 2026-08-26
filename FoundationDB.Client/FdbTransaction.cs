@@ -1842,7 +1842,7 @@ namespace FoundationDB.Client
 					(tr, _) => tr.m_handler.CommitAsync(tr.m_cancellation),
 					(tr, cmd, log) =>
 					{
-						log.CommittedUtc = DateTimeOffset.UtcNow;
+						log.CommittedUtc = tr.Database.Time.GetUtcNow();
 						var cv = tr.GetCommittedVersion();
 						log.CommittedVersion = cv;
 						cmd.CommitVersion = cv;
@@ -1889,6 +1889,7 @@ namespace FoundationDB.Client
 
 			// the watch outlives this transaction: the database must know it, so that db.Dispose()/Fdb.Stop() can drain it
 			var db = this.Database;
+			watch.Time = db.Time; // measure the watch's idle timeout on the database clock (a fake clock under FakeDb)
 			watch.OnDisposed = db.UnregisterWatch;
 			db.RegisterWatch(watch);
 

@@ -33,6 +33,7 @@ namespace FoundationDB.Client
 	using FoundationDB.Client.Native;
 	using FoundationDB.DependencyInjection;
 	using FoundationDB.Filters.Logging;
+	using SnowBank.Threading;
 
 	/// <summary>FoundationDB database session handle</summary>
 	/// <remarks>An instance of this class can be used to create any number of concurrent transactions that will read and/or write to this particular database.</remarks>
@@ -109,14 +110,16 @@ namespace FoundationDB.Client
 		/// <param name="root">Root location of this database</param>
 		/// <param name="readOnly">If true, the database instance will only allow read-only transactions</param>
 		/// <param name="globalToken">Global cancellation token that this database instance should use as a global shutdown signal</param>
-		protected FdbDatabase(IFdbDatabaseHandler handler, FdbDirectoryLayer directory, FdbDirectorySubspaceLocation root, bool readOnly, CancellationToken globalToken)
+		/// <param name="time">Time source for managed waits and timestamps on this instance (see <see cref="IFdbDatabase.Time"/>)</param>
+		protected FdbDatabase(IFdbDatabaseHandler handler, FdbDirectoryLayer directory, FdbDirectorySubspaceLocation root, bool readOnly, CancellationToken globalToken, TimeProvider time)
 		{
-			Contract.Debug.Requires(handler != null && directory != null && root != null);
+			Contract.Debug.Requires(handler != null && directory != null && root != null && time != null);
 
 			m_handler = handler;
 			m_readOnly = readOnly;
 			m_root = root;
 			m_directory = directory;
+			this.Time = time;
 			var cts = CancellationTokenSource.CreateLinkedTokenSource(globalToken);
 			m_cts = cts;
 			this.Cancellation = cts.Token;
@@ -128,13 +131,14 @@ namespace FoundationDB.Client
 		/// <param name="root">Root location of the database</param>
 		/// <param name="readOnly">If true, the database instance will only allow read-only transactions</param>
 		/// <param name="globalToken">Global cancellation token that this database instance should use as a global shutdown signal</param>
-		public static FdbDatabase Create(IFdbDatabaseHandler handler, FdbDirectoryLayer directory, FdbDirectorySubspaceLocation root, bool readOnly, CancellationToken globalToken)
+		/// <param name="time">Time source for managed waits and timestamps (see <see cref="IFdbDatabase.Time"/>); defaults to the system clock.</param>
+		public static FdbDatabase Create(IFdbDatabaseHandler handler, FdbDirectoryLayer directory, FdbDirectorySubspaceLocation root, bool readOnly, CancellationToken globalToken, TimeProvider? time = null)
 		{
 			Contract.NotNull(handler);
 			Contract.NotNull(directory);
 			Contract.NotNull(root);
 
-			var db = new FdbDatabase(handler, directory, root, readOnly, globalToken);
+			var db = new FdbDatabase(handler, directory, root, readOnly, globalToken, time ?? NodaTimeProvider.System);
 			// the registry lets Fdb.Stop() find and drain every live database before stopping the network thread
 			Fdb.RegisterDatabase(db);
 			return db;
@@ -148,6 +152,9 @@ namespace FoundationDB.Client
 
 		/// <inheritdoc cref="IFdbDatabase.Cancellation" />
 		public CancellationToken Cancellation { get; }
+
+		/// <inheritdoc />
+		public TimeProvider Time { get; }
 
 		/// <inheritdoc />
 		public bool IsReadOnly => m_readOnly;
@@ -216,7 +223,7 @@ namespace FoundationDB.Client
 			trans.UseSettings(this.Options);
 			if (this.DefaultLogHandler != null)
 			{
-				var now = DateTimeOffset.UtcNow; //TODO: use IClock or TimeProvider!
+				var now = this.Time.GetUtcNow();
 				trans.SetLogHandler(this.DefaultLogHandler, this.DefaultLogOptions ?? new(), now);
 			}
 		}

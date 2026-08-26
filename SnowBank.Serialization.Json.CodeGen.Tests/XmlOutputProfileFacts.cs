@@ -71,7 +71,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			}
 			foreach (var (name, metadata) in containers)
 			{
-				Log($"container: {name}: XmlProfile={metadata.XmlProfile ?? "<null>"}; CrystalXmlDictionaryFormat={metadata.CrystalXmlDictionaryFormat ?? "<null>"}; WireProfile={metadata.WireProfile ?? "<null>"}");
+				Log($"container: {name}: XmlProfile={metadata.XmlProfile ?? "<null>"}; CrystalXmlDictionaryFormat={metadata.CrystalXmlDictionaryFormat ?? "<null>"}; OutputProfile={metadata.OutputProfile ?? "<null>"}");
 			}
 			return (containers, diagnostics);
 		}
@@ -115,15 +115,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(metadata.WireProfile, Is.EqualTo("DataContractCompat"), "sanity: the JSON profile the derivation reads");
+				Assert.That(metadata.OutputProfile, Is.EqualTo("DataContractCompat"), "sanity: the JSON profile the derivation reads");
 				Assert.That(metadata.XmlProfile, Is.EqualTo("DataContract"), "the DCJS JSON format derives the DataContract XML format");
 			}
 		}
 
 		[Test]
-		public void Test_Default_Profile_Derives_Modern_From_A_General_Container()
+		public void Test_Default_Profile_Derives_General_From_A_General_Container()
 		{
-			// the standard container: no JSON profile, so the XML follows the JSON a modern reader predicts
+			// the standard container: no JSON profile, so the XML follows the JSON a general reader predicts
 			var metadata = RunOnSingleContainer(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput]
@@ -132,15 +132,35 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(metadata.WireProfile, Is.Null, "sanity: the standard JSON format");
-				Assert.That(metadata.XmlProfile, Is.EqualTo("Modern"));
+				Assert.That(metadata.OutputProfile, Is.Null, "sanity: the standard JSON format");
+				Assert.That(metadata.XmlProfile, Is.EqualTo("General"));
 			}
 		}
 
 		[Test]
-		public void Test_Default_Profile_Derives_Modern_From_A_Web_Container()
+		public void Test_Explicit_Inherit_Derives_The_Same_Profile_As_The_Parameterless_Attribute()
 		{
-			// the Web defaults are a naming policy, not a format profile: the XML stays Modern (and the
+			// the ctor-arg preset is read by member NAME (see ResolveXmlOutput): an explicit Inherit must resolve
+			// exactly like omitting the argument, not fall through a different path that happens to land in the same place
+			var implicitMetadata = RunOnSingleContainer(Probe("""
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
+					[SnowBank.Data.Xml.CrystalXmlOutput]
+				"""));
+
+			var explicitMetadata = RunOnSingleContainer(Probe("""
+					[SnowBank.Data.CrystalConverter]
+					[SnowBank.Data.Json.CrystalJsonOutput]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.Inherit)]
+				"""));
+
+			Assert.That(explicitMetadata.XmlProfile, Is.EqualTo(implicitMetadata.XmlProfile).And.EqualTo("General"));
+		}
+
+		[Test]
+		public void Test_Default_Profile_Derives_General_From_A_Web_Container()
+		{
+			// the Web defaults are a naming policy, not a format profile: the XML stays General (and the
 			// camelCase names it will use are exactly the ones its JSON uses)
 			var metadata = RunOnSingleContainer(Probe("""
 					[SnowBank.Data.CrystalConverter]
@@ -151,24 +171,24 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(metadata.PropertyNamingPolicy, Is.EqualTo("camel"), "sanity: the Web defaults did apply");
-				Assert.That(metadata.XmlProfile, Is.EqualTo("Modern"));
+				Assert.That(metadata.XmlProfile, Is.EqualTo("General"));
 			}
 		}
 
 		[Test]
-		public void Test_Explicit_Modern_Overrides_The_Derivation_From_A_DataContractCompat_Container()
+		public void Test_Explicit_General_Overrides_The_Derivation_From_A_DataContractCompat_Container()
 		{
-			// the override that exists for the portage: keep serving the legacy JSON, publish modern XML
+			// the override that exists for the portage: keep serving the legacy JSON, publish general XML
 			var metadata = RunOnSingleContainer(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.Modern)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.General)]
 				"""));
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(metadata.WireProfile, Is.EqualTo("DataContractCompat"), "the JSON format is unchanged");
-				Assert.That(metadata.XmlProfile, Is.EqualTo("Modern"), "the explicit XML profile wins over the derivation");
+				Assert.That(metadata.OutputProfile, Is.EqualTo("DataContractCompat"), "the JSON format is unchanged");
+				Assert.That(metadata.XmlProfile, Is.EqualTo("General"), "the explicit XML profile wins over the derivation");
 			}
 		}
 
@@ -179,27 +199,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var metadata = RunOnSingleContainer(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.DataContract)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
 				"""));
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(metadata.WireProfile, Is.Null, "the JSON format is unchanged");
+				Assert.That(metadata.OutputProfile, Is.Null, "the JSON format is unchanged");
 				Assert.That(metadata.XmlProfile, Is.EqualTo("DataContract"));
 			}
-		}
-
-		[Test]
-		public void Test_Explicit_Default_Profile_Derives_Like_An_Unspecified_One()
-		{
-			// spelling out the default must not become a third behavior
-			var metadata = RunOnSingleContainer(Probe("""
-					[SnowBank.Data.CrystalConverter]
-					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.Default)]
-				"""));
-
-			Assert.That(metadata.XmlProfile, Is.EqualTo("DataContract"));
 		}
 
 		#endregion
@@ -235,11 +242,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_DictionaryFormat_Is_Carried_Independently_Of_The_Profile()
 		{
-			// the two named arguments are read independently: setting one must not reset the other
+			// the preset ctor argument and the DictionaryFormat named argument are read independently: setting one must not reset the other
 			var metadata = RunOnSingleContainer(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.DataContract, DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueElements)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat, DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueElements)]
 				"""));
 
 			using (Assert.EnterMultipleScope())
@@ -268,7 +275,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var (containers, diagnostics) = RunOn(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput(PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.DataContract)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
 				"""));
 
 			AssertNamingPolicyRefusal(diagnostics);
@@ -283,7 +290,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var (containers, diagnostics) = RunOn(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput(PropertyNameCaseInsensitive = true)]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.DataContract)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
 				"""));
 
 			using (Assert.EnterMultipleScope())
@@ -300,7 +307,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var (_, diagnostics) = RunOn(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput(PropertyNameCaseInsensitive = true, PropertyNamingPolicy = SnowBank.Data.Json.CrystalJsonKnownNamingPolicy.CamelCase)]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.DataContract)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
 				"""));
 
 			AssertNamingPolicyRefusal(diagnostics);
@@ -313,7 +320,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var (_, diagnostics) = RunOn(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.DataContract)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
 				"""));
 
 			AssertNamingPolicyRefusal(diagnostics);
@@ -337,19 +344,19 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Modern_Xml_With_A_CamelCase_Policy_Is_Accepted()
+		public void Test_General_Xml_With_A_CamelCase_Policy_Is_Accepted()
 		{
-			// the Modern format follows the naming policy instead of fighting it: nothing to refuse
+			// the General format follows the naming policy instead of fighting it: nothing to refuse
 			var (containers, diagnostics) = RunOn(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.Modern)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.General)]
 				"""));
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(diagnostics.Where(static d => d.Id == "CXML0001"), Is.Empty, "a naming policy is exactly what the Modern format honors");
-				Assert.That(containers["ProbeConverters"].XmlProfile, Is.EqualTo("Modern"));
+				Assert.That(diagnostics.Where(static d => d.Id == "CXML0001"), Is.Empty, "a naming policy is exactly what the General format honors");
+				Assert.That(containers["ProbeConverters"].XmlProfile, Is.EqualTo("General"));
 			}
 		}
 
@@ -360,7 +367,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_A_DictionaryFormat_On_A_DataContract_Container_Is_Reported_As_Inert()
 		{
-			// DictionaryFormat picks between the modern profile's dictionary shapes. The compat format has exactly ONE
+			// DictionaryFormat picks between the general profile's dictionary shapes. The compat format has exactly ONE
 			// (KeyValueOfKV), so the option is read, resolved, and then never consulted: the member-level twin of this
 			// is already a hard refusal (CXML0004), and the container level deserves at least to be said out loud.
 			var (containers, diagnostics) = RunOn(Probe("""
@@ -393,7 +400,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_DictionaryFormat_On_A_Modern_Container_Is_Not_Reported()
+		public void Test_A_DictionaryFormat_On_A_General_Container_Is_Not_Reported()
 		{
 			// the profile the option was designed for
 			var (_, diagnostics) = RunOn(Probe("""
@@ -453,7 +460,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Xml_Output_On_A_Self_Serializable_Type_Is_Not_Reported_And_Resolves_Its_Profile()
 		{
 			// a self-serializable entity hosts its own generated code, so it is a legitimate XML host too; it
-			// declares no JSON format profile, so the derivation lands on Modern
+			// declares no JSON format profile, so the derivation lands on General
 			var (containers, diagnostics) = RunOn("""
 				namespace Probe
 				{
@@ -479,7 +486,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(diagnostics.Where(static d => d.Id == "CXML0002"), Is.Empty, "the entity IS its own container");
 				Assert.That(containers.ContainsKey("ProbeEntity"), Is.True, "sanity: the self-serializable type was parsed");
 			}
-			Assert.That(containers["ProbeEntity"].XmlProfile, Is.EqualTo("Modern"), "a self-serializable type has no JSON format profile, so the XML derivation lands on Modern");
+			Assert.That(containers["ProbeEntity"].XmlProfile, Is.EqualTo("General"), "a self-serializable type has no JSON format profile, so the XML derivation lands on General");
 		}
 
 		[Test]
@@ -496,7 +503,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 
 					[ProbeDocument]
-					[SnowBank.Data.Xml.CrystalXmlOutput(Profile = SnowBank.Data.Xml.CrystalXmlOutputProfile.DataContract, DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueElements)]
+					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat, DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueElements)]
 					public sealed partial record ProbeEntity
 					{
 						public int Plain { get; set; }

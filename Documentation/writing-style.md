@@ -26,6 +26,35 @@ documentation. The goal is text that a non-native reader parses once, correctly.
   relatives. If a sentence survives without a word, remove the word.
 - American English spelling.
 
+## Plain language
+
+The recurring failure is text that sounds technical but tells the reader nothing. Guard against it:
+
+- **No coined metaphors or invented verbs.** Describe what the code does, in ordinary words. Write
+  "raises the timeout to a 15-second minimum", not "floors the timeout"; "a wait that expects a
+  result", not "a positive wait"; "the wall clock is a separate service", not "the wall clock rides its
+  own circuit". If a phrase would not appear in the .NET documentation, it is probably invented.
+- **No informal or idiomatic terms for real concepts, and no puffery.** They read as chatty, not
+  precise. Replace each with its plain word: "knobs" to options or settings; "bake" to store or
+  generate; "handle" or "drive" to the concrete action ("control the timeout", "run the request");
+  "gives up" to fails; "bump" to upgrade; "seed a chain of builders" to "the starting point for the
+  builder methods". Drop empty intensifiers: "a full 15 ms" is "15 ms".
+- **Do not lift internal code names into prose.** A private field or an internal nickname
+  (`PositiveWaitFloor`, `SettlePerStep`) is not a reader-facing term: state the behavior instead. If the
+  code name itself does not say what it does, that is a naming defect. Fix the name, and the prose
+  follows.
+- **Direct subject, verb, object, with a concrete actor.** Write "use the DataContract preset to write
+  the standard format", not "the DataContract profile writes the standard format" (a concept is not an
+  actor); "CrystalJson decodes the value", not "the value binds from CrystalJson"; "give a name to the
+  client", not "give the client a name". A reversed or ditransitive phrasing reads backward.
+- **State the number or the name, not a vague noun.** Write "a 15-second minimum timeout", not "a
+  patience floor". Name the method for an action ("a bug in `VisitRangeAsync`", not "a range-visit
+  bug"), and define an unfamiliar term on first use ("`i:nil`, the XML attribute that marks a null
+  element"). A number states what it measures: "15 ms of real time", not "15 ms"; "192 fewer bytes per
+  operation", not "192 fewer".
+- **A changes document carries only what changed.** Do not repeat unchanged facts, such as a
+  framework-support list that did not move, to fill a section.
+
 ## Structure
 
 - Lead with the conclusion: the first sentence of a section tells the reader whether the

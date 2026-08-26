@@ -26,13 +26,15 @@
 
 namespace SnowBank.Networking.Http
 {
+	using System.Diagnostics.CodeAnalysis;
 	using Microsoft.Extensions.DependencyInjection;
 	using Microsoft.Extensions.Options;
 
 	/// <summary>Base implementation of a typed-protocol factory: it creates <typeparamref name="TProtocol"/> instances over plain factory clients.</summary>
 	/// <typeparam name="TProtocol">Type of the supported <see cref="IBetterHttpProtocol"/></typeparam>
 	/// <typeparam name="TOptions">Type of the <see cref="BetterHttpClientOptions"/> used to configure this protocol</typeparam>
-	public abstract class BetterHttpProtocolFactoryBase<TProtocol, TOptions> : IBetterHttpProtocolFactory<TProtocol, TOptions>
+	// The default CreateProtocol resolves TProtocol through ActivatorUtilities, so its public constructor must survive trimming.
+	public abstract class BetterHttpProtocolFactoryBase<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TProtocol, TOptions> : IBetterHttpProtocolFactory<TProtocol, TOptions>
 		where TProtocol : IBetterHttpProtocol
 		where TOptions : BetterHttpClientOptions
 	{
@@ -90,8 +92,8 @@ namespace SnowBank.Networking.Http
 
 			OnAfterConfigure(options);
 
-			// per-call configure = protocol/client behavior only; wire policy = the named policy. Fail loudly on the rest:
-			// wire policy set here can never reach the shared pooled transport, and silence would be a silent break.
+			// per-call configure = protocol/client behavior only; transport policy = the named policy. Fail loudly on the rest:
+			// transport policy set here can never reach the shared pooled transport, and silence would be a silent break.
 			options.EnsureOnlyProtocolBehavior($"{GetType().Name}.CreateClient");
 
 			// a plain factory client over the name's pooled chain, carrying the protocol options as its per-instance

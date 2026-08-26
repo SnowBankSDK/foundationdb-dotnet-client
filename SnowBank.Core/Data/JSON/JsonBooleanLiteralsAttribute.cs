@@ -27,7 +27,7 @@
 namespace SnowBank.Data.Json
 {
 
-	/// <summary>Specifies custom wire literals for a <see cref="bool"/> (or <see cref="Nullable{T}">bool?</see>) member, for compatibility with producers that do not emit real JSON booleans</summary>
+	/// <summary>Specifies custom output literals for a <see cref="bool"/> (or <see cref="Nullable{T}">bool?</see>) member, for compatibility with producers that do not emit real JSON booleans</summary>
 	/// <remarks>
 	/// <para>Example: <c>[JsonBooleanLiterals("0", "1")]</c> serializes <see langword="false"/> as <c>"0"</c> and <see langword="true"/> as <c>"1"</c>;
 	/// the <c>int</c> flavor <c>[JsonBooleanLiterals(0, 1)]</c> emits JSON numbers instead of strings.</para>
@@ -43,21 +43,21 @@ namespace SnowBank.Data.Json
 	public sealed class JsonBooleanLiteralsAttribute : Attribute
 	{
 
-		/// <summary>Specifies the wire literals for this member</summary>
+		/// <summary>Specifies the output literals for this member</summary>
 		/// <param name="whenFalse">
-		/// Wire form of <see langword="false"/>: a <see cref="string"/>, a <see cref="bool"/>, or a numeric value (ex: <c>"0"</c>, <c>0</c>).
+		/// Output form of <see langword="false"/>: a <see cref="string"/>, a <see cref="bool"/>, or a numeric value (ex: <c>"0"</c>, <c>0</c>).
 		/// <para>Pass <see langword="null"/> to NOT EMIT the member at all when the value is <see langword="false"/>, for a consumer that expects either the member absent or the true literal.</para>
 		/// </param>
-		/// <param name="whenTrue">Wire form of <see langword="true"/>: a <see cref="string"/>, a <see cref="bool"/>, or a numeric value (ex: <c>"1"</c>, <c>1</c>). It may not be <see langword="null"/>: emitting nothing for <see langword="true"/> has no meaning.</param>
-		/// <exception cref="ArgumentException">If either argument is of a type that has no JSON wire form.</exception>
-		/// <remarks>The two arguments do not have to share a type: <c>[JsonBooleanLiterals("0", 1)]</c> is legal, because legacy wires are not always consistent.</remarks>
+		/// <param name="whenTrue">Output form of <see langword="true"/>: a <see cref="string"/>, a <see cref="bool"/>, or a numeric value (ex: <c>"1"</c>, <c>1</c>). It may not be <see langword="null"/>: emitting nothing for <see langword="true"/> has no meaning.</param>
+		/// <exception cref="ArgumentException">If either argument is of a type that has no JSON output form.</exception>
+		/// <remarks>The two arguments do not have to share a type: <c>[JsonBooleanLiterals("0", 1)]</c> is legal, because legacy outputs are not always consistent.</remarks>
 		public JsonBooleanLiteralsAttribute(object? whenFalse, object whenTrue)
 		{
 			this.FalseLiteral = ToLiteral(whenFalse, nameof(whenFalse));
 			this.TrueLiteral = ToLiteral(whenTrue, nameof(whenTrue)) ?? throw new ArgumentNullException(nameof(whenTrue), "A true literal is required: emitting nothing for true has no meaning.");
 		}
 
-		/// <summary>Converts an attribute argument to its wire form, refusing types that have none</summary>
+		/// <summary>Converts an attribute argument to its output form, refusing types that have none</summary>
 		internal static JsonValue? ToLiteral(object? value, string parameterName)
 			=> value switch
 			{
@@ -68,10 +68,10 @@ namespace SnowBank.Data.Json
 				_ => throw new ArgumentException(string.Format(System.Globalization.CultureInfo.InvariantCulture, CrystalJson.Errors.BooleanLiteralTypeNotSupported, parameterName, value.GetType().Name), parameterName),
 			};
 
-		/// <summary>Wire form of <see langword="false"/>, or <see langword="null"/> when the member is not emitted at all for <see langword="false"/></summary>
+		/// <summary>Output form of <see langword="false"/>, or <see langword="null"/> when the member is not emitted at all for <see langword="false"/></summary>
 		public JsonValue? FalseLiteral { get; }
 
-		/// <summary>Wire form of <see langword="true"/></summary>
+		/// <summary>Output form of <see langword="true"/></summary>
 		public JsonValue TrueLiteral { get; }
 
 		/// <summary>When <see langword="true"/>, genuine JSON <see langword="true"/>/<see langword="false"/> are rejected on read instead of being accepted alongside the configured literals</summary>

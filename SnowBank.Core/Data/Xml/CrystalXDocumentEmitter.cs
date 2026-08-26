@@ -27,6 +27,7 @@
 namespace SnowBank.Data.Xml
 {
 	using System.Collections.Generic;
+	using System.Globalization;
 	using System.Text;
 	using System.Xml.Linq;
 
@@ -52,8 +53,15 @@ namespace SnowBank.Data.Xml
 	/// <para><b>Line-ending normalization is applied by hand.</b> <see cref="XContainer.Add(object)"/> stores a string
 	/// verbatim, without the XML 1.0 section 2.11 end-of-line normalization (<c>\r\n</c> or lone <c>\r</c> becomes <c>\n</c>) that
 	/// <see cref="XDocument.Parse(string)"/> applies. This emitter replicates it itself, so that
-	/// <c>XNode.DeepEquals(emitter.ToDocument(), XDocument.Parse(referenceWire))</c> holds for any text containing a line
+	/// <c>XNode.DeepEquals(emitter.ToDocument(), XDocument.Parse(referenceOutput))</c> holds for any text containing a line
 	/// break.</para>
+	/// <para><b>Namespace declarations are the DOM's business, not this emitter's.</b> An element and an attribute each carry
+	/// their namespace in their <see cref="XName"/>, and <see cref="XElement.ToString()"/> derives the declarations and the
+	/// prefixes a document needs from those names when it serializes the tree. So
+	/// <see cref="WriteNamespaceDeclaration"/> and <see cref="WriteDefaultNamespaceDeclaration"/> do nothing here: a caller
+	/// placing a declaration high in a document is expressing where the TEXT should carry it, and this emitter produces no
+	/// text. The one exception is a qualified name inside an attribute value, whose namespace the DOM cannot see; see
+	/// <see cref="WriteQNameAttribute"/>.</para>
 	/// <para>Not thread-safe, and, like every <see cref="ICrystalXmlEmitter"/>, must be passed by <see langword="ref"/>:
 	/// <see cref="Root"/> is a plain field assigned once by the final <see cref="WriteEndElement"/>, so a copy taken before
 	/// that point would never see it.</para>
@@ -87,17 +95,81 @@ namespace SnowBank.Data.Xml
 		}
 
 		/// <inheritdoc />
-		public readonly void WriteStartElement(in CrystalXmlName name)
+		public readonly void WriteStartElement(in CrystalXmlName name) => WriteStartElement(in name, name.Namespace);
+
+		/// <inheritdoc />
+		public readonly void WriteStartElement(in CrystalXmlName name, in CrystalXmlNamespace ns)
 		{
-			this.OpenElements.Push(new(name.Text));
+			this.OpenElements.Push(new(ToXName(in name, in ns)));
 		}
 
 		/// <inheritdoc />
-		public readonly void WriteAttribute(in CrystalXmlName name, ReadOnlySpan<char> value)
+		public readonly void WriteAttribute(in CrystalXmlName name, ReadOnlySpan<char> value) => WriteAttribute(in name, name.Namespace, value);
+
+		/// <inheritdoc />
+		public readonly void WriteAttribute(in CrystalXmlName name, in CrystalXmlNamespace ns, ReadOnlySpan<char> value)
 		{
 			var current = this.OpenElements.Peek();
 			Contract.Debug.Requires(current.IsEmpty, "Attributes can only be written while the start tag is still open");
-			current.SetAttributeValue(name.Text, value.ToString());
+			current.SetAttributeValue(ToXName(in name, in ns), value.ToString());
+		}
+
+		/// <inheritdoc />
+		public readonly void WriteQNameAttribute(in CrystalXmlName name, in CrystalXmlName value) => WriteQNameAttribute(in name, name.Namespace, in value);
+
+		/// <inheritdoc />
+		public readonly void WriteQNameAttribute(in CrystalXmlName name, in CrystalXmlNamespace ns, in CrystalXmlName value)
+		{
+			var current = this.OpenElements.Peek();
+			Contract.Debug.Requires(current.IsEmpty, "Attributes can only be written while the start tag is still open");
+			current.SetAttributeValue(ToXName(in name, in ns), ResolveQName(current, this.OpenElements.Count, in value));
+		}
+
+		/// <inheritdoc />
+		/// <remarks>Does nothing: see the type remarks on why this emitter lets the DOM derive its own declarations.</remarks>
+		public readonly void WriteNamespaceDeclaration(in CrystalXmlNamespace ns)
+		{ }
+
+		/// <inheritdoc />
+		/// <inheritdoc cref="WriteNamespaceDeclaration" path="/remarks"/>
+		public readonly void WriteDefaultNamespaceDeclaration(in CrystalXmlNamespace ns)
+		{ }
+
+		/// <summary>Combines a local name and a namespace into the <see cref="XName"/> the DOM keys nodes by</summary>
+		private static XName ToXName(in CrystalXmlName name, in CrystalXmlNamespace ns)
+			=> ns.Text is { Length: > 0 } uri ? XNamespace.Get(uri) + name.Text : XName.Get(name.Text);
+
+		/// <summary>Builds the <c>prefix:Local</c> text of a qualified name, declaring a prefix on <paramref name="element"/> when nothing in scope binds its namespace</summary>
+		/// <remarks>The one place this emitter writes a declaration by hand. The DOM derives the declarations of elements and
+		/// attributes on its own, from the namespaces their names carry, but a namespace used inside an attribute's TEXT is
+		/// invisible to it, so the alias that text refers to has to exist first. The alias follows the conventional prefix when
+		/// there is one, and the same <c>d{depth}p{n}</c> shape as the text emitter otherwise, so a document from either one
+		/// carries the same qualified names.</remarks>
+		private static string ResolveQName(XElement element, int depth, in CrystalXmlName value)
+		{
+			if (value.Namespace.Text is not { Length: > 0 } uri)
+			{ // no namespace: a bare local name, which resolves against whatever default is in scope
+				return value.Text;
+			}
+
+			var ns = XNamespace.Get(uri);
+			string? prefix = element.GetPrefixOfNamespace(ns);
+			if (prefix is null)
+			{
+				prefix = CrystalXmlNamespaces.GetConventionalPrefix(uri);
+				if (prefix is null)
+				{
+					int rank = 1;
+					foreach (var attribute in element.Attributes())
+					{
+						if (attribute.IsNamespaceDeclaration) ++rank;
+					}
+					prefix = "d" + depth.ToString(CultureInfo.InvariantCulture) + "p" + rank.ToString(CultureInfo.InvariantCulture);
+				}
+				element.SetAttributeValue(XNamespace.Xmlns + prefix, uri);
+			}
+
+			return prefix + ":" + value.Text;
 		}
 
 		/// <inheritdoc />

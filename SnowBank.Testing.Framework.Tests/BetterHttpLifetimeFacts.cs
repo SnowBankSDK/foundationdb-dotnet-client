@@ -313,9 +313,9 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
-		public async Task Test_Per_Call_Protocol_Configure_Rejects_Wire_Policy()
+		public async Task Test_Per_Call_Protocol_Configure_Rejects_Transport_Policy()
 		{
-			// The contract: per-call configure = protocol/client behavior only; wire policy (TLS, proxy, cookies, filters,
+			// The contract: per-call configure = protocol/client behavior only; transport policy (TLS, proxy, cookies, filters,
 			// pipeline handlers) = the named policy, registered at startup. A per-call TLS callback or filter CANNOT reach
 			// the shared pooled transport, and silently ignoring it would be a silent security/behavior break: it must
 			// fail loudly, naming the offending member.
@@ -332,8 +332,8 @@ namespace SnowBank.Testing.Framework.Tests
 
 			Assert.That(() => factory.CreateClient(uri, o => o.AcceptSelfSignedServerCertificates()),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.ServerCertificateCustomValidationCallback)),
-				"a per-call TLS relaxation must throw (it would silently not reach the wire)");
-			// the test deliberately exercises the obsolete Filters surface (still the transport-tier wire policy at this call).
+				"a per-call TLS relaxation must throw (it would silently not reach the transport)");
+			// the test deliberately exercises the obsolete Filters surface (still the transport-tier policy at this call).
 #pragma warning disable CS0618
 			Assert.That(() => factory.CreateClient(uri, o => o.Filters.Add(new NoopFilter())),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(BetterHttpClientOptions.Filters)),

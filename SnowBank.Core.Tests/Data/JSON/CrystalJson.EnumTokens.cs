@@ -28,7 +28,7 @@ namespace SnowBank.Data.Json.Tests
 {
 	using System.Runtime.Serialization;
 
-	/// <summary>Pins the enum wire behavior: the text-writer and DOM routes must agree, settings are honored on both,
+	/// <summary>Pins the enum output behavior: the text-writer and DOM routes must agree, settings are honored on both,
 	/// and custom tokens (<c>[JsonStringEnumMemberName]</c>, <c>[EnumMember(Value=...)]</c>) drive both directions.</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
@@ -118,14 +118,14 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_Enums_Serialize_As_Strings_By_Default()
 		{
 			// enums default to their string form on ALL routes (a deliberate divergence from STJ, for javascript-client compat);
-			// WithEnumAsNumbers() is the opt-in for the numeric wire
+			// WithEnumAsNumbers() is the opt-in for the numeric output
 			Assert.That(CrystalJson.Serialize(DayOfWeek.Friday), Is.EqualTo("\"Friday\""), "text route defaults to the string form");
 			Assert.That(JsonValue.FromValue(DayOfWeek.Friday), Is.InstanceOf<JsonString>(), "DOM route defaults to the string form");
 			Assert.That(CrystalJson.Serialize(CourierKind.Paper), Is.EqualTo("\"C\""), "custom tokens shape the default form");
 			Assert.That(CrystalJson.Serialize(Access.ReadWrite | Access.Delete), Is.EqualTo("\"ReadWrite, Delete\""), "flags compose in the default form");
 
 			var numbers = CrystalJsonSettings.Json.WithEnumAsNumbers();
-			Assert.That(CrystalJson.Serialize(DayOfWeek.Friday, numbers), Is.EqualTo("5"), "WithEnumAsNumbers() restores the numeric wire");
+			Assert.That(CrystalJson.Serialize(DayOfWeek.Friday, numbers), Is.EqualTo("5"), "WithEnumAsNumbers() restores the numeric output");
 			Assert.That(JsonValue.FromValue(DayOfWeek.Friday, numbers), Is.InstanceOf<JsonNumber>(), "on the DOM route as well");
 
 			// reads stay tolerant regardless of the write default: names and tokens any-case, numbers, numeric strings
@@ -215,7 +215,7 @@ namespace SnowBank.Data.Json.Tests
 			// DOM route
 			Assert.That(JsonValue.FromValue(CourierKind.Paper, strings).ToStringOrDefault(), Is.EqualTo("C"));
 
-			// the string form is the default, so tokens shape the default wire; the numeric opt-out still works
+			// the string form is the default, so tokens shape the default format; the numeric opt-out still works
 			Assert.That(CrystalJson.Serialize(CourierKind.Electronic), Is.EqualTo("\"E\""));
 			Assert.That(CrystalJson.Serialize(CourierKind.Electronic, CrystalJsonSettings.Json.WithEnumAsNumbers()), Is.EqualTo("1"));
 

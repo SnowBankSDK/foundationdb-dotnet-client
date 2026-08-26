@@ -29,8 +29,8 @@ namespace SnowBank.Data.Xml.Tests
 	using System.Xml;
 	using System.Xml.Linq;
 	using NUnit.Framework;
-	using SnowBank.Data.Json;
 	using SnowBank.Data.Xml;
+	using SnowBank.Data.Xml.Tests.Acme;
 
 	/// <summary>Pins the five <see cref="CrystalXml"/> output entry points, driven by a hand-written <see cref="ICrystalXmlSerializer{T}"/></summary>
 	/// <remarks>
@@ -66,11 +66,11 @@ namespace SnowBank.Data.Xml.Tests
 		private sealed class BookXmlSerializer : ICrystalXmlSerializer<Book>
 		{
 
-			public void WriteXml<TEmitter>(ref TEmitter emitter, Book? value, CrystalJsonSettings? settings = null, string? rootName = null)
+			public void WriteXml<TEmitter>(ref TEmitter emitter, Book? value, CrystalXmlSettings? settings = null, string? rootName = null)
 				where TEmitter : struct, ICrystalXmlEmitter
 			{
 				var root = rootName is not null ? CrystalXmlName.Create(rootName) : DefaultRoot;
-				bool dcs = settings is not null && !settings.EnumsAsString;
+				bool dcs = settings is { } s && s.Profile == CrystalXmlSerializerDefaults.DataContractCompat;
 				emitter.WriteStartElement(in root);
 				if (value is not null)
 				{
@@ -79,7 +79,7 @@ namespace SnowBank.Data.Xml.Tests
 					emitter.WriteEndElement(in TitleName);
 
 					emitter.WriteStartElement(in RatingName);
-					emitter.WriteRawAscii(dcs ? CrystalXmlFormatters.FormatDcsChar(value.Rating) : CrystalXmlFormatters.FormatModernChar(value.Rating));
+					emitter.WriteRawAscii(dcs ? CrystalXmlFormatters.FormatDcsChar(value.Rating) : CrystalXmlFormatters.FormatGeneralChar(value.Rating));
 					emitter.WriteEndElement(in RatingName);
 				}
 				emitter.WriteEndElement(in root);
@@ -95,7 +95,7 @@ namespace SnowBank.Data.Xml.Tests
 		private sealed class ThrowingSerializer : ICrystalXmlSerializer<Book>
 		{
 
-			public void WriteXml<TEmitter>(ref TEmitter emitter, Book? value, CrystalJsonSettings? settings = null, string? rootName = null)
+			public void WriteXml<TEmitter>(ref TEmitter emitter, Book? value, CrystalXmlSettings? settings = null, string? rootName = null)
 				where TEmitter : struct, ICrystalXmlEmitter
 			{
 				emitter.WriteStartElement(in DefaultRoot);
@@ -111,7 +111,7 @@ namespace SnowBank.Data.Xml.Tests
 		private sealed class ThrowingAfterALargeChunkSerializer : ICrystalXmlSerializer<Book>
 		{
 
-			public void WriteXml<TEmitter>(ref TEmitter emitter, Book? value, CrystalJsonSettings? settings = null, string? rootName = null)
+			public void WriteXml<TEmitter>(ref TEmitter emitter, Book? value, CrystalXmlSettings? settings = null, string? rootName = null)
 				where TEmitter : struct, ICrystalXmlEmitter
 			{
 				emitter.WriteStartElement(in DefaultRoot);
@@ -216,15 +216,15 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			var book = MakeBook();
 
-			// no settings: the stub picks the "Modern" profile -> the character itself
-			string modern = CrystalXml.ToText(Serializer, book);
-			Assert.That(modern, Does.Contain("<Rating>A</Rating>"));
+			// no settings: the stub picks the "General" profile -> the character itself
+			string general = CrystalXml.ToText(Serializer, book);
+			Assert.That(general, Does.Contain("<Rating>A</Rating>"));
 
-			// DataContractCompat sets EnumsAsNumbers (EnumsAsString == false): the stub picks the "Dcs" profile -> the UTF-16 code unit
-			string dcs = CrystalXml.ToText(Serializer, book, settings: CrystalJsonSettings.DataContractCompat);
+			// DataContractCompat carries the DataContract profile: the stub picks the "Dcs" formatter -> the UTF-16 code unit
+			string dcs = CrystalXml.ToText(Serializer, book, settings: CrystalXmlSettings.DataContractCompat);
 			Assert.That(dcs, Does.Contain("<Rating>65</Rating>"));
 
-			Assert.That(dcs, Is.Not.EqualTo(modern), "settings must actually reach the serializer, not be silently dropped by the plumbing");
+			Assert.That(dcs, Is.Not.EqualTo(general), "settings must actually reach the serializer, not be silently dropped by the plumbing");
 		}
 
 		#endregion
@@ -320,6 +320,115 @@ namespace SnowBank.Data.Xml.Tests
 		[Test]
 		public void Test_WriteTo_Stream_Rejects_Null_Destination()
 			=> Assert.That(() => CrystalXml.WriteTo<Book>((Stream) null!, Serializer, null), Throws.InstanceOf<ArgumentNullException>());
+
+		#endregion
+
+		#region encoding parameter (ToSlice / ToBytes / WriteTo(Stream))...
+
+		[Test]
+		public void Test_Encoding_Default_Is_Utf8_With_No_Bom()
+		{
+			var book = MakeBook();
+			string text = CrystalXml.ToText(Serializer, book);
+
+			Slice slice = CrystalXml.ToSlice(Serializer, book);
+			Assert.That(slice.ToArray(), Is.EqualTo(Encoding.UTF8.GetBytes(text)));
+			Assert.That(slice.Array[slice.Offset], Is.EqualTo((byte) '<'), "no BOM preamble");
+		}
+
+		[Test]
+		public void Test_Encoding_Non_Default_Transcodes_The_Same_Characters()
+		{
+			var book = MakeBook();
+			string expectedText = CrystalXml.ToText(Serializer, book);
+
+			Slice slice = CrystalXml.ToSlice(Serializer, book, encoding: Encoding.Unicode);
+			Assert.That(Encoding.Unicode.GetString(slice.ToArray()), Is.EqualTo(expectedText));
+			Assert.That(slice.Count, Is.EqualTo(Encoding.Unicode.GetByteCount(expectedText)), "no BOM: the byte count matches the content exactly");
+		}
+
+		[Test]
+		public void Test_Encoding_Declaration_Names_The_Requested_Encoding()
+		{
+			var settings = CrystalXmlSettings.General.WithXmlDeclaration();
+			var book = MakeBook();
+
+			Slice utf8 = CrystalXml.ToSlice(Serializer, book, settings);
+			Assert.That(Encoding.UTF8.GetString(utf8.ToArray()), Does.StartWith("<?xml version=\"1.0\" encoding=\"utf-8\"?><Book>"));
+
+			Slice utf16 = CrystalXml.ToSlice(Serializer, book, settings, encoding: Encoding.Unicode);
+			Assert.That(Encoding.Unicode.GetString(utf16.ToArray()), Does.StartWith("<?xml version=\"1.0\" encoding=\"utf-16\"?><Book>"));
+		}
+
+		[Test]
+		public void Test_Encoding_Applies_To_ToBytes_And_WriteTo_Stream_Too()
+		{
+			var book = MakeBook();
+			byte[] expected = Encoding.Unicode.GetBytes(CrystalXml.ToText(Serializer, book));
+
+			Assert.That(CrystalXml.ToBytes(Serializer, book, encoding: Encoding.Unicode), Is.EqualTo(expected));
+
+			using var ms = new MemoryStream();
+			CrystalXml.WriteTo(ms, Serializer, book, encoding: Encoding.Unicode);
+			Assert.That(ms.ToArray(), Is.EqualTo(expected));
+		}
+
+		[Test]
+		public void Test_Encoding_Applies_To_The_Scalar_Root_Overload_Too()
+		{
+			// the CrystalXml.Roots.cs scalar root builds its own sink independently of the ICrystalXmlSerializer<T>
+			// overloads the rest of this region covers, so the encoding parameter needs its own pin
+			string expectedText = CrystalXml.Scalar.ToText("café <tag>");
+
+			Slice slice = CrystalXml.Scalar.ToSlice("café <tag>", encoding: Encoding.Unicode);
+			Assert.That(Encoding.Unicode.GetString(slice.ToArray()), Is.EqualTo(expectedText));
+			Assert.That(slice.Count, Is.EqualTo(Encoding.Unicode.GetByteCount(expectedText)), "no BOM: the byte count matches the content exactly");
+		}
+
+		#endregion
+
+		#region WriteXmlDeclaration...
+
+		[Test]
+		public void Test_WriteXmlDeclaration_Off_By_Default()
+			=> Assert.That(CrystalXml.ToText(Serializer, MakeBook()), Does.Not.Contain("<?xml"));
+
+		[Test]
+		public void Test_WriteXmlDeclaration_On_Names_Utf16_On_The_Text_Sink_And_Utf8_On_The_Byte_Sink()
+		{
+			var settings = CrystalXmlSettings.General.WithXmlDeclaration();
+			var book = MakeBook();
+
+			string text = CrystalXml.ToText(Serializer, book, settings);
+			Assert.That(text, Does.StartWith("<?xml version=\"1.0\" encoding=\"utf-16\"?><Book>"));
+
+			Slice slice = CrystalXml.ToSlice(Serializer, book, settings);
+			Assert.That(Encoding.UTF8.GetString(slice.ToArray()), Does.StartWith("<?xml version=\"1.0\" encoding=\"utf-8\"?><Book>"));
+		}
+
+		#endregion
+
+		#region runtime writer-level settings compose with a baked namespace-free container...
+
+		[Test]
+		public void Test_Runtime_Writer_Settings_Compose_With_A_Namespace_Free_Baked_Container()
+		{
+			// DcsProbeNamespaceFreeSerializers.OrderDefaultProbe is generated with [CrystalXmlOutput(OmitNamespaces = true)]:
+			// its element names are baked namespace-free at generation time. Passing DataContractCompat.WithOmitNamespaces()
+			// plus a writer-level knob (here Indented + Lf) proves the two override layers - baked names, runtime writer
+			// formatting - compose without one clobbering the other.
+			var probe = new OrderDefaultProbe { Zulu = "z", Alpha = "a", Mike = "m", Bravo = "b" };
+			var settings = CrystalXmlSettings.DataContractCompat.WithOmitNamespaces().WithIndented().WithNewLine(CrystalXmlNewLine.Lf);
+
+			string text = DcsProbeNamespaceFreeSerializers.OrderDefaultProbe.ToXmlText(probe, settings);
+
+			Assert.That(text, Does.Not.Contain("xmlns"), "the baked container stays namespace-free");
+			Assert.That(text, Does.Not.Contain(":"), "no prefix either");
+			Assert.That(
+				text,
+				Is.EqualTo("<OrderDefaultProbe>\n\t<Alpha>a</Alpha>\n\t<Bravo>b</Bravo>\n\t<Mike>m</Mike>\n\t<Zulu>z</Zulu>\n</OrderDefaultProbe>")
+			);
+		}
 
 		#endregion
 

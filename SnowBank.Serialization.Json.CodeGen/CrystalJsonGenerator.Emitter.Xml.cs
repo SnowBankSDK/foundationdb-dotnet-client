@@ -40,7 +40,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <para>Split out of <c>CrystalJsonGenerator.Emitter.cs</c> so that the XML format stays legible next to the JSON one
 		/// rather than interleaved with it, and so that the second profile (the DataContract format) has an obvious home.</para>
 		/// <para>The profile dispatch happens in exactly two places: <see cref="Emitter.WritesXml"/> decides whether a container
-		/// produces XML at all, and <see cref="Emitter.WritesXmlDcs"/> picks between this section (the modern format) and
+		/// produces XML at all, and <see cref="Emitter.WritesXmlDcs"/> picks between this section (the general format) and
 		/// <c>CrystalJsonGenerator.Emitter.Xml.Dcs.cs</c> (the DataContract format). What the two share - the name and enum
 		/// tables, the holder helpers, the scalar formatter selection - lives here.</para>
 		/// </remarks>
@@ -53,9 +53,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private const string XmlNameFullName = CrystalXmlNamespaceQualified + ".CrystalXmlName";
 
+			private const string XmlNamespaceFullName = CrystalXmlNamespaceQualified + ".CrystalXmlNamespace";
+
+			private const string CrystalXmlNamespacesFullName = CrystalXmlNamespaceQualified + ".CrystalXmlNamespaces";
+
 			private const string IXmlEmitterFullName = CrystalXmlNamespaceQualified + ".ICrystalXmlEmitter";
 
 			private const string ICrystalXmlSerializerFullName = CrystalXmlNamespaceQualified + ".ICrystalXmlSerializer";
+
+			private const string ICrystalXmlElementSerializerFullName = CrystalXmlNamespaceQualified + ".ICrystalXmlElementSerializer";
 
 			private const string CrystalXmlHelperFullName = CrystalXmlNamespaceQualified + ".CrystalXml";
 
@@ -67,7 +73,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private const string CrystalXmlMaxDepthFullName = CrystalXmlHelperFullName + ".MaxDepth";
 
-			private const string CrystalJsonSettingsExtensionsFullName = "global::" + KnownTypeSymbols.CrystalJsonNamespace + ".CrystalJsonSettingsExtensions";
+			private const string CrystalXmlSettingsExtensionsFullName = "global::" + KnownTypeSymbols.CrystalXmlSettingsExtensionsFullName;
 
 			private const string XDocumentFullName = "global::System.Xml.Linq.XDocument";
 
@@ -85,9 +91,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#region Resolved names (mirrors the parser's own constants)...
 
-			private const string XmlProfileModern = "Modern";
+			private const string XmlProfileGeneral = "General";
 
-			/// <inheritdoc cref="XmlProfileModern"/>
+			/// <inheritdoc cref="XmlProfileGeneral"/>
 			private const string XmlProfileDataContract = "DataContract";
 
 			private const string XmlDictionaryFormatDefault = "Default";
@@ -118,17 +124,47 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Default name of a dictionary entry element, when the member declares no <c>ItemName</c></summary>
 			private const string XmlDefaultEntryName = "entry";
 
+			/// <summary>The five namespaces of the DataContract format that no CLR namespace derives</summary>
+			/// <remarks>Spelled out here, and cached on <c>CrystalXmlNamespaces</c> at run time: these are output values, and the
+			/// generator resolves a shape to one of them without asking the runtime anything.</remarks>
+			private const string XmlSchemaInstanceNamespaceUri = "http://www.w3.org/2001/XMLSchema-instance";
+
+			/// <inheritdoc cref="XmlSchemaInstanceNamespaceUri"/>
+			private const string XmlSchemaNamespaceUri = "http://www.w3.org/2001/XMLSchema";
+
+			/// <inheritdoc cref="XmlSchemaInstanceNamespaceUri"/>
+			private const string XmlArraysNamespaceUri = "http://schemas.microsoft.com/2003/10/Serialization/Arrays";
+
+			/// <inheritdoc cref="XmlSchemaInstanceNamespaceUri"/>
+			private const string XmlSerializationNamespaceUri = "http://schemas.microsoft.com/2003/10/Serialization/";
+
+			/// <inheritdoc cref="XmlSchemaInstanceNamespaceUri"/>
+			private const string XmlSystemContractNamespaceUri = "http://schemas.datacontract.org/2004/07/System";
+
+			/// <summary>Prefix every namespace the DataContract format derives from a CLR namespace starts with</summary>
+			private const string XmlDataContractNamespacePrefix = "http://schemas.datacontract.org/2004/07/";
+
 			#endregion
 
 			/// <summary>Whether this container emits an XML surface at all</summary>
 			/// <remarks>Both profiles share the holder helpers, the <c>ICrystalXmlSerializer&lt;T&gt;</c> facet and the two write
 			/// methods; only the BODY of those methods differs, which is what <see cref="WritesXmlDcs"/> selects.</remarks>
-			private bool WritesXml => this.Metadata.XmlProfile is XmlProfileModern or XmlProfileDataContract;
+			private bool WritesXml => this.Metadata.XmlProfile is XmlProfileGeneral or XmlProfileDataContract;
 
-			/// <summary>Whether this container emits the DataContract (compat) XML format rather than the modern one</summary>
+			/// <summary>Whether this container emits the DataContract (compat) XML format rather than the general one</summary>
 			/// <remarks>That format derives every name from the data contract and has its own member order, null policy, dictionary
 			/// shape and scalar forms, so it is emitted by its own section (<c>CrystalJsonGenerator.Emitter.Xml.Dcs.cs</c>).</remarks>
 			private bool WritesXmlDcs => this.Metadata.XmlProfile == XmlProfileDataContract;
+
+			/// <summary>Whether the DataContract format this container emits is stripped of its namespaces and prefixes</summary>
+			/// <remarks>
+			/// <para>This is not a third profile: the emission is the DataContract one throughout, and this selects whether the
+			/// names it bakes carry a contract namespace. Every difference it makes is therefore in one place, the namespace
+			/// resolution (<c>GetXmlDcsNamespaceRef</c>), plus the one attribute whose VALUE is a name.</para>
+			/// <para>Only ever <see langword="true"/> together with <see cref="WritesXmlDcs"/>: the parser clears the option on
+			/// the General format, which has no namespace to strip, and reports <c>CXML0012</c> there.</para>
+			/// </remarks>
+			private bool WritesXmlDcsOmitNamespaces => this.WritesXmlDcs && this.Metadata.CrystalXmlOmitNamespaces;
 
 			#region Name table...
 
@@ -144,14 +180,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 				/// <remarks>SHARED with the <see cref="XmlEnumTable"/> of the same converter: the two prefixes are not disjoint (a name spelling out to <c>__xml_enum_Color</c> collides with the lookup method of an enum named <c>Color</c>), and two members of the same generated class carrying one identifier is CS0102.</remarks>
 				private readonly HashSet<string> Taken;
 
-				private readonly List<KeyValuePair<string, string>> Order = [ ];
+				private readonly List<(string Field, string Text, string? Namespace)> Order = [ ];
 
 				public XmlNameTable(HashSet<string> taken) => this.Taken = taken;
 
-				/// <summary>Returns the name of the field holding <paramref name="text"/>, declaring one if this is its first use</summary>
-				public string Ref(string text)
+				/// <summary>Returns the name of the field holding <paramref name="text"/> in no namespace, declaring one if this is its first use</summary>
+				public string Ref(string text) => Ref(text, null);
+
+				/// <summary>Returns the name of the field holding <paramref name="text"/> in a namespace, declaring one if this is its first use</summary>
+				/// <param name="text">Local name, with no prefix: a prefix is the emitter's to choose</param>
+				/// <param name="namespaceRef">Expression naming the namespace (from <see cref="XmlNamespaceTable.Ref"/>), or <see langword="null"/> for no namespace</param>
+				/// <remarks>Two names of the same text in different namespaces are two different names, so the key is the pair.
+				/// That is what a <c>string</c> item element being in the collections namespace under one member and in the XML
+				/// Schema namespace as a type annotation under another comes down to.</remarks>
+				public string Ref(string text, string? namespaceRef)
 				{
-					if (this.Fields.TryGetValue(text, out var existing))
+					string key = namespaceRef is null ? text : text + " " + namespaceRef;
+					if (this.Fields.TryGetValue(key, out var existing))
 					{
 						return existing;
 					}
@@ -162,8 +207,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.Append((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ? c : '_');
 					}
 
-					// two different names can sanitize to the same identifier ("a-b" and "a.b"), so the first one keeps it
-					// and the others get a numeric suffix: the field name is an implementation detail, the mapping must be 1:1
+					// two different names can sanitize to the same identifier ("a-b" and "a.b", or one name in two
+					// namespaces), so the first one keeps it and the others get a numeric suffix: the field name is an
+					// implementation detail, the mapping must be 1:1
 					string candidate = sb.ToString();
 					if (this.Taken.Contains(candidate))
 					{
@@ -175,9 +221,65 @@ namespace SnowBank.Serialization.Json.CodeGen
 						candidate += "_" + n.ToString(CultureInfo.InvariantCulture);
 					}
 
-					this.Fields[text] = candidate;
+					this.Fields[key] = candidate;
 					this.Taken.Add(candidate);
-					this.Order.Add(new(candidate, text));
+					this.Order.Add((candidate, text, namespaceRef));
+					return candidate;
+				}
+
+				/// <summary>Declared fields, in first-use order</summary>
+				public List<(string Field, string Text, string? Namespace)> Entries => this.Order;
+
+			}
+
+			/// <summary>Collects the distinct contract namespaces a generated converter writes, one cached <c>static readonly CrystalXmlNamespace</c> field each</summary>
+			/// <remarks>
+			/// <para>Deduplicated by URI, like the name table is by name: a contract namespace is shared by every type declared
+			/// in one CLR namespace, so a container of thirty types usually writes two or three URIs.</para>
+			/// <para>The namespaces the format uses that no CLR namespace derives take no field at all: they are already cached
+			/// on <c>CrystalXmlNamespaces</c>, so a container refers to those instead of carrying its own copy of the bytes.</para>
+			/// </remarks>
+			private sealed class XmlNamespaceTable
+			{
+
+				private readonly Dictionary<string, string> Fields = new(StringComparer.Ordinal);
+
+				/// <inheritdoc cref="XmlNameTable.Taken" path="/remarks"/>
+				private readonly HashSet<string> Taken;
+
+				private readonly List<KeyValuePair<string, string>> Order = [ ];
+
+				public XmlNamespaceTable(HashSet<string> taken) => this.Taken = taken;
+
+				/// <summary>Returns the expression that names the namespace <paramref name="uri"/>, declaring a field if this is its first use</summary>
+				public string Ref(string uri)
+				{
+					if (GetXmlBuiltinNamespaceRef(uri) is { } builtin)
+					{
+						return builtin;
+					}
+
+					if (this.Fields.TryGetValue(uri, out var existing))
+					{
+						return existing;
+					}
+
+					// numbered rather than derived from the URI: a URI sanitizes into a long identifier that is no more
+					// readable than a number, and the declaration carries the URI as its value anyway
+					string candidate = "__xmlns_" + (this.Order.Count + 1).ToString(CultureInfo.InvariantCulture);
+					if (this.Taken.Contains(candidate))
+					{
+						int n = 2;
+						while (this.Taken.Contains(candidate + "_" + n.ToString(CultureInfo.InvariantCulture)))
+						{
+							++n;
+						}
+						candidate += "_" + n.ToString(CultureInfo.InvariantCulture);
+					}
+
+					this.Fields[uri] = candidate;
+					this.Taken.Add(candidate);
+					this.Order.Add(new(candidate, uri));
 					return candidate;
 				}
 
@@ -186,19 +288,48 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			}
 
-			/// <summary>Emits the cached <see cref="XmlNameTable"/> fields of one converter</summary>
-			/// <remarks>Emitted AFTER the bodies that reference them (C# does not care about declaration order inside a type),
-			/// because the table is filled BY those bodies: any pre-pass would be a second implementation of the same walk,
-			/// free to drift from it.</remarks>
-			private static void WriteXmlNameFields(CSharpCodeBuilder sb, XmlNameTable names)
+			/// <summary>Returns the expression naming one of the format's built-in namespaces, or <see langword="null"/> when the URI is a derived one</summary>
+			private static string? GetXmlBuiltinNamespaceRef(string uri) => uri switch
 			{
+				XmlSchemaInstanceNamespaceUri => CrystalXmlNamespacesFullName + ".XmlSchemaInstance",
+				XmlSchemaNamespaceUri => CrystalXmlNamespacesFullName + ".XmlSchema",
+				XmlArraysNamespaceUri => CrystalXmlNamespacesFullName + ".Arrays",
+				XmlSerializationNamespaceUri => CrystalXmlNamespacesFullName + ".Serialization",
+				XmlSystemContractNamespaceUri => CrystalXmlNamespacesFullName + ".SystemContract",
+				_ => null,
+			};
+
+			/// <summary>Emits the cached namespace and name fields of one converter</summary>
+			/// <remarks>
+			/// <para>Emitted AFTER the bodies that reference them (C# does not care about declaration order inside a type),
+			/// because the tables are filled BY those bodies: any pre-pass would be a second implementation of the same walk,
+			/// free to drift from it.</para>
+			/// <para>The namespaces come first, because a name field's initializer reads one, and static field initializers run
+			/// in the order they are declared.</para>
+			/// </remarks>
+			private void WriteXmlNameFields(CSharpCodeBuilder sb, XmlNameTable names)
+			{
+				if (this.XmlNamespaces.Entries.Count != 0)
+				{
+					sb.Comment("Cached contract namespaces, in both representations, declared before the names that read them");
+					foreach (var entry in this.XmlNamespaces.Entries)
+					{
+						sb.AppendLine($"private static readonly {XmlNamespaceFullName} {entry.Key} = new({CSharpCodeBuilder.Constant(entry.Value)}, {CSharpCodeBuilder.Utf8Constant(entry.Value)});");
+					}
+					sb.NewLine();
+				}
+
 				sb.Comment("Cached element and attribute names, in both representations: the char core copies the string, the byte core copies the frozen UTF-8 blob");
-				foreach (var entry in names.Entries)
+				foreach (var (field, text, namespaceRef) in names.Entries)
 				{
 					// the bytes are spelled out rather than written as "..."u8.ToArray(): UTF-8 string literals are a C# 11 feature,
 					// and XML output must not cost a consumer more language than JSON output does (the generator's floor is C# 9).
 					// The two forms compile to the same blob copy, and the string right before them keeps the line readable.
-					sb.AppendLine($"private static readonly {XmlNameFullName} {entry.Key} = new({CSharpCodeBuilder.Constant(entry.Value)}, {CSharpCodeBuilder.Utf8Constant(entry.Value)});");
+					string representations = $"{CSharpCodeBuilder.Constant(text)}, {CSharpCodeBuilder.Utf8Constant(text)}";
+					sb.AppendLine(
+						namespaceRef is null
+							? $"private static readonly {XmlNameFullName} {field} = new({representations});"
+							: $"private static readonly {XmlNameFullName} {field} = new({representations}, {namespaceRef});");
 				}
 			}
 
@@ -284,7 +415,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					else
 					{
-						WriteXmlModernEnumHelper(sb, entry.Key, entry.Value);
+						WriteXmlGeneralEnumHelper(sb, entry.Key, entry.Value);
 					}
 				}
 			}
@@ -323,8 +454,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 			}
 
-			/// <summary>Emits the label lookup of one enum, on the modern format</summary>
-			private void WriteXmlModernEnumHelper(CSharpCodeBuilder sb, string methodName, TypeMetadata type)
+			/// <summary>Emits the label lookup of one enum, on the general format</summary>
+			private void WriteXmlGeneralEnumHelper(CSharpCodeBuilder sb, string methodName, TypeMetadata type)
 			{
 				string fullName = type.FullyQualifiedName;
 				string numeric = FormatXmlScalar(GetXmlEnumUnderlyingFamily(type), $"({GetXmlEnumUnderlyingKeyword(type)}) value");
@@ -334,7 +465,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					methodName,
 					type,
 					$"Labels of {type.Name}, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache",
-					// every declared member is in the output here: the modern profile has no membership rule of its own
+					// every declared member is in the output here: the general profile has no membership rule of its own
 					static _ => true,
 					GetXmlEnumLabel,
 					() =>
@@ -368,6 +499,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Table of the enum lookups of the converter currently being emitted</summary>
 			private XmlEnumTable XmlEnums { get; set; } = new(new(StringComparer.Ordinal));
 
+			/// <summary>Contract namespaces of the converter currently being emitted</summary>
+			/// <remarks>An instance member, unlike the name table, because the namespaces are resolved deep inside the walk (a
+			/// member's declared type, a collection's element type) where threading a second table through every signature
+			/// would say nothing the name table's own parameter does not already say.</remarks>
+			private XmlNamespaceTable XmlNamespaces { get; set; } = new(new(StringComparer.Ordinal));
+
 			/// <summary>Returns the C# keyword of the underlying integer type of an enum</summary>
 			private static string GetXmlEnumUnderlyingKeyword(TypeMetadata type) => type.EnumUnderlyingSpecialType switch
 			{
@@ -398,48 +535,65 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#region Holder helpers (the eight outputs)...
 
+			/// <summary>Returns the settings expression a generated XML holder helper uses when the caller passed none: the container's baked format profile</summary>
+			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging), the XML twin of <see cref="GetSettingsFallbackExpr"/>.
+			/// A namespace-free DataContract container (<see cref="WritesXmlDcsOmitNamespaces"/>) appends <c>WithOmitNamespaces()</c> so the baked
+			/// default stays self-consistent with the names this container actually writes.</remarks>
+			private string GetXmlSettingsFallbackExpr(string settingsVar)
+			{
+				string profile = $"{KnownTypeSymbols.CrystalXmlSettingsFullName}.{(this.WritesXmlDcs ? "DataContractCompat" : "General")}";
+				if (this.WritesXmlDcsOmitNamespaces)
+				{
+					profile += ".WithOmitNamespaces()";
+				}
+				return $"{settingsVar} ?? {profile}";
+			}
+
 			/// <summary>Emits the eight XML output entry points on the type's holder, each delegating to the matching <c>CrystalXml</c> helper</summary>
 			/// <remarks>None of them goes through another: every one owns its own sink lifecycle inside <c>CrystalXml</c>, so a
-			/// text document never round-trips through UTF-8 (or the other way around) just to reach a different overload.</remarks>
+			/// text document never round-trips through UTF-8 (or the other way around) just to reach a different overload.
+			/// A <see langword="null"/> settings argument resolves to the container's baked format profile (see <see cref="GetXmlSettingsFallbackExpr"/>),
+			/// not to the raw <see langword="null"/>: only an explicit caller value overrides it.</remarks>
 			private void WriteXmlStaticHelpers(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef, string typeCref)
 			{
 				string instanceType = typeDef.Type.FullyQualifiedName + (typeDef.Type.IsValueType() ? "" : "?");
-				string tail = $"{KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, string? rootName = default";
+				string tail = $"{KnownTypeSymbols.CrystalXmlSettingsFullName}? settings = default, string? rootName = default";
+				string settingsExpr = GetXmlSettingsFallbackExpr("settings");
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a string of XML text</summary>");
-				sb.AppendLine($"public static string ToXmlText({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToText(Default, instance, settings, rootName);");
+				sb.AppendLine($"public static string ToXmlText({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToText(Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a UTF-8 encoded <see cref=\"{KnownTypeSymbols.SliceFullName}\"/> of XML</summary>");
-				sb.AppendLine($"public static {KnownTypeSymbols.SliceFullName} ToXmlSlice({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToSlice(Default, instance, settings, rootName);");
+				sb.AppendLine($"public static {KnownTypeSymbols.SliceFullName} ToXmlSlice({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToSlice(Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a UTF-8 encoded byte array of XML</summary>");
-				sb.AppendLine($"public static byte[] ToXmlBytes({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToBytes(Default, instance, settings, rootName);");
+				sb.AppendLine($"public static byte[] ToXmlBytes({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToBytes(Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> as UTF-8 encoded XML into the specified stream</summary>");
 				sb.XmlComment("<remarks>The stream is not owned by this call: the caller flushes and disposes it.</remarks>");
-				sb.AppendLine($"public static void WriteXmlTo({StreamFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, settings, rootName);");
+				sb.AppendLine($"public static void WriteXmlTo({StreamFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> as XML text into the specified writer</summary>");
 				sb.XmlComment("<remarks>The writer is not owned by this call: the caller flushes and disposes it.</remarks>");
-				sb.AppendLine($"public static void WriteXmlTo({TextWriterFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, settings, rootName);");
+				sb.AppendLine($"public static void WriteXmlTo({TextWriterFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> as UTF-8 encoded XML into the specified buffer writer</summary>");
-				sb.AppendLine($"public static void WriteXmlTo({IBufferWriterOfByteFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, settings, rootName);");
+				sb.AppendLine($"public static void WriteXmlTo({IBufferWriterOfByteFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into the specified <see cref=\"T:System.Xml.XmlWriter\"/></summary>");
 				sb.XmlComment("<remarks>Only infoset equivalence with the byte-exact output is guaranteed here: the concrete bytes depend on how the writer was configured.</remarks>");
-				sb.AppendLine($"public static void WriteXmlTo({XmlWriterFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, settings, rootName);");
+				sb.AppendLine($"public static void WriteXmlTo({XmlWriterFullName} destination, {instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.WriteTo(destination, Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into an in-memory <see cref=\"T:System.Xml.Linq.XDocument\"/></summary>");
 				sb.XmlComment("<remarks>Only infoset equivalence with the byte-exact output is guaranteed here (no indentation or line-ending promise): this is the XML counterpart of <c>Pack</c>.</remarks>");
-				sb.AppendLine($"public static {XDocumentFullName} ToXDocument({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToXDocument(Default, instance, settings, rootName);");
+				sb.AppendLine($"public static {XDocumentFullName} ToXDocument({instanceType} instance, {tail}) => {CrystalXmlHelperFullName}.ToXDocument(Default, instance, {settingsExpr}, rootName);");
 				sb.NewLine();
 			}
 
@@ -460,12 +614,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 				var taken = new HashSet<string>(StringComparer.Ordinal);
 				var names = new XmlNameTable(taken);
 				this.XmlEnums = new(taken);
+				this.XmlNamespaces = new(taken);
 				this.XmlNeedsNotSupportedHelper = false;
 				this.XmlNeedsFlagsHelper = false;
 				this.XmlNeedsCycleHelper = false;
 				var type = typeDef.Type;
 				string valueType = type.FullyQualifiedName + (type.IsValueType() ? "" : "?");
-				string settingsType = KnownTypeSymbols.CrystalJsonSettingsFullName;
+				string settingsType = KnownTypeSymbols.CrystalXmlSettingsFullName;
 
 				string rootRef = names.Ref(ResolveXmlRootName(sb, typeDef));
 
@@ -486,6 +641,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("WriteXmlElement(ref emitter, in __root, value, settings, 0);");
 				sb.LeaveBlock("else");
 				sb.LeaveBlock("WriteXml");
+				sb.NewLine();
+
+				// the two names the collection root entry points compose with
+				sb.InheritDoc();
+				sb.AppendLine($"public {XmlNameFullName} ElementName => {rootRef};");
+				sb.NewLine();
+				sb.InheritDoc();
+				sb.XmlComment("<remarks>The General profile has no collection root convention: the caller names such a root.</remarks>");
+				sb.AppendLine("public string? CollectionRootName => null;");
 				sb.NewLine();
 
 				// WriteXmlElement(...): the nested entry point, so a parent can name the child element without re-validating a name
@@ -696,15 +860,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="comment">The format's own wording of the rule, which is all that differs between the two profiles</param>
 			/// <remarks>Shared by both formats: a document needs a root, so a null instance is an element and never nothing at all, and
 			/// the two profiles that agree on that must not be free to drift apart in separate copies of the same nine statements.</remarks>
-			private static void WriteXmlNullRootElement(CSharpCodeBuilder sb, XmlNameTable names, string comment)
+			private void WriteXmlNullRootElement(CSharpCodeBuilder sb, XmlNameTable names, string comment)
 			{
 				sb.Comment(comment);
 				sb.AppendLine("if (value is null)");
 				sb.EnterBlock();
 				sb.AppendLine("emitter.WriteStartElement(in name);");
-				sb.AppendLine($"if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+				sb.AppendLine($"if ({CrystalXmlSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 				sb.EnterBlock();
-				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
+				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.LeaveBlock();
 				sb.AppendLine("emitter.WriteEndElement(in name);");
 				sb.AppendLine("return;");
@@ -718,7 +882,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <c>StackOverflowException</c> that .NET cannot catch and that takes the whole process down. Counting the levels
 			/// costs one comparison against a constant per element on the happy path, allocates nothing, and needs no reflection.</para>
 			/// <para>Measured before this guard existed: a two-node cycle overflowed after ~2300 nested <c>WriteXmlElement</c>
-			/// frames on the modern profile and ~4600 on the compat one (one frame per level). The cap lives in
+			/// frames on the general profile and ~4600 on the compat one (one frame per level). The cap lives in
 			/// <c>CrystalXml.MaxDepth</c>, whose own documentation justifies the value.</para>
 			/// </remarks>
 			private void WriteXmlDepthGuard(CSharpCodeBuilder sb, TypeMetadata type)
@@ -747,11 +911,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 			}
 
+			/// <summary>Returns the field holding the name of the null marker, in the namespace the profile writes it in</summary>
+			/// <remarks>The local name is <c>nil</c> on both profiles and under both DataContract outputs; only the namespace
+			/// differs. The DataContract default puts it in the XML Schema instance namespace, so it reaches the output as
+			/// <c>i:nil</c>; the General profile and the omit-namespaces option put it in none, so it reaches the output bare. Giving the
+			/// namespace to the NAME instead of to the write site is what keeps every caller of this marker unchanged.</remarks>
+			private string XmlNilNameRef(XmlNameTable names)
+				=> this.WritesXmlDcs && !this.WritesXmlDcsOmitNamespaces
+					? names.Ref(XmlNilAttributeName, this.XmlNamespaces.Ref(XmlSchemaInstanceNamespaceUri))
+					: names.Ref(XmlNilAttributeName);
+
 			/// <summary>Writes the <c>nil</c> marker on the element currently open, and closes it</summary>
-			private static void WriteXmlNilElement(CSharpCodeBuilder sb, XmlNameTable names, string nameRef)
+			private void WriteXmlNilElement(CSharpCodeBuilder sb, XmlNameTable names, string nameRef)
 			{
 				sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
-				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
+				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.AppendLine($"emitter.WriteEndElement(in {nameRef});");
 			}
 
@@ -792,7 +966,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Emits what a nullable value writes when it IS null, per its resolved <paramref name="policy"/>: nothing, a nil element, or a nil element only when the settings ask</summary>
 			/// <remarks>Emitted as the <c>else</c> of the non-null branch its two callers already opened, and identical on both formats:
 			/// the profiles differ in how they write a VALUE, not in what they do with its absence.</remarks>
-			private static void WriteXmlNullPolicyBranch(CSharpCodeBuilder sb, XmlNameTable names, string nameRef, XmlNullPolicy policy)
+			private void WriteXmlNullPolicyBranch(CSharpCodeBuilder sb, XmlNameTable names, string nameRef, XmlNullPolicy policy)
 			{
 				switch (policy)
 				{
@@ -806,7 +980,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					case XmlNullPolicy.NilWhenSettingsAsk:
 					{
-						sb.AppendLine($"else if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+						sb.AppendLine($"else if ({CrystalXmlSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 						sb.EnterBlock("else");
 						WriteXmlNilElement(sb, names, nameRef);
 						sb.LeaveBlock("else");
@@ -1144,7 +1318,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Writes the value of a dictionary entry in one of the attribute shapes: as text content, or as an attribute</summary>
 			/// <remarks>A null value makes the text (or the attribute) absent; the settings can still mark the entry itself nil, which
 			/// is the only unambiguous marker either shape has room for.</remarks>
-			private static void WriteXmlEntryValueText(CSharpCodeBuilder sb, XmlNameTable names, TypeMetadata valueType, string rawExpr, (string Text, bool NeedsEscaping) text, string? asAttribute)
+			private void WriteXmlEntryValueText(CSharpCodeBuilder sb, XmlNameTable names, TypeMetadata valueType, string rawExpr, (string Text, bool NeedsEscaping) text, string? asAttribute)
 			{
 				string write = asAttribute is not null
 					? $"emitter.WriteAttribute(in {asAttribute}, {text.Text});"
@@ -1160,9 +1334,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock();
 				sb.AppendLine(write);
 				sb.LeaveBlock();
-				sb.AppendLine($"else if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+				sb.AppendLine($"else if ({CrystalXmlSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 				sb.EnterBlock("else");
-				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
+				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.LeaveBlock("else");
 			}
 
@@ -1272,7 +1446,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Returns the call to the profile's formatter for one scalar family</summary>
 			/// <remarks>The two profiles share every lexical form except <c>char</c>, so only that family selects per profile.</remarks>
 			private string FormatXmlScalar(string family, string valueExpr) => family == "Char"
-				? $"{CrystalXmlFormattersFullName}.{(this.WritesXmlDcs ? "FormatDcsChar" : "FormatModernChar")}({valueExpr})"
+				? $"{CrystalXmlFormattersFullName}.{(this.WritesXmlDcs ? "FormatDcsChar" : "FormatGeneralChar")}({valueExpr})"
 				: $"{CrystalXmlFormattersFullName}.Format{family}({valueExpr})";
 
 			#endregion

@@ -120,7 +120,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	#endregion
 
-	/// <summary>Probes the DCJS-era wire shapes that the SOURCE-GENERATED path shares with the reflection path (a [DataContract] type itself cannot be enrolled: CJSON0014)</summary>
+	/// <summary>Probes the DCJS-era output shapes that the SOURCE-GENERATED path shares with the reflection path (a [DataContract] type itself cannot be enrolled: CJSON0014)</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -131,7 +131,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Generated_Converter_Reads_Legacy_Dictionary_Pair_Arrays()
 		{
 			// generated dictionary reads route through the shared runtime binders, so the tolerance for the
-			// DCJS wire shape [ {"Key":..,"Value":..} ] applies to generated converters as well
+			// DCJS output shape [ {"Key":..,"Value":..} ] applies to generated converters as well
 			var dto = ProbeConverters.ProbeDictDto.Deserialize("""{ "Counts": [ { "Key": "a", "Value": 1 }, { "Key": "b", "Value": 2 } ] }""");
 			Assert.That(dto.Counts, Is.EqualTo(new Dictionary<string, int> { ["a"] = 1, ["b"] = 2 }));
 
@@ -174,8 +174,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			return Encoding.UTF8.GetString(ms.ToArray());
 		}
 
-		/// <summary>Compares two wires by MEMBERSHIP and VALUES, ignoring member order</summary>
-		/// <remarks>Order is deliberately not compared: DCJS emits members alphabetically by wire name, both of our paths
+		/// <summary>Compares two outputs by MEMBERSHIP and VALUES, ignoring member order</summary>
+		/// <remarks>Order is deliberately not compared: DCJS emits members alphabetically by output name, both of our paths
 		/// emit declaration order, and matching the runtime path (not DCJS) is the acceptance bar for generated output.</remarks>
 		private static void AssertSameMembers(string actual, string expected, string message)
 		{
@@ -228,10 +228,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Generated_DataContract_Binds_Like_Reflection()
 		{
-			var wire = DcjsSerialize(MakeContractDto());
+			var output = DcjsSerialize(MakeContractDto());
 
-			var generated = ProbeConverters.ProbeContractDto.Deserialize(wire);
-			var reflection = CrystalJson.Deserialize<ProbeContractDto>(wire)!;
+			var generated = ProbeConverters.ProbeContractDto.Deserialize(output);
+			var reflection = CrystalJson.Deserialize<ProbeContractDto>(output)!;
 
 			foreach (var (label, back) in new[] { ("generated", generated), ("reflection", reflection) })
 			{
@@ -262,7 +262,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// ONE comparison, not two tests that happen to agree: the same type goes through both paths and the
 			// traces must match. A generated converter that silently skipped the callbacks would leave the methods
 			// inert while looking entirely correct to a reader, which is the trap this test exists to close.
-			const string Wire = """{"Name":"n","Rank":7}""";
+			const string Output = """{"Name":"n","Rank":7}""";
 
 			// write side
 			var generatedWriteDto = new ProbeCallbackDto { Name = "n", Rank = 7 };
@@ -278,8 +278,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(generatedPackDto.Trace, Is.EqualTo(generatedWriteDto.Trace), "the generated DOM route must fire the same callbacks as the generated text route");
 
 			// read side
-			var generatedRead = ProbeConverters.ProbeCallbackDto.Deserialize(Wire);
-			var reflectionRead = CrystalJson.Deserialize<ProbeCallbackDto>(Wire)!;
+			var generatedRead = ProbeConverters.ProbeCallbackDto.Deserialize(Output);
+			var reflectionRead = CrystalJson.Deserialize<ProbeCallbackDto>(Output)!;
 			Assert.That(generatedRead.Trace, Is.EqualTo(reflectionRead.Trace), "read-side callback traces must match between the two paths");
 			Assert.That(generatedRead.Trace, Is.EqualTo(new[] { "OnDeserializing", "OnDeserialized:2", "sawName:n" }), "and both must have actually fired, in order");
 		}
@@ -289,10 +289,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the bracket has to be strict, not approximate: the pre-hook runs before the FIRST member is written and
 			// the post-hook after the LAST. A latch that opens after the first member has landed does not latch.
-			const string Wire = """{"Name":"n","Rank":7}""";
+			const string Output = """{"Name":"n","Rank":7}""";
 
-			var generated = ProbeConverters.ProbeCallbackDto.Deserialize(Wire);
-			var reflection = CrystalJson.Deserialize<ProbeCallbackDto>(Wire)!;
+			var generated = ProbeConverters.ProbeCallbackDto.Deserialize(Output);
+			var reflection = CrystalJson.Deserialize<ProbeCallbackDto>(Output)!;
 
 			foreach (var (label, dto) in new[] { ("generated", generated), ("reflection", reflection) })
 			{

@@ -24,11 +24,11 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-// This file IS compiled for the net472 validation target: see the remark on ReferenceDcsWire.cs.
+// This file IS compiled for the net472 validation target: see the remark on ReferenceDcsOutput.cs.
 
 // note: probe types mirror, family by family, the reference probe set, whose format was measured
-// against a LIVE DataContractSerializer. Every expectation in DcsWireFidelityFacts is measured against that live
-// oracle (ReferenceDcsWire), never assumed. Acme-flavored naming is deliberate.
+// against a LIVE DataContractSerializer. Every expectation in DcsOutputFidelityFacts is measured against that live
+// oracle (ReferenceDcsOutput), never assumed. Acme-flavored naming is deliberate.
 // note: this namespace (SnowBank.Data.Xml.Tests.Acme) is local, and NOT difference from the reference is format-safe the
 // because of two things: the reference pipeline's StrippingXmlWriter erases namespaces entirely, and the one test that
 // looks at a contract namespace (the dictionary-digest divergence) regex-matches whatever 8-char digest it finds
@@ -117,7 +117,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	/// profile with diagnostic CXML0010 (a pre-existing, documented decision from Task 9): the element names it drives
 	/// (<c>TheItems</c>/<c>TheItem</c>) are read from an attribute the generated format never inspects, so honoring it would
 	/// silently diverge from the reference format it is trying to imitate. This family is therefore excluded from
-	/// <c>DcsWireFidelityFacts</c>, not exercised as a false red.</summary>
+	/// <c>DcsOutputFidelityFacts</c>, not exercised as a false red.</summary>
 	[CollectionDataContract(Name = "TheItems", ItemName = "TheItem")]
 	public sealed class NamedItems : List<string>;
 
@@ -315,10 +315,61 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		public void SetSecret(string? value) => this.secret = value;
 	}
 
+	/// <summary>A plain DTO (no data contract) whose member carries a JSON rename. The reference serializer names the
+	/// element after the member, and the JSON attribute names the JSON member only. On a
+	/// <see cref="DataContractAttribute"/> type the same pair is refused instead (CJSON0011), because the contract
+	/// already names the member.</summary>
+	public sealed class PocoJsonRenamedProbe
+	{
+		[JsonProperty("SUBSCRIPTION_CODE")] public string? SubscriptionCode { get; set; }
+		public string? Label { get; set; }
+	}
+
+	/// <summary>Three levels, the middle one overriding a member of the base. The reference serializer writes the
+	/// member once, with the members of the level that declares it.</summary>
+	[DataContract]
+	public class OverrideBaseProbe
+	{
+		[DataMember] public virtual string? Shared { get; set; }
+		[DataMember] public string? Zulu { get; set; }
+	}
+
+	/// <inheritdoc cref="OverrideBaseProbe"/>
+	[DataContract]
+	public class OverrideMiddleProbe : OverrideBaseProbe
+	{
+		[DataMember] public override string? Shared { get; set; }
+		[DataMember] public string? Alpha { get; set; }
+	}
+
+	/// <inheritdoc cref="OverrideBaseProbe"/>
+	[DataContract]
+	public sealed class OverrideLeafProbe : OverrideMiddleProbe
+	{
+		[DataMember] public string? Kilo { get; set; }
+	}
+
+	/// <summary>A member shadowed by a <c>new</c> one. The reference serializer treats the two as two contract members
+	/// and writes both; one C# accessor per name can only read the derived one (acted deviation 4).</summary>
+	[DataContract]
+	public class ShadowBaseProbe
+	{
+		[DataMember] public string? Shared { get; set; }
+		[DataMember] public string? Zulu { get; set; }
+	}
+
+	/// <inheritdoc cref="ShadowBaseProbe"/>
+	[DataContract]
+	public sealed class ShadowLeafProbe : ShadowBaseProbe
+	{
+		[DataMember] public new string? Shared { get; set; }
+		[DataMember] public string? Alpha { get; set; }
+	}
+
 	/// <summary>Pins the CRITICAL fix: a <c>readonly</c> <c>[DataMember]</c> FIELD, constructor-assigned. The reference
 	/// serializer's no-set-method check is property-only (it never looks at fields), so it emits this member; the
 	/// generator's own read-only filter used to drop it regardless of field-vs-property, which silently dropped it from
-	/// the compat format. See <c>DcsWireFidelityFacts.Test_ReadOnly_DataMember_Field_Is_On_The_Wire</c>.</summary>
+	/// the compat format. See <c>DcsOutputFidelityFacts.Test_ReadOnly_DataMember_Field_Is_In_The_Output</c>.</summary>
 	[DataContract]
 	public sealed class ReadOnlyFieldProbe
 	{
@@ -371,7 +422,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	// Test_A_Generic_Argument_That_Is_Itself_A_Closed_Generic_Fails_The_Build. That is a DIFFERENT failure surface
 	// than the brief's "reflection-free code cannot name ArrayOfstring at run time" (a RUNTIME refusal): this family
 	// never reaches runtime at all, so acted deviation 3 is pinned instead via an object-typed slot holding an
-	// undeclared runtime type (DcsWireFidelityFacts.Test_Deviation_3_Undeclared_Runtime_Type_In_An_AnyType_Slot),
+	// undeclared runtime type (DcsOutputFidelityFacts.Test_Deviation_3_Undeclared_Runtime_Type_In_An_AnyType_Slot),
 	// mirroring Task 9's own Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Refused_In_An_AnyType_Slot. See the
 	// Task 10 report for the full judgment call.
 	[DataContract]
@@ -392,6 +443,54 @@ namespace SnowBank.Data.Xml.Tests.Acme
 		// which cover value-type T? and read-only members but not this collection-element annotation; still open.
 		// Null items go in via null!, like WithNullItem.
 		[DataMember] public List<object>? Results;
+	}
+
+	#endregion
+
+	#region The worked example: one model, three namespaces, both outputs...
+
+	// One model that carries every namespace rule at once: a root with an explicit contract namespace, a nested contract in
+	// a second namespace, a null member, a polymorphic member whose derived type lives in a third namespace, and an
+	// unannotated List<string>, which pulls the built-in collections namespace. The CLR names carry a prefix so they cannot
+	// collide with the other probes, and [DataContract(Name)] keeps the output names short.
+
+	[DataContract(Name = "Library", Namespace = "urn:acme:biblio")]
+	[KnownType(typeof(WorkedRangeCriterion))]
+	public sealed class WorkedLibrary
+	{
+		[DataMember(Order = 0)] public string? Name { get; set; }
+
+		[DataMember(Order = 1)] public WorkedContact? Owner { get; set; }
+
+		[DataMember(Order = 2)] public WorkedContact? NullChild { get; set; }
+
+		[DataMember(Order = 3)] public WorkedCriterion? CritBase { get; set; }
+
+		[DataMember(Order = 4)] public WorkedCriterion? CritDerived { get; set; }
+
+		[DataMember(Order = 5)] public List<string>? Tags { get; set; }
+	}
+
+	[DataContract(Name = "Contact", Namespace = "urn:acme:annuaire")]
+	public sealed class WorkedContact
+	{
+		[DataMember] public string? Email { get; set; }
+	}
+
+	// two attribute families on purpose: the live DataContractSerializer oracle registers a derived type through
+	// [KnownType], and the generator reads [JsonDerivedType], so a model that both must agree on declares both
+	[DataContract(Name = "Criterion", Namespace = "urn:acme:recherche")]
+	[KnownType(typeof(WorkedRangeCriterion))]
+	[JsonPolymorphic]
+	[JsonDerivedType(typeof(WorkedRangeCriterion), "range")]
+	public class WorkedCriterion
+	{
+	}
+
+	[DataContract(Name = "RangeCriterion", Namespace = "urn:acme:recherche")]
+	public sealed class WorkedRangeCriterion : WorkedCriterion
+	{
+		[DataMember] public int Min { get; set; }
 	}
 
 	#endregion
@@ -433,7 +532,56 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	[CrystalSerializable(typeof(KeyedBagProbe))]
 	[CrystalSerializable(typeof(AnyTypeCollectionProbe))]
 	[CrystalSerializable(typeof(ReadOnlyFieldProbe))]
+	[CrystalSerializable(typeof(PocoJsonRenamedProbe))]
+	[CrystalSerializable(typeof(OverrideLeafProbe))]
+	[CrystalSerializable(typeof(ShadowLeafProbe))]
+	[CrystalSerializable(typeof(WorkedLibrary))]
+	[CrystalSerializable(typeof(WorkedContact))]
+	[CrystalSerializable(typeof(WorkedCriterion))]
+	[CrystalSerializable(typeof(WorkedRangeCriterion))]
 	public static partial class DcsProbeSerializers
+	{
+	}
+
+	// The NAMESPACE-FREE twin of the container above, enrolling the same probes. Every fidelity fact runs against both, so
+	// the two outputs of one profile stay pinned by one instance and one oracle: the default against the standard format,
+	// this one against the same output with its namespaces stripped.
+	[CrystalConverter]
+	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
+	[CrystalXmlOutput(OmitNamespaces = true)]
+	[CrystalSerializable(typeof(NilProbe))]
+	[CrystalSerializable(typeof(Shelf))]
+	[CrystalSerializable(typeof(OrderDefaultProbe))]
+	[CrystalSerializable(typeof(OrderExplicitProbe))]
+	[CrystalSerializable(typeof(OrderDerivedProbe))]
+	[CrystalSerializable(typeof(EmitDefaultProbe))]
+	[CrystalSerializable(typeof(CollectionProbe))]
+	[CrystalSerializable(typeof(DictionaryProbe))]
+	[CrystalSerializable(typeof(HashedDictionaryProbe))]
+	[CrystalSerializable(typeof(CatalogItem))]
+	[CrystalSerializable(typeof(AudioBook))]
+	[CrystalSerializable(typeof(PrintedBook))]
+	[CrystalSerializable(typeof(PolymorphicProbe))]
+	[CrystalSerializable(typeof(RenameProbe))]
+	[CrystalSerializable(typeof(ScalarProbe))]
+	[CrystalSerializable(typeof(Node))]
+	[CrystalSerializable(typeof(SelfRefProbe))]
+	[CrystalSerializable(typeof(EmptyContractProbe))]
+	[CrystalSerializable(typeof(PocoProbe))]
+	[CrystalSerializable(typeof(IgnoreProbe))]
+	[CrystalSerializable(typeof(PrivateMemberProbe))]
+	[CrystalSerializable(typeof(NamedGenericProbe<bool>))]
+	[CrystalSerializable(typeof(KeyedBagProbe))]
+	[CrystalSerializable(typeof(AnyTypeCollectionProbe))]
+	[CrystalSerializable(typeof(ReadOnlyFieldProbe))]
+	[CrystalSerializable(typeof(PocoJsonRenamedProbe))]
+	[CrystalSerializable(typeof(OverrideLeafProbe))]
+	[CrystalSerializable(typeof(ShadowLeafProbe))]
+	[CrystalSerializable(typeof(WorkedLibrary))]
+	[CrystalSerializable(typeof(WorkedContact))]
+	[CrystalSerializable(typeof(WorkedCriterion))]
+	[CrystalSerializable(typeof(WorkedRangeCriterion))]
+	public static partial class DcsProbeNamespaceFreeSerializers
 	{
 	}
 

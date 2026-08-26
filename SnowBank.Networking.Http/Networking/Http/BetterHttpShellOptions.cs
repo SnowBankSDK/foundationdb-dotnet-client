@@ -29,7 +29,7 @@ namespace SnowBank.Networking.Http
 
 	/// <summary>Per-shell (per-client) options: what a call site may legitimately customize for ONE transient <see cref="BetterHttpClient"/> shell, without touching the shared pooled transport.</summary>
 	/// <remarks>
-	/// <para>This is the per-call surface of the options model. Wire policy - TLS/certificates, proxy, cookies, redirects, decompression, credentials, filters and pipeline handlers - is a property of the named policy, registered once at startup with <c>AddBetterHttpClient(name, ...)</c>; it cannot be set per call (the pooled chain is shared).</para>
+	/// <para>This is the per-call surface of the options model. Transport policy - TLS/certificates, proxy, cookies, redirects, decompression, credentials, filters and pipeline handlers - is a property of the named policy, registered once at startup with <c>AddBetterHttpClient(name, ...)</c>; it cannot be set per call (the pooled chain is shared).</para>
 	/// <para>The typical use is per-connection default headers (e.g. authentication headers on a transient client): <c>factory.CreateClient(uri, new BetterHttpShellOptions { ... })</c>.</para>
 	/// </remarks>
 	[PublicAPI]

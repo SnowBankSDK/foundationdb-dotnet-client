@@ -17,7 +17,7 @@ namespace SnowBank.DocGen
 
 	public static class ApiDocs
 	{
-		public static List<ApiType> Extract(IReadOnlyList<(string Dll, string Xml)> assemblies) => new Builder(assemblies).Run();
+		public static List<ApiType> Extract(IReadOnlyList<(string Dll, string Xml)> assemblies, string basePath = "") => new Builder(assemblies, basePath).Run();
 
 		// Markdig lower-cases a heading's text for its auto id and drops non-alphanumerics; member names
 		// here are alphanumeric, so the same rule gives a link target that matches the rendered heading.
@@ -29,12 +29,14 @@ namespace SnowBank.DocGen
 		private sealed class Builder
 		{
 			private Dictionary<string, XElement> Xml { get; } = new();  // docId -> <member>
-			private Dictionary<string, string> Href { get; } = new();   // docId -> /api/slug.html[#anchor]
+			private Dictionary<string, string> Href { get; } = new();   // docId -> [base]/api/slug.html[#anchor]
+			private string BasePath { get; }
 			private MetadataLoadContext Mlc { get; }
 			private List<Assembly> Asms { get; } = new();
 
-			public Builder(IReadOnlyList<(string Dll, string Xml)> assemblies)
+			public Builder(IReadOnlyList<(string Dll, string Xml)> assemblies, string basePath)
 			{
+				this.BasePath = basePath;
 
 				var paths = new List<string>();
 				// each configured assembly's own dll first, so its canonical copy wins over any copy that
@@ -79,9 +81,9 @@ namespace SnowBank.DocGen
 				// resolve to a link, even a forward reference to a type rendered later.
 				foreach (var (_, t) in types)
 				{
-					this.Href["T:" + DocType(t)] = "/api/" + Slug(t) + ".html";
+					this.Href["T:" + DocType(t)] = this.BasePath + "/api/" + Slug(t) + ".html";
 					foreach (var mi in Members(t))
-						try { this.Href[DocId(mi)] = "/api/" + Slug(t) + ".html#" + Anchor(MemberName(mi, t)); }
+						try { this.Href[DocId(mi)] = this.BasePath + "/api/" + Slug(t) + ".html#" + Anchor(MemberName(mi, t)); }
 						catch { /* signature references an unresolved type; member is skipped everywhere */ }
 				}
 
@@ -590,7 +592,7 @@ namespace SnowBank.DocGen
 			return sb.ToString();
 		}
 
-		public static string RenderIndex(List<ApiType> types)
+		public static string RenderIndex(List<ApiType> types, string basePath = "")
 		{
 			var sb = new StringBuilder("# API Reference\n\nPublic types, one page each, grouped by assembly.\n\n");
 			foreach (var asm in types.GroupBy(x => x.Assembly).OrderBy(g => g.Key, StringComparer.Ordinal))
@@ -599,7 +601,7 @@ namespace SnowBank.DocGen
 				foreach (var ns in asm.GroupBy(x => x.Namespace).OrderBy(g => g.Key, StringComparer.Ordinal))
 				{
 					sb.Append("### ").Append(ns.Key).Append("\n\n");
-					foreach (var t in ns) sb.Append("- [").Append(MdText(t.Display)).Append("](/api/").Append(t.Slug).Append(".html) — ").Append(Cell(FirstSentence(t.Summary))).Append('\n');
+					foreach (var t in ns) sb.Append("- [").Append(MdText(t.Display)).Append("](").Append(basePath).Append("/api/").Append(t.Slug).Append(".html) — ").Append(Cell(FirstSentence(t.Summary))).Append('\n');
 					sb.Append('\n');
 				}
 			}

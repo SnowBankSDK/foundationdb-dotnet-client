@@ -27,7 +27,7 @@
 namespace SnowBank.Data.Json.Tests
 {
 
-	/// <summary>Pins the <c>[JsonBooleanLiterals]</c> attribute: custom wire literals for booleans, tolerant read by default, strict opt-out</summary>
+	/// <summary>Pins the <c>[JsonBooleanLiterals]</c> attribute: custom output literals for booleans, tolerant read by default, strict opt-out</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -72,7 +72,7 @@ namespace SnowBank.Data.Json.Tests
 			public bool Strict { get; set; }
 		}
 
-		/// <summary>The same wire expressed the long way, as two attributes describing a mechanism</summary>
+		/// <summary>The same output expressed the long way, as two attributes describing a mechanism</summary>
 		public sealed class CompositionDto
 		{
 			[JsonBooleanLiterals("0", "1")]
@@ -91,12 +91,12 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_One_Attribute_And_Two_Attributes_Produce_The_Same_Wire()
+		public void Test_One_Attribute_And_Two_Attributes_Produce_The_Same_Output()
 		{
 			// the most valuable pin in this fixture: a consumer composing [JsonBooleanLiterals] with
 			// [JsonIgnore(WhenWritingDefault)] must get BYTE-IDENTICAL output to the single-attribute form, because
 			// the short form is only sugar over exactly that composition. If these ever diverge, migrating from one
-			// spelling to the other silently changes a wire.
+			// spelling to the other silently changes an output.
 			foreach (var value in new[] { true, false })
 			{
 				var one = CrystalJson.Serialize(new OmitWhenFalseDto { Flag = value }, CrystalJsonSettings.JsonCompact);
@@ -125,7 +125,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_Emit_True_Or_Nothing_Is_Ordinary_Booleans_Plus_Omission()
 		{
-			// the idiom: no custom literal at all, the wire stays ordinary JSON booleans, and the ONLY thing the
+			// the idiom: no custom literal at all, the output stays ordinary JSON booleans, and the ONLY thing the
 			// attribute changes is that false is not emitted
 			Assert.That(CrystalJson.Serialize(new OmitWhenFalseBoolDto { Flag = true }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"Flag":true}"""));
 			Assert.That(CrystalJson.Serialize(new OmitWhenFalseBoolDto { Flag = false }, CrystalJsonSettings.JsonCompact), Is.EqualTo("{}"));
@@ -159,7 +159,7 @@ namespace SnowBank.Data.Json.Tests
 
 			Assert.Throws<ArgumentNullException>(() => _ = new JsonBooleanLiteralsAttribute("0", null!), "a true literal is required");
 
-			// a mixed pair is deliberately legal: legacy wires are not always internally consistent
+			// a mixed pair is deliberately legal: legacy outputs are not always internally consistent
 			Assert.That(new JsonBooleanLiteralsAttribute("0", 1).TrueLiteral, Is.EqualTo(JsonNumber.Return(1)));
 		}
 

@@ -29,7 +29,7 @@ namespace SnowBank.Data.Xml
 
 	/// <summary>Attribute that controls how a field or property is projected into XML output</summary>
 	/// <remarks>
-	/// <para>This is where every XML-only concern lives: the existing JSON attributes (<c>[JsonProperty]</c>, <c>[JsonPropertyName]</c>, <c>[JsonIgnore]</c>, ...) are never modified by this feature. The resolution ladder, per setting (never all-or-nothing), is: (1) the defaults of the container's <see cref="CrystalXmlOutputProfile"/>; (2) the JSON attributes, which supply the output <em>name</em> as-is (never re-transformed by a naming policy); (3) this attribute, which overrides option by option (a lone <see cref="ItemName"/> still lets <see cref="Name"/> fall back to step 2, then to the naming-policy-transformed .NET member name).</para>
+	/// <para>This is where every XML-only concern lives: the existing JSON attributes (<c>[JsonProperty]</c>, <c>[JsonPropertyName]</c>, <c>[JsonIgnore]</c>, ...) are never modified by this feature. The resolution ladder, per setting (never all-or-nothing), is: (1) the defaults of the container's <see cref="CrystalXmlSerializerDefaults"/> profile; (2) the JSON attributes, which supply the output <em>name</em> as-is (never re-transformed by a naming policy); (3) this attribute, which overrides option by option (a lone <see cref="ItemName"/> still lets <see cref="Name"/> fall back to step 2, then to the naming-policy-transformed .NET member name).</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
 	[PublicAPI]
@@ -51,7 +51,7 @@ namespace SnowBank.Data.Xml
 		public string? Name { get; set; }
 
 		/// <summary>Projects this member as an XML ATTRIBUTE (annotation) instead of a nested element</summary>
-		/// <remarks>Scalars only; forbidden on a complex type or a collection. Also forbidden under the <see cref="CrystalXmlOutputProfile.DataContract"/> profile, which has no concept of a user-facing XML attribute.</remarks>
+		/// <remarks>Scalars only; forbidden on a complex type or a collection. Also forbidden under the <see cref="CrystalXmlSerializerDefaults.DataContractCompat"/> profile, which has no concept of a user-facing XML attribute.</remarks>
 		public bool Attribute { get; set; }
 
 		/// <summary>Name used for collection items and dictionary entries</summary>

@@ -251,10 +251,10 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		[Test]
-		public void Test_Char_Modern_Is_The_Character_Itself()
+		public void Test_Char_General_Is_The_Character_Itself()
 		{
-			Assert.That(CrystalXmlFormatters.FormatModernChar('A'), Is.EqualTo("A"));
-			Assert.That(CrystalXmlFormatters.FormatModernChar('é'), Is.EqualTo("é"));
+			Assert.That(CrystalXmlFormatters.FormatGeneralChar('A'), Is.EqualTo("A"));
+			Assert.That(CrystalXmlFormatters.FormatGeneralChar('é'), Is.EqualTo("é"));
 		}
 
 		#endregion

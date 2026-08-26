@@ -5,19 +5,19 @@
 
 // A shape we really have and the corpus did not cover: non-generic ArrayList as a serialized
 // member. Measured at 6 member positions in a statistics DTO. Added because the replacement
-// changes how non-generic collections bind, and without a case a re-run would ASSUME rather
+// changes how non-generic collections bind, and without a case a re-run would assume rather
 // than verify.
 //
-// THIS CASE HAS AN EXPIRY DATE, and that is deliberate. ArrayList and Hashtable are not shapes
+// This case has an expiry date, and that is deliberate. ArrayList and Hashtable are not shapes
 // to preserve: they have no place in a modern codebase and are slated for removal (to List<T>
 // and Dictionary<K,V>). What the case pins is therefore narrow and temporary: documents already
-// written in this shape must stay READABLE for as long as it takes to convert the members and
+// written in this shape must stay readable for as long as it takes to convert the members and
 // migrate the stored data. Once those 6 members are List<T> and the data is rewritten, delete
 // this case rather than maintaining it.
 //
 // Note on the shapes rc.1 deliberately made loud: multi-dimensional arrays (previously flattened
 // silently), NameValueCollection (previously keys-only), ImmutableSortedSet (previously handed
-// back as an ImmutableHashSet) and reversed Stack<T> round-trips. Acme has ZERO of those in any
+// back as an ImmutableHashSet) and reversed Stack<T> round-trips. Acme has zero of those in any
 // serialized member position, verified twice by two different methods, so no case is included for
 // them and our re-run will not exercise those paths. Stated rather than left silent, so nobody
 // reads their absence as coverage.
@@ -31,7 +31,7 @@ namespace Acme.Zoo.Cases.LegacyArrayList
 
 	/// <summary>Non-generic <c>ArrayList</c> members, holding heterogeneous values the way an
 	/// untyped collection invites. The interesting question for a replacement is not whether the
-	/// list round-trips but what happens to the ELEMENT types, since nothing on the wire records
+	/// list round-trips but what happens to the element types, since nothing in the output records
 	/// what they were: a reader has only the JSON scalar kinds to work from.</summary>
 	[DataContract]
 	public class CounterSeriesDto

@@ -55,7 +55,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Name of the attribute carrying the contract name of the runtime type, when it differs from the declared one</summary>
 			/// <remarks>The reference format writes <c>i:type</c>, and the namespace-stripping writer this profile replicates leaves
-			/// the local name only. It is a FIXED name here, unlike the modern format's, which follows the JSON discriminator.</remarks>
+			/// the local name only. It is a FIXED name here, unlike the general format's, which follows the JSON discriminator.</remarks>
 			private const string XmlDcsTypeAttributeName = "type";
 
 			/// <summary>Names of the two child elements of a dictionary entry</summary>
@@ -71,7 +71,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>The compat XML format inherits the null policy of its JSON profile, whose <c>ShowNullMembers</c> is ON: a null
 			/// member is <c>&lt;X nil="true" /&gt;</c> by default. A caller passing <c>WithoutNullMembers()</c> drops those elements,
 			/// which changes what an XSLT existence test sees and has to be audited before use.</remarks>
-			private const string XmlDcsDefaultSettings = KnownTypeSymbols.CrystalJsonSettingsFullName + ".DataContractCompat";
+			private const string XmlDcsDefaultSettings = KnownTypeSymbols.CrystalXmlSettingsFullName + ".DataContractCompat";
 
 			private const string SerializationInfoFullName = "global::System.Runtime.Serialization.SerializationInfo";
 
@@ -345,22 +345,276 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Returns the output name of one member: its data-contract name, XML-encoded</summary>
-			/// <remarks>The compat profile refuses the whole <c>[XmlProperty]</c> renaming surface (CXML0004) and refuses a naming
-			/// policy on the container (CXML0001), so the resolved JSON name IS the data-contract name here: <c>[DataMember(Name =
-			/// ...)]</c> when present, the declared member name otherwise.</remarks>
-			private static string GetXmlDcsMemberName(CrystalJsonMemberMetadata member) => System.Xml.XmlConvert.EncodeLocalName(member.Name);
+			/// <remarks>The data contract owns this name: <c>[DataMember(Name = ...)]</c> when present, the declared member name
+			/// otherwise, which is what the reference serializer writes. The resolved JSON name is not read here. On a
+			/// <c>[DataContract]</c> type the two are the same name, because CJSON0011 refuses a declaration where they differ; on a
+			/// plain DTO they are not, because a <c>[JsonProperty]</c> renames the JSON member of a type that has no data contract,
+			/// and the reference serializer still writes the member's own name. The compat profile also refuses the
+			/// <c>[XmlProperty]</c> renaming surface (CXML0004) and any naming policy on the container (CXML0001), so this name has
+			/// exactly one source.</remarks>
+			private static string GetXmlDcsMemberName(CrystalJsonMemberMetadata member) => System.Xml.XmlConvert.EncodeLocalName(member.DataMemberName ?? member.MemberName);
 
 			/// <summary>Whether a type is the <c>byte[]</c> that this format treats as a base64 scalar</summary>
 			private static bool IsXmlDcsByteArray(TypeMetadata type) => type.TypeKind == TypeKind.Array && type.ElementType is { SpecialType: SpecialType.System_Byte };
 
 			#endregion
 
+			#region Contract namespaces...
+
+			/// <summary>Returns the expression naming the contract namespace of a type, or <see langword="null"/> when it has none</summary>
+			/// <remarks>
+			/// <para>The one place the profile's two outputs differ: under the omit-namespaces option this returns
+			/// <see langword="null"/> for every type, so every name the emission bakes is a local name and the document carries
+			/// no namespace, no prefix and no declaration. Everything else about the emission is the same code.</para>
+			/// <para><see langword="null"/> is also what the empty contract namespace resolves to, which
+			/// <c>[DataContract(Namespace = "")]</c> asks for: a name in no namespace, written with no prefix.</para>
+			/// </remarks>
+			private string? GetXmlDcsNamespaceRef(TypeMetadata type)
+			{
+				if (this.WritesXmlDcsOmitNamespaces)
+				{
+					return null;
+				}
+
+				string uri = GetXmlDcsContractNamespaceUri(type);
+				return uri.Length == 0 ? null : this.XmlNamespaces.Ref(uri);
+			}
+
+			/// <summary>Returns the expression naming the namespace one MEMBER element lives in, or <see langword="null"/> when it has none</summary>
+			/// <param name="member">Member being written</param>
+			/// <param name="fallback">Type being written, used when the metadata carries no declaring type</param>
+			/// <remarks>
+			/// <para>The namespace of the contract that DECLARES the member, which is not always the contract being written:
+			/// a derived type in another namespace writes its INHERITED members in the base contract's namespace and only its
+			/// own members in its own. Measured against the live oracle, which puts an inherited element where the base
+			/// declares it. Reading the namespace off the type being written instead moves every inherited element, silently,
+			/// on exactly the shape polymorphism produces.</para>
+			/// <para>For a member the type declares itself, the two are the same namespace, so this is a refinement of that
+			/// rule and never a different answer.</para>
+			/// </remarks>
+			private string? GetXmlDcsMemberNamespaceRef(CrystalJsonMemberMetadata member, TypeMetadata fallback)
+			{
+				if (this.WritesXmlDcsOmitNamespaces)
+				{
+					return null;
+				}
+
+				if (member.DeclaringTypeNameSpace is null)
+				{ // nothing captured about the declaring type: the type being written is the closest thing to it
+					return GetXmlDcsNamespaceRef(fallback);
+				}
+
+				string uri = member.DeclaringDataContractNamespace ?? (XmlDataContractNamespacePrefix + member.DeclaringTypeNameSpace);
+				return uri.Length == 0 ? null : this.XmlNamespaces.Ref(uri);
+			}
+
+			/// <summary>Returns the expression naming one of the format's built-in namespaces, or <see langword="null"/> under the omit-namespaces option</summary>
+			private string? GetXmlDcsBuiltinNamespaceRef(string uri) => this.WritesXmlDcsOmitNamespaces ? null : this.XmlNamespaces.Ref(uri);
+
+			/// <summary>Returns the expression naming the XML Schema instance namespace, which carries <c>nil</c> and <c>type</c></summary>
+			private string? GetXmlDcsInstanceNamespaceRef() => GetXmlDcsBuiltinNamespaceRef(XmlSchemaInstanceNamespaceUri);
+
+			/// <summary>Emits the type annotation of one contract: a qualified name by default, a bare local name under the omit-namespaces option</summary>
+			/// <param name="sb">Destination builder</param>
+			/// <param name="names">Name table of the converter being emitted</param>
+			/// <param name="contractName">Local contract name of the runtime type</param>
+			/// <param name="contractNamespace">Expression naming the contract's namespace, or <see langword="null"/> when it has none</param>
+			/// <remarks>
+			/// <para>A type annotation is the one attribute of this format whose VALUE is a name, so by default it goes through
+			/// the emitter's qualified-name member: the pair (namespace, local name) IS the discriminator a reader matches, and
+			/// the prefix it appears under is the emitter's to pick. Formatting the pair into a string here would name a prefix
+			/// this code cannot know.</para>
+			/// <para>Under the omit-namespaces option the value keeps its local half only, which is what the stored documents carry.
+			/// The cost is stated on the option: two derived types with the same local name in different contract namespaces
+			/// become one annotation.</para>
+			/// </remarks>
+			private void WriteXmlDcsTypeAnnotation(CSharpCodeBuilder sb, XmlNameTable names, string contractName, string? contractNamespace)
+			{
+				if (this.WritesXmlDcsOmitNamespaces)
+				{
+					sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlDcsTypeAttributeName)}, {CSharpCodeBuilder.Constant(contractName)});");
+					return;
+				}
+
+				string attributeRef = names.Ref(XmlDcsTypeAttributeName, GetXmlDcsInstanceNamespaceRef());
+				string valueRef = names.Ref(contractName, contractNamespace);
+				sb.AppendLine($"emitter.WriteQNameAttribute(in {attributeRef}, in {valueRef});");
+			}
+
+			/// <summary>Returns the contract namespace URI of a type, which is a function of its SHAPE first and of its declaration second</summary>
+			/// <remarks>
+			/// <para>Four rules, in this order:</para>
+			/// <list type="number">
+			/// <item>a lexical type takes the XML Schema namespace, which is where its xsd contract name lives;</item>
+			/// <item><c>DateTimeOffset</c> takes the namespace of the built-in <c>System</c> contracts, because that is where its
+			/// two-member contract is declared and not where the type holding it is;</item>
+			/// <item>a dictionary takes the collections namespace, always, because that is where its entry contract is
+			/// declared; a sequence takes it too when its items are built-in types, and takes the ITEM contract's namespace
+			/// when they carry one. The asymmetry is measured, not chosen;</item>
+			/// <item>anything else takes its <c>[DataContract(Namespace = ...)]</c> when it declares one, and otherwise the
+			/// standard prefix plus its CLR namespace. A nested type contributes its declaring names to the NAME and nothing to
+			/// the namespace, which is the rule the name resolution already applies.</item>
+			/// </list>
+			/// </remarks>
+			private string GetXmlDcsContractNamespaceUri(TypeMetadata type)
+			{
+				var actual = type.NullableOfType ?? type;
+
+				if (IsXmlDcsByteArray(actual))
+				{ // a base64 scalar, so a lexical type and not a sequence of bytes
+					return XmlSchemaNamespaceUri;
+				}
+
+				if (actual.IsDateTimeOffset())
+				{
+					return XmlSystemContractNamespaceUri;
+				}
+
+				if (GetXmlDcsLexicalContractName(actual.SpecialType, actual.NameSpace, actual.Name) is not null)
+				{
+					return XmlSchemaNamespaceUri;
+				}
+
+				if (actual.KeyType is not null && actual.ValueType is not null)
+				{ // a dictionary is in the collections namespace whatever its key and value are, which is where a
+				  // KeyValueOfKV entry is declared. Measured: a Dictionary<string, Shelf> puts its entries there and not in
+				  // Shelf's contract namespace, unlike a List<Shelf>, whose items DO move to the item contract's namespace
+					return XmlArraysNamespaceUri;
+				}
+
+				if (actual.ElementType is not null)
+				{
+					return GetXmlDcsCollectionNamespaceUri(actual.ElementType) ?? XmlArraysNamespaceUri;
+				}
+
+				return GetXmlDcsDeclaredNamespaceUri(actual);
+			}
+
+			/// <summary>Returns the namespace a collection borrows from one of its argument types, or <see langword="null"/> when that type contributes none</summary>
+			/// <remarks>A collection of built-in types is in the collections namespace, and a collection whose items carry a
+			/// contract of their own is in the items' namespace, so an argument contributes a namespace only when it is a user
+			/// type.</remarks>
+			private string? GetXmlDcsCollectionNamespaceUri(TypeMetadata argument)
+			{
+				var actual = argument.NullableOfType ?? argument;
+
+				if (IsXmlDcsByteArray(actual) || actual.IsDateTimeOffset() || GetXmlDcsLexicalContractName(actual.SpecialType, actual.NameSpace, actual.Name) is not null)
+				{
+					return null;
+				}
+
+				if (actual.KeyType is not null || actual.ElementType is not null)
+				{ // a nested collection borrows from its own arguments, so ask it rather than read its CLR namespace
+					string nested = GetXmlDcsContractNamespaceUri(actual);
+					return nested == XmlArraysNamespaceUri ? null : nested;
+				}
+
+				return GetXmlDcsDeclaredNamespaceUri(actual);
+			}
+
+			/// <summary>Returns the declared contract namespace of a user type: its <c>[DataContract(Namespace = ...)]</c>, else the standard prefix plus its CLR namespace</summary>
+			private string GetXmlDcsDeclaredNamespaceUri(TypeMetadata type)
+			{
+				if (IsLocallyGeneratedType(type.Ref, out var typeDef) && typeDef.DataContractNamespace is { } declared)
+				{ // including the EMPTY string, which asks for no namespace at all
+					return declared;
+				}
+
+				return XmlDataContractNamespacePrefix + type.NameSpace;
+			}
+
+			#endregion
+
+			/// <summary>Emits the declaration that puts the XML Schema instance namespace in scope for a whole document, when a document is likely to need it more than once</summary>
+			/// <remarks>
+			/// <para>The emitter declares a namespace on the first element that uses it, which is what keeps a document free of
+			/// declarations nothing reads. That is the right answer for a namespace one subtree uses, and the wrong one for a
+			/// namespace several sibling subtrees use: siblings are not inside each other, so each one declares its own copy.</para>
+			/// <para>So when the contract can carry a null marker or a type annotation in two or more places, the declaration goes
+			/// on the root instead, once. <see cref="CountXmlDcsInstanceNamespaceUsers"/> is what "two or more places" means, and it
+			/// counts the type's OWN members only: it can therefore miss a deeper case, which costs a repeated declaration and
+			/// nothing else. What it cannot do is hoist a declaration into a document that never writes either marker at all, since
+			/// a contract with fewer than two such members takes this branch not at all.</para>
+			/// <para>Guarded on the depth, because this body writes the root element and every nested element of its type, and only
+			/// the root is an ancestor of the whole document.</para>
+			/// </remarks>
+			private void WriteXmlDcsInstanceNamespaceHoist(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
+			{
+				if (GetXmlDcsInstanceNamespaceRef() is not { } instanceNamespace) return;
+				if (CountXmlDcsInstanceNamespaceUsers(typeDef) < 2) return;
+
+				sb.Comment("two or more members of this contract can carry a nil or a type marker, and none of them is inside another: one declaration on the root serves them all");
+				sb.AppendLine($"if ({XmlDepthParameterName} == 0) emitter.WriteNamespaceDeclaration(in {instanceNamespace});");
+			}
+
+			/// <summary>Emits the declaration that puts a type's OWN contract namespace in scope for the element it is written in</summary>
+			/// <remarks>
+			/// <para>A member element lives in the namespace of the type that DECLARES it, while the members of its own type live
+			/// in that type's namespace. When the two differ, every one of those member elements needs a prefix, and each would
+			/// declare the namespace again: one declaration on the element that holds them replaces all of them, and is where the
+			/// reference serializer puts it too.</para>
+			/// <para>Emitted unconditionally for a type that writes members, because the emitter writes nothing when the namespace
+			/// is already in scope. That is what covers the root element, whose own namespace its caller declared, and a nested
+			/// element in the same namespace as its parent, with the same statement.</para>
+			/// <para>Skipped for a type that writes NO member element in its own namespace: an empty contract, the
+			/// <c>ISerializable</c> dialect (whose entry elements are in no namespace at all) and a type that writes its own
+			/// content all get an element with no declaration on it.</para>
+			/// </remarks>
+			private void WriteXmlDcsOwnNamespaceDeclaration(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef, string? contractNamespace)
+			{
+				if (contractNamespace is null) return;
+				if (typeDef.Type.IsCrystalXmlSerializable() || IsXmlDcsSerializableDialect(typeDef)) return;
+				if (GetXmlDcsOrderedMembers(typeDef).Count == 0) return;
+
+				sb.Comment("the members below live in this contract's namespace: declared once here, so none of them declares it again");
+				sb.AppendLine($"emitter.WriteNamespaceDeclaration(in {contractNamespace});");
+			}
+
+			/// <summary>Emits the declaration that puts the namespace of a wrapper's children in scope on the wrapper itself</summary>
+			/// <param name="sb">Destination builder</param>
+			/// <param name="childNamespace">Expression naming the children's namespace, or <see langword="null"/> when they have none</param>
+			/// <param name="what">What the declaration serves, for the comment in the generated code</param>
+			/// <remarks>Same reason as the one above, for the shapes whose children this body writes itself: a collection's items,
+			/// a dictionary's entries, and the two members of the <c>DateTimeOffset</c> contract are all in one namespace, and a
+			/// collection can hold thousands of them.</remarks>
+			private static void WriteXmlDcsWrapperNamespaceDeclaration(CSharpCodeBuilder sb, string? childNamespace, string what)
+			{
+				if (childNamespace is null) return;
+
+				sb.Comment($"{what} is in one namespace: declared once on the wrapper, so no child declares it again");
+				sb.AppendLine($"emitter.WriteNamespaceDeclaration(in {childNamespace});");
+			}
+
+			/// <summary>Counts the members of a type whose emission can write a null marker or a type annotation</summary>
+			/// <remarks>Three shapes qualify: an <c>object</c> slot, which annotates every value it holds; a member whose declared
+			/// type is a polymorphic root, which annotates a derived value; and a member that can be null under a policy that marks
+			/// it rather than omitting it. The type itself counts too when it is a polymorphic root, because the element this body
+			/// writes is then annotated.</remarks>
+			private int CountXmlDcsInstanceNamespaceUsers(CrystalJsonTypeMetadata typeDef)
+			{
+				int count = typeDef.IsPolymorphicRoot ? 1 : 0;
+
+				foreach (var (member, _) in GetXmlDcsOrderedMembers(typeDef))
+				{
+					var actual = member.Type.NullableOfType ?? member.Type;
+
+					if (actual.SpecialType == SpecialType.System_Object
+					 || (IsLocallyGeneratedType(actual, out var target, out _) && target.IsPolymorphicRoot)
+					 || (member.Type.CanBeNull() && ResolveXmlNullPolicy(member) != XmlNullPolicy.Omit))
+					{
+						++count;
+					}
+				}
+
+				return count;
+			}
+
 			#region Member order...
 
 			/// <summary>Returns the members of a type in the exact order the DataContract format writes them</summary>
 			/// <remarks>
 			/// <para>Base level first (recursively), then, inside each level, the members with no declared <c>Order</c> sorted by
-			/// their WIRE name in ordinal order, then the <c>Order</c> groups ascending with ordinal ties. Ordering by the output name
+			/// their OUTPUT name in ordinal order, then the <c>Order</c> groups ascending with ordinal ties. Ordering by the output name
 			/// and not by the C# name matters: <c>[DataMember(Name = "renamed_member")]</c> sorts where the output spells it.</para>
 			/// <para>Read-only (get-only, or non-public-setter with no opt-in) PROPERTIES are dropped: the reference serializer's
 			/// no-set-method check is property-only. On a POCO it just omits them (only public get+set members are taken); on a
@@ -372,15 +626,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// are unaffected either way, because <see cref="CrystalJsonMemberMetadata.IsReadOnly"/> is <see langword="false"/> for
 			/// them (a separate <see cref="CrystalJsonMemberMetadata.IsInitOnly"/> flag), matching DCS emitting them.</para>
 			/// </remarks>
-			private static List<(CrystalJsonMemberMetadata Member, string WireName)> GetXmlDcsOrderedMembers(CrystalJsonTypeMetadata typeDef)
+			private static List<(CrystalJsonMemberMetadata Member, string OutputName)> GetXmlDcsOrderedMembers(CrystalJsonTypeMetadata typeDef)
 			{
 				return typeDef.Members
 					.Where(m => !m.IsReadOnly || (m.IsField && typeDef.HasDataContract))
-					.Select(m => (Member: m, WireName: GetXmlDcsMemberName(m)))
+					.Select(m => (Member: m, OutputName: GetXmlDcsMemberName(m)))
 					.OrderBy(x => x.Member.InheritanceLevel)
 					.ThenBy(x => x.Member.DataMemberOrder.HasValue ? 1 : 0)
 					.ThenBy(x => x.Member.DataMemberOrder ?? 0)
-					.ThenBy(x => x.WireName, StringComparer.Ordinal)
+					.ThenBy(x => x.OutputName, StringComparer.Ordinal)
 					.ToList();
 			}
 
@@ -395,6 +649,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				var taken = new HashSet<string>(StringComparer.Ordinal);
 				var names = new XmlNameTable(taken);
 				this.XmlEnums = new(taken);
+				this.XmlNamespaces = new(taken);
 				this.XmlNeedsNotSupportedHelper = false;
 				this.XmlNeedsFlagsHelper = false;
 				this.XmlNeedsUndeclaredEnumHelper = false;
@@ -403,10 +658,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				var type = typeDef.Type;
 				string valueType = type.FullyQualifiedName + (type.IsValueType() ? "" : "?");
-				string settingsType = KnownTypeSymbols.CrystalJsonSettingsFullName;
+				string settingsType = KnownTypeSymbols.CrystalXmlSettingsFullName;
 
 				string contractName = ResolveXmlDcsRootName(sb, typeDef);
-				string rootRef = names.Ref(contractName);
+				string? contractNamespace = GetXmlDcsNamespaceRef(type);
+				string rootRef = names.Ref(contractName, contractNamespace);
 
 				// WriteXml(...): the interface entry point, which owns the rootName override
 				sb.InheritDoc();
@@ -423,10 +679,20 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("else");
 				sb.EnterBlock("else");
 				sb.Comment("a caller-supplied name is the one place user text becomes an XML name: Create validates it, and raises XmlException rather than corrupting the document");
-				sb.AppendLine($"var __root = {XmlNameFullName}.Create(rootName);");
+				sb.Comment("the caller names the ROOT ELEMENT, not the contract: the name changes and the namespace it lives in does not");
+				sb.AppendLine($"var __root = {XmlNameFullName}.Create(rootName{(contractNamespace is null ? "" : $", {contractNamespace}.Text")});");
 				sb.AppendLine("WriteXmlElement(ref emitter, in __root, value, settings, 0);");
 				sb.LeaveBlock("else");
 				sb.LeaveBlock("WriteXml");
+				sb.NewLine();
+
+				// the two names the collection root entry points compose with
+				sb.InheritDoc();
+				sb.AppendLine($"public {XmlNameFullName} ElementName => {rootRef};");
+				sb.NewLine();
+				sb.InheritDoc();
+				sb.XmlComment("<remarks>The ArrayOfX convention of the reference format, in the contract namespace of <see cref=\"ElementName\"/>.</remarks>");
+				sb.AppendLine($"public string? CollectionRootName => {CSharpCodeBuilder.Constant("ArrayOf" + contractName)};");
 				sb.NewLine();
 
 				// WriteXmlElement(...): the nested entry point, for a parent that already knows the element name
@@ -508,11 +774,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				sb.NewLine();
 				sb.AppendLine("emitter.WriteStartElement(in name);");
+				WriteXmlDcsInstanceNamespaceHoist(sb, typeDef);
+				WriteXmlDcsOwnNamespaceDeclaration(sb, typeDef, contractNamespace);
 				sb.NewLine();
 				sb.Comment("the type annotation is written exactly when the runtime contract differs from the declared one");
 				sb.AppendLine($"if (declaredContractName is not null && declaredContractName != {CSharpCodeBuilder.Constant(contractName)})");
 				sb.EnterBlock();
-				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlDcsTypeAttributeName)}, {CSharpCodeBuilder.Constant(contractName)});");
+				WriteXmlDcsTypeAnnotation(sb, names, contractName, contractNamespace);
 				sb.LeaveBlock();
 
 				// the same bracket the JSON side puts around its member loop, in the same place: after the element is
@@ -570,7 +838,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// entries even though it implements <c>ISerializable</c>).</para>
 			/// <para>A registered type that DERIVES from a collection therefore gets the collection's contract name as its root
 			/// (<c>ArrayOfstring</c>) and an empty body, since it has no serialized member of its own. That is the same shape the
-			/// modern profile produces for it, and the reference format would write the items.</para>
+			/// general profile produces for it, and the reference format would write the items.</para>
 			/// </remarks>
 			private void WriteXmlDcsBody(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef)
 			{
@@ -590,9 +858,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
-				foreach (var (member, wireName) in GetXmlDcsOrderedMembers(typeDef))
+				foreach (var (member, outputName) in GetXmlDcsOrderedMembers(typeDef))
 				{
-					WriteXmlDcsMember(sb, names, typeDef, member, wireName);
+					WriteXmlDcsMember(sb, names, typeDef, member, outputName);
 				}
 			}
 
@@ -622,6 +890,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("#pragma warning restore SYSLIB0050");
 				sb.AppendLine($"foreach ({SerializationEntryFullName} __entry in __info)");
 				sb.EnterBlock("foreach");
+				sb.Comment("the entry name is DATA and not a contract member, so it lands in NO namespace: measured, the reference format writes xmlns=\"\" on each of these elements to take it out of the contract's own");
 				sb.AppendLine($"var __n = {XmlNameFullName}.Create({XmlConvertFullName}.EncodeLocalName(__entry.Name));");
 				WriteXmlDcsAnyTypeElement(sb, names, "__entry.Value", "__n", "entry");
 				sb.LeaveBlock("foreach");
@@ -632,19 +901,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 			#region Members...
 
 			/// <summary>Writes one member of a type, in the shape its declared type calls for</summary>
-			private void WriteXmlDcsMember(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member, string wireName)
+			private void WriteXmlDcsMember(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member, string outputName)
 			{
-				string nameRef = names.Ref(wireName);
+				// a member element lives in the namespace of the type that DECLARES it, so the namespace of the member's own
+				// type never reaches this element: it reaches the elements the nested body writes inside it
+				string nameRef = names.Ref(outputName, GetXmlDcsMemberNamespaceRef(member, typeDef.Type));
 				string local = "__x_" + member.MemberName;
 
 				sb.NewLine();
-				sb.Comment($"{member.Type.Name} {member.MemberName} => <{wireName}>{(member.DataMemberOrder is { } order ? $" [Order = {order}]" : "")}{(!member.EmitDefaultValue ? " [EmitDefaultValue = false]" : "")}");
+				sb.Comment($"{member.Type.Name} {member.MemberName} => <{outputName}>{(member.DataMemberOrder is { } order ? $" [Order = {order}]" : "")}{(!member.EmitDefaultValue ? " [EmitDefaultValue = false]" : "")}");
 				sb.AppendLine($"var {local} = {GetXmlMemberReadExpr(typeDef, member)};");
 
 				// [DataMember(EmitDefaultValue = false)] and [JsonIgnore(Condition = WhenWritingDefault)] both mean "a value equal
 				// to the default writes NOTHING at all, not even a nil element" - but they do NOT agree on which default.
 				// DCS compares against the CLR default of the type, full stop, and this format reproduces DCS: hence default!,
-				// where the modern emitter compares against the member's DECLARED default (GetForgivingDefaultLiteral).
+				// where the general emitter compares against the member's DECLARED default (GetForgivingDefaultLiteral).
 				// A member declaring `= 5` is therefore omitted at 0 here, and omitted at 5 there. Deliberate: byte
 				// compatibility is what this profile exists for, and the reference format has no notion of a declared default.
 				bool guarded = !member.EmitDefaultValue || member.IgnoreCondition == "WhenWritingDefault";
@@ -803,11 +1074,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Writes the built-in contract of <see cref="DateTimeOffset"/>: the instant normalized to UTC, plus the offset in minutes</summary>
 			private void WriteXmlDcsDateTimeOffsetElement(CSharpCodeBuilder sb, XmlNameTable names, string expr, string nameRef)
 			{
-				string dateRef = names.Ref("DateTime");
-				string offsetRef = names.Ref("OffsetMinutes");
+				string? offsetNamespace = GetXmlDcsBuiltinNamespaceRef(XmlSystemContractNamespaceUri);
+				string dateRef = names.Ref("DateTime", offsetNamespace);
+				string offsetRef = names.Ref("OffsetMinutes", offsetNamespace);
 
 				sb.Comment("DateTimeOffset has a built-in DataContract of its own: { DateTime (UTC), OffsetMinutes }");
 				sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
+				WriteXmlDcsWrapperNamespaceDeclaration(sb, offsetNamespace, "both members of this contract");
 				sb.AppendLine($"emitter.WriteStartElement(in {dateRef});");
 				sb.AppendLine($"emitter.WriteRawAscii({FormatXmlScalar("DateTime", expr + ".UtcDateTime")});");
 				sb.AppendLine($"emitter.WriteEndElement(in {dateRef});");
@@ -819,7 +1092,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Writes a sequence: one element per item, named after the ITEM type's contract</summary>
 			/// <remarks>An empty sequence writes the self-closing wrapper, and a nested sequence names its items after the inner
-			/// collection's own contract (<c>ArrayOfstring</c>), which is why this format has no equivalent of the modern profile's
+			/// collection's own contract (<c>ArrayOfstring</c>), which is why this format has no equivalent of the general profile's
 			/// refusal to nest bare collections (CXML0006).</remarks>
 			private void WriteXmlDcsSequenceContent(CSharpCodeBuilder sb, XmlNameTable names, TypeMetadata type, string valueExpr, string nameRef, string scope)
 			{
@@ -831,11 +1104,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
-				string itemRef = names.Ref(itemName);
+				string? itemNamespace = GetXmlDcsNamespaceRef(type);
+				string itemRef = names.Ref(itemName, itemNamespace);
 				string item = "__i_" + scope;
 				string itemScope = scope + "_i";
 
 				sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
+				WriteXmlDcsWrapperNamespaceDeclaration(sb, itemNamespace, "every item of this collection");
 				sb.AppendLine($"foreach (var {item} in {valueExpr})");
 				sb.EnterBlock("foreach");
 				WriteXmlDcsValueElement(sb, names, member: null, itemType, item, itemRef, itemScope, XmlNullPolicy.NilWhenSettingsAsk);
@@ -860,13 +1135,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
-				string entryRef = names.Ref("KeyValueOf" + keyName + valueName);
-				string keyRef = names.Ref(XmlDcsKeyElementName);
-				string valueRef = names.Ref(XmlDcsValueElementName);
+				string? entryNamespace = GetXmlDcsNamespaceRef(type);
+				string entryRef = names.Ref("KeyValueOf" + keyName + valueName, entryNamespace);
+				string keyRef = names.Ref(XmlDcsKeyElementName, entryNamespace);
+				string valueRef = names.Ref(XmlDcsValueElementName, entryNamespace);
 				string entry = "__e_" + scope;
 				string entryScope = scope + "_e";
 
 				sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
+				WriteXmlDcsWrapperNamespaceDeclaration(sb, entryNamespace, "every entry of this dictionary");
 				sb.AppendLine($"foreach (var {entry} in {valueExpr})");
 				sb.EnterBlock("foreach");
 				sb.AppendLine($"emitter.WriteStartElement(in {entryRef});");
@@ -892,7 +1169,6 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// </remarks>
 			private void WriteXmlDcsAnyTypeElement(CSharpCodeBuilder sb, XmlNameTable names, string valueExpr, string nameRef, string scope)
 			{
-				string typeRef = names.Ref(XmlDcsTypeAttributeName);
 				int index = 0;
 
 				sb.AppendLine($"switch ({valueExpr})");
@@ -902,9 +1178,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.EnterBlock("case");
 				sb.Comment("a null in an anyType slot is nil, under the same rule as a null member");
 				sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
-				sb.AppendLine($"if ({CrystalJsonSettingsExtensionsFullName}.IncludesNullMembers(settings))");
+				sb.AppendLine($"if ({CrystalXmlSettingsExtensionsFullName}.IncludesNullMembers(settings))");
 				sb.EnterBlock();
-				sb.AppendLine($"emitter.WriteAttribute(in {names.Ref(XmlNilAttributeName)}, \"true\");");
+				sb.AppendLine($"emitter.WriteAttribute(in {XmlNilNameRef(names)}, \"true\");");
 				sb.LeaveBlock();
 				sb.AppendLine($"emitter.WriteEndElement(in {nameRef});");
 				sb.AppendLine("break;");
@@ -924,7 +1200,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.AppendLine($"case {keyword} {local}:");
 					sb.EnterBlock("case");
 					sb.AppendLine($"emitter.WriteStartElement(in {nameRef});");
-					sb.AppendLine($"emitter.WriteAttribute(in {typeRef}, {CSharpCodeBuilder.Constant(contract)});");
+					WriteXmlDcsTypeAnnotation(sb, names, contract, GetXmlDcsBuiltinNamespaceRef(XmlSchemaNamespaceUri));
 					if (family is null)
 					{ // a string is written straight through, with no lexical transformation
 						sb.AppendLine($"emitter.WriteText({local});");
@@ -1008,7 +1284,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Emits the label lookup of one enum, on the DataContract format</summary>
 			/// <remarks>
 			/// <para>The label is the <c>[EnumMember(Value = ...)]</c> token when the member declares one, and the declared name
-			/// otherwise. The System.Text.Json token that the modern format prefers is deliberately NOT read here: the output this
+			/// otherwise. The System.Text.Json token that the general format prefers is deliberately NOT read here: the output this
 			/// profile reproduces never saw it.</para>
 			/// <para>On a <c>[DataContract]</c> enum only the members carrying <c>[EnumMember]</c> are serializable, so the others get
 			/// no case at all and land in the refusal arm, exactly as the reference serializer refuses them.</para>
@@ -1103,7 +1379,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Name of the emitted undeclared-flags refusal of THIS format</summary>
-			/// <remarks>Deliberately not the modern format's <c>FailXmlUndeclaredFlags</c>, which carries the same concept under an
+			/// <remarks>Deliberately not the general format's <c>FailXmlUndeclaredFlags</c>, which carries the same concept under an
 			/// INCOMPATIBLE signature (it returns the <c>string</c> a switch arm evaluates to, where this one is a statement that
 			/// returns nothing). No generated class holds both today - a container resolves to exactly one profile - but two same-named
 			/// helpers with different signatures is a collision waiting for the first piece of code that emits both.</remarks>

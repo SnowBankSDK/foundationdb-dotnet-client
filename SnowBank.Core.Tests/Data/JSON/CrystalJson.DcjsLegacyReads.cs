@@ -33,7 +33,7 @@ namespace SnowBank.Data.Json.Tests
 	/// a <see cref="DateTimeOffset"/> written as an object, and a dictionary written as an array of key/value pairs.</summary>
 	/// <remarks>
 	/// <para>These are read-side rules. Documents already at rest must stay readable, and nothing here changes what CrystalJson writes.</para>
-	/// <para>Each wire below comes from the real DCJS, in-process, so the fixture cannot pin a shape the legacy serializer never wrote.</para>
+	/// <para>Each output below comes from the real DCJS, in-process, so the fixture cannot pin a shape the legacy serializer never wrote.</para>
 	/// </remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
@@ -87,14 +87,14 @@ namespace SnowBank.Data.Json.Tests
 
 			// DCJS writes a DateTimeOffset as an object of two members. The inner date is the instant, normalized to UTC,
 			// and the offset travels beside it, in minutes.
-			var wire = DcjsSerialize(new DcjsOffsetHolder { Stamp = stamp });
-			Log($"dcj: {wire}");
-			Assert.That(wire, Is.EqualTo("""{"Stamp":{"DateTime":"\/Date(1234560690000)\/","OffsetMinutes":120}}"""));
-			Assert.That(DcjsDeserialize<DcjsOffsetHolder>(wire).Stamp, Is.EqualTo(stamp), "the oracle reads its own wire");
+			var output = DcjsSerialize(new DcjsOffsetHolder { Stamp = stamp });
+			Log($"dcj: {output}");
+			Assert.That(output, Is.EqualTo("""{"Stamp":{"DateTime":"\/Date(1234560690000)\/","OffsetMinutes":120}}"""));
+			Assert.That(DcjsDeserialize<DcjsOffsetHolder>(output).Stamp, Is.EqualTo(stamp), "the oracle reads its own output");
 
 			// the DTO member path. Without the dedicated conversion the value reaches the member binder, which assigns
 			// nothing and returns default(DateTimeOffset) with no error.
-			var back = CrystalJson.Deserialize<DcjsOffsetHolder>(wire);
+			var back = CrystalJson.Deserialize<DcjsOffsetHolder>(output);
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(back.Stamp, Is.EqualTo(stamp));
@@ -102,8 +102,8 @@ namespace SnowBank.Data.Json.Tests
 			}
 
 			// the nullable member
-			var nullableWire = DcjsSerialize(new DcjsOffsetNullableHolder { Stamp = stamp });
-			var nullableBack = CrystalJson.Deserialize<DcjsOffsetNullableHolder>(nullableWire);
+			var nullableOutput = DcjsSerialize(new DcjsOffsetNullableHolder { Stamp = stamp });
+			var nullableBack = CrystalJson.Deserialize<DcjsOffsetNullableHolder>(nullableOutput);
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(nullableBack.Stamp, Is.EqualTo(stamp));
@@ -161,7 +161,7 @@ namespace SnowBank.Data.Json.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				// DCJS writes a standalone pair in lowercase, so a dictionary that went through a KeyValuePair contract comes
-				// back lowercase. Both spellings are the same wire.
+				// back lowercase. Both spellings are the same output.
 				Assert.That(
 					CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "key": "a", "value": 1 } ]"""),
 					Is.EqualTo(new Dictionary<string, int> { ["a"] = 1 }));

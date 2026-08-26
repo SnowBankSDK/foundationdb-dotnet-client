@@ -294,7 +294,7 @@ explicit output attributes instead); several container markers on one class are 
 [CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]
 [CrystalXmlOutput]
 [CrystalSerializable(typeof(Book))]
-public static partial class MyWires { }
+public static partial class CatalogSerializers { }
 ```
 
 `[CrystalJsonSerializable(typeof(T))]` is the former spelling of `[CrystalSerializable]`: still working

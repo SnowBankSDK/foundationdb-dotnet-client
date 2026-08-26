@@ -48,6 +48,10 @@ namespace FoundationDB.Client
 		/// <summary>Key that is being watched</summary>
 		public readonly Slice Key;
 
+		/// <summary>Time source used to measure the idle timeout of the two-argument <see cref="WaitAsync(TimeSpan,CancellationToken)"/>.</summary>
+		/// <remarks>Set by the owning transaction to the database clock (<see cref="IFdbDatabase.Time"/>). Left <see langword="null"/> for a directly constructed watch, which then measures the timeout on the system clock.</remarks>
+		internal TimeProvider? Time { get; set; }
+
 		/// <summary><see langword="true"/> if the watch is still active, or <see langword="false"/> if it fired or was cancelled</summary>
 		public bool IsAlive => !this.Future.Task.IsCompleted;
 
@@ -96,7 +100,7 @@ namespace FoundationDB.Client
 			EnsureNotDisposed();
 			try
 			{
-				await this.Future.Task.WaitAsync(timeout, ct).ConfigureAwait(false);
+				await this.Future.Task.WaitAsync(timeout, this.Time ?? TimeProvider.System, ct).ConfigureAwait(false);
 				return true;
 			}
 			catch (TimeoutException)

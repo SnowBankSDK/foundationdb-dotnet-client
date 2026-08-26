@@ -47,6 +47,31 @@ namespace SnowBank.Data.Json
 		/// <summary>Default type resolver</summary>
 		public static readonly CrystalJsonTypeResolver DefaultResolver = new();
 
+		/// <summary>Diagnostic switch: when <see langword="true"/>, any value that would be (de)serialized through the
+		/// runtime reflection path (a type with no source-generated converter, handled by <see cref="CrystalJsonTypeResolver"/>)
+		/// throws <see cref="JsonReflectionDisabledException"/> instead. Off by default.</summary>
+		/// <remarks>Set it while checking that a code path stays on the source-generated or JSON DOM track for Native
+		/// AoT: a hidden reflection fallback then fails loudly, naming the type, instead of working until the trimmer
+		/// removes a member. Process-wide (not thread-scoped); set it once at startup, before the resolver caches any
+		/// type definition, so every reflected type trips on first use.</remarks>
+		public static bool DisableReflection { get; set; }
+
+		/// <summary>Name of the trimmer/runtime feature switch that controls <see cref="IsReflectionSupported"/>.</summary>
+		internal const string ReflectionSupportSwitchName = "SnowBank.Data.Json.CrystalJson.IsReflectionSupported";
+
+		/// <summary>Whether the runtime reflection (de)serialization path is available.</summary>
+		/// <remarks>Defaults to <see langword="true"/>. An application that publishes trimmed or Native AoT can set the
+		/// MSBuild feature <c>SnowBank.Data.Json.CrystalJson.IsReflectionSupported=false</c> (or the matching runtime
+		/// config switch): the trimmer then substitutes this property to <see langword="false"/> and removes the whole
+		/// reflection subtree, so a source-generated consumer builds with no trim warnings. Every reflection entry point
+		/// is guarded by this property, so with reflection off a reflected type throws <see cref="JsonReflectionDisabledException"/>.</remarks>
+#if NET9_0_OR_GREATER
+		[System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(ReflectionSupportSwitchName)]
+		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute))]
+		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute))]
+#endif
+		public static bool IsReflectionSupported => AppContext.TryGetSwitch(ReflectionSupportSwitchName, out var enabled) ? enabled : true;
+
 		/// <summary>Options when save JSON to disk</summary>
 		[Flags]
 		public enum SaveOptions
@@ -82,6 +107,8 @@ namespace SnowBank.Data.Json
 		/// <returns><c>`123`</c>, <c>`true`</c>, <c>`"ABC"`</c>, <c>`{ "foo":..., "bar": ... }`</c>, <c>`[ ... ]`</c>, ...</returns>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static string Serialize(object? value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return SerializeToString(value, typeof(object), settings, resolver);
@@ -95,6 +122,8 @@ namespace SnowBank.Data.Json
 		/// <returns><c>`123`</c>, <c>`true`</c>, <c>`"ABC"`</c>, <c>`{ "foo":..., "bar": ... }`</c>, <c>`[ ... ]`</c>, ...</returns>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static string Serialize(object? value, Type declaredType, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return SerializeToString(value, declaredType, settings, resolver);
@@ -136,6 +165,8 @@ namespace SnowBank.Data.Json
 		/// <returns><c>`123`</c>, <c>`true`</c>, <c>`"ABC"`</c>, <c>`{ "foo":..., "bar": ... }`</c>, <c>`[ ... ]`</c>, ...</returns>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static string Serialize<T>(T? value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			if (value == null)
@@ -167,6 +198,8 @@ namespace SnowBank.Data.Json
 		/// <returns><c>`123`</c>, <c>`true`</c>, <c>`"ABC"`</c>, <c>`{ "foo":..., "bar": ... }`</c>, <c>`[ ... ]`</c>, ...</returns>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
 		[Pure]
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Only reflects when no source-generated serializer is supplied; the caller opted in by passing null.")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Only reflects when no source-generated serializer is supplied; the caller opted in by passing null.")]
 		public static string Serialize<T>(T? value, IJsonSerializer<T>? serializer, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			if (value == null)
@@ -329,6 +362,8 @@ namespace SnowBank.Data.Json
 		/// <returns>The value of <paramref name="buffer"/>, for call chaining</returns>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static StringBuilder Serialize(object? value, StringBuilder? buffer, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			if (value == null)
@@ -403,6 +438,8 @@ namespace SnowBank.Data.Json
 		/// <param name="resolver">Custom type resolver (use default behavior if null)</param>
 		/// <returns>The <paramref name="output"/> instance, for call chaining</returns>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TextWriter SerializeTo(TextWriter output, object? value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return SerializeToTextWriter(output, value, typeof(object), settings, resolver);
@@ -415,6 +452,8 @@ namespace SnowBank.Data.Json
 		/// <param name="resolver">Custom type resolver (use default behavior if null)</param>
 		/// <returns>The <paramref name="output"/> instance, for call chaining</returns>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TextWriter SerializeTo<T>(TextWriter output, T value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return SerializeToTextWriter(output, value, typeof(T), settings, resolver);
@@ -426,6 +465,8 @@ namespace SnowBank.Data.Json
 		/// <param name="settings">Serialization settings (use default JSON settings if null)</param>
 		/// <param name="resolver">Custom type resolver (use default behavior if null)</param>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static void SerializeTo<T>(Stream output, T? value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			Contract.NotNull(output);
@@ -474,6 +515,8 @@ namespace SnowBank.Data.Json
 		/// <summary>Serializes a boxed value into an in-memory buffer</summary>
 		/// <returns>Byte array that contains the resulting JSON document</returns>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static byte[] ToBytes(object? value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return ToSlice(value, settings, resolver).ToArray();
@@ -482,6 +525,8 @@ namespace SnowBank.Data.Json
 		/// <summary>Serializes a value into an in-memory buffer</summary>
 		/// <returns>Byte array that contains the resulting JSON document</returns>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static byte[] ToBytes<T>(T? value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return ToSlice<T>(value, settings, resolver).ToArray();
@@ -502,6 +547,8 @@ namespace SnowBank.Data.Json
 		/// <returns>Slice of memory that contains the utf-8 encoded JSON document</returns>
 		/// <exception cref="JsonSerializationException">if the serialization fails</exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static Slice ToSlice(object? value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 			=> ToSlice(value, typeof(object), settings, resolver);
 
@@ -514,6 +561,8 @@ namespace SnowBank.Data.Json
 		/// <param name="resolver">Custom type resolver (use default behavior if null)</param>
 		/// <returns>Slice of memory that contains the utf-8 encoded JSON document</returns>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static Slice ToSlice<T>(T? value, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			var writer = WriterPool.Allocate();
@@ -586,6 +635,8 @@ namespace SnowBank.Data.Json
 		/// <param name="resolver">Custom type resolver (use default behavior if null)</param>
 		/// <returns><c>`123`</c>, <c>`true`</c>, <c>`"ABC"`</c>, <c>`{ "foo":..., "bar": ... }`</c>, <c>`[ ... ]`</c>, ...</returns>
 		/// <exception cref="JsonSerializationException">If the object fails to serialize properly (non-serializable type, loop in the object graph, ...)</exception>
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Only reflects when no source-generated serializer is supplied; the caller opted in by passing null.")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Only reflects when no source-generated serializer is supplied; the caller opted in by passing null.")]
 		public static Slice ToSlice<T>(T? value, IJsonSerializer<T>? serializer, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			var writer = WriterPool.Allocate();
@@ -630,6 +681,8 @@ namespace SnowBank.Data.Json
 		/// <para>The <see cref="SliceOwner"/> returned <b>MUST</b> be disposed; otherwise, the rented buffer will not be returned to the <paramref name="pool"/>.</para>
 		/// </remarks>
 		[Pure, MustDisposeResource]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static SliceOwner ToSlice<T>(T? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			var writer = WriterPool.Allocate();
@@ -658,6 +711,8 @@ namespace SnowBank.Data.Json
 		/// <remarks>
 		/// <para>The <see cref="SliceOwner"/> returned <b>MUST</b> be disposed; otherwise, the rented buffer will not be returned to the <paramref name="pool"/>.</para>
 		/// </remarks>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static SliceOwner ToSlice<T>(ReadOnlySpan<T?> values, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			var writer = WriterPool.Allocate();
@@ -686,6 +741,8 @@ namespace SnowBank.Data.Json
 		/// <remarks>
 		/// <para>The <see cref="SliceOwner"/> returned <b>MUST</b> be disposed; otherwise, the rented buffer will not be returned to the <paramref name="pool"/>.</para>
 		/// </remarks>
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Only reflects when no source-generated serializer is supplied; the caller opted in by passing null.")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Only reflects when no source-generated serializer is supplied; the caller opted in by passing null.")]
 		public static SliceOwner ToSlice<T>(T? value, IJsonSerializer<T>? serializer, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			var writer = WriterPool.Allocate();
@@ -733,6 +790,8 @@ namespace SnowBank.Data.Json
 		/// <para>The <see cref="SliceOwner"/> returned <b>MUST</b> be disposed; otherwise, the rented buffer will not be returned to the <paramref name="pool"/>.</para>
 		/// </remarks>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static SliceOwner ToSlice(object? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver)
 		{
 			return ToSlice(value, typeof(object), pool, settings, resolver);
@@ -751,6 +810,8 @@ namespace SnowBank.Data.Json
 		/// <para>If <paramref name="type"/> is an interface or abstract class, or if <paramref name="value"/> is a derived type of <paramref name="type"/>, the serialized document may include an additional attribute with the original type name, which may not be recognized by other libraries or platforms.</para>
 		/// </remarks>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static SliceOwner ToSlice(object? value, Type? type, ArrayPool<byte>? pool, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver)
 		{
 			var writer = WriterPool.Allocate();
@@ -787,6 +848,8 @@ namespace SnowBank.Data.Json
 		/// <para>If the type of the value is an interface or abstract class, or if the value is a derived type, the serialized document may include an additional attribute with the original type name, which may not be recognized by other libraries or platforms.</para>
 		/// </remarks>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static Slice ToSlice(object? value, Type? type, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver)
 		{
 			var writer = WriterPool.Allocate();
@@ -1620,6 +1683,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue Deserialize<TValue>(
 #if NET8_0_OR_GREATER
 			[StringSyntax(StringSyntaxAttribute.Json)]
@@ -1638,6 +1703,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue Deserialize<TValue>(
 #if NET8_0_OR_GREATER
 			[StringSyntax(StringSyntaxAttribute.Json)]
@@ -1659,6 +1726,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Only reflects when no source-generated serializer is supplied; the caller opted in by passing null.")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Only reflects when no source-generated serializer is supplied; the caller opted in by passing null.")]
 		public static TValue Deserialize<TValue>(
 #if NET8_0_OR_GREATER
 			[StringSyntax(StringSyntaxAttribute.Json)]
@@ -1684,6 +1753,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(
 #if NET8_0_OR_GREATER
 			[StringSyntax(StringSyntaxAttribute.Json)]
@@ -1704,6 +1775,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(
 #if NET8_0_OR_GREATER
 			[StringSyntax(StringSyntaxAttribute.Json)]
@@ -1723,6 +1796,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue Deserialize<TValue>(byte[] jsonBytes) where TValue : notnull
 		{
 			return Parse(jsonBytes).Required<TValue>();
@@ -1736,6 +1811,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue Deserialize<TValue>(byte[] jsonBytes, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver = null) where TValue : notnull
 		{
 			return Parse(jsonBytes, settings).Required<TValue>(resolver);
@@ -1749,6 +1826,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(byte[] jsonBytes, TValue defaultValue)
 		{
 			return Parse(jsonBytes).As(defaultValue);
@@ -1764,6 +1843,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(byte[] jsonBytes, TValue defaultValue, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return Parse(jsonBytes, settings).As(defaultValue, resolver);
@@ -1774,6 +1855,8 @@ namespace SnowBank.Data.Json
 		/// <returns>Deserialized instance</returns>
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue Deserialize<TValue>(Slice jsonBytes) where TValue : notnull
 		{
 			return Parse(jsonBytes).Required<TValue>(resolver: null);
@@ -1786,6 +1869,8 @@ namespace SnowBank.Data.Json
 		/// <returns>Deserialized instance</returns>
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue Deserialize<TValue>(Slice jsonBytes, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver = null) where TValue : notnull
 		{
 			return Parse(jsonBytes, settings).Required<TValue>(resolver);
@@ -1798,6 +1883,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(Slice jsonBytes, TValue defaultValue)
 		{
 			return Parse(jsonBytes).As(defaultValue);
@@ -1812,6 +1899,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(Slice jsonBytes, TValue defaultValue, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return Parse(jsonBytes, settings).As(defaultValue, resolver);
@@ -1824,6 +1913,8 @@ namespace SnowBank.Data.Json
 		/// <returns>Deserialized instance</returns>
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue Deserialize<TValue>(ReadOnlySpan<byte> jsonBytes, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null) where TValue : notnull
 		{
 			return Parse(jsonBytes, settings).Required<TValue>(resolver);
@@ -1836,6 +1927,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(ReadOnlySpan<byte> jsonBytes, TValue defaultValue)
 		{
 			return Parse(jsonBytes).As(defaultValue);
@@ -1850,6 +1943,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(ReadOnlySpan<byte> jsonBytes, TValue defaultValue, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return Parse(jsonBytes, settings).As(defaultValue, resolver);
@@ -1863,6 +1958,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		/// <exception cref="InvalidOperationException">If the JSON document is <c>"null"</c></exception>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue Deserialize<TValue>(ReadOnlyMemory<byte> jsonBytes, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null) where TValue : notnull
 		{
 			return Parse(jsonBytes, settings).Required<TValue>(resolver);
@@ -1875,6 +1972,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(ReadOnlyMemory<byte> jsonBytes, TValue defaultValue)
 		{
 			return Parse(jsonBytes).As(defaultValue);
@@ -1889,6 +1988,8 @@ namespace SnowBank.Data.Json
 		/// <exception cref="JsonSyntaxException">If the JSON document is not syntactically correct.</exception>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static TValue? Deserialize<TValue>(ReadOnlyMemory<byte> jsonBytes, TValue defaultValue, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver = null)
 		{
 			return Parse(jsonBytes, settings).As(defaultValue, resolver);

@@ -58,7 +58,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			=> Compile(source, ParseOptions, assemblyName);
 
 		/// <summary>Parses a probe source into a compilation with NO global usings, at an explicit language version</summary>
-		/// <remarks>Nullable is only turned on when the language version supports it: <c>NullableContextOptions.Enable</c> is rejected outright (<c>CS8630</c>) below C# 8.</remarks>
+		/// <remarks>
+		/// <para>Nullable is only turned on when the language version supports it: <c>NullableContextOptions.Enable</c> is
+		/// rejected outright (<c>CS8630</c>) below C# 8.</para>
+		/// <para>Metadata is imported with <see cref="MetadataImportOptions.All"/>: with the default import, Roslyn drops the
+		/// private members of a REFERENCED assembly, so a private <c>[DataMember]</c> silently vanishes from the contract and a
+		/// private setter makes its property look read-only. A certification host that references the product as compiled
+		/// assemblies needs the same option, or its mismatches measure the rig instead of the output.</para>
+		/// </remarks>
 		public static CSharpCompilation Compile(string source, CSharpParseOptions parseOptions, string assemblyName = "ProbeAssembly")
 			=> CSharpCompilation.Create(
 				assemblyName,
@@ -66,7 +73,20 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				references: References,
 				options: new CSharpCompilationOptions(
 					OutputKind.DynamicallyLinkedLibrary,
+					metadataImportOptions: MetadataImportOptions.All,
 					nullableContextOptions: parseOptions.LanguageVersion.MapSpecifiedToEffectiveVersion() >= LanguageVersion.CSharp8 ? NullableContextOptions.Enable : NullableContextOptions.Disable));
+
+		/// <summary>Compiles a probe source into an in-memory assembly and returns it as a metadata reference</summary>
+		/// <remarks>For the facts that enroll a type living in a REFERENCED assembly rather than in the probe source itself,
+		/// which is how a certification rig sees every product type.</remarks>
+		public static MetadataReference CompileToReference(string source, string assemblyName)
+		{
+			var compilation = Compile(source, ParseOptions, assemblyName);
+			using var stream = new MemoryStream();
+			var emit = compilation.Emit(stream);
+			Assert.That(emit.Success, Is.True, $"the referenced probe assembly '{assemblyName}' must compile: {string.Join("\n", emit.Diagnostics.Where(static d => d.Severity == DiagnosticSeverity.Error))}");
+			return MetadataReference.CreateFromImage(stream.ToArray());
+		}
 
 		/// <summary>Runs the generator over the compilation, returning the updated compilation and the generator's own diagnostics</summary>
 		public static (Compilation Output, ImmutableArray<Diagnostic> GeneratorDiagnostics) RunGenerator(CSharpCompilation compilation)

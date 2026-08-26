@@ -79,7 +79,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		#region The shared cap...
 
 		[Test]
-		public void Test_Every_Wire_Shares_One_Nesting_Cap()
+		public void Test_Every_Output_Shares_One_Nesting_Cap()
 		{
 			// the whole point of the constant: a document the XML emission writes must not be refused by the JSON one (or the
 			// other way round) purely because the two disagreed on where "too deep" starts

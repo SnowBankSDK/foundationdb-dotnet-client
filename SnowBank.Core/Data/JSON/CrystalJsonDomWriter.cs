@@ -211,7 +211,7 @@ namespace SnowBank.Data.Json
 			}
 			else if (runtimeType.IsValueType)
 			{ // struct, datetime, guids, ...
-				if (TryConvertValueTypeObject(ref context, value, runtimeType, out result))
+				if (CrystalJson.IsReflectionSupported && TryConvertValueTypeObject(ref context, value, runtimeType, out result))
 				{
 					return result;
 				}
@@ -223,7 +223,7 @@ namespace SnowBank.Data.Json
 				  // instead of silently flattening the shape; jagged arrays (T[][]) are fine
 					throw new JsonSerializationException($"Cannot serialize multi-dimensional array of type '{runtimeType.GetFriendlyName()}': arrays with more than one dimension have no JSON representation, convert to a jagged array (T[][]) instead.");
 				}
-				if (TryConvertListObject(ref context, (IList) value, runtimeType, out result))
+				if (CrystalJson.IsReflectionSupported && TryConvertListObject(ref context, (IList) value, runtimeType, out result))
 				{
 					return result;
 				}
@@ -236,7 +236,7 @@ namespace SnowBank.Data.Json
 
 			if (value is IDictionary<string, object?> dict)
 			{ // matches Dictionary<string, object> as well as ExpandoObject
-				if (TryConvertDictionaryObject(ref context, dict, runtimeType, out result))
+				if (CrystalJson.IsReflectionSupported && TryConvertDictionaryObject(ref context, dict, runtimeType, out result))
 				{
 					return result;
 				}
@@ -251,7 +251,7 @@ namespace SnowBank.Data.Json
 			{
 				if (value is IDictionary idict)
 				{ // => { K: V }
-					if (TryConvertDictionaryObject(ref context, idict, runtimeType, out result))
+					if (CrystalJson.IsReflectionSupported && TryConvertDictionaryObject(ref context, idict, runtimeType, out result))
 					{
 						return result;
 					}
@@ -259,7 +259,7 @@ namespace SnowBank.Data.Json
 
 				if (value is IList ilist)
 				{ // => [ x, y, ... ]
-					if (TryConvertListObject(ref context, ilist, runtimeType, out result))
+					if (CrystalJson.IsReflectionSupported && TryConvertListObject(ref context, ilist, runtimeType, out result))
 					{
 						return result;
 					}
@@ -270,7 +270,7 @@ namespace SnowBank.Data.Json
 					return CrystalJsonVisitor.ConvertTupleToJson(tuple);
 				}
 
-				if (TryConvertEnumerableObject(ref context, enmr, runtimeType, out result))
+				if (CrystalJson.IsReflectionSupported && TryConvertEnumerableObject(ref context, enmr, runtimeType, out result))
 				{ // => [ x, y, ...]
 					return result;
 				}
@@ -333,7 +333,7 @@ namespace SnowBank.Data.Json
 			}
 
 
-			if (TryConvertFromTypeDefinition(ref context, value, declaredType, runtimeType, out result))
+			if (CrystalJson.IsReflectionSupported && TryConvertFromTypeDefinition(ref context, value, declaredType, runtimeType, out result))
 			{
 				return result;
 			}
@@ -463,6 +463,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertValueTypeObject(ref VisitingContext context, object value, Type type, [MaybeNullWhen(false)] out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && type != null);
@@ -636,6 +637,7 @@ namespace SnowBank.Data.Json
 			return false;
 		}
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal JsonValue VisitKeyValuePair(ref VisitingContext context, object value, Type type)
 		{
 			return s_cachedKeyValuePairVisitors.GetOrAdd(type, CompileKeyValuePairVisitor)(this, ref context, value);
@@ -645,6 +647,8 @@ namespace SnowBank.Data.Json
 
 		private static readonly QuasiImmutableCache<Type, KeyValuePairVisitor> s_cachedKeyValuePairVisitors = new(TypeEqualityComparer.Default);
 
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		private static KeyValuePairVisitor CompileKeyValuePairVisitor(Type kvType)
 		{
 			// (writer, ref context, obj) =>  VisitKeyValuePair<TKey, TValue>(writer, (KeyValuePair<TKey, TValue) obj)
@@ -685,6 +689,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertDictionaryObject(ref VisitingContext context, IDictionary<string, object?> value, Type type, out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && type != null);
@@ -723,6 +728,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertDictionaryObject(ref VisitingContext context, IDictionary value, Type type, out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && type != null);
@@ -777,6 +783,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertListObject(ref VisitingContext context, IList values, Type listType, out JsonValue result)
 		{
 			Contract.Debug.Requires(values != null && listType != null);
@@ -812,6 +819,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertEnumerableObject(ref VisitingContext context, IEnumerable values, Type sequenceType, out JsonValue result)
 		{
 			Contract.Debug.Requires(values != null && sequenceType != null);
@@ -846,6 +854,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		internal bool TryConvertFromTypeDefinition(ref VisitingContext context, object? value, Type declaredType, Type? runtimeType, [MaybeNullWhen(false)] out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && declaredType != null && runtimeType != null);
@@ -926,6 +935,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Converts a member's (non-null) value, applying the per-member overrides that the generic conversion cannot see (custom converter, forced enum format)</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private JsonValue PackMemberValue(ref VisitingContext context, CrystalJsonMemberDefinition member, object value)
 		{
 			if (member.CustomConverter != null)
@@ -934,7 +944,7 @@ namespace SnowBank.Data.Json
 			}
 
 			if (member.Attributes?.EnumFormat is JsonEnumFormat.String or JsonEnumFormat.Number && value is Enum enumValue)
-			{ // [JsonProperty(EnumFormat = ...)] forces the wire form for this member, same as on the text route
+			{ // [JsonProperty(EnumFormat = ...)] forces the output form for this member, same as on the text route
 				return member.Attributes.EnumFormat == JsonEnumFormat.String
 					? CrystalJsonEnumCache.GetLiteral(enumValue.GetType(), enumValue, m_enumCamelCased)
 					: CrystalJsonEnumCache.GetNumber(enumValue.GetType(), enumValue);
@@ -953,7 +963,7 @@ namespace SnowBank.Data.Json
 		#region Copy/Pasta from CrystalJsonWriter
 
 		/// <summary>Maximum nesting depth this writer will descend into before refusing to go deeper</summary>
-		/// <remarks>Shared with every other serialization wire (see <see cref="CrystalJsonWriter.MaxDepth"/>). This is the
+		/// <remarks>Shared with every other serialization output (see <see cref="CrystalJsonWriter.MaxDepth"/>). This is the
 		/// shallowest of the recursions that cap protects (three frames per level), so it is the one whose stack margin the
 		/// shared value is chosen against.</remarks>
 		private const int MaximumObjectGraphDepth = CrystalJsonWriter.MaxDepth;

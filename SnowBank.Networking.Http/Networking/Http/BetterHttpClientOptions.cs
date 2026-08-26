@@ -199,11 +199,11 @@ namespace SnowBank.Networking.Http
 			});
 		}
 
-		/// <summary>Throws when this per-call options instance carries wire policy (transport or pipeline tier), which cannot reach the shared pooled transport.</summary>
+		/// <summary>Throws when this per-call options instance carries transport policy (transport or pipeline tier), which cannot reach the shared pooled transport.</summary>
 		/// <param name="context">Short description of the call site (e.g. the protocol type name), included in the exception message.</param>
 		/// <remarks>
-		/// <para>The contract: per-call configuration = protocol/client behavior only (default headers, request options, hooks, timeout, per-request-only credentials); wire policy = the named policy, registered at startup with <c>AddBetterHttpClient(name, ...)</c>.</para>
-		/// <para>Wire policy set at a call site can never reach the shared pooled transport: silently ignoring it would be a silent security/behavior break, so it fails loudly instead.</para>
+		/// <para>The contract: per-call configuration = protocol/client behavior only (default headers, request options, hooks, timeout, per-request-only credentials); transport policy = the named policy, registered at startup with <c>AddBetterHttpClient(name, ...)</c>.</para>
+		/// <para>Transport policy set at a call site can never reach the shared pooled transport: silently ignoring it would be a silent security/behavior break, so it fails loudly instead.</para>
 		/// </remarks>
 		/// <exception cref="InvalidOperationException">When a transport- or pipeline-tier member is set on this instance.</exception>
 		public void EnsureOnlyProtocolBehavior(string context)
@@ -220,14 +220,14 @@ namespace SnowBank.Networking.Http
 				: this.AllowAutoRedirect is not null ? nameof(this.AllowAutoRedirect)
 				: this.AutomaticDecompression is not null ? nameof(this.AutomaticDecompression)
 				: this.Credentials is { IsPerRequestOnly: false } ? nameof(this.Credentials)
-#pragma warning disable CS0618 // the legacy Filters list is still part of the wire-policy surface this check guards
+#pragma warning disable CS0618 // the legacy Filters list is still part of the transport-policy surface this check guards
 				: this.Filters.Count > 0 ? nameof(this.Filters)
 #pragma warning restore CS0618
 				: this.Handlers.Count > 0 ? nameof(this.Handlers)
 				: null;
 			if (offender is not null)
 			{
-				throw new InvalidOperationException($"Per-call configuration can only set protocol/client behavior (default headers, request options, hooks, timeout, per-request-only credentials): '{offender}' is wire policy, which belongs to a named policy registered at startup with AddBetterHttpClient(name, ...). ({context})");
+				throw new InvalidOperationException($"Per-call configuration can only set protocol/client behavior (default headers, request options, hooks, timeout, per-request-only credentials): '{offender}' is transport policy, which belongs to a named policy registered at startup with AddBetterHttpClient(name, ...). ({context})");
 			}
 		}
 

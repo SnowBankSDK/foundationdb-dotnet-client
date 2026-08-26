@@ -165,8 +165,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Name of the member the generated documentation quotes as an example, or a placeholder when the type has none</summary>
 			private static string GetSampleMemberName(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].MemberName : "SomeMember";
 
-			/// <summary>Wire name of that same example member</summary>
-			private static string GetSampleMemberWireName(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].Name : "someMember";
+			/// <summary>Output name of that same example member</summary>
+			private static string GetSampleMemberOutputName(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].Name : "someMember";
 
 			/// <summary>Type of that same example member</summary>
 			private static string GetSampleMemberType(CrystalJsonTypeMetadata typeDef) => typeDef.Members.Count > 0 ? typeDef.Members[0].Type.FullyQualifiedName : "global::System.Object";
@@ -741,7 +741,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 				if (this.WritesXml)
 				{
-					facets.Add($"{ICrystalXmlSerializerFullName}<{typeFullName}>");
+					// the element facet, which extends ICrystalXmlSerializer<T> with the composition surface the
+					// collection root entry points of CrystalXml build on
+					facets.Add($"{ICrystalXmlElementSerializerFullName}<{typeFullName}>");
 				}
 				sb.AppendLine($"public sealed class JsonConverter : {string.Join(", ", facets)}"); //TODO: implements!
 				sb.EnterBlock("JsonConverter");
@@ -1741,7 +1743,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(value);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
 					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
@@ -1761,7 +1763,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(value);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
 					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
@@ -1816,8 +1818,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
-				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1834,8 +1836,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
-				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1852,8 +1854,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
-				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // change the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -1943,7 +1945,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(json);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
 					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
@@ -1963,7 +1965,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToReadOnly(json);");
 				if (typeDef.Members.Count > 0)
 				{ // the example names a real member, and a type can legitimately have none (every member excluded by its contract)
-					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+					sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
 					sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // ERROR: will not compile (there is no setter defined for this member)");
 				}
 				sb.XmlComment("</code></para>");
@@ -2018,8 +2020,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
-				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -2036,8 +2038,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
-				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -2054,8 +2056,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"var json = {KnownTypeSymbols.JsonValueFullName}.Parse(/* JSON text */);");
 				sb.XmlComment("// ...");
 				sb.XmlComment($"var proxy = {GetSerializerName(typeDef.Type)}.ToMutable(json);");
-				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
-				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberWireName(typeDef))} field");
+				sb.XmlComment($"var value = proxy.{GetSampleMemberName(typeDef)}; // returns the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field exposed as <see cref=\"{GetSampleMemberType(typeDef)}\"/>");
+				sb.XmlComment($"proxy.{GetSampleMemberName(typeDef)} = newValue; // changes the value of the {CSharpCodeBuilder.Constant(GetSampleMemberOutputName(typeDef))} field");
 				sb.XmlComment("</code></para>");
 				sb.XmlComment("</remarks>");
 				sb.XmlComment($"<seealso cref=\"ToReadOnly({KnownTypeSymbols.JsonValueFullName})\">If you need a read-only view</seealso>");
@@ -2660,7 +2662,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging): a merged format would be unauditable. Settings the baked names cannot honor are refused by the guard in the Serialize method.</remarks>
 			private string GetSettingsFallbackExpr(string settingsVar, bool compact)
 			{
-				if (this.Metadata.WireProfile == "DataContractCompat")
+				if (this.Metadata.OutputProfile == "DataContractCompat")
 				{
 					var profile = $"{KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat";
 					return compact ? $"{settingsVar} ?? {profile}.Compacted()" : $"{settingsVar} ?? {profile}";
@@ -2873,7 +2875,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			{
 				// the "no settings" default is the container's baked format profile; it is baked into the context at the
 				// root so that a nested converter from another container sees the concrete settings, not the null
-				var defaultSettingsExpr = this.Metadata.WireProfile == "DataContractCompat"
+				var defaultSettingsExpr = this.Metadata.OutputProfile == "DataContractCompat"
 					? $"settings ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat"
 					: "settings";
 
@@ -2918,7 +2920,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"public {KnownTypeSymbols.JsonValueFullName} Pack(ref {CrystalJsonPackContextFullName} context, {typeDef.Type.FullyQualifiedName}{(!typeDef.Type.IsValueType() ? "?" : "")} instance)");
 				sb.EnterBlock("Pack");
 
-				sb.AppendLine($"var settings = context.Settings{(this.Metadata.WireProfile == "DataContractCompat" ? $" ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat" : "")};");
+				sb.AppendLine($"var settings = context.Settings{(this.Metadata.OutputProfile == "DataContractCompat" ? $" ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.DataContractCompat" : "")};");
 				sb.AppendLine("var resolver = context.Resolver;");
 
 				if (!typeDef.Type.IsValueType())

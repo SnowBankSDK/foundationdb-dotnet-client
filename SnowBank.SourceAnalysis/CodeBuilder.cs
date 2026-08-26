@@ -107,7 +107,7 @@ namespace SnowBank.SourceAnalysis
 		/// <summary>Encodes the UTF-8 form of a string into a C# <c>byte[]</c> array-creation expression</summary>
 		/// <remarks>
 		/// <para>This is the language-version-neutral spelling of <c>"..."u8.ToArray()</c>: UTF-8 string literals are a C# 11 feature, and the emitted code must also compile in a consumer that sits on the generator's supported language floor (C# 9). Roslyn folds a byte-array initializer of constants into the same <c>RuntimeHelpers.InitializeArray</c> blob copy the <c>u8</c> form produces, so the two spellings cost the same at run time and produce the same bytes.</para>
-		/// <para>The bytes are computed here, by the generator, so the wire cannot depend on how the consumer's compiler encodes literals.</para>
+		/// <para>The bytes are computed here, by the generator, so the output cannot depend on how the consumer's compiler encodes literals.</para>
 		/// </remarks>
 		public static string Utf8Constant(string literal)
 		{

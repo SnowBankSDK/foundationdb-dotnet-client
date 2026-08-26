@@ -60,17 +60,19 @@ namespace FoundationDB.Client
 			/// <param name="configuration">Configuration given to <c>configure new</c> (defaults to <c>"single ssd"</c>, the single-node local dev shape)</param>
 			/// <param name="probeInterval">Delay between two availability probes (defaults to 500 ms)</param>
 			/// <param name="log">Receives one line per outcome, so that a first run is never silent</param>
+			/// <param name="time">Time source for the availability wait (the deadline and the poll delay); defaults to the system clock. A test can pass a fake provider to drive the timeout with virtual time.</param>
 			/// <param name="ct">Token used to abort the wait</param>
 			/// <remarks>
 			/// <para>Idempotent and safe against concurrent starters: <c>configure new</c> refuses to touch an existing configuration, and that refusal counts as success.</para>
 			/// <para>Every <c>fdbcli</c> invocation passes <c>--no-status</c>: the initial status check would itself wait 30 to 60 seconds on the unconfigured database this method exists to fix.</para>
 			/// </remarks>
 			/// <exception cref="InvalidOperationException">If <c>configure new</c> fails for another reason than an existing database, or if the database is still unavailable after <paramref name="timeout"/>; the message carries the manual recovery command.</exception>
-			public static async Task EnsureDatabaseConfiguredAsync(FdbCliRunner runFdbCli, TimeSpan timeout, string configuration = "single ssd", TimeSpan? probeInterval = null, Action<string>? log = null, CancellationToken ct = default)
+			public static async Task EnsureDatabaseConfiguredAsync(FdbCliRunner runFdbCli, TimeSpan timeout, string configuration = "single ssd", TimeSpan? probeInterval = null, Action<string>? log = null, TimeProvider? time = null, CancellationToken ct = default)
 			{
 				Contract.NotNull(runFdbCli);
 				Contract.GreaterThan(timeout, TimeSpan.Zero);
 				Contract.NotNullOrWhiteSpace(configuration);
+				time ??= TimeProvider.System;
 
 				string configureCommand = "configure new " + configuration;
 				string manualRecipe = $"fdbcli --no-status --exec \"{configureCommand}\"";
@@ -93,7 +95,7 @@ namespace FoundationDB.Client
 				}
 
 				// Confirm: the database must actually answer before callers start opening connections.
-				var deadline = global::System.Diagnostics.Stopwatch.StartNew();
+				var since = time.GetTimestamp();
 				while (true)
 				{
 					(_, output) = await runFdbCli([ "--no-status", "--exec", "status minimal" ], ct).ConfigureAwait(false);
@@ -102,11 +104,15 @@ namespace FoundationDB.Client
 						log?.Invoke("FoundationDB database is available.");
 						return;
 					}
-					if (deadline.Elapsed >= timeout)
+					if (time.GetElapsedTime(since) >= timeout)
 					{
 						throw new InvalidOperationException($"FoundationDB database is still unavailable after {timeout.TotalSeconds:N0} seconds: {output.Trim()}. Run '{manualRecipe}' in the fdb container, then restart.");
 					}
-					await Task.Delay(interval, ct).ConfigureAwait(false);
+#if NET8_0_OR_GREATER
+					await Task.Delay(interval, time, ct).ConfigureAwait(false);
+#else
+					await time.Delay(interval, ct).ConfigureAwait(false);
+#endif
 				}
 			}
 

@@ -164,30 +164,30 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index)
+		public TItem? Get<TItem>(int index)
 			=> TypeConverters.ConvertBoxed<TItem>(this[index]);
 
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index)
+		public TItem? Get<TItem>(Index index)
 			=> Get<TItem>(index.GetOffset(this.Count));
 
 		/// <inheritdoc />
-		public TItem? GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		public TItem? GetFirst<TItem>()
 		{
 			if (m_items.Length == 0) TupleHelpers.ThrowTupleIsEmpty();
 			return TypeConverters.ConvertBoxed<TItem>(m_items.Span[0]);
 		}
 
 		/// <inheritdoc />
-		public TItem? GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		public TItem? GetLast<TItem>()
 		{
 			if (m_items.Length == 0) TupleHelpers.ThrowTupleIsEmpty();
 			return TypeConverters.ConvertBoxed<TItem>(m_items.Span[^1]);
 		}
 
 		/// <inheritdoc />
-		public IVarTuple Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(TItem value)
+		public IVarTuple Append<TItem>(TItem value)
 		{
 			return new LinkedTuple<TItem>(this, value);
 		}

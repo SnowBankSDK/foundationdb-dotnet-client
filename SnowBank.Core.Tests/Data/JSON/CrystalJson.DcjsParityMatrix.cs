@@ -29,16 +29,16 @@ namespace SnowBank.Data.Json.Tests
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>The DataContractJsonSerializer parity matrix: for every DCJS attribute/construct of the legacy migration, pins the wire
+	/// <summary>The DataContractJsonSerializer parity matrix: for every DCJS attribute/construct of the legacy migration, pins the output
 	/// the REAL legacy serializer produces (live, in-process; the net472 leg runs the actual .NET Framework DCJS) next to CrystalJson's
-	/// wire, and asserts SEMANTIC compatibility in both directions rather than byte equality.</summary>
+	/// output, and asserts SEMANTIC compatibility in both directions rather than byte equality.</summary>
 	/// <remarks>
 	/// <para>The bar (owner-ruled): "similar enough that it will work with well-behaved clients". Field names and membership are
-	/// respected, ignored members stay ignored, and the two read directions are the mechanical proof: CrystalJson binds the DCJS wire
-	/// to the same value (stored data, rolling upgrades), and DCJS binds CrystalJson's compat-mode wire (frozen legacy clients). Byte
+	/// respected, ignored members stay ignored, and the two read directions are the mechanical proof: CrystalJson binds the DCJS output
+	/// to the same value (stored data, rolling upgrades), and DCJS binds CrystalJson's compat-mode output (frozen legacy clients). Byte
 	/// differences that a well-behaved parser absorbs (ISO vs <c>\/Date()\/</c>, omitted vs explicit nulls, key order, <c>\/</c>
 	/// escaping) are pinned side by side as documentation, not asserted away.</para>
-	/// <para>The <c>CjLegacyWire</c> column is the migration recipe: the exact settings that produce a wire a frozen DCJS client reads.</para>
+	/// <para>The <c>CjLegacyOutput</c> column is the migration recipe: the exact settings that produce an output a frozen DCJS client reads.</para>
 	/// </remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
@@ -190,7 +190,7 @@ namespace SnowBank.Data.Json.Tests
 			public DateTime When { get; set; }
 		}
 
-		/// <summary>Single DateTime member, for the per-Kind oracle probes (the wire depends on the machine timezone, so it is pinned against the live oracle, not inline)</summary>
+		/// <summary>Single DateTime member, for the per-Kind oracle probes (the output depends on the machine timezone, so it is pinned against the live oracle, not inline)</summary>
 		public sealed class DxDateKindDto
 		{
 			public DateTime When { get; set; }
@@ -281,13 +281,13 @@ namespace SnowBank.Data.Json.Tests
 
 		private static readonly CrystalJsonSettings Compact = CrystalJsonSettings.JsonCompact;
 
-		/// <summary>Asserts a case: the live DCJS oracle wire, the CrystalJson wire on both routes, and the two read directions</summary>
+		/// <summary>Asserts a case: the live DCJS oracle output, the CrystalJson output on both routes, and the two read directions</summary>
 		private static void Check<T>(
 			T dto,
-			string dcjsWire,
-			string cjWire,
+			string dcjsOutput,
+			string cjOutput,
 			CrystalJsonSettings? cjSettings = null,
-			string? cjLegacyWire = null,
+			string? cjLegacyOutput = null,
 			CrystalJsonSettings? cjLegacySettings = null,
 			Action<T>? verifyCjRead = null,
 			Action<T>? verifyDcjsRead = null)
@@ -296,27 +296,27 @@ namespace SnowBank.Data.Json.Tests
 			var cj = cjSettings ?? Compact;
 
 			// the ORACLE: what the real DataContractJsonSerializer produces (documentation-grade, pinned inline by the caller)
-			Assert.That(DcjsSerialize(dto), Is.EqualTo(dcjsWire), "the DCJS oracle wire drifted");
+			Assert.That(DcjsSerialize(dto), Is.EqualTo(dcjsOutput), "the DCJS oracle output drifted");
 
-			// CrystalJson's wire, byte-identical across its own routes
-			Assert.That(CrystalJson.Serialize(dto, cj), Is.EqualTo(cjWire), "CrystalJson text route");
-			Assert.That(JsonValue.FromValue(dto, cj).ToJsonText(cj), Is.EqualTo(cjWire), "CrystalJson DOM route must agree");
+			// CrystalJson's output, byte-identical across its own routes
+			Assert.That(CrystalJson.Serialize(dto, cj), Is.EqualTo(cjOutput), "CrystalJson text route");
+			Assert.That(JsonValue.FromValue(dto, cj).ToJsonText(cj), Is.EqualTo(cjOutput), "CrystalJson DOM route must agree");
 
-			// the legacy-compat wire, when the default wire is not what a frozen DCJS client can read
-			if (cjLegacyWire != null)
+			// the legacy-compat output, when the default format is not what a frozen DCJS client can read
+			if (cjLegacyOutput != null)
 			{
-				Assert.That(CrystalJson.Serialize(dto, cjLegacySettings ?? Compact), Is.EqualTo(cjLegacyWire), "CrystalJson legacy-compat wire (the migration recipe)");
+				Assert.That(CrystalJson.Serialize(dto, cjLegacySettings ?? Compact), Is.EqualTo(cjLegacyOutput), "CrystalJson legacy-compat output (the migration recipe)");
 			}
 
-			// read direction A: CrystalJson binds the wire the legacy serializer produced (stored data, rolling upgrades)
-			var fromDcjs = CrystalJson.Deserialize<T>(dcjsWire)!;
+			// read direction A: CrystalJson binds the output the legacy serializer produced (stored data, rolling upgrades)
+			var fromDcjs = CrystalJson.Deserialize<T>(dcjsOutput)!;
 			if (verifyCjRead != null) verifyCjRead(fromDcjs);
-			else Assert.That(fromDcjs, Is.EqualTo(dto), "CrystalJson must bind the DCJS wire to the same value");
+			else Assert.That(fromDcjs, Is.EqualTo(dto), "CrystalJson must bind the DCJS output to the same value");
 
-			// read direction B: the legacy serializer binds CrystalJson's (compat) wire (frozen legacy clients)
-			var fromCj = DcjsDeserialize<T>(cjLegacyWire ?? cjWire);
+			// read direction B: the legacy serializer binds CrystalJson's (compat) output (frozen legacy clients)
+			var fromCj = DcjsDeserialize<T>(cjLegacyOutput ?? cjOutput);
 			if (verifyDcjsRead != null) verifyDcjsRead(fromCj);
-			else Assert.That(fromCj, Is.EqualTo(dto), "the legacy DCJS client must bind CrystalJson's wire to the same value");
+			else Assert.That(fromCj, Is.EqualTo(dto), "the legacy DCJS client must bind CrystalJson's output to the same value");
 		}
 
 		[Test]
@@ -325,9 +325,9 @@ namespace SnowBank.Data.Json.Tests
 			// [DataContract] opt-in + [DataMember(Name=...)]: full semantic parity
 			Check(
 				new DxRenameDto { Id = "X", NotAMember = "n" },
-				dcjsWire: """{"renamed_id":"X"}""",
-				cjWire: """{"renamed_id":"X"}""",
-				// NotAMember cannot round-trip through the wire on either serializer: compare only the contract members
+				dcjsOutput: """{"renamed_id":"X"}""",
+				cjOutput: """{"renamed_id":"X"}""",
+				// NotAMember cannot round-trip through the output on either serializer: compare only the contract members
 				verifyCjRead: v => Assert.That(v.Id, Is.EqualTo("X")),
 				verifyDcjsRead: v => Assert.That(v.Id, Is.EqualTo("X")));
 		}
@@ -338,8 +338,8 @@ namespace SnowBank.Data.Json.Tests
 			// [IgnoreDataMember] is DCJS's opt-out on non-[DataContract] types; CrystalJson must exclude the member as well
 			Check(
 				new DxIgnoredDto { Kept = 1, Secret = "s" },
-				dcjsWire: """{"Kept":1}""",
-				cjWire: """{"Kept":1}""",
+				dcjsOutput: """{"Kept":1}""",
+				cjOutput: """{"Kept":1}""",
 				verifyCjRead: v => { Assert.That(v.Kept, Is.EqualTo(1)); Assert.That(v.Secret, Is.Null, "[IgnoreDataMember] excludes the member from binding as well"); },
 				verifyDcjsRead: v => Assert.That(v.Kept, Is.EqualTo(1)));
 		}
@@ -351,8 +351,8 @@ namespace SnowBank.Data.Json.Tests
 			// The KEYS are what matters; both readers bind either order.
 			Check(
 				new DxOrderDto { Alpha = "a", Zulu = "z" },
-				dcjsWire: """{"Zulu":"z","Alpha":"a"}""",
-				cjWire: """{"Alpha":"a","Zulu":"z"}""");
+				dcjsOutput: """{"Zulu":"z","Alpha":"a"}""",
+				cjOutput: """{"Alpha":"a","Zulu":"z"}""");
 		}
 
 		[Test]
@@ -362,8 +362,8 @@ namespace SnowBank.Data.Json.Tests
 			// The modern rewrite is [JsonIgnore(WhenWritingDefault)], per the wave-2 table.
 			Check(
 				new DxDefaultsDto { Count = 0, Quantity = 0 },
-				dcjsWire: """{"Count":0}""",
-				cjWire: """{"Count":0,"Quantity":0}""");
+				dcjsOutput: """{"Count":0}""",
+				cjOutput: """{"Count":0,"Quantity":0}""");
 		}
 
 		[Test]
@@ -373,9 +373,9 @@ namespace SnowBank.Data.Json.Tests
 			// WithNullMembers() restores byte-level emission for legacy endpoints that want it.
 			Check(
 				new DxNullsDto { Name = null, Value = 1 },
-				dcjsWire: """{"Name":null,"Value":1}""",
-				cjWire: """{"Value":1}""",
-				cjLegacyWire: """{"Name":null,"Value":1}""",
+				dcjsOutput: """{"Name":null,"Value":1}""",
+				cjOutput: """{"Value":1}""",
+				cjLegacyOutput: """{"Name":null,"Value":1}""",
 				cjLegacySettings: Compact.WithNullMembers());
 		}
 
@@ -386,15 +386,15 @@ namespace SnowBank.Data.Json.Tests
 			// member that is null gets omitted, and the legacy DCJS reader THROWS on the missing required member.
 			// Recipe: serialize such endpoints with WithNullMembers() (or guarantee the value is present).
 			var dto = new DxRequiredDto { Id = null };
-			var cjWire = CrystalJson.Serialize(dto, Compact);
-			Assert.That(cjWire, Is.EqualTo("{}"), "CrystalJson omits the null member by default");
-			Assert.That(() => DcjsDeserialize<DxRequiredDto>(cjWire), Throws.InstanceOf<SerializationException>(),
+			var cjOutput = CrystalJson.Serialize(dto, Compact);
+			Assert.That(cjOutput, Is.EqualTo("{}"), "CrystalJson omits the null member by default");
+			Assert.That(() => DcjsDeserialize<DxRequiredDto>(cjOutput), Throws.InstanceOf<SerializationException>(),
 				"the legacy reader requires the member: this is the documented hazard");
 
 			// the recipe restores compatibility
-			var legacyWire = CrystalJson.Serialize(dto, Compact.WithNullMembers());
-			Assert.That(legacyWire, Is.EqualTo("""{"Id":null}"""));
-			Assert.That(DcjsDeserialize<DxRequiredDto>(legacyWire).Id, Is.Null);
+			var legacyOutput = CrystalJson.Serialize(dto, Compact.WithNullMembers());
+			Assert.That(legacyOutput, Is.EqualTo("""{"Id":null}"""));
+			Assert.That(DcjsDeserialize<DxRequiredDto>(legacyOutput).Id, Is.Null);
 		}
 
 		[Test]
@@ -405,9 +405,9 @@ namespace SnowBank.Data.Json.Tests
 			var when = new DateTime(2009, 2, 13, 23, 31, 30, DateTimeKind.Utc); // epoch 1234567890000
 			Check(
 				new DxDatesDto { When = when },
-				dcjsWire: """{"When":"\/Date(1234567890000)\/"}""",
-				cjWire: """{"When":"2009-02-13T23:31:30Z"}""",
-				cjLegacyWire: """{"When":"\/Date(1234567890000)\/"}""",
+				dcjsOutput: """{"When":"\/Date(1234567890000)\/"}""",
+				cjOutput: """{"When":"2009-02-13T23:31:30Z"}""",
+				cjLegacyOutput: """{"When":"\/Date(1234567890000)\/"}""",
 				cjLegacySettings: Compact.WithMicrosoftDates());
 		}
 
@@ -419,9 +419,9 @@ namespace SnowBank.Data.Json.Tests
 			// need WithEnumAsNumbers().
 			Check(
 				new DxEnumsDto { Kind = DxKind.Electronic },
-				dcjsWire: """{"Kind":1}""",
-				cjWire: """{"Kind":"E"}""",
-				cjLegacyWire: """{"Kind":1}""",
+				dcjsOutput: """{"Kind":1}""",
+				cjOutput: """{"Kind":"E"}""",
+				cjLegacyOutput: """{"Kind":1}""",
 				cjLegacySettings: Compact.WithEnumAsNumbers());
 		}
 
@@ -432,9 +432,9 @@ namespace SnowBank.Data.Json.Tests
 			// tolerance for the legacy shape, and WithDictionariesAsPairArrays() for frozen legacy readers.
 			Check(
 				new DxDictDto { Counts = new() { ["a"] = 1, ["b"] = 2 } },
-				dcjsWire: """{"Counts":[{"Key":"a","Value":1},{"Key":"b","Value":2}]}""",
-				cjWire: """{"Counts":{"a":1,"b":2}}""",
-				cjLegacyWire: """{"Counts":[{"Key":"a","Value":1},{"Key":"b","Value":2}]}""",
+				dcjsOutput: """{"Counts":[{"Key":"a","Value":1},{"Key":"b","Value":2}]}""",
+				cjOutput: """{"Counts":{"a":1,"b":2}}""",
+				cjLegacyOutput: """{"Counts":[{"Key":"a","Value":1},{"Key":"b","Value":2}]}""",
 				cjLegacySettings: Compact.WithDictionariesAsPairArrays());
 		}
 
@@ -444,8 +444,8 @@ namespace SnowBank.Data.Json.Tests
 			// plain arrays/lists: full parity
 			Check(
 				new DxListDto { Tags = [ "x", "y" ] },
-				dcjsWire: """{"Tags":["x","y"]}""",
-				cjWire: """{"Tags":["x","y"]}""");
+				dcjsOutput: """{"Tags":["x","y"]}""",
+				cjOutput: """{"Tags":["x","y"]}""");
 		}
 
 		[Test]
@@ -455,8 +455,8 @@ namespace SnowBank.Data.Json.Tests
 			// Both are valid JSON encodings of the same string: semantic parity despite the byte difference.
 			Check(
 				new DxSlashDto { Path = "a/b" },
-				dcjsWire: """{"Path":"a\/b"}""",
-				cjWire: """{"Path":"a/b"}""");
+				dcjsOutput: """{"Path":"a\/b"}""",
+				cjOutput: """{"Path":"a/b"}""");
 		}
 
 		[Test]
@@ -488,7 +488,7 @@ namespace SnowBank.Data.Json.Tests
 			var cj = CrystalJson.Serialize(dto, CrystalJsonSettings.DataContractCompat.Compacted());
 			Log($"cj : {cj}");
 			// NOTE, before you reuse this assertion elsewhere: BYTE equality holds here only because this DTO's
-			// declaration order happens to match DCJS's, which sorts members alphabetically by wire name (and, when
+			// declaration order happens to match DCJS's, which sorts members alphabetically by output name (and, when
 			// Order= is present, unordered members first then by Order with alphabetical ties). Both of our paths
 			// emit declaration order. Reorder these members and this assertion fails without anything being wrong,
 			// so a new case with a different declaration order must compare membership and values, not bytes.
@@ -496,14 +496,14 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Standalone_KeyValuePair_Binds_The_Dcjs_Wire()
+		public void Test_Standalone_KeyValuePair_Binds_The_Dcjs_Output()
 		{
 			// DCJS serializes a KeyValuePair member through the pair's own generic contract: lowercase "key"/"value"
 			var dto = new DxKvpDto { Pair = new("k", 7), Pairs = [ new("a", 1), new("b", 2) ] };
 			var oracle = DcjsSerialize(dto);
-			Assert.That(oracle, Is.EqualTo("""{"pair":{"key":"k","value":7},"pairs":[{"key":"a","value":1},{"key":"b","value":2}]}"""), "the DCJS oracle wire drifted");
+			Assert.That(oracle, Is.EqualTo("""{"pair":{"key":"k","value":7},"pairs":[{"key":"a","value":1},{"key":"b","value":2}]}"""), "the DCJS oracle output drifted");
 
-			// the lowercase legacy wire must BIND, not silently produce default-filled pairs
+			// the lowercase legacy output must BIND, not silently produce default-filled pairs
 			var back = CrystalJson.Deserialize<DxKvpDto>(oracle)!;
 			using (Assert.EnterMultipleScope())
 			{
@@ -519,9 +519,9 @@ namespace SnowBank.Data.Json.Tests
 			// an object that is not a KVP shape at all refuses loudly, same posture as the pair-array strictness
 			Assert.That(() => CrystalJson.Deserialize<DxKvpDto>("""{"pair":{"foo":1}}"""), Throws.InstanceOf<JsonBindingException>(), "an unrecognizable object refuses instead of defaulting silently");
 
-			// write side is UNCHANGED in this fix (held for the sample numbers): our wire stays the 2-element array
-			var ourWire = CrystalJson.Parse(CrystalJson.Serialize(dto, Compact)).AsObject();
-			Assert.That(ourWire["pair"], Is.InstanceOf<JsonArray>().With.Count.EqualTo(2), "the write side keeps the documented 2-element-array form");
+			// write side is UNCHANGED in this fix (held for the sample numbers): our output stays the 2-element array
+			var ourOutput = CrystalJson.Parse(CrystalJson.Serialize(dto, Compact)).AsObject();
+			Assert.That(ourOutput["pair"], Is.InstanceOf<JsonArray>().With.Count.EqualTo(2), "the write side keeps the documented 2-element-array form");
 		}
 
 		[Test]
@@ -545,7 +545,7 @@ namespace SnowBank.Data.Json.Tests
 			Log($"local: {oracleLocal}");
 			Assert.That(oracleLocal, Does.Match(@"[+-]\d{4}\)"), "probe sanity: DCJS did emit an offset suffix for a Local value");
 			Assert.That(CrystalJson.Serialize(local, compat), Is.EqualTo(oracleLocal), "byte fidelity, Local kind");
-			Assert.That(JsonValue.FromValue(local, compat).ToJsonText(compat), Is.EqualTo(oracleLocal), "the DOM route agrees on the Local wire");
+			Assert.That(JsonValue.FromValue(local, compat).ToJsonText(compat), Is.EqualTo(oracleLocal), "the DOM route agrees on the Local output");
 
 			// Unspecified: whatever the oracle does (offset or not) is the contract; pin agreement, log the shape
 			var unspecified = new DxDateKindDto { When = new DateTime(2024, 9, 20, 12, 34, 56, DateTimeKind.Unspecified) };
@@ -573,7 +573,7 @@ namespace SnowBank.Data.Json.Tests
 			// the [JsonInclude] interim opt-in stays legal; on a [DataContract] type it is now simply redundant
 			var included = new DxPrivateIncludedDto { Kept = 1 };
 			included.SetSecret("s");
-			Assert.That(CrystalJson.Serialize(included, Compact), Is.EqualTo("""{"Kept":1,"Secret":"s"}"""), "[DataMember] + [JsonInclude] keeps the same wire");
+			Assert.That(CrystalJson.Serialize(included, Compact), Is.EqualTo("""{"Kept":1,"Secret":"s"}"""), "[DataMember] + [JsonInclude] keeps the same output");
 		}
 
 		[Test]
@@ -617,7 +617,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_CollectionDataContract_Naming_Is_Absent_From_Json()
 		{
-			// [CollectionDataContract]'s Name / ItemName / KeyName / ValueName shape the XML wire only. In JSON the
+			// [CollectionDataContract]'s Name / ItemName / KeyName / ValueName shape the XML output only. In JSON the
 			// attribute carries exactly one visible meaning, "this type is a collection", which the collection binders
 			// already provide for subclasses of List<T> / Collection<T> / Dictionary<K,V>. Pinned against the live
 			// oracle rather than reasoned about, because the four names look load-bearing and a migration that
@@ -630,14 +630,14 @@ namespace SnowBank.Data.Json.Tests
 
 			Check(
 				dto,
-				dcjsWire: """{"bag":["x","y"],"labels":[{"Key":"c1","Value":"Label one"}]}""",
-				cjWire: """{"bag":["x","y"],"labels":{"c1":"Label one"}}""",
-				cjLegacyWire: """{"bag":["x","y"],"labels":[{"Key":"c1","Value":"Label one"}]}""",
+				dcjsOutput: """{"bag":["x","y"],"labels":[{"Key":"c1","Value":"Label one"}]}""",
+				cjOutput: """{"bag":["x","y"],"labels":{"c1":"Label one"}}""",
+				cjLegacyOutput: """{"bag":["x","y"],"labels":[{"Key":"c1","Value":"Label one"}]}""",
 				cjLegacySettings: CrystalJsonSettings.DataContractCompat.Compacted(),
 				verifyCjRead: VerifyBoundShape,
 				verifyDcjsRead: VerifyBoundShape);
 
-			// the knobs that look most load-bearing: a pair's members are the literal "Key"/"Value" on the wire,
+			// the knobs that look most load-bearing: a pair's members are the literal "Key"/"Value" in the output,
 			// never the configured KeyName="code" / ValueName="label"
 			var pair = CrystalJson.Parse(CrystalJson.Serialize(dto, CrystalJsonSettings.DataContractCompat.Compacted())).AsObject().GetArray("labels")[0].AsObject();
 			Assert.That(pair.Keys, Is.EquivalentTo(new[] { "Key", "Value" }), "KeyName/ValueName have no JSON existence");

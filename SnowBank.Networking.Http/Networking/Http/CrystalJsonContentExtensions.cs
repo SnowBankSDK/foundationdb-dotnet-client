@@ -26,11 +26,14 @@
 
 namespace SnowBank.Networking.Http
 {
+	using System.Diagnostics.CodeAnalysis;
 
 	/// <summary>Extension methods for deserializing HTTP response bodies into JSON</summary>
 	[PublicAPI]
 	public static class CrystalJsonContentExtensions
 	{
+
+		internal const string ReflectionMessage = "JSON body deserialization uses reflection to bind the target type. Enroll the type with [CrystalJsonConverter] and read the DOM with ReadFromCrystalJsonObjectAsync, then bind it with the source-generated converter.";
 
 		/// <summary>Reads the body of the response as a JSON Object</summary>
 		public static Task<JsonObject?> ReadFromCrystalJsonObjectAsync(this HttpContent content, CancellationToken ct)
@@ -58,12 +61,16 @@ namespace SnowBank.Networking.Http
 		}
 
 		/// <summary>Reads the body of the response as a JSON value, converted into an instance of type <typeparamref name="T"/></summary>
+		[RequiresUnreferencedCode(ReflectionMessage)]
+		[RequiresDynamicCode(ReflectionMessage)]
 		public static Task<T?> ReadFromCrystalJsonAsync<T>(this HttpContent content, CancellationToken ct)
 		{
 			return ReadFromCrystalJsonAsync<T>(content, null, null, ct);
 		}
 
 		/// <summary>Reads the body of the response as a JSON value, converted into an instance of type <typeparamref name="T"/></summary>
+		[RequiresUnreferencedCode(ReflectionMessage)]
+		[RequiresDynamicCode(ReflectionMessage)]
 		public static Task<T?> ReadFromCrystalJsonAsync<T>(this HttpContent content, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver, CancellationToken ct)
 		{
 			Contract.NotNull(content);
@@ -75,11 +82,41 @@ namespace SnowBank.Networking.Http
 		}
 
 		/// <summary>Reads the body of the response as a JSON value, converted into an instance of type <typeparamref name="T"/></summary>
+		[RequiresUnreferencedCode(ReflectionMessage)]
+		[RequiresDynamicCode(ReflectionMessage)]
 		private static async Task<T?> ReadFromJsonAsyncCore<T>(HttpContent content, Encoding? sourceEncoding, CrystalJsonSettings? settings, ICrystalJsonTypeResolver? resolver, CancellationToken ct)
 		{
 			var bytes  = await content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
 
 			return CrystalJson.Deserialize(bytes.AsSlice(), default(T), settings, resolver);
+		}
+
+		/// <summary>Reads the body of the response and binds it into an instance of type <typeparamref name="T"/> with a source-generated deserializer (trim-safe).</summary>
+		/// <param name="content">Response content</param>
+		/// <param name="deserializer">Source-generated deserializer for <typeparamref name="T"/> (for example <c>MyConverters.T.Default</c>)</param>
+		/// <param name="ct">Token used to cancel the read</param>
+		public static async Task<T?> ReadFromCrystalJsonAsync<T>(this HttpContent content, IJsonDeserializer<T> deserializer, CancellationToken ct)
+		{
+			Contract.NotNull(content);
+			Contract.NotNull(deserializer);
+
+			var bytes = await content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+			var parsed = CrystalJson.Parse(bytes.AsSlice());
+			return parsed.IsNullOrMissing() ? default : deserializer.Unpack(parsed, null);
+		}
+
+		/// <summary>Reads the body of the response and binds it into an instance of type <typeparamref name="T"/> using the converters registered in <paramref name="resolver"/> (trim-safe with a source-generated resolver).</summary>
+		/// <param name="content">Response content</param>
+		/// <param name="resolver">Source-generated type resolver, for example a container's <c>GetResolver()</c>, that knows the response types</param>
+		/// <param name="ct">Token used to cancel the read</param>
+		/// <remarks>Use when the exact response type is not named at the call site (a polymorphic body, or a type resolved through its container).</remarks>
+		public static async Task<T?> ReadFromCrystalJsonAsync<T>(this HttpContent content, ICrystalJsonTypeResolver resolver, CancellationToken ct)
+		{
+			Contract.NotNull(content);
+			Contract.NotNull(resolver);
+
+			var bytes = await content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+			return CrystalJson.Parse(bytes.AsSlice()).As<T>(default, resolver);
 		}
 
 	}

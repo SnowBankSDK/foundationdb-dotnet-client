@@ -27,6 +27,7 @@
 namespace SnowBank.Data.Xml.Tests
 {
 	using System.Buffers;
+	using System.Xml;
 	using NUnit.Framework;
 	using SnowBank.Data.Xml;
 
@@ -64,30 +65,30 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		/// <summary>Runs <paramref name="scenario"/> on the char core, and returns the document</summary>
-		private static string RenderChars(IXmlScenario scenario, bool strictControlCharacters = false)
+		private static string RenderChars(IXmlScenario scenario, bool strictControlCharacters = false, CrystalXmlSettings settings = default)
 		{
 			var sink = new CrystalXmlEmitterConformance.GrowableBuffer<char>();
 			var inner = new CrystalXmlEmitterConformance.SinkRef<char>(sink);
-			var writer = new CrystalXmlWriter<char, CrystalXmlEmitterConformance.SinkRef<char>>(ref inner, strictControlCharacters);
+			var writer = new CrystalXmlWriter<char, CrystalXmlEmitterConformance.SinkRef<char>>(ref inner, strictControlCharacters, settings);
 			scenario.Run(ref writer);
 			return sink.WrittenSpan.ToString();
 		}
 
 		/// <summary>Runs <paramref name="scenario"/> on the byte core, and returns the raw UTF-8 bytes</summary>
-		private static byte[] RenderBytes(IXmlScenario scenario, bool strictControlCharacters = false)
+		private static byte[] RenderBytes(IXmlScenario scenario, bool strictControlCharacters = false, CrystalXmlSettings settings = default)
 		{
 			var sink = new CrystalXmlEmitterConformance.GrowableBuffer<byte>();
 			var inner = new CrystalXmlEmitterConformance.SinkRef<byte>(sink);
-			var writer = new CrystalXmlWriter<byte, CrystalXmlEmitterConformance.SinkRef<byte>>(ref inner, strictControlCharacters);
+			var writer = new CrystalXmlWriter<byte, CrystalXmlEmitterConformance.SinkRef<byte>>(ref inner, strictControlCharacters, settings);
 			scenario.Run(ref writer);
 			return sink.WrittenSpan.ToArray();
 		}
 
 		/// <summary>Asserts that both cores produce <paramref name="expected"/> for the same event sequence</summary>
-		private static void AssertDocument(IXmlScenario scenario, string expected, bool strictControlCharacters = false)
+		private static void AssertDocument(IXmlScenario scenario, string expected, bool strictControlCharacters = false, CrystalXmlSettings settings = default)
 		{
-			Assert.That(RenderChars(scenario, strictControlCharacters), Is.EqualTo(expected), "char core");
-			Assert.That(Encoding.UTF8.GetString(RenderBytes(scenario, strictControlCharacters)), Is.EqualTo(expected), "byte core, decoded from UTF-8");
+			Assert.That(RenderChars(scenario, strictControlCharacters, settings), Is.EqualTo(expected), "char core");
+			Assert.That(Encoding.UTF8.GetString(RenderBytes(scenario, strictControlCharacters, settings)), Is.EqualTo(expected), "byte core, decoded from UTF-8");
 		}
 
 		/// <summary>Asserts that <paramref name="text"/> written as element content produces <c>&lt;r&gt;...&lt;/r&gt;</c></summary>
@@ -551,6 +552,61 @@ namespace SnowBank.Data.Xml.Tests
 			AssertDocument(new NameScenario(accented), "<Clé />");
 		}
 
+		[Test]
+		public void Test_XmlName_Carries_An_Optional_Namespace()
+		{
+			// a name built the way it always was has no namespace, so nothing about an existing call site changes
+			Assert.That(CrystalXmlName.Create("Tags").Namespace.IsNone, Is.True);
+			Assert.That(new CrystalXmlName("Tags", "Tags"u8.ToArray()).Namespace.IsNone, Is.True);
+
+			var namespaced = CrystalXmlName.Create("Email", "urn:acme:annuaire");
+			Assert.That(namespaced.Text, Is.EqualTo("Email"), "the local name keeps no prefix: a prefix belongs to the emitter");
+			Assert.That(namespaced.Namespace.Text, Is.EqualTo("urn:acme:annuaire"));
+			Assert.That(namespaced.Namespace.Utf8.ToArray(), Is.EqualTo("urn:acme:annuaire"u8.ToArray()));
+
+			// the local name is still validated as an NCName, so a qualified name cannot be smuggled in as one
+			Assert.That(() => CrystalXmlName.Create("d2p1:Email", "urn:acme:annuaire"), Throws.InstanceOf<XmlException>());
+		}
+
+		[Test]
+		public void Test_XmlNamespace_Validates_Its_Uri()
+		{
+			// the empty URI is the explicitly stated absence of a namespace, and is legal: it is what xmlns="" declares
+			var empty = CrystalXmlNamespace.Create("");
+			Assert.That(empty.IsEmpty, Is.True);
+			Assert.That(empty.IsNone, Is.False, "the empty URI and no URI at all are different states");
+			Assert.That(CrystalXmlNamespace.None.IsNone, Is.True);
+
+			// both spellings a data contract produces are absolute URIs, and both are accepted
+			Assert.That(CrystalXmlNamespace.Create("urn:acme:catalog:1").Text, Is.EqualTo("urn:acme:catalog:1"));
+			Assert.That(CrystalXmlNamespace.Create("http://schemas.datacontract.org/2004/07/Acme").Text, Is.EqualTo("http://schemas.datacontract.org/2004/07/Acme"));
+
+			// a relative reference is refused rather than written into a document no reader can resolve
+			Assert.That(() => CrystalXmlNamespace.Create("acme/catalog"), Throws.InstanceOf<ArgumentException>());
+
+			// and so is a URI carrying a character an attribute value would have to escape: an emitter writes a URI verbatim
+			Assert.That(() => CrystalXmlNamespace.Create("urn:acme:a&b"), Throws.InstanceOf<ArgumentException>());
+
+			// two namespaces are the same namespace when their URI is the same text
+			Assert.That(CrystalXmlNamespace.Create("urn:acme:biblio"), Is.EqualTo(CrystalXmlNamespace.Create("urn:acme:biblio")));
+			Assert.That(CrystalXmlNamespace.Create("urn:acme:biblio"), Is.Not.EqualTo(CrystalXmlNamespace.Create("urn:acme:annuaire")));
+		}
+
+		[Test]
+		public void Test_The_Builtin_Namespaces_Are_The_Five_The_Format_Uses()
+		{
+			// pinned as text: these five URIs are output values, not names this repo is free to spell differently
+			Assert.That(CrystalXmlNamespaces.XmlSchemaInstance.Text, Is.EqualTo("http://www.w3.org/2001/XMLSchema-instance"));
+			Assert.That(CrystalXmlNamespaces.XmlSchema.Text, Is.EqualTo("http://www.w3.org/2001/XMLSchema"));
+			Assert.That(CrystalXmlNamespaces.Arrays.Text, Is.EqualTo("http://schemas.microsoft.com/2003/10/Serialization/Arrays"));
+			Assert.That(CrystalXmlNamespaces.Serialization.Text, Is.EqualTo("http://schemas.microsoft.com/2003/10/Serialization/"));
+			Assert.That(CrystalXmlNamespaces.SystemContract.Text, Is.EqualTo("http://schemas.datacontract.org/2004/07/System"));
+
+			// the two conventional prefixes, which every emitter honors
+			Assert.That(CrystalXmlNamespaces.XmlSchemaInstancePrefix, Is.EqualTo("i"));
+			Assert.That(CrystalXmlNamespaces.SerializationPrefix, Is.EqualTo("z"));
+		}
+
 		private sealed class NameScenario(CrystalXmlName name) : IXmlScenario
 		{
 			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
@@ -601,6 +657,123 @@ namespace SnowBank.Data.Xml.Tests
 
 		#endregion
 
+		#region Namespaces, prefixes and declarations...
+
+		/// <summary>Runs a shared conformance scenario on both cores, and compares the document to the byte-exact expectation</summary>
+		private static void AssertScenarioOutput(string label, CrystalXmlEmitterConformance.IScenario scenario, string expected)
+		{
+			{
+				var sink = new CrystalXmlEmitterConformance.GrowableBuffer<char>();
+				var inner = new CrystalXmlEmitterConformance.SinkRef<char>(sink);
+				var writer = new CrystalXmlWriter<char, CrystalXmlEmitterConformance.SinkRef<char>>(ref inner);
+				scenario.Run(ref writer);
+				Assert.That(sink.WrittenSpan.ToString(), Is.EqualTo(expected), $"char core: {label}");
+			}
+			{
+				var sink = new CrystalXmlEmitterConformance.GrowableBuffer<byte>();
+				var inner = new CrystalXmlEmitterConformance.SinkRef<byte>(sink);
+				var writer = new CrystalXmlWriter<byte, CrystalXmlEmitterConformance.SinkRef<byte>>(ref inner);
+				scenario.Run(ref writer);
+				Assert.That(Encoding.UTF8.GetString(sink.WrittenSpan.ToArray()), Is.EqualTo(expected), $"byte core, decoded from UTF-8: {label}");
+			}
+		}
+
+		[Test]
+		public void Test_Namespace_Cases_Produce_The_Expected_Output_On_Both_Cores()
+		{
+			foreach (var (label, scenario, expected) in CrystalXmlEmitterConformance.NamespaceCases)
+			{
+				Log($"{label}:");
+				Log($"  {expected}");
+				AssertScenarioOutput(label, scenario, expected);
+			}
+		}
+
+		[Test]
+		public void Test_A_Document_Without_Namespaces_Is_Unchanged()
+		{
+			// the whole namespace machinery is invisible to a caller that names none: no prefix, no xmlns, and the same
+			// document the writer produced before it had any namespace vocabulary at all
+			string doc = RenderChars(new DeclarationScenario());
+			Assert.That(doc, Is.EqualTo("<r c=\"1\"><c>hello</c></r>"));
+			Assert.That(doc, Does.Not.Contain("xmlns"));
+			Assert.That(doc, Does.Not.Contain(":"));
+		}
+
+		[Test]
+		public void Test_A_Name_Carrying_Its_Own_Namespace_Needs_No_Explicit_One()
+		{
+			// the overloads without a namespace argument read the one the NAME carries, which is what a cached static name
+			// built by the generator holds
+			AssertDocument(new NameWithNamespaceScenario(), """<Book xmlns="urn:acme:biblio" />""");
+		}
+
+		private sealed class NameWithNamespaceScenario : IXmlScenario
+		{
+			private static readonly CrystalXmlName Book = CrystalXmlName.Create("Book", "urn:acme:biblio");
+
+			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
+				where TRune : unmanaged
+				where TWriter : struct, IBufferWriter<TRune>
+			{
+				writer.WriteStartElement(in Book);
+				writer.WriteEndElement(in Book);
+			}
+		}
+
+		[Test]
+		public void Test_A_Deep_Prefix_Carries_Its_Own_Depth()
+		{
+			// the depth in a d{depth}p{n} prefix is the depth of the element carrying the declaration, so it is a number and
+			// not a single digit once a document nests past nine levels
+			AssertDocument(new DeepNestingScenario(), BuildDeepExpectation());
+		}
+
+		private static string BuildDeepExpectation()
+		{
+			// ten nested elements in the root's namespace, then one in another namespace at depth 11
+			var sb = new StringBuilder();
+			sb.Append("""<n xmlns="urn:acme:biblio">""");
+			for (int i = 1; i < DeepNestingScenario.Levels; i++)
+			{
+				sb.Append("<n>");
+			}
+			sb.Append("""<d11p1:leaf xmlns:d11p1="urn:acme:annuaire" />""");
+			for (int i = 1; i < DeepNestingScenario.Levels; i++)
+			{
+				sb.Append("</n>");
+			}
+			sb.Append("</n>");
+			return sb.ToString();
+		}
+
+		private sealed class DeepNestingScenario : IXmlScenario
+		{
+			public const int Levels = 10;
+
+			private static readonly CrystalXmlName Node = CrystalXmlName.Create("n");
+
+			private static readonly CrystalXmlName Leaf = CrystalXmlName.Create("leaf");
+
+			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
+				where TRune : unmanaged
+				where TWriter : struct, IBufferWriter<TRune>
+			{
+				for (int i = 0; i < Levels; i++)
+				{
+					writer.WriteStartElement(in Node, in CrystalXmlEmitterConformance.Biblio);
+				}
+				writer.WriteStartElement(in Leaf, in CrystalXmlEmitterConformance.Annuaire);
+				writer.WriteEndElement(in Leaf);
+				for (int i = 0; i < Levels; i++)
+				{
+					writer.WriteEndElement(in Node);
+				}
+			}
+		}
+
+		#endregion
+
 		#region Interface-constrained callers (the shape generated code uses)...
 
 		/// <summary>Writes a document through a <c>TEmitter : struct, ICrystalXmlEmitter</c> constraint, exactly like generated code</summary>
@@ -610,7 +783,7 @@ namespace SnowBank.Data.Xml.Tests
 		/// The event sequences and the null/""/typical-value pin cases live on <see cref="CrystalXmlEmitterConformance"/>, shared with
 		/// the infoset emitters' own fixture, so all three families are proven against the identical cases.</remarks>
 		[Test]
-		public void Test_Interface_Constrained_Caller_Gets_The_Same_Wire_As_The_Struct()
+		public void Test_Interface_Constrained_Caller_Gets_The_Same_Output_As_The_Struct()
 		{
 			// null through the interface must self-close, and an empty string must expand, on BOTH cores
 			foreach (var (text, expected) in CrystalXmlEmitterConformance.TextCases)
@@ -745,6 +918,232 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// consistent with WriteText(""): writing content, even nothing, forces the expanded form
 			AssertDocument(new RawScenario(""), "<r></r>");
+		}
+
+		#endregion
+
+		#region Writer-level settings: Indented, NewLine, EmptyElementStyle, WriteXmlDeclaration...
+
+		// Unlike rules 1-10 above, none of this is measured against the DataContractSerializer oracle: these are new,
+		// opt-in knobs on CrystalXmlSettings, off by default, so the default (settings: default, i.e. CrystalXmlSettings.General)
+		// stays exactly what the rules above already pin.
+
+		private static readonly CrystalXmlName Book = CrystalXmlName.Create("book");
+
+		private static readonly CrystalXmlName Title = CrystalXmlName.Create("title");
+
+		private static readonly CrystalXmlName Tags = CrystalXmlName.Create("tags");
+
+		private static readonly CrystalXmlName Tag = CrystalXmlName.Create("tag");
+
+		/// <summary>A root with a text-only child (<c>title</c>) and an element-only child (<c>tags</c> containing one <c>tag</c>)</summary>
+		/// <remarks>Exercises the mixed-content guard in one document: <c>title</c> must stay on one line (text content),
+		/// while <c>tags</c> and its own child must indent (element content).</remarks>
+		private sealed class BookScenario : IXmlScenario
+		{
+			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
+				where TRune : unmanaged
+				where TWriter : struct, IBufferWriter<TRune>
+			{
+				writer.WriteStartElement(in Book);
+				writer.WriteStartElement(in Title);
+				writer.WriteText("A".AsSpan());
+				writer.WriteEndElement(in Title);
+				writer.WriteStartElement(in Tags);
+				writer.WriteStartElement(in Tag);
+				writer.WriteText("x".AsSpan());
+				writer.WriteEndElement(in Tag);
+				writer.WriteEndElement(in Tags);
+				writer.WriteEndElement(in Book);
+			}
+		}
+
+		[Test]
+		public void Test_Indented_Crlf_Pretty_Prints_Element_Content_Only()
+		{
+			var settings = CrystalXmlSettings.General.WithIndented();
+			AssertDocument(
+				new BookScenario(),
+				"<book>\r\n\t<title>A</title>\r\n\t<tags>\r\n\t\t<tag>x</tag>\r\n\t</tags>\r\n</book>",
+				settings: settings
+			);
+		}
+
+		[Test]
+		public void Test_Indented_Lf_Uses_Lf_Line_Endings()
+		{
+			var settings = CrystalXmlSettings.General.WithIndented().WithNewLine(CrystalXmlNewLine.Lf);
+			AssertDocument(
+				new BookScenario(),
+				"<book>\n\t<title>A</title>\n\t<tags>\n\t\t<tag>x</tag>\n\t</tags>\n</book>",
+				settings: settings
+			);
+		}
+
+		[Test]
+		public void Test_Compact_Ignores_The_NewLine_Setting()
+		{
+			// Indented=false (the default): NewLine is never consulted, output stays compact regardless of its value
+			var settings = CrystalXmlSettings.General.WithNewLine(CrystalXmlNewLine.Lf);
+			AssertDocument(new BookScenario(), "<book><title>A</title><tags><tag>x</tag></tags></book>", settings: settings);
+		}
+
+		[Test]
+		public void Test_Indented_Text_Only_Root_Stays_On_One_Line()
+		{
+			// no element child at all: indentation never applies, matching "an element whose content is text stays on one line"
+			var settings = CrystalXmlSettings.General.WithIndented();
+			AssertDocument(new TextScenario("hello"), "<r>hello</r>", settings: settings);
+		}
+
+		[Test]
+		public void Test_Indented_Empty_Root_Stays_On_One_Line()
+		{
+			var settings = CrystalXmlSettings.General.WithIndented();
+			AssertDocument(new EmptyScenario(), "<r />", settings: settings);
+		}
+
+		[Test]
+		public void Test_Empty_Element_Style_Paired_Writes_Open_And_Close_Tags()
+		{
+			var settings = CrystalXmlSettings.General.WithEmptyElementStyle(CrystalXmlEmptyElementStyle.Paired);
+			AssertDocument(new EmptyScenario(), "<r></r>", settings: settings);
+			AssertDocument(new NestedEmptyScenario(), "<r><c></c></r>", settings: settings);
+		}
+
+		[Test]
+		public void Test_Empty_Element_Style_Paired_Still_Writes_Attributes()
+		{
+			// an empty element that carries an attribute: the attribute renders either way, only the closing form changes
+			var settings = CrystalXmlSettings.General.WithEmptyElementStyle(CrystalXmlEmptyElementStyle.Paired);
+			AssertDocument(new AttributeScenario("b"), "<r a=\"b\"></r>", settings: settings);
+		}
+
+		[Test]
+		public void Test_Empty_Element_Style_Self_Closing_Is_The_Default()
+		{
+			AssertDocument(new AttributeScenario("b"), "<r a=\"b\" />");
+		}
+
+		[Test]
+		public void Test_Declaration_Off_By_Default()
+		{
+			string doc = RenderChars(new EmptyScenario());
+			Assert.That(doc, Does.Not.Contain("<?xml"));
+		}
+
+		[Test]
+		public void Test_Declaration_Compact_Char_Core_Names_Utf16()
+		{
+			var settings = CrystalXmlSettings.General.WithXmlDeclaration();
+			string doc = RenderChars(new EmptyScenario(), settings: settings);
+			Assert.That(doc, Is.EqualTo("<?xml version=\"1.0\" encoding=\"utf-16\"?><r />"));
+		}
+
+		[Test]
+		public void Test_Declaration_Compact_Byte_Core_Names_Utf8()
+		{
+			var settings = CrystalXmlSettings.General.WithXmlDeclaration();
+			byte[] bytes = RenderBytes(new EmptyScenario(), settings: settings);
+			Assert.That(Encoding.UTF8.GetString(bytes), Is.EqualTo("<?xml version=\"1.0\" encoding=\"utf-8\"?><r />"));
+		}
+
+		[Test]
+		public void Test_Declaration_Indented_Is_Followed_By_The_Structural_New_Line()
+		{
+			var settings = CrystalXmlSettings.General.WithXmlDeclaration().WithIndented();
+			string doc = RenderChars(new BookScenario(), settings: settings);
+			Assert.That(
+				doc,
+				Is.EqualTo("<?xml version=\"1.0\" encoding=\"utf-16\"?>\r\n<book>\r\n\t<title>A</title>\r\n\t<tags>\r\n\t\t<tag>x</tag>\r\n\t</tags>\r\n</book>")
+			);
+		}
+
+		/// <summary>Text, then an element child that itself opens a further child: <c>b</c> carries no text of its own, only
+		/// <c>p</c> does, so indentation resumes inside <c>b</c> for its own child</summary>
+		private sealed class TextThenElementWithGrandchildScenario : IXmlScenario
+		{
+			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
+				where TRune : unmanaged
+				where TWriter : struct, IBufferWriter<TRune>
+			{
+				writer.WriteStartElement(in P);
+				writer.WriteText("hello".AsSpan());
+				writer.WriteStartElement(in B);
+				writer.WriteStartElement(in Child);
+				writer.WriteEndElement(in Child);
+				writer.WriteEndElement(in B);
+				writer.WriteEndElement(in P);
+			}
+		}
+
+		[Test]
+		public void Test_Indented_Resumes_Inside_A_Descendant_Of_A_Mixed_Content_Parent()
+		{
+			// p's own text keeps p compact right up to <b> (the guard already pinned above), but b itself never
+			// receives text of its own, so indentation resumes for b's child: current, deliberate behavior, kept on
+			// purpose, since the whitespace it adds only ever lands in element-only content
+			var settings = CrystalXmlSettings.General.WithIndented();
+			AssertDocument(new TextThenElementWithGrandchildScenario(), "<p>hello<b>\r\n\t\t<c />\r\n\t</b></p>", settings: settings);
+		}
+
+		#endregion
+
+		#region Mixed content: text and an element child on the same parent, either order...
+
+		private static readonly CrystalXmlName P = CrystalXmlName.Create("p");
+
+		private static readonly CrystalXmlName B = CrystalXmlName.Create("b");
+
+		/// <summary>Text first, then an element child: <c>p</c> already carries text by the time <c>b</c> starts, so the
+		/// mixed-content guard keeps the whole element compact, including the boundary right before <c>b</c></summary>
+		private sealed class TextThenElementScenario : IXmlScenario
+		{
+			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
+				where TRune : unmanaged
+				where TWriter : struct, IBufferWriter<TRune>
+			{
+				writer.WriteStartElement(in P);
+				writer.WriteText("hello".AsSpan());
+				writer.WriteStartElement(in B);
+				writer.WriteText("x".AsSpan());
+				writer.WriteEndElement(in B);
+				writer.WriteEndElement(in P);
+			}
+		}
+
+		/// <summary>An element child first, then text: the writer is forward-only, so the indent before <c>b</c> is already
+		/// written by the time <c>p</c>'s own text shows up. Only the corruption the review caught is fixed: no newline is
+		/// inserted around the text itself, so <c>tail</c> and <c>b</c>'s own content stay intact.</summary>
+		private sealed class ElementThenTextScenario : IXmlScenario
+		{
+			public void Run<TRune, TWriter>(ref CrystalXmlWriter<TRune, TWriter> writer)
+				where TRune : unmanaged
+				where TWriter : struct, IBufferWriter<TRune>
+			{
+				writer.WriteStartElement(in P);
+				writer.WriteStartElement(in B);
+				writer.WriteText("x".AsSpan());
+				writer.WriteEndElement(in B);
+				writer.WriteText("tail".AsSpan());
+				writer.WriteEndElement(in P);
+			}
+		}
+
+		[Test]
+		public void Test_Indented_Text_Before_An_Element_Child_Stays_Compact()
+		{
+			var settings = CrystalXmlSettings.General.WithIndented();
+			AssertDocument(new TextThenElementScenario(), "<p>hello<b>x</b></p>", settings: settings);
+		}
+
+		[Test]
+		public void Test_Indented_Text_After_An_Element_Child_Never_Touches_The_Text()
+		{
+			// the leading indent before <b> already happened (p had no text yet at that point); once "tail" appears,
+			// indentation is suppressed for the rest of p, so nothing but that leading indent survives
+			var settings = CrystalXmlSettings.General.WithIndented();
+			AssertDocument(new ElementThenTextScenario(), "<p>\r\n\t<b>x</b>tail</p>", settings: settings);
 		}
 
 		#endregion

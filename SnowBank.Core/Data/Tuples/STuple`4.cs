@@ -161,7 +161,7 @@ namespace SnowBank.Data.Tuples
 		/// <typeparam name="TItem">Expected type of the item</typeparam>
 		/// <param name="index">Position of the item (if negative, means relative from the end)</param>
 		/// <returns>Value of the item at position <paramref name="index"/>, adapted into type <typeparamref name="TItem"/>.</returns>
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index) => index switch
+		public TItem? Get<TItem>(int index) => index switch
 		{
 			0  => TypeConverters.Convert<T1, TItem?>(this.Item1),
 			1  => TypeConverters.Convert<T2, TItem?>(this.Item2),
@@ -176,15 +176,15 @@ namespace SnowBank.Data.Tuples
 
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index)
+		public TItem? Get<TItem>(Index index)
 			=> Get<TItem>(index.GetOffset(4));
 
 		/// <inheritdoc />
-		TItem? IVarTuple.GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		TItem? IVarTuple.GetFirst<TItem>()
 			where TItem : default => TypeConverters.Convert<T1, TItem?>(this.Item1);
 
 		/// <inheritdoc />
-		TItem? IVarTuple.GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		TItem? IVarTuple.GetLast<TItem>()
 			where TItem : default => TypeConverters.Convert<T4, TItem?>(this.Item4);
 
 		/// <summary>Return the value of the last item in the tuple</summary>
@@ -207,7 +207,7 @@ namespace SnowBank.Data.Tuples
 		/// <returns>New tuple with one extra item</returns>
 		/// <remarks>If <paramref name="value"/> is a tuple, and you want to append the *items*  of this tuple, and not the tuple itself, please call <see cref="Concat"/>!</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		IVarTuple IVarTuple.Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5>(T5 value)
+		IVarTuple IVarTuple.Append<T5>(T5 value)
 		{
 			// the caller probably cares about the return type, since it is using a struct, but whatever tuple type we use will end up boxing this tuple on the heap, and we will lose type information.
 			// but, by returning a LinkedTuple<T5>, the tuple will still remember the exact type, and efficiently serializer/convert the values (without having to guess the type)
@@ -219,7 +219,7 @@ namespace SnowBank.Data.Tuples
 		/// <returns>New tuple with one extra item</returns>
 		/// <remarks>If <paramref name="value"/> is a tuple, and you want to append the *items*  of this tuple, and not the tuple itself, please call <see cref="Concat"/>!</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public STuple<T1, T2, T3, T4, T5> Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5>(T5 value)
+		public STuple<T1, T2, T3, T4, T5> Append<T5>(T5 value)
 		{
 			return new(this.Item1, this.Item2, this.Item3, this.Item4, value);
 		}

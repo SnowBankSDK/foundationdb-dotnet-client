@@ -214,19 +214,19 @@ namespace SnowBank.Testing.Framework
 		#region HttpClient...
 
 		/// <summary>Returns an HTTP client that will talk to this virtual host</summary>
-		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Transport policy throws; it belongs to a named policy.</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
 		HttpClient CreateLocalHttpClient(Action<BetterHttpClientOptions>? configure = null);
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="remote">Remote host</param>
-		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Transport policy throws; it belongs to a named policy.</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
 		HttpClient CreateHttpClient(IDistributedWebTestComponent remote, Action<BetterHttpClientOptions>? configure = null);
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="hostOrAddress">Address of the remote host (note: only the hostname part of the URI is used)</param>
-		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Transport policy throws; it belongs to a named policy.</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
 		HttpClient CreateHttpClient(Uri hostOrAddress, Action<BetterHttpClientOptions>? configure = null);
 
@@ -237,21 +237,21 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Returns an HTTP client that will talk to this virtual host</summary>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
-		[Obsolete("Use CreateLocalHttpClient(configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
+		[Obsolete("Use CreateLocalHttpClient(configure): per-call settings move to the configure callback, transport policy stays on the named policy.", error: false)]
 		BetterHttpClient GetLocalBetterHttpClient(BetterHttpShellOptions? options = null);
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="remote">Remote host</param>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
-		[Obsolete("Use CreateHttpClient(remote, configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
+		[Obsolete("Use CreateHttpClient(remote, configure): per-call settings move to the configure callback, transport policy stays on the named policy.", error: false)]
 		BetterHttpClient GetBetterHttpClient(IDistributedWebTestComponent remote, BetterHttpShellOptions? options = null);
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="hostOrAddress">Address of the remote host (note: only the hostname part of the URI is used)</param>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
-		[Obsolete("Use CreateHttpClient(hostOrAddress, configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
+		[Obsolete("Use CreateHttpClient(hostOrAddress, configure): per-call settings move to the configure callback, transport policy stays on the named policy.", error: false)]
 		BetterHttpClient GetBetterHttpClient(Uri hostOrAddress, BetterHttpShellOptions? options = null);
 
 #pragma warning restore CS0618

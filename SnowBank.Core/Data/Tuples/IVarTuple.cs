@@ -98,7 +98,7 @@ namespace SnowBank.Data.Tuples
 		/// </code></remarks>
 		//REVIEW: consider dropping the negative indexing? We have Index now for this use-case!
 		[Pure]
-		TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index);
+		TItem? Get<TItem>(int index);
 
 		/// <summary>Returns the typed value of an item of the tuple, given its position</summary>
 		/// <typeparam name="TItem">Expected type of the item</typeparam>
@@ -111,13 +111,13 @@ namespace SnowBank.Data.Tuples
 		/// <para><c>STuple.Create("Hello", "World", 123,).Get&lt;string&gt;(^1) => "123"</c></para>
 		/// </code></remarks>
 		[Pure]
-		TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index);
+		TItem? Get<TItem>(Index index);
 
 		/// <summary>Returns the type value of the first item of the tuple</summary>
-		TItem? GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>();
+		TItem? GetFirst<TItem>();
 
 		/// <summary>Returns the type value of the last item of the tuple</summary>
-		TItem? GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>();
+		TItem? GetLast<TItem>();
 
 		/// <summary>Returns a new Tuple by that contains the element of this tuple, with an extra item at the end</summary>
 		/// <typeparam name="TItem">Type of the new item</typeparam>
@@ -128,7 +128,7 @@ namespace SnowBank.Data.Tuples
 		/// <para>Example: <code><c>STuple.Create("Hello").Append("World")</c> => <c>("Hello", "World")</c></code></para>
 		/// </remarks>
 		[Pure]
-		IVarTuple Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(TItem value);
+		IVarTuple Append<TItem>(TItem value);
 
 		/// <summary>Returns a new Tuple by appending the items of another tuple at the end of this tuple</summary>
 		/// <param name="tuple">Tuple whose items must be appended at the end of the current tuple</param>

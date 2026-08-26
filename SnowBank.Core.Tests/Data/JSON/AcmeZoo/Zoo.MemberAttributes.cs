@@ -16,7 +16,7 @@ namespace Acme.Zoo.Cases.MemberNameRename
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>The single most common shape in the application: every member renamed to a
-	/// short lowercase wire name. Note the wire order is alphabetical on the RENAMED name,
+	/// short lowercase output name. Note the output order is alphabetical on the renamed name,
 	/// not declaration order.</summary>
 	[DataContract]
 	public class RenamedMemberDto
@@ -61,7 +61,7 @@ namespace Acme.Zoo.Cases.MemberEmitDefaultFalse
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>EmitDefaultValue=false across every category of default, next to members
-	/// that keep the DEFAULT setting (true) for contrast. This pair is what makes the
+	/// that keep the default setting (true) for contrast. This pair is what makes the
 	/// omitted-versus-explicit-null difference visible in one document.</summary>
 	[DataContract]
 	public class EmitDefaultDto
@@ -213,7 +213,7 @@ namespace Acme.Zoo.Cases.MemberIsRequired
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>IsRequired=true. Rare in the application (11 occurrences) but kept because
-	/// its READ behaviour is the interesting part: a document missing the member throws
+	/// its read behaviour is the interesting part: a document missing the member throws
 	/// rather than defaulting. The second input pins that.</summary>
 	[DataContract]
 	public class RequiredMemberDto
@@ -247,7 +247,7 @@ namespace Acme.Zoo.Cases.MemberIsRequired
 				return new[]
 				{
 					"{\"mandatory\":\"present\",\"optional\":\"o\"}",
-					// mandatory absent: expected to FAIL on read. The recorded error is the witness.
+					// mandatory absent: expected to fail on read. The recorded error is the witness.
 				};
 			}
 		}
@@ -262,7 +262,7 @@ namespace Acme.Zoo.Cases.MemberIgnoreDataMember
 
 	/// <summary>[IgnoreDataMember] on a type that is otherwise opt-out (no [DataContract]),
 	/// which is the only configuration where the attribute does anything: on a
-	/// [DataContract] type, members are opt-IN and the attribute is redundant.</summary>
+	/// [DataContract] type, members are opt-in and the attribute is redundant.</summary>
 	public class IgnoredMemberDto
 	{
 		public string Included { get; set; }
@@ -294,7 +294,7 @@ namespace Acme.Zoo.Cases.MemberNonPublic
 	using System.Runtime.Serialization;
 	using System.Runtime.Serialization.Json;
 
-	/// <summary>Non-public members carrying [DataMember] DO serialize. 765 occurrences in
+	/// <summary>Non-public members carrying [DataMember] do serialize. 765 occurrences in
 	/// the application, so this is not an exotic shape. Visibility must be preserved when
 	/// anonymizing or the case stops testing anything.</summary>
 	[DataContract]
@@ -402,7 +402,7 @@ namespace Acme.Zoo.Cases.PocoNoDataContract
 	using System.Runtime.Serialization.Json;
 
 	/// <summary>The opt-out world: no [DataContract] and no [DataMember] anywhere. DCJS
-	/// serializes all public read/write members. Getter-only members are NOT emitted,
+	/// serializes all public read/write members. Getter-only members are not emitted,
 	/// which is the trap worth pinning.</summary>
 	public class PlainPocoDto
 	{

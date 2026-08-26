@@ -47,7 +47,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	}
 
-	/// <summary>Enum whose wire form is a domain code, declared on its own fields (DataContract spelling)</summary>
+	/// <summary>Enum whose output form is a domain code, declared on its own fields (DataContract spelling)</summary>
 	public enum ProbeCourierKind
 	{
 		[EnumMember(Value = "C")]
@@ -133,7 +133,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	{
 
 		public JsonValue Pack(ref CrystalJsonPackContext context, int? instance)
-			// the legacy body wrote "" for a null member; that form must stay unreachable, the pipeline owns the null-member wire
+			// the legacy body wrote "" for a null member; that form must stay unreachable, the pipeline owns the null-member output
 			=> instance is { } value ? JsonString.Return(value.ToString(System.Globalization.CultureInfo.InvariantCulture)) : throw new InvalidOperationException("Pack must never see a null member");
 
 		public int? Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver)
@@ -243,10 +243,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var obj = JsonObject.Parse(ProbeConverterHost.ProbeConvertedDto.ToJsonText(dto)).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(obj.Get<string>("Enabled"), Is.EqualTo("1"), "[JsonConverter] must shape the wire through the generated Serialize");
-				Assert.That(obj.Get<string>("Native"), Is.EqualTo("1"), "[JsonConvertWith] must shape the wire through the generated Serialize");
+				Assert.That(obj.Get<string>("Enabled"), Is.EqualTo("1"), "[JsonConverter] must shape the output through the generated Serialize");
+				Assert.That(obj.Get<string>("Native"), Is.EqualTo("1"), "[JsonConvertWith] must shape the output through the generated Serialize");
 				Assert.That(obj.Get<string>("Mixed"), Is.EqualTo("1"), "the native attribute must win over a foreign spelling on the same member");
-				Assert.That(obj.Get<string>("Maybe"), Is.EqualTo("N"), "[JsonBooleanLiterals] must shape the wire through the generated Serialize");
+				Assert.That(obj.Get<string>("Maybe"), Is.EqualTo("N"), "[JsonBooleanLiterals] must shape the output through the generated Serialize");
 				Assert.That(obj.Get<string>("day"), Is.EqualTo("Friday"), "[JsonProperty(EnumFormat = String)] forces the string form regardless of the settings");
 				Assert.That(obj.Get<string>("Kind"), Is.EqualTo("E"), "an enum member without EnumFormat follows the settings default (strings), with its token");
 				Assert.That(obj.ContainsKey("Ghost"), Is.False, "[IgnoreDataMember] excludes the member from the generated converter");
@@ -256,7 +256,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var objNum = JsonObject.Parse(ProbeConverterHost.ProbeConvertedDto.ToJsonText(dto, CrystalJsonSettings.Json.WithEnumAsNumbers())).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(objNum.Get<int>("Kind"), Is.EqualTo(1), "WithEnumAsNumbers() restores the numeric wire through the generated Serialize");
+				Assert.That(objNum.Get<int>("Kind"), Is.EqualTo(1), "WithEnumAsNumbers() restores the numeric output through the generated Serialize");
 				Assert.That(objNum.Get<string>("day"), Is.EqualTo("Friday"), "the per-member EnumFormat=String override wins over the numeric setting");
 			}
 		}
@@ -317,7 +317,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Assert.That(ro.Kind, Is.EqualTo(ProbeCourierKind.Electronic), "reads back a token-carrying enum");
 			}
 
-			// writable proxy: setting a member must produce the same wire as packing the entity
+			// writable proxy: setting a member must produce the same output as packing the entity
 			var w = ProbeConverterHost.ProbeConvertedDto.ToMutable(dto);
 			w.Enabled = false;
 			w.Maybe = false;
@@ -325,7 +325,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var json = w.ToJsonValue().AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(json.Get<string>("Enabled"), Is.EqualTo("0"), "the setter must write the converter's wire form");
+				Assert.That(json.Get<string>("Enabled"), Is.EqualTo("0"), "the setter must write the converter's output form");
 				Assert.That(json.Get<string>("Maybe"), Is.EqualTo("N"), "the setter must write the configured boolean literal");
 				Assert.That(json.Get<string>("day"), Is.EqualTo("Monday"), "the setter must honor EnumFormat=String");
 			}
@@ -387,14 +387,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_NullableForm_Converter_Write_Of_Null_Stays_Pipeline_Controlled()
 		{
 			// the T? declaration transfers the READ side only: Pack never sees null (the converter throws if it ever
-			// does), so its legacy null-write form is unreachable by design, and the wire follows the settings
+			// does), so its legacy null-write form is unreachable by design, and the output follows the settings
 			var dto = new ProbeNullableFormDto { Count = null };
 
 			var obj = JsonObject.Parse(ProbeConverterHost.ProbeNullableFormDto.ToJsonText(dto)).AsObject();
 			Assert.That(obj.ContainsKey("Count"), Is.False, "a null member is omitted by default, never written as the converter's \"\" form");
 
 			var objNulls = JsonObject.Parse(ProbeConverterHost.ProbeNullableFormDto.ToJsonText(dto, CrystalJsonSettings.Json.WithNullMembers())).AsObject();
-			Assert.That(objNulls.ContainsKey("Count"), Is.True, "WithNullMembers() governs the null-member wire");
+			Assert.That(objNulls.ContainsKey("Count"), Is.True, "WithNullMembers() governs the null-member output");
 			Assert.That(objNulls["Count"].IsNull, Is.True, "the pipeline writes JSON null, not the converter's \"\" form");
 
 			// a PRESENT value still routes through the converter, on both write routes
@@ -504,7 +504,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the omission is decided from the member's flags, not inside the converter, so the generated path has to
 			// resolve it at compile time exactly as the reflection path resolves it at contract build. Run both,
-			// compare: a generated converter that emitted the member anyway would be a silent wire divergence.
+			// compare: a generated converter that emitted the member anyway would be a silent output divergence.
 			foreach (var value in new[] { true, false })
 			{
 				var dto = new ProbeOmitWhenFalseDto { Literal = value, Plain = value };
@@ -518,7 +518,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			var present = ProbeConverterHost.ProbeOmitWhenFalseDto.ToJsonText(new ProbeOmitWhenFalseDto { Literal = true, Plain = true }, CrystalJsonSettings.JsonCompact);
 			Assert.That(present, Is.EqualTo(CrystalJson.Serialize(new ProbeOmitWhenFalseDto { Literal = true, Plain = true }, CrystalJsonSettings.JsonCompact)), "true emits the configured literal on both paths");
-			Assert.That(CrystalJson.Parse(present).AsObject().Get<bool>("Plain"), Is.True, "the bool form keeps an ordinary JSON boolean on the wire");
+			Assert.That(CrystalJson.Parse(present).AsObject().Get<bool>("Plain"), Is.True, "the bool form keeps an ordinary JSON boolean in the output");
 		}
 
 	}

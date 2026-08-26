@@ -409,7 +409,7 @@ namespace SnowBank.Data.Json.Tests
 			var media = MediaContent.GetMedia1();
 
 			#region Warmup
-			// the same payload feeds several deserializers: numeric enums are the wire that all of them read without extra configuration
+			// the same payload feeds several deserializers: numeric enums are the output that all of them read without extra configuration
 			string jsonText = CrystalJson.Serialize(media, CrystalJsonSettings.JsonCompact.WithEnumAsNumbers());
 			{ // first run to check that everything is ok
 				Assert.That(CrystalJson.Deserialize<MediaContent>(jsonText), Is.EqualTo(media), "clone != media ??");

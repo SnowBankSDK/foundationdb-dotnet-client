@@ -201,7 +201,7 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index) => index switch
+		public TItem? Get<TItem>(int index) => index switch
 		{
 			0 or -7 => TypeConverters.Convert<T1, TItem?>(this.Item1),
 			1 or -6 => TypeConverters.Convert<T2, TItem?>(this.Item2),
@@ -215,15 +215,15 @@ namespace SnowBank.Data.Tuples
 
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public TItem? Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index)
+		public TItem? Get<TItem>(Index index)
 			=> Get<TItem>(index.GetOffset(7));
 
 		/// <inheritdoc />
-		TItem? IVarTuple.GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		TItem? IVarTuple.GetFirst<TItem>()
 			where TItem : default => TypeConverters.Convert<T1, TItem?>(this.Item1);
 
 		/// <inheritdoc />
-		TItem? IVarTuple.GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>()
+		TItem? IVarTuple.GetLast<TItem>()
 			where TItem : default => TypeConverters.Convert<T7, TItem?>(this.Item7);
 
 		/// <summary>Return the value of the last item in the tuple</summary>
@@ -246,7 +246,7 @@ namespace SnowBank.Data.Tuples
 		/// <returns>New tuple with one extra item</returns>
 		/// <remarks>If <paramref name="value"/> is a tuple, and you want to append the *items*  of this tuple, and not the tuple itself, please call <see cref="Concat"/>!</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		IVarTuple IVarTuple.Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8>(T8 value)
+		IVarTuple IVarTuple.Append<T8>(T8 value)
 		{
 			// the caller probably cares about the return type, since it is using a struct, but whatever tuple type we use will end up boxing this tuple on the heap, and we will lose type information.
 			// but, by returning a LinkedTuple<T8>, the tuple will still remember the exact type, and efficiently serializer/convert the values (without having to guess the type)
@@ -258,7 +258,7 @@ namespace SnowBank.Data.Tuples
 		/// <returns>New tuple with one extra item</returns>
 		/// <remarks>If <paramref name="value"/> is a tuple, and you want to append the *items*  of this tuple, and not the tuple itself, please call <see cref="Concat"/>!</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public STuple<T1, T2, T3, T4, T5, T6, T7, T8> Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8>(T8 value)
+		public STuple<T1, T2, T3, T4, T5, T6, T7, T8> Append<T8>(T8 value)
 		{
 			return new(this.Item1, this.Item2, this.Item3, this.Item4, this.Item5, this.Item6, this.Item7, value);
 		}

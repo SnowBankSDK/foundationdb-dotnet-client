@@ -116,5 +116,50 @@ namespace SnowBank.Data.Xml
 
 	}
 
+	/// <summary>Error thrown when a root element has no name: the serializer declares no default, and the caller passed none</summary>
+	/// <remarks>A name is never guessed. The General profile writes no default name for a collection root, so a caller on that
+	/// profile passes an explicit <c>rootName</c>; the DataContract profile falls back to its <c>ArrayOfX</c> convention when
+	/// the item contract can express one.</remarks>
+	[Serializable]
+	public sealed class CrystalXmlRootNameException : InvalidOperationException
+	{
+
+		/// <summary>Type for which no root element name could be resolved</summary>
+		public Type Type { get; }
+
+		/// <summary>Reports that no root element name could be resolved for a document rooted in <paramref name="type"/></summary>
+		public CrystalXmlRootNameException(Type type)
+			: base($"No name for a root element of type '{type.GetFriendlyName()}': the serializer declares no default root name, and the caller passed none. Pass an explicit rootName.")
+		{
+			this.Type = type;
+		}
+
+		/// <summary>Reports that no root element name could be resolved for a document rooted in <paramref name="type"/>, with a custom explanation</summary>
+		public CrystalXmlRootNameException(Type type, string message)
+			: base(message)
+		{
+			this.Type = type;
+		}
+
+#if NET8_0_OR_GREATER
+		[Obsolete("This API supports obsolete formatter-based serialization. It should not be called or extended by application code.", DiagnosticId = "SYSLIB0051", UrlFormat = "https://aka.ms/dotnet-warnings/{0}")]
+#endif
+		private CrystalXmlRootNameException(SerializationInfo info, StreamingContext context)
+			: base(info, context)
+		{
+			this.Type = (Type) info.GetValue(nameof(this.Type), typeof(Type))!;
+		}
+
+#if NET8_0_OR_GREATER
+		[Obsolete("This API supports obsolete formatter-based serialization. It should not be called or extended by application code.", DiagnosticId = "SYSLIB0051", UrlFormat = "https://aka.ms/dotnet-warnings/{0}")]
+#endif
+		public override void GetObjectData(SerializationInfo info, StreamingContext context)
+		{
+			base.GetObjectData(info, context);
+			info.AddValue(nameof(this.Type), this.Type);
+		}
+
+	}
+
 
 }

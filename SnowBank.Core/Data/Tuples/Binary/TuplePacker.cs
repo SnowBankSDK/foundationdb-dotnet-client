@@ -24,15 +24,14 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-#pragma warning disable IL2026 // Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code
-#pragma warning disable IL3050 // Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.
-
 namespace SnowBank.Data.Tuples.Binary
 {
 
 	/// <summary>Helper class for serializing and deserializing values of type <typeparamref name="T"/> using the tuple binary format</summary>
 	/// <typeparam name="T">Type of values to be serialized</typeparam>
-	public static class TuplePacker<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
+	[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "reflective per-type tuple encoder/decoder cache, populated only for element types with no compile-time fast path")]
+	[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "reflective per-type tuple encoder/decoder cache, populated only for element types with no compile-time fast path")]
+	public static class TuplePacker<T>
 	{
 
 		internal static readonly (TuplePackers.Encoder<T> Direct, TuplePackers.SpanEncoder<T> Span) Encoders = TuplePackers.GetSerializer<T>();

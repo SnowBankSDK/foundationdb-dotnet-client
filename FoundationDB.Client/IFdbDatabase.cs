@@ -41,6 +41,16 @@ namespace FoundationDB.Client
 		/// <remarks>The token will be cancelled if the database instance is disposed</remarks>
 		CancellationToken Cancellation { get; }
 
+		/// <summary>Time source used by this database for managed waits and timestamps (watch idle-timeouts and transaction-log stamps).</summary>
+		/// <remarks>
+		/// <para>Defaults to the system clock. A test can inject a fake provider (for example through a <c>FakeDbStore</c> or <c>AddFakeDb</c>) so that
+		/// managed time-based waits advance with virtual time instead of the wall clock.</para>
+		/// <para>A database backed by the native fdb client must keep a system-based provider: the native client enforces its own timeouts and retry
+		/// backoff, so a fake clock cannot drive those and would only desynchronize the managed bulk-write commit cadence from the native
+		/// five-second transaction limit.</para>
+		/// </remarks>
+		TimeProvider Time { get; }
+
 		/// <summary>Returns the root path used by this database instance</summary>
 		FdbDirectorySubspaceLocation Root { get; }
 

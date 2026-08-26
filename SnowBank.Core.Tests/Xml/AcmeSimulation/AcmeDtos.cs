@@ -25,7 +25,7 @@
 #endregion
 
 // This file IS compiled for the net472 validation target: the generated XML code compiles on the lite path (see
-// the remark on Xml/ReferenceDcsWire.cs), so the simulation runs on the .NET Framework CLR as well.
+// the remark on Xml/ReferenceDcsOutput.cs), so the simulation runs on the .NET Framework CLR as well.
 
 // note: this is a stage-A end-to-end simulation of "Acme" (pseudonym for the consuming application whose back-office
 // XSLT layer reads the DCS XML format): a realistic ClientAccount-shaped DTO graph, big enough (30+ members, nested
@@ -182,9 +182,12 @@ namespace SnowBank.Data.Xml.Tests.Acme.Simulation
 
 	#region Test container...
 
+	// Namespace-free, because this container simulates a consuming application whose stored documents and whose XSLT
+	// were both written against a namespace-free output: the transform matches element names with no prefix, so a
+	// namespaced document renders nothing. That is what the option is for, and this simulation is what proves it.
 	[CrystalConverter]
 	[CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
-	[CrystalXmlOutput]
+	[CrystalXmlOutput(OmitNamespaces = true)]
 	[CrystalSerializable(typeof(ClientAccount))]
 	[CrystalSerializable(typeof(Address))]
 	[CrystalSerializable(typeof(Loan))]

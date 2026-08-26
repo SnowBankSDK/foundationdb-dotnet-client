@@ -72,7 +72,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	// note: a [DataContract] DTO cannot appear in this matrix: enrolling one is refused at build time (error
 	// CJSON0014, the interim constraint until generated containers learn the DataContract contract model), so
-	// there is no generated wire to compare - the STJ-vs-reflection divergence for [DataContract] types stays
+	// there is no generated output to compare - the STJ-vs-reflection divergence for [DataContract] types stays
 	// pinned by the Core.Tests DCJS parity fixtures, and the refusal by DataContractRefusalDiagnosticFacts.
 	// A [DataMember] + unconditional [STJ.JsonIgnore] pair cannot be declared here either: refused at build
 	// time on both paths (error CJSON0008 / a contract-build throw), pinned by IgnoreConflictDiagnosticFacts
@@ -149,7 +149,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				_ => throw new JsonBindingException($"Cannot convert {value.Type} into a bit-string boolean")
 			};
 
-		// the System.Text.Json facet, producing the same wire
+		// the System.Text.Json facet, producing the same output
 		public override bool Read(ref System.Text.Json.Utf8JsonReader reader, Type typeToConvert, System.Text.Json.JsonSerializerOptions options)
 			=> reader.TokenType switch
 			{
@@ -218,7 +218,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	#endregion
 
 	/// <summary>The STJ-parity non-regression matrix (D-23): for every attribute of the member-converter wave, pins the System.Text.Json
-	/// oracle wire inline (documentation-grade), asserts CrystalJson parity or the explicitly-ruled divergence side by side, and asserts
+	/// oracle output inline (documentation-grade), asserts CrystalJson parity or the explicitly-ruled divergence side by side, and asserts
 	/// the three CrystalJson routes (reflection text, DOM, source-generated) agree byte-for-byte.</summary>
 	/// <remarks>
 	/// <para>Escalation ladder for a type facing BOTH serializers (D-21, amended): (1) attributes coexist cleanly (each serializer
@@ -235,12 +235,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public sealed record ParityCase
 		{
 			public required string Id { get; init; }
-			/// <summary>The wire System.Text.Json produces for this DTO (the oracle), or <see langword="null"/> when STJ throws (see <see cref="StjThrows"/>)</summary>
-			public string? StjWire { get; init; }
-			/// <summary>The wire CrystalJson produces (reflection text and DOM routes); equal to <see cref="StjWire"/> for parity rows, deliberately different for ruled divergences</summary>
-			public required string CjWire { get; init; }
-			/// <summary>The wire the source-generated converter produces, when it deliberately differs from <see cref="CjWire"/> (documented path divergences); otherwise it must equal <see cref="CjWire"/></summary>
-			public string? CjGeneratedWire { get; init; }
+			/// <summary>The output System.Text.Json produces for this DTO (the oracle), or <see langword="null"/> when STJ throws (see <see cref="StjThrows"/>)</summary>
+			public string? StjOutput { get; init; }
+			/// <summary>The output CrystalJson produces (reflection text and DOM routes); equal to <see cref="StjOutput"/> for parity rows, deliberately different for ruled divergences</summary>
+			public required string CjOutput { get; init; }
+			/// <summary>The output the source-generated converter produces, when it deliberately differs from <see cref="CjOutput"/> (documented path divergences); otherwise it must equal <see cref="CjOutput"/></summary>
+			public string? CjGeneratedOutput { get; init; }
 			/// <summary>STJ cannot serialize this DTO at all (a rung-3 pair, or an STJ limitation)</summary>
 			public bool StjThrows { get; init; }
 			/// <summary>Rung 3 of the D-21 ladder: our attribute poisons the type for STJ; such a type must be duplicated per serializer</summary>
@@ -249,7 +249,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			public required Func<string> RunCjText { get; init; }
 			public required Func<string> RunCjDom { get; init; }
 			public required Func<string> RunCjGenerated { get; init; }
-			public (string Wire, object Expected)[] Reads { get; init; } = [ ];
+			public (string Output, object Expected)[] Reads { get; init; } = [ ];
 			public required Func<string, object> Bind { get; init; }
 
 			public override string ToString() => this.Id;
@@ -259,23 +259,23 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			string id,
 			T dto,
 			IJsonConverter<T> generated,
-			string? stjWire,
-			string cjWire,
-			string? cjGeneratedWire = null,
+			string? stjOutput,
+			string cjOutput,
+			string? cjGeneratedOutput = null,
 			CrystalJsonSettings? cjSettings = null,
 			System.Text.Json.JsonSerializerOptions? stjOptions = null,
 			bool stjThrows = false,
 			bool rung3 = false,
-			params (string Wire, object Expected)[] reads)
+			params (string Output, object Expected)[] reads)
 			where T : notnull
 		{
 			var cj = cjSettings ?? CrystalJsonSettings.JsonCompact;
 			return new()
 			{
 				Id = id,
-				StjWire = stjWire,
-				CjWire = cjWire,
-				CjGeneratedWire = cjGeneratedWire,
+				StjOutput = stjOutput,
+				CjOutput = cjOutput,
+				CjGeneratedOutput = cjGeneratedOutput,
 				StjThrows = stjThrows,
 				Rung3 = rung3,
 				RunStj = () => System.Text.Json.JsonSerializer.Serialize(dto, stjOptions),
@@ -283,7 +283,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				RunCjDom = () => JsonValue.FromValue(dto, cj).ToJsonText(cj),
 				RunCjGenerated = () => CrystalJson.Serialize(dto, generated, cj),
 				Reads = reads,
-				Bind = wire => CrystalJson.Deserialize<T>(wire)!,
+				Bind = output => CrystalJson.Deserialize<T>(output)!,
 			};
 		}
 
@@ -298,8 +298,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "jsonignore-always",
 				dto: new MxIgnoreDto { Hidden = "boo", Kept = 1 },
 				generated: ParityHost.MxIgnoreDto.Default,
-				stjWire: """{"Kept":1}""",
-				cjWire: """{"Kept":1}""");
+				stjOutput: """{"Kept":1}""",
+				cjOutput: """{"Kept":1}""");
 
 			// a member carrying ONLY a Newtonsoft [JsonIgnore]: the reflection path excludes it by name, and the
 			// generated converter must too (STJ does not know the foreign attribute and emits the member)
@@ -307,15 +307,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "newtonsoft-jsonignore",
 				dto: new MxNewtonsoftIgnoreDto { Hidden = "boo", Kept = 1 },
 				generated: ParityHost.MxNewtonsoftIgnoreDto.Default,
-				stjWire: """{"Hidden":"boo","Kept":1}""",
-				cjWire: """{"Kept":1}""");
+				stjOutput: """{"Hidden":"boo","Kept":1}""",
+				cjOutput: """{"Kept":1}""");
 
 			yield return Case(
 				id: "jsonignore-conditions",
 				dto: new MxIgnoreConditionsDto { Pinned = 0, MaybeNull = null, Count = 0 },
 				generated: ParityHost.MxIgnoreConditionsDto.Default,
-				stjWire: """{"Pinned":0}""",
-				cjWire: """{"Pinned":0}""");
+				stjOutput: """{"Pinned":0}""",
+				cjOutput: """{"Pinned":0}""");
 
 			// (the former "datamember-plus-jsonignore" row is gone: that pair is now refused at build time on
 			// both paths - a ruled divergence from STJ, which silently lets [JsonIgnore] win)
@@ -324,7 +324,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// STJ does not know DataContract (all public members, C# names); CrystalJson reflection honors the
 			// [DataMember] opt-in and rename; and the source generator REFUSES an enrolled [DataContract] type at
 			// build time (CJSON0014, the interim constraint - the former matrix divergence D1 is no longer
-			// reachable), so there is no generated wire to compare here: a legacy [DataContract] DTO stays on the
+			// reachable), so there is no generated output to compare here: a legacy [DataContract] DTO stays on the
 			// reflection path until it is modernized, and the refusal is pinned by DataContractRefusalDiagnosticFacts.
 
 			// ---- renames ----
@@ -333,16 +333,16 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "stj-jsonpropertyname",
 				dto: new MxStjRenameDto { Original = "X" },
 				generated: ParityHost.MxStjRenameDto.Default,
-				stjWire: """{"renamed":"X"}""",
-				cjWire: """{"renamed":"X"}""");
+				stjOutput: """{"renamed":"X"}""",
+				cjOutput: """{"renamed":"X"}""");
 
 			// coexistence rung 1: STJ ignores CrystalJson's [JsonProperty], so the same type produces two names
 			yield return Case(
 				id: "snowbank-jsonproperty-rename",
 				dto: new MxSnowRenameDto { Original = "X" },
 				generated: ParityHost.MxSnowRenameDto.Default,
-				stjWire: """{"Original":"X"}""",
-				cjWire: """{"sb_name":"X"}""");
+				stjOutput: """{"Original":"X"}""",
+				cjOutput: """{"sb_name":"X"}""");
 
 			// a member carrying ONLY a Newtonsoft [JsonProperty] name: the reflection path honors it as a naming
 			// fallback, and the generated converter must agree (STJ ignores the foreign attribute and emits the raw name)
@@ -350,8 +350,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "newtonsoft-jsonproperty-rename",
 				dto: new MxNewtonsoftRenameDto { Original = "X" },
 				generated: ParityHost.MxNewtonsoftRenameDto.Default,
-				stjWire: """{"Original":"X"}""",
-				cjWire: """{"nj_name":"X"}""");
+				stjOutput: """{"Original":"X"}""",
+				cjOutput: """{"nj_name":"X"}""");
 
 			// ---- enums (D-19: strings by default, deliberately diverging from STJ's numeric default) ----
 
@@ -359,32 +359,32 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "enum-default",
 				dto: new MxEnumDto { Day = DayOfWeek.Friday },
 				generated: ParityHost.MxEnumDto.Default,
-				stjWire: """{"Day":5}""",
-				cjWire: """{"Day":"Friday"}""",
+				stjOutput: """{"Day":5}""",
+				cjOutput: """{"Day":"Friday"}""",
 				reads: [ ("""{"Day":5}""", new MxEnumDto { Day = DayOfWeek.Friday }), ("""{"Day":"Friday"}""", new MxEnumDto { Day = DayOfWeek.Friday }), ("""{"Day":"friday"}""", new MxEnumDto { Day = DayOfWeek.Friday }), ("""{"Day":"5"}""", new MxEnumDto { Day = DayOfWeek.Friday }) ]);
 
 			yield return Case(
 				id: "enum-numbers-optin",
 				dto: new MxEnumDto { Day = DayOfWeek.Friday },
 				generated: ParityHost.MxEnumDto.Default,
-				stjWire: """{"Day":5}""",
-				cjWire: """{"Day":5}""",
+				stjOutput: """{"Day":5}""",
+				cjOutput: """{"Day":5}""",
 				cjSettings: CrystalJsonSettings.JsonCompact.WithEnumAsNumbers());
 
 			yield return Case(
 				id: "enum-strings-both",
 				dto: new MxEnumDto { Day = DayOfWeek.Friday },
 				generated: ParityHost.MxEnumDto.Default,
-				stjWire: """{"Day":"Friday"}""",
-				cjWire: """{"Day":"Friday"}""",
+				stjOutput: """{"Day":"Friday"}""",
+				cjOutput: """{"Day":"Friday"}""",
 				stjOptions: StjEnumStrings());
 
 			yield return Case(
 				id: "enum-strings-camel-both",
 				dto: new MxEnumDto { Day = DayOfWeek.Friday },
 				generated: ParityHost.MxEnumDto.Default,
-				stjWire: """{"Day":"friday"}""",
-				cjWire: """{"Day":"friday"}""",
+				stjOutput: """{"Day":"friday"}""",
+				cjOutput: """{"Day":"friday"}""",
 				cjSettings: CrystalJsonSettings.JsonCompact.WithEnumAsStrings(camelCased: true),
 				stjOptions: StjEnumStrings(camelCased: true));
 
@@ -393,8 +393,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "enum-token-stj-spelling",
 				dto: new MxStjTokenDto { Kind = MxStjTokenKind.Paper },
 				generated: ParityHost.MxStjTokenDto.Default,
-				stjWire: """{"Kind":"C"}""",
-				cjWire: """{"Kind":"C"}""",
+				stjOutput: """{"Kind":"C"}""",
+				cjOutput: """{"Kind":"C"}""",
 				stjOptions: StjEnumStrings(),
 				reads: [ ("""{"Kind":"C"}""", new MxStjTokenDto { Kind = MxStjTokenKind.Paper }), ("""{"Kind":"Paper"}""", new MxStjTokenDto { Kind = MxStjTokenKind.Paper }), ("""{"Kind":0}""", new MxStjTokenDto { Kind = MxStjTokenKind.Paper }) ]);
 
@@ -403,8 +403,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "enum-token-enummember-spelling",
 				dto: new MxEmTokenDto { Kind = ProbeCourierKind.Paper },
 				generated: ParityHost.MxEmTokenDto.Default,
-				stjWire: """{"Kind":"Paper"}""",
-				cjWire: """{"Kind":"C"}""",
+				stjOutput: """{"Kind":"Paper"}""",
+				cjOutput: """{"Kind":"C"}""",
 				stjOptions: StjEnumStrings(),
 				reads: [ ("""{"Kind":"C"}""", new MxEmTokenDto { Kind = ProbeCourierKind.Paper }), ("""{"Kind":"Paper"}""", new MxEmTokenDto { Kind = ProbeCourierKind.Paper }) ]);
 
@@ -413,18 +413,18 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "enum-format-number-member",
 				dto: new MxEnumFormatDto { Day = DayOfWeek.Friday },
 				generated: ParityHost.MxEnumFormatDto.Default,
-				stjWire: """{"Day":5}""",
-				cjWire: """{"Day":5}""");
+				stjOutput: """{"Day":5}""",
+				cjOutput: """{"Day":5}""");
 
 			// ---- converters and the D-21 ladder ----
 
-			// rung 2: ONE dual-shape converter class, valid for both serializers, same wire
+			// rung 2: ONE dual-shape converter class, valid for both serializers, same output
 			yield return Case(
 				id: "converter-dual-shape",
 				dto: new MxDualShapeDto { Flag = true },
 				generated: ParityHost.MxDualShapeDto.Default,
-				stjWire: """{"Flag":"1"}""",
-				cjWire: """{"Flag":"1"}""",
+				stjOutput: """{"Flag":"1"}""",
+				cjOutput: """{"Flag":"1"}""",
 				reads: [ ("""{"Flag":"1"}""", new MxDualShapeDto { Flag = true }), ("""{"Flag":true}""", new MxDualShapeDto { Flag = true }) ]);
 
 			// RUNG 3: a CrystalJson-only converter behind the STJ-spelled attribute POISONS the type for STJ
@@ -433,26 +433,26 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "converter-cj-only-behind-stj-attribute",
 				dto: new MxRung3Dto { Flag = true },
 				generated: ParityHost.MxRung3Dto.Default,
-				stjWire: null,
-				cjWire: """{"Flag":"1"}""",
+				stjOutput: null,
+				cjOutput: """{"Flag":"1"}""",
 				stjThrows: true,
 				rung3: true);
 
-			// rung 1 done right: the native attribute, which STJ never inspects; wires differ, nothing breaks
+			// rung 1 done right: the native attribute, which STJ never inspects; outputs differ, nothing breaks
 			yield return Case(
 				id: "converter-native-attribute",
 				dto: new MxNativeDto { Flag = true },
 				generated: ParityHost.MxNativeDto.Default,
-				stjWire: """{"Flag":true}""",
-				cjWire: """{"Flag":"1"}""",
+				stjOutput: """{"Flag":true}""",
+				cjOutput: """{"Flag":"1"}""",
 				reads: [ ("""{"Flag":"1"}""", new MxNativeDto { Flag = true }), ("""{"Flag":true}""", new MxNativeDto { Flag = true }) ]);
 
 			yield return Case(
 				id: "boolean-literals",
 				dto: new MxBoolLiteralsDto { Flag = true },
 				generated: ParityHost.MxBoolLiteralsDto.Default,
-				stjWire: """{"Flag":true}""",
-				cjWire: """{"Flag":"1"}""",
+				stjOutput: """{"Flag":true}""",
+				cjOutput: """{"Flag":"1"}""",
 				reads: [ ("""{"Flag":"1"}""", new MxBoolLiteralsDto { Flag = true }), ("""{"Flag":true}""", new MxBoolLiteralsDto { Flag = true }) ]);
 
 			// ---- naming policy ----
@@ -461,8 +461,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				id: "camel-cased-names",
 				dto: new MxCamelDto { AgentName = "Bond" },
 				generated: ParityHost.MxCamelDto.Default,
-				stjWire: """{"agentName":"Bond"}""",
-				cjWire: """{"agentName":"Bond"}""",
+				stjOutput: """{"agentName":"Bond"}""",
+				cjOutput: """{"agentName":"Bond"}""",
 				cjSettings: CrystalJsonSettings.JsonCompact.CamelCased(),
 				stjOptions: new() { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
 		}
@@ -477,7 +477,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			}
 			else
 			{
-				Assert.That(pc.RunStj(), Is.EqualTo(pc.StjWire), $"[{pc.Id}] the STJ oracle wire drifted: update the pinned oracle AND re-examine the parity claim");
+				Assert.That(pc.RunStj(), Is.EqualTo(pc.StjOutput), $"[{pc.Id}] the STJ oracle output drifted: update the pinned oracle AND re-examine the parity claim");
 			}
 		}
 
@@ -486,11 +486,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// (b) CrystalJson output equals the STJ oracle, or the explicitly-pinned ruled divergence
 			var actual = pc.RunCjText();
-			Assert.That(actual, Is.EqualTo(pc.CjWire), $"[{pc.Id}] CrystalJson wire");
-			if (!pc.StjThrows && pc.CjWire != pc.StjWire)
+			Assert.That(actual, Is.EqualTo(pc.CjOutput), $"[{pc.Id}] CrystalJson output");
+			if (!pc.StjThrows && pc.CjOutput != pc.StjOutput)
 			{
 				// divergence rows: the difference must be deliberate; this assert just keeps the side-by-side honest
-				Assert.That(pc.StjWire, Is.Not.Null.And.Not.EqualTo(pc.CjWire), $"[{pc.Id}] this row claims a ruled divergence");
+				Assert.That(pc.StjOutput, Is.Not.Null.And.Not.EqualTo(pc.CjOutput), $"[{pc.Id}] this row claims a ruled divergence");
 			}
 		}
 
@@ -498,17 +498,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Cross_Route_Agreement(ParityCase pc)
 		{
 			// (c) the three CrystalJson routes agree byte-for-byte (or pin their own documented divergence)
-			Assert.That(pc.RunCjDom(), Is.EqualTo(pc.CjWire), $"[{pc.Id}] the DOM route must agree with the text route");
-			Assert.That(pc.RunCjGenerated(), Is.EqualTo(pc.CjGeneratedWire ?? pc.CjWire), $"[{pc.Id}] the generated route must agree (or match its own documented divergence)");
+			Assert.That(pc.RunCjDom(), Is.EqualTo(pc.CjOutput), $"[{pc.Id}] the DOM route must agree with the text route");
+			Assert.That(pc.RunCjGenerated(), Is.EqualTo(pc.CjGeneratedOutput ?? pc.CjOutput), $"[{pc.Id}] the generated route must agree (or match its own documented divergence)");
 		}
 
 		[TestCaseSource(nameof(Cases))]
 		public void Test_Tolerant_Reads(ParityCase pc)
 		{
-			// where reads are tolerant, BOTH the STJ-shaped wire and ours bind to the same value
-			foreach (var (wire, expected) in pc.Reads)
+			// where reads are tolerant, BOTH the STJ-shaped output and ours bind to the same value
+			foreach (var (output, expected) in pc.Reads)
 			{
-				Assert.That(pc.Bind(wire), Is.EqualTo(expected), $"[{pc.Id}] reading {wire}");
+				Assert.That(pc.Bind(output), Is.EqualTo(expected), $"[{pc.Id}] reading {output}");
 			}
 		}
 

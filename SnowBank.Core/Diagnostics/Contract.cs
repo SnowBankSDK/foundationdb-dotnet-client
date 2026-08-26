@@ -1046,6 +1046,7 @@ namespace SnowBank.Diagnostics.Contracts
 
 		/// <summary>Throws an exception, following a failed assertion</summary>
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		[UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "the exception type at a contract failure is a concrete type with a public constructor")]
 		internal static Exception ReportFailure(Type exceptionType, string msg, string? userMessage, string? paramName, string? conditionTxt, object? details = null)
 		{
 			if (conditionTxt != null && conditionTxt.IndexOf('{') >= 0)
@@ -1070,9 +1071,7 @@ namespace SnowBank.Diagnostics.Contracts
 
 			if (exception is null)
 			{ // Is this a complex exception type ?
-#pragma warning disable IL2067
 				exception = ThrowHelper.TryMapToComplexException(exceptionType, description, paramName);
-#pragma warning restore IL2067
 			}
 
 			if (exception is null)

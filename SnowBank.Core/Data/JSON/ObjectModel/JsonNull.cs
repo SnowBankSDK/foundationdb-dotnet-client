@@ -80,6 +80,7 @@ namespace SnowBank.Data.Json
 		public override string? ToStringOrDefault(string? defaultValue = null) => defaultValue;
 
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
+		[UnconditionalSuppressMessage("Trimming", "IL2067", Justification = "returns the default of a value type, which always has a parameterless constructor")]
 		internal static object? ValueTypeDefault(Type type)
 		{
 			// we can only return singletons for immutable "struct" values
@@ -92,10 +93,8 @@ namespace SnowBank.Data.Json
 			if (type == typeof(Uuid128)) return BoxedUuid128Empty;
 			if (type == typeof(TimeSpan)) return BoxedTimeSpanZero;
 
-#pragma warning disable IL2067
 			// for all other cases, we have to return a new value
 			return Activator.CreateInstance(type, nonPublic: false);
-#pragma warning restore IL2067
 		}
 
 		#region JsonValue Members

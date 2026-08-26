@@ -147,7 +147,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Reusable action that knows how to serialize values of type <typeparamref name="T"/> into binary buffers, or that throws an exception if the type is not supported</returns>
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		[RequiresUnreferencedCode("If some of the generic arguments are annotated (either with DynamicallyAccessedMembersAttribute, or generic constraints), trimming can't validate that the requirements of those annotations are met.")]
-		internal static (Encoder<T>, SpanEncoder<T>) GetSerializer<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+		internal static (Encoder<T>, SpanEncoder<T>) GetSerializer<T>()
 		{
 			//note: this method is only called once per initializing of TuplePackers<T> to create the cached delegate.
 
@@ -169,6 +169,13 @@ namespace SnowBank.Data.Tuples.Binary
 		private static SpanEncoder<T> MakeNotSupportedSpanSerializer<T>()
 		{
 			return (ref _, in _) => throw new InvalidOperationException($"Does not know how to serialize values of type '{typeof(T).Name}' into keys");
+		}
+
+		/// <summary>Builds the exception thrown when an exotic tuple element type would need the reflective builder while reflection is disabled.</summary>
+		[Pure]
+		private static NotSupportedException MakeReflectionDisabledException(Type type)
+		{
+			return new NotSupportedException($"Cannot build a tuple encoder or decoder for type '{type.GetFriendlyName()}' because tuple reflection is disabled (the feature switch '{TuPack.ReflectionSupportSwitchName}' is off). This type has no compile-time fast path. Use a well-known key element type, or keep reflection enabled.");
 		}
 
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
@@ -199,6 +206,7 @@ namespace SnowBank.Data.Tuples.Binary
 			var nullableType = Nullable.GetUnderlyingType(type);
 			if (nullableType != null)
 			{ // nullable types can reuse the underlying type serializer
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				var directMethod = GetTuplePackersType().GetMethod(nameof(SerializeNullableTo), BindingFlags.Static | BindingFlags.Public);
 				var spanMethod = GetTuplePackersType().GetMethod(nameof(TrySerializeNullableTo), BindingFlags.Static | BindingFlags.Public);
 				if (directMethod != null)
@@ -221,6 +229,7 @@ namespace SnowBank.Data.Tuples.Binary
 			// maybe it is an IVarTuple ?
 			if (type.IsAssignableTo(typeof(IVarTuple)))
 			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				if (type.IsAssignableTo(typeof(ITuplePackable)))
 				{ // most tuples implement ITupleFormattable directly!
 
@@ -268,6 +277,8 @@ namespace SnowBank.Data.Tuples.Binary
 			// is it a custom type that can pack its items?
 			if (type.IsAssignableTo(typeof(ITuplePackable)))
 			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
+
 				// this is NOT a tuple, but a custom type that can also "pack itself"
 
 				var directMethod = GetTuplePackersType().GetMethod(nameof(SerializePackableItemsTo), BindingFlags.Static | BindingFlags.Public);
@@ -292,6 +303,7 @@ namespace SnowBank.Data.Tuples.Binary
 			// ValueTuple<T..>
 			if (type == typeof(ValueTuple) || (type.Name.StartsWith(nameof(System.ValueTuple) + "`", StringComparison.Ordinal) && type.Namespace == "System"))
 			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				var typeArgs = type.GetGenericArguments();
 				var directMethod = FindValueTupleSerializerMethod(typeArgs);
 				var spanMethod = FindValueTupleSpanSerializerMethod(typeArgs);
@@ -334,9 +346,7 @@ namespace SnowBank.Data.Tuples.Binary
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		internal static void SerializeTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
-			(TupleWriter writer, T value)
+		internal static void SerializeTo<T>(TupleWriter writer, T value)
 		{
 #if !DEBUG
 			//<JIT_HACK>
@@ -403,7 +413,29 @@ namespace SnowBank.Data.Tuples.Binary
 			//</JIT_HACK>
 #endif
 
-			// invoke the encoder directly
+			// tuples and packable types write themselves through the instance interface, no reflection
+			if (typeof(T).IsAssignableTo(typeof(ITuplePackable)))
+			{
+				if (value is null)
+				{
+					writer.WriteNil();
+					return;
+				}
+				var packable = (ITuplePackable) value;
+				if (typeof(T).IsAssignableTo(typeof(IVarTuple)))
+				{ // a nested tuple item is written as an embedded tuple
+					var tw = writer.BeginTuple();
+					packable.PackTo(tw);
+					tw.EndTuple();
+				}
+				else
+				{ // a custom packable writes its own items into the current tuple
+					packable.PackTo(writer);
+				}
+				return;
+			}
+
+			// invoke the encoder directly (reflection fallback for the remaining types)
 			TuplePacker<T>.Encoders.Direct(writer, value);
 		}
 
@@ -413,9 +445,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="value">Nullable value to serialize</param>
 		/// <remarks>Uses the underlying type's serializer if the value is not null</remarks>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static void SerializeNullableTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
-			(TupleWriter writer, T? value)
+		public static void SerializeNullableTo<T>(TupleWriter writer, T? value)
 			where T : struct
 		{
 			if (value is not null)
@@ -434,18 +464,14 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="value">Nullable value to serialize</param>
 		/// <remarks>Uses the underlying type's serializer if the value is not null</remarks>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static bool TrySerializeNullableTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
-			(ref TupleSpanWriter writer, in T? value)
+		public static bool TrySerializeNullableTo<T>(ref TupleSpanWriter writer, in T? value)
 			where T : struct
 		{
 			return value is null ? writer.TryWriteNil() : TrySerializeTo(ref writer, value.Value);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		internal static bool TrySerializeTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
-			(ref TupleSpanWriter writer, in T value)
+		internal static bool TrySerializeTo<T>(ref TupleSpanWriter writer, in T value)
 		{
 #if !DEBUG
 			//<JIT_HACK>
@@ -508,7 +534,20 @@ namespace SnowBank.Data.Tuples.Binary
 			//</JIT_HACK>
 #endif
 
-			// invoke the encoder directly
+			// tuples and packable types write themselves through the instance interface, no reflection
+			if (typeof(T).IsAssignableTo(typeof(ITupleSpanPackable)))
+			{
+				if (value is null)
+				{
+					return writer.TryWriteNil();
+				}
+				var packable = (ITupleSpanPackable) value;
+				return typeof(T).IsAssignableTo(typeof(IVarTuple))
+					? TupleParser.TryBeginTuple(ref writer) && packable.TryPackTo(ref writer) && TupleParser.TryEndTuple(ref writer) // embedded nested tuple
+					: packable.TryPackTo(ref writer); // custom packable writes its own items
+			}
+
+			// invoke the encoder directly (reflection fallback for the remaining types)
 			return TuplePacker<T>.Encoders.Span(ref writer, value);
 		}
 
@@ -815,6 +854,11 @@ namespace SnowBank.Data.Tuples.Binary
 		[RequiresUnreferencedCode("If some of the generic arguments are annotated (either with DynamicallyAccessedMembersAttribute, or generic constraints), trimming can't validate that the requirements of those annotations are met.")]
 		private static Encoder<object> CreateBoxedEncoder(Type type)
 		{
+			if (!TuPack.IsReflectionSupported)
+			{ // reflection off: the boxed slow path has no compile-time fast path, fail loudly instead of building a reflective encoder
+				throw MakeReflectionDisabledException(type);
+			}
+
 			var m = typeof(TuplePacker<>).MakeGenericType(type).GetMethod(nameof(TuplePacker<>.SerializeBoxedTo));
 			Contract.Debug.Assert(m != null);
 
@@ -829,6 +873,11 @@ namespace SnowBank.Data.Tuples.Binary
 		[RequiresUnreferencedCode("If some of the generic arguments are annotated (either with DynamicallyAccessedMembersAttribute, or generic constraints), trimming can't validate that the requirements of those annotations are met.")]
 		private static SpanEncoder<object> CreateBoxedSpanEncoder(Type type)
 		{
+			if (!TuPack.IsReflectionSupported)
+			{ // reflection off: the boxed slow path has no compile-time fast path, fail loudly instead of building a reflective encoder
+				throw MakeReflectionDisabledException(type);
+			}
+
 			var m = typeof(TuplePacker<>).MakeGenericType(type).GetMethod(nameof(TuplePacker<>.TrySerializeBoxedTo));
 			Contract.Debug.Assert(m != null);
 
@@ -873,7 +922,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with a single element</summary>
 		public static void SerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1>
+			T1>
 			(TupleWriter writer, ValueTuple<T1> tuple)
 		{
 			var tw = writer.BeginTuple();
@@ -883,7 +932,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with a single element</summary>
 		public static bool TrySerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1>
+			T1>
 			(ref TupleSpanWriter writer, in ValueTuple<T1> tuple)
 		{
 			return TupleParser.TryBeginTuple(ref writer)
@@ -893,8 +942,8 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 2 elements</summary>
 		public static void SerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2>
+			T1,
+			T2>
 			(TupleWriter writer, (T1, T2) tuple)
 		{
 			var tw = writer.BeginTuple();
@@ -905,8 +954,8 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 2 elements</summary>
 		public static bool TrySerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2>
+			T1,
+			T2>
 			(ref TupleSpanWriter writer, in ValueTuple<T1, T2> tuple)
 		{
 			return TupleParser.TryBeginTuple(ref writer)
@@ -917,9 +966,9 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 3 elements</summary>
 		public static void SerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3>
+			T1,
+			T2,
+			T3>
 			(TupleWriter writer, (T1, T2, T3) tuple)
 		{
 			var tw = writer.BeginTuple();
@@ -931,9 +980,9 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 3 elements</summary>
 		public static bool TrySerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3>
+			T1,
+			T2,
+			T3>
 			(ref TupleSpanWriter writer, in ValueTuple<T1, T2, T3> tuple)
 		{
 			return TupleParser.TryBeginTuple(ref writer)
@@ -945,10 +994,10 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 4 elements</summary>
 		public static void SerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4>
+			T1,
+			T2,
+			T3,
+			T4>
 			(TupleWriter writer, (T1, T2, T3, T4) tuple)
 		{
 			var tw = writer.BeginTuple();
@@ -961,10 +1010,10 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 4 elements</summary>
 		public static bool TrySerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4>
+			T1,
+			T2,
+			T3,
+			T4>
 			(ref TupleSpanWriter writer, in ValueTuple<T1, T2, T3, T4> tuple)
 		{
 			return TupleParser.TryBeginTuple(ref writer)
@@ -977,11 +1026,11 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 5 elements</summary>
 		public static void SerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5>
 			(TupleWriter writer, (T1, T2, T3, T4, T5) tuple)
 		{
 			var tw = writer.BeginTuple();
@@ -995,11 +1044,11 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 5 elements</summary>
 		public static bool TrySerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5>
 			(ref TupleSpanWriter writer, in ValueTuple<T1, T2, T3, T4, T5> tuple)
 		{
 			return TupleParser.TryBeginTuple(ref writer)
@@ -1013,12 +1062,12 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 6 elements</summary>
 		public static void SerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6>
 			(TupleWriter writer, (T1, T2, T3, T4, T5, T6) tuple)
 		{
 			var tw = writer.BeginTuple();
@@ -1033,12 +1082,12 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 6 elements</summary>
 		public static bool TrySerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6>
 			(ref TupleSpanWriter writer, in ValueTuple<T1, T2, T3, T4, T5, T6> tuple)
 		{
 			return TupleParser.TryBeginTuple(ref writer)
@@ -1053,13 +1102,13 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 7 elements</summary>
 		public static void SerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7>
 			(TupleWriter writer, (T1, T2, T3, T4, T5, T6, T7) tuple)
 		{
 			var tw = writer.BeginTuple();
@@ -1075,13 +1124,13 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 7 elements</summary>
 		public static bool TrySerializeValueTupleTo<
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-				[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7>
+				T1,
+				T2,
+				T3,
+				T4,
+				T5,
+				T6,
+				T7>
 			(ref TupleSpanWriter writer, in ValueTuple<T1, T2, T3, T4, T5, T6, T7> tuple)
 		{
 			return TupleParser.TryBeginTuple(ref writer)
@@ -1097,14 +1146,14 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 8 elements</summary>
 		public static void SerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7,
+			T8>
 			(TupleWriter writer, (T1, T2, T3, T4, T5, T6, T7, T8) tuple)
 		{
 			var tw = writer.BeginTuple();
@@ -1121,14 +1170,14 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Serializes a tuple with 8 elements</summary>
 		public static bool TrySerializeValueTupleTo<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7,
+			T8>
 			(ref TupleSpanWriter writer, in (T1, T2, T3, T4, T5, T6, T7, T8) tuple)
 		{
 			return TupleParser.TryBeginTuple(ref writer)
@@ -1243,7 +1292,8 @@ namespace SnowBank.Data.Tuples.Binary
 			// Nullable<T>
 			var underlyingType = Nullable.GetUnderlyingType(typeof(T));
 			if (underlyingType != null && WellKnownUnpackers.TryGetValue(underlyingType, out decoder))
-			{ 
+			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				return (Decoder<T>) MakeNullableDeserializer(type, underlyingType, decoder);
 			}
 
@@ -1252,12 +1302,14 @@ namespace SnowBank.Data.Tuples.Binary
 			{
 				if (type.IsValueType && type.IsGenericType && type.Name.StartsWith(nameof(STuple) + "`", StringComparison.Ordinal))
 				{
+					if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 					return (Decoder<T>) MakeSTupleDeserializer(type);
 				}
 			}
 
 			if ((type.Name == nameof(ValueTuple) || type.Name.StartsWith(nameof(ValueTuple) + "`", StringComparison.Ordinal)) && type.Namespace == "System")
 			{
+				if (!TuPack.IsReflectionSupported) throw MakeReflectionDisabledException(type);
 				return (Decoder<T>) MakeValueTupleDeserializer(type);
 			}
 
@@ -1266,6 +1318,8 @@ namespace SnowBank.Data.Tuples.Binary
 				return MakeNotSupportedDeserializer<T>();
 			}
 			// when all else fails...
+			// NOTE: the only caller passes required: true. If a required: false caller is reintroduced, add a
+			// reflection guard before this fallback so an exotic decode with reflection off still fails loudly.
 			return MakeConvertBoxedDeserializer<T>();
 		}
 
@@ -1288,14 +1342,13 @@ namespace SnowBank.Data.Tuples.Binary
 			return slice.Length == 0 || slice[0] == TupleTypes.Nil;
 		}
 
-#pragma warning disable IL2026
-		
 		// this only exists so that we can add this attribute for AoT
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)]
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "reflective tuple-shape lookup over TuplePackers members; the reflective methods it retains are only reached for tuple element types with no compile-time fast path")]
+		[UnconditionalSuppressMessage("Trimming", "IL2111", Justification = "reflective tuple-shape lookup over TuplePackers members; the reflective methods it retains are only reached for tuple element types with no compile-time fast path")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "reflective tuple-shape lookup over TuplePackers members; the reflective methods it retains are only reached for tuple element types with no compile-time fast path")]
 		private static Type GetTuplePackersType() => typeof(TuplePackers);
-		
-#pragma warning restore IL2026
 
 		[Pure]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
@@ -1326,6 +1379,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		[Pure]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		[UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "reflective per-arity tuple deserializer lookup; runs only for tuple types with no compile-time fast path")]
 		private static Delegate MakeSTupleDeserializer(Type type)
 		{
 			Contract.Debug.Requires(type != null);
@@ -1356,6 +1410,7 @@ namespace SnowBank.Data.Tuples.Binary
 
 		[Pure]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		[UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "reflective per-arity tuple deserializer lookup; runs only for tuple types with no compile-time fast path")]
 		private static Delegate MakeValueTupleDeserializer(Type type)
 		{
 			Contract.Debug.Requires(type != null);
@@ -1902,70 +1957,70 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of a single element</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static STuple<T1?> DeserializeTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1>
+			T1>
 			(ReadOnlySpan<byte> slice)
 			=> DeserializeValueTuple<T1>(slice);
 
 		/// <summary>Deserializes a slice containing a tuple composed of 2 elements</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static STuple<T1?, T2?> DeserializeTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2>
+			T1,
+			T2>
 			(ReadOnlySpan<byte> slice)
 			=> DeserializeValueTuple<T1, T2>(slice);
 
 		/// <summary>Deserializes a slice containing a tuple composed of 3 elements</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static STuple<T1?, T2?, T3?> DeserializeTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3>
+			T1,
+			T2,
+			T3>
 			(ReadOnlySpan<byte> slice)
 			=> DeserializeValueTuple<T1, T2, T3>(slice);
 
 		/// <summary>Deserializes a slice containing a tuple composed of 4 elements</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static STuple<T1?, T2?, T3?, T4?> DeserializeTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4>
+			T1,
+			T2,
+			T3,
+			T4>
 			(ReadOnlySpan<byte> slice)
 			=> DeserializeValueTuple<T1, T2, T3, T4>(slice);
 
 		/// <summary>Deserializes a slice containing a tuple composed of 5 elements</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static STuple<T1?, T2?, T3?, T4?, T5?> DeserializeTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5>
 			(ReadOnlySpan<byte> slice)
 			=> DeserializeValueTuple<T1, T2, T3, T4, T5>(slice);
 
 		/// <summary>Deserializes a slice containing a tuple composed of 6 elements</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static STuple<T1?, T2?, T3?, T4?, T5?, T6?> DeserializeTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6>
 			(ReadOnlySpan<byte> slice)
 			=> DeserializeValueTuple<T1, T2, T3, T4, T5, T6>(slice);
 
 		/// <summary>Deserializes a slice containing a tuple composed of 7 elements</summary>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static STuple<T1?, T2?, T3?, T4?, T5?, T6?, T7?> DeserializeTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7>
 			(ReadOnlySpan<byte> slice)
 			=> DeserializeValueTuple<T1, T2, T3, T4, T5, T6, T7>(slice);
 
@@ -1974,7 +2029,7 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of a single element</summary>
 		[Pure]
 		public static ValueTuple<T1?> DeserializeValueTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1>
+			T1>
 			(ReadOnlySpan<byte> slice)
 		{
 			ValueTuple<T1?> res = default;
@@ -2014,8 +2069,8 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of 2 elements</summary>
 		[Pure]
 		public static ValueTuple<T1?, T2?> DeserializeValueTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2>
+			T1,
+			T2>
 			(ReadOnlySpan<byte> slice)
 		{
 			var res = default(ValueTuple<T1?, T2?>);
@@ -2055,9 +2110,9 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of 3 elements</summary>
 		[Pure]
 		public static ValueTuple<T1?, T2?, T3?> DeserializeValueTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3>
+			T1,
+			T2,
+			T3>
 			(ReadOnlySpan<byte> slice)
 		{
 			var res = default(ValueTuple<T1?, T2?, T3?>);
@@ -2098,10 +2153,10 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of 4 elements</summary>
 		[Pure]
 		public static ValueTuple<T1?, T2?, T3?, T4?> DeserializeValueTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4>
+			T1,
+			T2,
+			T3,
+			T4>
 			(ReadOnlySpan<byte> slice)
 		{
 			var res = default(ValueTuple<T1?, T2?, T3?, T4?>);
@@ -2142,11 +2197,11 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of 5 elements</summary>
 		[Pure]
 		public static ValueTuple<T1?, T2?, T3?, T4?, T5?> DeserializeValueTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5>
 			(ReadOnlySpan<byte> slice)
 		{
 			var res = default(ValueTuple<T1?, T2?, T3?, T4?, T5?>);
@@ -2186,12 +2241,12 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of 6 elements</summary>
 		[Pure]
 		public static (T1?, T2?, T3?, T4?, T5?, T6?) DeserializeValueTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6>
 			(ReadOnlySpan<byte> slice)
 		{
 			var res = default((T1?, T2?, T3?, T4?, T5?, T6?));
@@ -2231,13 +2286,13 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of 7 elements</summary>
 		[Pure]
 		public static (T1?, T2?, T3?, T4?, T5?, T6?, T7?) DeserializeValueTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7>
 			(ReadOnlySpan<byte> slice)
 		{
 			var res = default((T1?, T2?, T3?, T4?, T5?, T6?, T7?));
@@ -2277,14 +2332,14 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <summary>Deserializes a slice containing a tuple composed of 8 elements</summary>
 		[Pure]
 		public static (T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?) DeserializeValueTuple<
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T2,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T3,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T4,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T5,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T6,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T7,
-			[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T8>
+			T1,
+			T2,
+			T3,
+			T4,
+			T5,
+			T6,
+			T7,
+			T8>
 			(ReadOnlySpan<byte> slice)
 		{
 			var res = default((T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?));

@@ -146,7 +146,7 @@ namespace SnowBank.Data.Json
 			// Parsing
 			AllowTrailingData = 0x4000,
 
-			/// <summary>Serialize dictionaries as an array of <c>{ "Key": ..., "Value": ... }</c> objects (the legacy DataContractJsonSerializer wire shape) instead of a JSON object map</summary>
+			/// <summary>Serialize dictionaries as an array of <c>{ "Key": ..., "Value": ... }</c> objects (the legacy DataContractJsonSerializer output shape) instead of a JSON object map</summary>
 			DictionariesAsPairArrays = 0x8000,
 
 			// Target Enum
@@ -156,7 +156,7 @@ namespace SnowBank.Data.Json
 			Target_Reserved2 = 0x30000,
 			Target_Mask = 0x30000,
 
-			/// <summary>Serialize <c>TimeSpan</c> values as ISO 8601 duration strings (<c>"P1DT2H3M4.005S"</c>, the legacy DataContractJsonSerializer wire form) instead of a number of seconds</summary>
+			/// <summary>Serialize <c>TimeSpan</c> values as ISO 8601 duration strings (<c>"P1DT2H3M4.005S"</c>, the legacy DataContractJsonSerializer output form) instead of a number of seconds</summary>
 			Iso8601Durations = 0x40000,
 
 			/// <summary>Emit canonical output: object members sorted by ordinal comparison of their name, numbers rendered from their value with a float marker. See <see cref="CrystalJsonSettings.Canonical"/>.</summary>
@@ -346,7 +346,7 @@ namespace SnowBank.Data.Json
 
 		/// <summary>If <see langword="true"/> (the default), serialize all <see cref="System.Enum">enum types</see> as a string. If <see langword="false"/> serialize them as a number</summary>
 		/// <remarks>
-		/// <para>The string form uses the custom wire tokens declared on the enum's fields when present, otherwise the equivalent of <see cref="Enum.ToString()"/>; the casing is controlled by <see cref="UseCamelCasingForEnums"/>.</para>
+		/// <para>The string form uses the custom output tokens declared on the enum's fields when present, otherwise the equivalent of <see cref="Enum.ToString()"/>; the casing is controlled by <see cref="UseCamelCasingForEnums"/>.</para>
 		/// <para>Reading is always tolerant of both forms (names and tokens case-insensitively, numbers, and numeric strings), so this setting only affects what is written.</para>
 		/// </remarks>
 		public bool EnumsAsString
@@ -588,7 +588,7 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public CrystalJsonSettings WithIso8601Dates() => Update(SetDateFormatting(m_flags, DateFormat.TimeStampIso8601));
 
-		/// <summary>Tests if dictionaries are serialized as an array of <c>{ "Key": ..., "Value": ... }</c> objects (the legacy DataContractJsonSerializer wire shape) instead of a JSON object map</summary>
+		/// <summary>Tests if dictionaries are serialized as an array of <c>{ "Key": ..., "Value": ... }</c> objects (the legacy DataContractJsonSerializer output shape) instead of a JSON object map</summary>
 		/// <remarks>This only affects serialization: on read, both shapes are always accepted.</remarks>
 		public bool DictionariesAsPairArrays
 		{
@@ -609,7 +609,7 @@ namespace SnowBank.Data.Json
 		private static OptionFlags SetIso8601Durations(OptionFlags flags, bool value)
 			=> value ? flags | OptionFlags.Iso8601Durations : flags & ~OptionFlags.Iso8601Durations;
 
-		/// <summary>Serialize dictionaries as an array of <c>{ "Key": ..., "Value": ... }</c> objects, the wire shape produced by the legacy DataContractJsonSerializer</summary>
+		/// <summary>Serialize dictionaries as an array of <c>{ "Key": ..., "Value": ... }</c> objects, the output shape produced by the legacy DataContractJsonSerializer</summary>
 		/// <remarks>Only for interoperability with clients that cannot read a JSON object map; the shape is also always accepted on read, without this setting.</remarks>
 		[Pure]
 		public CrystalJsonSettings WithDictionariesAsPairArrays() => Update(SetDictionariesAsPairArrays(m_flags, true));
@@ -622,7 +622,7 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public CrystalJsonSettings WithMicrosoftDates() => Update(SetDateFormatting(m_flags, DateFormat.Microsoft));
 
-		/// <summary>Serialize <see cref="TimeSpan"/> values as ISO 8601 duration strings (<c>"P1DT2H3M4.005S"</c>), the wire form produced by the legacy DataContractJsonSerializer</summary>
+		/// <summary>Serialize <see cref="TimeSpan"/> values as ISO 8601 duration strings (<c>"P1DT2H3M4.005S"</c>), the output form produced by the legacy DataContractJsonSerializer</summary>
 		/// <remarks>Only for interoperability with legacy readers; the form is also always accepted on read, without this setting.</remarks>
 		[Pure]
 		public CrystalJsonSettings WithIso8601Durations() => Update(SetIso8601Durations(m_flags, true));
@@ -804,10 +804,10 @@ namespace SnowBank.Data.Json
 		/// </remarks>
 		public static CrystalJsonSettings JsonReadOnlyIgnoreCase { get; } = new CrystalJsonSettings(OptionFlags.Mutability_ReadOnly | OptionFlags.FieldsIgnoreCase);
 
-		/// <summary>Serialize the COMPLETE legacy wire of <c>DataContractJsonSerializer</c>: numeric enums, <c>\/Date(...)\/</c> dates, ISO 8601 duration strings for <see cref="TimeSpan"/>, dictionaries as <c>[{"Key":..,"Value":..}]</c> pair arrays, and explicit <c>null</c> members</summary>
+		/// <summary>Serialize the COMPLETE legacy output of <c>DataContractJsonSerializer</c>: numeric enums, <c>\/Date(...)\/</c> dates, ISO 8601 duration strings for <see cref="TimeSpan"/>, dictionaries as <c>[{"Key":..,"Value":..}]</c> pair arrays, and explicit <c>null</c> members</summary>
 		/// <remarks>
 		/// <para>Equivalent to <c>CrystalJsonSettings.Json.WithEnumAsNumbers().WithMicrosoftDates().WithIso8601Durations().WithDictionariesAsPairArrays().WithNullMembers()</c>, as one named, cached preset.</para>
-		/// <para>This preset reproduces every DCJS wire construct that has a settings-level recipe, so an endpoint using it feeds an unchanged legacy reader without any per-construct configuration.</para>
+		/// <para>This preset reproduces every DCJS output construct that has a settings-level recipe, so an endpoint using it feeds an unchanged legacy reader without any per-construct configuration.</para>
 		/// <para>Scope it to the endpoints that feed an unchanged legacy reader: <see cref="CrystalJsonSettings.WithNullMembers"/> in particular is pure verbosity for every consumer that is not a frozen legacy reader.</para>
 		/// <para>Reading never needs this preset: the legacy date, duration and dictionary shapes, and numbers or numeric strings for enums, are all accepted on read by default.</para>
 		/// </remarks>

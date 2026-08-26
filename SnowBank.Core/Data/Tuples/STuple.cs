@@ -90,20 +90,20 @@ namespace SnowBank.Data.Tuples
 		}
 
 		/// <inheritdoc />
-		TItem IVarTuple.Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(int index) => throw TupleHelpers.FailTupleIsEmpty();
+		TItem IVarTuple.Get<TItem>(int index) => throw TupleHelpers.FailTupleIsEmpty();
 
 		/// <inheritdoc />
-		TItem IVarTuple.Get<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>(Index index) => throw TupleHelpers.FailTupleIsEmpty();
+		TItem IVarTuple.Get<TItem>(Index index) => throw TupleHelpers.FailTupleIsEmpty();
 
 		/// <inheritdoc />
-		TItem IVarTuple.GetFirst<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>() => throw TupleHelpers.FailTupleIsEmpty();
+		TItem IVarTuple.GetFirst<TItem>() => throw TupleHelpers.FailTupleIsEmpty();
 
 		/// <inheritdoc />
-		TItem IVarTuple.GetLast<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TItem>() => throw TupleHelpers.FailTupleIsEmpty();
+		TItem IVarTuple.GetLast<TItem>() => throw TupleHelpers.FailTupleIsEmpty();
 
 		/// <inheritdoc />
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public IVarTuple Append<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T1>(T1 value) => new STuple<T1>(value);
+		public IVarTuple Append<T1>(T1 value) => new STuple<T1>(value);
 
 		/// <inheritdoc />
 		public IVarTuple Concat(IVarTuple tuple)
@@ -538,7 +538,25 @@ namespace SnowBank.Data.Tuples
 
 			return tail.Count == 0 ? head
 				: head.Count == 0 ? tail
-				: new JoinedTuple<THead, TTail>(head, tail);
+				: JoinTuples(head, tail);
+		}
+
+		/// <summary>Joins a head and a tail tuple into a single tuple.</summary>
+		/// <remarks>Under the JIT this keeps the strongly-typed <see cref="JoinedTuple{THead,TTail}"/> struct types.
+		/// Under Native AoT it uses the boxed <c>JoinedTuple&lt;IVarTuple, IVarTuple&gt;</c> form, so ilc does not have
+		/// to build one closed type per head/tail type pair.</remarks>
+		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
+		internal static IVarTuple JoinTuples<THead, TTail>(in THead head, in TTail tail)
+			where THead : IVarTuple
+			where TTail : IVarTuple
+		{
+#if NET8_0_OR_GREATER
+			if (!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported)
+			{
+				return new JoinedTuple<IVarTuple, IVarTuple>(head, tail);
+			}
+#endif
+			return new JoinedTuple<THead, TTail>(head, tail);
 		}
 
 		/// <summary>Concatenates two tuples together</summary>

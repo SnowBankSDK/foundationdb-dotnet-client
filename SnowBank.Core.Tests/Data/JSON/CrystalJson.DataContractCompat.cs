@@ -131,8 +131,8 @@ namespace SnowBank.Data.Json.Tests
 
 		}
 
-		/// <summary>One DTO exercising all five wire divergences the legacy preset must cover at once</summary>
-		public sealed class LegacyWireDto
+		/// <summary>One DTO exercising all five output divergences the legacy preset must cover at once</summary>
+		public sealed class LegacyOutputDto
 		{
 			public DayOfWeek Kind { get; set; }
 
@@ -377,7 +377,7 @@ namespace SnowBank.Data.Json.Tests
 			var obj2 = CrystalJson.Parse(CrystalJson.Serialize(new EnumDto { Plain = DayOfWeek.Friday, Stringy = DayOfWeek.Friday }, CrystalJsonSettings.Json.WithEnumAsNumbers())).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(obj2["Plain"], Is.InstanceOf<JsonNumber>(), "WithEnumAsNumbers() restores the DCJS wire");
+				Assert.That(obj2["Plain"], Is.InstanceOf<JsonNumber>(), "WithEnumAsNumbers() restores the DCJS output");
 				Assert.That(obj2["Stringy"], Is.InstanceOf<JsonString>(), "the per-member EnumFormat=String override wins over the numeric setting");
 			}
 
@@ -463,7 +463,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(names[0].AsObject().Get<string>("Value"), Is.EqualTo("one"));
 			}
 
-			// top-level dictionaries, exact wire shape, and the empty case (DCJS emits [])
+			// top-level dictionaries, exact output shape, and the empty case (DCJS emits [])
 			Assert.That(CrystalJson.Serialize(new Dictionary<string, int> { ["a"] = 1 }, settings), Is.EqualTo("""[{"Key":"a","Value":1}]"""));
 			Assert.That(CrystalJson.Serialize(new Dictionary<string, int>(), settings), Is.EqualTo("[]"));
 
@@ -490,7 +490,7 @@ namespace SnowBank.Data.Json.Tests
 				// and can put a "__type" member next to either.
 				Assert.That(
 					CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "key": "a", "value": 1 } ]"""),
-					Is.EqualTo(new Dictionary<string, int> { ["a"] = 1 }), "the lowercase spelling is the same wire");
+					Is.EqualTo(new Dictionary<string, int> { ["a"] = 1 }), "the lowercase spelling is the same output");
 				Assert.That(
 					CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a", "Value": 1, "Extra": 2 } ]"""),
 					Is.EqualTo(new Dictionary<string, int> { ["a"] = 1 }), "extra members are ignored, as on any other object");
@@ -590,9 +590,9 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(dto.Name, Is.EqualTo("n"));
 		}
 
-		#region Double contract (conflicting wire names)...
+		#region Double contract (conflicting output names)...
 
-		/// <summary>One member, two serializers, two different wire names: the "double contract" defect</summary>
+		/// <summary>One member, two serializers, two different output names: the "double contract" defect</summary>
 		[DataContract]
 		public sealed class DoubleContractDto
 		{
@@ -609,7 +609,16 @@ namespace SnowBank.Data.Json.Tests
 			public string? Code { get; set; }
 		}
 
-		/// <summary>Both attributes agree on the wire name: a common belt-and-suspenders migration state, and legal</summary>
+		/// <summary>Bare <c>[DataMember]</c>: the contract names the member after itself, and a foreign attribute renaming it is the same double contract</summary>
+		[DataContract]
+		public sealed class BareDoubleContractDto
+		{
+			[DataMember]
+			[Newtonsoft.Json.JsonProperty("ACTIF")]
+			public string? Code { get; set; }
+		}
+
+		/// <summary>Both attributes agree in the output name: a common belt-and-suspenders migration state, and legal</summary>
 		[DataContract]
 		public sealed class AgreeingNamesDto
 		{
@@ -647,7 +656,7 @@ namespace SnowBank.Data.Json.Tests
 			public string? Code { get; set; }
 		}
 
-		/// <summary>The ignore variant of the double contract: on the DCJS wire via [DataMember], off the other wire via [JsonIgnore]</summary>
+		/// <summary>The ignore variant of the double contract: on the DCJS output via [DataMember], off the other output via [JsonIgnore]</summary>
 		[DataContract]
 		public sealed class DualOutputDto
 		{
@@ -692,10 +701,10 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Conflicting_Wire_Names_Are_Refused_Loudly()
+		public void Test_Conflicting_Output_Names_Are_Refused_Loudly()
 		{
 			// a member carrying [DataMember(Name=x)] plus a foreign naming attribute with a DIFFERENT name is one
-			// type trying to serve two wire contracts: refuse with an error naming the member, both attributes and
+			// type trying to serve two output contracts: refuse with an error naming the member, both attributes and
 			// both names, instead of silently picking one (the fix on the application side is to split the DTO)
 
 			Assert.That(
@@ -711,6 +720,13 @@ namespace SnowBank.Data.Json.Tests
 				() => CrystalJson.Serialize(new DoubleContractStjDto { Code = "c-1" }),
 				Throws.Exception.With.Message.Contains("CODE_X"),
 				"a conflicting [JsonPropertyName] is the same defect with another serializer");
+
+			// a bare [DataMember] names the member after itself, and that implied name counts: this pair used to slip
+			// under the refusal, and the foreign name then won the resolution silently
+			Assert.That(
+				() => CrystalJson.Serialize(new BareDoubleContractDto { Code = "c-1" }),
+				Throws.Exception.With.Message.Contains("Code").And.Message.Contains("ACTIF").And.Message.Contains("split"),
+				"a bare [DataMember] next to a renaming attribute is the same double contract");
 		}
 
 		[Test]
@@ -733,7 +749,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(
 				CrystalJson.Serialize(new NativeNewtonsoftAgreeingDto { Code = "c" }),
 				Does.Contain("CODE").And.Not.Contain("Code"),
-				"two naming attributes agreeing on the same wire name is not a conflict");
+				"two naming attributes agreeing on the same output name is not a conflict");
 		}
 
 		[Test]
@@ -742,7 +758,7 @@ namespace SnowBank.Data.Json.Tests
 			// the ignore variant of the double contract: a dual-output DTO is not supported, and the remedy the
 			// message steers to is the SPLIT (one DTO per serializer), with "remove one of the two attributes" as
 			// the secondary hint for the honest-mistake case - never "give the [JsonIgnore] a Condition", which
-			// would flip the member to included-with-a-write-rule and ship it onto the second wire
+			// would flip the member to included-with-a-write-rule and ship it onto the second output
 
 			Assert.That(
 				() => CrystalJson.Serialize(new DualOutputDto { Both = "b", Plain = "p" }),
@@ -775,7 +791,7 @@ namespace SnowBank.Data.Json.Tests
 			var ex = Assert.Throws<JsonSerializationException>(() => CrystalJson.Serialize(new DualOutputDto { Both = "b" }))!;
 			Log(ex.Message);
 			Assert.That(ex.Message, Does.Not.Contain("Condition"),
-				"suggesting a Condition would resolve the error while shipping the member onto the second wire for the first time");
+				"suggesting a Condition would resolve the error while shipping the member onto the second output for the first time");
 		}
 
 		[Test]
@@ -793,7 +809,7 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Agreeing_Wire_Names_Are_Legal()
+		public void Test_Agreeing_Output_Names_Are_Legal()
 		{
 			// both attributes giving the SAME name is reinforcement, not a conflict
 			var json = CrystalJson.Serialize(new AgreeingNamesDto { Code = "c-1" });
@@ -814,7 +830,7 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_DataContractCompat_Preset_Is_The_Five_Setting_Composition()
 		{
 			// settings are cached singletons: the named preset and the manual composition must be the SAME instance,
-			// which is also the proof that the two are byte-equivalent on the wire
+			// which is also the proof that the two are byte-equivalent in the output
 			var composed = CrystalJsonSettings.Json
 				.WithEnumAsNumbers()
 				.WithMicrosoftDates()
@@ -836,7 +852,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_Iso8601_Durations_Emission_Is_OptIn()
 		{
-			var dto = new LegacyWireDto { Elapsed = new TimeSpan(1, 2, 3, 4, 5) };
+			var dto = new LegacyOutputDto { Elapsed = new TimeSpan(1, 2, 3, 4, 5) };
 
 			var obj = CrystalJson.Parse(CrystalJson.Serialize(dto)).AsObject();
 			Assert.That(obj["Elapsed"], Is.InstanceOf<JsonNumber>(), "default emission is the number of seconds");
@@ -849,14 +865,14 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(packed.Get<string>("Elapsed"), Is.EqualTo("P1DT2H3M4.005S"), "the DOM route must honor the setting like the text route");
 
 			// the duration form reads back without any setting (tolerant read, shipped with the primitives wave)
-			var back = CrystalJson.Deserialize<LegacyWireDto>(iso);
+			var back = CrystalJson.Deserialize<LegacyOutputDto>(iso);
 			Assert.That(back.Elapsed, Is.EqualTo(dto.Elapsed));
 		}
 
 		[Test]
-		public void Test_DataContractCompat_Preset_Produces_The_Legacy_Wire()
+		public void Test_DataContractCompat_Preset_Produces_The_Legacy_Output()
 		{
-			var dto = new LegacyWireDto
+			var dto = new LegacyOutputDto
 			{
 				Kind = DayOfWeek.Friday,
 				When = new DateTime(2009, 2, 13, 23, 31, 30, DateTimeKind.Utc),
@@ -870,14 +886,14 @@ namespace SnowBank.Data.Json.Tests
 			var obj = CrystalJson.Parse(json).AsObject();
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(obj["Kind"], Is.InstanceOf<JsonNumber>(), "enums must be numbers on the legacy wire");
+				Assert.That(obj["Kind"], Is.InstanceOf<JsonNumber>(), "enums must be numbers on the legacy output");
 				Assert.That(obj.Get<int>("Kind"), Is.EqualTo(5));
 				Assert.That(json, Does.Contain(@"\/Date(1234567890000)\/"), "dates must use the legacy Microsoft format");
-				Assert.That(obj.Get<string>("Elapsed"), Is.EqualTo("P1DT2H3M4.005S"), "durations must use the ISO 8601 duration form on the legacy wire");
-				Assert.That(obj["Counts"], Is.InstanceOf<JsonArray>(), "dictionaries must be pair arrays on the legacy wire");
+				Assert.That(obj.Get<string>("Elapsed"), Is.EqualTo("P1DT2H3M4.005S"), "durations must use the ISO 8601 duration form on the legacy output");
+				Assert.That(obj["Counts"], Is.InstanceOf<JsonArray>(), "dictionaries must be pair arrays on the legacy output");
 				Assert.That(obj["Counts"][0]["Key"], IsJson.EqualTo("a"));
 				Assert.That(obj["Counts"][0]["Value"], IsJson.EqualTo(1));
-				Assert.That(obj.ContainsKey("MaybeNull"), Is.True, "null members must be emitted explicitly on the legacy wire");
+				Assert.That(obj.ContainsKey("MaybeNull"), Is.True, "null members must be emitted explicitly on the legacy output");
 			}
 
 			// the default settings emit none of the four legacy forms

@@ -44,7 +44,7 @@ namespace SnowBank.Benchmarks
 	/// constructed (a ready future completes inline and bypasses callbacks entirely). The harness therefore samples
 	/// <see cref="DebugCounters.CallbackHandlesTotal"/> around every segment and reports the callback-to-op ratio:
 	/// a segment is only valid when that ratio is ~1.0.</para>
-	/// <para>Workloads: <c>grv</c> = one <c>get_read_version</c> per transaction (leanest possible wire payload, no
+	/// <para>Workloads: <c>grv</c> = one <c>get_read_version</c> per transaction (leanest possible transport payload, no
 	/// key/value marshaling); <c>get</c> = pipelined snapshot point-reads of distinct missing keys (realistic variant,
 	/// thousands of futures in flight from a few transactions).</para>
 	/// <para>Usage: <c>dotnet run -c Release -- storm [grv|get|all] [--workers N] [--batch N] [--duration SECONDS]</c></para>

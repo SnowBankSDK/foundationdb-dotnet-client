@@ -30,7 +30,7 @@ namespace SnowBank.Networking.PacketCapture
 	using System.Net.Http;
 	using Microsoft.IO;
 
-	/// <summary>Wraps an inner <see cref="HttpContent"/> so that the actual bytes sent of the wire can be captured</summary>
+	/// <summary>Wraps an inner <see cref="HttpContent"/> so that the actual bytes sent of the transport can be captured</summary>
 	internal class InterceptedHttpContent : HttpContent
 	{
 		//note: when wrapping a response HttpContent, the observed concrete type is usually HttpConnectionResponseContent

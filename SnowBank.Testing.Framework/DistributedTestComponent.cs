@@ -306,13 +306,13 @@ namespace SnowBank.Testing.Framework
 		}
 
 		/// <summary>Returns an HTTP client that will send requests to this virtual host</summary>
-		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Transport policy throws; it belongs to a named policy.</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
 		public HttpClient CreateLocalHttpClient(Action<BetterHttpClientOptions>? configure = null) => CreateHttpClient(this, configure);
 
 		/// <summary>Returns an HTTP client that will send requests from this virtual host to another host in the virtual network</summary>
 		/// <param name="remote">Remote host</param>
-		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Transport policy throws; it belongs to a named policy.</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
 		public HttpClient CreateHttpClient(IDistributedWebTestComponent remote, Action<BetterHttpClientOptions>? configure = null)
 		{
@@ -327,7 +327,7 @@ namespace SnowBank.Testing.Framework
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="hostOrAddress">Address of the remote host (note: only the hostname part of the URI is used)</param>
-		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Wire policy throws; it belongs to a named policy.</param>
+		/// <param name="configure">Optional per-call configure: per-call settings only (default headers, request options, hooks, timeout, per-request-only credentials). Transport policy throws; it belongs to a named policy.</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
 		public HttpClient CreateHttpClient(Uri hostOrAddress, Action<BetterHttpClientOptions>? configure = null)
 		{
@@ -350,14 +350,14 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Returns an HTTP client that will send requests to this virtual host</summary>
 		/// <param name="options">Options used to configure the HTTP client</param>
 		/// <returns>Client that will be setup to execute requests <i>locally</i> from the host to itself, bypassing any injected errors or network connectivity issues.</returns>
-		[Obsolete("Use CreateLocalHttpClient(configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
+		[Obsolete("Use CreateLocalHttpClient(configure): per-call settings move to the configure callback, transport policy stays on the named policy.", error: false)]
 		public BetterHttpClient GetLocalBetterHttpClient(BetterHttpShellOptions? options = null) => GetBetterHttpClient(this, options);
 
 		/// <summary>Returns an HTTP client that will send requests from this virtual host to another host in the virtual network</summary>
 		/// <param name="remote">Remote host</param>
-		/// <param name="options">Per-shell options for this client (default headers, request version, hooks). Wire policy belongs to the named policy.</param>
+		/// <param name="options">Per-shell options for this client (default headers, request version, hooks). Transport policy belongs to the named policy.</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
-		[Obsolete("Use CreateHttpClient(remote, configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
+		[Obsolete("Use CreateHttpClient(remote, configure): per-call settings move to the configure callback, transport policy stays on the named policy.", error: false)]
 		public BetterHttpClient GetBetterHttpClient(IDistributedWebTestComponent remote, BetterHttpShellOptions? options = null)
 		{
 			var uri = remote.GetUri();
@@ -372,9 +372,9 @@ namespace SnowBank.Testing.Framework
 
 		/// <summary>Returns an HTTP client that will talk to the specified host or address</summary>
 		/// <param name="hostOrAddress">Address of the remote host (note: only the hostname part of the URI is used)</param>
-		/// <param name="options">Per-shell options for this client (default headers, request version, hooks). Wire policy belongs to the named policy.</param>
+		/// <param name="options">Per-shell options for this client (default headers, request version, hooks). Transport policy belongs to the named policy.</param>
 		/// <returns>Client that will be setup to execute requests <i>from</i> the current host, <i>to</i> the remote host, while emulating any injected errors or network connectivity issues.</returns>
-		[Obsolete("Use CreateHttpClient(hostOrAddress, configure): per-call settings move to the configure callback, wire policy stays on the named policy.", error: false)]
+		[Obsolete("Use CreateHttpClient(hostOrAddress, configure): per-call settings move to the configure callback, transport policy stays on the named policy.", error: false)]
 		public BetterHttpClient GetBetterHttpClient(Uri hostOrAddress, BetterHttpShellOptions? options = null)
 		{
 			EnsureStarted();
@@ -744,7 +744,7 @@ namespace SnowBank.Testing.Framework
 						options.LogLevel = LogLevel.Warning; // only while we are starting, will be changed later
 						options.MessageHandler = (msg) =>
 						{
-							// Library-registered trace events (e.g. wire messages, fdb transaction summaries) are surfaced as their own
+							// Library-registered trace events (e.g. transport messages, fdb transaction summaries) are surfaced as their own
 							// journal kind, captured whenever the producing library emits them (gated only by the logger level, e.g.
 							// WithLogLevel(Trace)), independent of MinimumTimelineLogLevel which governs only regular log lines.
 							// The mapping (EventName -> kind/label) is registered by the relevant library via the environment builder,
