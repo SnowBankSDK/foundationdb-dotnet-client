@@ -115,6 +115,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>Carried as parser state rather than threaded through every parse signature, exactly like <see cref="ContextClassLocation"/>: the member-level rules that need it (the attribute-shaped dictionary refusal) sit four calls below the container, and none of the intermediate steps has any business knowing about it.</remarks>
 			private string? ContextXmlDictionaryFormat { get; set; }
 
+			/// <summary>Types this container enrolled with <c>[CrystalSerializable(..., IgnoreCustomSerialization = true)]</c>, which keep a member-based converter even when they implement one of the JSON interfaces</summary>
+			/// <remarks>Only ROOT enrollments can appear here: a transitively-discovered type carries no attribute of its own, which is one of the two documented limits of the option.</remarks>
+			private HashSet<INamedTypeSymbol> ContextIgnoreCustomSerialization { get; } = new(SymbolEqualityComparer.Default);
+
 			public Parser(KnownTypeSymbols knownSymbols)
 			{
 				this.KnownSymbols = knownSymbols;
@@ -214,6 +218,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{ // CrystalJson serializes collections, dictionaries and scalars natively, root included: there is nothing for a generated converter to add, and enumerating such a type as a POCO produces code that does not compile
 								ReportNativelySerializedEnrolment(typeAttribute, symbol, type, nativeKind);
 								continue;
+							}
+
+							foreach (var arg in typeAttribute.NamedArguments)
+							{
+								if (arg.Key == "IgnoreCustomSerialization" && arg.Value.Value is true)
+								{
+									this.ContextIgnoreCustomSerialization.Add(type);
+								}
 							}
 
 							work.Enqueue(type);
@@ -1084,11 +1096,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 					ReportInertXmlMemberSettings(members, memberSymbols);
 				}
 
+				// a type that implements one of the JSON interfaces already answers that facet: the generated converter calls it
+				// instead of walking the members, so that a container and the runtime path cannot produce two different formats
+				var typeMetadata = TypeMetadata.Create(type);
+				bool ignoreCustom = this.ContextIgnoreCustomSerialization.Contains(type);
+
 				return new()
 				{
-					Type = TypeMetadata.Create(type),
+					Type = typeMetadata,
 					Members = members.ToImmutableEquatableArray(),
 					IsPolymorphicRoot = isPolymorphic,
+					DefersSerialize = !ignoreCustom && typeMetadata.IsJsonSerializable(),
+					DefersPack = !ignoreCustom && typeMetadata.IsJsonPackable(),
+					DefersUnpack = !ignoreCustom && typeMetadata.IsJsonDeserializable(),
 					HasDataContract = hasDataContract,
 					DataContractName = dataContract.Name,
 					DataContractNamespace = dataContract.Namespace,

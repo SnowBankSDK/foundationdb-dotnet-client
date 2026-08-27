@@ -2303,6 +2303,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine($"public {typeDef.Type.FullyQualifiedName} Unpack({KnownTypeSymbols.JsonValueFullName} value, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default)");
 				sb.EnterBlock();
 
+				if (typeDef.DefersUnpack)
+				{ // the type reads its own format, which a member binding would not understand. The helper carries the static
+					// abstract call on net7+, and the reflection-based dispatcher on the lite path where that dispatch does not exist
+					sb.AppendLine($"return {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackJsonDeserializable<{typeDef.Type.FullyQualifiedName}>(value, resolver);");
+					sb.LeaveBlock();
+					sb.NewLine();
+					return;
+				}
+
 				if (typeDef.IsPolymorphicRoot)
 				{ // this is a polymorphic type, we have to dispatch to the corresponding derived type converter!
 
@@ -2932,6 +2941,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
+				if (typeDef.DefersPack)
+				{ // the type builds its own value: calling it is what keeps the container's bytes identical to the runtime path,
+					// which defers to IJsonPackable at the same point. The cycle guard stays around the call, so a graph that
+					// runs back through this type still fails with the typed error instead of a stack overflow
+					sb.AppendLine(typeDef.Type.IsValueType() ? "context.Enter();" : "context.Enter(instance);");
+					sb.AppendLine($"var packed = (({KnownTypeSymbols.IJsonPackableFullName}) instance).JsonPack(settings ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.Json, resolver ?? {KnownTypeSymbols.CrystalJsonFullName}.DefaultResolver);");
+					sb.AppendLine(typeDef.Type.IsValueType() ? "context.Leave();" : "context.Leave(instance);");
+					sb.AppendLine("return settings.IsReadOnly() ? packed.ToReadOnly() : packed;");
+					sb.LeaveBlock("Pack");
+					sb.NewLine();
+					return;
+				}
+
 				// if the type is polymorphic, we have to dispatch to the corresponding serializer
 				// (dispatch BEFORE Enter: the delegate packs THIS object, and its own Pack is what enters it)
 				if (typeDef.IsPolymorphicRoot)
@@ -3108,7 +3130,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.LeaveBlock();
 				}
 
-				//TODO: handle IJsonSerializer<T> and IJsonSerializable
+				if (typeDef.DefersSerialize)
+				{ // the type writes its own format: calling it is what keeps the container's bytes identical to the runtime path,
+					// which defers to IJsonSerializable at the same point (before any polymorphic dispatch, so a derived instance
+					// reaches its own override through the interface call)
+					sb.AppendLine($"(({KnownTypeSymbols.IJsonSerializableFullName}) instance).JsonSerialize(writer);");
+					sb.LeaveBlock("Serialize()");
+					sb.NewLine();
+					return;
+				}
 
 				// if the type is polymorphic, we have to dispatch to the corresponding serializer
 				if (typeDef.IsPolymorphicRoot)

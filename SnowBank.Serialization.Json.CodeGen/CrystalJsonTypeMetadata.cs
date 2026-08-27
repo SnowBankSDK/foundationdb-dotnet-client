@@ -112,6 +112,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Indicates if this is the top-most base type for a tree of derived types</summary>
 		public required bool IsPolymorphicRoot { get; init; }
 
+		/// <summary>The generated converter writes this type by calling its own <c>IJsonSerializable.JsonSerialize</c>, instead of walking its members</summary>
+		/// <remarks>The three facets are resolved independently: a type implementing only one of the interfaces keeps a generated body for the other two.</remarks>
+		public bool DefersSerialize { get; init; }
+
+		/// <summary>The generated converter packs this type by calling its own <c>IJsonPackable.JsonPack</c>, instead of walking its members</summary>
+		/// <inheritdoc cref="DefersSerialize" path="/remarks"/>
+		public bool DefersPack { get; init; }
+
+		/// <summary>The generated converter reads this type by calling its own <c>IJsonDeserializable&lt;T&gt;.JsonDeserialize</c>, instead of binding its members</summary>
+		/// <inheritdoc cref="DefersSerialize" path="/remarks"/>
+		public bool DefersUnpack { get; init; }
+
 		/// <summary>The type's serialization lifecycle callbacks, if any</summary>
 		public CrystalJsonCallbackMetadata? OnSerializing { get; init; }
 

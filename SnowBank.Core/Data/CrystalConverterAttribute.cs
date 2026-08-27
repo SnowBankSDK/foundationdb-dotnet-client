@@ -74,6 +74,7 @@ namespace SnowBank.Data
 	/// <remarks>
 	/// <para>The enrollment is format-neutral: the enrolled type gets a generated serializer for every output format the container requests.</para>
 	/// <para>Any derived type, nested type, or type referenced by the members of these types is also included in the source code generation.</para>
+	/// <para>An enrolled type that implements <c>IJsonSerializable</c>, <c>IJsonPackable</c> or <c>IJsonDeserializable&lt;T&gt;</c> keeps its own format: the generated converter calls the type's method for each of those facets, and generates the other ones from its members. Set <see cref="IgnoreCustomSerialization"/> to take the members instead.</para>
 	/// <para>Do not subclass: the source generator matches exact attribute metadata names, a derived attribute is invisible to it.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
@@ -97,6 +98,15 @@ namespace SnowBank.Data
 
 		/// <summary>List of types to include in this container</summary>
 		public Type[] Types { get; set; }
+
+		/// <summary>Generates a member-based converter even when the type implements <c>IJsonSerializable</c>, <c>IJsonPackable</c> or <c>IJsonDeserializable&lt;T&gt;</c></summary>
+		/// <remarks>
+		/// <para>By default the generated converter calls the type's own method for each facet the type implements, so that a container and the runtime path produce the same bytes. This restores the member crawl, for code that took a dependence on the member-shaped output.</para>
+		/// <para>Two limits, both by construction:</para>
+		/// <para>It cannot rescue a type the generator is unable to construct. A type with <c>required</c> members and no parameterless constructor does not compile under a member crawl, whichever way this option is set.</para>
+		/// <para>It has no effect on a transitively-discovered type. Only the types named in a <see cref="CrystalSerializableAttribute"/> carry this option; the nested and referenced types the generator crawls into carry no attribute of their own, and always keep their own format.</para>
+		/// </remarks>
+		public bool IgnoreCustomSerialization { get; set; }
 
 	}
 
