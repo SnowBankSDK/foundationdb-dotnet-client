@@ -103,6 +103,22 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>False on the lite path (<c>netstandard2.0</c>/<c>net472</c>, where the proxy interfaces do not exist), below C# 11 (where the static abstract members they implement cannot be written), and in an XML-only container (the proxies wrap a <c>JsonValue</c>, which such a container never produces). Everything else the container emits is unaffected.</remarks>
 			private bool WritesProxies => this.Metadata.SupportsJsonProxies && this.WritesJson;
 
+			/// <summary>The container gets a proxy surface AND this type has a shape the generator can describe</summary>
+			/// <remarks>Suppression is per type, not per container: a plain member-shaped type keeps its proxies next to a type that answers a facet itself. See <see cref="CrystalJsonTypeMetadata.SuppressesProxies"/>.</remarks>
+			private bool WritesProxiesFor(CrystalJsonTypeMetadata typeDef) => this.WritesProxies && !typeDef.SuppressesProxies;
+
+			/// <summary>Resolves a member's type to a locally generated type that still has a proxy to point at</summary>
+			/// <remarks>The converter paths keep using <see cref="IsLocallyGeneratedType(TypeMetadata, out CrystalJsonTypeMetadata, out bool)"/>: a type whose format the generator does not control still has a local CONVERTER, and routing to it is the whole point. Only the proxy paths need this narrower question, so that nothing is left naming a proxy type that is no longer emitted.</remarks>
+			private bool HasLocalProxy(TypeMetadata type, [MaybeNullWhen(false)] out CrystalJsonTypeMetadata metadata)
+			{
+				if (!IsLocallyGeneratedType(type, out metadata, out _) || metadata.SuppressesProxies)
+				{
+					metadata = null;
+					return false;
+				}
+				return true;
+			}
+
 			/// <summary>Returns the expression that builds an empty instance of a collection type</summary>
 			/// <remarks>
 			/// <para>This is the language-version-neutral spelling of the <c>[ ]</c> collection expression (C# 12): the emitted code must also compile in a consumer sitting on the generator's language floor, and the result is the same empty instance in both spellings (an empty array target lowers to <c>Array.Empty&lt;T&gt;()</c>, a concrete collection target to its parameterless constructor).</para>
@@ -290,13 +306,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 					// extended maps that also includes the generated proxies
 					// (when the container has no proxy surface, the extended map is simply the plain one: the resolver
 					// contract is unchanged, there is just nothing extra to resolve)
-					if (this.WritesProxies)
+					foreach (var type in includedTypes)
 					{
-						foreach (var type in includedTypes)
-						{
-							sb.AppendLine($"map[typeof({GetReadOnlyProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
-							sb.AppendLine($"map[typeof({GetWritableProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
-						}
+						if (!this.WritesProxiesFor(type)) continue;
+						sb.AppendLine($"map[typeof({GetReadOnlyProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
+						sb.AppendLine($"map[typeof({GetWritableProxyName(type.Type)})] = {GetLocalSerializerRef(type)};");
 					}
 					sb.AppendLine($"this.ConvertersByTypeExtended = {FrozenDictionaryFullName}.ToFrozenDictionary(map);");
 					sb.LeaveBlock("ctor");
@@ -741,7 +755,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				var facets = new List<string>();
 				if (this.WritesJson)
 				{
-					facets.Add(this.WritesProxies
+					facets.Add(this.WritesProxiesFor(typeDef)
 						? $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}, {readOnlyProxyTypeName}, {writableProxyTypeName}>"
 						: $"{KnownTypeSymbols.IJsonConverterInterfaceFullName}<{typeFullName}>");
 				}
@@ -859,7 +873,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// the proxy surface is optional: a consumer on the lite path (netstandard2.0/net472) has no proxy interfaces,
 				// and one below C# 11 cannot implement their static abstract members. Everything above is emitted either way.
-				if (this.WritesProxies)
+				if (this.WritesProxiesFor(typeDef))
 				{
 					GenerateProxiesForType(sb, typeDef);
 				}
@@ -1161,7 +1175,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									getterExpr = $"/* member-converter */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), {GetForgivingDefaultLiteral(member)}, null)!";
 								}
 							}
-							else if (IsLocallyGeneratedType(member.Type, out var target, out _))
+							else if (HasLocalProxy(member.Type, out var target))
 							{
 								getterExpr = $"/* local-deserializer */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
 								proxyType = GetLocalReadOnlyProxyRef(target);
@@ -1193,7 +1207,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{
 								if (keyType.IsString())
 								{
-									if (IsLocallyGeneratedType(valueType, out target, out _))
+									if (HasLocalProxy(valueType, out target))
 									{
 										getterExpr = $"/* string-dict-local */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
 										proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyDictionaryFullName}<{valueType.FullyQualifiedName}, {GetLocalReadOnlyProxyRef(target)}>";
@@ -1206,12 +1220,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 								}
 								else if (keyType.IsInt32())
 								{
-									if (IsLocallyGeneratedType(valueType, out target, out _))
+									if (HasLocalProxy(valueType, out target))
 									{
 										getterExpr = $"/* int-dict-local */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
 										proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyInt32DictionaryFullName}<{valueType.FullyQualifiedName}, {GetLocalReadOnlyProxyRef(target)}>";
 									}
-									else if (valueType.IsArray(out var elemType) && IsLocallyGeneratedType(elemType, out target, out _))
+									else if (valueType.IsArray(out var elemType) && HasLocalProxy(elemType, out target))
 									{
 										getterExpr = $"/* int-dict-local-array */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
 										proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyInt32DictionaryOfArrayFullName}<{elemType.FullyQualifiedName}, {GetLocalReadOnlyProxyRef(target)}>";
@@ -1225,7 +1239,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							}
 							else if (member.Type.IsEnumerable(out var elemType))
 							{
-								if (IsLocallyGeneratedType(elemType, out target, out _))
+								if (HasLocalProxy(elemType, out target))
 								{
 									getterExpr = $"/* enumerable-local */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
 									proxyType = $"{KnownTypeSymbols.JsonReadOnlyProxyArrayFullName}<{elemType.FullyQualifiedName}, {GetLocalReadOnlyProxyRef(target)}>";
@@ -1461,7 +1475,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									setterExpr = $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, value is {{ }} v{member.MemberName} ? {converterRef}.Pack(v{member.MemberName}, null, null) : {KnownTypeSymbols.JsonNullFullName}.Null)";
 								}
 							}
-							else if (IsLocallyGeneratedType(member.Type, out var target, out _))
+							else if (HasLocalProxy(member.Type, out var target))
 							{
 								proxyType = GetLocalWritableProxyRef(target);
 								getterExpr = $"/* proxy */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
@@ -1584,7 +1598,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{
 								if (keyType.IsString())
 								{
-									if (IsLocallyGeneratedType(valueType, out target, out _))
+									if (HasLocalProxy(valueType, out target))
 									{
 										proxyType = $"{KnownTypeSymbols.JsonWritableProxyDictionaryFullName}<{valueType.FullyQualifiedName}, {this.GetLocalWritableProxyRef(target)}>";
 										getterExpr = $"/* dict-proxy */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
@@ -1601,7 +1615,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							}
 							else if (member.Type.IsEnumerable(out var elemType))
 							{
-								if (IsLocallyGeneratedType(elemType, out target, out _))
+								if (HasLocalProxy(elemType, out target))
 								{
 									proxyType = $"{KnownTypeSymbols.JsonWritableProxyArrayFullName}<{elemType.FullyQualifiedName}, {this.GetLocalWritableProxyRef(target)}>";
 									getterExpr = $"/* array-proxy */ new(m_value[{GetTargetPropertyNameRef(typeDef, member)}])";
@@ -1745,8 +1759,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
-				// everything below wraps the ReadOnly/Writable proxies, which the container does not always have
-				if (!this.WritesProxies) return;
+				// everything below wraps the ReadOnly/Writable proxies, which neither the container nor this type always has
+				if (!this.WritesProxiesFor(typeDef)) return;
 
 				// ToReadOnly(JsonValue)
 				sb.XmlComment($"<summary>Returns a read-only JSON Proxy that wraps a <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/> into a type-safe emulation of type <see cref=\"{typeCref}\"/></summary>");
@@ -1947,8 +1961,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.LeaveBlock();
 				sb.NewLine();
 
-				// everything below wraps the ReadOnly/Writable proxies, which the container does not always have
-				if (!this.WritesProxies) return;
+				// everything below wraps the ReadOnly/Writable proxies, which neither the container nor this type always has
+				if (!this.WritesProxiesFor(typeDef)) return;
 
 				// ToReadOnly(JsonValue)
 				sb.XmlComment($"<summary>Returns a read-only JSON Proxy that wraps a <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/> into a type-safe emulation of type <see cref=\"{typeCref}\"/></summary>");

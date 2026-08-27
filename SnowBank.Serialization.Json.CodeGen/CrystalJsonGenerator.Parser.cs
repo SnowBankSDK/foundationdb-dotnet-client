@@ -120,6 +120,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>Only ROOT enrollments can appear here: a transitively-discovered type carries no attribute of its own, which is one of the two documented limits of the option.</remarks>
 			private HashSet<INamedTypeSymbol> ContextIgnoreCustomSerialization { get; } = new(SymbolEqualityComparer.Default);
 
+			/// <summary>The container would emit a <c>ReadOnly</c>/<c>Writable</c> proxy surface, so a type that loses it has something to be told about</summary>
+			/// <remarks>Mirrors the emitter's own <c>WritesProxies</c>. It is false on the lite path and below C# 11, where the surface never existed, and a warning about suppressing something that was never going to be emitted is noise.</remarks>
+			private bool ContextWritesProxies { get; set; }
+
 			/// <summary>The container being parsed, for the whole crawl of that container, or <see langword="null"/> in self-serializable mode</summary>
 			/// <remarks>The author-written converter hooks live in the container's nested per-type scopes, which is the one thing the per-type parse cannot reach from the serialized type alone. Self-serializable mode has no such scope to write in: the whole <c>Json</c> scope is generated.</remarks>
 			private INamedTypeSymbol? ContextContainerSymbol { get; set; }
@@ -327,6 +331,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				var (xmlProfile, xmlDictionaryFormat, xmlOmitNamespaces) = ResolveXmlOutput(symbol, xmlOutputAttribute, outputProfile, propertyNamingPolicy);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
+				this.ContextWritesProxies = formats.GeneratesJson && this.KnownSymbols.SupportsJsonProxies;
 
 				Kenobi($"Found {work.Count} root types to include");
 
@@ -870,6 +875,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// container does; it declares no JSON format profile, so an unspecified profile derives the General format
 				var (xmlProfile, xmlDictionaryFormat, xmlOmitNamespaces) = ResolveXmlOutput(symbol, FindXmlOutputAttribute(symbol), outputProfile: null, propertyNamingPolicy: null);
 				this.ContextXmlDictionaryFormat = xmlDictionaryFormat;
+				this.ContextWritesProxies = this.KnownSymbols.SupportsJsonProxies;
 
 				var includedTypes = new List<CrystalJsonTypeMetadata>();
 				var mappedTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default) { symbol };
@@ -1152,7 +1158,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				bool ignoreCustom = this.ContextIgnoreCustomSerialization.Contains(type);
 				var hooks = ResolveConverterHooks(type);
 
-				return new()
+				var metadata = new CrystalJsonTypeMetadata
 				{
 					Type = typeMetadata,
 					Members = members.ToImmutableEquatableArray(),
@@ -1173,6 +1179,35 @@ namespace SnowBank.Serialization.Json.CodeGen
 					TypeDiscriminatorPropertyName = typeDiscriminatorPropertyName,
 					DerivedTypes = derivedTypes.ToImmutableEquatableArray(),
 				};
+
+				// asked of the metadata rather than recomputed here, so the warning and the emitter can never disagree
+				// about which types lost their proxies
+				if (this.ContextWritesProxies && metadata.SuppressesProxies)
+				{
+					ReportProxySurfaceSuppressed(type);
+				}
+
+				return metadata;
+			}
+
+			/// <summary>Reports <c>CJSON0025</c> on a type that gets no <c>ReadOnly</c>/<c>Writable</c> proxy, because the generator does not decide its format</summary>
+			/// <remarks>A warning, not an error: the converter is complete and correct, and only the optional proxy surface is missing. Silence would be wrong though, since the author asked for a container that produces proxies and one of its types quietly has none.</remarks>
+			private void ReportProxySurfaceSuppressed(INamedTypeSymbol type)
+			{
+				ReportDiagnostic(
+					new(
+						"CJSON0025",
+						"No JSON proxy is generated for this type",
+						"The type '{0}' decides its own JSON format, through the interfaces it implements or through a converter method written in its scope, so the generator does not know the shape it produces and cannot describe it: no ReadOnly or Writable proxy is generated for it. The converter itself is unaffected.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Warning,
+						isEnabledByDefault: true
+					),
+					type.Locations.Length > 0 ? type.Locations[0] : this.ContextClassLocation,
+					// a transitively-discovered type is reached through a MEMBER, and carries that member's nullable
+					// annotation; the annotation belongs to the member, not to the type being named here
+					[ type.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString() ]
+				);
 			}
 
 			/// <summary>The three converter methods an author can write by hand in a container's per-type scope</summary>

@@ -136,6 +136,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <inheritdoc cref="HasSerializeHook" path="/remarks"/>
 		public bool HasUnpackHook { get; init; }
 
+		/// <summary>The generated code does not control this type's format on at least one facet, so no proxy can describe it</summary>
+		/// <remarks>A <c>ReadOnly</c>/<c>Writable</c> proxy is a typed view of a shape the generator knows: it reads and writes the JSON by the member names it chose. Once a type answers a facet itself, or an author hooks one, that shape is decided elsewhere and the generator cannot describe it, so it emits no proxy rather than one that reads the wrong names.</remarks>
+		public bool SuppressesProxies => this.DefersSerialize || this.DefersPack || this.DefersUnpack || this.HasSerializeHook || this.HasPackHook || this.HasUnpackHook;
+
 		/// <summary>The type's serialization lifecycle callbacks, if any</summary>
 		public CrystalJsonCallbackMetadata? OnSerializing { get; init; }
 
