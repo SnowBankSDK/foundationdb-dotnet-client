@@ -31,6 +31,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 	using System;
 	using System.Collections.Generic;
 	using System.Collections.Immutable;
+	using System.Text;
 	using System.Threading;
 	using Microsoft.CodeAnalysis;
 	using Microsoft.CodeAnalysis.CSharp;
@@ -119,6 +120,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>Only ROOT enrollments can appear here: a transitively-discovered type carries no attribute of its own, which is one of the two documented limits of the option.</remarks>
 			private HashSet<INamedTypeSymbol> ContextIgnoreCustomSerialization { get; } = new(SymbolEqualityComparer.Default);
 
+			/// <summary>The container being parsed, for the whole crawl of that container, or <see langword="null"/> in self-serializable mode</summary>
+			/// <remarks>The author-written converter hooks live in the container's nested per-type scopes, which is the one thing the per-type parse cannot reach from the serialized type alone. Self-serializable mode has no such scope to write in: the whole <c>Json</c> scope is generated.</remarks>
+			private INamedTypeSymbol? ContextContainerSymbol { get; set; }
+
 			public Parser(KnownTypeSymbols knownSymbols)
 			{
 				this.KnownSymbols = knownSymbols;
@@ -153,6 +158,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (symbol == null) return null;
 
 				this.ContextClassLocation = contextClassDeclaration.GetLocation();
+				this.ContextContainerSymbol = symbol;
 
 				Kenobi($"ParseContainerMetadata({symbol.Name}, {containerMarker})");
 
@@ -1100,6 +1106,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// instead of walking the members, so that a container and the runtime path cannot produce two different formats
 				var typeMetadata = TypeMetadata.Create(type);
 				bool ignoreCustom = this.ContextIgnoreCustomSerialization.Contains(type);
+				var hooks = ResolveConverterHooks(type);
 
 				return new()
 				{
@@ -1109,6 +1116,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 					DefersSerialize = !ignoreCustom && typeMetadata.IsJsonSerializable(),
 					DefersPack = !ignoreCustom && typeMetadata.IsJsonPackable(),
 					DefersUnpack = !ignoreCustom && typeMetadata.IsJsonDeserializable(),
+					HasSerializeHook = hooks.Serialize,
+					HasPackHook = hooks.Pack,
+					HasUnpackHook = hooks.Unpack,
 					HasDataContract = hasDataContract,
 					DataContractName = dataContract.Name,
 					DataContractNamespace = dataContract.Namespace,
@@ -1119,6 +1129,139 @@ namespace SnowBank.Serialization.Json.CodeGen
 					TypeDiscriminatorPropertyName = typeDiscriminatorPropertyName,
 					DerivedTypes = derivedTypes.ToImmutableEquatableArray(),
 				};
+			}
+
+			/// <summary>The three converter methods an author can write by hand in a container's per-type scope</summary>
+			private readonly struct ConverterHooks
+			{
+
+				/// <summary>The scope declares <c>static void Serialize(CrystalJsonWriter, T)</c></summary>
+				public bool Serialize { get; init; }
+
+				/// <summary>The scope declares <c>static JsonValue Pack(T, CrystalJsonSettings?, ICrystalJsonTypeResolver?)</c></summary>
+				public bool Pack { get; init; }
+
+				/// <summary>The scope declares <c>static T Unpack(JsonValue, ICrystalJsonTypeResolver?)</c></summary>
+				public bool Unpack { get; init; }
+
+			}
+
+			/// <summary>Name of the container's nested scope that hosts the generated code for one type, and where the author writes their hooks</summary>
+			/// <remarks>Mirrors the emitter's own naming: a generic type decorates the scope name with its arguments, so two instantiations get two scopes.</remarks>
+			private static string GetSerializerScopeName(INamedTypeSymbol type)
+			{
+				if (type.TypeArguments.Length == 0) return type.Name;
+
+				var sb = new StringBuilder(type.Name);
+				foreach (var arg in type.TypeArguments)
+				{
+					sb.Append('_').Append(arg.Name);
+				}
+				return sb.ToString();
+			}
+
+			/// <summary>Finds the author-written converter methods in this type's scope, reporting <c>CJSON0024</c> on any that the generated code cannot call</summary>
+			/// <remarks>
+			/// <para>Fail-closed: a method carrying one of the three reserved names is either usable or an error. There is no silent fallback to a generated body, because a hook left unused by a typo is exactly the failure this check exists to prevent.</para>
+			/// <para>Roslyn does not put generated sources in the compilation a generator observes, so only the author's own declarations are ever seen here, and the generator cannot trip over its own forwarders.</para>
+			/// </remarks>
+			private ConverterHooks ResolveConverterHooks(INamedTypeSymbol type)
+			{
+				if (this.ContextContainerSymbol is not { } container) return default;
+
+				// the JSON vocabulary the signatures are written in; without it nothing in this container compiles anyway
+				var writerType = this.KnownSymbols.CrystalJsonWriter;
+				var valueType = this.KnownSymbols.JsonValue;
+				var settingsType = this.KnownSymbols.CrystalJsonSettings;
+				var resolverType = this.KnownSymbols.ICrystalJsonTypeResolver;
+				if (writerType is null || valueType is null || settingsType is null || resolverType is null) return default;
+
+				INamedTypeSymbol? scope = null;
+				foreach (var nested in container.GetTypeMembers(GetSerializerScopeName(type)))
+				{
+					if (nested.Arity == 0)
+					{
+						scope = nested;
+						break;
+					}
+				}
+				if (scope is null) return default;
+
+				bool serialize = false, pack = false, unpack = false;
+				foreach (var member in scope.GetMembers())
+				{
+					if (member is not IMethodSymbol { MethodKind: MethodKind.Ordinary } method) continue;
+
+					switch (method.Name)
+					{
+						case "Serialize":
+						{
+							if (MatchesHook(method, null, writerType, type)) serialize = true;
+							else ReportIncompatibleConverterHook(method, container, $"static void Serialize({writerType.Name} writer, {type.Name} instance)");
+							break;
+						}
+						case "Pack":
+						{
+							if (MatchesHook(method, valueType, type, settingsType, resolverType)) pack = true;
+							else ReportIncompatibleConverterHook(method, container, $"static {valueType.Name} Pack({type.Name} instance, {settingsType.Name}? settings, {resolverType.Name}? resolver)");
+							break;
+						}
+						case "Unpack":
+						{
+							if (MatchesHook(method, type, valueType, resolverType)) unpack = true;
+							else ReportIncompatibleConverterHook(method, container, $"static {type.Name} Unpack({valueType.Name} value, {resolverType.Name}? resolver)");
+							break;
+						}
+					}
+				}
+
+				return new() { Serialize = serialize, Pack = pack, Unpack = unpack };
+			}
+
+			/// <summary>Tests whether a method has the exact shape the generated converter calls</summary>
+			/// <param name="method">Candidate found in the type's scope</param>
+			/// <param name="returnType">Expected return type, or <see langword="null"/> for <see langword="void"/></param>
+			/// <param name="parameterTypes">Expected parameter types, in order</param>
+			/// <remarks>Nullable reference annotations do not take part: <see cref="SymbolEqualityComparer.Default"/> ignores them, so both <c>T</c> and <c>T?</c> are accepted for a reference type. A <c>Nullable&lt;T&gt;</c> is a different type and is refused, which is right: the generated code calls the hook with the non-nullable value, its own null check having already returned. Default values are ignored too, since the generator passes every argument explicitly.</remarks>
+			private static bool MatchesHook(IMethodSymbol method, ITypeSymbol? returnType, params ITypeSymbol[] parameterTypes)
+			{
+				if (!method.IsStatic || method.IsGenericMethod) return false;
+
+				if (returnType is null)
+				{
+					if (!method.ReturnsVoid) return false;
+				}
+				else if (method.ReturnsVoid || method.RefKind != RefKind.None || !SymbolEqualityComparer.Default.Equals(method.ReturnType, returnType))
+				{
+					return false;
+				}
+
+				if (method.Parameters.Length != parameterTypes.Length) return false;
+				for (int i = 0; i < parameterTypes.Length; i++)
+				{
+					var parameter = method.Parameters[i];
+					if (parameter.RefKind != RefKind.None) return false;
+					if (!SymbolEqualityComparer.Default.Equals(parameter.Type, parameterTypes[i])) return false;
+				}
+
+				return true;
+			}
+
+			/// <summary>Reports <c>CJSON0024</c> on a method that occupies a converter hook name without the shape the generated code calls</summary>
+			private void ReportIncompatibleConverterHook(IMethodSymbol method, INamedTypeSymbol container, string expectedSignature)
+			{
+				ReportDiagnostic(
+					new(
+						"CJSON0024",
+						"Converter hook has an incompatible signature",
+						"The method '{0}' in container '{1}' cannot be called as a converter hook: expected '{2}'. Correct the signature, or rename the method: the names Serialize, Pack and Unpack are reserved inside a generated scope.",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					method.Locations.Length > 0 ? method.Locations[0] : this.ContextClassLocation,
+					[ method.ToDisplayString(), container.ToDisplayString(), expectedSignature ]
+				);
 			}
 
 			private void MaybeAddLinkedType(TypeMetadata metadata, INamedTypeSymbol type, HashSet<INamedTypeSymbol> mappedTypes, Queue<INamedTypeSymbol> work)

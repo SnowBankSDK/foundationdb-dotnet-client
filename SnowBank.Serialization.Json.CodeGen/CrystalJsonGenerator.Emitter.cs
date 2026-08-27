@@ -499,6 +499,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			private string GetConverterName(CrystalJsonTypeMetadata metadata) => GetSerializerScope(metadata.Type) + "JsonConverter";
 
+			/// <summary>Returns the qualified name of an author-written hook, as called from inside the generated converter</summary>
+			/// <remarks>The converter is nested in the hook's own scope and carries methods of the same names, so the call has to name the scope: an unqualified <c>Serialize(...)</c> would bind to the converter itself and recurse.</remarks>
+			private string GetHookRef(CrystalJsonTypeMetadata metadata, string name) => $"{this.Metadata.Type.Name}.{GetSerializerScope(metadata.Type)}{name}";
+
 			private string GetReadOnlyProxyName(TypeMetadata type) => GetSerializerScope(type) + "ReadOnly";
 			private string GetLocalReadOnlyProxyRef(CrystalJsonTypeMetadata metadata) => $"{this.Metadata.Name}.{GetReadOnlyProxyName(metadata.Type)}";
 
@@ -596,7 +600,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (!selfType)
 				{
 					sb.XmlComment($"<summary>Set of JSON converters and other various helpers for type <see cref=\"{typeCref}\">{typeName}</see></summary>");
-					sb.AppendLine("public static class " + serializerName);
+					// partial, so that the author can add their own part and hand-write a Serialize, Pack or Unpack method
+					// that the generated converter calls instead of its own body
+					sb.AppendLine("public static partial class " + serializerName);
 					sb.EnterBlock();
 				}
 				// note: the self type has no holder class of its own: its members land directly in the enclosing Json scope
@@ -1684,9 +1690,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.AppendLine($"public static void Serialize({KnownTypeSymbols.CrystalJsonWriterFullName} writer, {typeDef.Type.FullyQualifiedName}? instance) => Default.Serialize(writer, instance);");
 					sb.NewLine();
 				}
-				sb.XmlComment($"<summary>Writes a JSON representation of a value of type <see cref=\"{typeCref}\" /> to the specified output</summary>");
-				sb.AppendLine($"public static void Serialize({KnownTypeSymbols.CrystalJsonWriterFullName} writer, {typeDef.Type.FullyQualifiedName}{(typeDef.Type.IsValueType() ? "" : "?")} instance) => Default.Serialize(writer, instance);");
-				sb.NewLine();
+				// a hook occupies the signature of the forwarder it replaces, so that one is the author's declaration and is not emitted
+				if (!typeDef.HasSerializeHook)
+				{
+					sb.XmlComment($"<summary>Writes a JSON representation of a value of type <see cref=\"{typeCref}\" /> to the specified output</summary>");
+					sb.AppendLine($"public static void Serialize({KnownTypeSymbols.CrystalJsonWriterFullName} writer, {typeDef.Type.FullyQualifiedName}{(typeDef.Type.IsValueType() ? "" : "?")} instance) => Default.Serialize(writer, instance);");
+					sb.NewLine();
+				}
 
 				// ToJsonText(...)
 				sb.XmlComment($"<summary>Serializes a value of type <see cref=\"{typeCref}\" /> into a string literal</summary>");
@@ -1720,14 +1730,20 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
-				sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/></summary>");
-				sb.AppendLine($"public static {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(typeDef.Type.IsValueType() ? "" : "?")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Default.Pack(instance, settings, resolver);");
-				sb.NewLine();
+				if (!typeDef.HasPackHook)
+				{
+					sb.XmlComment($"<summary>Converts an instance of this type into the equivalent <see cref=\"{KnownTypeSymbols.JsonValueFullName}\"/></summary>");
+					sb.AppendLine($"public static {KnownTypeSymbols.JsonValueFullName} Pack({typeDef.Type.FullyQualifiedName}{(typeDef.Type.IsValueType() ? "" : "?")} instance, {KnownTypeSymbols.CrystalJsonSettingsFullName}? settings = default, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Default.Pack(instance, settings, resolver);");
+					sb.NewLine();
+				}
 
 				// Unpack(...)
-				sb.XmlComment($"<summary>Deserializes a JSON value into an instance of type <see cref=\"{typeCref}\" /></summary>");
-				sb.AppendLine($"public static {typeDef.Type.FullyQualifiedNameAnnotated} Unpack({KnownTypeSymbols.JsonValueFullName} value, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Default.Unpack(value, resolver);");
-				sb.NewLine();
+				if (!typeDef.HasUnpackHook)
+				{
+					sb.XmlComment($"<summary>Deserializes a JSON value into an instance of type <see cref=\"{typeCref}\" /></summary>");
+					sb.AppendLine($"public static {typeDef.Type.FullyQualifiedNameAnnotated} Unpack({KnownTypeSymbols.JsonValueFullName} value, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default) => Default.Unpack(value, resolver);");
+					sb.NewLine();
+				}
 
 				// everything below wraps the ReadOnly/Writable proxies, which the container does not always have
 				if (!this.WritesProxies) return;
@@ -2302,6 +2318,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.XmlComment($"<summary>Deserializes a JSON value into an instance of type <see cref=\"{typeCref}\" /></summary>");
 				sb.AppendLine($"public {typeDef.Type.FullyQualifiedName} Unpack({KnownTypeSymbols.JsonValueFullName} value, {KnownTypeSymbols.ICrystalJsonTypeResolverFullName}? resolver = default)");
 				sb.EnterBlock();
+
+				if (typeDef.HasUnpackHook)
+				{ // the author took control of this facet in the container's scope
+					sb.AppendLine($"return {GetHookRef(typeDef, "Unpack")}(value, resolver);");
+					sb.LeaveBlock();
+					sb.NewLine();
+					return;
+				}
 
 				if (typeDef.DefersUnpack)
 				{ // the type reads its own format, which a member binding would not understand. The helper carries the static
@@ -2941,12 +2965,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.NewLine();
 				}
 
-				if (typeDef.DefersPack)
-				{ // the type builds its own value: calling it is what keeps the container's bytes identical to the runtime path,
-					// which defers to IJsonPackable at the same point. The cycle guard stays around the call, so a graph that
-					// runs back through this type still fails with the typed error instead of a stack overflow
+				if (typeDef.HasPackHook || typeDef.DefersPack)
+				{ // the value is built outside this method, either by the author's hook or by the type itself. The wrapper stays:
+					// the cycle guard keeps a graph that runs back through this type failing with the typed error instead of a
+					// stack overflow, and the read-only contract of the caller's settings is still honored here
+					// note: this is the ONLY place either is wired, and the top-level Pack overload opens a context and calls
+					// this one, so both entry points cannot diverge
+					var buildExpr = typeDef.HasPackHook
+						? $"{GetHookRef(typeDef, "Pack")}(instance, settings, resolver)"
+						: $"(({KnownTypeSymbols.IJsonPackableFullName}) instance).JsonPack(settings ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.Json, resolver ?? {KnownTypeSymbols.CrystalJsonFullName}.DefaultResolver)";
+
 					sb.AppendLine(typeDef.Type.IsValueType() ? "context.Enter();" : "context.Enter(instance);");
-					sb.AppendLine($"var packed = (({KnownTypeSymbols.IJsonPackableFullName}) instance).JsonPack(settings ?? {KnownTypeSymbols.CrystalJsonSettingsFullName}.Json, resolver ?? {KnownTypeSymbols.CrystalJsonFullName}.DefaultResolver);");
+					sb.AppendLine($"var packed = {buildExpr};");
 					sb.AppendLine(typeDef.Type.IsValueType() ? "context.Leave();" : "context.Leave(instance);");
 					sb.AppendLine("return settings.IsReadOnly() ? packed.ToReadOnly() : packed;");
 					sb.LeaveBlock("Pack");
@@ -3128,6 +3158,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.AppendLine("writer.WriteNull();");
 					sb.AppendLine("return;");
 					sb.LeaveBlock();
+				}
+
+				if (typeDef.HasSerializeHook)
+				{ // the author took control of this facet in the container's scope; a hook outranks the type's own method, which is
+					// what lets a second container give a bespoke format to a type that already has one
+					sb.AppendLine($"{GetHookRef(typeDef, "Serialize")}(writer, instance);");
+					sb.LeaveBlock("Serialize()");
+					sb.NewLine();
+					return;
 				}
 
 				if (typeDef.DefersSerialize)

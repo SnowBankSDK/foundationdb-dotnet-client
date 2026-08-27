@@ -124,6 +124,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <inheritdoc cref="DefersSerialize" path="/remarks"/>
 		public bool DefersUnpack { get; init; }
 
+		/// <summary>The author declared a <c>Serialize</c> method in this type's scope, which the generated converter calls</summary>
+		/// <remarks>A hook outranks <see cref="DefersSerialize"/>: it is the way a second container gives a bespoke format to a type that already has one of its own.</remarks>
+		public bool HasSerializeHook { get; init; }
+
+		/// <summary>The author declared a <c>Pack</c> method in this type's scope, which the generated converter calls</summary>
+		/// <inheritdoc cref="HasSerializeHook" path="/remarks"/>
+		public bool HasPackHook { get; init; }
+
+		/// <summary>The author declared an <c>Unpack</c> method in this type's scope, which the generated converter calls</summary>
+		/// <inheritdoc cref="HasSerializeHook" path="/remarks"/>
+		public bool HasUnpackHook { get; init; }
+
 		/// <summary>The type's serialization lifecycle callbacks, if any</summary>
 		public CrystalJsonCallbackMetadata? OnSerializing { get; init; }
 

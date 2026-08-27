@@ -178,6 +178,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public INamedTypeSymbol? IJsonPackable { get; }
 
 		#endregion
+
+		#region Converter hook parameter types...
+
+		/// <summary>The output the <c>Serialize</c> hook writes to</summary>
+		public INamedTypeSymbol? CrystalJsonWriter { get; }
+
+		/// <summary>The settings the <c>Pack</c> hook receives</summary>
+		public INamedTypeSymbol? CrystalJsonSettings { get; }
+
+		/// <summary>The resolver the <c>Pack</c> and <c>Unpack</c> hooks receive</summary>
+		public INamedTypeSymbol? ICrystalJsonTypeResolver { get; }
+
+		#endregion
 		
 		#region JsonValue types...
 		
@@ -209,6 +222,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			this.IJsonPackable = compilation.GetBestTypeByMetadataName(IJsonPackableFullName);
 			this.IJsonSerializable = compilation.GetBestTypeByMetadataName(IJsonSerializableFullName);
+
+			this.CrystalJsonWriter = compilation.GetBestTypeByMetadataName(CrystalJsonWriterFullName);
+			this.CrystalJsonSettings = compilation.GetBestTypeByMetadataName(CrystalJsonSettingsFullName);
+			this.ICrystalJsonTypeResolver = compilation.GetBestTypeByMetadataName(ICrystalJsonTypeResolverFullName);
 
 			this.JsonValue = compilation.GetBestTypeByMetadataName(JsonValueFullName);
 			this.JsonObject = compilation.GetBestTypeByMetadataName(JsonObjectFullName);
