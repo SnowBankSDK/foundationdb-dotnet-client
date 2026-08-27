@@ -214,6 +214,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 								continue;
 							}
 
+							if (type.IsStatic)
+							{ // a static class has no instance to serialize, and generating for it produces a converter whose every
+								// signature names a type C# refuses in that position, several steps away from the real cause
+								ReportStaticClassEnrolment(typeAttribute, symbol, type);
+								continue;
+							}
+
 							if (!mappedTypes.Add(type))
 							{
 								//TODO: report a diagnostic about a duplicated type?
@@ -559,6 +566,43 @@ namespace SnowBank.Serialization.Json.CodeGen
 					),
 					attribute.ApplicationSyntaxReference?.GetSyntax().GetLocation() ?? this.ContextClassLocation,
 					[ type.ToDisplayString(), container.ToDisplayString() ]
+				);
+			}
+
+			/// <summary>Reports <c>CJSON0026</c> on a <c>[CrystalSerializable]</c> attribute that enrolls a static class</summary>
+			/// <remarks>
+			/// <para>An error, not a warning: there is nothing to generate for a type that has no instances, and letting it through emits a converter whose parameters and return types all name a static class (CS0721 and CS0722, reported inside generated code, far from the one-word cause).</para>
+			/// <para>The case that reaches this in practice is name shadowing. A per-type scope is named after the type it serves, so once an author declares their hook part of it, an unqualified <c>typeof(Cat)</c> written inside the container binds to that scope rather than to the serialized type. The remedy names it whenever the resolved type is nested in the container.</para>
+			/// </remarks>
+			private void ReportStaticClassEnrolment(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type)
+			{
+				// a static class nested in the container is the container's own generated scope in all but name, so the
+				// author almost certainly meant the type that scope serves
+				bool shadowedByScope = false;
+				for (var parent = type.ContainingType; parent is not null; parent = parent.ContainingType)
+				{
+					if (SymbolEqualityComparer.Default.Equals(parent, container))
+					{
+						shadowedByScope = true;
+						break;
+					}
+				}
+
+				var remedy = shadowedByScope
+					? $"The generated code for each enrolled type lives in a nested scope named after that type, so this name binds to the scope instead of to the type it serves. Enroll it with a qualified name, for example typeof({type.ContainingNamespace.ToDisplayString()}.{type.Name})."
+					: "Remove the enrollment.";
+
+				ReportDiagnostic(
+					new(
+						"CJSON0026",
+						"Cannot enroll a static class",
+						"The type '{0}' enrolled in container '{1}' is a static class, which has no instances to serialize. {2}",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					attribute.ApplicationSyntaxReference?.GetSyntax().GetLocation() ?? this.ContextClassLocation,
+					[ type.ToDisplayString(), container.ToDisplayString(), remedy ]
 				);
 			}
 
