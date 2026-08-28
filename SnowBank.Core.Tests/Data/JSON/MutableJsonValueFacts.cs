@@ -340,6 +340,24 @@ namespace SnowBank.Data.Json.Tests
 			}
 		}
 
+#if NET7_0_OR_GREATER // JsonWritableProxyArray<T> needs static abstract members in interfaces, same guard as the type itself
+		[Test]
+		public void Test_JsonWritableProxyArray_Count()
+		{
+			// regression test: Count must reflect the number of elements in the wrapped array.
+			// it used to be an unassigned auto-property on the struct, so it always returned 0.
+
+			var empty = new JsonWritableProxyArray<string>(MutableJsonValue.Untracked(JsonArray.Create()));
+			Assert.That(empty.Count, Is.EqualTo(0));
+
+			var source = JsonArray.ReadOnly.Create(["one", "two", "three"]);
+			var arr = new JsonWritableProxyArray<string>(MutableJsonValue.Untracked(source));
+
+			Assert.That(arr.Count, Is.EqualTo(3));
+			Assert.That(arr.Count, Is.EqualTo(arr.ToList().Count), "Count must match the number of elements returned by enumeration");
+		}
+#endif
+
 	}
 
 }

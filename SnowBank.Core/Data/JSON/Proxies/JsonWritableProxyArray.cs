@@ -164,7 +164,7 @@ namespace SnowBank.Data.Json
 		int IList<TValue>.IndexOf(TValue item) => throw new NotSupportedException("This operation is too costly.");
 
 		/// <inheritdoc />
-		public int Count { get; }
+		public int Count => m_value.Count;
 
 		/// <summary>Tests if the array is present.</summary>
 		/// <returns><c>false</c> if the wrapped JSON value is null or missing; otherwise, <c>true</c>.</returns>
