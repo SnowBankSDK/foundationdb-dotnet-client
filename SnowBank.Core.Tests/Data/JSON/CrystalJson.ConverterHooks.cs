@@ -29,7 +29,7 @@ namespace SnowBank.Data.Json.Tests
 	using System.Text.Json.Serialization;
 	using SnowBank.Data;
 
-	/// <summary>A plain member-shaped type, given a bespoke format by an author-written hook in its container</summary>
+	/// <summary>A plain member-based type, given a bespoke format by an author-written hook in its container</summary>
 	public sealed record HookedCat
 	{
 
@@ -58,7 +58,7 @@ namespace SnowBank.Data.Json.Tests
 	}
 
 	/// <summary>Container whose per-type scopes carry author-written converter methods</summary>
-	/// <remarks>A scope is named after the type it serves, so inside the container that name refers to the SCOPE. Both the enrollment and the hook signatures name the serialized type with a qualified name.</remarks>
+	/// <remarks>A scope is named after the type it serves, so inside the container that name refers to the SCOPE. Both the registration and the hook signatures name the serialized type with a qualified name.</remarks>
 	[CrystalConverter]
 	[CrystalJsonOutput]
 	[CrystalSerializable(typeof(Tests.HookedCat))]
@@ -70,10 +70,12 @@ namespace SnowBank.Data.Json.Tests
 		{
 
 			// the bespoke format: a compact array, with the name upper-cased
-			public static void Serialize(CrystalJsonWriter writer, Tests.HookedCat? instance) => Pack(instance, writer.Settings, writer.Resolver).JsonSerialize(writer);
+			// the parameter is non-nullable on purpose: the generated wrapper handles null before calling here,
+			// so a hand-written method never sees a null instance and needs no null branch
+			public static void Serialize(CrystalJsonWriter writer, Tests.HookedCat instance) => Pack(instance, writer.Settings, writer.Resolver).JsonSerialize(writer);
 
-			public static JsonValue Pack(Tests.HookedCat? instance, CrystalJsonSettings? settings = default, ICrystalJsonTypeResolver? resolver = default)
-				=> instance is null ? JsonNull.Null : JsonArray.Create(JsonString.Return(instance.Name?.ToUpperInvariant()), JsonNumber.Return(instance.Lives));
+			public static JsonValue Pack(Tests.HookedCat instance, CrystalJsonSettings? settings = default, ICrystalJsonTypeResolver? resolver = default)
+				=> JsonArray.Create(JsonString.Return(instance.Name?.ToUpperInvariant()), JsonNumber.Return(instance.Lives));
 
 			public static Tests.HookedCat Unpack(JsonValue value, ICrystalJsonTypeResolver? resolver = default)
 			{
@@ -86,10 +88,9 @@ namespace SnowBank.Data.Json.Tests
 		public static partial class HookedDog
 		{
 
-			// a hooked derived type owns its discriminator: the generator writes none after a hook returns
-			public static JsonValue Pack(Tests.HookedDog? instance, CrystalJsonSettings? settings = default, ICrystalJsonTypeResolver? resolver = default)
+			// a hooked derived type writes its own discriminator: the generator writes none after a hook returns
+			public static JsonValue Pack(Tests.HookedDog instance, CrystalJsonSettings? settings = default, ICrystalJsonTypeResolver? resolver = default)
 			{
-				if (instance is null) return JsonNull.Null;
 				var obj = new JsonObject(3);
 				obj[PropertyNames._TypeDiscriminatorProperty_] = PropertyEncodedNames._TypeDiscriminatorValue_;
 				obj["woof"] = JsonString.Return(instance.Name);
@@ -118,7 +119,7 @@ namespace SnowBank.Data.Json.Tests
 			var text = HookedHost.HookedCat.ToJsonText(cat, CrystalJsonSettings.JsonCompact);
 			Log($"text: {text}");
 
-			Assert.That(text, Is.EqualTo("""["FELIX",9]"""), "the author's Serialize must replace the member crawl");
+			Assert.That(text, Is.EqualTo("""["FELIX",9]"""), "the author's Serialize must replace the member-based converter");
 		}
 
 		[Test]
@@ -140,6 +141,28 @@ namespace SnowBank.Data.Json.Tests
 			{
 				Assert.That(packed.ToJsonText(settings), Is.EqualTo("""["FELIX",9]"""), "the top-level Pack must route to the author's method");
 				Assert.That(nested.ToJsonText(settings), Is.EqualTo("""["FELIX",9]"""), "the context Pack must route to the author's method too");
+			}
+		}
+
+		[Test]
+		public void Test_Hook_Is_Never_Called_With_Null()
+		{
+			// the generated wrapper handles a null instance before the author's method runs, so a hook takes a
+			// non-nullable parameter and needs no null branch. The fixture hooks above have none: if the wrapper
+			// ever let a null through, both asserts below would die on a NullReferenceException instead of passing.
+			var settings = CrystalJsonSettings.JsonCompact;
+
+			var text = CrystalJson.Serialize<HookedCat?>(null, HookedHost.HookedCat.Default, settings);
+			Log($"serialize(null): {text}");
+
+			var context = CrystalJsonPackContext.Create(settings, null);
+			var packed = HookedHost.HookedCat.Default.Pack(ref context, null);
+			Log($"pack(null):      {packed.ToJsonText(settings)}");
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(text, Is.EqualTo("null"), "a null instance serializes as the JSON null literal, the hook is not called");
+				Assert.That(packed, Is.SameAs(JsonNull.Null), "a null instance packs as JsonNull.Null, the hook is not called");
 			}
 		}
 
@@ -190,13 +213,13 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_Unhooked_Facets_Stay_Generated()
 		{
-			// HookedDog hooks Pack only: its written and read forms stay member-shaped
+			// HookedDog hooks Pack only: its written and read forms stay member-based
 			var dog = new HookedDog { Name = "rex", Barks = true };
 
 			var text = HookedHost.HookedDog.ToJsonText(dog, CrystalJsonSettings.JsonCompact);
 			Log($"text: {text}");
 
-			Assert.That(text, Does.Contain("\"Name\":\"rex\""), "the written form must stay a member crawl");
+			Assert.That(text, Does.Contain("\"Name\":\"rex\""), "the written form must stay a member-based converter");
 		}
 
 	}
