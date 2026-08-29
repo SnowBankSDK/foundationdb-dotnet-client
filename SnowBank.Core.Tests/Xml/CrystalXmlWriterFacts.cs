@@ -581,7 +581,7 @@ namespace SnowBank.Data.Xml.Tests
 			Assert.That(CrystalXmlNamespace.Create("urn:acme:catalog:1").Text, Is.EqualTo("urn:acme:catalog:1"));
 			Assert.That(CrystalXmlNamespace.Create("http://schemas.datacontract.org/2004/07/Acme").Text, Is.EqualTo("http://schemas.datacontract.org/2004/07/Acme"));
 
-			// a relative reference is refused rather than written into a document no reader can resolve
+			// a relative reference is rejected rather than written into a document no reader can resolve
 			Assert.That(() => CrystalXmlNamespace.Create("acme/catalog"), Throws.InstanceOf<ArgumentException>());
 
 			// and so is a URI carrying a character an attribute value would have to escape: an emitter writes a URI verbatim

@@ -889,14 +889,14 @@ namespace SnowBank.Data.Json
 				if (!data.TryGetValue(member.Name, out var child))
 				{ // absent from the document
 					if (member.IsRequired || member.IsRequiredPresence)
-					{ // C# `required` and [DataMember(IsRequired=true)] both refuse an absent member
+					{ // C# `required` and [DataMember(IsRequired=true)] both reject an absent member
 						throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(data, member.Name, null);
 					}
 					//TODO: should we assign a default value if one is specified via [JsonProperty] ?
 					continue;
 				}
 				if (child.IsNull)
-				{ // explicit null: refuses the C# `required` contract, but SATISFIES [DataMember(IsRequired=true)] (DCJS semantics)
+				{ // explicit null: rejects the C# `required` contract, but SATISFIES [DataMember(IsRequired=true)] (DCJS semantics)
 					if (member.IsRequired)
 					{
 						throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(data, member.Name, null);

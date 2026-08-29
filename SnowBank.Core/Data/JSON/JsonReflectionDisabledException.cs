@@ -39,7 +39,7 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Creates the exception for the type that tripped the disabled reflection path.</summary>
 		public JsonReflectionDisabledException(Type type)
-			: base($"CrystalJson reflection is disabled (CrystalJson.DisableReflection is set): the type '{type.GetFriendlyName()}' has no source-generated converter and would be handled by runtime reflection. Enroll it in a [CrystalJsonConverter]/[CrystalSerializable] container, serialize through the JSON DOM, or annotate the call path for AoT if reflection is unavoidable.")
+			: base($"CrystalJson reflection is disabled (CrystalJson.DisableReflection is set): the type '{type.GetFriendlyName()}' has no source-generated converter and would be handled by runtime reflection. Register it in a [CrystalJsonConverter]/[CrystalSerializable] container, serialize through the JSON DOM, or annotate the call path for AoT if reflection is unavoidable.")
 		{
 			this.Type = type;
 		}

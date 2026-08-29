@@ -29,8 +29,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.Collections.Immutable;
 	using Microsoft.CodeAnalysis;
 
-	/// <summary>Pins how the generator reads the MEMBER-level XML vocabulary: <c>[XmlProperty]</c> (including the <c>@</c> name sugar), the DCS ordering and default-emission flags of <c>[DataMember]</c>, the data contract's own name values, and the member-level refusals (<c>CXML0003</c> to <c>CXML0009</c>)</summary>
-	/// <remarks>Parsing, plus the two shapes whose refusal is only visible in what the emitter does NOT write: every assertion reads the metadata the parser resolved (through the driver's tracked steps), the diagnostics it reported, or the emitted source itself.</remarks>
+	/// <summary>Pins how the generator reads the MEMBER-level XML vocabulary: <c>[XmlProperty]</c> (including the <c>@</c> name sugar), the DCS ordering and default-emission flags of <c>[DataMember]</c>, the data contract's own name values, and the member-level rejections (<c>CXML0003</c> to <c>CXML0009</c>)</summary>
+	/// <remarks>Parsing, plus the two shapes whose rejection is only visible in what the emitter does NOT write: every assertion reads the metadata the parser resolved (through the driver's tracked steps), the diagnostics it reported, or the emitted source itself.</remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -56,7 +56,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				[SnowBank.Data.Json.CrystalJsonConverter]
 			""";
 
-		/// <summary>Wraps a set of DTO members into a compilable probe (the DTO, a couple of satellite types, and the container that enrols it)</summary>
+		/// <summary>Wraps a set of DTO members into a compilable probe (the DTO, a couple of satellite types, and the container that registers it)</summary>
 		private static string Probe(string members, string containerAttributes = GeneralContainer, string dtoAttributes = "") => $$"""
 			namespace Probe
 			{
@@ -128,7 +128,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		private CrystalJsonTypeMetadata TypeOf(string source)
 		{
 			var (containers, diagnostics) = RunOn(source);
-			Assert.That(diagnostics.Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty, "the probe must not be refused by the generator");
+			Assert.That(diagnostics.Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty, "the probe must not be rejected by the generator");
 			Assert.That(containers.ContainsKey("ProbeConverters"), Is.True, "the parser must have produced metadata for the probe's container");
 
 			var dto = containers["ProbeConverters"].IncludedTypes.SingleOrDefault(static t => t.Name == "ProbeDto");
@@ -145,17 +145,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			return member!;
 		}
 
-		/// <summary>Asserts that a probe was refused with the expected diagnostic, and returns it (a refusal of the whole format is worse than a build failure, so all five are errors)</summary>
-		private Diagnostic AssertRefusal(string source, string id)
+		/// <summary>Asserts that a probe was rejected with the expected diagnostic, and returns it (a rejection of the whole format is worse than a build failure, so all five are errors)</summary>
+		private Diagnostic AssertRejection(string source, string id)
 		{
 			var (_, diagnostics) = RunOn(source);
-			var refusal = diagnostics.FirstOrDefault(d => d.Id == id);
-			Assert.That(refusal, Is.Not.Null, $"the probe must have been refused with {id}");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "a silently wrong format is worse than a build failure");
-			return refusal;
+			var rejection = diagnostics.FirstOrDefault(d => d.Id == id);
+			Assert.That(rejection, Is.Not.Null, $"the probe must have been rejected with {id}");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "a silently wrong format is worse than a build failure");
+			return rejection;
 		}
 
-		/// <summary>Asserts that a probe was NOT refused with a given diagnostic, and that NO other XML diagnostic fired either (the non-trigger side of every rule)</summary>
+		/// <summary>Asserts that a probe was NOT rejected with a given diagnostic, and that NO other XML diagnostic fired either (the non-trigger side of every rule)</summary>
 		/// <remarks>The second half is what makes these tests worth having: a probe that dodges the rule under test only to trip a neighbouring one is not an accepted shape, and asserting on a single id would let that through.</remarks>
 		private void AssertNotReported(string source, string id)
 		{
@@ -168,14 +168,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		/// <summary>Asserts that a probe drew the inert-configuration NOTE, and returns it</summary>
-		/// <remarks>Info, not a refusal: the document a container with an inert setting produces is perfectly correct, it is just not the one the setting reads as if it were asking for. Anything louder would break a build over a format that is right.</remarks>
+		/// <remarks>Info, not a rejection: the document a container with an inert setting produces is perfectly correct, it is just not the one the setting reads as if it were asking for. Anything louder would break a build over a format that is right.</remarks>
 		private Diagnostic AssertInert(string source, params string[] expectedFragments)
 		{
 			var (_, diagnostics) = RunOn(source);
 
 			var note = diagnostics.SingleOrDefault(static d => d.Id == "CXML0012");
 			Assert.That(note, Is.Not.Null, "the inert setting must be reported as CXML0012");
-			Assert.That(note!.Severity, Is.EqualTo(DiagnosticSeverity.Info), "an inert setting produces a CORRECT document: it is a note, never a refusal");
+			Assert.That(note!.Severity, Is.EqualTo(DiagnosticSeverity.Info), "an inert setting produces a CORRECT document: it is a note, never a rejection");
 
 			string message = note.GetMessage();
 			foreach (var fragment in expectedFragments)
@@ -658,30 +658,30 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Leading_At_Plus_An_Explicit_Attribute_False_Is_A_Build_Error()
 		{
 			// the two spellings genuinely disagree, and picking either silently gives a format the author did not ask for
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("@id", Attribute = false)]
 						public int Id { get; set; }
 				"""), "CXML0007");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("Attribute = false"), "the message names the contradiction, not just the name");
+			Assert.That(rejection.GetMessage(), Does.Contain("Attribute = false"), "the message names the contradiction, not just the name");
 		}
 
 		[Test]
 		public void Test_An_At_On_Its_Own_Is_A_Build_Error()
 		{
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("@")]
 						public int Id { get; set; }
 				"""), "CXML0007");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("Id"), "the message names the member the author has to fix");
+			Assert.That(rejection.GetMessage(), Does.Contain("Id"), "the message names the member the author has to fix");
 		}
 
 		[Test]
 		public void Test_A_Name_That_Is_Invalid_After_Stripping_The_At_Is_A_Build_Error()
 		{
 			// the validation applies to what is LEFT: "@1st" strips to "1st", which no XML parser accepts as a name
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("@1st")]
 						public int Id { get; set; }
 				"""), "CXML0007");
@@ -690,8 +690,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_An_Invalid_Plain_Name_Is_A_Build_Error()
 		{
-			// a space in an element name produces unparseable XML: refusing at build time is the only place it can be caught
-			AssertRefusal(Probe("""
+			// a space in an element name produces unparseable XML: rejecting at build time is the only place it can be caught
+			AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("not a name")]
 						public int Id { get; set; }
 				"""), "CXML0007");
@@ -701,7 +701,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_Name_With_A_Colon_Is_A_Build_Error()
 		{
 			// a colon is the namespace-prefix separator: a member cannot invent a prefix, so an NCName is required
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("ns:id")]
 						public int Id { get; set; }
 				"""), "CXML0007");
@@ -711,7 +711,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_An_Invalid_ItemName_Is_A_Build_Error()
 		{
 			// the item name lands in the document exactly like the member name does, so it gets the same validation
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("tags", ItemName = "not a name")]
 						public System.Collections.Generic.List<string>? Tags { get; set; }
 				"""), "CXML0007");
@@ -733,15 +733,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// the member declares NOTHING for XML, so its XML name falls back to the JSON one: "$id" is a perfectly good
 			// JSON property name and produces "<$id>", which no XML parser accepts. Nothing else on the general format
 			// escapes or encodes it, so this is the only place it can be caught
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						[System.Text.Json.Serialization.JsonPropertyName("$id")]
 						public int Id { get; set; }
 				"""), "CXML0007");
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(refusal.GetMessage(), Does.Contain("$id"), "the message quotes the name that would land in the document");
-				Assert.That(refusal.GetMessage(), Does.Contain("XmlProperty"), "and names the remedy, which is an XML-only rename");
+				Assert.That(rejection.GetMessage(), Does.Contain("$id"), "the message quotes the name that would land in the document");
+				Assert.That(rejection.GetMessage(), Does.Contain("XmlProperty"), "and names the remedy, which is an XML-only rename");
 			}
 		}
 
@@ -760,7 +760,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_Json_Name_That_Is_Not_An_Xml_Name_Is_Accepted_On_The_Compat_Output()
 		{
 			// the DataContract format runs every name through XmlConvert.EncodeLocalName, which has a legal spelling for
-			// any input: refusing there would block a legacy DTO that DataContractSerializer serializes today
+			// any input: rejecting there would block a legacy DTO that DataContractSerializer serializes today
 			AssertNotReported(Probe("""
 						[System.Runtime.Serialization.DataMember(Name = "2fa_enabled")]
 						public bool TwoFactor { get; set; }
@@ -776,14 +776,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the root name is the one name no [XmlProperty] can override, and it is decidable from the declaration
 			// alone: a diagnostic on the type, not an #error buried in the emitted source
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						public int Id { get; set; }
 				""", GeneralContainer, "[System.Runtime.Serialization.DataContract(Name = \"not a name\")]"), "CXML0007");
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(refusal.GetMessage(), Does.Contain("not a name"), "the message quotes the offending name");
-				Assert.That(refusal.GetMessage(), Does.Contain("root"), "and says which element it would have named");
+				Assert.That(rejection.GetMessage(), Does.Contain("not a name"), "the message quotes the offending name");
+				Assert.That(rejection.GetMessage(), Does.Contain("root"), "and says which element it would have named");
 			}
 		}
 
@@ -814,15 +814,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the two attribute shapes carry the value as TEXT: a value type with no lexical form has nothing to put
 			// there. The shape is picked in the source, so the answer belongs in a diagnostic, not in an emitted #error
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty(DictionaryFormat = SnowBank.Data.Xml.CrystalXmlDictionaryFormat.KeyValueAttributes)]
 						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
 				"""), "CXML0011");
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(refusal.GetMessage(), Does.Contain("KeyValueAttributes"), "the message names the shape that cannot hold the value");
-				Assert.That(refusal.GetMessage(), Does.Contain("KeyValueElements"), "and the ones that can");
+				Assert.That(rejection.GetMessage(), Does.Contain("KeyValueAttributes"), "the message names the shape that cannot hold the value");
+				Assert.That(rejection.GetMessage(), Does.Contain("KeyValueElements"), "and the ones that can");
 			}
 		}
 
@@ -831,7 +831,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the shape does not have to be declared on the member: a container-level default reaches exactly the same
 			// text position, and the emitted document would be exactly as mangled
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						public System.Collections.Generic.Dictionary<string, ProbePart>? Map { get; set; }
 				""", """
 				[SnowBank.Data.CrystalConverter]
@@ -885,18 +885,18 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Attribute_On_A_Collection_Is_A_Build_Error()
 		{
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
 						public System.Collections.Generic.List<string>? Tags { get; set; }
 				"""), "CXML0003");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("Tags"), "the message names the member");
+			Assert.That(rejection.GetMessage(), Does.Contain("Tags"), "the message names the member");
 		}
 
 		[Test]
 		public void Test_Attribute_On_A_Dictionary_Is_A_Build_Error()
 		{
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
 						public System.Collections.Generic.Dictionary<string, int>? Map { get; set; }
 				"""), "CXML0003");
@@ -906,7 +906,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Attribute_On_A_Complex_Type_Is_A_Build_Error()
 		{
 			// a nested object has no lexical form at all: an attribute could only ever hold a mangled rendering of it
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty(Attribute = true)]
 						public ProbePart? Part { get; set; }
 				"""), "CXML0003");
@@ -916,7 +916,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Attribute_Resolved_Through_The_At_Sugar_Is_Checked_Too()
 		{
 			// the check runs on the RESOLVED flag, so the sugar cannot be used to sneak past it
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("@tags")]
 						public System.Collections.Generic.List<string>? Tags { get; set; }
 				"""), "CXML0003");
@@ -939,7 +939,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_At_Sugar_On_A_DataContract_Container_Is_A_Build_Error()
 		{
 			// the DataContract format has no notion of a user-data attribute: everything is an element named by the contract
-			var refusal = AssertRefusal(
+			var rejection = AssertRejection(
 				Probe(
 					"""
 								[System.Runtime.Serialization.DataMember]
@@ -950,13 +950,13 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
 				"CXML0004");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("DataContract"), "the message names the output that cannot honor the request");
+			Assert.That(rejection.GetMessage(), Does.Contain("DataContract"), "the message names the output that cannot honor the request");
 		}
 
 		[Test]
 		public void Test_Attribute_True_On_A_DataContract_Container_Is_A_Build_Error()
 		{
-			AssertRefusal(
+			AssertRejection(
 				Probe(
 					"""
 								[System.Runtime.Serialization.DataMember]
@@ -972,7 +972,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_An_Xml_Name_On_A_DataContract_Container_Is_A_Build_Error()
 		{
 			// the contract already decides the element name: a second, XML-only name would silently lose
-			AssertRefusal(
+			AssertRejection(
 				Probe(
 					"""
 								[System.Runtime.Serialization.DataMember]
@@ -989,7 +989,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the compat format derives item names from the contract too ("ArrayOfstring" / "string"), so an override
 			// would break the very compatibility the profile exists for
-			AssertRefusal(
+			AssertRejection(
 				Probe(
 					"""
 								[System.Runtime.Serialization.DataMember]
@@ -1019,7 +1019,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the compat format has exactly ONE dictionary shape: a format override there changes nothing, and a setting
 			// that silently changes nothing is the failure mode this whole family of diagnostics exists to prevent
-			var refusal = AssertRefusal(
+			var rejection = AssertRejection(
 				Probe(
 					"""
 								[System.Runtime.Serialization.DataMember]
@@ -1030,7 +1030,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
 				"CXML0004");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("KeyValueAttributes"), "the message names the setting that cannot be honored");
+			Assert.That(rejection.GetMessage(), Does.Contain("KeyValueAttributes"), "the message names the setting that cannot be honored");
 		}
 
 		[Test]
@@ -1050,9 +1050,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Several_Refused_Settings_Are_Named_In_One_Diagnostic()
+		public void Test_Several_Rejected_Settings_Are_Named_In_One_Diagnostic()
 		{
-			// an author who wrote two refused settings has to see BOTH: fixing the first only to rebuild into the second
+			// an author who wrote two rejected settings has to see BOTH: fixing the first only to rebuild into the second
 			// is the kind of drip-feed that makes a build error feel arbitrary
 			var (_, diagnostics) = RunOn(Probe(
 				"""
@@ -1063,12 +1063,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				containerAttributes: DataContractContainer,
 				dtoAttributes: "	[System.Runtime.Serialization.DataContract]"));
 
-			var refusals = diagnostics.Where(static d => d.Id == "CXML0004").ToList();
-			Assert.That(refusals, Has.Count.EqualTo(1), "the two refused settings belong to one member, so they belong to one diagnostic");
+			var rejections = diagnostics.Where(static d => d.Id == "CXML0004").ToList();
+			Assert.That(rejections, Has.Count.EqualTo(1), "the two rejected settings belong to one member, so they belong to one diagnostic");
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(refusals[0].GetMessage(), Does.Contain("Name = \"tags\""));
-				Assert.That(refusals[0].GetMessage(), Does.Contain("ItemName = \"tag\""));
+				Assert.That(rejections[0].GetMessage(), Does.Contain("Name = \"tags\""));
+				Assert.That(rejections[0].GetMessage(), Does.Contain("ItemName = \"tag\""));
 			}
 		}
 
@@ -1095,21 +1095,21 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// two elements with one name is not an error in XML, which is exactly the problem: the document parses,
 			// and the consumer silently reads one of the two
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						public int Alpha { get; set; }
 
 						[SnowBank.Data.Xml.XmlProperty("Alpha")]
 						public int Other { get; set; }
 				"""), "CXML0005");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("Alpha"), "the message names the collision");
+			Assert.That(rejection.GetMessage(), Does.Contain("Alpha"), "the message names the collision");
 		}
 
 		[Test]
 		public void Test_Two_Attributes_Resolving_To_The_Same_Name_Is_A_Build_Error()
 		{
 			// duplicated attributes, unlike duplicated elements, would make the document itself unparseable
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						[SnowBank.Data.Xml.XmlProperty("@id")]
 						public int Id { get; set; }
 
@@ -1121,7 +1121,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_An_Attribute_And_An_Element_Sharing_A_Name_Is_Not_Reported()
 		{
-			// an attribute and a child element live in different namespaces in XML: refusing this pair would be a
+			// an attribute and a child element live in different namespaces in XML: rejecting this pair would be a
 			// false positive on a perfectly readable document
 			AssertNotReported(Probe("""
 						public int Alpha { get; set; }
@@ -1134,22 +1134,22 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_The_Collision_Remedy_Points_At_XmlProperty_On_A_General_Container()
 		{
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						public int Alpha { get; set; }
 
 						[SnowBank.Data.Xml.XmlProperty("Alpha")]
 						public int Other { get; set; }
 				"""), "CXML0005");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("XmlProperty"), "the General format honors an XML-only rename, so that is the remedy to name");
+			Assert.That(rejection.GetMessage(), Does.Contain("XmlProperty"), "the General format honors an XML-only rename, so that is the remedy to name");
 		}
 
 		[Test]
 		public void Test_The_Collision_Remedy_Points_At_DataMember_On_A_DataContract_Container()
 		{
 			// the remedy has to be one the author can actually apply: an [XmlProperty] rename on this format is itself
-			// refused by CXML0004, so suggesting it would send them from one build error straight into another
-			var refusal = AssertRefusal(
+			// rejected by CXML0004, so suggesting it would send them from one build error straight into another
+			var rejection = AssertRejection(
 				Probe(
 					"""
 								[System.Runtime.Serialization.DataMember(Name = "same")]
@@ -1164,8 +1164,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(refusal.GetMessage(), Does.Contain("DataMember"), "on the compat format the names come from the contract, so that is where the fix goes");
-				Assert.That(refusal.GetMessage(), Does.Not.Contain("XmlProperty"), "and the remedy CXML0004 would refuse must not be suggested");
+				Assert.That(rejection.GetMessage(), Does.Contain("DataMember"), "on the compat format the names come from the contract, so that is where the fix goes");
+				Assert.That(rejection.GetMessage(), Does.Not.Contain("XmlProperty"), "and the remedy CXML0004 would reject must not be suggested");
 			}
 		}
 
@@ -1184,7 +1184,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#region CXML0005: a member colliding with the type discriminator...
 
-		/// <summary>Builds a polymorphic probe: one base, one derived type carrying <paramref name="derivedMembers"/>, and a container that enrols both</summary>
+		/// <summary>Builds a polymorphic probe: one base, one derived type carrying <paramref name="derivedMembers"/>, and a container that registers both</summary>
 		private static string PolymorphicProbe(string derivedMembers, string polymorphicAttributes = "") => $$"""
 			namespace Probe
 			{
@@ -1222,16 +1222,16 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						[SnowBank.Data.Xml.XmlProperty("@type")]
 						public string? Kind { get; set; }
 				""");
-			var refusal = AssertRefusal(probe, "CXML0005");
+			var rejection = AssertRejection(probe, "CXML0005");
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(refusal.GetMessage(), Does.Contain("type"), "the message names the attribute written twice");
-				Assert.That(refusal.GetMessage(), Does.Contain("Kind"), "and the member that has to move");
+				Assert.That(rejection.GetMessage(), Does.Contain("type"), "the message names the attribute written twice");
+				Assert.That(rejection.GetMessage(), Does.Contain("Kind"), "and the member that has to move");
 				// the location is resolved by matching DISPLAY STRINGS against the crawled symbols, and it silently degrades
 				// to the container's own location when no symbol matches: pin that it really lands on the offending derived
 				// type, or that degradation would send the author to the wrong declaration with no test saying so
-				Assert.That(LineAt(probe, refusal.Location), Does.Contain("ProbeEbook"), "the diagnostic must point at the derived type that carries the colliding member");
+				Assert.That(LineAt(probe, rejection.Location), Does.Contain("ProbeEbook"), "the diagnostic must point at the derived type that carries the colliding member");
 			}
 		}
 
@@ -1248,7 +1248,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_Member_Colliding_With_A_Renamed_Discriminator_Is_A_Build_Error()
 		{
 			// the name to check is the RESOLVED one: [JsonPolymorphic] renames it, and the XML form drops the leading '$'
-			AssertRefusal(
+			AssertRejection(
 				PolymorphicProbe(
 					"""
 								[SnowBank.Data.Xml.XmlProperty("@kind")]
@@ -1277,17 +1277,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_List_Of_Lists_Is_A_Build_Error()
 		{
 			// the inner sequence has no name to give its own items: the shape is undecidable, not merely awkward
-			var refusal = AssertRefusal(Probe("""
+			var rejection = AssertRejection(Probe("""
 						public System.Collections.Generic.List<System.Collections.Generic.List<int>>? Matrix { get; set; }
 				"""), "CXML0006");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("Matrix"), "the message names the member");
+			Assert.That(rejection.GetMessage(), Does.Contain("Matrix"), "the message names the member");
 		}
 
 		[Test]
 		public void Test_A_Jagged_Array_Is_A_Build_Error()
 		{
-			AssertRefusal(Probe("""
+			AssertRejection(Probe("""
 						public string[][]? Rows { get; set; }
 				"""), "CXML0006");
 		}
@@ -1333,7 +1333,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_List_Of_Lists_On_A_DataContract_Container_Is_Not_Reported()
 		{
 			// the compat format DOES have a name for every level (an inner sequence of ints becomes 'ArrayOfint' holding
-			// 'int' items), so the shape is decidable there: refusing it would block porting a legacy DTO that
+			// 'int' items), so the shape is decidable there: rejecting it would block porting a legacy DTO that
 			// DataContractSerializer serializes today, which is the one thing this profile exists to avoid
 			AssertNotReported(
 				Probe(
@@ -1345,7 +1345,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Refused_Member_Does_Not_Also_Collect_The_Nested_Sequence_Refusal()
+		public void Test_A_Rejected_Member_Does_Not_Also_Collect_The_Nested_Sequence_Rejection()
 		{
 			// one member, one error: a bad name on a shape that is ALSO a bare nested sequence must not report twice,
 			// because the second message would be noise until the first is fixed
@@ -1355,7 +1355,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				"""));
 
 			var reported = diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)).Select(static d => d.Id).ToList();
-			Assert.That(reported, Is.EqualTo((string[]) [ "CXML0007" ]), "the name refusal is the one to report; CXML0006 must not stack on top of it");
+			Assert.That(reported, Is.EqualTo((string[]) [ "CXML0007" ]), "the name rejection is the one to report; CXML0006 must not stack on top of it");
 		}
 
 		[Test]
@@ -1420,12 +1420,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the converter owns the member's JSON form; its XML form would be written by the very rules the converter
 			// was declared to replace, so the two formats would disagree with nothing in the source saying so
-			var refusal = AssertRefusal(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>"), "CXML0008");
+			var rejection = AssertRejection(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>"), "CXML0008");
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(refusal.GetMessage(), Does.Contain("ProbeBoolConverter"), "the message names the converter");
-				Assert.That(refusal.GetMessage(), Does.Contain("ICrystalXmlSerializer<bool>"), "and the facet it is missing, for the member's own type");
+				Assert.That(rejection.GetMessage(), Does.Contain("ProbeBoolConverter"), "the message names the converter");
+				Assert.That(rejection.GetMessage(), Does.Contain("ICrystalXmlSerializer<bool>"), "and the facet it is missing, for the member's own type");
 			}
 		}
 
@@ -1450,7 +1450,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		/// <summary>The <c>[XmlProperty]</c> line that projects the probe's converted member as an XML attribute</summary>
 		private const string AttributeProjection = "\t\t[SnowBank.Data.Xml.XmlProperty(\"@live\")]";
 
-		/// <summary>Both facets, so the refusal cannot be mistaken for the missing-facet one</summary>
+		/// <summary>Both facets, so the rejection cannot be mistaken for the missing-facet one</summary>
 		private const string BothFacets = "SnowBank.Data.Json.IJsonMemberConverter<bool>, SnowBank.Data.Xml.ICrystalXmlSerializer<bool>";
 
 		[Test]
@@ -1458,31 +1458,31 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// the XML facet's only entry point writes an ELEMENT: it structurally cannot produce an attribute value, so an
 			// attribute-projected member would silently bypass the converter and be written by the rules it replaced
-			var refusal = AssertRefusal(ConverterProbe(BothFacets, memberAttributes: AttributeProjection), "CXML0009");
+			var rejection = AssertRejection(ConverterProbe(BothFacets, memberAttributes: AttributeProjection), "CXML0009");
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(refusal.GetMessage(), Does.Contain("Live"), "the message names the member");
-				Assert.That(refusal.GetMessage(), Does.Contain("ProbeBoolConverter"), "and the converter that would be bypassed");
-				Assert.That(refusal.GetMessage(), Does.Contain("drop the '@' projection, or drop the converter"), "and the two ways out");
+				Assert.That(rejection.GetMessage(), Does.Contain("Live"), "the message names the member");
+				Assert.That(rejection.GetMessage(), Does.Contain("ProbeBoolConverter"), "and the converter that would be bypassed");
+				Assert.That(rejection.GetMessage(), Does.Contain("drop the '@' projection, or drop the converter"), "and the two ways out");
 			}
 		}
 
 		[Test]
-		public void Test_An_Attribute_Projected_Member_With_A_Converter_Reports_Only_That_Refusal()
+		public void Test_An_Attribute_Projected_Member_With_A_Converter_Reports_Only_That_Rejection()
 		{
 			// the same shape with a converter that has NO XML facet either: one member, one error, and it is the more
 			// specific one (fixing the facet would not make the projection work)
 			var (_, diagnostics) = RunOn(ConverterProbe("SnowBank.Data.Json.IJsonMemberConverter<bool>", memberAttributes: AttributeProjection));
 
 			var reported = diagnostics.Where(static d => d.Id.StartsWith("CXML", StringComparison.Ordinal)).Select(static d => d.Id).ToList();
-			Assert.That(reported, Is.EqualTo((string[]) [ "CXML0009" ]), "CXML0008 must not stack on top of the projection refusal");
+			Assert.That(reported, Is.EqualTo((string[]) [ "CXML0009" ]), "CXML0008 must not stack on top of the projection rejection");
 		}
 
 		[Test]
 		public void Test_An_Element_Projected_Member_With_A_Converter_Is_Not_Reported()
 		{
-			// the element path is the one the facet can answer for: nothing to refuse there
+			// the element path is the one the facet can answer for: nothing to reject there
 			AssertNotReported(ConverterProbe(BothFacets), "CXML0009");
 		}
 
@@ -1506,7 +1506,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_An_Attribute_Projected_Member_With_A_Converter_Emits_No_Attribute()
 		{
-			// the refusal is a generation-time one, so the emitted body must not carry the attribute either: a build that
+			// the rejection is a generation-time one, so the emitted body must not carry the attribute either: a build that
 			// somehow ignored the error must still not produce a document where the converter was skipped
 			var (output, _) = GeneratorProbeHarness.RunGenerator(GeneratorProbeHarness.Compile(ConverterProbe(BothFacets, memberAttributes: AttributeProjection)));
 			string generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
@@ -1526,7 +1526,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_The_Whole_Xml_Vocabulary_Is_Inert_On_A_Json_Only_Container()
 		{
 			// the attribute is a no-op without the container's opt-in, and a no-op must not produce build errors:
-			// every shape below would be refused on an XML container, and all of them are silent here
+			// every shape below would be rejected on an XML container, and all of them are silent here
 			var (containers, diagnostics) = RunOn(Probe(
 				"""
 							[SnowBank.Data.Xml.XmlProperty("@")]
@@ -1571,7 +1571,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// the generated compat format derives the element names of a collection from its ITEM type; a member whose type
 			// renames them would come out under names that differ from the ones DataContractSerializer produces, which is
 			// exactly the silent divergence this profile exists to prevent
-			var refusal = AssertRefusal(
+			var rejection = AssertRejection(
 				Probe(
 					"""
 								[System.Runtime.Serialization.DataMember]
@@ -1581,7 +1581,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					dtoAttributes: NamedCollectionType + Environment.NewLine + "	[System.Runtime.Serialization.DataContract]"),
 				"CXML0010");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("ProbeItems"), "the message names the annotated type");
+			Assert.That(rejection.GetMessage(), Does.Contain("ProbeItems"), "the message names the annotated type");
 		}
 
 		[Test]
@@ -1621,7 +1621,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// the reference serializer's no-set-method check is property-only: a get-only [DataMember] property on a
 			// [DataContract] type is not a valid contract at all (InvalidDataContractException, "No set method for
 			// property"), so there is no format to reproduce
-			var refusal = AssertRefusal(
+			var rejection = AssertRejection(
 				Probe(
 					"""
 								[System.Runtime.Serialization.DataMember]
@@ -1631,7 +1631,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					dtoAttributes: "	[System.Runtime.Serialization.DataContract]"),
 				"CXML0013");
 
-			Assert.That(refusal.GetMessage(), Does.Contain("ReadOnlyProperty"), "the message names the offending member");
+			Assert.That(rejection.GetMessage(), Does.Contain("ReadOnlyProperty"), "the message names the offending member");
 		}
 
 		[Test]
@@ -1639,7 +1639,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// [DataMember] pins the intent on a [DataContract] type: the private setter is unlocked through a
 			// thunk (same as the reference serializer, which reaches non-public setters via reflection), so this
-			// property is NOT read-only and does not hit the get-only refusal
+			// property is NOT read-only and does not hit the get-only rejection
 			AssertNotReported(
 				Probe(
 					"""

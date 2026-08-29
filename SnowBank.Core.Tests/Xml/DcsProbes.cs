@@ -113,7 +113,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	}
 
 	/// <summary>[CollectionDataContract]-annotated list: kept for reference alongside <see cref="CollectionProbe"/>, but never
-	/// enrolled in the DataContract-compat XML container. The generator refuses [CollectionDataContract] members on that
+	/// registered in the DataContract-compat XML container. The generator rejects [CollectionDataContract] members on that
 	/// profile with diagnostic CXML0010 (a pre-existing, documented decision from Task 9): the element names it drives
 	/// (<c>TheItems</c>/<c>TheItem</c>) are read from an attribute the generated format never inspects, so honoring it would
 	/// silently diverge from the reference format it is trying to imitate. This family is therefore excluded from
@@ -182,11 +182,11 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	}
 
 	// note: [KnownType(typeof(List<string>))] is added here (the part of without reference set): the it, LIVE LIVE oracle
-	// itself refuses a List<string> dropped into an object-declared slot with the same "type not expected" refusal
+	// itself rejects a List<string> dropped into an object-declared slot with the same "type not expected" rejection
 	// this test wants to pin as CrystalXml-only. DCS's own closure for an anyType slot is not full reflection after
 	// all -- it needs the type declared too, just through [KnownType]/[ServiceKnownType] rather than a source
 	// generator's own registration list. Declaring it here makes DCS succeed for List<string> (matching the acted
-	// deviation's premise) while leaving CrystalXml's own closed switch (this container's registered types) refuse it.
+	// deviation's premise) while leaving CrystalXml's own closed switch (this container's registered types) reject it.
 	[DataContract]
 	[KnownType(typeof(List<string>))]
 	public sealed class PolymorphicProbe
@@ -317,7 +317,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	/// <summary>A plain DTO (no data contract) whose member carries a JSON rename. The reference serializer names the
 	/// element after the member, and the JSON attribute names the JSON member only. On a
-	/// <see cref="DataContractAttribute"/> type the same pair is refused instead (CJSON0011), because the contract
+	/// <see cref="DataContractAttribute"/> type the same pair is rejected instead (CJSON0011), because the contract
 	/// already names the member.</summary>
 	public sealed class PocoJsonRenamedProbe
 	{
@@ -418,12 +418,12 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	// note: a second reference member (KeyedBag<the<string>> Suggestions, meant to pin List "undeclared runtime type"
 	// deviation) is dropped here: DECLARING it is enough to fail the build, with the generator's own #error for a
 	// closed generic used as a generic argument ("KeyedBagOfArrayOfstring" needs List<string>'s composed name, which
-	// this emission refuses to guess) -- the same documented, build-time limitation covered by Task 9's own
+	// this emission rejects to guess) -- the same documented, build-time limitation covered by Task 9's own
 	// Test_A_Generic_Argument_That_Is_Itself_A_Closed_Generic_Fails_The_Build. That is a DIFFERENT failure surface
-	// than the brief's "reflection-free code cannot name ArrayOfstring at run time" (a RUNTIME refusal): this family
+	// than the brief's "reflection-free code cannot name ArrayOfstring at run time" (a RUNTIME rejection): this family
 	// never reaches runtime at all, so acted deviation 3 is pinned instead via an object-typed slot holding an
 	// undeclared runtime type (DcsOutputFidelityFacts.Test_Deviation_3_Undeclared_Runtime_Type_In_An_AnyType_Slot),
-	// mirroring Task 9's own Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Refused_In_An_AnyType_Slot. See the
+	// mirroring Task 9's own Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Rejected_In_An_AnyType_Slot. See the
 	// Task 10 report for the full judgment call.
 	[DataContract]
 	public sealed class KeyedBagProbe
@@ -500,8 +500,8 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	// note: the "List<Shelf> as root" and "string as root" families (a bare collection or scalar type passed
 	// directly to [CrystalSerializable], with no declaring DTO) are excluded here, and stay excluded by design:
 	// CrystalJson serializes collections, dictionaries and scalars natively, root included, so the generator emits no
-	// converter for such an enrolment at all (it reports the CJSON0019 guidance instead, see NativeEnrolmentGuardFacts).
-	// There is therefore no generated format for these two families to compare against the oracle. Enrolling them used to
+	// converter for such an registration at all (it reports the CJSON0019 guidance instead, see NativeRegistrationGuardFacts).
+	// There is therefore no generated format for these two families to compare against the oracle. Registering them used to
 	// emit code that did not compile (CS0106/CS0720/CS0548/CS1551 on a nameless indexer inside a nested
 	// "PropertyEncodedNames" helper); that is the defect the guard closed.
 	[CrystalConverter]
@@ -543,7 +543,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 	{
 	}
 
-	// The NAMESPACE-FREE twin of the container above, enrolling the same probes. Every fidelity fact runs against both, so
+	// The NAMESPACE-FREE twin of the container above, registering the same probes. Every fidelity fact runs against both, so
 	// the two outputs of one profile stay pinned by one instance and one oracle: the default against the standard format,
 	// this one against the same output with its namespaces stripped.
 	[CrystalConverter]

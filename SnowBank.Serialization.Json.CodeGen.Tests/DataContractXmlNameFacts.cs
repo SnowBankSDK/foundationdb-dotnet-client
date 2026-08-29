@@ -33,8 +33,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	/// <summary>Pins that the data contract names the element of the DataContract XML format, and that a member cannot carry a JSON name that disagrees with it</summary>
 	/// <remarks>
-	/// <para>The contract name is <c>[DataMember(Name = "...")]</c> when it is spelled and the declared member name when it is not: a bare <c>[DataMember]</c> is still a naming decision, and it is the name <c>DataContractSerializer</c> writes. A JSON naming attribute that disagrees with it makes one type serve two format contracts, which is refused (<c>CJSON0011</c>) on both paths; the remedy is to split the DTO.</para>
-	/// <para>The bare form used to slip under that refusal: the JSON name won the whole name resolution silently, and was written into the XML document as well.</para>
+	/// <para>The contract name is <c>[DataMember(Name = "...")]</c> when it is spelled and the declared member name when it is not: a bare <c>[DataMember]</c> is still a naming decision, and it is the name <c>DataContractSerializer</c> writes. A JSON naming attribute that disagrees with it makes one type serve two format contracts, which is rejected (<c>CJSON0011</c>) on both paths; the remedy is to split the DTO.</para>
+	/// <para>The bare form used to slip under that rejection: the JSON name won the whole name resolution silently, and was written into the XML document as well.</para>
 	/// <para>A plain DTO is a different case, with no diagnostic: it has no data contract for a <c>[JsonProperty]</c> to disagree with, so the JSON member is renamed and the element keeps the member's own name, which is what the reference serializer writes.</para>
 	/// </remarks>
 	[TestFixture]
@@ -94,7 +94,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		private static void AssertNamingConflict(List<Diagnostic> diagnostics, string contractName, string jsonName)
 		{
 			var conflict = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0011");
-			Assert.That(conflict, Is.Not.Null, "the generator must refuse a member whose JSON name disagrees with its contract name");
+			Assert.That(conflict, Is.Not.Null, "the generator must reject a member whose JSON name disagrees with its contract name");
 			Assert.That(conflict!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "two format contracts on one type is an error, not a warning");
 			Assert.That(conflict.GetMessage(), Does.Contain(contractName), "the message must name the contract name");
 			Assert.That(conflict.GetMessage(), Does.Contain(jsonName), "the message must name the JSON name");
@@ -102,7 +102,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Json_Name_Diverging_From_A_Bare_Data_Member_Is_Refused()
+		public void Test_A_Json_Name_Diverging_From_A_Bare_Data_Member_Is_Rejected()
 		{
 			// a bare [DataMember] names the member after itself, and that is the name the reference serializer writes:
 			// a [JsonProperty] spelling it differently is a second format contract on one type
@@ -116,7 +116,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Foreign_Json_Name_Diverging_From_A_Bare_Data_Member_Is_Refused()
+		public void Test_A_Foreign_Json_Name_Diverging_From_A_Bare_Data_Member_Is_Rejected()
 		{
 			var (diagnostics, _, _) = RunOn("""
 						[System.Runtime.Serialization.DataMember]
@@ -128,7 +128,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Json_Name_Diverging_From_A_Contract_Rename_Is_Refused()
+		public void Test_A_Json_Name_Diverging_From_A_Contract_Rename_Is_Rejected()
 		{
 			var (diagnostics, _, _) = RunOn("""
 						[System.Runtime.Serialization.DataMember(Name = "code")]
@@ -201,7 +201,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Two_Members_Whose_Contract_Names_Collide_Are_Refused()
+		public void Test_Two_Members_Whose_Contract_Names_Collide_Are_Rejected()
 		{
 			// the collision check reads the name the emitter writes, which is the contract name and not the resolved
 			// JSON one
@@ -214,7 +214,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				""");
 
 			var collision = diagnostics.SingleOrDefault(static d => d.Id == "CXML0005");
-			Assert.That(collision, Is.Not.Null, "two members writing the same element name must be refused");
+			Assert.That(collision, Is.Not.Null, "two members writing the same element name must be rejected");
 			Assert.That(collision!.GetMessage(), Does.Contain("Label"), "the message must name the element both members claim");
 		}
 

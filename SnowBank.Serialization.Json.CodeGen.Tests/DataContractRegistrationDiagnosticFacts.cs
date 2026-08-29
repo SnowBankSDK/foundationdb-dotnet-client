@@ -29,18 +29,18 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.Collections.Immutable;
 	using Microsoft.CodeAnalysis;
 
-	/// <summary>Pins that a <c>[DataContract]</c> type IS enrolled in a generated container, and that the generated converter applies the DataContract contract model rather than the plain-DTO one</summary>
+	/// <summary>Pins that a <c>[DataContract]</c> type IS registered in a generated container, and that the generated converter applies the DataContract contract model rather than the plain-DTO one</summary>
 	/// <remarks>
-	/// <para>This fixture replaces the interim <c>CJSON0014</c> refusal. That diagnostic existed because generated converters
-	/// did not implement the DataContract membership model, so enrolling such a type would have produced an output that silently
-	/// differed from the reflection path. The model is implemented now, so the refusal is retired and its absence is pinned here.</para>
+	/// <para>This fixture replaces the interim <c>CJSON0014</c> rejection. That diagnostic existed because generated converters
+	/// did not implement the DataContract membership model, so registering such a type would have produced an output that silently
+	/// differed from the reflection path. The model is implemented now, so the rejection is retired and its absence is pinned here.</para>
 	/// <para>The behavioural comparison (generated vs reflection vs the live legacy serializer) lives in
 	/// <see cref="DataContractCompatProbeFacts"/>; this fixture only covers what the BUILD reports.</para>
 	/// </remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
-	public sealed class DataContractEnrolmentDiagnosticFacts : SimpleTest
+	public sealed class DataContractRegistrationDiagnosticFacts : SimpleTest
 	{
 
 		private static ImmutableArray<Diagnostic> RunOn(string source)
@@ -68,7 +68,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			""";
 
 		[Test]
-		public void Test_Enrolled_DataContract_Type_Is_Accepted()
+		public void Test_Registered_DataContract_Type_Is_Accepted()
 		{
 			var diagnostics = RunOn(DataContractDto + """
 
@@ -78,12 +78,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 					}
 				""");
-			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "enrolling a [DataContract] type is supported and reports nothing");
-			Assert.That(diagnostics.Where(static d => d.Id == "CJSON0014"), Is.Empty, "the interim refusal is retired");
+			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "registering a [DataContract] type is supported and reports nothing");
+			Assert.That(diagnostics.Where(static d => d.Id == "CJSON0014"), Is.Empty, "the interim rejection is retired");
 		}
 
 		[Test]
-		public void Test_Referenced_But_Unenrolled_DataContract_Type_Is_Not_Refused()
+		public void Test_Referenced_But_Unregistered_DataContract_Type_Is_Not_Rejected()
 		{
 			var diagnostics = RunOn(DataContractDto + """
 
@@ -118,15 +118,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 				""");
 			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "self-serialization of a [DataContract] type is supported too");
-			Assert.That(diagnostics.Where(static d => d.Id == "CJSON0014"), Is.Empty, "the interim refusal is retired on this route as well");
+			Assert.That(diagnostics.Where(static d => d.Id == "CJSON0014"), Is.Empty, "the interim rejection is retired on this route as well");
 		}
 
 		[Test]
-		public void Test_Enrolled_DataContract_Type_Members_Are_Analyzed()
+		public void Test_Registered_DataContract_Type_Members_Are_Analyzed()
 		{
-			// the mirror image of the old behaviour: the type-level refusal used to preempt every member-level
+			// the mirror image of the old behaviour: the type-level rejection used to preempt every member-level
 			// diagnostic, so a real conflict inside a [DataContract] type went unreported. Now that the type is
-			// enrolled its members are parsed, and the dual-output conflict is caught where it always should have been.
+			// registered its members are parsed, and the dual-output conflict is caught where it always should have been.
 			var diagnostics = RunOn("""
 					[System.Runtime.Serialization.DataContract]
 					public sealed record ProbeDto
@@ -142,7 +142,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 					}
 				""");
-			Assert.That(diagnostics.Where(static d => d.Id == "CJSON0008"), Is.Not.Empty, "the member-level conflict is now reported instead of being hidden behind a type-level refusal");
+			Assert.That(diagnostics.Where(static d => d.Id == "CJSON0008"), Is.Not.Empty, "the member-level conflict is now reported instead of being hidden behind a type-level rejection");
 		}
 
 		[Test]
@@ -165,17 +165,17 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 					}
 				""");
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0015");
-			Assert.That(refusal, Is.Not.Null, "the legacy callback signature is refused at build time");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(refusal.GetMessage(), Does.StartWith("Remove the StreamingContext parameter"), "the message leads with the fix");
-			Assert.That(refusal.GetMessage(), Does.Contain("ProbeDto.AfterRead"), "and names the offending declaring type and method");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0015");
+			Assert.That(rejection, Is.Not.Null, "the legacy callback signature is rejected at build time");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(rejection.GetMessage(), Does.StartWith("Remove the StreamingContext parameter"), "the message leads with the fix");
+			Assert.That(rejection.GetMessage(), Does.Contain("ProbeDto.AfterRead"), "and names the offending declaring type and method");
 		}
 
 		[Test]
 		public void Test_Any_Other_Unusable_Callback_Signature_Is_Also_A_Build_Error()
 		{
-			// not only the legacy shape: anything generated code cannot invoke is refused, so the generator never
+			// not only the legacy shape: anything generated code cannot invoke is rejected, so the generator never
 			// stays silent about a callback that the reflection path would reject at contract build
 			var diagnostics = RunOn("""
 					public sealed record ProbeDto
@@ -192,13 +192,13 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 					}
 				""");
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0015");
-			Assert.That(refusal, Is.Not.Null, "an unusable callback signature is refused at build time");
-			Assert.That(refusal!.GetMessage(), Is.EqualTo(string.Format(SnowBank.Data.Json.CrystalJson.Errors.CallbackSignatureNotSupported, "AfterRead")), "and with the same message the reflection path throws");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0015");
+			Assert.That(rejection, Is.Not.Null, "an unusable callback signature is rejected at build time");
+			Assert.That(rejection!.GetMessage(), Is.EqualTo(string.Format(SnowBank.Data.Json.CrystalJson.Errors.CallbackSignatureNotSupported, "AfterRead")), "and with the same message the reflection path throws");
 		}
 
 		[Test]
-		public void Test_PrePopulate_Callback_With_An_InitOnly_Or_Required_Member_Is_Refused()
+		public void Test_PrePopulate_Callback_With_An_InitOnly_Or_Required_Member_Is_Rejected()
 		{
 			// without this the consumer gets a compiler error inside generated source they never wrote; the
 			// diagnostic points at the code they CAN edit, and the two remedies differ so the messages do
@@ -217,9 +217,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 					}
 				""");
-			var initRefusal = initOnly.SingleOrDefault(static d => d.Id == "CJSON0016");
-			Assert.That(initRefusal, Is.Not.Null, "an init-only member cannot be assigned after construction");
-			Assert.That(initRefusal!.GetMessage(), Does.StartWith("Change the 'init' accessor"), "the message leads with the remedy for THIS construct");
+			var initRejection = initOnly.SingleOrDefault(static d => d.Id == "CJSON0016");
+			Assert.That(initRejection, Is.Not.Null, "an init-only member cannot be assigned after construction");
+			Assert.That(initRejection!.GetMessage(), Does.StartWith("Change the 'init' accessor"), "the message leads with the remedy for THIS construct");
 
 			var required = RunOn("""
 					public sealed record ProbeDto
@@ -236,9 +236,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 					}
 				""");
-			var requiredRefusal = required.SingleOrDefault(static d => d.Id == "CJSON0016");
-			Assert.That(requiredRefusal, Is.Not.Null, "a required member can only be set in an object initializer");
-			Assert.That(requiredRefusal!.GetMessage(), Does.StartWith("Remove the 'required' modifier"), "and this construct gets its own remedy");
+			var requiredRejection = required.SingleOrDefault(static d => d.Id == "CJSON0016");
+			Assert.That(requiredRejection, Is.Not.Null, "a required member can only be set in an object initializer");
+			Assert.That(requiredRejection!.GetMessage(), Does.StartWith("Remove the 'required' modifier"), "and this construct gets its own remedy");
 		}
 
 		[Test]
@@ -297,14 +297,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 					}
 				""");
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0017");
-			Assert.That(refusal, Is.Not.Null, "a literal type with no JSON representation is refused at compile time");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(refusal.GetMessage(), Is.EqualTo(string.Format(SnowBank.Data.Json.CrystalJson.Errors.BooleanLiteralTypeNotSupported, "whenFalse", "DayOfWeek")), "and with the same message the runtime guard throws");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0017");
+			Assert.That(rejection, Is.Not.Null, "a literal type with no JSON representation is rejected at compile time");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(rejection.GetMessage(), Is.EqualTo(string.Format(SnowBank.Data.Json.CrystalJson.Errors.BooleanLiteralTypeNotSupported, "whenFalse", "DayOfWeek")), "and with the same message the runtime guard throws");
 		}
 
 		[Test]
-		public void Test_Accepted_Boolean_Literal_Shapes_Are_Not_Refused()
+		public void Test_Accepted_Boolean_Literal_Shapes_Are_Not_Rejected()
 		{
 			// all four legal shapes, including the two the object constructor exists for
 			var diagnostics = RunOn("""
@@ -329,10 +329,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_StrictLiterals_Without_A_False_Literal_Warns()
 		{
 			// deliberately generator-only, and that is not a violation of the both-paths rule. That rule binds a
-			// diagnostic that refuses something which would otherwise BEHAVE differently on the two paths, which is
+			// diagnostic that rejects something which would otherwise BEHAVE differently on the two paths, which is
 			// CJSON0015. CJSON0016 is generator-only for its own reason: it describes a property of generated code
 			// (members assigned as statements after construction), and the reflection path assigns reflectively, so
-			// there is nothing there to refuse. This one changes no behaviour at all, it is advice about a pointless
+			// there is nothing there to reject. This one changes no behaviour at all, it is advice about a pointless
 			// combination, so a compile-time nudge is the whole feature.
 			var diagnostics = RunOn("""
 					public sealed record ProbeDto
@@ -373,7 +373,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_The_Two_Paths_Share_One_Refusal_Message()
+		public void Test_The_Two_Paths_Share_One_Rejection_Message()
 		{
 			// the message exists twice because an analyzer cannot reference SnowBank.Core. Two copies drift; this
 			// is the only thing stopping them, and a build error that does not match the documented text is a
@@ -405,7 +405,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 					}
 				""");
-			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "a profiled container enrols [DataContract] types as well");
+			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "a profiled container registers [DataContract] types as well");
 		}
 
 	}

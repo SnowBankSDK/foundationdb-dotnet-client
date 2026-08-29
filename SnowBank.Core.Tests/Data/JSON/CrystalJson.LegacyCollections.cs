@@ -281,7 +281,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(bound, Is.Not.Null);
 			Assert.That(bound!["X1"].Model, Is.EqualTo("laser"));
 
-			// duplicate keys in the output must fail loudly, never silently drop an item
+			// duplicate keys in the output must throw, never silently drop an item
 			Assert.That(() => CrystalJson.Deserialize<DeviceIndex>("""[ { "Serial": "X1" }, { "Serial": "X1" } ]"""), Throws.Exception);
 		}
 
@@ -450,9 +450,9 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Unsupported_Shapes_Fail_Loudly()
+		public void Test_Unsupported_Shapes_Throw()
 		{
-			// multi-dimensional arrays have no JSON representation: refuse on every route, never flatten or null out
+			// multi-dimensional arrays have no JSON representation: reject on every route, never flatten or null out
 			var grid = new int[,] { { 1, 2 }, { 3, 4 } };
 			Assert.That(() => CrystalJson.Serialize(grid), Throws.InstanceOf<JsonSerializationException>());
 			Assert.That(() => JsonValue.FromValue(grid), Throws.InstanceOf<JsonSerializationException>());
@@ -462,7 +462,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Serialize(new int[][] { [ 1, 2 ], [ 3, 4 ] }), Is.EqualTo("[ [ 1, 2 ], [ 3, 4 ] ]"));
 			Assert.That(CrystalJson.Deserialize<int[][]>("[ [ 1, 2 ], [ 3, 4 ] ]")[1][0], Is.EqualTo(3));
 
-			// NameValueCollection enumerates its keys only: serializing it would silently drop the values, so it is refused
+			// NameValueCollection enumerates its keys only: serializing it would silently drop the values, so it is rejected
 			var nvc = new System.Collections.Specialized.NameValueCollection { ["k"] = "v" };
 			Assert.That(() => CrystalJson.Serialize(nvc), Throws.InstanceOf<JsonSerializationException>());
 			Assert.That(() => JsonValue.FromValue(nvc), Throws.InstanceOf<JsonSerializationException>());

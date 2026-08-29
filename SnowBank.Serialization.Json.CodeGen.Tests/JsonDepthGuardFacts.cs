@@ -62,7 +62,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			return head;
 		}
 
-		/// <summary>Same shape, on the type enrolled in the <c>DataContractCompat</c> container</summary>
+		/// <summary>Same shape, on the type registered in the <c>DataContractCompat</c> container</summary>
 		private static CycleNode MakeCompatChain(int length)
 		{
 			var head = new CycleNode();
@@ -81,7 +81,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Every_Output_Shares_One_Nesting_Cap()
 		{
-			// the whole point of the constant: a document the XML emission writes must not be refused by the JSON one (or the
+			// the whole point of the constant: a document the XML emission writes must not be rejected by the JSON one (or the
 			// other way round) purely because the two disagreed on where "too deep" starts
 			Assert.That(CrystalXml.MaxDepth, Is.EqualTo(CrystalJsonWriter.MaxDepth), "CrystalXml.MaxDepth is an alias, not a second opinion");
 		}
@@ -123,7 +123,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Deep_Acyclic_Collection_Chain_Past_The_Cap_Is_Refused()
+		public void Test_A_Deep_Acyclic_Collection_Chain_Past_The_Cap_Is_Rejected()
 		{
 			// acyclic but too deep, all the nesting through List<T> members: the depth counter must survive the helper seam
 			var head = new Cluster { Label = "0" };
@@ -173,7 +173,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_Deep_Acyclic_Compat_Chain_Up_To_The_Cap_Is_Packed_In_Full()
 		{
 			// same boundary pair as the modern Chain, restated on the DataContractCompat container: the compat Pack body has
-			// its own emitted guard, and this pins WHERE its line sits, not just that a cycle is refused somewhere
+			// its own emitted guard, and this pins WHERE its line sits, not just that a cycle is rejected somewhere
 			var obj = (JsonObject) LegacySerializers.CycleNode.Pack(MakeCompatChain(CrystalJsonWriter.MaxDepth));
 
 			int levels = 0;
@@ -278,7 +278,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Deep_Acyclic_Chain_Past_The_Cap_Is_Refused_By_The_Writer()
+		public void Test_A_Deep_Acyclic_Chain_Past_The_Cap_Is_Rejected_By_The_Writer()
 		{
 			Assert.That(
 				() => AcmeSerializers.Chain.ToJsonText(MakeChain(CrystalJsonWriter.MaxDepth + 1)),

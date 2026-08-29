@@ -27,15 +27,15 @@
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
 
-	/// <summary>Pins that an enrollment resolving to a static class is refused (CJSON0026), instead of generating a converter whose every signature names a type that cannot appear in one</summary>
+	/// <summary>Pins that an registration resolving to a static class is rejected (CJSON0026), instead of generating a converter whose every signature names a type that cannot appear in one</summary>
 	/// <remarks>The case that reaches this in practice: a per-type scope is named after the type it serves, so once an author declares their hook part, an unqualified <c>typeof(Cat)</c> inside the container binds to the SCOPE rather than to the serialized type.</remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
-	public sealed class StaticClassEnrolmentGuardFacts : SimpleTest
+	public sealed class StaticClassRegistrationGuardFacts : SimpleTest
 	{
 
-		/// <summary>An author declares a hook part, then enrolls with the unqualified name, which binds to the scope they just declared</summary>
+		/// <summary>An author declares a hook part, then registers with the unqualified name, which binds to the scope they just declared</summary>
 		private const string ShadowedSource = """
 			namespace Probe
 			{
@@ -56,7 +56,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			}
 			""";
 
-		/// <summary>The same container, enrolled with the qualified name, which is the documented remedy</summary>
+		/// <summary>The same container, registered with the qualified name, which is the documented remedy</summary>
 		private const string QualifiedSource = """
 			namespace Probe
 			{
@@ -78,7 +78,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			""";
 
 		[Test]
-		public void Test_Enrolment_Shadowed_By_The_Scope_Is_Refused()
+		public void Test_Registration_Shadowed_By_The_Scope_Is_Rejected()
 		{
 			var compilation = GeneratorProbeHarness.Compile(ShadowedSource);
 
@@ -88,11 +88,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(
 				diagnostics.Select(static d => d.Id),
 				Does.Contain("CJSON0026"),
-				"an enrollment that resolved to the generated scope must be refused, not turned into a converter for a static class");
+				"an registration that resolved to the generated scope must be rejected, not turned into a converter for a static class");
 		}
 
 		[Test]
-		public void Test_Refusal_Names_The_Qualification_Remedy()
+		public void Test_Rejection_Names_The_Qualification_Remedy()
 		{
 			var compilation = GeneratorProbeHarness.Compile(ShadowedSource);
 
@@ -102,28 +102,28 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(message, Does.Contain("Probe.Host.Cat"), "the message must name what the enrollment actually resolved to");
+				Assert.That(message, Does.Contain("Probe.Host.Cat"), "the message must name what the registration actually resolved to");
 				Assert.That(message, Does.Contain("static class"), "the message must state why it cannot be serialized");
 				Assert.That(message, Does.Contain("qualified"), "the message must name the remedy, since the one-word cause is invisible in the resulting compiler errors");
 			}
 		}
 
 		[Test]
-		public void Test_The_Refused_Type_Generates_Nothing()
+		public void Test_The_Rejected_Type_Generates_Nothing()
 		{
 			var compilation = GeneratorProbeHarness.Compile(ShadowedSource);
 
 			var (containers, _) = GeneratorProbeHarness.RunGeneratorAndCaptureContainers(compilation);
 
-			// the container still parses; it simply has no enrolled type left, so the emitter never sees the static class
+			// the container still parses; it simply has no registered type left, so the emitter never sees the static class
 			Assert.That(
 				containers.TryGetValue("Host", out var metadata) ? metadata.IncludedTypes.Select(static t => t.Name).ToArray() : [ ],
 				Does.Not.Contain("Cat"),
-				"a refused enrollment must not reach the emitter");
+				"a rejected registration must not reach the emitter");
 		}
 
 		[Test]
-		public void Test_A_Qualified_Enrolment_Is_Accepted()
+		public void Test_A_Qualified_Registration_Is_Accepted()
 		{
 			var compilation = GeneratorProbeHarness.Compile(QualifiedSource);
 

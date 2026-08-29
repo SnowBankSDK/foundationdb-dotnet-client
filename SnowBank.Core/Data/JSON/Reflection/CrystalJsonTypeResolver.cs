@@ -261,7 +261,7 @@ namespace SnowBank.Data.Json
 				bool hasKey = obj.TryGetValue("Key", out var key) || obj.TryGetValue("key", out key);
 				bool hasValue = obj.TryGetValue("Value", out var value) || obj.TryGetValue("value", out value);
 				if (!hasKey && !hasValue)
-				{ // neither spelling is present: refuse instead of silently returning a default-filled pair
+				{ // neither spelling is present: reject instead of silently returning a default-filled pair
 					throw new JsonBindingException($"Cannot bind a JSON Object to {t.GetFriendlyName()}: expected an object carrying 'Key'/'Value' or 'key'/'value' members.", null, obj, t);
 				}
 
@@ -367,7 +367,7 @@ namespace SnowBank.Data.Json
 
 			// DataContractJsonSerializer writes a DateTimeOffset as an object, so convert it here. This is the one sanctioned
 			// exception to the rule that a JSON object is not a valid representation of an opaque value type: the shape is
-			// observed in the field. Running before the member binder also keeps the type out of that refusal.
+			// observed in the field. Running before the member binder also keeps the type out of that rejection.
 			if (typeof(DateTimeOffset) == type || typeof(DateTimeOffset?) == type)
 			{
 				return value.ToDateTimeOffset();
@@ -1329,7 +1329,7 @@ namespace SnowBank.Data.Json
 						}
 						default:
 						{ // "Always", or an attribute without a Condition: this is the exclusion form, and next to an
-							// include signal it is two output contracts on one member: refuse loudly (the dual-output
+							// include signal it is two output contracts on one member: throw (the dual-output
 							// DTO is not supported; same family as the conflicting-output-names guard)
 							ThrowIfIgnoreConflictsWithIncludeSignal(member);
 							return false;
@@ -1351,7 +1351,7 @@ namespace SnowBank.Data.Json
 				}
 				// one member giving different output names to different serializers is two contracts on one type
 				// (ex: [DataMember(Name="code")] for the legacy DCJS output plus a Newtonsoft [JsonProperty("ACTIF")]
-				// for another consumer): refuse loudly instead of silently picking one of the two. A bare [DataMember]
+				// for another consumer): throw instead of silently picking one of the two. A bare [DataMember]
 				// names the member after itself, and that implied name counts the same way.
 				ThrowIfConflictingOutputName(member, attr.Name ?? member.Name, attr.Name is not null);
 				// check if a custom name is specified
@@ -1453,7 +1453,7 @@ namespace SnowBank.Data.Json
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static IJsonMemberConverterBridge? FindCustomJsonConverter(MemberInfo target, Type targetType)
 		{
-			// the native [JsonConvertWith(typeof(...))] wins over every other converter signal, and fails loudly when
+			// the native [JsonConvertWith(typeof(...))] wins over every other converter signal, and throws when
 			// the named type lacks the Pack/Unpack pair: it is our own attribute, there is no legacy meaning to preserve
 			if (target.GetCustomAttribute<JsonConvertWithAttribute>(inherit: true) is { } native)
 			{
@@ -1494,7 +1494,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Instantiates a converter type and wraps it in the non-generic bridge, if it implements <see cref="IJsonPacker{T}"/> and/or <see cref="IJsonDeserializer{T}"/> for the target type</summary>
 		/// <remarks>
 		/// <para>Recognition is per facet: a converter for a type that is only ever written (or only ever read) may implement a single facet;
-		/// the bridge fails loudly on any attempt to use the missing direction.</para>
+		/// the bridge throws on any attempt to use the missing direction.</para>
 		/// <para>Accepts a dedicated <see cref="IJsonMemberConverter{T}"/> implementation and a source-generated <see cref="IJsonConverter{T}"/> alike.</para>
 		/// </remarks>
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
@@ -1536,7 +1536,7 @@ namespace SnowBank.Data.Json
 				isDeserializer ? instance : null)!;
 		}
 
-		/// <summary>Builds the refusal message for a <c>[JsonConvertWith]</c> naming a type with no usable facet, with a tailored clause for the T?-converter-on-a-non-nullable-member arity mismatch</summary>
+		/// <summary>Builds the rejection message for a <c>[JsonConvertWith]</c> naming a type with no usable facet, with a tailored clause for the T?-converter-on-a-non-nullable-member arity mismatch</summary>
 		private static string BuildConvertWithMismatchMessage(MemberInfo target, Type converterType, Type targetType)
 		{
 			if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) is null)
@@ -1611,7 +1611,7 @@ namespace SnowBank.Data.Json
 #endif
 			string? newtonsoftName = fallbackNewtonsoftJson is null ? null : (string?) fallbackNewtonsoftJson.GetType().GetProperty("PropertyName")?.GetValue(fallbackNewtonsoftJson);
 
-			// several JSON naming attributes on one member with DIFFERENT names is a dual-output DTO: refuse it, as the
+			// several JSON naming attributes on one member with DIFFERENT names is a dual-output DTO: reject it, as the
 			// generated converter does at build time. Precedence when they AGREE is CrystalJson [JsonProperty] > STJ
 			// [JsonPropertyName] > Newtonsoft [JsonProperty]; a disagreement is the defect, and the fix is to split it.
 			ThrowIfConflictingJsonOutputNames(member, nativeJsonProperty?.PropertyName, stjName, newtonsoftName);
@@ -1626,7 +1626,7 @@ namespace SnowBank.Data.Json
 		}
 
 		/// <summary>Throws if a member carries several JSON naming attributes with different output names (a dual-output DTO)</summary>
-		/// <remarks>Precedence when they agree is CrystalJson <c>[JsonProperty]</c> then System.Text.Json <c>[JsonPropertyName]</c> then Newtonsoft <c>[JsonProperty]</c>. A disagreement is the defect, and the generated converter refuses the same shape at build time (<c>CJSON0011</c>).</remarks>
+		/// <remarks>Precedence when they agree is CrystalJson <c>[JsonProperty]</c> then System.Text.Json <c>[JsonPropertyName]</c> then Newtonsoft <c>[JsonProperty]</c>. A disagreement is the defect, and the generated converter rejects the same shape at build time (<c>CJSON0011</c>).</remarks>
 		private static void ThrowIfConflictingJsonOutputNames(MemberInfo member, string? nativeName, string? stjName, string? newtonsoftName)
 		{
 			string? reference = null;
@@ -1692,7 +1692,7 @@ namespace SnowBank.Data.Json
 		/// <summary>Builds the four <c>[OnSerializing]</c> / <c>[OnSerialized]</c> / <c>[OnDeserializing]</c> / <c>[OnDeserialized]</c> callbacks declared by a type</summary>
 		/// <remarks>
 		/// <para>Supported signatures: <c>void M()</c> on all four, and <c>void M(JsonValue|JsonObject|JsonArray)</c> on the deserialize pair, which receives the document being bound.</para>
-		/// <para>The legacy <c>void M(StreamingContext)</c> shape is REFUSED here, at contract-build time, so the check is paid once per type and never per invocation. Generated converters refuse the same shape at compile time, with the same message.</para>
+		/// <para>The legacy <c>void M(StreamingContext)</c> shape is REJECTED here, at contract-build time, so the check is paid once per type and never per invocation. Generated converters reject the same shape at compile time, with the same message.</para>
 		/// </remarks>
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		private static (Action<object>? OnSerializing, Action<object>? OnSerialized, Action<object, JsonValue?>? OnDeserializing, Action<object, JsonValue?>? OnDeserialized) GetSerializationCallbacks(Type type)
@@ -1702,7 +1702,7 @@ namespace SnowBank.Data.Json
 
 			// Framework types carry these attributes themselves, with the legacy signature: on .NET Framework
 			// Dictionary<K,V> and friends declare [OnSerializing] void M(StreamingContext) for the runtime's own
-			// serialization stack. Those callbacks are not ours to run, and refusing them would make a BCL
+			// serialization stack. Those callbacks are not ours to run, and rejecting them would make a BCL
 			// collection unserializable on that TFM, so system types are skipped entirely rather than inspected.
 			if (IsSystemAssembly(type.Assembly))
 			{
@@ -1778,7 +1778,7 @@ namespace SnowBank.Data.Json
 				body = Expression.Call(target, method);
 			}
 			else if (prms.Length == 1 && typeof(JsonValue).IsAssignableFrom(prms[0].ParameterType))
-			{ // JsonValue takes the document as-is; JsonObject/JsonArray narrow it (a mismatched document fails loudly, as everywhere else)
+			{ // JsonValue takes the document as-is; JsonObject/JsonArray narrow it (a mismatched document throws, as everywhere else)
 				var argType = prms[0].ParameterType;
 				Expression arg = argType == typeof(JsonValue)
 					? prmDocument
@@ -2242,7 +2242,7 @@ namespace SnowBank.Data.Json
 			Contract.Debug.Requires(type != null && !type.IsPrimitive);
 
 			if (CrystalJson.DisableReflection)
-			{ // diagnostic: fail loudly instead of silently reflecting a type that has no source-generated converter
+			{ // diagnostic: throw instead of silently reflecting a type that has no source-generated converter
 				throw new JsonReflectionDisabledException(type);
 			}
 
@@ -2391,7 +2391,7 @@ namespace SnowBank.Data.Json
 		/// <remarks>
 		/// <para>The test covers value types under the <c>System</c> namespace that have no writable member, such as <see cref="TimeSpan"/>.
 		/// A JSON object was never a valid representation of one: the member binder assigns nothing and returns <c>default</c>, so the value
-		/// is lost with no error. Refusing the object corrects that defect; it is the general rule, not a tolerance for one writer.</para>
+		/// is lost with no error. Rejecting the object corrects that defect; it is the general rule, not a tolerance for one writer.</para>
 		/// <para><see cref="DateTimeOffset"/> is the single exception, because <c>DataContractJsonSerializer</c> documents in the field do
 		/// spell it as an object. Its dedicated conversion in <see cref="BindJsonObject"/> runs before the member binder is ever reached.</para>
 		/// <para>Application value types stay out of the test. A user struct with only read-only members is a valid shape, and its current

@@ -33,7 +33,7 @@ namespace SnowBank.Networking.Http
 	public class RestHttpProtocol : IBetterHttpProtocol
 	{
 
-		internal const string JsonReflectionMessage = "JSON body serialization uses reflection over the request type. Enroll the type with [CrystalJsonConverter] and send the source-generated converter output as content (for example a StringContent built from the generated ToJsonText), and read the response with GetJsonAsync plus the generated Unpack.";
+		internal const string JsonReflectionMessage = "JSON body serialization uses reflection over the request type. Register the type with [CrystalJsonConverter] and send the source-generated converter output as content (for example a StringContent built from the generated ToJsonText), and read the response with GetJsonAsync plus the generated Unpack.";
 
 		public RestHttpProtocol(HttpClient httpClient, RestHttpClientOptions options)
 		{

@@ -30,7 +30,7 @@ namespace SnowBank.Data.Tuples.Tests
 
 	/// <summary>Tests for the <c>TuPack.IsReflectionSupported</c> feature switch: with reflection disabled, an exotic
 	/// tuple element type (one with no compile-time fast path) must fail with a clear <see cref="NotSupportedException"/>
-	/// instead of silently building a reflective encoder that trimming may have removed.</summary>
+	/// instead of silently building a reflection-based encoder that trimming may have removed.</summary>
 	/// <remarks>
 	/// Each test targets a distinct runtime-reachable guard and uses a fixture-private element type so its reflective
 	/// encoder is never cached by another test (the per-type caches and the switch are process-global). The decode-side

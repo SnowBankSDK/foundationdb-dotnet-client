@@ -96,10 +96,10 @@ Named, with owners:
 
 1. NOT REPRODUCED BY DESIGN - a collection (or any type the container does not declare) in an
    `object`-typed slot: reflection-free generated code cannot name `ArrayOfstring` at run time;
-   refused with a typed exception, pinned by
+   rejected with a typed exception, pinned by
    `DcsOutputFidelityFacts.Test_Deviation_3_Undeclared_Runtime_Type_In_An_AnyType_Slot` and
-   `XmlDataContractEmissionFacts.Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Refused_In_An_AnyType_Slot`.
-2. NOT REPRODUCED BY DESIGN - `[CollectionDataContract]` on a compat member's type: refused with
+   `XmlDataContractEmissionFacts.Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Rejected_In_An_AnyType_Slot`.
+2. NOT REPRODUCED BY DESIGN - `[CollectionDataContract]` on a compat member's type: rejected with
    CXML0010 (`XmlPropertyMetadataFacts.Test_A_CollectionDataContract_Member_On_A_DataContract_Container_Is_A_Build_Error`)
    rather than half-honored. The matrix measures 182 source declarations; migrating call sites
    that rely on them will surface this diagnostic and must introduce an explicit shape.
@@ -108,7 +108,7 @@ Named, with owners:
    (`List<Shelf>`, `string` as root: matrix families "List as root", "named collection as root",
    "string as root"). CrystalJson serializes collections, dictionaries and scalars NATIVELY,
    root included; the source generator emits converters for POCO types only, and an owner-driven
-   follow-up makes it detect and skip such enrollments instead of crashing on them. These
+   follow-up makes it detect and skip such registrations instead of crashing on them. These
    families therefore belong to a native XML root path, which CrystalXml DOES NOT currently
    have (its XML surface is exclusively generated per-type facets): they are out of scope for
    this generated-converter certification suite and do not count against its family coverage.
@@ -170,7 +170,7 @@ Named, with owners:
    name, dropping a non-enum `[DataContract(Name = ...)]` and the declaring-type chain of a nested
    type. It is only reachable through one narrow escape, and needs ALL THREE conditions at once:
    the argument type is NOT registered in the container, AND it implements
-   `ICrystalXmlSerializable` (which is what keeps emission from refusing outright), AND it is
+   `ICrystalXmlSerializable` (which is what keeps emission from throwing outright), AND it is
    renamed by a contract or nested - so its composed name would differ from its plain one. Any
    registered type, or any unregistered one without the hook, takes a different branch. Named
-   here rather than refused, per the ruling on that finding.
+   here rather than rejected, per the ruling on that finding.

@@ -27,14 +27,14 @@
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
 
-	/// <summary>Pins that an enrolled type the compiler could not resolve is reported cleanly (CJSON0021 on the attribute), instead of surfacing as an internal emitter crash (CJSON0003)</summary>
+	/// <summary>Pins that a registered type the compiler could not resolve is reported cleanly (CJSON0021 on the attribute), instead of surfacing as an internal emitter crash (CJSON0003)</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
-	public sealed class UnresolvedEnrolledTypeDiagnosticFacts : SimpleTest
+	public sealed class UnresolvedRegisteredTypeDiagnosticFacts : SimpleTest
 	{
 
-		/// <summary>The enrolled type <c>NotAThing</c> does not exist: its <c>typeof</c> resolves to an error type symbol</summary>
+		/// <summary>The registered type <c>NotAThing</c> does not exist: its <c>typeof</c> resolves to an error type symbol</summary>
 		private const string ProbeSource = """
 			namespace Probe
 			{
@@ -47,24 +47,24 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			""";
 
 		[Test]
-		public void Test_Unresolved_Enrolled_Type_Is_Reported_Cleanly()
+		public void Test_Unresolved_Registered_Type_Is_Reported_Cleanly()
 		{
 			var compilation = GeneratorProbeHarness.Compile(ProbeSource);
 
 			var (_, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
 			foreach (var diagnostic in generatorDiagnostics) { Log($"generator: {diagnostic}"); }
 
-			// the clean diagnostic points at the unresolved enrollment, so the author fixes the real compile error...
+			// the clean diagnostic points at the unresolved registration, so the author fixes the real compile error...
 			Assert.That(
 				generatorDiagnostics.Select(static d => d.Id),
 				Does.Contain("CJSON0021"),
-				"an unresolved enrolled type must be reported cleanly on the attribute");
+				"an unresolved registered type must be reported cleanly on the attribute");
 
 			// ... and the emitter must not have crashed reporting an internal exception (CJSON0003) instead
 			Assert.That(
 				generatorDiagnostics.Select(static d => d.Id),
 				Does.Not.Contain("CJSON0003"),
-				"the emitter must not crash on an unresolved enrolled type");
+				"the emitter must not crash on an unresolved registered type");
 		}
 
 	}

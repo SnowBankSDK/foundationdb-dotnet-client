@@ -39,18 +39,18 @@ namespace SnowBank.Data.Tuples
 		/// <summary>Name of the trimmer and runtime feature switch that controls <see cref="IsReflectionSupported"/>.</summary>
 		internal const string ReflectionSupportSwitchName = "SnowBank.Data.Tuples.TuPack.IsReflectionSupported";
 
-		/// <summary>Whether the runtime reflection path that builds encoders and decoders for exotic tuple element types is available.</summary>
+		/// <summary>Whether the runtime reflection path that builds encoders and decoders for uncommon tuple element types is available.</summary>
 		/// <remarks>
 		/// <para>Defaults to <see langword="true"/>. Well-known element types packed through the typed key API (int, long,
 		/// string, Guid, bool, and the other types with a compile-time fast path) never use this path, so they are
-		/// unaffected by the switch. Only exotic element types, and any value packed through the untyped or boxed object
-		/// path, use the reflective builder.</para>
+		/// unaffected by the switch. Only uncommon element types, and any value packed through the untyped or boxed object
+		/// path, use the reflection-based builder.</para>
 		/// <para>An application that publishes trimmed or Native AoT can set the MSBuild feature
 		/// <c>SnowBank.Data.Tuples.TuPack.IsReflectionSupported=false</c> (or the matching runtime config switch): the
-		/// trimmer then substitutes this property to <see langword="false"/> and removes the reflective builder, so a
+		/// trimmer then substitutes this property to <see langword="false"/> and removes the reflection-based builder, so a
 		/// consumer that only uses well-known element types builds with no trim warnings. With reflection off, an exotic
 		/// element type (Nullable of a non-well-known type, a nested tuple, a ValueTuple, or a boxed object) throws
-		/// <see cref="NotSupportedException"/> instead of building a reflective encoder that the trimmer may have removed.</para>
+		/// <see cref="NotSupportedException"/> instead of building a reflection-based encoder that the trimmer may have removed.</para>
 		/// </remarks>
 #if NET9_0_OR_GREATER
 		[System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(ReflectionSupportSwitchName)]

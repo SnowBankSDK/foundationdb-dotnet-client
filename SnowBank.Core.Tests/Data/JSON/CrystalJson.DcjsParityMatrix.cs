@@ -226,7 +226,7 @@ namespace SnowBank.Data.Json.Tests
 			}
 		}
 
-		/// <summary>The legacy DCJS callback signature, which is refused on both paths</summary>
+		/// <summary>The legacy DCJS callback signature, which is rejected on both paths</summary>
 		[DataContract]
 		public sealed class DxLegacyCallbackDto
 		{
@@ -516,8 +516,8 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Deserialize<DxKvpDto>("""{"pair":{"Key":"k","Value":7}}""")!.Pair, Is.EqualTo(new KeyValuePair<string, int>("k", 7)));
 			Assert.That(CrystalJson.Deserialize<DxKvpDto>("""{"pair":["k",7]}""")!.Pair, Is.EqualTo(new KeyValuePair<string, int>("k", 7)));
 
-			// an object that is not a KVP shape at all refuses loudly, same posture as the pair-array strictness
-			Assert.That(() => CrystalJson.Deserialize<DxKvpDto>("""{"pair":{"foo":1}}"""), Throws.InstanceOf<JsonBindingException>(), "an unrecognizable object refuses instead of defaulting silently");
+			// an object that is not a KVP shape at all rejects with an exception, same posture as the pair-array strictness
+			Assert.That(() => CrystalJson.Deserialize<DxKvpDto>("""{"pair":{"foo":1}}"""), Throws.InstanceOf<JsonBindingException>(), "an unrecognizable object rejects instead of defaulting silently");
 
 			// write side is UNCHANGED in this fix (held for the sample numbers): our output stays the 2-element array
 			var ourOutput = CrystalJson.Parse(CrystalJson.Serialize(dto, Compact)).AsObject();
@@ -580,7 +580,7 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_Lifecycle_Callbacks_Fire_On_Both_Write_Routes_And_On_Read()
 		{
 			// the four DCJS callbacks are honoured, so a ported estate keeps the behaviour it had, but only in the
-			// modern signatures: the legacy StreamingContext parameter is refused (see the next test)
+			// modern signatures: the legacy StreamingContext parameter is rejected (see the next test)
 			var dto = new DxCallbackDto { Id = "X" };
 
 			Assert.That(CrystalJson.Serialize(dto, Compact), Is.EqualTo("""{"id":"X"}"""));
@@ -601,16 +601,16 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Legacy_StreamingContext_Callback_Is_Refused_With_The_Shared_Message()
+		public void Test_Legacy_StreamingContext_Callback_Is_Rejected_With_The_Shared_Message()
 		{
-			// DCJS REQUIRES this parameter, so refusing it is a deliberate breaking change: the callsite is a
-			// search-and-replace, and the type stops being serializable by DCJS once converted. Refused at
+			// DCJS REQUIRES this parameter, so rejecting it is a deliberate breaking change: the callsite is a
+			// search-and-replace, and the type stops being serializable by DCJS once converted. Rejected at
 			// contract-build time, once per type, never per invocation.
 			var ex = Assert.Throws<JsonBindingException>(() => CrystalJson.Serialize(new DxLegacyCallbackDto { Id = "X" }, Compact));
 			Assert.That(ex!.Message, Is.EqualTo(string.Format(CrystalJson.Errors.CallbackStreamingContextNotSupported, $"{typeof(DxLegacyCallbackDto).FullName}.AfterRead")));
 			Assert.That(ex.Message, Does.StartWith("Remove the StreamingContext parameter"), "the message leads with the fix");
 
-			// and the same refusal on the read side, from the same contract build
+			// and the same rejection on the read side, from the same contract build
 			Assert.That(() => CrystalJson.Deserialize<DxLegacyCallbackDto>("""{"id":"X"}"""), Throws.InstanceOf<JsonBindingException>());
 		}
 

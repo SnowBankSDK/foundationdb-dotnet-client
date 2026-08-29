@@ -45,12 +45,12 @@ Book back = AcmeSerializers.Book.Deserialize(json);
 ## Container attributes
 
 The container declares three independent things: which class hosts the code, which formats it
-produces, and which types it enrolls.
+produces, and which types it registers.
 
 | Attribute | Namespace | Role |
 |---|---|---|
 | `[CrystalConverter]` | `SnowBank.Data` | the container marker; names no format on its own |
-| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrolls a type; repeatable; feeds every format the container produces |
+| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | registers a type; repeatable; feeds every format the container produces |
 | `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | requests the JSON format and carries its parameters (profile, naming policy) |
 | `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias: `[CrystalConverter]` + `[CrystalJsonOutput]` with the same parameters, for a JSON-only container |
 | `[CrystalJsonSelfSerializable]` | `SnowBank.Data.Json` | meta-attribute for self-serializable types (a type acts as its own container); see the [migration guide](../../releases/7.4.3.md#new-apis) |
@@ -60,7 +60,7 @@ default output form, `CrystalJsonSerializerDefaults.Web` for camelCase, `.DataCo
 legacy `DataContractJsonSerializer` output. Settings passed at a call site replace the profile for
 that call.
 
-`[CrystalSerializable]` replaces the obsolete `[CrystalJsonSerializable]`; enrollment is
+`[CrystalSerializable]` replaces the obsolete `[CrystalJsonSerializable]`; registration is
 format-neutral now. XML output has its own attributes and its own page,
 [CrystalXml](../CrystalXml.md).
 
@@ -172,7 +172,7 @@ the same place by both paths: the generator emits the diagnostic, and the reflec
 same message when it builds the type's contract. The
 [migration guide](../../releases/7.4.3.md) has the full treatment of each.
 
-| Id | Severity | Refuses | Remedy |
+| Id | Severity | Rejects | Remedy |
 |---|---|---|---|
 | `CJSON0008` | Error | an unconditional `[JsonIgnore]` next to an include signal (`[DataMember]`, `[JsonInclude]`, a naming attribute) | split into one DTO per format, or remove one of the two attributes |
 | `CJSON0010` | Error | `[JsonConvertWith]` names a type that implements neither `IJsonPacker<T>` nor `IJsonDeserializer<T>` | implement a converter facet, or fix the named type |
@@ -183,7 +183,7 @@ same message when it builds the type's contract. The
 | `CJSON0016` | Error | `[OnDeserializing]` on a type with a `required` or `init`-only member | drop `[OnDeserializing]`, or make the member settable |
 | `CJSON0017` | Error | a `[JsonBooleanLiterals]` argument that is not a string, bool, or number | use a valid literal |
 | `CJSON0018` | Warning | `StrictLiterals = true` with a `null` false literal (nothing to enforce on the false side) | remove `StrictLiterals`, or give the member a real false literal |
-| `CJSON0019` | Warning | a `[CrystalSerializable]` enrollment of a type CrystalJson already serializes natively | remove the enrollment |
+| `CJSON0019` | Warning | a `[CrystalSerializable]` registration of a type CrystalJson already serializes natively | remove the registration |
 | `CJSON0022` | Error | `[DataMember]` on an explicit interface implementation: it belongs to the contract, and generated code cannot declare an accessor for a qualified member name | promote it to a normal member, or move the contract onto its own DTO |
 
 The self-serializable diagnostics (`CJSON0004` to `CJSON0007`, `CJSON0020`, `CJSON0021`) and the XML

@@ -495,7 +495,7 @@ namespace SnowBank.Data.Json.Tests
 					CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a", "Value": 1, "Extra": 2 } ]"""),
 					Is.EqualTo(new Dictionary<string, int> { ["a"] = 1 }), "extra members are ignored, as on any other object");
 
-				// the refusals
+				// the rejections
 				Assert.That(
 					() => CrystalJson.Deserialize<Dictionary<string, int>>("""[ { "Key": "a" } ]"""),
 					Throws.InstanceOf<JsonBindingException>(), "missing Value must fail");
@@ -525,9 +525,9 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Legacy_StreamingContext_Callback_Signature_Is_Refused()
+		public void Test_Legacy_StreamingContext_Callback_Signature_Is_Rejected()
 		{
-			// the signature DCJS REQUIRES is the one we refuse: converting it costs the type its DCJS compatibility,
+			// the signature DCJS REQUIRES is the one we reject: converting it costs the type its DCJS compatibility,
 			// which is why the migration guide makes that a precondition of the sweep rather than a footnote
 			var ex = Assert.Throws<JsonBindingException>(() => CrystalJson.Deserialize<LifecycleDto>("""{ "Name": "x" }"""));
 			Assert.That(ex!.Message, Is.EqualTo(string.Format(CrystalJson.Errors.CallbackStreamingContextNotSupported, $"{typeof(LifecycleDto).FullName}.OnDeserializedCallback")));
@@ -701,10 +701,10 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Conflicting_Output_Names_Are_Refused_Loudly()
+		public void Test_Conflicting_Output_Names_Are_Rejected()
 		{
 			// a member carrying [DataMember(Name=x)] plus a foreign naming attribute with a DIFFERENT name is one
-			// type trying to serve two output contracts: refuse with an error naming the member, both attributes and
+			// type trying to serve two output contracts: reject with an error naming the member, both attributes and
 			// both names, instead of silently picking one (the fix on the application side is to split the DTO)
 
 			Assert.That(
@@ -714,7 +714,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(
 				() => CrystalJson.Deserialize<DoubleContractDto>("""{ "code": "c-1" }"""),
 				Throws.Exception.With.Message.Contains("ACTIF"),
-				"the same contract defect must also refuse the read direction");
+				"the same contract defect must also reject the read direction");
 
 			Assert.That(
 				() => CrystalJson.Serialize(new DoubleContractStjDto { Code = "c-1" }),
@@ -722,7 +722,7 @@ namespace SnowBank.Data.Json.Tests
 				"a conflicting [JsonPropertyName] is the same defect with another serializer");
 
 			// a bare [DataMember] names the member after itself, and that implied name counts: this pair used to slip
-			// under the refusal, and the foreign name then won the resolution silently
+			// under the rejection, and the foreign name then won the resolution silently
 			Assert.That(
 				() => CrystalJson.Serialize(new BareDoubleContractDto { Code = "c-1" }),
 				Throws.Exception.With.Message.Contains("Code").And.Message.Contains("ACTIF").And.Message.Contains("split"),
@@ -730,10 +730,10 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Conflicting_Json_Naming_Attributes_Are_Refused_Loudly()
+		public void Test_Conflicting_Json_Naming_Attributes_Are_Rejected()
 		{
 			// several JSON naming attributes on one member with different names, with NO [DataMember]: still a
-			// dual-output DTO, refused the same way (the source generator refuses the same shape at build time,
+			// dual-output DTO, rejected the same way (the source generator rejects the same shape at build time,
 			// CJSON0011). Precedence when they agree is CrystalJson [JsonProperty] > STJ [JsonPropertyName] > Newtonsoft
 
 			Assert.That(
@@ -753,7 +753,7 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Unconditional_JsonIgnore_Next_To_An_Include_Signal_Is_Refused_Loudly()
+		public void Test_Unconditional_JsonIgnore_Next_To_An_Include_Signal_Is_Rejected()
 		{
 			// the ignore variant of the double contract: a dual-output DTO is not supported, and the remedy the
 			// message steers to is the SPLIT (one DTO per serializer), with "remove one of the two attributes" as
@@ -770,7 +770,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(
 				() => CrystalJson.Deserialize<DualOutputDto>("""{ "Plain": "p" }"""),
 				Throws.Exception.With.Message.Contains("JsonIgnore"),
-				"the read direction refuses too: the contract is built once, for both directions");
+				"the read direction rejects too: the contract is built once, for both directions");
 
 			Assert.That(
 				() => CrystalJson.Serialize(new NewtonsoftPairDto { Both = "b" }),
@@ -786,7 +786,7 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Ignore_Conflict_Refusal_Never_Suggests_A_Condition()
+		public void Test_Ignore_Conflict_Rejection_Never_Suggests_A_Condition()
 		{
 			var ex = Assert.Throws<JsonSerializationException>(() => CrystalJson.Serialize(new DualOutputDto { Both = "b" }))!;
 			Log(ex.Message);

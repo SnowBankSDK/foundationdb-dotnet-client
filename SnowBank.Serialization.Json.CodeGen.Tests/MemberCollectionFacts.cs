@@ -274,7 +274,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		// --- explicit interface implementations ------------------------------------------------------------------
 		//
-		// Pins how an explicit interface implementation is handled: excluded from a plain DTO, refused with
+		// Pins how an explicit interface implementation is handled: excluded from a plain DTO, rejected with
 		// CJSON0022 when a [DataContract] type opts one into the contract.
 		//
 		// The member name of an explicit implementation is the qualified interface member
@@ -286,7 +286,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		// On a plain DTO the reference serializer ignores an explicit implementation, because the member is
 		// private in metadata, so excluding it silently is correct. On a [DataContract] type membership is
 		// accessibility-blind, and the reference serializer writes the member under the qualified name; silently
-		// dropping it would produce a document short of one element, so the declaration is refused instead.
+		// dropping it would produce a document short of one element, so the declaration is rejected instead.
 
 		private const string Interface = """
 			#nullable enable
@@ -351,7 +351,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_An_Explicit_Implementation_Opted_Into_A_Data_Contract_Is_Refused()
+		public void Test_An_Explicit_Implementation_Opted_Into_A_Data_Contract_Is_Rejected()
 		{
 			var (_, generatorDiagnostics, errors) = RunOnInterfaceProbe("""
 					[System.Runtime.Serialization.DataContract]
@@ -365,12 +365,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 				""");
 
-			var refusal = generatorDiagnostics.SingleOrDefault(static d => d.Id == "CJSON0022");
-			Assert.That(refusal, Is.Not.Null, "the generator must refuse a [DataMember] on an explicit interface implementation");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "the member belongs to the contract, so dropping it silently would write a short document");
-			Assert.That(refusal.GetMessage(), Does.Contain("IIdentified.Key"), "the message must name the member");
+			var rejection = generatorDiagnostics.SingleOrDefault(static d => d.Id == "CJSON0022");
+			Assert.That(rejection, Is.Not.Null, "the generator must reject a [DataMember] on an explicit interface implementation");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "the member belongs to the contract, so dropping it silently would write a short document");
+			Assert.That(rejection.GetMessage(), Does.Contain("IIdentified.Key"), "the message must name the member");
 
-			Assert.That(errors, Is.Empty, "the refused member is not emitted, so the refusal replaces the broken generated code instead of coming on top of it");
+			Assert.That(errors, Is.Empty, "the rejected member is not emitted, so the rejection replaces the broken generated code instead of coming on top of it");
 		}
 
 		// --- abstract declared types ------------------------------------------------------------------------------
@@ -436,7 +436,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				""");
 
 			Assert.That(warnings, Has.Count.EqualTo(1), "the abstract declared type is the only untagged slot in the probe");
-			Assert.That(warnings[0].Severity, Is.EqualTo(DiagnosticSeverity.Warning), "the document is still written, so this is a warning and not a refusal");
+			Assert.That(warnings[0].Severity, Is.EqualTo(DiagnosticSeverity.Warning), "the document is still written, so this is a warning and not a rejection");
 
 			var message = warnings[0].GetMessage();
 			using (Assert.EnterMultipleScope())

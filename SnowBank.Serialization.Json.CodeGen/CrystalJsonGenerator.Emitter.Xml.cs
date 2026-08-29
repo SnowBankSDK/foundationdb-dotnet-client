@@ -426,7 +426,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="comment">The leading comment of the emitted method, which each format words for itself</param>
 			/// <param name="include">Which declared members get a case at all (the compat format drops the ones its data contract does not declare)</param>
 			/// <param name="label">The format label of one member</param>
-			/// <param name="writeDefaultArm">Emits the <c>_ =&gt;</c> arm, which is where the two formats disagree the most (a number, a refusal, or a flags combiner)</param>
+			/// <param name="writeDefaultArm">Emits the <c>_ =&gt;</c> arm, which is where the two formats disagree the most (a number, a rejection, or a flags combiner)</param>
 			/// <remarks>Shared by both profiles so that the shape of the lookup - a switch expression over the FIRST member of each
 			/// distinct constant value - has one spelling: a duplicate constant would otherwise be a duplicate case label, and getting
 			/// that wrong on one format only is a build failure the other format's tests cannot see.</remarks>
@@ -482,7 +482,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					});
 			}
 
-			/// <summary>Emits the helper that refuses an undeclared combination of a <c>[Flags]</c> enum</summary>
+			/// <summary>Emits the helper that rejects an undeclared combination of a <c>[Flags]</c> enum</summary>
 			private static void WriteXmlFlagsHelper(CSharpCodeBuilder sb)
 			{
 				sb.Comment("a [Flags] value that is not a declared member has no label: composing one from the declared flags would mean picking a separator this profile never specified");
@@ -784,7 +784,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Resolves the name of the root element of a type: the data contract's own name, else the type name through the container's naming policy</summary>
-			/// <remarks>BACKSTOP only: a <c>[DataContract(Name = ...)]</c> that is not a legal XML name is refused by the parser with <c>CXML0007</c>, which points at the declaration itself. The <c>#error</c> below stays so that a name reaching here through some future path still cannot produce a document that does not parse.</remarks>
+			/// <remarks>BACKSTOP only: a <c>[DataContract(Name = ...)]</c> that is not a legal XML name is rejected by the parser with <c>CXML0007</c>, which points at the declaration itself. The <c>#error</c> below stays so that a name reaching here through some future path still cannot produce a document that does not parse.</remarks>
 			private string ResolveXmlRootName(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
 				string name = typeDef.DataContractName ?? Parser.FormatName(typeDef.Type.Name, this.Metadata.PropertyNamingPolicy);
@@ -994,7 +994,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <para>A null value makes the attribute ABSENT, whatever the null policy of the member says: an attribute has no
 			/// nil form (there is no attribute of an attribute), so "present but null" is not a state this format can express.</para>
 			/// <para>A custom converter has no say here: its XML facet writes an ELEMENT and structurally cannot produce an attribute
-			/// value, which is why the pair is refused at generation time (CXML0009) rather than silently bypassed.</para>
+			/// value, which is why the pair is rejected at generation time (CXML0009) rather than silently bypassed.</para>
 			/// </remarks>
 			private void WriteXmlAttributeMember(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef, CrystalJsonMemberMetadata member)
 			{
@@ -1002,7 +1002,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.Comment($"{member.Type.Name} {member.MemberName} => @{GetXmlMemberName(member)}{(member.IgnoreCondition != null ? $" [{member.IgnoreCondition}]" : "")}");
 
 				if (member.CustomConverterType is not null)
-				{ // CXML0009 already reported this at generation time: emit something that compiles and fails loudly, and do NOT
+				{ // CXML0009 already reported this at generation time: emit something that compiles and throws, and do NOT
 				  // fall through to the scalar path, which would write the attribute the converter was supposed to own
 					this.XmlNeedsNotSupportedHelper = true;
 					sb.AppendLine($"FailXmlNotSupported(typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)}, \"an attribute-projected member cannot be written by a custom converter, whose XML facet produces an element\"); // see CXML0009");
@@ -1014,7 +1014,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				sb.AppendLine($"var {local} = {GetXmlMemberReadExpr(typeDef, member)};");
 
-				// CXML0003 already refused any attribute-projected member with no lexical form, so this cannot fail to resolve
+				// CXML0003 already rejected any attribute-projected member with no lexical form, so this cannot fail to resolve
 				var text = GetXmlScalarText(member.Type, local, member.EnumFormat);
 				if (text is null)
 				{
@@ -1175,7 +1175,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				string arg = valueExpr + (member.Type.NullableOfType is not null && !member.CustomConverterXmlFacetDeclaredForNullable ? ".Value" : "");
 
 				if (!member.CustomConverterHasXmlSerializer)
-				{ // CXML0008 already reported this at generation time: emit something that compiles and fails loudly
+				{ // CXML0008 already reported this at generation time: emit something that compiles and throws
 					this.XmlNeedsNotSupportedHelper = true;
 					sb.AppendLine($"FailXmlNotSupported(typeof({facetType.FullyQualifiedName}), {CSharpCodeBuilder.Constant(member.MemberName)}, \"the custom converter declared for this member does not implement the ICrystalXmlSerializer<T> facet\"); // see CXML0008");
 					return;
@@ -1213,7 +1213,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Writes one item of a sequence, or one value of a dictionary: the same rules as a member, minus the member-level attributes</summary>
 			/// <remarks>An item carries no <c>[XmlProperty]</c> of its own, so it has no item name to give (a bare sequence of bare
-			/// sequences is refused at generation time, CXML0006) and no null policy of its own: a null item follows the settings,
+			/// sequences is rejected at generation time, CXML0006) and no null policy of its own: a null item follows the settings,
 			/// exactly like an unannotated member.</remarks>
 			private void WriteXmlItemElement(CSharpCodeBuilder sb, XmlNameTable names, TypeMetadata itemType, string valueExpr, string nameRef, string dictionaryFormat, string scope)
 			{
@@ -1271,7 +1271,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// the two attribute shapes carry the VALUE as text, so only a scalar value has a projection there: a nested
 				// element inside an entry, or a mangled value, would both be a shape nobody asked for.
-				// BACKSTOP only: the parser already refused this pair with CXML0011, at the declaration that picked the shape
+				// BACKSTOP only: the parser already rejected this pair with CXML0011, at the declaration that picked the shape
 				var entryValueText = GetXmlScalarText(valueType, entry + ".Value");
 				if (entryValueText is null)
 				{
@@ -1340,7 +1340,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.LeaveBlock("else");
 			}
 
-			/// <summary>Emits the call that fails loudly for a type with no XML projection</summary>
+			/// <summary>Emits the call that throws for a type with no XML projection</summary>
 			private void WriteXmlNotSupported(CSharpCodeBuilder sb, TypeMetadata type, string scope)
 			{
 				this.XmlNeedsNotSupportedHelper = true;
@@ -1356,7 +1356,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private static void WriteXmlNotSupportedHelper(CSharpCodeBuilder sb)
 			{
 				sb.Comment("this member has no XML projection: fail at the exact member, rather than write a document nobody asked for");
-				sb.Comment("the REASON is passed in: the same helper backstops several distinct refusals, and a message naming only the most common one would be a lie on the others");
+				sb.Comment("the REASON is passed in: the same helper backstops several distinct rejections, and a message naming only the most common one would be a lie on the others");
 				sb.AppendLine($"private static void FailXmlNotSupported({SystemTypeFullName} type, string member, string reason)");
 				sb.EnterBlock();
 				sb.AppendLine($"throw new {NotSupportedExceptionFullName}(\"Cannot write member '\" + member + \"' to XML: \" + reason + \" (type '\" + type.Name + \"').\");");
@@ -1383,7 +1383,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="enumFormat">The member's <c>[JsonProperty(EnumFormat = ...)]</c>, when the value IS the member (an item or a dictionary entry carries no member attributes of its own)</param>
 			/// <remarks>
 			/// <para>The set here is exactly <c>Parser.IsXmlScalar</c>'s: a member the parser accepted as an XML attribute is one this
-			/// method can format, and a member it refused (CXML0003) never reaches an attribute position.</para>
+			/// method can format, and a member it rejected (CXML0003) never reaches an attribute position.</para>
 			/// <para>Escaping is decided per type, not per value: a number, a date, a GUID or a base64 payload cannot contain a
 			/// character that needs escaping, so they go through the raw path; text, a char, an enum label and a URI can.</para>
 			/// </remarks>
@@ -1396,7 +1396,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					if (enumFormat == "Number")
 					{ // [JsonProperty(EnumFormat = Number)] forces the numeric form on BOTH formats: honoring it on one only is
-					  // exactly the silent cross-format divergence this surface refuses
+					  // exactly the silent cross-format divergence this surface rejects
 						return (FormatXmlScalar(GetXmlEnumUnderlyingFamily(actual), $"({GetXmlEnumUnderlyingKeyword(actual)}) {expr}"), false);
 					}
 

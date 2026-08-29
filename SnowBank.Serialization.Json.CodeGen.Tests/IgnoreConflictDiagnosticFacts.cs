@@ -68,7 +68,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			return diagnostics;
 		}
 
-		private static void AssertRefusedLoudly(ImmutableArray<Diagnostic> diagnostics, string includeSignal)
+		private static void AssertRejectedAsError(ImmutableArray<Diagnostic> diagnostics, string includeSignal)
 		{
 			var conflict = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0008");
 			Assert.That(conflict, Is.Not.Null, "the generator must report CJSON0008 for the conflicting member");
@@ -86,7 +86,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_DataMember_Plus_Unconditional_JsonIgnore_Is_A_Build_Error()
 		{
 			// the probe deliberately has NO type-level [DataContract]: on a [DataContract] type the whole
-			// enrolment is refused first (CJSON0014, pinned by DataContractRefusalDiagnosticFacts), so the
+			// registration is rejected first (CJSON0014, pinned by DataContractRegistrationDiagnosticFacts), so the
 			// member-level conflict is only reachable on a plain DTO carrying a stray [DataMember]
 			var diagnostics = RunOn("""
 					public sealed record ProbeDto
@@ -98,7 +98,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public int Plain { get; set; }
 					}
 				""");
-			AssertRefusedLoudly(diagnostics, "DataMember");
+			AssertRejectedAsError(diagnostics, "DataMember");
 		}
 
 		[Test]
@@ -112,7 +112,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public string? Both { get; set; }
 					}
 				""");
-			AssertRefusedLoudly(diagnostics, "JsonInclude");
+			AssertRejectedAsError(diagnostics, "JsonInclude");
 		}
 
 		[Test]
@@ -126,7 +126,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public string? Both { get; set; }
 					}
 				""");
-			AssertRefusedLoudly(diagnostics, "JsonProperty");
+			AssertRejectedAsError(diagnostics, "JsonProperty");
 		}
 
 		[Test]
@@ -142,13 +142,13 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public string? Both { get; set; }
 					}
 				""");
-			AssertRefusedLoudly(diagnostics, "DataMember");
+			AssertRejectedAsError(diagnostics, "DataMember");
 		}
 
 		[Test]
 		public void Test_Conditional_JsonIgnore_Is_Not_A_Conflict()
 		{
-			// no type-level [DataContract] here: it would trip the CJSON0014 enrolment refusal and the member
+			// no type-level [DataContract] here: it would trip the CJSON0014 registration rejection and the member
 			// would never be parsed, making this assertion vacuous
 			var diagnostics = RunOn("""
 					public sealed record ProbeDto

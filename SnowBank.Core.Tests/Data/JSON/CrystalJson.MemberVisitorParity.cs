@@ -68,7 +68,7 @@ namespace SnowBank.Data.Json.Tests
 
 	}
 
-	/// <summary>Container enrolling <see cref="ParityWidget"/> (and its nested <see cref="ParityGadget"/>)</summary>
+	/// <summary>Container registering <see cref="ParityWidget"/> (and its nested <see cref="ParityGadget"/>)</summary>
 	[CrystalConverter]
 	[CrystalJsonOutput]
 	[CrystalSerializable(typeof(ParityWidget))]

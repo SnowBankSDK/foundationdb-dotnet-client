@@ -29,7 +29,7 @@ namespace NodaTime
 	using SnowBank.Data.Xml;
 
 	/// <summary>A type the crawler deliberately leaves out (its namespace is one of the three it skips), which still writes its own XML content</summary>
-	/// <remarks>Declared HERE, in a namespace the parser never enrols, so that the member-level <c>ICrystalXmlSerializable</c> dispatch of the emitter is the code that runs: an enrolled type would reach its own hook through its own generated body instead, leaving that branch unexecuted.</remarks>
+	/// <remarks>Declared HERE, in a namespace the parser never registers, so that the member-level <c>ICrystalXmlSerializable</c> dispatch of the emitter is the code that runs: a registered type would reach its own hook through its own generated body instead, leaving that branch unexecuted.</remarks>
 	public readonly struct Stamp : ICrystalXmlSerializable
 	{
 
@@ -153,7 +153,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 	}
 
-	/// <summary>Writes its own XML content, and IS enrolled: the generated body owns the element shell, the hook the content</summary>
+	/// <summary>Writes its own XML content, and IS registered: the generated body owns the element shell, the hook the content</summary>
 	public sealed record Marker : ICrystalXmlSerializable
 	{
 
@@ -175,7 +175,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.Acme
 
 		public Signature? Mark { get; init; }
 
-		/// <summary>A member type the crawler never enrols, so the member-level hook dispatch is what writes it</summary>
+		/// <summary>A member type the crawler never registers, so the member-level hook dispatch is what writes it</summary>
 		public global::NodaTime.Stamp? Tick { get; init; }
 
 	}
@@ -652,7 +652,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Direct_Dictionary_Key_That_Is_Not_An_Xml_Name_Is_Refused_Loudly()
+		public void Test_A_Direct_Dictionary_Key_That_Is_Not_An_Xml_Name_Is_Rejected()
 		{
 			// Direct names the element after the key: a key that is not an NCName has no representation at all, and
 			// silently mangling it would produce a document that does not parse
@@ -730,7 +730,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_Member_With_No_Xml_Projection_Fails_At_That_Member()
 		{
 			// no lexical form, no generated serializer, no hook: there is nothing to write, and inventing a text form for
-			// it would be exactly the silent guess this format refuses. The JSON side of the same container is unaffected.
+			// it would be exactly the silent guess this format rejects. The JSON side of the same container is unaffected.
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(
@@ -787,7 +787,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				// [JsonProperty(EnumFormat = Number)] forces the numeric form on BOTH formats: honoring it on one only is the
-				// silent cross-format divergence this surface refuses
+				// silent cross-format divergence this surface rejects
 				Assert.That(
 					xml,
 					Is.EqualTo("<dispatch via=\"on-foot\" tally=\"1\"><mode>Bike</mode><code>1</code><rights>Full</rights></dispatch>"),
@@ -805,10 +805,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_An_Undeclared_Flags_Combination_Is_Refused_Loudly()
+		public void Test_An_Undeclared_Flags_Combination_Is_Rejected()
 		{
 			// a reflection-free rendering of an arbitrary flags combination would have to invent a separator this profile
-			// never specified, so the output refuses it at the member instead of guessing one
+			// never specified, so the output rejects it at the member instead of guessing one
 			Assert.That(
 				() => AcmeSerializers.Dispatch.ToXmlText(new Dispatch { Rights = (Access) 5 }),
 				Throws.InstanceOf<NotSupportedException>().With.Message.Contains("Access"));
@@ -869,7 +869,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Log($"XML : {xml}");
 
 			// the parent names the element, and the CONTENT comes from the hook, not from Signature's own members: the
-			// crawler enrolls every member type, so Signature has a generated body of its own, and that body is what
+			// crawler registers every member type, so Signature has a generated body of its own, and that body is what
 			// dispatches to the hook (the member-level dispatch in the emitter is the fallback for a member type the
 			// crawler leaves out, which the same rule covers)
 			Assert.That(xml, Is.EqualTo("<wrapper><mark>ok</mark></wrapper>"));
@@ -887,12 +887,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_An_Enrolled_Type_That_Writes_Its_Own_Xml_Keeps_Its_Shell()
+		public void Test_A_Registered_Type_That_Writes_Its_Own_Xml_Keeps_Its_Shell()
 		{
 			string xml = AcmeSerializers.Marker.ToXmlText(new Marker { Note = "hi" });
 			Log($"XML : {xml}");
 
-			// enrolled AND hooked: its generated converter writes the root element, then hands the content to the hook,
+			// registered AND hooked: its generated converter writes the root element, then hands the content to the hook,
 			// so its own members are never written by the generated body
 			Assert.That(xml, Is.EqualTo("<marker>hi</marker>"));
 		}
@@ -1062,7 +1062,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Runtime_Type_Outside_The_Graph_Is_Refused_Loudly()
+		public void Test_A_Runtime_Type_Outside_The_Graph_Is_Rejected()
 		{
 			// Audio derives from Media but is declared nowhere: there is no generated body to write it, and writing it
 			// through the base body would silently drop everything the subtype adds
@@ -1072,11 +1072,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Is_Refused_On_This_Output()
+		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Is_Rejected_On_This_Output()
 		{
 			// DELIBERATE DIVERGENCE from the compat format, which writes the root's own body for this exact value.
 			// The general format matches the JSON side instead: an instance of the root type carries no discriminator
-			// there either, so a reader could not tell it from a subtype whose annotation went missing. It is refused
+			// there either, so a reader could not tell it from a subtype whose annotation went missing. It is rejected
 			// rather than written under a shape the reader cannot interpret.
 			Assert.That(
 				() => AcmeSerializers.Vehicle.ToXmlText(new Vehicle { Plate = "AB-123-CD" }),
@@ -1103,7 +1103,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_An_Invalid_Root_Name_Override_Is_Refused_Loudly()
+		public void Test_An_Invalid_Root_Name_Override_Is_Rejected()
 		{
 			// the one place caller text becomes an XML name, so the one place it is validated
 			Assert.That(
@@ -1114,7 +1114,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_A_Collection_Root_Requires_An_Explicit_Name()
 		{
-			// this profile has no ArrayOfX convention: a collection root without a caller-supplied name is refused,
+			// this profile has no ArrayOfX convention: a collection root without a caller-supplied name is rejected,
 			// never guessed from a type name
 			var books = new[] { new Book { Id = 1, Title = "x", Tags = [ ] } };
 
@@ -1202,11 +1202,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
-		#region Generation-time refusals...
+		#region Generation-time rejections...
 
 		/// <summary>Runs the generator over a probe and returns the <c>#error</c> directives its output carries</summary>
 		/// <remarks>An <c>#error</c> is not a generator diagnostic: it only exists once the emitted source is compiled, where it
-		/// surfaces as CS1029. The two shapes pinned here are ALSO refused earlier by a parser diagnostic (CXML0011 for the
+		/// surfaces as CS1029. The two shapes pinned here are ALSO rejected earlier by a parser diagnostic (CXML0011 for the
 		/// attribute-shaped dictionary value, CXML0007 for the root name); the <c>#error</c> is the unreachable backstop kept in
 		/// the emitted source, and these facts pin that the backstop still fires because the diagnostics do not abort emission.</remarks>
 		private static List<string> EmissionErrorsOf(string source)
@@ -1260,7 +1260,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_A_DataContract_Name_That_Is_Not_An_Xml_Name_Fails_The_Build()
 		{
 			// the root name is the one name no [XmlProperty] can override: a contract name written for another format would
-			// produce a document that does not parse, so it is refused where it is resolved. CXML0007 reports it at the
+			// produce a document that does not parse, so it is rejected where it is resolved. CXML0007 reports it at the
 			// type with a remedy; this fact pins the #error backstop that remains in the emitted source.
 			var errors = EmissionErrorsOf("""
 					[System.Runtime.Serialization.DataContract(Name = "not a name")]

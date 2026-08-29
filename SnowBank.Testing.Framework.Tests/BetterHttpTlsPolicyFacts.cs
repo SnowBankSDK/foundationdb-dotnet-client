@@ -36,7 +36,7 @@ namespace SnowBank.Testing.Framework.Tests
 	/// fact of life in dev/test/internal-LAN deployments (no public X509 for internal servers, local-CA distribution is its
 	/// own pain), so the client options offer graded helpers instead of hand-written callbacks - trust EXTRA roots with full
 	/// chain validation (the private-CA / pinned-self-signed story), or forgive chain-trust errors while still enforcing the
-	/// host-name match. Validation is never silently disabled: accept-anything remains a separate, loudly-named method.</summary>
+	/// host-name match. Validation is never silently disabled: accept-anything remains a separate, with an exception-named method.</summary>
 	[TestFixture]
 	public class BetterHttpTlsPolicyFacts : SimpleTest
 	{

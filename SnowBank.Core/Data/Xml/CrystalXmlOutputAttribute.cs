@@ -30,7 +30,7 @@ namespace SnowBank.Data.Xml
 	/// <summary>Requests <b>XML</b> output from a <see cref="CrystalConverterAttribute"/> container, and carries the parameters of that format</summary>
 	/// <remarks>
 	/// <para>Applied on the same partial container class that carries <c>[CrystalConverter]</c> and one or more <c>[CrystalSerializable(...)]</c> attributes. When present, the generator emits a <c>WriteXml&lt;TEmitter&gt;</c> body and the XML output methods (<c>ToXmlText</c>, <c>ToXmlSlice</c>, <c>ToXmlBytes</c>, <c>WriteXmlTo</c>, <c>ToXDocument</c>) for each generated type.</para>
-	/// <para>Combine it with <c>[CrystalJsonOutput]</c> on the same container to produce both formats from one set of enrolled types; alone, the container produces XML and nothing else. It does not combine with the mono-format <c>[CrystalJsonConverter]</c> alias (<c>CRYS0002</c>).</para>
+	/// <para>Combine it with <c>[CrystalJsonOutput]</c> on the same container to produce both formats from one set of registered types; alone, the container produces XML and nothing else. It does not combine with the mono-format <c>[CrystalJsonConverter]</c> alias (<c>CRYS0002</c>).</para>
 	/// <para>XML output is strictly opt-in: a container that never names this attribute produces no XML.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]
@@ -74,7 +74,7 @@ namespace SnowBank.Data.Xml
 	/// <summary>Mono-format alias that marks a partial class as a container of source-generated <b>XML</b> serializers</summary>
 	/// <remarks>
 	/// <para>Exactly equivalent to <c>[CrystalConverter]</c> plus <c>[CrystalXmlOutput(...)]</c> with the same parameters, and the shortest spelling for a container that only ever produces XML: no JSON entry point, no JSON proxy and no JSON facet is generated for its types.</para>
-	/// <para>Being mono-format, it does not combine with another output format: pairing it with <c>[CrystalJsonOutput]</c> is refused (<c>CRYS0002</c>). A container that produces both formats spells out <c>[CrystalConverter]</c>, <c>[CrystalJsonOutput]</c> and <c>[CrystalXmlOutput]</c>.</para>
+	/// <para>Being mono-format, it does not combine with another output format: pairing it with <c>[CrystalJsonOutput]</c> is rejected (<c>CRYS0002</c>). A container that produces both formats spells out <c>[CrystalConverter]</c>, <c>[CrystalJsonOutput]</c> and <c>[CrystalXmlOutput]</c>.</para>
 	/// <para>Sample: <code>
 	/// [CrystalXmlConverter(CrystalXmlSerializerDefaults.DataContractCompat)]
 	/// [CrystalSerializable(typeof(LegacyOrder))]
@@ -115,7 +115,7 @@ namespace SnowBank.Data.Xml
 		General = 1,
 
 		/// <summary>The format produced by <see cref="System.Runtime.Serialization.DataContractSerializer"/>: contract namespaces, data contract names, ordinal member ordering, <c>i:nil</c> and <c>i:type</c> markers, qualified-name type annotations, and unhashed <c>KeyValueOfXY</c> dictionary elements</summary>
-		/// <remarks>A container with this preset produces what <c>DataContractSerializer</c> would have produced for the same type, POCO or <c>[DataContract]</c> alike. Element names come from the data contract, so combining this preset with a naming policy is refused at build time. A declaration this output can prove nothing uses is omitted, and the ones that remain are written on the
+		/// <remarks>A container with this preset produces what <c>DataContractSerializer</c> would have produced for the same type, POCO or <c>[DataContract]</c> alike. Element names come from the data contract, so combining this preset with a naming policy is rejected at build time. A declaration this output can prove nothing uses is omitted, and the ones that remain are written on the
 		/// first element that needs them, so a document carries fewer declarations than the reference serializer writes and the
 		/// same expanded names. To strip namespaces and prefixes altogether, see <see cref="CrystalXmlOutputAttribute.OmitNamespaces"/>.</remarks>
 		DataContractCompat = 2,

@@ -188,7 +188,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		}
 
 		/// <summary>Returns the container marker that owns this type, or <see langword="null"/> when it carries none</summary>
-		/// <remarks>A type carrying several markers is refused (<c>CRYS0003</c>), but it must be refused ONCE: the first marker of <see cref="ContainerMarkerAttributeFullNames"/> that it carries is the one that parses it and reports.</remarks>
+		/// <remarks>A type carrying several markers is rejected (<c>CRYS0003</c>), but it must be rejected ONCE: the first marker of <see cref="ContainerMarkerAttributeFullNames"/> that it carries is the one that parses it and reports.</remarks>
 		private static string? GetOwningContainerMarker(INamedTypeSymbol symbol)
 		{
 			string? owner = null;

@@ -33,7 +33,7 @@ namespace SnowBank.Networking.Http
 	public static class CrystalJsonContentExtensions
 	{
 
-		internal const string ReflectionMessage = "JSON body deserialization uses reflection to bind the target type. Enroll the type with [CrystalJsonConverter] and read the DOM with ReadFromCrystalJsonObjectAsync, then bind it with the source-generated converter.";
+		internal const string ReflectionMessage = "JSON body deserialization uses reflection to bind the target type. Register the type with [CrystalJsonConverter] and read the DOM with ReadFromCrystalJsonObjectAsync, then bind it with the source-generated converter.";
 
 		/// <summary>Reads the body of the response as a JSON Object</summary>
 		public static Task<JsonObject?> ReadFromCrystalJsonObjectAsync(this HttpContent content, CancellationToken ct)

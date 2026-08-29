@@ -1093,7 +1093,7 @@ namespace SnowBank.Data.Xml
 		}
 
 		/// <summary>Writes a namespace URI as the value of a declaration attribute, using whichever precomputed representation matches the output unit</summary>
-		/// <remarks>Verbatim, with no escaping: <see cref="CrystalXmlNamespace.Create"/> refuses the four characters an
+		/// <remarks>Verbatim, with no escaping: <see cref="CrystalXmlNamespace.Create"/> rejects the four characters an
 		/// attribute value would have to escape, so a URI is one bulk copy exactly like a name.</remarks>
 		private void WriteNamespaceUri(in CrystalXmlNamespace ns)
 		{

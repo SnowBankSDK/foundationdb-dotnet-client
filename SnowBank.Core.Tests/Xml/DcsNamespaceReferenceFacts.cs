@@ -47,7 +47,7 @@ namespace SnowBank.Data.Xml.Tests
 	/// side at all: CrystalXml does not support <c>z:Id</c>/<c>z:Ref</c>. The attribute-order fact pins reference
 	/// bytes whose order carries no meaning for a reader, so the generated side is held by the equivalence facts
 	/// instead. The three root facts at the end measure a bare collection, string or scalar at the root of the
-	/// document, a position for which no converter is generated (CJSON0019 refuses the enrolment).</para>
+	/// document, a position for which no converter is generated (CJSON0019 rejects the registration).</para>
 	/// <para><see cref="DcsOutputFidelityFacts"/> covers the axes a stripped output still shows (member order and renames,
 	/// the nil truth table, collection and dictionary item names, polymorphism discriminators without a namespace,
 	/// scalar lexical forms, enums); this fixture adds only what stripping erases.</para>

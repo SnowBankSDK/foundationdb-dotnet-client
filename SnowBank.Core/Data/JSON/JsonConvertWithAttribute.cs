@@ -33,7 +33,7 @@ namespace SnowBank.Data.Json
 	/// implements for the decorated member's type (or the decorated type itself) - a type that is only ever written or only ever read may implement a
 	/// single facet, and any attempt to use the missing direction fails with an exception naming the facet to implement. The common symmetric case
 	/// implements both, e.g. via the <see cref="IJsonMemberConverter{T}"/> bundle or a source-generated <see cref="IJsonConverter{T}"/>. A type
-	/// implementing neither facet fails loudly: at metadata construction on the reflection path, and as build error CJSON0010 through the source
+	/// implementing neither facet throws: at metadata construction on the reflection path, and as build error CJSON0010 through the source
 	/// generator.</para>
 	/// <para>When to use which attribute: the System.Text.Json spelling <c>[JsonConverter(typeof(...))]</c> is also recognized, but it is only legitimate
 	/// when the named converter is valid for System.Text.Json as well (both serializers then do the same thing). A CrystalJson-only converter behind the

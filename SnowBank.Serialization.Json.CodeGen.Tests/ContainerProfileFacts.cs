@@ -128,7 +128,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Combining_The_Profile_With_A_Naming_Option_Is_A_Build_Error()
 		{
 			// the DCJS output has no naming policy: [CrystalJsonConverter(DataContractCompat)] next to a camelCase
-			// or case-insensitive naming option is a contradiction, refused at generation time (CJ3-3)
+			// or case-insensitive naming option is a contradiction, rejected at generation time (CJ3-3)
 			var compilation = GeneratorProbeHarness.Compile("""
 				namespace Probe
 				{
@@ -148,10 +148,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				""");
 			var (_, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
 
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0013");
-			Assert.That(refusal, Is.Not.Null, "the profile + a naming option must be refused at build time");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(refusal.GetMessage(), Does.Contain("dual-container"), "the remedy steers to the dual-container pattern");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0013");
+			Assert.That(rejection, Is.Not.Null, "the profile + a naming option must be rejected at build time");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(rejection.GetMessage(), Does.Contain("dual-container"), "the remedy steers to the dual-container pattern");
 		}
 
 		[Test]

@@ -143,7 +143,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_NullableForm_Converter_On_NonNullable_Member_Stays_Refused()
+		public void Test_NullableForm_Converter_On_NonNullable_Member_Stays_Rejected()
 		{
 			// the generator side of the loud edge: a T?-shaped converter cannot serve a non-nullable member
 			var (_, diagnostics) = RunOn("""
@@ -153,9 +153,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 						public int Count { get; set; }
 					}
 				""");
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0010");
-			Assert.That(refusal, Is.Not.Null, "the generator must refuse the arity mismatch loudly");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CJSON0010");
+			Assert.That(rejection, Is.Not.Null, "the generator must reject the arity mismatch with an exception");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
 		}
 
 	}

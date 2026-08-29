@@ -141,7 +141,7 @@ namespace SnowBank.Data.Json.Tests
 					CrystalJson.Deserialize<DateTimeOffset>("""{"DateTime":"\/Date(1234567890000)\/","OffsetMinutes":-330}"""),
 					Is.EqualTo(new DateTimeOffset(2009, 2, 13, 23, 31, 30, TimeSpan.Zero).ToOffset(TimeSpan.FromMinutes(-330))));
 
-				// an object of another shape is refused
+				// an object of another shape is rejected
 				Assert.That(() => CrystalJson.Deserialize<DateTimeOffset>("""{"Hello":"World"}"""), Throws.InstanceOf<JsonBindingException>());
 
 				// so is an object that has the two members plus a third one
@@ -184,7 +184,7 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Legacy_Pair_Array_Still_Refuses_Unrecognizable_Elements()
+		public void Test_Legacy_Pair_Array_Still_Rejects_Unrecognizable_Elements()
 		{
 			using (Assert.EnterMultipleScope())
 			{

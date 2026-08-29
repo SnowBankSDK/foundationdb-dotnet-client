@@ -70,11 +70,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public int Count { get; init; }
 	}
 
-	// note: a [DataContract] DTO cannot appear in this matrix: enrolling one is refused at build time (error
+	// note: a [DataContract] DTO cannot appear in this matrix: registering one is rejected at build time (error
 	// CJSON0014, the interim constraint until generated containers learn the DataContract contract model), so
 	// there is no generated output to compare - the STJ-vs-reflection divergence for [DataContract] types stays
-	// pinned by the Core.Tests DCJS parity fixtures, and the refusal by DataContractRefusalDiagnosticFacts.
-	// A [DataMember] + unconditional [STJ.JsonIgnore] pair cannot be declared here either: refused at build
+	// pinned by the Core.Tests DCJS parity fixtures, and the rejection by DataContractRegistrationDiagnosticFacts.
+	// A [DataMember] + unconditional [STJ.JsonIgnore] pair cannot be declared here either: rejected at build
 	// time on both paths (error CJSON0008 / a contract-build throw), pinned by IgnoreConflictDiagnosticFacts
 	// and the Core.Tests DataContractCompat facts
 
@@ -317,15 +317,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				stjOutput: """{"Pinned":0}""",
 				cjOutput: """{"Pinned":0}""");
 
-			// (the former "datamember-plus-jsonignore" row is gone: that pair is now refused at build time on
+			// (the former "datamember-plus-jsonignore" row is gone: that pair is now rejected at build time on
 			// both paths - a ruled divergence from STJ, which silently lets [JsonIgnore] win)
 
 			// ---- DataContract interplay ----
 			// STJ does not know DataContract (all public members, C# names); CrystalJson reflection honors the
-			// [DataMember] opt-in and rename; and the source generator REFUSES an enrolled [DataContract] type at
+			// [DataMember] opt-in and rename; and the source generator rejects a registered [DataContract] type at
 			// build time (CJSON0014, the interim constraint - the former matrix divergence D1 is no longer
 			// reachable), so there is no generated output to compare here: a legacy [DataContract] DTO stays on the
-			// reflection path until it is modernized, and the refusal is pinned by DataContractRefusalDiagnosticFacts.
+			// reflection path until it is modernized, and the rejection is pinned by DataContractRegistrationDiagnosticFacts.
 
 			// ---- renames ----
 

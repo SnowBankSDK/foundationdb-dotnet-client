@@ -2,7 +2,7 @@
 
 CrystalXml est une surcouche de sortie XML en écriture seule pour le *source generator* de
 CrystalJson. Un *container* qui génère déjà des sérialiseurs JSON peut activer le XML avec un seul
-attribut, et chaque type qu'il enrôle gagne une famille de sorties `ToXmlText` / `WriteXmlTo`
+attribut, et chaque type qu'il enregistre gagne une famille de sorties `ToXmlText` / `WriteXmlTo`
 générées à la compilation : zéro réflexion à l'exécution, pas de `System.Xml.Serialization`, et une
 sortie exacte à l'octet sur les *sinks* texte.
 
@@ -20,22 +20,22 @@ Deux niveaux : le *container* dit quels formats il produit, les membres disent �
 ressemblent dans le format XML.
 
 Un *container* est un marqueur neutre vis-à-vis du format, plus un attribut par format de sortie.
-Les types qu'il sérialise sont enrôlés une seule fois, de façon neutre vis-à-vis du format : le
-même enrôlement alimente chaque format que le *container* produit.
+Les types qu'il sérialise sont enregistrés une seule fois, de façon neutre vis-à-vis du format : le
+même enregistrement alimente chaque format que le *container* produit.
 
 ```csharp
 // niveau container : le marqueur neutre, puis un attribut de sortie par format
 [CrystalConverter]                                    // « cette classe héberge du code généré »
 [CrystalJsonOutput(CrystalJsonSerializerDefaults.DataContractCompat)]
 [CrystalXmlOutput]                                    // activation : chaque type du container reçoit une sortie XML
-[CrystalSerializable(typeof(ClientAccount))]          // enrôlement neutre vis-à-vis du format
+[CrystalSerializable(typeof(ClientAccount))]          // enregistrement neutre vis-à-vis du format
 public static partial class LegacyRenderSerializers { }
 ```
 
 | Attribut | Namespace | Rôle |
 |---|---|---|
 | `[CrystalConverter]` | `SnowBank.Data` | le marqueur de container ; ne dit rien sur les formats |
-| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrôle un type racine ; répétable ; alimente chaque format de sortie |
+| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enregistre un type racine ; répétable ; alimente chaque format de sortie |
 | `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | demande le format JSON, et porte ses paramètres (profil, politique de nommage, insensibilité à la casse) |
 | `[CrystalXmlOutput(...)]` | `SnowBank.Data.Xml` | demande le format XML, et porte ses paramètres (le préréglage de format, `DictionaryFormat`) |
 | `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias mono-format : `[CrystalConverter]` + `[CrystalJsonOutput]` avec les mêmes paramètres |
@@ -43,7 +43,7 @@ public static partial class LegacyRenderSerializers { }
 
 `[CrystalJsonSerializable(typeof(T))]` est l'ancienne orthographe de `[CrystalSerializable]`. Elle
 fonctionne toujours (et génère du code identique à l'octet) mais elle est `[Obsolete]` :
-l'enrôlement n'a jamais été spécifique à JSON.
+l'enregistrement n'a jamais été spécifique à JSON.
 
 ### La table de vérité
 
@@ -53,11 +53,11 @@ l'enrôlement n'a jamais été spécifique à JSON.
 | `[CrystalJsonConverter]` | JSON uniquement (alias de la ligne ci-dessus) |
 | `[CrystalConverter]` + `[CrystalXmlOutput]` | **XML uniquement** : pas de `Serialize`/`Pack`/`Unpack`, pas de *proxies* JSON, pas de facette `IJsonConverter`, pas de `TypeMapper` |
 | `[CrystalXmlConverter]` | XML uniquement (alias de la ligne ci-dessus) |
-| `[CrystalConverter]` + les deux sorties | les deux formats, à partir d'un seul jeu de types enrôlés |
-| `[CrystalJsonConverter]` + `[CrystalXmlOutput]` | **refusé** (CRYS0002) : les alias mono-format ne se combinent pas |
-| `[CrystalXmlConverter]` + `[CrystalJsonOutput]` | **refusé** (CRYS0002), symétriquement |
-| `[CrystalConverter]` seul | **refusé** (CRYS0001) : un container qui ne nomme aucun format de sortie ne génère rien |
-| plusieurs marqueurs de container sur une même classe | **refusé** (CRYS0003) |
+| `[CrystalConverter]` + les deux sorties | les deux formats, à partir d'un seul jeu de types enregistrés |
+| `[CrystalJsonConverter]` + `[CrystalXmlOutput]` | **rejeté** (CRYS0002) : les alias mono-format ne se combinent pas |
+| `[CrystalXmlConverter]` + `[CrystalJsonOutput]` | **rejeté** (CRYS0002), symétriquement |
+| `[CrystalConverter]` seul | **rejeté** (CRYS0001) : un container qui ne nomme aucun format de sortie ne génère rien |
+| plusieurs marqueurs de container sur une même classe | **rejeté** (CRYS0003) |
 
 Un *container* XML uniquement n'a aucun profil JSON dont dériver, donc `[CrystalXmlOutput]` sans
 paramètre se résout vers le format général, et ses noms d'éléments sont les noms de membres déclarés
@@ -143,7 +143,7 @@ XML).
 
 ### Racines collection et scalaire
 
-Une collection ou un scalaire nu ne s'enrôle pas (CJSON0019 le refuse : enrôlez le type d'élément,
+Une collection ou un scalaire nu ne s'enregistre pas (CJSON0019 le rejette : enregistrez le type d'élément,
 pas la collection). Ces documents passent par des points d'entrée sur `CrystalXml`, qui reflètent
 les huit sorties ci-dessus :
 
@@ -189,7 +189,7 @@ saillants :
 - Membres en lecture seule : une propriété get-only, ou une propriété avec un *setter* privé et
   sans activation explicite, n'atteint jamais la sortie, ce qui correspond à ce que le chemin par
   réflexion du sérialiseur de référence prend sur un POCO ordinaire. Sur un type `[DataContract]`,
-  cette même forme portant `[DataMember]` est au contraire refusée au moment de la génération
+  cette même forme portant `[DataMember]` est au contraire rejetée au moment de la génération
   (CXML0013) : la vérification « pas de méthode set » du sérialiseur de référence la rejette
   d'emblée (`InvalidDataContractException`, "No set method for property"), donc il n'y a de toute
   façon aucun format à reproduire. Un **champ** `[DataMember]` `readonly` est une forme différente
@@ -259,11 +259,11 @@ exigences :
 | `"$type": "cat"` | attribut `type="cat"` : le discriminant est une annotation |
 | `[XmlProperty("@id")]` | `<book id="42">` : donnée comme attribut, scalaires seulement ; interdit sur le profil de compatibilité (DCS n'a pas d'attributs utilisateur) |
 
-Une instance d'une racine polymorphe concrète est refusée ici avec
+Une instance d'une racine polymorphe concrète est rejetée ici avec
 `CrystalXmlUnknownTypeException`, là où le profil de compatibilité écrit le corps propre de la
 racine. Ce format correspond au côté JSON, qui ne porte pas non plus de discriminant pour cette
 valeur : un lecteur ne pourrait pas la distinguer d'un sous-type dont l'annotation aurait disparu,
-donc elle est refusée plutôt qu'écrite sous une forme que personne ne peut interpréter.
+donc elle est rejetée plutôt qu'écrite sous une forme que personne ne peut interpréter.
 
 Contrairement au profil de compatibilité, le format général ne porte aucune restriction sur les
 membres en lecture seule : une propriété get-only, un champ `readonly` et un membre init-only sont
@@ -304,12 +304,12 @@ code générique prend la facette : `void Export<T>(ICrystalXmlSerializer<T> ser
 
 ## Diagnostics et gardes à l'exécution
 
-Trois façons dont une construction est refusée, et laquelle s'applique est une règle, pas un choix
+Trois façons dont une construction est rejetée, et laquelle s'applique est une règle, pas un choix
 au cas par cas :
 
 | Mécanisme | Quand |
 |---|---|
-| **diagnostic CXML** | la construction est refusée au moment de la génération, décidable à partir des seules DÉCLARATIONS (un attribut, un type, un nom de contrat). Il pointe la déclaration fautive et porte un remède. Un membre de la plage, CXML0012, est plutôt un Info : il ne refuse rien, il nomme un *setting* que le format résolu ne consulte jamais. |
+| **diagnostic CXML** | la construction est rejetée au moment de la génération, décidable à partir des seules DÉCLARATIONS (un attribut, un type, un nom de contrat). Il pointe la déclaration fautive et porte un remède. Un membre de la plage, CXML0012, est plutôt un Info : il ne rejette rien, il nomme un *setting* que le format résolu ne consulte jamais. |
 | **`#error` dans la source émise** | une impossibilité structurelle découverte pendant l'émission, qu'aucune déclaration n'aurait pu prédire. Gardé aussi comme filet inaccessible sous un diagnostic qui couvre déjà le cas. |
 | **exception typée** | la décision dépend des données : seule la valeur en cours d'écriture peut la prendre (un type d'exécution hors du graphe, une clé de dictionnaire non-NCName, une valeur d'enum non déclarée, un graphe plus profond que le plafond, une racine collection que ni l'appelant ni le profil ne nomment). |
 
@@ -317,7 +317,7 @@ Les règles sur le container dans son ensemble (quels formats de sortie il nomme
 marqueurs se combinent) ne concernent aucun des deux formats, donc elles portent plutôt un
 identifiant neutre :
 
-| Id | Refuse |
+| Id | Rejette |
 |---|---|
 | CRYS0001 | `[CrystalConverter]` ne nommant aucun format de sortie : le container ne générerait rien |
 | CRYS0002 | un alias mono-format (`[CrystalJsonConverter]`, `[CrystalXmlConverter]`) à côté d'un attribut de sortie : l'alias EST le choix du format |
@@ -325,10 +325,10 @@ identifiant neutre :
 
 Les diagnostics au moment du build sur le format XML lui-même vivent dans la plage CXML :
 
-| Id | Refuse |
+| Id | Rejette |
 |---|---|
 | CXML0001 | incohérence profil/politique sur le container : une politique de nommage (camelCase et consorts) à côté du format XML DataContract, dont les noms d'éléments viennent du contrat de données. `PropertyNameCaseInsensitive` n'est PAS un déclencheur : il décide comment un nom entrant est apparié à la lecture du JSON, et cette surcouche ne lit jamais |
-| CXML0002 | forme d'enrôlement : `[CrystalXmlOutput]` sur une classe qui n'héberge aucun sérialiseur généré |
+| CXML0002 | forme d'enregistrement : `[CrystalXmlOutput]` sur une classe qui n'héberge aucun sérialiseur généré |
 | CXML0003 | projection en attribut d'un membre sans forme lexicale |
 | CXML0004 | le vocabulaire de nommage XML sur le profil de compatibilité |
 | CXML0005 | deux membres se résolvant vers le même nom XML, discriminant compris |
@@ -369,7 +369,7 @@ pas de contrepartie `OnDeserializing` / `OnDeserialized`, puisque CrystalXml ne 
 
 **Activer la sortie XML ne coûte à un *container* rien que la sortie JSON ne coûtait déjà.** Le
 générateur dans son ensemble exige que le projet consommateur compile en **`LangVersion` 9 ou
-plus** (en dessous, il refuse avec `SYSLIB1221`, le même diagnostic et le même plancher que le
+plus** (en dessous, il rejette avec `SYSLIB1221`, le même diagnostic et le même plancher que le
 générateur de System.Text.Json, et n'émet rien du tout, JSON compris). Le code XML émis reste dans
 ce plancher : les noms d'éléments et d'attributs mis en cache sont écrits comme des littéraux de
 tableau `byte[]` plutôt que comme des littéraux de *string* UTF-8 `"..."u8`, ce qui aurait relevé

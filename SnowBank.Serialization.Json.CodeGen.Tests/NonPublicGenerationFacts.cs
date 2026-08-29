@@ -144,7 +144,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Downlevel_Targets_Fall_Back_To_Reflection_Accessors()
 		{
 			// a netstandard2.0 compilation has no [UnsafeAccessor]: the generator must emit the reflection
-			// flavor instead of refusing (CJ3-6). Since Q9, the proxy surface (ToReadOnly/ToMutable, the
+			// flavor instead of rejecting (CJ3-6). Since Q9, the proxy surface (ToReadOnly/ToMutable, the
 			// ReadOnly/Writable proxy types) is gated off by SupportsJsonProxies when the consumer cannot
 			// see it, which is exactly the case here (the lite netstandard2.0 build of SnowBank.Core has no
 			// proxy interfaces): so the FULL generated output is expected to compile clean against the lite
@@ -173,7 +173,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
 			var (output, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
-			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "the downlevel flavor is a fallback, never a refusal (CJ3-6)");
+			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "the downlevel flavor is a fallback, never a rejection (CJ3-6)");
 
 			var generated = string.Join("\n", output.SyntaxTrees.Skip(2).Select(static t => t.ToString()));
 			Assert.That(generated, Does.Contain("TypeMapper"), "the generator must have produced the container code");
@@ -237,7 +237,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			var compilation = GeneratorProbeHarness.Compile(MetadataContainerSource, assemblyName: "ProbeConsumerAssembly").AddReferences(dtoReference);
 			var (output, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
 
-			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "every member of the referenced contract is visible, so nothing is refused and nothing nudges");
+			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "every member of the referenced contract is visible, so nothing is rejected and nothing nudges");
 
 			var generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
 			Assert.That(generated, Does.Contain("Secret"), "the private [DataMember] of the referenced type must be part of the contract");
@@ -251,7 +251,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_The_Default_Metadata_Import_Loses_The_Same_Members()
 		{
 			// the measurement this fixture's .All import exists to fix, pinned so the contrast stays observable: the
-			// same contract through a DEFAULT-import compilation loses its private member and refuses the
+			// same contract through a DEFAULT-import compilation loses its private member and rejects the
 			// private-setter property as read-only. If Roslyn ever changes the default, this fact says so.
 			var dtoReference = GeneratorProbeHarness.CompileToReference(MetadataDtoSource, "ProbeDtoAssembly");
 
@@ -263,7 +263,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 			var (output, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
 
-			Assert.That(diagnostics.Select(static d => d.Id), Does.Contain("CXML0013"), "under the default import the private setter is invisible, so the property looks read-only and is refused");
+			Assert.That(diagnostics.Select(static d => d.Id), Does.Contain("CXML0013"), "under the default import the private setter is invisible, so the property looks read-only and is rejected");
 
 			var generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
 			Assert.That(generated, Does.Not.Contain("Secret"), "under the default import the private member does not exist at all");

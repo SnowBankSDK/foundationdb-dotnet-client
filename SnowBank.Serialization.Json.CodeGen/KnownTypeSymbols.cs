@@ -40,13 +40,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>Namespace of the XML output vocabulary (opt-in: a container only produces XML when it asks for it)</summary>
 		public const string CrystalXmlNamespace = "SnowBank.Data.Xml";
 
-		/// <summary>Namespace of the FORMAT-NEUTRAL container vocabulary (the marker, the output base, the type enrollment)</summary>
+		/// <summary>Namespace of the FORMAT-NEUTRAL container vocabulary (the marker, the output base, the type registration)</summary>
 		public const string CrystalNeutralNamespace = "SnowBank.Data";
 
 		/// <summary>The format-neutral container marker: a class carrying it hosts generated code for every output format it names</summary>
 		public const string CrystalConverterAttributeFullName = CrystalNeutralNamespace + ".CrystalConverterAttribute";
 
-		/// <summary>The format-neutral type enrollment (<c>[CrystalJsonSerializable]</c> is the legacy alias that derives from it)</summary>
+		/// <summary>The format-neutral type registration (<c>[CrystalJsonSerializable]</c> is the legacy alias that derives from it)</summary>
 		public const string CrystalSerializableAttributeFullName = CrystalNeutralNamespace + ".CrystalSerializableAttribute";
 
 		public const string CrystalXmlOutputAttributeFullName = CrystalXmlNamespace + ".CrystalXmlOutputAttribute";

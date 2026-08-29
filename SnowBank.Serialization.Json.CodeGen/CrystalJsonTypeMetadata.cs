@@ -125,7 +125,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public bool DefersUnpack { get; init; }
 
 		/// <summary>The author declared a <c>Serialize</c> method in this type's scope, which the generated converter calls</summary>
-		/// <remarks>A hook outranks <see cref="DefersSerialize"/>: it is the way a second container gives a bespoke format to a type that already has one of its own.</remarks>
+		/// <remarks>A hook takes precedence over <see cref="DefersSerialize"/>: it is the way a second container gives a bespoke format to a type that already has one of its own.</remarks>
 		public bool HasSerializeHook { get; init; }
 
 		/// <summary>The author declared a <c>Pack</c> method in this type's scope, which the generated converter calls</summary>
@@ -163,7 +163,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public required ImmutableEquatableArray<(INamedTypeSymbol Symbol, TypeMetadata Type, object? Discriminator)> DerivedTypes { get; init; }
 
 		/// <summary>The type carries a <c>[DataContract]</c> attribute</summary>
-		/// <remarks>Kept next to <see cref="DataContractName"/>, which only records a renaming: the DataContract XML format needs the PRESENCE on its own, because a data contract outranks every other way of serializing a type (in particular the <c>ISerializable</c> dialect, which only applies to a type that declares no contract).</remarks>
+		/// <remarks>Kept next to <see cref="DataContractName"/>, which only records a renaming: the DataContract XML format needs the PRESENCE on its own, because a data contract takes precedence over every other way of serializing a type (in particular the <c>ISerializable</c> dialect, which only applies to a type that declares no contract).</remarks>
 		public bool HasDataContract { get; init; }
 
 		/// <summary>Value of <c>[DataContract(Name = "...")]</c>, or <see langword="null"/> when the type carries no data contract, or one that does not rename it</summary>
@@ -258,7 +258,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 		/// <summary>Name given to the member by the data contract (<c>[DataMember(Name = "...")]</c> on a <c>[DataContract]</c> type), or <see langword="null"/> when the contract does not rename it</summary>
 		/// <remarks>
-		/// <para>Carried apart from <see cref="Name"/> so that the DataContract XML format writes the contract's own name (<see cref="DataMemberName"/>, falling back to <see cref="MemberName"/>) instead of the resolved JSON one. On a <c>[DataContract]</c> type the two agree, because CJSON0011 refuses a member whose JSON naming attribute disagrees with its contract name. On a plain DTO they do not: a <c>[JsonProperty]</c> renames the JSON member of a type that has no contract, and the reference serializer still writes the member's own name.</para>
+		/// <para>Carried apart from <see cref="Name"/> so that the DataContract XML format writes the contract's own name (<see cref="DataMemberName"/>, falling back to <see cref="MemberName"/>) instead of the resolved JSON one. On a <c>[DataContract]</c> type the two agree, because CJSON0011 rejects a member whose JSON naming attribute disagrees with its contract name. On a plain DTO they do not: a <c>[JsonProperty]</c> renames the JSON member of a type that has no contract, and the reference serializer still writes the member's own name.</para>
 		/// <para>Only ever set on a <c>[DataContract]</c> type: the attribute is inert everywhere else, exactly as it is for the reference serializer.</para>
 		/// </remarks>
 		public string? DataMemberName { get; init; }
@@ -285,7 +285,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public required bool IsRequired { get; init; }
 
 		/// <summary><c>true</c> if the member must be PRESENT in the document when binding (<c>[DataMember(IsRequired = true)]</c>)</summary>
-		/// <remarks>Deliberately distinct from <see cref="IsRequired"/>: an ABSENT member throws, but an explicit <c>null</c> satisfies it, which is what <c>DataContractJsonSerializer</c> does. The <c>required</c> keyword refuses null as well.</remarks>
+		/// <remarks>Deliberately distinct from <see cref="IsRequired"/>: an ABSENT member throws, but an explicit <c>null</c> satisfies it, which is what <c>DataContractJsonSerializer</c> does. The <c>required</c> keyword rejects null as well.</remarks>
 		public bool IsRequiredPresence { get; init; }
 
 		/// <summary><c>true</c> if <see cref="DefaultLiteral"/> is not the default for this type</summary>
@@ -348,10 +348,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>C# argument list for the custom converter's constructor (empty for a parameterless converter)</summary>
 		public string? CustomConverterArgs { get; init; }
 
-		/// <summary>The custom converter implements the packing facet (<c>IJsonPacker&lt;T&gt;</c>); when <see langword="false"/>, any attempt to serialize the member fails loudly</summary>
+		/// <summary>The custom converter implements the packing facet (<c>IJsonPacker&lt;T&gt;</c>); when <see langword="false"/>, any attempt to serialize the member throws</summary>
 		public bool CustomConverterHasPacker { get; init; } = true;
 
-		/// <summary>The custom converter implements the deserializing facet (<c>IJsonDeserializer&lt;T&gt;</c>); when <see langword="false"/>, any attempt to deserialize a present value for the member fails loudly</summary>
+		/// <summary>The custom converter implements the deserializing facet (<c>IJsonDeserializer&lt;T&gt;</c>); when <see langword="false"/>, any attempt to deserialize a present value for the member throws</summary>
 		public bool CustomConverterHasDeserializer { get; init; } = true;
 
 		/// <summary>The custom converter is declared for the member's <c>Nullable&lt;T&gt;</c> form itself (e.g. <c>IJsonDeserializer&lt;DateTime?&gt;</c> on a <c>DateTime?</c> member), so the emitter must call the nullable-form unpack helpers instead of unwrap-then-lift</summary>

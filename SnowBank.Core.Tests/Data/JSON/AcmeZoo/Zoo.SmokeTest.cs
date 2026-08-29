@@ -4,7 +4,7 @@
 #pragma warning disable CS0649 // fields only ever assigned by the serializer
 
 // Smoke test for the zoo toolchain: one trivial case and one that exercises the
-// non-equivalence pair the rubric refuses to absorb. If these two behave, the
+// non-equivalence pair the rubric rejects to absorb. If these two behave, the
 // discovery-by-convention, the invariant-culture setup and the two build legs all work.
 
 namespace Acme.Zoo.Cases.SmokeMinimal

@@ -31,7 +31,7 @@ namespace SnowBank.Data.Json
 	/// <remarks>
 	/// <para>This attribute should be applied on a partial class, that will act as a container for all generated types.</para>
 	/// <para>It is exactly equivalent to <c>[CrystalConverter]</c> plus <c>[CrystalJsonOutput(...)]</c> with the same parameters, and is the shortest spelling for the common case of a container that only ever produces JSON.</para>
-	/// <para>Being mono-format, it does not combine with another output format: pairing it with <c>[CrystalXmlOutput]</c> is refused (<c>CRYS0002</c>). A container that produces several outputs spells out <c>[CrystalConverter]</c> and one <c>[Crystal&lt;Format&gt;Output]</c> per output.</para>
+	/// <para>Being mono-format, it does not combine with another output format: pairing it with <c>[CrystalXmlOutput]</c> is rejected (<c>CRYS0002</c>). A container that produces several outputs spells out <c>[CrystalConverter]</c> and one <c>[Crystal&lt;Format&gt;Output]</c> per output.</para>
 	/// <para>All "root" data types should be included via the <see cref="CrystalSerializableAttribute"/> attribute</para>
 	/// <para>Sample: <code>
 	/// [CrystalJsonConverter]
@@ -80,7 +80,7 @@ namespace SnowBank.Data.Json
 	/// <summary>Requests <b>JSON</b> output from a <see cref="CrystalConverterAttribute"/> container, and carries the parameters of that output</summary>
 	/// <remarks>
 	/// <para>Applied on the same partial container class that carries <c>[CrystalConverter]</c> and one or more <c>[CrystalSerializable(...)]</c> attributes. The generated JSON surface is exactly the one the <c>[CrystalJsonConverter]</c> alias produces: the alias is this attribute plus the neutral marker.</para>
-	/// <para>Combine it with <c>[CrystalXmlOutput]</c> on the same container to produce both outputs from one set of enrolled types.</para>
+	/// <para>Combine it with <c>[CrystalXmlOutput]</c> on the same container to produce both outputs from one set of registered types.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]
 	[PublicAPI]
@@ -147,8 +147,8 @@ namespace SnowBank.Data.Json
 
 		/// <summary>
 		///   <para>For teams coming from <c>DataContractJsonSerializer</c>: the container's generated entry points default to the legacy output (<see cref="CrystalJsonSettings.DataContractCompat"/> - numeric enums, <c>\/Date(ms)\/</c> dates, ISO 8601 durations, pair-array dictionaries, explicit nulls) instead of the standard format.</para>
-		///   <para>A container with this profile produces what DCJS would have produced for the same type, POCO or <c>[DataContract]</c> alike, with the documented differences. Member names stay as declared (the DCJS output has no naming policy), so combining this profile with a camelCase or case-insensitive naming option is refused at build time.</para>
-		///   <para>Explicitly passed settings always replace the profile entirely; settings the baked names cannot honor fail loudly instead of silently producing another output.</para>
+		///   <para>A container with this profile produces what DCJS would have produced for the same type, POCO or <c>[DataContract]</c> alike, with the documented differences. Member names stay as declared (the DCJS output has no naming policy), so combining this profile with a camelCase or case-insensitive naming option is rejected at build time.</para>
+		///   <para>Explicitly passed settings always replace the profile entirely; settings the baked names cannot honor throw instead of silently producing another output.</para>
 		///   <para>The dual-container pattern is the intended shape for a progressive portage: not-yet-ported services serialize through a container with this profile, modernized services through a default or <see cref="Web"/> container over the SAME types; when the portage completes, delete the legacy container.</para>
 		/// </summary>
 		DataContractCompat,
@@ -176,10 +176,10 @@ namespace SnowBank.Data.Json
 	/// <summary>Attribute that adds a custom JSON converter for one or more types</summary>
 	/// <remarks>
 	/// <para>Any derived type, nested type, or types referenced by the members of these types will also be included in the source code generation.</para>
-	/// <para>This is the former, JSON-flavored spelling of the format-neutral <see cref="CrystalSerializableAttribute"/>: enrollment never was JSON-specific, and a container that produces XML enrolls its types the same way. It keeps working (and generates the same code) but new code should use <see cref="CrystalSerializableAttribute"/>.</para>
+	/// <para>This is the former, JSON-flavored spelling of the format-neutral <see cref="CrystalSerializableAttribute"/>: registration never was JSON-specific, and a container that produces XML registers its types the same way. It keeps working (and generates the same code) but new code should use <see cref="CrystalSerializableAttribute"/>.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
-	[Obsolete("Use [CrystalSerializable(typeof(...))] instead: type enrollment is format-neutral, and the same attribute serves every output format of the container.")]
+	[Obsolete("Use [CrystalSerializable(typeof(...))] instead: type registration is format-neutral, and the same attribute serves every output format of the container.")]
 	public sealed class CrystalJsonSerializableAttribute : CrystalSerializableAttribute
 	{
 

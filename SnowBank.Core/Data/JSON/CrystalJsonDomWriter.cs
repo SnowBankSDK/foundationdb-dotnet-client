@@ -219,7 +219,7 @@ namespace SnowBank.Data.Json
 			else if (runtimeType.IsArray)
 			{ // T[]
 				if (runtimeType.GetArrayRank() != 1)
-				{ // multi-dimensional arrays (T[,]) have no JSON representation (same rule as System.Text.Json): refuse
+				{ // multi-dimensional arrays (T[,]) have no JSON representation (same rule as System.Text.Json): reject
 				  // instead of silently flattening the shape; jagged arrays (T[][]) are fine
 					throw new JsonSerializationException($"Cannot serialize multi-dimensional array of type '{runtimeType.GetFriendlyName()}': arrays with more than one dimension have no JSON representation, convert to a jagged array (T[][]) instead.");
 				}
@@ -962,7 +962,7 @@ namespace SnowBank.Data.Json
 
 		#region Copy/Pasta from CrystalJsonWriter
 
-		/// <summary>Maximum nesting depth this writer will descend into before refusing to go deeper</summary>
+		/// <summary>Maximum nesting depth this writer will descend into before rejecting to go deeper</summary>
 		/// <remarks>Shared with every other serialization output (see <see cref="CrystalJsonWriter.MaxDepth"/>). This is the
 		/// shallowest of the recursions that cap protects (three frames per level), so it is the one whose stack margin the
 		/// shared value is chosen against.</remarks>

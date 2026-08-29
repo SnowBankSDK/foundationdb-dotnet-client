@@ -90,8 +90,8 @@ namespace SnowBank.Data.Xml
 		/// <para>This transcodes, validates and allocates, so it belongs at setup time, never on a per-element path. The
 		/// URI must be ABSOLUTE, which is what XML namespaces require and what every namespace the DataContract format uses
 		/// is (<c>http://schemas.datacontract.org/2004/07/Acme</c>, <c>urn:acme:catalog:1</c>); a relative reference is
-		/// refused here rather than written into a document no reader can resolve.</para>
-		/// <para>The four characters an attribute value has to escape are refused too, so that an emitter writes a URI the
+		/// rejected here rather than written into a document no reader can resolve.</para>
+		/// <para>The four characters an attribute value has to escape are rejected too, so that an emitter writes a URI the
 		/// same way it writes a name: one copy of whichever representation matches its output unit, with no scan and no
 		/// escaper. A URI that needs one of them percent-encodes it, which is what the URI rules ask for anyway.</para>
 		/// </remarks>

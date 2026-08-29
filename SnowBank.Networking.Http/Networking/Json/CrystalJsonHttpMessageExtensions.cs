@@ -33,7 +33,7 @@ namespace SnowBank.SDK.AspNetCore.Common.Json
 	public static class CrystalJsonHttpMessageExtensions
 	{
 
-		internal const string ReflectionMessage = "JSON body serialization uses reflection over the value type. Enroll the type with [CrystalJsonConverter] and post the source-generated converter output (for example a StringContent built from the generated ToJsonText), or pass a JsonValue built from the DOM.";
+		internal const string ReflectionMessage = "JSON body serialization uses reflection over the value type. Register the type with [CrystalJsonConverter] and post the source-generated converter output (for example a StringContent built from the generated ToJsonText), or pass a JsonValue built from the DOM.";
 
 		/// <summary>Sends a POST request with a value encoded as JSON bytes</summary>
 		/// <typeparam name="TValue">Type of the value</typeparam>

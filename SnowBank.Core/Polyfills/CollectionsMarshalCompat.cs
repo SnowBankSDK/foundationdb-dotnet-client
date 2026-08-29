@@ -33,7 +33,7 @@ namespace SnowBank.Compat
 		{
 			// CAVEAT: reaches into List<T>'s private backing-array field by name. This is safe for the netstandard2.0 build's
 			// actual audience (.NET Framework 4.7.2+, whose BCL is frozen and names the field "_items", same as .NET Core),
-			// but would break on an exotic netstandard2.0 runtime that names it differently, in which case we fail LOUDLY
+			// but would break on an unusual netstandard2.0 runtime that names it differently, in which case we throw
 			// at first use instead of silently returning a non-live copy (callers may WRITE through the span).
 			public static readonly FieldInfo Items = typeof(List<T>).GetField("_items", BindingFlags.NonPublic | BindingFlags.Instance)
 				?? throw new PlatformNotSupportedException($"Cannot locate the backing array field of List<{typeof(T).Name}> on this runtime.");

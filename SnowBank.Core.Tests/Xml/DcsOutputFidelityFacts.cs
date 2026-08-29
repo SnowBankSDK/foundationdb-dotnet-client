@@ -188,7 +188,7 @@ namespace SnowBank.Data.Xml.Tests
 			}, v => DcsProbeSerializers.CollectionProbe.ToXmlText(v), v => DcsProbeNamespaceFreeSerializers.CollectionProbe.ToXmlText(v));
 		}
 
-		// note: enrolling a bare collection or scalar type directly stays refused by design (CJSON0019: enroll the
+		// note: registering a bare collection or scalar type directly stays rejected by design (CJSON0019: register the
 		// element type, not the collection). Those roots are written by the native root entry points on CrystalXml
 		// instead: the scalar and collection families are exercised below, against the same live oracle.
 
@@ -243,7 +243,7 @@ namespace SnowBank.Data.Xml.Tests
 		}
 
 		[Test]
-		public void Test_Scalar_Root_Refuses_A_Type_Outside_The_Lexical_Set()
+		public void Test_Scalar_Root_Rejects_A_Type_Outside_The_Lexical_Set()
 		{
 			// a contract type roots a document through its own serializer, and DateTimeOffset is a two-member
 			// contract rather than a text scalar: neither has a scalar root output, and a name is never guessed
@@ -486,8 +486,8 @@ namespace SnowBank.Data.Xml.Tests
 
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(() => ReferenceDcsOutput.Serialize(probe, typeof(SelfRefProbe)), Throws.InstanceOf<SerializationException>(), "the reference serializer refuses a cycle with its own exception type");
-				Assert.That(() => DcsProbeSerializers.SelfRefProbe.ToXmlText(probe), Throws.InstanceOf<CrystalXmlCycleException>().With.Property("Type").EqualTo(typeof(Node)), "CrystalXml refuses it with the typed counterpart, naming the type it stopped on");
+				Assert.That(() => ReferenceDcsOutput.Serialize(probe, typeof(SelfRefProbe)), Throws.InstanceOf<SerializationException>(), "the reference serializer rejects a cycle with its own exception type");
+				Assert.That(() => DcsProbeSerializers.SelfRefProbe.ToXmlText(probe), Throws.InstanceOf<CrystalXmlCycleException>().With.Property("Type").EqualTo(typeof(Node)), "CrystalXml rejects it with the typed counterpart, naming the type it stopped on");
 			}
 		}
 
@@ -596,18 +596,18 @@ namespace SnowBank.Data.Xml.Tests
 			// container's own known types. A List<string> value dropped into an object-declared slot (here,
 			// PolymorphicProbe.AsObjectString) needs the output name "ArrayOfstring", which reflection-free code has no
 			// way to compute for a type this container never registers as an object-slot candidate: the live oracle
-			// succeeds (it always can, via reflection), CrystalXml refuses instead of guessing.
+			// succeeds (it always can, via reflection), CrystalXml rejects instead of guessing.
 			// note: naming the family this KeyedBag<after<string>> instead would hit a
-			// DIFFERENT, build-time refusal here (see the note on KeyedBagProbe in DcsProbes.cs) and never reaches
+			// DIFFERENT, build-time rejection here (see the note on KeyedBagProbe in DcsProbes.cs) and never reaches
 			// runtime at all, so this test pins the same acted deviation through the shape Task 9's own fixture
-			// already exercises for it (Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Refused_In_An_AnyType_Slot).
+			// already exercises for it (Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Rejected_In_An_AnyType_Slot).
 			var probe = new PolymorphicProbe { AsObjectString = new List<string> { "a" } };
 
 			string reference = ReferenceDcsOutput.Serialize(probe, typeof(PolymorphicProbe));
 			Log($"reference (DCS succeeds): {reference}");
 
 			// the oracle half is an ASSERTION, not just a log line: this family only pins a DIVERGENCE for as long as the
-			// reference format keeps succeeding, so the day DCS starts refusing the shape too, this test must say so
+			// reference format keeps succeeding, so the day DCS starts rejecting the shape too, this test must say so
 			Assert.That(
 				reference,
 				Is.EqualTo("""<PolymorphicProbe><AsObjectInt nil="true" /><AsObjectLong nil="true" /><AsObjectNull nil="true" /><AsObjectString type="ArrayOfstring"><string>a</string></AsObjectString><DeclaredBaseHoldingBase nil="true" /><DeclaredBaseHoldingDerived nil="true" /><DeclaredExact nil="true" /><Zoo nil="true" /></PolymorphicProbe>"""),
@@ -616,7 +616,7 @@ namespace SnowBank.Data.Xml.Tests
 			Assert.That(
 				() => DcsProbeSerializers.PolymorphicProbe.ToXmlText(probe),
 				Throws.InstanceOf<NotSupportedException>(),
-				"the family is not reproduced: CrystalXml refuses the undeclared runtime shape instead of guessing its format name");
+				"the family is not reproduced: CrystalXml rejects the undeclared runtime shape instead of guessing its format name");
 		}
 
 		[Test]
@@ -624,7 +624,7 @@ namespace SnowBank.Data.Xml.Tests
 		{
 			// UNTESTED CORNER (coverage ledger gap 5): a declared List<object> member. Each ITEM goes through the same
 			// per-item anyType switch already exercised by PolymorphicProbe.AsObjectString/AsObjectInt (both boxed
-			// built-ins, both already reproduced), not the "undeclared runtime type" refusal pinned above -- that one
+			// built-ins, both already reproduced), not the "undeclared runtime type" rejection pinned above -- that one
 			// fires only when the OBJECT SLOT ITSELF holds an unregistered collection/composed type (List<string>
 			// needing "ArrayOfstring"). Here the outer type (List<object>) is declared; only its items are object-typed,
 			// null items nil, non-null items carrying a type= discriminator (string/int), item element named anyType.

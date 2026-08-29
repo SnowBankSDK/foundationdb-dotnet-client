@@ -77,7 +77,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					nullableContextOptions: parseOptions.LanguageVersion.MapSpecifiedToEffectiveVersion() >= LanguageVersion.CSharp8 ? NullableContextOptions.Enable : NullableContextOptions.Disable));
 
 		/// <summary>Compiles a probe source into an in-memory assembly and returns it as a metadata reference</summary>
-		/// <remarks>For the facts that enroll a type living in a REFERENCED assembly rather than in the probe source itself,
+		/// <remarks>For the facts that register a type living in a REFERENCED assembly rather than in the probe source itself,
 		/// which is how a certification rig sees every product type.</remarks>
 		public static MetadataReference CompileToReference(string source, string assemblyName)
 		{
@@ -128,7 +128,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					{
 						foreach (var output in step.Outputs)
 						{
-							// the step emits the (Metadata, Diagnostics) tuple produced by the parser; the metadata is null when the container was refused
+							// the step emits the (Metadata, Diagnostics) tuple produced by the parser; the metadata is null when the container was rejected
 							if (output.Value is ValueTuple<CrystalJsonContainerMetadata?, ImmutableEquatableArray<DiagnosticInfo>> { Item1: { } metadata })
 							{
 								// the key is the container's SIMPLE name: two probe containers sharing one must fail here, instead of silently overwriting the entry the test then asserts on

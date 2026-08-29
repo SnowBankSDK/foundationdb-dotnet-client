@@ -187,7 +187,7 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_Canonical_Serialize_Rejects_NonPackableSerializer()
 		{
 			// canonical output packs to the DOM first (sorted members, normalized numbers), so a
-			// serializer that cannot pack cannot honor the contract: it must fail loudly, not silently
+			// serializer that cannot pack cannot honor the contract: it must throw, not silently
 			// fall back to its own (non-canonical) writing order.
 			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
 			var dto = new VocabularyDto { Id = 1 };

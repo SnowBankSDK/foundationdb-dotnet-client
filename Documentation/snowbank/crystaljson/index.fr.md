@@ -86,12 +86,12 @@ construisent eux-mêmes (`JsonValue.Parse`, `JsonObject.Parse`, `JsonValue.FromV
 Un type sans convertisseur généré se sérialise quand même : le **chemin par réflexion** construit
 un contrat à l'exécution à partir des mêmes attributs. Les deux chemins sont tenus au même
 résultat, octet pour octet, et quand une combinaison d'attributs leur donnerait deux réponses
-différentes, la politique est de la refuser bruyamment plutôt que de laisser le résultat dépendre
+différentes, la politique est d'en faire une erreur de compilation plutôt que de laisser le résultat dépendre
 du chemin qui a sérialisé la valeur.
 
 ## Un type, un seul format de sortie
 
-Cette politique de refus a un nom parce qu'elle vise un *pattern legacy* bien précis : le ***DTO* à
+Cette politique de rejet a un nom parce qu'elle vise un *pattern legacy* bien précis : le ***DTO* à
 double sortie**. Certains parcs applicatifs ont accumulé des types annotés pour deux sérialiseurs
 à la fois, si bien que la même classe produisait deux documents différents selon la bibliothèque
 qui la sérialisait :
@@ -114,11 +114,11 @@ site d'appel choisit soigneusement le bon sérialiseur, et un seul mauvais choix
 consommateur le document de l'autre. CrystalJson ne peut pas l'honorer, même en principe, parce
 qu'il a lui-même deux chemins de sérialisation (réflexion et généré), et « quel document
 vais-je obtenir » ne doit jamais dépendre du chemin. Les deux membres ci-dessus sont donc des
-**erreurs de compilation**, pas des choix : le double nom est refusé (`CJSON0011`), et la paire
-inclusion-plus-ignore-inconditionnel est refusée (`CJSON0008`). Le remède est toujours la
+**erreurs de compilation**, pas des choix : le double nom est rejeté (`CJSON0011`), et la paire
+inclusion-plus-ignore-inconditionnel est rejetée (`CJSON0008`). Le remède est toujours la
 scission : un *DTO* par contrat de format, chacun portant un seul jeu cohérent d'attributs. La
 même politique rejette la signature de *callback* de l'ère `DataContractJsonSerializer` plutôt que
-de l'approximer. Le [guide de migration](../../releases/7.4.3.md) documente chaque refus
+de l'approximer. Le [guide de migration](../../releases/7.4.3.md) documente chaque rejet
 avec son identifiant de diagnostic et son remède.
 
 Notez que le *DTO* à double sortie est un besoin différent de servir des consommateurs *legacy* et
@@ -151,6 +151,6 @@ en charge, pas comme un obstacle :
 `FdbValue.ToJson(obj)` encode une valeur FoundationDB à travers CrystalJson ; une couche de
 collection de documents construite sur ce SDK stocke ses documents comme des valeurs sérialisées
 par CrystalJson avec des convertisseurs générés ; [CrystalXml](../CrystalXml.md) réutilise les
-mêmes *containers*, le même mécanisme d'*enrollment* et les mêmes *settings* pour émettre du XML depuis les mêmes
+mêmes *containers*, le même mécanisme d'enregistrement et les mêmes *settings* pour émettre du XML depuis les mêmes
 types. Une application construite sur ce SDK peut utiliser une autre bibliothèque JSON à sa
 frontière HTTP, mais la couche de données parle CrystalJson de bout en bout.

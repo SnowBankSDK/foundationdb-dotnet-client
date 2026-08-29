@@ -79,7 +79,7 @@ namespace SnowBank.Data.Xml
 		/// <summary>Name of the root element of a bare sequence of this type, or <see langword="null"/> when there is none</summary>
 		/// <remarks>The DataContract profile names such a root by its <c>ArrayOfX</c> convention, in the namespace of
 		/// <see cref="ElementName"/>. The General profile has no convention: a collection root requires an explicit name from
-		/// the caller, and a <see langword="null"/> here is what makes the entry points refuse to guess one
+		/// the caller, and a <see langword="null"/> here is what makes the entry points reject to guess one
 		/// (<see cref="CrystalXmlRootNameException"/>).</remarks>
 		string? CollectionRootName { get; }
 

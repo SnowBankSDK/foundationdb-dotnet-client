@@ -171,7 +171,7 @@ namespace SnowBank.Data.Tuples.Binary
 			return (ref _, in _) => throw new InvalidOperationException($"Does not know how to serialize values of type '{typeof(T).Name}' into keys");
 		}
 
-		/// <summary>Builds the exception thrown when an exotic tuple element type would need the reflective builder while reflection is disabled.</summary>
+		/// <summary>Builds the exception thrown when an uncommon tuple element type would need the reflection-based builder while reflection is disabled.</summary>
 		[Pure]
 		private static NotSupportedException MakeReflectionDisabledException(Type type)
 		{
@@ -855,7 +855,7 @@ namespace SnowBank.Data.Tuples.Binary
 		private static Encoder<object> CreateBoxedEncoder(Type type)
 		{
 			if (!TuPack.IsReflectionSupported)
-			{ // reflection off: the boxed slow path has no compile-time fast path, fail loudly instead of building a reflective encoder
+			{ // reflection off: the boxed slow path has no compile-time fast path, throw instead of building a reflection-based encoder
 				throw MakeReflectionDisabledException(type);
 			}
 
@@ -874,7 +874,7 @@ namespace SnowBank.Data.Tuples.Binary
 		private static SpanEncoder<object> CreateBoxedSpanEncoder(Type type)
 		{
 			if (!TuPack.IsReflectionSupported)
-			{ // reflection off: the boxed slow path has no compile-time fast path, fail loudly instead of building a reflective encoder
+			{ // reflection off: the boxed slow path has no compile-time fast path, throw instead of building a reflection-based encoder
 				throw MakeReflectionDisabledException(type);
 			}
 
@@ -1319,7 +1319,7 @@ namespace SnowBank.Data.Tuples.Binary
 			}
 			// when all else fails...
 			// NOTE: the only caller passes required: true. If a required: false caller is reintroduced, add a
-			// reflection guard before this fallback so an exotic decode with reflection off still fails loudly.
+			// reflection guard before this fallback so an uncommon-type decode with reflection off still throws.
 			return MakeConvertBoxedDeserializer<T>();
 		}
 

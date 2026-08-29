@@ -31,7 +31,7 @@ namespace SnowBank.Data.Json.Tests
 
 	/// <summary>Runs the Acme DCJS sample zoo (33 synthetic cases mirroring a real DataContract corpus) against
 	/// CrystalJson, and pins a per-case expectation: what round-trips, what reads back from the legacy output, and what
-	/// is refused. The output in <c>zoo.json</c> was captured from the real DataContractJsonSerializer, and is identical
+	/// is rejected. The output in <c>zoo.json</c> was captured from the real DataContractJsonSerializer, and is identical
 	/// on .NET Framework 4.7.2 and .NET 10.
 	/// <para>The corpus is generated, and each expectation is derived from the reference behavior; an expectation that
 	/// disagrees with the committed code is the thing to fix.</para>
@@ -143,21 +143,21 @@ namespace SnowBank.Data.Json.Tests
 				Because = "same stance for knownTypes passed to the serializer constructor",
 			},
 
-			// one member, two serializers, two names is a double contract, refused on both paths. The contract name
+			// one member, two serializers, two names is a double contract, rejected on both paths. The contract name
 			// is [DataMember(Name)] when spelled and the member's own name when bare; the remedy is to split the DTO.
 			["diagnostic-double-contract"] = new()
 			{
 				Writes = false, SelfRoundTrips = false, ReadsDcjsOutput = false,
-				Because = "conflicting output names are refused by design (split the DTO)",
+				Because = "conflicting output names are rejected by design (split the DTO)",
 			},
 
 			// the four callbacks are invoked now, but only in the modern signatures. This corpus case carries the
 			// legacy void M(StreamingContext) shape, which every DCJS callsite uses because DCJS requires it, so
-			// the whole type is refused until its callbacks are converted (the migration guide's sweep recipe).
+			// the whole type is rejected until its callbacks are converted (the migration guide's sweep recipe).
 			["lifecycle-callbacks"] = new()
 			{
 				Writes = false, SelfRoundTrips = false, ReadsDcjsOutput = false, ReadsLegacyDocuments = false,
-				Because = "the legacy StreamingContext callback signature is refused by design (drop the parameter, or take JsonValue/JsonObject/JsonArray)",
+				Because = "the legacy StreamingContext callback signature is rejected by design (drop the parameter, or take JsonValue/JsonObject/JsonArray)",
 			},
 		};
 
@@ -189,7 +189,7 @@ namespace SnowBank.Data.Json.Tests
 				cjOutput = CrystalJson.Serialize(testCase.Create(), testCase.RootType);
 				Log($"cj : {cjOutput}");
 				Log($"dcj: {(testCase.DcjsError is null ? testCase.DcjsOutput : $"<threw: {testCase.DcjsError}>")}");
-				Assert.That(verdict.Writes, Is.True, $"serialization succeeded but the corpus expected a refusal ({verdict.Because})");
+				Assert.That(verdict.Writes, Is.True, $"serialization succeeded but the corpus expected a rejection ({verdict.Because})");
 			}
 			catch (Exception e) when (e is not AssertionException)
 			{

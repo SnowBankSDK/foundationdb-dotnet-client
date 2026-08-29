@@ -453,10 +453,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				"an XML-only container never had a JSON proxy surface, so its absence below the proxy floor must not be reported");
 		}
 
-		/// <summary>Below the floor, the generator refuses with <c>SYSLIB1221</c> instead of emitting code the consumer cannot compile</summary>
+		/// <summary>Below the floor, the generator rejects with <c>SYSLIB1221</c> instead of emitting code the consumer cannot compile</summary>
 		/// <remarks>The floor is inherited from the System.Text.Json generator (same diagnostic id, same message shape) and applies to the container as a whole: enabling XML output on a container does not change it, and a consumer below the floor gets no JSON serializer either.</remarks>
 		[Test]
-		public void Test_Generator_Refuses_Below_The_Supported_Language_Floor()
+		public void Test_Generator_Rejects_Below_The_Supported_Language_Floor()
 		{
 			var compilation = GeneratorProbeHarness.Compile(LegacyProbeSource, GeneratorProbeHarness.BelowFloorParseOptions);
 
@@ -472,11 +472,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Does.Contain("SYSLIB1221"),
 				"a consumer below the language floor must be told so, by the same diagnostic System.Text.Json uses");
 
-			// and the refusal must be total: no half-emitted container that would then fail to compile
+			// and the rejection must be total: no half-emitted container that would then fail to compile
 			Assert.That(
 				outputCompilation.SyntaxTrees.Skip(1).Where(static tree => tree.ToString().Contains("WriteXml")),
 				Is.Empty,
-				"a refused container must not emit XML members");
+				"a rejected container must not emit XML members");
 		}
 
 		/// <summary>Pins the generator-side UTF-8 encoder (<see cref="SnowBank.SourceAnalysis.CSharpCodeBuilder.Utf8Constant"/>) against a non-ASCII name</summary>

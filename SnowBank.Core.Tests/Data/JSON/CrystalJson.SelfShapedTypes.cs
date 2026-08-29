@@ -29,7 +29,7 @@ namespace SnowBank.Data.Json.Tests
 	using SnowBank.Data;
 
 	/// <summary>An address whose JSON form is a compact array, and not an object with one property per member</summary>
-	/// <remarks>The member-shaped form of this type would be <c>{"Tenant":"acme","Zone":"eu","Node":"n1"}</c>; its own form is <c>["acme","eu","n1"]</c>.</remarks>
+	/// <remarks>The member-based form of this type would be <c>{"Tenant":"acme","Zone":"eu","Node":"n1"}</c>; its own form is <c>["acme","eu","n1"]</c>.</remarks>
 	public sealed record SelfShapedAddress : IJsonPackable, IJsonSerializable, IJsonDeserializable<SelfShapedAddress>
 	{
 
@@ -61,7 +61,7 @@ namespace SnowBank.Data.Json.Tests
 	}
 
 	/// <summary>A witness summary that hand-rolls all three JSON interfaces, in the shape of the Teleport wire type it stands for</summary>
-	/// <remarks>Its own form differs from a member crawl in three ways at once: the property names are lower-cased, the <see cref="Authority"/> member is written as a compact array, and a format marker that matches no member is added.</remarks>
+	/// <remarks>Its own form differs from a member-based converter in three ways at once: the property names are lower-cased, the <see cref="Authority"/> member is written as a compact array, and a format marker that matches no member is added.</remarks>
 	public sealed record SelfShapedWitness : IJsonPackable, IJsonSerializable, IJsonDeserializable<SelfShapedWitness>
 	{
 
@@ -107,7 +107,7 @@ namespace SnowBank.Data.Json.Tests
 
 	}
 
-	/// <summary>A plain member-shaped envelope, enrolled next to <see cref="SelfShapedWitness"/> so that the witness is reached as a MEMBER of another generated type</summary>
+	/// <summary>A plain member-based envelope, registered next to <see cref="SelfShapedWitness"/> so that the witness is reached as a MEMBER of another generated type</summary>
 	public sealed record SelfShapedEnvelope
 	{
 
@@ -130,7 +130,7 @@ namespace SnowBank.Data.Json.Tests
 
 	}
 
-	/// <summary>Container enrolling the hand-rolled types and the envelope that nests one of them</summary>
+	/// <summary>Container registering the hand-rolled types and the envelope that nests one of them</summary>
 	[CrystalConverter]
 	[CrystalJsonOutput]
 	[CrystalSerializable(typeof(SelfShapedWitness))]
@@ -138,13 +138,13 @@ namespace SnowBank.Data.Json.Tests
 	[CrystalSerializable(typeof(SelfShapedPackOnly))]
 	public static partial class SelfShapedHost { }
 
-	/// <summary>A second container that enrolls the same witness type, opting out of its own format</summary>
+	/// <summary>A second container that registers the same witness type, opting out of its own format</summary>
 	[CrystalConverter]
 	[CrystalJsonOutput]
 	[CrystalSerializable(typeof(SelfShapedWitness), IgnoreCustomSerialization = true)]
 	public static partial class SelfShapedOptOutHost { }
 
-	/// <summary>Pins that a source-generated container calls an enrolled type's OWN serialization methods, producing bytes identical to the runtime path</summary>
+	/// <summary>Pins that a source-generated container calls a registered type's OWN serialization methods, producing bytes identical to the runtime path</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -258,7 +258,7 @@ namespace SnowBank.Data.Json.Tests
 				// the type implements IJsonPackable, so the packed form is its own
 				Assert.That(packed.ToJsonText(settings), Is.EqualTo("""["abc",7]"""), "the packed form must come from the type's own JsonPack");
 				// it implements neither IJsonSerializable nor IJsonDeserializable<T>, so those two facets stay generated
-				Assert.That(written, Is.EqualTo("""{"Name":"abc","Rank":7}"""), "the written form must stay a member crawl");
+				Assert.That(written, Is.EqualTo("""{"Name":"abc","Rank":7}"""), "the written form must stay a member-based converter");
 				Assert.That(SelfShapedHost.SelfShapedPackOnly.Unpack(JsonValue.Parse(written)).Name, Is.EqualTo("abc"), "the read form must stay a member binding");
 			}
 		}

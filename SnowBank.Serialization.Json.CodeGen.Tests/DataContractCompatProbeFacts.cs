@@ -32,9 +32,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	#region Probe types...
 
-	// note: a [DataContract] DTO cannot be enrolled here: the generator refuses it at build time (error
+	// note: a [DataContract] DTO cannot be registered here: the generator rejects it at build time (error
 	// CJSON0014, the interim constraint until generated containers learn the DataContract contract model),
-	// pinned by DataContractRefusalDiagnosticFacts through the in-process harness
+	// pinned by DataContractRegistrationDiagnosticFacts through the in-process harness
 
 	public sealed record ProbeDictDto
 	{
@@ -120,7 +120,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	#endregion
 
-	/// <summary>Probes the DCJS-era output shapes that the SOURCE-GENERATED path shares with the reflection path (a [DataContract] type itself cannot be enrolled: CJSON0014)</summary>
+	/// <summary>Probes the DCJS-era output shapes that the SOURCE-GENERATED path shares with the reflection path (a [DataContract] type itself cannot be registered: CJSON0014)</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -158,7 +158,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// the "Key"/"Value" spelling keeps binding
 			Assert.That(ProbeConverters.ProbeKvpDto.Deserialize("""{ "Pair": { "Key": "k", "Value": 7 } }""").Pair, Is.EqualTo(new KeyValuePair<string, int>("k", 7)));
 
-			// and an object carrying neither spelling refuses instead of yielding a default-filled pair
+			// and an object carrying neither spelling rejects instead of yielding a default-filled pair
 			Assert.That(
 				() => ProbeConverters.ProbeKvpDto.Deserialize("""{ "Pair": { "foo": 1 } }"""),
 				Throws.InstanceOf<JsonBindingException>(), "an unrecognizable pair object must fail through the generated path as well");
@@ -246,7 +246,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_Generated_DataMember_IsRequired_Demands_Presence_Not_A_Value()
 		{
 			// DCJS semantics, which the reflection path already implements: an ABSENT member throws, an explicit null satisfies.
-			// Deliberately unlike the C# `required` keyword, which refuses null too.
+			// Deliberately unlike the C# `required` keyword, which rejects null too.
 			var withNull = """{"id":"X","count":7,"secret":"s","req":null}""";
 			Assert.That(ProbeConverters.ProbeContractDto.Deserialize(withNull).Req, Is.Null, "generated: an explicit null satisfies IsRequired");
 			Assert.That(CrystalJson.Deserialize<ProbeContractDto>(withNull)!.Req, Is.Null, "reflection: same");

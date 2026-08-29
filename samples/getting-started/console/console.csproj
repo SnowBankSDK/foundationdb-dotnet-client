@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="FoundationDB.Client" Version="7.4.4" />
+    <PackageReference Include="FoundationDB.Client" Version="7.4.5" />
     <PackageReference Include="FoundationDB.Client.Native" Version="7.4.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.*" />
   </ItemGroup>

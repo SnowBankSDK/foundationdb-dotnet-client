@@ -30,18 +30,18 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.Linq;
 	using Microsoft.CodeAnalysis;
 
-	/// <summary>Pins that enrolling a COLLECTION, a DICTIONARY or a SCALAR type in a generated container produces no converter for it, compiles clean, and reports the <c>CJSON0019</c> guidance</summary>
+	/// <summary>Pins that registering a COLLECTION, a DICTIONARY or a SCALAR type in a generated container produces no converter for it, compiles clean, and reports the <c>CJSON0019</c> guidance</summary>
 	/// <remarks>
 	/// <para>CrystalJson serializes collections, dictionaries and scalars natively, root included; the source generator emits converters for POCO types ONLY. Enumerating such a type as if it were a POCO used to walk its indexer as a member, and the emitted holder declared a nameless indexer that did not compile (CS0106/CS0720/CS0548/CS1551).</para>
-	/// <para>The guard sits on the ENROLMENT decision. The last two fixtures pin the non-triggers: a POCO enrollment still generates, and a collection MEMBER inside a POCO is untouched (the crawler already descends to the element type and never enqueues the collection itself).</para>
+	/// <para>The guard sits on the REGISTRATION decision. The last two fixtures pin the non-triggers: a POCO registration still generates, and a collection MEMBER inside a POCO is untouched (the crawler already descends to the element type and never enqueues the collection itself).</para>
 	/// </remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
-	public sealed class NativeEnrolmentGuardFacts : SimpleTest
+	public sealed class NativeRegistrationGuardFacts : SimpleTest
 	{
 
-		/// <summary>A plain POCO the probes enroll next to the native type, so that the container is never empty (an empty container reports CJSON0002, which would mask what these tests assert)</summary>
+		/// <summary>A plain POCO the probes register next to the native type, so that the container is never empty (an empty container reports CJSON0002, which would mask what these tests assert)</summary>
 		private const string ShelfDto = """
 				public sealed record Shelf
 				{
@@ -89,9 +89,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Enrolled_Collection_Root_Generates_Nothing_And_Compiles()
+		public void Test_Registered_Collection_Root_Generates_Nothing_And_Compiles()
 		{
-			//note: the enrolled element type is written 'global::Probe.Shelf' because the container's own generated
+			//note: the registered element type is written 'global::Probe.Shelf' because the container's own generated
 			// nested holder is also named 'Shelf', and inside the container declaration the nested name wins
 			const string Probe = """
 
@@ -105,20 +105,20 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 			var (generator, output, compilation) = RunOn(ShelfDto + Probe);
 
-			Assert.That(output, Is.Empty, "the generated code must compile clean: enrolling a collection used to emit a nameless indexer");
+			Assert.That(output, Is.Empty, "the generated code must compile clean: registering a collection used to emit a nameless indexer");
 
 			var cjson0019 = generator.Where(static d => d.Id == "CJSON0019").ToList();
-			Assert.That(cjson0019, Has.Count.EqualTo(1), "the enrollment must report the guidance diagnostic");
+			Assert.That(cjson0019, Has.Count.EqualTo(1), "the registration must report the guidance diagnostic");
 			Assert.That(cjson0019[0].Severity, Is.EqualTo(DiagnosticSeverity.Warning));
 			Assert.That(cjson0019[0].GetMessage(), Does.Contain("collections").And.Contain("natively"));
 			Assert.That(generator.Where(static d => d.Id != "CJSON0019" && d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "nothing else is reported");
 
-			Assert.That(IncludedTypesOf(ShelfDto + Probe), Is.EqualTo(new[] { "Probe.Shelf" }), "the collection type gets no converter; the POCO enrolled next to it still does");
-			Assert.That(GeneratedSources(compilation), Does.Contain("Shelf"), "the POCO enrolled next to the collection still generates");
+			Assert.That(IncludedTypesOf(ShelfDto + Probe), Is.EqualTo(new[] { "Probe.Shelf" }), "the collection type gets no converter; the POCO registered next to it still does");
+			Assert.That(GeneratedSources(compilation), Does.Contain("Shelf"), "the POCO registered next to the collection still generates");
 		}
 
 		[Test]
-		public void Test_Enrolled_Dictionary_Root_Generates_Nothing_And_Compiles()
+		public void Test_Registered_Dictionary_Root_Generates_Nothing_And_Compiles()
 		{
 			const string Probe = """
 
@@ -135,14 +135,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(output, Is.Empty, "the generated code must compile clean");
 
 			var cjson0019 = generator.Where(static d => d.Id == "CJSON0019").ToList();
-			Assert.That(cjson0019, Has.Count.EqualTo(1), "the enrollment must report the guidance diagnostic");
+			Assert.That(cjson0019, Has.Count.EqualTo(1), "the registration must report the guidance diagnostic");
 			Assert.That(cjson0019[0].GetMessage(), Does.Contain("dictionaries"));
 
 			Assert.That(IncludedTypesOf(ShelfDto + Probe), Is.EqualTo(new[] { "Probe.Shelf" }), "the dictionary type gets no converter");
 		}
 
 		[Test]
-		public void Test_Enrolled_Scalar_Root_Generates_Nothing_And_Compiles()
+		public void Test_Registered_Scalar_Root_Generates_Nothing_And_Compiles()
 		{
 			const string Probe = """
 
@@ -159,14 +159,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(output, Is.Empty, "the generated code must compile clean: a scalar root used to fail the same way a collection root did");
 
 			var cjson0019 = generator.Where(static d => d.Id == "CJSON0019").ToList();
-			Assert.That(cjson0019, Has.Count.EqualTo(1), "the enrollment must report the guidance diagnostic");
+			Assert.That(cjson0019, Has.Count.EqualTo(1), "the registration must report the guidance diagnostic");
 			Assert.That(cjson0019[0].GetMessage(), Does.Contain("scalars"));
 
 			Assert.That(IncludedTypesOf(ShelfDto + Probe), Is.EqualTo(new[] { "Probe.Shelf" }), "the scalar type gets no converter");
 		}
 
 		[Test]
-		public void Test_Enrolled_Poco_Is_Not_Affected()
+		public void Test_Registered_Poco_Is_Not_Affected()
 		{
 			var (generator, output, compilation) = RunOn(ShelfDto + """
 
@@ -178,14 +178,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				""");
 
 			Assert.That(output, Is.Empty, "the generated code must compile clean");
-			Assert.That(generator.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "a POCO enrollment reports nothing");
+			Assert.That(generator.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "a POCO registration reports nothing");
 			Assert.That(GeneratedSources(compilation), Does.Contain("Shelf"), "the POCO still gets its generated converter");
 		}
 
 		[Test]
-		public void Test_Collection_Member_Of_An_Enrolled_Poco_Is_Not_Affected()
+		public void Test_Collection_Member_Of_A_Registered_Poco_Is_Not_Affected()
 		{
-			// the guard targets the enrolment decision, not the crawler: a List<T> or Dictionary<K,V> reached as a MEMBER
+			// the guard targets the registration decision, not the crawler: a List<T> or Dictionary<K,V> reached as a MEMBER
 			// type has always been handled by the member paths, which descend to the element / value type and never
 			// enqueue the container type itself
 			var (generator, output, compilation) = RunOn(ShelfDto + """
@@ -208,7 +208,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(generator.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "a collection or dictionary MEMBER reports nothing");
 
 			var generated = GeneratedSources(compilation);
-			Assert.That(generated, Does.Contain("Aisle"), "the enrolled POCO generates");
+			Assert.That(generated, Does.Contain("Aisle"), "the registered POCO generates");
 			Assert.That(generated, Does.Contain("Shelf"), "and so does the element type the crawler reached through the collection member");
 		}
 

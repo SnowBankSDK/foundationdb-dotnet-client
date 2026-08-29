@@ -149,7 +149,7 @@ namespace SnowBank.Testing.Framework.Tests
 			using var provider = services.BuildServiceProvider();
 
 			Assert.That(() => BetterHttpClientExtensions.ResolveClientOptions(provider, "foo"), Throws.InvalidOperationException,
-				"an unrecognized Tls:Mode value must fail loudly instead of silently picking a default");
+				"an unrecognized Tls:Mode value must throw instead of silently picking a default");
 		}
 
 		[Test]

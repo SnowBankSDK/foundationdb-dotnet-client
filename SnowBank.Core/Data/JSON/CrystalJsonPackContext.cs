@@ -96,7 +96,7 @@ namespace SnowBank.Data.Json
 			--m_depth;
 		}
 
-		/// <summary>Enters one value of the object graph: refuses past <see cref="CrystalJsonWriter.MaxDepth"/>, and refuses a reference cycle</summary>
+		/// <summary>Enters one value of the object graph: rejects past <see cref="CrystalJsonWriter.MaxDepth"/>, and rejects a reference cycle</summary>
 		/// <param name="instance">Value about to be packed; only reference types join the visited stack</param>
 		/// <exception cref="JsonSerializationException">If the graph is nested deeper than the cap, or <paramref name="instance"/> is one of its own ancestors</exception>
 		public void Enter(object? instance)

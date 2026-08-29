@@ -318,7 +318,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// The contract: per-call configure = protocol/client behavior only; transport policy (TLS, proxy, cookies, filters,
 			// pipeline handlers) = the named policy, registered at startup. A per-call TLS callback or filter CANNOT reach
 			// the shared pooled transport, and silently ignoring it would be a silent security/behavior break: it must
-			// fail loudly, naming the offending member.
+			// throw, naming the offending member.
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 			{
 				lan.WithMinimalWebHost("WEB", host =>
@@ -477,7 +477,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// Credentials have two halves: a handler-configure half (transport tier, name-only) and a per-request half
 			// (OnBeforeRequest - e.g. a message signer stamping auth onto each request). A credential that declares itself
 			// per-request only (IsPerRequestOnly) is CLIENT behavior - the "different identity per transient client" pattern -
-			// and must work on the shell; a transport-coupled one (e.g. NTLM via WrappedCredentials) must be rejected loudly.
+			// and must work on the shell; a transport-coupled one (e.g. NTLM via WrappedCredentials) must be rejected with an exception.
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 			{
 				lan.WithMinimalWebHost("WEB", host =>
@@ -501,7 +501,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// a transport-coupled credential cannot work per-shell: its configure half will never see the pooled chain
 			Assert.That(() => factory.CreateClient(uri, new BetterHttpShellOptions() { Credentials = new WrappedCredentials(new NetworkCredential("user", "password")) }),
 				Throws.InvalidOperationException.With.Message.Contains(nameof(WrappedCredentials)),
-				"transport-coupled credentials on the shell must fail loudly, not silently skip their configure half");
+				"transport-coupled credentials on the shell must throw, not silently skip their configure half");
 #pragma warning restore CS0618
 		}
 

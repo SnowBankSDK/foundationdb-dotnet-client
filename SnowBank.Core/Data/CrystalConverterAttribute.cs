@@ -29,8 +29,8 @@ namespace SnowBank.Data
 
 	/// <summary>Marks a partial class as a container of source-generated serializers, for one or more output formats</summary>
 	/// <remarks>
-	/// <para>This marker is format-neutral: it says that the class hosts generated code, and nothing about the output(s) it produces. Each format is requested by its own output attribute (<c>[CrystalJsonOutput]</c>, <c>[CrystalXmlOutput]</c>), and a container that names none of them is refused (<c>CRYS0001</c>): a container that produces nothing is never what the author meant.</para>
-	/// <para>The types to serialize are enrolled with one <see cref="CrystalSerializableAttribute"/> per "root" type; nested and referenced types are discovered automatically.</para>
+	/// <para>This marker is format-neutral: it says that the class hosts generated code, and nothing about the output(s) it produces. Each format is requested by its own output attribute (<c>[CrystalJsonOutput]</c>, <c>[CrystalXmlOutput]</c>), and a container that names none of them is rejected (<c>CRYS0001</c>): a container that produces nothing is never what the author meant.</para>
+	/// <para>The types to serialize are registered with one <see cref="CrystalSerializableAttribute"/> per "root" type; nested and referenced types are discovered automatically.</para>
 	/// <para>Sample: <code>
 	/// [CrystalConverter]
 	/// [CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]
@@ -58,7 +58,7 @@ namespace SnowBank.Data
 	/// <summary>Base class of the attributes that request one output format from a <see cref="CrystalConverterAttribute"/> container</summary>
 	/// <remarks>
 	/// <para>Each format contributes one derived attribute carrying its own parameters (<c>[CrystalJsonOutput]</c> for the JSON output, <c>[CrystalXmlOutput]</c> for the XML one). A container generates exactly the formats it names, and nothing else.</para>
-	/// <para>This base exists purely for documentation and discoverability (it groups the output attributes under a common ancestor so a reader can find them all from one place). The source generator does not walk this hierarchy: it matches each output attribute by its exact metadata name, so deriving a new output attribute from this base does not enroll it as a recognized format - the generator would never see it.</para>
+	/// <para>This base exists purely for documentation and discoverability (it groups the output attributes under a common ancestor so a reader can find them all from one place). The source generator does not walk this hierarchy: it matches each output attribute by its exact metadata name, so deriving a new output attribute from this base does not register it as a recognized format - the generator would never see it.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class)]
 	[PublicAPI]
@@ -70,11 +70,11 @@ namespace SnowBank.Data
 
 	}
 
-	/// <summary>Enrolls one or more types in a source-generated serializer container</summary>
+	/// <summary>Registers one or more types in a source-generated serializer container</summary>
 	/// <remarks>
-	/// <para>The enrollment is format-neutral: the enrolled type gets a generated serializer for every output format the container requests.</para>
+	/// <para>The registration is format-neutral: the registered type gets a generated serializer for every output format the container requests.</para>
 	/// <para>Any derived type, nested type, or type referenced by the members of these types is also included in the source code generation.</para>
-	/// <para>An enrolled type that implements <c>IJsonSerializable</c>, <c>IJsonPackable</c> or <c>IJsonDeserializable&lt;T&gt;</c> keeps its own format: the generated converter calls the type's method for each of those facets, and generates the other ones from its members. Set <see cref="IgnoreCustomSerialization"/> to take the members instead.</para>
+	/// <para>A registered type that implements <c>IJsonSerializable</c>, <c>IJsonPackable</c> or <c>IJsonDeserializable&lt;T&gt;</c> keeps its own format: the generated converter calls the type's method for each of those facets, and generates the other ones from its members. Set <see cref="IgnoreCustomSerialization"/> to take the members instead.</para>
 	/// <para>Do not subclass: the source generator matches exact attribute metadata names, a derived attribute is invisible to it.</para>
 	/// </remarks>
 	[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
@@ -101,10 +101,10 @@ namespace SnowBank.Data
 
 		/// <summary>Generates a member-based converter even when the type implements <c>IJsonSerializable</c>, <c>IJsonPackable</c> or <c>IJsonDeserializable&lt;T&gt;</c></summary>
 		/// <remarks>
-		/// <para>By default the generated converter calls the type's own method for each facet the type implements, so that a container and the runtime path produce the same bytes. This restores the member crawl, for code that took a dependence on the member-shaped output.</para>
+		/// <para>By default the generated converter calls the type's own method for each facet the type implements, so that a container and the runtime path produce the same bytes. This restores the member-based converter, for code that took a dependence on the member-based output.</para>
 		/// <para>Two limits, both by construction:</para>
-		/// <para>It cannot rescue a type the generator is unable to construct. A type with <c>required</c> members and no parameterless constructor does not compile under a member crawl, whichever way this option is set.</para>
-		/// <para>It has no effect on a transitively-discovered type. Only the types named in a <see cref="CrystalSerializableAttribute"/> carry this option; the nested and referenced types the generator crawls into carry no attribute of their own, and always keep their own format.</para>
+		/// <para>It cannot rescue a type the generator is unable to construct. A type with <c>required</c> members and no parameterless constructor does not compile when its converter is built from its members, whichever way this option is set.</para>
+		/// <para>It has no effect on a transitively-discovered type. Only the types named in a <see cref="CrystalSerializableAttribute"/> carry this option; the nested and referenced types the generator discovers carry no attribute of their own, and always keep their own format.</para>
 		/// </remarks>
 		public bool IgnoreCustomSerialization { get; set; }
 

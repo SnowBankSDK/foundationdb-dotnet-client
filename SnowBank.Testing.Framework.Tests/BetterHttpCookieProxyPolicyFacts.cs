@@ -57,7 +57,7 @@ namespace SnowBank.Testing.Framework.Tests
 
 			Assert.That(() => options.ConfigureTransport(new HttpClientHandler()),
 				Throws.InstanceOf<InvalidOperationException>(),
-				"forcing cookies off while supplying a container is contradictory and must refuse");
+				"forcing cookies off while supplying a container is contradictory and must reject");
 		}
 
 		[Test]
@@ -102,7 +102,7 @@ namespace SnowBank.Testing.Framework.Tests
 
 			Assert.That(() => options.ConfigureTransport(new HttpClientHandler()),
 				Throws.InstanceOf<InvalidOperationException>(),
-				"forcing the proxy off while supplying one is contradictory and must refuse");
+				"forcing the proxy off while supplying one is contradictory and must reject");
 		}
 
 		[Test]

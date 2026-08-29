@@ -43,7 +43,7 @@ namespace SnowBank.Data.Xml
 	/// override, a dictionary key written under <see cref="CrystalXmlDictionaryFormat.Direct"/>). Unlike the constructor,
 	/// <see cref="Create(string)"/> <b>validates</b> that the name is a legal XML NCName and raises
 	/// <see cref="XmlException"/> if it is not: this is the one place user-supplied text turns into a
-	/// name, and a bad name must fail loudly rather than corrupt the document.</para>
+	/// name, and a bad name must throw rather than corrupt the document.</para>
 	/// <para><see cref="Namespace"/> is optional and defaults to <see cref="CrystalXmlNamespace.None"/>, so a name built the
 	/// way it always was keeps meaning exactly what it did. A name holds the <b>local name and the namespace</b> and never a
 	/// prefix: both of those are properties of the name itself, while the prefix depends on the depth of the element that

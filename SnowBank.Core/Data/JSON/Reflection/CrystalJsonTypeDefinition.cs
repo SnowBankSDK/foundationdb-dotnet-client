@@ -127,7 +127,7 @@ namespace SnowBank.Data.Json
 
 		public bool IsPolymorphic => this.Flags.HasFlag(CrystalJsonTypeFlags.Polymorphic);
 
-		/// <summary>Specifies that a JSON object is not a valid representation of this type, so the member binder must refuse one</summary>
+		/// <summary>Specifies that a JSON object is not a valid representation of this type, so the member binder must reject one</summary>
 		/// <remarks>Classified once, when the contract is built. See <see cref="CrystalJsonTypeFlags.OpaqueValueType"/>.</remarks>
 		public bool IsOpaqueValueType => this.Flags.HasFlag(CrystalJsonTypeFlags.OpaqueValueType);
 

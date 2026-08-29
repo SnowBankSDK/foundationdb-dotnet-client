@@ -27,8 +27,8 @@
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
 
-	/// <summary>Pins the fail-closed guard on author-written converter hooks: a method carrying one of the three reserved names is either called, or refused with CJSON0024</summary>
-	/// <remarks>A hook that sits unused because of a typo would silently keep the generated member crawl, which is the failure this guard exists to prevent, so an unusable shape is an error and never a fallback.</remarks>
+	/// <summary>Pins the fail-closed guard on author-written converter hooks: a method carrying one of the three reserved names is either called, or rejected with CJSON0024</summary>
+	/// <remarks>A hook that sits unused because of a typo would silently keep the generated member-based conversion, which is the failure this guard exists to prevent, so an unusable shape is an error and never a fallback.</remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]
@@ -101,23 +101,23 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Wrong_Parameter_Order_Is_Refused()
+		public void Test_Wrong_Parameter_Order_Is_Rejected()
 		{
 			var ids = Run("""
 						public static void Serialize(Probe.Cat? instance, SnowBank.Data.Json.CrystalJsonWriter writer) { }
 			""");
 
-			Assert.That(ids, Does.Contain("CJSON0024"), "swapped parameters must be refused, not silently ignored");
+			Assert.That(ids, Does.Contain("CJSON0024"), "swapped parameters must be rejected, not silently ignored");
 		}
 
 		[Test]
-		public void Test_Wrong_Return_Type_Is_Refused()
+		public void Test_Wrong_Return_Type_Is_Rejected()
 		{
 			var ids = Run("""
 						public static string Pack(Probe.Cat? instance, SnowBank.Data.Json.CrystalJsonSettings? settings, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver) => "";
 			""");
 
-			Assert.That(ids, Does.Contain("CJSON0024"), "a wrong return type must be refused");
+			Assert.That(ids, Does.Contain("CJSON0024"), "a wrong return type must be rejected");
 		}
 
 		/// <summary>A method one level deeper than the scope is not a hook, and carries none of the reserved names' obligations</summary>
@@ -157,7 +157,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Generic_Hook_Is_Refused()
+		public void Test_Generic_Hook_Is_Rejected()
 		{
 			var ids = Run("""
 						public static Probe.Cat Unpack<T>(SnowBank.Data.Json.JsonValue value, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver) => new();
@@ -167,7 +167,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Ref_Parameter_Is_Refused()
+		public void Test_Ref_Parameter_Is_Rejected()
 		{
 			var ids = Run("""
 						public static void Serialize(SnowBank.Data.Json.CrystalJsonWriter writer, ref Probe.Cat? instance) { }
@@ -177,7 +177,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Refusal_Names_The_Expected_Signature()
+		public void Test_Rejection_Names_The_Expected_Signature()
 		{
 			var compilation = GeneratorProbeHarness.Compile(Probe("""
 						public static string Pack(Probe.Cat? instance, SnowBank.Data.Json.CrystalJsonSettings? settings, SnowBank.Data.Json.ICrystalJsonTypeResolver? resolver) => "";

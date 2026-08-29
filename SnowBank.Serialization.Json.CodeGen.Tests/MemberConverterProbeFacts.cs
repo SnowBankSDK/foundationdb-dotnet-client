@@ -128,7 +128,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	}
 
 	/// <summary>Legacy-shaped converter declared for the NULLABLE form itself: a present-but-unreadable value answers "no value"</summary>
-	/// <remarks>Both throw-arms pin the pipeline invariant race-free: the pipeline owns null and missing on BOTH sides, so if any route ever hands them to the converter, whatever test triggered it fails loudly.</remarks>
+	/// <remarks>Both throw-arms pin the pipeline invariant race-free: the pipeline owns null and missing on BOTH sides, so if any route ever hands them to the converter, whatever test triggered it throws.</remarks>
 	public sealed class ProbeNullableFormCountConverter : IJsonMemberConverter<int?>
 	{
 
@@ -344,7 +344,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Generated_Asymmetric_Converter_Facets()
 		{
-			// pack-only: serializing works, deserializing a PRESENT value fails loudly with a teaching message
+			// pack-only: serializing works, deserializing a PRESENT value throws with a teaching message
 			Assert.That(ProbeConverterHost.ProbePackOnlyDto.ToJsonText(new ProbePackOnlyDto { Flag = true }), Does.Contain("\"1\""));
 			Assert.That(ProbeConverterHost.ProbePackOnlyDto.Deserialize("{ }").Flag, Is.False, "an absent member never invokes the converter");
 			Assert.That(
@@ -352,7 +352,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Throws.Exception.With.Message.Contain(nameof(ProbePackOnlyConverter))
 					.And.Message.Contain("IJsonDeserializer").And.Message.Contain("Unpack"));
 
-			// unpack-only: deserializing works, any serialize attempt fails loudly with a teaching message
+			// unpack-only: deserializing works, any serialize attempt throws with a teaching message
 			Assert.That(ProbeConverterHost.ProbeUnpackOnlyDto.Deserialize("""{ "Flag": "1" }""").Flag, Is.True);
 			Assert.That(
 				() => ProbeConverterHost.ProbeUnpackOnlyDto.ToJsonText(new ProbeUnpackOnlyDto { Flag = true }),

@@ -255,7 +255,7 @@ namespace SnowBank.Data.Xml
 			/// <param name="rootName">Optional name for the root element, in place of the type's xsd lexical name; the root stays in the Serialization namespace either way</param>
 			/// <remarks>These entry points write the output the reference <c>DataContractSerializer</c> writes for the same declared
 			/// type: the xsd lexical name in the built-in Serialization namespace, as pinned by the root facts of
-			/// <c>DcsNamespaceReferenceFacts</c>. A type outside the lexical set has no scalar output and is refused.</remarks>
+			/// <c>DcsNamespaceReferenceFacts</c>. A type outside the lexical set has no scalar output and is rejected.</remarks>
 			/// <exception cref="CrystalXmlUnknownTypeException">If <typeparamref name="T"/> is not one of the lexical scalar types</exception>
 			public static string ToText<T>(T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 			{

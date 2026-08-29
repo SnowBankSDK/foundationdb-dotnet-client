@@ -320,7 +320,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Resolves the contract name of the type a converter is being emitted for, emitting a <c>#error</c> when it cannot be derived or is not a legal XML name</summary>
 			/// <remarks>The name is already <c>XmlConvert.EncodeLocalName</c>-encoded, which is what the reference serializer does
-			/// too, so a declared name like <c>"with-dash"</c> is honored rather than refused. The verification below therefore only
+			/// too, so a declared name like <c>"with-dash"</c> is honored rather than rejected. The verification below therefore only
 			/// catches what encoding cannot repair (an empty name), and the <c>#error</c> says so at the exact container.</remarks>
 			private string ResolveXmlDcsRootName(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
 			{
@@ -347,9 +347,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Returns the output name of one member: its data-contract name, XML-encoded</summary>
 			/// <remarks>The data contract owns this name: <c>[DataMember(Name = ...)]</c> when present, the declared member name
 			/// otherwise, which is what the reference serializer writes. The resolved JSON name is not read here. On a
-			/// <c>[DataContract]</c> type the two are the same name, because CJSON0011 refuses a declaration where they differ; on a
+			/// <c>[DataContract]</c> type the two are the same name, because CJSON0011 rejects a declaration where they differ; on a
 			/// plain DTO they are not, because a <c>[JsonProperty]</c> renames the JSON member of a type that has no data contract,
-			/// and the reference serializer still writes the member's own name. The compat profile also refuses the
+			/// and the reference serializer still writes the member's own name. The compat profile also rejects the
 			/// <c>[XmlProperty]</c> renaming surface (CXML0004) and any naming policy on the container (CXML0001), so this name has
 			/// exactly one source.</remarks>
 			private static string GetXmlDcsMemberName(CrystalJsonMemberMetadata member) => System.Xml.XmlConvert.EncodeLocalName(member.DataMemberName ?? member.MemberName);
@@ -620,7 +620,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// no-set-method check is property-only. On a POCO it just omits them (only public get+set members are taken); on a
 			/// <c>[DataContract]</c> type a read-only <c>[DataMember]</c> PROPERTY is not a valid contract at all
 			/// (<c>InvalidDataContractException</c>, "No set method for property"), which <c>CrystalJsonSourceGenerator.Parser.ReportReadOnlyDataMemberProperty</c>
-			/// refuses with <c>CXML0013</c> at generation time; this filter is only the emission-side backstop for that refusal.
+			/// rejects with <c>CXML0013</c> at generation time; this filter is only the emission-side backstop for that rejection.
 			/// A read-only FIELD is a different shape: that check does
 			/// not look at fields, so DCS emits one, and this filter keeps it in for a <c>[DataContract]</c> type. Init-only members
 			/// are unaffected either way, because <see cref="CrystalJsonMemberMetadata.IsReadOnly"/> is <see langword="false"/> for
@@ -831,7 +831,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Writes the content of a type's element: its own content hook, the <c>ISerializable</c> dialect, or its members</summary>
 			/// <remarks>
 			/// <para>Three branches, in this order: a type that writes its own content, the <c>ISerializable</c> dialect, and the
-			/// members. There is deliberately NO collection branch here: this method writes the body of a type ENROLLED in the
+			/// members. There is deliberately NO collection branch here: this method writes the body of a type REGISTERED in the
 			/// container, and a collection is only ever reached as the type of a member, where
 			/// <see cref="WriteXmlDcsValueContent"/> gives it its own shape (and applies the reference serializer's priority: a data
 			/// contract first, then the collection shapes, then <c>ISerializable</c>, so a <c>Dictionary&lt;K,V&gt;</c> serializes as
@@ -877,7 +877,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// is declared as <c>object</c>, so every non-null value carries a contract annotation.</para>
 			/// <para><c>GetObjectData</c> is called directly on the instance, so nothing here reflects over the type. The entry name
 			/// is the one place a name is built at run time: it goes through the same <c>XmlConvert.EncodeLocalName</c> the reference
-			/// serializer applies, so a key that is not an XML name comes out escaped rather than refused.</para>
+			/// serializer applies, so a key that is not an XML name comes out escaped rather than rejected.</para>
 			/// </remarks>
 			private void WriteXmlDcsSerializableDialect(CSharpCodeBuilder sb, XmlNameTable names, CrystalJsonTypeMetadata typeDef)
 			{
@@ -1093,7 +1093,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Writes a sequence: one element per item, named after the ITEM type's contract</summary>
 			/// <remarks>An empty sequence writes the self-closing wrapper, and a nested sequence names its items after the inner
 			/// collection's own contract (<c>ArrayOfstring</c>), which is why this format has no equivalent of the general profile's
-			/// refusal to nest bare collections (CXML0006).</remarks>
+			/// rejection to nest bare collections (CXML0006).</remarks>
 			private void WriteXmlDcsSequenceContent(CSharpCodeBuilder sb, XmlNameTable names, TypeMetadata type, string valueExpr, string nameRef, string scope)
 			{
 				var itemType = type.ElementType!;
@@ -1263,10 +1263,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.LeaveBlock("switch");
 			}
 
-			/// <summary>Whether the converter currently being emitted needs the anyType refusal helper</summary>
+			/// <summary>Whether the converter currently being emitted needs the anyType rejection helper</summary>
 			private bool XmlNeedsAnyTypeHelper { get; set; }
 
-			/// <summary>Emits the helper that refuses a runtime type an <c>anyType</c> slot cannot name</summary>
+			/// <summary>Emits the helper that rejects a runtime type an <c>anyType</c> slot cannot name</summary>
 			private static void WriteXmlDcsAnyTypeHelper(CSharpCodeBuilder sb)
 			{
 				sb.Comment("an anyType slot names its value after the value's own contract, and the set of contracts this container can name is closed at generation time");
@@ -1287,7 +1287,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// otherwise. The System.Text.Json token that the general format prefers is deliberately NOT read here: the output this
 			/// profile reproduces never saw it.</para>
 			/// <para>On a <c>[DataContract]</c> enum only the members carrying <c>[EnumMember]</c> are serializable, so the others get
-			/// no case at all and land in the refusal arm, exactly as the reference serializer refuses them.</para>
+			/// no case at all and land in the rejection arm, exactly as the reference serializer rejects them.</para>
 			/// </remarks>
 			private void WriteXmlDcsEnumHelper(CSharpCodeBuilder sb, string methodName, TypeMetadata type)
 			{
@@ -1299,7 +1299,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					type,
 					$"Labels of {type.Name} on the DataContract format, resolved by a switch: Enum.ToString() would go through the runtime's reflection-backed name cache",
 					// on a [DataContract] enum only the [EnumMember]-annotated members are serializable: the others get no case at
-					// all, and land in the refusal arm exactly as the reference serializer refuses them
+					// all, and land in the rejection arm exactly as the reference serializer rejects them
 					member => !type.IsDataContractEnum || member.HasEnumMemberAttribute,
 					static member => member.EnumMemberValue ?? member.Name,
 					() =>
@@ -1324,7 +1324,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Emits the combiner of one <c>[Flags]</c> enum: the declared labels of the set bits, joined by a space, in declaration order</summary>
 			/// <remarks>Reflection-free by construction: the bits and their labels are constants baked in at generation time. A value
-			/// with a bit no declared member covers, or a zero value with no declared member, is refused rather than approximated.</remarks>
+			/// with a bit no declared member covers, or a zero value with no declared member, is rejected rather than approximated.</remarks>
 			private void WriteXmlDcsFlagsCombiner(CSharpCodeBuilder sb, string methodName, TypeMetadata type)
 			{
 				string fullName = type.FullyQualifiedName;
@@ -1364,13 +1364,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 			}
 
-			/// <summary>Whether the converter currently being emitted needs the undeclared-enum refusal helper</summary>
+			/// <summary>Whether the converter currently being emitted needs the undeclared-enum rejection helper</summary>
 			private bool XmlNeedsUndeclaredEnumHelper { get; set; }
 
-			/// <summary>Emits the helper that refuses an enum value the data contract does not declare</summary>
+			/// <summary>Emits the helper that rejects an enum value the data contract does not declare</summary>
 			private static void WriteXmlDcsUndeclaredEnumHelper(CSharpCodeBuilder sb)
 			{
-				sb.Comment("the reference serializer refuses a value that is not a declared (and, on a [DataContract] enum, [EnumMember]-annotated) member; it raises SerializationException, this format raises its own typed exception");
+				sb.Comment("the reference serializer rejects a value that is not a declared (and, on a [DataContract] enum, [EnumMember]-annotated) member; it raises SerializationException, this format raises its own typed exception");
 				sb.AppendLine($"private static string FailXmlUndeclaredEnum({SystemTypeFullName} type, string value)");
 				sb.EnterBlock();
 				sb.AppendLine($"throw new {NotSupportedExceptionFullName}(\"Cannot write the value '\" + value + \"' of enum '\" + type.Name + \"' to XML: it is not one of the members the data contract of this enum declares. Declare it as a member of the enum, or add [EnumMember] to the member that carries this value.\");");
@@ -1378,14 +1378,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 			}
 
-			/// <summary>Name of the emitted undeclared-flags refusal of THIS format</summary>
+			/// <summary>Name of the emitted undeclared-flags rejection of THIS format</summary>
 			/// <remarks>Deliberately not the general format's <c>FailXmlUndeclaredFlags</c>, which carries the same concept under an
 			/// INCOMPATIBLE signature (it returns the <c>string</c> a switch arm evaluates to, where this one is a statement that
 			/// returns nothing). No generated class holds both today - a container resolves to exactly one profile - but two same-named
 			/// helpers with different signatures is a collision waiting for the first piece of code that emits both.</remarks>
 			private const string XmlDcsUndeclaredFlagsHelperName = "FailXmlDcsUndeclaredFlags";
 
-			/// <summary>Emits the helper that refuses a combination of <c>[Flags]</c> the declared members do not cover</summary>
+			/// <summary>Emits the helper that rejects a combination of <c>[Flags]</c> the declared members do not cover</summary>
 			private static void WriteXmlDcsFlagsHelper(CSharpCodeBuilder sb)
 			{
 				sb.Comment("a [Flags] value with a bit no declared member covers has no label the reference format would produce either");

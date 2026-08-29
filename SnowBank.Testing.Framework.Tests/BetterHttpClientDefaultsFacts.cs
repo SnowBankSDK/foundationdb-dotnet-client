@@ -36,7 +36,7 @@ namespace SnowBank.Testing.Framework.Tests
 
 	/// <summary>Tests for <see cref="BetterHttpClientExtensions.AddBetterHttpClientDefaults"/>: the global hook that
 	/// routes every factory client (named, typed via <c>AddHttpClient&lt;TClient&gt;</c>, or a plain <c>AddHttpClient</c>)
-	/// through the <see cref="INetworkMap"/> transport, so a stock client needs no per-client enrollment (and is
+	/// through the <see cref="INetworkMap"/> transport, so a stock client needs no per-client registration (and is
 	/// sandboxed by construction inside a distributed test). Also covers the registration-time coordination that keeps
 	/// exactly one pipeline handler and one packet-capture handler on a named policy when the defaults hook and a named client
 	/// are both present.</summary>
@@ -62,7 +62,7 @@ namespace SnowBank.Testing.Framework.Tests
 		{
 			// AddBetterHttpClientDefaults installs a ConfigureHttpClientDefaults hook whose primary handler is the map's
 			// transport, applied to every factory client. So a plain AddHttpClient("weather"), with no BetterHttpClient
-			// enrollment, is routed through INetworkMap - its primary handler is the map transport, not the stock socket handler.
+			// registration, is routed through INetworkMap - its primary handler is the map transport, not the stock socket handler.
 			var services = new ServiceCollection();
 			services.AddSingleton<INetworkMap, NetworkMap>();
 			services.AddBetterHttpClientDefaults();
@@ -198,7 +198,7 @@ namespace SnowBank.Testing.Framework.Tests
 		[Test]
 		public async Task Test_Stock_AddHttpClient_Is_Sandboxed_Into_The_Virtual_Network()
 		{
-			// End to end: on a simulated host, a stock AddHttpClient (no BetterHttpClient enrollment) reaches a virtual host by
+			// End to end: on a simulated host, a stock AddHttpClient (no BetterHttpClient registration) reaches a virtual host by
 			// its simulated URI. A real socket could never resolve a ".simulated" name, so this only passes if the per-host
 			// defaults hook (DistributedTestComponent's default client) pulled the stock client into the virtual network map.
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>

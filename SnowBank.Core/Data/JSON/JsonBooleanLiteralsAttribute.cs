@@ -57,7 +57,7 @@ namespace SnowBank.Data.Json
 			this.TrueLiteral = ToLiteral(whenTrue, nameof(whenTrue)) ?? throw new ArgumentNullException(nameof(whenTrue), "A true literal is required: emitting nothing for true has no meaning.");
 		}
 
-		/// <summary>Converts an attribute argument to its output form, refusing types that have none</summary>
+		/// <summary>Converts an attribute argument to its output form, rejecting types that have none</summary>
 		internal static JsonValue? ToLiteral(object? value, string parameterName)
 			=> value switch
 			{
@@ -126,7 +126,7 @@ namespace SnowBank.Data.Json
 
 					if (this.FalseLiteral is null && !b.ToBoolean())
 					{ // there is no false literal because ABSENCE means false; an explicit false is the same state
-						// spelled out, so refusing it would reject a value the shape already considers legal
+						// spelled out, so rejecting it would reject a value the shape already considers legal
 						return false;
 					}
 

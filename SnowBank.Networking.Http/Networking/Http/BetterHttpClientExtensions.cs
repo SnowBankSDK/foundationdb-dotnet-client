@@ -74,7 +74,7 @@ namespace SnowBank.Networking.Http
 		public const string CaptureHandlerServiceKey = "SnowBank.Networking.Http.CaptureHandler";
 
 		/// <summary>Retired: use <see cref="AddBetterHttpClientDefaults"/>, which routes every factory client through the network map, not just the default client.</summary>
-		/// <remarks>The old overload wired only the default (dynamic) client, so a plain <c>AddHttpClient(...)</c> escaped the map. <see cref="AddBetterHttpClientDefaults"/> hooks every factory client (named, typed, or default) with no per-client enrollment.</remarks>
+		/// <remarks>The old overload wired only the default (dynamic) client, so a plain <c>AddHttpClient(...)</c> escaped the map. <see cref="AddBetterHttpClientDefaults"/> hooks every factory client (named, typed, or default) with no per-client registration.</remarks>
 		[Obsolete("Use AddBetterHttpClientDefaults(configure): it routes EVERY factory client through the network map (a plain AddHttpClient too), not just the default client. This overload wired only the default client, so stock clients escaped the map (and the test sandbox).", error: true)]
 		public static IServiceCollection AddBetterHttpClient(this IServiceCollection services, Action<BetterHttpClientOptions>? configure = null)
 		{
@@ -88,11 +88,11 @@ namespace SnowBank.Networking.Http
 			return services;
 		}
 
-		/// <summary>Routes every factory client through the network map and the standard pipeline, so a plain <see cref="System.Net.Http.IHttpClientFactory"/> client needs no per-client enrollment.</summary>
+		/// <summary>Routes every factory client through the network map and the standard pipeline, so a plain <see cref="System.Net.Http.IHttpClientFactory"/> client needs no per-client registration.</summary>
 		/// <param name="services">Service collection</param>
 		/// <param name="configure">Optional callback used to configure the global options that form the baseline for every client.</param>
 		/// <remarks>
-		/// <para>This is the recommended default registration. It wires the map's transport plus the standard pipeline onto every factory client (named, typed via <c>AddHttpClient&lt;TClient&gt;</c>, keyed via <c>AddAsKeyed()</c>, or the default), so a plain <c>services.AddHttpClient("weather")</c> is routed with no enrollment. Inside a distributed test this sandboxes every factory client by construction.</para>
+		/// <para>This is the recommended default registration. It wires the map's transport plus the standard pipeline onto every factory client (named, typed via <c>AddHttpClient&lt;TClient&gt;</c>, keyed via <c>AddAsKeyed()</c>, or the default), so a plain <c>services.AddHttpClient("weather")</c> is routed with no registration. Inside a distributed test this sandboxes every factory client by construction.</para>
 		/// <para>The global <paramref name="configure"/> sets the baseline (transport, default headers, TLS trust, timeout) for every client; a per-name registration made with <see cref="AddBetterHttpClient(IServiceCollection, string, Action{BetterHttpClientOptions})"/> overrides or extends that baseline for its own client.</para>
 		/// </remarks>
 		public static IServiceCollection AddBetterHttpClientDefaults(this IServiceCollection services, Action<BetterHttpClientOptions>? configure = null)
@@ -136,7 +136,7 @@ namespace SnowBank.Networking.Http
 		/// <returns>A <see cref="IBetterHttpClientBuilder"/> for this name; it implements <see cref="IHttpClientBuilder"/>, so the standard registration APIs (<c>AddHttpMessageHandler</c>, <c>AddAsKeyed</c>, <c>ConfigureHttpClient</c>, typed clients) chain on, and it anchors the BetterHttp-specific registration extensions.</returns>
 		/// <remarks>
 		/// <para>This is exactly <c>services.AddHttpClient(name)</c> plus the per-name options layer: the client is a regular factory client, reachable as a typed or keyed client, from <see cref="System.Net.Http.IHttpClientFactory"/>, from <see cref="System.Net.Http.IHttpMessageHandlerFactory.CreateHandler"/>, or from <see cref="IBetterHttpClientFactory"/>, and each carries the same policy.</para>
-		/// <para>A client with no BetterHttp-specific policy does not need this method: a plain <c>AddHttpClient(name)</c> is already fully enrolled by <see cref="AddBetterHttpClientDefaults"/>.</para>
+		/// <para>A client with no BetterHttp-specific policy does not need this method: a plain <c>AddHttpClient(name)</c> is already fully registered by <see cref="AddBetterHttpClientDefaults"/>.</para>
 		/// </remarks>
 		public static IBetterHttpClientBuilder AddBetterHttpClient(this IServiceCollection services, string name, Action<BetterHttpClientOptions>? configure = null)
 		{
@@ -163,7 +163,7 @@ namespace SnowBank.Networking.Http
 
 		/// <summary>Ensures the factory, the options builder, the M.E.Http infrastructure and the per-name chain setup are registered.</summary>
 		/// <remarks>
-		/// <para>The chain setup applies to every factory client name (registered through this API or through a plain <c>AddHttpClient</c>): once any <c>AddBetterHttpClient*</c> registration ran, the whole factory is enrolled. There is no per-name wiring left: the setup resolves each name's options when that name's chain is built.</para>
+		/// <para>The chain setup applies to every factory client name (registered through this API or through a plain <c>AddHttpClient</c>): once any <c>AddBetterHttpClient*</c> registration ran, the whole factory is registered. There is no per-name wiring left: the setup resolves each name's options when that name's chain is built.</para>
 		/// </remarks>
 		private static void RegisterCore(IServiceCollection services)
 		{

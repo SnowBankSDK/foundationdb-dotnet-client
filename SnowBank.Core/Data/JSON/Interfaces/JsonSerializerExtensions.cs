@@ -2240,7 +2240,7 @@ namespace SnowBank.Data.Json
 		/// <param name="fieldName">Name of the field in the output</param>
 		/// <exception cref="JsonBindingException"> if <paramref name="fieldName"/> is absent from <paramref name="obj"/>.</exception>
 		/// <remarks>
-		/// <para>An explicit <c>null</c> SATISFIES this contract, which is what <c>DataContractJsonSerializer</c> does; only absence is refused. The C# <c>required</c> keyword is stricter and refuses null as well.</para>
+		/// <para>An explicit <c>null</c> SATISFIES this contract, which is what <c>DataContractJsonSerializer</c> does; only absence is rejected. The C# <c>required</c> keyword is stricter and rejects null as well.</para>
 		/// <para>Presence is independent of how the member's value is decoded, so generated converters emit this as a single guard per member rather than threading the condition through every decoding shape.</para>
 		/// </remarks>
 		public static void VerifyRequiredPresence(JsonObject obj, string fieldName)
@@ -2357,7 +2357,7 @@ namespace SnowBank.Data.Json
 			throw new JsonBindingException($"Converter '{converterType.GetFriendlyName()}' only implements packing (IJsonPacker<{typeof(T).GetFriendlyName()}>); deserializing this value requires it to also implement IJsonDeserializer<{typeof(T).GetFriendlyName()}>.Unpack(JsonValue, ICrystalJsonTypeResolver?).");
 		}
 
-		/// <summary>Deserializes an optional JSON value through an asymmetric converter that lacks the deserializing facet: an absent or null value binds to the default (the converter never runs), anything else fails loudly</summary>
+		/// <summary>Deserializes an optional JSON value through an asymmetric converter that lacks the deserializing facet: an absent or null value binds to the default (the converter never runs), anything else throws</summary>
 		public static T? FailConverterMissingDeserializerFacet<T>(JsonValue? value, Type converterType, T? defaultValue)
 		{
 			if (value is null or JsonNull)

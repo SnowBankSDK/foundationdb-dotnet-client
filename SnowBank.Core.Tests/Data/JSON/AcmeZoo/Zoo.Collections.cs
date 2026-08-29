@@ -367,7 +367,7 @@ namespace Acme.Zoo.Cases.CollectionSubclassAsRoot
 
 	/// <summary>The same family with the collection subclass as the root type rather than a
 	/// member. Worth separating: root and member binding took different code paths in the
-	/// 7.4.2 defect, failing loudly in one and silently in the other.</summary>
+	/// 7.4.2 defect, failing with an exception in one and silently in the other.</summary>
 	[DataContract]
 	public class TagEntry
 	{

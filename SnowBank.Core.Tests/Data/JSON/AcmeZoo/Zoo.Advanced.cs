@@ -4,7 +4,7 @@
 #pragma warning disable CS0649 // fields only ever assigned by the serializer
 
 // Categories: polymorphism, object graphs, lifecycle callbacks, extension data, and the
-// first diagnostic case, which is expected to fail loudly rather than to match.
+// first diagnostic case, which is expected to throw rather than to match.
 // Scan-derived weights: [KnownType] 1146 · IExtensibleDataObject 29 · lifecycle callbacks 103
 // (OnDeserialized 52, OnSerializing 27, OnDeserializing 23, OnSerialized 1) · ISerializable 5.
 // Serializer configurations in the whole application: exactly two, both represented here.
@@ -291,7 +291,7 @@ namespace Acme.Zoo.Cases.DiagnosticDoubleContract
 	/// carried over as-is, because a serializer that understands both attribute families will
 	/// see both and honour only one, silently. The remedy is to split the DTO, and the "after"
 	/// shape below is the worked example for the migration guide. What CrystalJson should do
-	/// with the "before" shape is refuse it with an explicit message naming the property and
+	/// with the "before" shape is reject it with an explicit message naming the property and
 	/// the two conflicting attributes.</para></summary>
 	[DataContract]
 	public class TwoFacedDto

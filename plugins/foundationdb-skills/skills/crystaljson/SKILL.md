@@ -278,7 +278,7 @@ container producing several formats needs:
 | Attribute | Namespace | Role |
 |---|---|---|
 | `[CrystalConverter]` | `SnowBank.Data` | the container marker; says nothing about the formats |
-| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrolls a root type; repeatable; feeds every output format |
+| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | registers a root type; repeatable; feeds every output format |
 | `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | requests the JSON format (profile, naming policy, case-insensitivity) |
 | `[CrystalXmlOutput(...)]` | `SnowBank.Data.Xml` | requests the XML format (see `Documentation/CrystalXml.md`) |
 | `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias: `[CrystalConverter]` + `[CrystalJsonOutput]`, JSON only |
@@ -289,7 +289,7 @@ a mono-format alias next to an output attribute is refused (`CRYS0002` - use `[C
 explicit output attributes instead); several container markers on one class are refused (`CRYS0003`).
 
 ```csharp
-// a container that produces BOTH formats from one set of enrolled types
+// a container that produces BOTH formats from one set of registered types
 [CrystalConverter]
 [CrystalJsonOutput(CrystalJsonSerializerDefaults.Web)]
 [CrystalXmlOutput]
@@ -298,11 +298,11 @@ public static partial class CatalogSerializers { }
 ```
 
 `[CrystalJsonSerializable(typeof(T))]` is the former spelling of `[CrystalSerializable]`: still working
-and byte-identical, but `[Obsolete]` (enrollment never was JSON-specific).
+and byte-identical, but `[Obsolete]` (registration never was JSON-specific).
 
 ### Self-serializable types: the entity IS its own container *(7.4.3+)*
 
-The container above (`AcmeSerializers`) is one way to enroll a type. The other is to let the type carry its own
+The container above (`AcmeSerializers`) is one way to register a type. The other is to let the type carry its own
 generated code, which is what you want when a **layer** owns a vocabulary and should not force every consuming
 application to also declare a JSON container.
 
@@ -320,7 +320,7 @@ public sealed class MyEntityAttribute : Attribute { }
 public sealed partial record Widget
 {
     public required string Name { get; init; }
-    public Author? Author { get; init; }      // referenced types are still crawled
+    public Author? Author { get; init; }      // referenced types are still picked up
 }
 ```
 
@@ -363,7 +363,7 @@ Things to know before you use it:
 - Hint names are namespace-qualified in this mode, because entity names collide across namespaces far more
   often than container names do.
 - The `[CrystalJsonConverter]` + `[CrystalSerializable]` container path is untouched and still correct.
-  Prefer the container when you are enrolling third-party types you cannot annotate, or a set of unrelated
+  Prefer the container when you register third-party types you cannot annotate, or a set of unrelated
   types; prefer self mode when the type is yours and a layer already marks it.
 
 ### csproj wiring (the part most often gotten wrong)
@@ -425,6 +425,9 @@ navigating (`proxy.Metadata.IsNullOrMissing()` tells you), an optional member re
 `required` member absent from the document throws `JsonBindingException`, never a `NullReferenceException`
 (pinned by `Test_JsonReadOnlyProxy_With_Empty_Object` in `SnowBank.Serialization.Json.CodeGen.Tests`).
 
+*(7.4.5+)* A type that decides its own format (IJson* interfaces, or a container hook, section 7) gets NO
+generated proxies, with a `CJSON0025` warning: the generator cannot describe a shape it does not produce.
+
 Note: `.With(...)` (copy-on-write edit) is a method on the GENERATED typed proxies shown here, not on a raw DOM
 `JsonObject`/`JsonArray`. For a plain DOM value there is no `.With(...)`: freeze with `value.ToReadOnly()` and edit a
 copy with `value.ToMutable()` (section 2), then set fields via the indexer.
@@ -480,6 +483,60 @@ By convention the concrete `JsonDeserialize` implementation declares the resolve
 so callers can omit it; that still satisfies the interface. `JsonPack` (to DOM) and `JsonDeserialize` (from DOM) must be inverses - round-trip them in a test. Build values with
 `JsonString.Return(...)`, `JsonNumber.Return(...)`, `JsonArray.ReadOnly.Create(...)`. Handle null/missing defensively in
 `JsonDeserialize`. (Example in the wild: a compact id type packed as a `JsonArray` of its parts.)
+
+### Generated converters call a registered type's own IJson* implementations *(7.4.5+)*
+
+For a type that implements one of the three interfaces AND is registered with a `[CrystalConverter]`
+container, the generated converter calls the type's own method for each interface it implements, and
+generates the remaining methods from the members. Before 7.4.5 the generated converter ignored the
+interfaces and built the output from the members, so the generated and reflection paths produced
+different output for the same type. The type's format takes precedence over the container's profile
+settings.
+
+To force the old member-based output for one type, opt it out where it is registered:
+
+```csharp
+[CrystalSerializable(typeof(LegacyRecord), IgnoreCustomSerialization = true)]
+```
+
+Two limits: the opt-out cannot help a type the generator cannot construct from members (`required`
+members with no parameterless constructor), and it cannot be applied to a type discovered through
+another type (a type reached through another type's member is registered automatically, and no
+attribute can be applied to it).
+
+### Overriding a generated converter with a hand-written method *(7.4.5+)*
+
+The per-type scope a container generates is `partial`. An author can declare a `Serialize`, `Pack`, or
+`Unpack` method in their own part, and the generated converter routes that facet to it while keeping
+the `IJsonConverter<T>` implementation, the null check, the circular-reference check, and the
+read-only conversion. The null check runs BEFORE the author's method: a null instance serializes as
+JSON null and the method is never called with one, so it takes a non-nullable parameter and needs no
+null branch.
+This override is per container, and takes precedence over the type's own IJson* methods, so two
+containers can serialize one type differently. A scope is named after the type it serves, so inside the container
+that name refers to the SCOPE: qualify the serialized type in the registration and the hook signatures.
+
+```csharp
+[CrystalConverter]
+[CrystalJsonOutput]
+[CrystalSerializable(typeof(Telemetry.SensorReading))]
+public static partial class TelemetrySerializers
+{
+	public static partial class SensorReading
+	{
+		// replaces the generated Pack body for this container only; the generated code
+		// handles a null instance before this method runs, so there is no null case here
+		public static JsonValue Pack(Telemetry.SensorReading instance, CrystalJsonSettings? settings = default, ICrystalJsonTypeResolver? resolver = default)
+			=> JsonArray.Create(JsonString.Return(instance.Sensor), JsonNumber.Return(instance.Value));
+	}
+}
+```
+
+The names `Serialize`, `Pack`, and `Unpack` are reserved inside a generated scope: one of them with an
+incompatible signature is a hard error (`CJSON0024`) naming the expected shape, never a silent fallback.
+For a hooked polymorphic type, the generator does not write the type discriminator: the hook must
+write it itself (the constants `PropertyNames._TypeDiscriminatorProperty_` /
+`PropertyEncodedNames._TypeDiscriminatorValue_` are public in the scope for that purpose).
 
 ### Member converters: converting ONE member, not the whole type *(7.4.3+)*
 
@@ -594,6 +651,9 @@ type-level converter wins over the duck-typed `JsonSerialize`/`JsonPack` methods
 | `CJSON0017` | error | a `[JsonBooleanLiterals]` argument has a type with no JSON format form; use a string, a bool, or a numeric value. The reflection path throws the same message when the contract is built |
 | `CJSON0018` | warning (suppressible) | `StrictLiterals` combined with a null false literal: strict mode enforces the configured literals, and with no false literal there is nothing on the false side to enforce. Generator-only on purpose, because it changes no behaviour (see below) |
 | `CJSON0013` | error | a format profile (`DataContractCompat`) combined with a naming policy (camelCase and friends); use the dual-container pattern instead. `PropertyNameCaseInsensitive` is NOT a trigger: it is a read-side tolerance for incoming member names and changes nothing about what the profile writes |
+| `CJSON0024` | error | *(7.4.5+)* a method named `Serialize`/`Pack`/`Unpack` in a generated per-type scope has an incompatible signature; the message names the expected one. Correct it or rename the method |
+| `CJSON0025` | warning | *(7.4.5+)* no `ReadOnly`/`Writable` proxy for a type that decides its own format (IJson* interfaces or a container hook): the generator cannot describe a shape it does not produce. The converter itself is unaffected |
+| `CJSON0026` | error | *(7.4.5+)* a registration resolves to a static class, usually an unqualified `typeof(X)` inside a container whose scope shadows the type name; the message names the qualification fix |
 
 ---
 
@@ -700,7 +760,7 @@ is now `EnumsAsNumbers`, with inverted meaning. The `EnumsAsString` *property* a
 
 **Migrating a legacy `[DataContract]` DTO** (e.g. from `DataContractJsonSerializer`): the reflection path already
 reproduces its member selection and `Name=` renames, so an un-touched DTO keeps its output - **but only on that path**
-(a generated container applies the same model, so enrolling one is supported and produces the same format). Useful equivalences:
+(a generated container applies the same model, so registering one is supported and produces the same format). Useful equivalences:
 
 - `EmitDefaultValue = false` -> `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]`
 - a non-public `[DataMember]` -> nothing *(7.4.3+)*: on a `[DataContract]` type it serializes and binds
@@ -916,6 +976,10 @@ ArrayList         [ 1, "two" ]  elements bind as CLR objects
 - **`JsonNull.Missing` ≠ `JsonNull.Null` ≠ `JsonNull.Error`.** All are "null", but distinct; use `IsNullOrMissing()` /
   `IsMissing()` to tell them apart. Empty/whitespace input parses to `Missing`; literal `"null"` parses to `Null`.
 - **Mutating a read-only `JsonObject`/`JsonArray` throws.** `ToMutable()` first, or build mutable.
+- **The reflection path can be removed from a trimmed / Native AoT publish** *(7.4.5+)*: set the MSBuild feature
+  `SnowBank.Data.Json.CrystalJson.IsReflectionSupported` to `false` (`RuntimeHostConfigurationOption`,
+  `Trim="true"`) and the trimmer removes the whole reflection subtree; a source-generated consumer then
+  publishes with no trim warnings, and a reflected type throws `JsonReflectionDisabledException`.
 - **`Equals` is loose, `StrictEquals` is exact.** `JsonNumber(123).Equals(JsonString("123"))` is `true`;
   `StrictEquals` is `false`. Don't use `JsonObject`/`JsonArray` as dictionary keys (hash is not value-stable).
 - **`Add("field", x)` vs `["field"].Add(x)`** - field-set (throws on existing) vs array-append. Pick the right one.

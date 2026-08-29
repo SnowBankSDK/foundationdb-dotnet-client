@@ -34,7 +34,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	/// <summary>Pins <c>CJSON0011</c> for the JSON naming attributes: a member carrying several naming attributes
 	/// (CrystalJson <c>[JsonProperty]</c>, STJ <c>[JsonPropertyName]</c>, Newtonsoft <c>[JsonProperty]</c>) with
-	/// DIFFERENT names is a dual-output DTO and is refused; the same name across them is not a conflict.</summary>
+	/// DIFFERENT names is a dual-output DTO and is rejected; the same name across them is not a conflict.</summary>
 	[TestFixture]
 	[Category("Core-SDK")]
 	[Category("Core-JSON")]

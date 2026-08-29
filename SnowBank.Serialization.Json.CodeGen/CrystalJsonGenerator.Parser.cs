@@ -113,11 +113,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private Location? ContextClassLocation { get; set; }
 
 			/// <summary>The container's <c>[CrystalXmlOutput(DictionaryFormat = ...)]</c>, for the whole crawl of that container</summary>
-			/// <remarks>Carried as parser state rather than threaded through every parse signature, exactly like <see cref="ContextClassLocation"/>: the member-level rules that need it (the attribute-shaped dictionary refusal) sit four calls below the container, and none of the intermediate steps has any business knowing about it.</remarks>
+			/// <remarks>Carried as parser state rather than threaded through every parse signature, exactly like <see cref="ContextClassLocation"/>: the member-level rules that need it (the attribute-shaped dictionary rejection) sit four calls below the container, and none of the intermediate steps has any business knowing about it.</remarks>
 			private string? ContextXmlDictionaryFormat { get; set; }
 
-			/// <summary>Types this container enrolled with <c>[CrystalSerializable(..., IgnoreCustomSerialization = true)]</c>, which keep a member-based converter even when they implement one of the JSON interfaces</summary>
-			/// <remarks>Only ROOT enrollments can appear here: a transitively-discovered type carries no attribute of its own, which is one of the two documented limits of the option.</remarks>
+			/// <summary>Types this container registered with <c>[CrystalSerializable(..., IgnoreCustomSerialization = true)]</c>, which keep a member-based converter even when they implement one of the JSON interfaces</summary>
+			/// <remarks>Only ROOT registrations can appear here: a transitively-discovered type carries no attribute of its own, which is one of the two documented limits of the option.</remarks>
 			private HashSet<INamedTypeSymbol> ContextIgnoreCustomSerialization { get; } = new(SymbolEqualityComparer.Default);
 
 			/// <summary>The container would emit a <c>ReadOnly</c>/<c>Writable</c> proxy surface, so a type that loses it has something to be told about</summary>
@@ -212,16 +212,16 @@ namespace SnowBank.Serialization.Json.CodeGen
 							}
 
 							if (type.TypeKind == TypeKind.Error || type is IErrorTypeSymbol)
-							{ // the compiler could not resolve the enrolled type (a compile error on the [CrystalSerializable] target):
+							{ // the compiler could not resolve the registered type (a compile error on the [CrystalSerializable] target):
 								// report it cleanly on the attribute, instead of enqueuing an unresolved symbol the emitter cannot enumerate
-								ReportUnresolvedEnrolledType(typeAttribute, symbol, type);
+								ReportUnresolvedRegisteredType(typeAttribute, symbol, type);
 								continue;
 							}
 
 							if (type.IsStatic)
 							{ // a static class has no instance to serialize, and generating for it produces a converter whose every
-								// signature names a type C# refuses in that position, several steps away from the real cause
-								ReportStaticClassEnrolment(typeAttribute, symbol, type);
+								// signature names a type C# rejects in that position, several steps away from the real cause
+								ReportStaticClassRegistration(typeAttribute, symbol, type);
 								continue;
 							}
 
@@ -233,7 +233,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 							if (IsNativelySerializedType(TypeMetadata.Create(type), out var nativeKind))
 							{ // CrystalJson serializes collections, dictionaries and scalars natively, root included: there is nothing for a generated converter to add, and enumerating such a type as a POCO produces code that does not compile
-								ReportNativelySerializedEnrolment(typeAttribute, symbol, type, nativeKind);
+								ReportNativelySerializedRegistration(typeAttribute, symbol, type, nativeKind);
 								continue;
 							}
 
@@ -311,15 +311,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				if (outputProfile != null && propertyNamingPolicy != null)
 				{ // the DCJS format has no naming policy: a NAMING POLICY next to the profile changes the WRITTEN
-					// names, a genuine contradiction with a format that writes the declared names, refused at build time
+					// names, a genuine contradiction with a format that writes the declared names, rejected at build time
 					//note: PropertyNameCaseInsensitive is deliberately NOT a trigger. It is a READ-side tolerance -
 					// it decides how an INCOMING member name is matched when READING JSON - and changes nothing about
-					// what the profile WRITES, so there is no contradiction to refuse. Strict on output, lenient on input.
+					// what the profile WRITES, so there is no contradiction to reject. Strict on output, lenient on input.
 					ReportDiagnostic(
 						new(
 							"CJSON0013",
 							"A format profile cannot be combined with a naming policy",
-							"The container '{0}' bakes the {1} profile, whose format uses the declared member names; combining it with a camelCase (or other) naming policy is refused. Remove the naming policy, or serialize the modern format through a separate container (the dual-container pattern).",
+							"The container '{0}' bakes the {1} profile, whose format uses the declared member names; combining it with a camelCase (or other) naming policy is rejected. Remove the naming policy, or serialize the modern format through a separate container (the dual-container pattern).",
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Error,
 							isEnabledByDefault: true
@@ -403,11 +403,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			}
 
-			/// <summary>Resolves which output formats a container asks for, refusing the combinations that have no meaning</summary>
+			/// <summary>Resolves which output formats a container asks for, rejecting the combinations that have no meaning</summary>
 			/// <param name="symbol">Container being parsed</param>
 			/// <param name="containerMarker">Full name of the marker that owns this container (see <see cref="ContainerMarkerAttributeFullNames"/>)</param>
 			/// <param name="formats">Receives the resolved formats when the method returns <see langword="true"/></param>
-			/// <returns><see langword="false"/> when the container was refused, and nothing at all should be generated for it</returns>
+			/// <returns><see langword="false"/> when the container was rejected, and nothing at all should be generated for it</returns>
 			/// <remarks>
 			/// <para>Three rules, all of them about the container as a whole rather than about one format, which is why they carry neutral (<c>CRYS</c>) ids:</para>
 			/// <para><c>CRYS0001</c>: a neutral marker naming no output format would generate nothing.</para>
@@ -523,12 +523,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				Dictionary,
 			}
 
-			/// <summary>Tests whether an ENROLLED type is one CrystalJson serializes natively, root included, and which therefore gets no generated converter</summary>
+			/// <summary>Tests whether an REGISTERED type is one CrystalJson serializes natively, root included, and which therefore gets no generated converter</summary>
 			/// <param name="metadata">Metadata of the type named by a <c>[CrystalSerializable]</c> attribute</param>
 			/// <param name="shape">Receives the shape that made the type native, when the method returns <see langword="true"/></param>
 			/// <remarks>
 			/// <para>The generator emits converters for POCO types ONLY. Enumerating a collection, a dictionary or a scalar as if it were a POCO walks its indexer as a member, and the emitted holder ends up declaring a nameless indexer that does not compile.</para>
-			/// <para>This governs the ENROLMENT decision only. Types reached transitively as MEMBERS never take this route: <see cref="MaybeAddLinkedType"/> already descends through a collection or dictionary member to its element / key / value types and never enqueues the container type itself, so member paths are unaffected.</para>
+			/// <para>This governs the REGISTRATION decision only. Types reached transitively as MEMBERS never take this route: <see cref="MaybeAddLinkedType"/> already descends through a collection or dictionary member to its element / key / value types and never enqueues the container type itself, so member paths are unaffected.</para>
 			/// <para>Enums are deliberately NOT part of this set: they are user-declared types whose generated label tables are the reflection-free lookup the runtime path would otherwise pay for.</para>
 			/// </remarks>
 			private static bool IsNativelySerializedType(TypeMetadata metadata, out NativeShape shape)
@@ -556,15 +556,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 				return false;
 			}
 
-			/// <summary>Reports <c>CJSON0021</c> on a <c>[CrystalSerializable]</c> attribute whose enrolled type the compiler could not resolve</summary>
-			/// <remarks>An error, not a warning: an unresolved enrolled type has no members to enumerate, so there is nothing to generate for it, and letting it through crashes the emitter with an opaque internal exception (reported as <c>CJSON0003</c>) instead of naming the real problem. Surfacing it here points the author at the actual compile error on the target.</remarks>
-			private void ReportUnresolvedEnrolledType(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type)
+			/// <summary>Reports <c>CJSON0021</c> on a <c>[CrystalSerializable]</c> attribute whose registered type the compiler could not resolve</summary>
+			/// <remarks>An error, not a warning: an unresolved registered type has no members to enumerate, so there is nothing to generate for it, and letting it through crashes the emitter with an opaque internal exception (reported as <c>CJSON0003</c>) instead of naming the real problem. Surfacing it here points the author at the actual compile error on the target.</remarks>
+			private void ReportUnresolvedRegisteredType(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type)
 			{
 				ReportDiagnostic(
 					new(
 						"CJSON0021",
-						"Cannot resolve enrolled type",
-						"Cannot resolve enrolled type '{0}' in container '{1}'; fix the compile error on the [CrystalSerializable] target.",
+						"Cannot resolve registered type",
+						"Cannot resolve registered type '{0}' in container '{1}'; fix the compile error on the [CrystalSerializable] target.",
 						"SnowBank.Serialization.Json.CodeGen",
 						DiagnosticSeverity.Error,
 						isEnabledByDefault: true
@@ -574,12 +574,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				);
 			}
 
-			/// <summary>Reports <c>CJSON0026</c> on a <c>[CrystalSerializable]</c> attribute that enrolls a static class</summary>
+			/// <summary>Reports <c>CJSON0026</c> on a <c>[CrystalSerializable]</c> attribute that registers a static class</summary>
 			/// <remarks>
 			/// <para>An error, not a warning: there is nothing to generate for a type that has no instances, and letting it through emits a converter whose parameters and return types all name a static class (CS0721 and CS0722, reported inside generated code, far from the one-word cause).</para>
 			/// <para>The case that reaches this in practice is name shadowing. A per-type scope is named after the type it serves, so once an author declares their hook part of it, an unqualified <c>typeof(Cat)</c> written inside the container binds to that scope rather than to the serialized type. The remedy names it whenever the resolved type is nested in the container.</para>
 			/// </remarks>
-			private void ReportStaticClassEnrolment(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type)
+			private void ReportStaticClassRegistration(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type)
 			{
 				// a static class nested in the container is the container's own generated scope in all but name, so the
 				// author almost certainly meant the type that scope serves
@@ -594,14 +594,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				var remedy = shadowedByScope
-					? $"The generated code for each enrolled type lives in a nested scope named after that type, so this name binds to the scope instead of to the type it serves. Enroll it with a qualified name, for example typeof({type.ContainingNamespace.ToDisplayString()}.{type.Name})."
-					: "Remove the enrollment.";
+					? $"The generated code for each registered type lives in a nested scope named after that type, so this name binds to the scope instead of to the type it serves. Register it with a qualified name, for example typeof({type.ContainingNamespace.ToDisplayString()}.{type.Name})."
+					: "Remove the registration.";
 
 				ReportDiagnostic(
 					new(
 						"CJSON0026",
-						"Cannot enroll a static class",
-						"The type '{0}' enrolled in container '{1}' is a static class, which has no instances to serialize. {2}",
+						"Cannot register a static class",
+						"The type '{0}' registered in container '{1}' is a static class, which has no instances to serialize. {2}",
 						"SnowBank.Serialization.Json.CodeGen",
 						DiagnosticSeverity.Error,
 						isEnabledByDefault: true
@@ -611,22 +611,22 @@ namespace SnowBank.Serialization.Json.CodeGen
 				);
 			}
 
-			/// <summary>Reports <c>CJSON0019</c> on a <c>[CrystalSerializable]</c> attribute that enrolls a natively serialized type</summary>
-			/// <remarks>A WARNING rather than an error: the enrollment is harmless but inert, and the application still serializes the type correctly through the native path. Silence is the wrong answer though, since the author asked for a converter that is not there (the same reasoning that makes <c>CJSON0007</c> a warning).</remarks>
-			private void ReportNativelySerializedEnrolment(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type, NativeShape shape)
+			/// <summary>Reports <c>CJSON0019</c> on a <c>[CrystalSerializable]</c> attribute that registers a natively serialized type</summary>
+			/// <remarks>A WARNING rather than an error: the registration is harmless but inert, and the application still serializes the type correctly through the native path. Silence is the wrong answer though, since the author asked for a converter that is not there (the same reasoning that makes <c>CJSON0007</c> a warning).</remarks>
+			private void ReportNativelySerializedRegistration(AttributeData attribute, INamedTypeSymbol container, INamedTypeSymbol type, NativeShape shape)
 			{
 				var (what, remedy) = shape switch
 				{
-					NativeShape.Dictionary => ("dictionaries", "Enroll the key and value types instead of the dictionary type."),
-					NativeShape.Collection => ("collections", "Enroll the element type instead of the collection type."),
-					_ => ("scalars", "Remove the enrollment."),
+					NativeShape.Dictionary => ("dictionaries", "Register the key and value types instead of the dictionary type."),
+					NativeShape.Collection => ("collections", "Register the element type instead of the collection type."),
+					_ => ("scalars", "Remove the registration."),
 				};
 
 				ReportDiagnostic(
 					new(
 						"CJSON0019",
-						"Enrolled type is serialized natively",
-						"The type '{0}' is enrolled in container '{1}', but it is not needed: CrystalJson serializes {2} natively, root included. No converter is source-generated for it. {3}",
+						"Registered type is serialized natively",
+						"The type '{0}' is registered in container '{1}', but it is not needed: CrystalJson serializes {2} natively, root included. No converter is source-generated for it. {3}",
 						"SnowBank.Serialization.Json.CodeGen",
 						DiagnosticSeverity.Warning,
 						isEnabledByDefault: true
@@ -700,15 +700,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				if (profile == XmlProfileDataContract && propertyNamingPolicy != null)
 				{ // the DataContract format names its elements after the data contract: a NAMING POLICY next to it cannot be honored, and honoring neither silently is worse
-					//note: this is only reachable through an EXPLICIT profile: the derived one requires the DCJS JSON profile, which already refuses naming options (CJSON0013)
+					//note: this is only reachable through an EXPLICIT profile: the derived one requires the DCJS JSON profile, which already rejects naming options (CJSON0013)
 					//note: PropertyNameCaseInsensitive is deliberately NOT a trigger. It decides how an INCOMING name is matched
 					// when READING JSON, and CrystalXml is write-only: it names nothing on this format, so there is no element name
-					// for the data contract to disagree with. Refusing it here only cost the author a container they could not write.
+					// for the data contract to disagree with. Rejecting it here only cost the author a container they could not write.
 					ReportDiagnostic(
 						new(
 							"CXML0001",
 							"The DataContract XML format cannot be combined with a naming policy",
-							"The container '{0}' produces the DataContract XML format, whose element names come from the data contract; combining it with a camelCase (or other) naming policy is refused. Remove the naming policy, use the General XML format (which follows the naming policy), or produce the DataContract format from a separate container (the dual-container pattern).",
+							"The container '{0}' produces the DataContract XML format, whose element names come from the data contract; combining it with a camelCase (or other) naming policy is rejected. Remove the naming policy, use the General XML format (which follows the naming policy), or produce the DataContract format from a separate container (the dual-container pattern).",
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Error,
 							isEnabledByDefault: true
@@ -728,7 +728,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						this.ContextClassLocation,
 						symbol.ToDisplayString(),
 						"DictionaryFormat = " + dictionaryFormat,
-						"the DataContract XML format has exactly one dictionary shape (the KeyValueOfKV entries the reference serializer writes), so there is nothing for this option to select between. Its member-level twin is refused outright on this format (CXML0004)");
+						"the DataContract XML format has exactly one dictionary shape (the KeyValueOfKV entries the reference serializer writes), so there is nothing for this option to select between. Its member-level twin is rejected outright on this format (CXML0004)");
 				}
 
 				if (omitNamespaces && profile != XmlProfileDataContract)
@@ -1301,7 +1301,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="method">Candidate found in the type's scope</param>
 			/// <param name="returnType">Expected return type, or <see langword="null"/> for <see langword="void"/></param>
 			/// <param name="parameterTypes">Expected parameter types, in order</param>
-			/// <remarks>Nullable reference annotations do not take part: <see cref="SymbolEqualityComparer.Default"/> ignores them, so both <c>T</c> and <c>T?</c> are accepted for a reference type. A <c>Nullable&lt;T&gt;</c> is a different type and is refused, which is right: the generated code calls the hook with the non-nullable value, its own null check having already returned. Default values are ignored too, since the generator passes every argument explicitly.</remarks>
+			/// <remarks>Nullable reference annotations do not take part: <see cref="SymbolEqualityComparer.Default"/> ignores them, so both <c>T</c> and <c>T?</c> are accepted for a reference type. A <c>Nullable&lt;T&gt;</c> is a different type and is rejected, which is right: the generated code calls the hook with the non-nullable value, its own null check having already returned. Default values are ignored too, since the generator passes every argument explicitly.</remarks>
 			private static bool MatchesHook(IMethodSymbol method, ITypeSymbol? returnType, params ITypeSymbol[] parameterTypes)
 			{
 				if (!method.IsStatic || method.IsGenericMethod) return false;
@@ -1469,8 +1469,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Collects the type's serialization lifecycle callbacks, reporting <c>CJSON0015</c> on any signature generated code cannot invoke</summary>
 			/// <remarks>
-			/// <para>Reported at the CALLSITE, because that is where the fix is applied. The reflection path refuses the same shapes when it builds the type's contract, with the same message for the legacy one.</para>
-			/// <para>Refusing at compile time is what lets generated code invoke the callback directly, with no runtime signature test.</para>
+			/// <para>Reported at the CALLSITE, because that is where the fix is applied. The reflection path rejects the same shapes when it builds the type's contract, with the same message for the legacy one.</para>
+			/// <para>Rejecting at compile time is what lets generated code invoke the callback directly, with no runtime signature test.</para>
 			/// </remarks>
 			private (CrystalJsonCallbackMetadata? OnSerializing, CrystalJsonCallbackMetadata? OnSerialized, CrystalJsonCallbackMetadata? OnDeserializing, CrystalJsonCallbackMetadata? OnDeserialized) ParseSerializationCallbacks(INamedTypeSymbol type)
 			{
@@ -1501,7 +1501,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{
 							// the legacy shape keeps its own message: it is the migration recipe, and people grep for it
 							bool isLegacyShape = method.Parameters.Length == 1 && method.Parameters[0].Type.Name == "StreamingContext";
-							// the legacy-shape message names the declaring type as well: the reflection path refuses the
+							// the legacy-shape message names the declaring type as well: the reflection path rejects the
 							// same callback at runtime with no source location to point at, so the type has to be in the text
 							string callbackName = isLegacyShape
 								? $"{method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat.WithGlobalNamespaceStyle(SymbolDisplayGlobalNamespaceStyle.Omitted))}.{method.Name}"
@@ -1687,11 +1687,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="attributeValue">The value <c>Attribute =</c> was set to</param>
 			/// <param name="itemName">The attribute's <c>ItemName</c> as written</param>
 			/// <param name="dictionaryFormat">The attribute's <c>DictionaryFormat</c>, as its enum member name</param>
-			/// <param name="refused"><see langword="true"/> when the member's shape was refused here, so that no further member-level diagnostic stacks on top of the one already reported</param>
-			/// <returns>The normalized settings; every refused shape returns them EMPTY, so that one build error is not followed by a cascade of downstream ones</returns>
-			private (string? Name, bool IsAttribute, string? ItemName, string? DictionaryFormat) ResolveXmlMember(ISymbol member, TypeMetadata type, string xmlProfile, string? rawName, bool attributeSpelled, bool attributeValue, string? itemName, string? dictionaryFormat, out bool refused)
+			/// <param name="rejected"><see langword="true"/> when the member's shape was rejected here, so that no further member-level diagnostic stacks on top of the one already reported</param>
+			/// <returns>The normalized settings; every rejected shape returns them EMPTY, so that one build error is not followed by a cascade of downstream ones</returns>
+			private (string? Name, bool IsAttribute, string? ItemName, string? DictionaryFormat) ResolveXmlMember(ISymbol member, TypeMetadata type, string xmlProfile, string? rawName, bool attributeSpelled, bool attributeValue, string? itemName, string? dictionaryFormat, out bool rejected)
 			{
-				refused = false;
+				rejected = false;
 
 				if (xmlProfile == XmlProfileDataContract)
 				{
@@ -1703,12 +1703,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (rawName is not null) settings.Add("Name = \"" + rawName + "\"");
 					if (attributeSpelled && attributeValue) settings.Add("Attribute = true");
 					if (itemName is not null) settings.Add("ItemName = \"" + itemName + "\"");
-					// an explicitly spelled 'Default' asks to INHERIT, which the compat format can honor: it is not a refusal
+					// an explicitly spelled 'Default' asks to INHERIT, which the compat format can honor: it is not a rejection
 					if (dictionaryFormat is not (null or XmlDictionaryFormatDefault)) settings.Add("DictionaryFormat = " + dictionaryFormat);
 
 					if (settings.Count > 0)
 					{
-						refused = true;
+						rejected = true;
 						ReportDiagnostic(
 							new(
 								"CXML0004",
@@ -1743,7 +1743,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							),
 							member.Locations.Length > 0 ? member.Locations[0] : null,
 							member.ToDisplayString());
-						refused = true;
+						rejected = true;
 						return default;
 					}
 
@@ -1753,14 +1753,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 							new(
 								"CXML0007",
 								"An XML name is not valid",
-								"The member '{0}' declares [XmlProperty(\"{1}\", Attribute = false)]: the leading '@' asks for the member to be projected as an XML attribute, while Attribute = false refuses one. Keep only one of the two: drop the '@' to project a nested element, or drop Attribute = false.",
+								"The member '{0}' declares [XmlProperty(\"{1}\", Attribute = false)]: the leading '@' asks for the member to be projected as an XML attribute, while Attribute = false rejects one. Keep only one of the two: drop the '@' to project a nested element, or drop Attribute = false.",
 								"SnowBank.Serialization.Json.CodeGen",
 								DiagnosticSeverity.Error,
 								isEnabledByDefault: true
 							),
 							member.Locations.Length > 0 ? member.Locations[0] : null,
 							member.ToDisplayString(), rawName);
-						refused = true;
+						rejected = true;
 						return default;
 					}
 
@@ -1771,12 +1771,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// both names land in the document verbatim, so both get the same validation
 				if (name is not null && !ValidateXmlName(member, name, "element or attribute"))
 				{
-					refused = true;
+					rejected = true;
 					return default;
 				}
 				if (itemName is not null && !ValidateXmlName(member, itemName, "item"))
 				{
-					refused = true;
+					rejected = true;
 					return default;
 				}
 
@@ -1793,7 +1793,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						),
 						member.Locations.Length > 0 ? member.Locations[0] : null,
 						member.ToDisplayString(), type.FullName);
-					refused = true;
+					rejected = true;
 					return default;
 				}
 
@@ -1801,7 +1801,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Reports <c>CXML0007</c> when a name is not a legal XML NCName, and returns whether it is</summary>
-			/// <remarks>Uses the same probe as <c>CrystalXmlName.Create</c>, so that a name accepted at compile time cannot be refused at runtime: <c>XmlConvert.VerifyNCName</c> throws instead of returning, so it is caught and translated here (an exception escaping the parser would surface as the generic CJSON0001 crash instead of a message the author can act on).</remarks>
+			/// <remarks>Uses the same probe as <c>CrystalXmlName.Create</c>, so that a name accepted at compile time cannot be rejected at runtime: <c>XmlConvert.VerifyNCName</c> throws instead of returning, so it is caught and translated here (an exception escaping the parser would surface as the generic CJSON0001 crash instead of a message the author can act on).</remarks>
 			private bool ValidateXmlName(ISymbol member, string name, string role)
 			{
 				if (IsValidXmlName(name, out var why)) return true;
@@ -1821,7 +1821,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Probes whether <paramref name="name"/> is a legal XML NCName, returning the reason it is not</summary>
-			/// <remarks>The same probe <c>CrystalXmlName.Create</c> uses at run time, so a name accepted at compile time cannot be refused later. <c>XmlConvert.VerifyNCName</c> throws instead of returning, so the exception is caught and translated here: one escaping the parser would surface as the generic CJSON0001 crash instead of a message the author can act on.</remarks>
+			/// <remarks>The same probe <c>CrystalXmlName.Create</c> uses at run time, so a name accepted at compile time cannot be rejected later. <c>XmlConvert.VerifyNCName</c> throws instead of returning, so the exception is caught and translated here: one escaping the parser would surface as the generic CJSON0001 crash instead of a message the author can act on.</remarks>
 			private static bool IsValidXmlName(string name, out string? why)
 			{
 				try
@@ -1883,7 +1883,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Reports <c>CXML0006</c> on a sequence whose items are themselves bare sequences, with no intermediate type to name the inner items</summary>
 			/// <remarks>
-			/// <para>GENERAL format only. The DataContract format derives a name for every level from the contract (an inner sequence of strings becomes <c>ArrayOfstring</c> holding <c>string</c> items), so the shape is decidable there and the compat emitter names it instead of refusing it; refusing it would block porting a legacy DTO that <c>DataContractSerializer</c> serializes today.</para>
+			/// <para>GENERAL format only. The DataContract format derives a name for every level from the contract (an inner sequence of strings becomes <c>ArrayOfstring</c> holding <c>string</c> items), so the shape is decidable there and the compat emitter names it instead of rejecting it; rejecting it would block porting a legacy DTO that <c>DataContractSerializer</c> serializes today.</para>
 			/// <para>A DICTIONARY is not a bare sequence on either side of this test: its entries are named by the resolved dictionary format, so it always has names to give, which is exactly what a bare sequence lacks. Nor is a <c>byte[]</c> or a <c>string</c>, which are scalars on this format however enumerable C# considers them.</para>
 			/// </remarks>
 			private void ReportBareNestedCollection(ISymbol member, TypeMetadata type)
@@ -1908,7 +1908,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <remarks>
 			/// <para>GENERAL format only: the compat format has exactly one dictionary shape (<c>KeyValueOfXY</c> with <c>Key</c>/<c>Value</c> child ELEMENTS), which always has room for a nested value.</para>
 			/// <para>Decidable from the declarations alone (the member's <c>DictionaryFormat</c>, else the container's, else the profile default), which is why it is a diagnostic and not the <c>#error</c> the emitter used to carry. The <c>#error</c> stays in the emitter as an unreachable backstop, so a future shape that forgets this check still cannot emit a mangled document.</para>
-			/// <para>The KEY position is NOT checked here: a key's lexical form is fixed by the key type, and a key that has none is already refused elsewhere; what varies per shape is only where the VALUE lands.</para>
+			/// <para>The KEY position is NOT checked here: a key's lexical form is fixed by the key type, and a key that has none is already rejected elsewhere; what varies per shape is only where the VALUE lands.</para>
 			/// </remarks>
 			private void ReportUnprojectableDictionaryValue(ISymbol member, TypeMetadata type, string? memberDictionaryFormat)
 			{
@@ -1943,13 +1943,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <param name="why">Why the output never consults it, and what would make it meaningful; phrased as a sentence with no trailing period</param>
 			/// <remarks>
 			/// <para>INFO, deliberately, and the only member of the CXML range that is not an error. Every other CXML diagnostic
-			/// refuses a shape whose document would be wrong or unwritable; an inert setting produces a document that is entirely
+			/// rejects a shape whose document would be wrong or unwritable; an inert setting produces a document that is entirely
 			/// correct, and only the DECLARATION is misleading. Failing a build over a correct format would be the wrong trade, and a
 			/// warning would land in the build log of consumers who did nothing wrong (a container inherited from a template, a
 			/// setting that stopped applying when a member's type changed).</para>
 			/// <para>It exists because the no-silent-configuration doctrine of this overlay cuts both ways: a setting that changes
-			/// the output without being asked for is refused, and a setting that asks for something the output never delivers should not
-			/// pass unmentioned either. It is the same reasoning that made CXML0004 refuse an inert member-level option on the compat
+			/// the output without being asked for is rejected, and a setting that asks for something the output never delivers should not
+			/// pass unmentioned either. It is the same reasoning that made CXML0004 reject an inert member-level option on the compat
 			/// format, applied where the resulting document is right and only the author's expectation is not.</para>
 			/// </remarks>
 			private void ReportInertXmlSetting(Location? location, string owner, string setting, string why)
@@ -1972,7 +1972,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <para>Run once every member of the type has resolved, for the same reason <see cref="ReportDuplicateXmlNames"/> is: what
 			/// makes a setting inert is the member's RESOLVED projection (attribute versus element, scalar versus sequence), not the
 			/// attribute as written.</para>
-			/// <para>The compat format needs no case of its own here: <c>ResolveXmlMember</c> refuses the whole member-level vocabulary
+			/// <para>The compat format needs no case of its own here: <c>ResolveXmlMember</c> rejects the whole member-level vocabulary
 			/// on it (CXML0004) and hands back empty settings, so nothing this method reads is ever set on that profile.</para>
 			/// </remarks>
 			private void ReportInertXmlMemberSettings(List<CrystalJsonMemberMetadata> members, Dictionary<string, ISymbol> memberSymbols)
@@ -2070,9 +2070,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Reports <c>CXML0005</c> when two members of a type resolve to the same effective XML name, once the <c>'@'</c> sugar has been normalized</summary>
 			/// <remarks>
-			/// <para>Elements and attributes are checked SEPARATELY, because in XML they do not share a namespace: an attribute and a child element may legitimately carry the same name, and refusing that pair would be a false positive on a perfectly readable document.</para>
+			/// <para>Elements and attributes are checked SEPARATELY, because in XML they do not share a namespace: an attribute and a child element may legitimately carry the same name, and rejecting that pair would be a false positive on a perfectly readable document.</para>
 			/// <para>Only member-versus-member: a collision with a polymorphic type's discriminator cannot be seen from here, because a derived type does not know its own hierarchy. It is checked over the whole container instead, by <see cref="ReportDiscriminatorXmlNameCollisions"/>, and reported under the same id.</para>
-			/// <para>The REMEDY is profile-aware, because the obvious one is not available on both: on the DataContract format an <c>[XmlProperty]</c> rename is itself refused (CXML0004), so the fix has to point at the <c>[DataMember(Name = ...)]</c> that owns the colliding name.</para>
+			/// <para>The REMEDY is profile-aware, because the obvious one is not available on both: on the DataContract format an <c>[XmlProperty]</c> rename is itself rejected (CXML0004), so the fix has to point at the <c>[DataMember(Name = ...)]</c> that owns the colliding name.</para>
 			/// <para>This is also where the EFFECTIVE XML name of every member is validated on the general format (CXML0007). <c>ResolveXmlMember</c> only sees the names an <c>[XmlProperty]</c> declares, so a member that inherits its XML name from its JSON one (<c>[JsonPropertyName("$id")]</c>, or a raw member name the naming policy leaves alone) would otherwise reach the emitter unchecked and land in the document verbatim. The compat format is immune: it runs every name through <c>XmlConvert.EncodeLocalName</c>, which has a legal spelling for any input.</para>
 			/// </remarks>
 			private void ReportDuplicateXmlNames(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members, Dictionary<string, ISymbol> memberSymbols, string xmlProfile)
@@ -2122,7 +2122,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Returns the XML name the type discriminator of a polymorphic root occupies: its JSON property name, with the leading <c>'$'</c> removed</summary>
 			/// <param name="declaredPropertyName">The root's <c>TypeDiscriminatorPropertyName</c>, or <see langword="null"/> when it declares none (the JSON default, <c>$type</c>)</param>
-			/// <returns>The attribute name, which may be EMPTY when the declared name is nothing but the <c>'$'</c> (a shape the emitter refuses with a <c>#error</c>)</returns>
+			/// <returns>The attribute name, which may be EMPTY when the declared name is nothing but the <c>'$'</c> (a shape the emitter rejects with a <c>#error</c>)</returns>
 			/// <remarks><b>Shared with the emitter</b> (hence <c>internal</c>): the collision check below and <c>Emitter.WriteXmlDiscriminator</c> must resolve the SAME name, or the check would guard a name the document never carries. Spelling the rule twice is what would let them drift.</remarks>
 			internal static string GetXmlDiscriminatorName(string? declaredPropertyName)
 			{
@@ -2162,7 +2162,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					if (!root.IsPolymorphicRoot || root.DerivedTypes.Count == 0) continue;
 
 					string name = GetXmlDiscriminatorName(root.TypeDiscriminatorPropertyName);
-					if (name.Length == 0) continue; // the emitter refuses that shape on its own
+					if (name.Length == 0) continue; // the emitter rejects that shape on its own
 
 					foreach (var (_, derivedType, _) in root.DerivedTypes)
 					{
@@ -2207,7 +2207,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <para>A converter attached to a member REPLACES the rules that would otherwise decide the member's format form. On a
 			/// container that publishes two formats, a converter that only answers for one of them leaves the other to be written by
 			/// the very rules it was declared to replace: the JSON says <c>"0"</c>/<c>"1"</c> while the XML says <c>true</c>/<c>false</c>,
-			/// with nothing in the source saying so. That is the silently-divergent format this range exists to refuse.</para>
+			/// with nothing in the source saying so. That is the silently-divergent format this range exists to reject.</para>
 			/// <para>This fires for the built-in converters too (<c>[JsonBooleanLiterals]</c>): they are JSON converters, and there is
 			/// no XML form of "write this boolean as 0 or 1" that the generator may assume on the author's behalf.</para>
 			/// </remarks>
@@ -2228,10 +2228,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Reports <c>CXML0009</c> when a member is projected as an XML ATTRIBUTE and also carries a custom converter</summary>
 			/// <remarks>
-			/// <para>A refusal by CONSTRUCTION, not a missing feature: the XML facet's only entry point (<c>WriteXml</c>) writes an
+			/// <para>A rejection by CONSTRUCTION, not a missing feature: the XML facet's only entry point (<c>WriteXml</c>) writes an
 			/// ELEMENT, so there is no call a generated body could make that would turn a converter into an attribute value. The
 			/// attribute path would therefore format the member with the very rules the converter was declared to replace, and the
-			/// two formats would disagree with nothing in the source saying so - exactly what CXML0008 refuses, one door further on.</para>
+			/// two formats would disagree with nothing in the source saying so - exactly what CXML0008 rejects, one door further on.</para>
 			/// <para>Reported for ANY converter, including one that does implement the XML facet: having the facet is what makes the
 			/// bypass silent rather than merely wrong, since the author has every reason to believe it is being used.</para>
 			/// </remarks>
@@ -2299,7 +2299,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// serializer's reflection path just never sees a setter and omits the member, which <see
 			/// cref="GetXmlDcsOrderedMembers"/> already reproduces by dropping it from emission. This diagnostic exists because that
 			/// silent-omission behavior is wrong for a <c>[DataContract]</c> type: there, <c>[DataMember]</c> is the one membership
-			/// signal the author wrote, and DCS refuses the contract outright rather than silently dropping the member. Emitting
+			/// signal the author wrote, and DCS rejects the contract outright rather than silently dropping the member. Emitting
 			/// nothing here would print a document that hides the author's mistake instead of failing the build over it.</para>
 			/// </remarks>
 			private void ReportReadOnlyDataMemberProperty(ISymbol member)
@@ -2351,7 +2351,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Tests whether a type has a lexical form on the XML format: the set the <c>CrystalXmlFormatters</c> cover, plus strings and enums</summary>
 			/// <remarks>
 			/// <para>This is what an XML ATTRIBUTE can hold, since an attribute value is text and nothing else. <c>Nullable&lt;T&gt;</c> is unwrapped (the absent case is a presence question, not a formatting one); a <c>byte[]</c> counts, because it renders as base64 text; a <c>string</c> counts even though C# makes it enumerable.</para>
-			/// <para><b>Shared with the emitter</b> (hence <c>internal</c>): <c>Emitter.GetXmlScalarText</c> resolves a formatter for exactly this set, so a member the parser accepted as an attribute is one the emitter can format, and a member it refused (CXML0003) never reaches an attribute position. Widening one without the other is what would break that.</para>
+			/// <para><b>Shared with the emitter</b> (hence <c>internal</c>): <c>Emitter.GetXmlScalarText</c> resolves a formatter for exactly this set, so a member the parser accepted as an attribute is one the emitter can format, and a member it rejected (CXML0003) never reaches an attribute position. Widening one without the other is what would break that.</para>
 			/// </remarks>
 			internal static bool IsXmlScalar(TypeMetadata type)
 			{
@@ -2533,7 +2533,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Reports CJSON0022 on an explicit interface implementation that a <c>[DataContract]</c> type opted into its contract with <c>[DataMember]</c></summary>
 			/// <remarks>
 			/// <para><c>DataContractSerializer</c> ignores an explicit implementation on a plain DTO, because the member is private in metadata, and writes one on a <c>[DataContract]</c> type, under the qualified name. Skipping the member silently would write a document short of one element.</para>
-			/// <para>Mangling the qualified name into an identifier would still give an element name that cannot match the reference format's, so the declaration is refused instead.</para>
+			/// <para>Mangling the qualified name into an identifier would still give an element name that cannot match the reference format's, so the declaration is rejected instead.</para>
 			/// </remarks>
 			private void ReportExplicitInterfaceDataMember(ISymbol member)
 			{
@@ -2612,7 +2612,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						if (!property.ExplicitInterfaceImplementations.IsDefaultOrEmpty)
 						{ // an explicit implementation is private in metadata, so the reference serializer ignores it on a plain DTO; its member name is the qualified interface member, which is neither a legal identifier for the accessor thunk nor the metadata name that thunk asks for
 							if (dataContractMember)
-							{ // on a [DataContract] type membership is accessibility-blind, so this member is in the contract and the reference serializer writes it: refuse the declaration instead of writing a document short of one element
+							{ // on a [DataContract] type membership is accessibility-blind, so this member is in the contract and the reference serializer writes it: reject the declaration instead of writing a document short of one element
 								ReportExplicitInterfaceDataMember(member);
 							}
 							return default;
@@ -2749,7 +2749,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				// an "ignore this member" signal combined with an "include this member" signal is an application bug:
 				// [JsonIgnore] still wins (both paths resolve it the same way), but silently letting it win hides a real defect,
-				// so say so loudly (the reflection path has no build step and cannot warn; this diagnostic is its only surface)
+				// so say so with an exception (the reflection path has no build step and cannot warn; this diagnostic is its only surface)
 				{
 					string? includeSignal = null;
 					bool hasUnconditionalJsonIgnore = false;
@@ -2787,7 +2787,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						// warning drowns where an error gets read. The dual-output DTO is not supported, so the
 						// message leads with the split and never suggests a Condition (a Condition would flip the
 						// member to included-with-a-write-rule and ship it onto the second format for the first time).
-						// The reflection path refuses the same conflict when it builds the type's contract.
+						// The reflection path rejects the same conflict when it builds the type's contract.
 						ReportDiagnostic(
 							new(
 								"CJSON0008",
@@ -2966,7 +2966,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 						case KnownTypeSymbols.XmlPropertyAttributeFullName:
 						{ // [XmlProperty("@id")], [XmlProperty(Name = "tags", ItemName = "tag", Attribute = false, DictionaryFormat = ...)]
-							// captured RAW here; the '@' sugar, the name validation and the refusals resolve below, once the
+							// captured RAW here; the '@' sugar, the name validation and the rejections resolve below, once the
 							// whole attribute list has been read (and only if the container actually produces XML)
 							hasXmlProperty = true;
 							if (attribute.ConstructorArguments.Length > 0 && attribute.ConstructorArguments[0].Value is string xmlCtorName)
@@ -3170,7 +3170,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
-				// several JSON naming attributes on one member with DIFFERENT names is a dual-output DTO: refuse it
+				// several JSON naming attributes on one member with DIFFERENT names is a dual-output DTO: reject it
 				// the same way the reflection path does. When they AGREE the precedence is CrystalJson [JsonProperty]
 				// > STJ [JsonPropertyName] > Newtonsoft [JsonProperty]; a disagreement is the defect, and the fix is
 				// to split the type into one DTO per serializer.
@@ -3244,21 +3244,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 				else
 				{
-					bool xmlRefused = false;
+					bool xmlRejected = false;
 					if (hasXmlProperty)
 					{
-						(xmlName, xmlIsAttribute, xmlItemName, xmlDictionaryFormat) = ResolveXmlMember(member, type, xmlProfile, xmlRawName, xmlAttributeSpelled, xmlAttributeValue, xmlItemName, xmlDictionaryFormat, out xmlRefused);
+						(xmlName, xmlIsAttribute, xmlItemName, xmlDictionaryFormat) = ResolveXmlMember(member, type, xmlProfile, xmlRawName, xmlAttributeSpelled, xmlAttributeValue, xmlItemName, xmlDictionaryFormat, out xmlRejected);
 					}
 
 					// structural, so it applies to every member of the GENERAL format, annotated or not; skipped for a member
-					// whose settings were already refused, so that one member never collects two stacked errors
-					if (!xmlRefused && xmlProfile == XmlProfileGeneral)
+					// whose settings were already rejected, so that one member never collects two stacked errors
+					if (!xmlRejected && xmlProfile == XmlProfileGeneral)
 					{
 						ReportBareNestedCollection(member, type);
 						ReportUnprojectableDictionaryValue(member, type, xmlDictionaryFormat);
 					}
 
-					if (!xmlRefused && xmlProfile == XmlProfileDataContract)
+					if (!xmlRejected && xmlProfile == XmlProfileDataContract)
 					{ // structural, and compat-only: the general format never reads [CollectionDataContract] in the first place
 						ReportUnsupportedCollectionDataContract(member, typeSymbol);
 

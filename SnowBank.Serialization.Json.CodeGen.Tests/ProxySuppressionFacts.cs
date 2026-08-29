@@ -36,7 +36,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	public sealed class ProxySuppressionFacts : SimpleTest
 	{
 
-		/// <summary>Three enrolled types: one that packs itself, one whose write facet an author hooked, and one plain member-shaped type that keeps its proxies</summary>
+		/// <summary>Three registered types: one that packs itself, one whose write facet an author hooked, and one plain member-based type that keeps its proxies</summary>
 		private const string ProbeSource = """
 			namespace Probe
 			{

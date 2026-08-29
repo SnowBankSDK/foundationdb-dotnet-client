@@ -30,7 +30,7 @@
 
 // note: these types carry an explicit or default contract namespace on purpose, unlike most of DcsProbes.cs, whose
 // StrippingXmlWriter-compared facts erase namespaces entirely and so stay indifferent to them. Most of them are
-// enrolled in NamespaceProbeSerializers at the end of this file, so DcsNamespaceReferenceFacts.cs compares the
+// registered in NamespaceProbeSerializers at the end of this file, so DcsNamespaceReferenceFacts.cs compares the
 // unstripped reference output (ReferenceDcsOutput.Serialize(..., strip: false)) to the generated default output. The two
 // IsReference probes stay out of the container: see the remark on NamespaceSharedProbe.
 
@@ -278,7 +278,7 @@ namespace SnowBank.Data.Xml.Tests.Acme
 
 	#region Test container...
 
-	// The generated side of DcsNamespaceReferenceFacts. Only the DEFAULT output is enrolled here: this fixture is about
+	// The generated side of DcsNamespaceReferenceFacts. Only the DEFAULT output is registered here: this fixture is about
 	// the namespaces themselves, and the namespace-free output has none, so a namespace-free twin would compare nothing.
 	// NamespaceSharedProbe and NamespaceRefPairProbe are left out on purpose: their output is z:Id/z:Ref, the object-graph
 	// reference mechanism CrystalXml does not support.

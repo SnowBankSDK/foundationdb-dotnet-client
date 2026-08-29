@@ -119,7 +119,7 @@ namespace SnowBank.Data.Json.Tests
 		public sealed class WrongArityDto
 		{
 
-			// a converter declared for DateTime? on a NON-nullable member: refused loudly on the native path
+			// a converter declared for DateTime? on a NON-nullable member: rejected with an exception on the native path
 			[JsonConvertWith(typeof(LegacyOptionalDateConverter))]
 			public DateTime When { get; set; }
 
@@ -203,13 +203,13 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
-		public void Test_Nullable_Form_Converter_On_NonNullable_Member_Is_Refused_Loudly()
+		public void Test_Nullable_Form_Converter_On_NonNullable_Member_Is_Rejected()
 		{
-			// the sharp edge: a T?-shaped converter on a non-nullable member fails loudly on the native path
+			// the sharp edge: a T?-shaped converter on a non-nullable member throws on the native path
 			Assert.That(
 				() => CrystalJson.Serialize(new WrongArityDto { When = new DateTime(2024, 9, 20) }),
 				Throws.Exception.With.Message.Contains("When").And.Message.Contains(nameof(LegacyOptionalDateConverter)).And.Message.Contains("DateTime"),
-				"the refusal names the member, the converter and the types");
+				"the rejection names the member, the converter and the types");
 		}
 
 		[Test]
@@ -319,7 +319,7 @@ namespace SnowBank.Data.Json.Tests
 
 		public sealed class BrokenConverterDto
 		{
-			// names a type that does NOT have the Pack/Unpack pair: the native attribute fails loudly (no legacy meaning to preserve)
+			// names a type that does NOT have the Pack/Unpack pair: the native attribute throws (no legacy meaning to preserve)
 			[JsonConvertWith(typeof(string))]
 			public bool Broken { get; set; }
 		}
@@ -392,12 +392,12 @@ namespace SnowBank.Data.Json.Tests
 			// ... a member that never reaches the converter is unaffected ...
 			Assert.That(CrystalJson.Deserialize<PackOnlyDto>("{ }").Flag, Is.False, "an absent member never invokes the converter");
 
-			// ... and any attempt to USE the missing facet fails loudly, with a message that teaches
+			// ... and any attempt to USE the missing facet throws, with a message that teaches
 			Assert.That(
 				() => CrystalJson.Deserialize<PackOnlyDto>("""{ "Flag": "1" }"""),
 				Throws.Exception.With.Message.Contain(nameof(BitStringPackOnlyConverter))
 					.And.Message.Contain("IJsonDeserializer").And.Message.Contain("Unpack"),
-				"the missing deserializing facet must fail loudly and name what to implement");
+				"the missing deserializing facet must throw and name what to implement");
 		}
 
 		[Test]
@@ -406,16 +406,16 @@ namespace SnowBank.Data.Json.Tests
 			// the present facet works normally...
 			Assert.That(CrystalJson.Deserialize<UnpackOnlyDto>("""{ "Flag": "1" }""").Flag, Is.True);
 
-			// ... and any attempt to USE the missing facet fails loudly, with a message that teaches
+			// ... and any attempt to USE the missing facet throws, with a message that teaches
 			Assert.That(
 				() => CrystalJson.Serialize(new UnpackOnlyDto { Flag = true }),
 				Throws.Exception.With.Message.Contain(nameof(BitStringUnpackOnlyConverter))
 					.And.Message.Contain("IJsonPacker").And.Message.Contain("Pack"),
-				"the missing packing facet must fail loudly and name what to implement");
+				"the missing packing facet must throw and name what to implement");
 		}
 
 		[Test]
-		public void Test_Native_Attribute_Fails_Loudly_On_Invalid_Converter()
+		public void Test_Native_Attribute_Throws_On_Invalid_Converter()
 		{
 			// unlike the foreign spellings (ignored for compat), our own attribute naming a type without the
 			// Pack/Unpack pair is a configuration bug and must not be silently dropped

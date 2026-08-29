@@ -118,7 +118,7 @@ namespace SnowBank.Data.Json.Tests
 			// reading stays tolerant of a modernized producer, exactly as with a non-null false literal
 			Assert.That(CrystalJson.Deserialize<OmitWhenFalseDto>("""{"Flag":true}""")!.Flag, Is.True, "a genuine boolean is still accepted");
 
-			// and an unknown literal still refuses rather than silently reading false
+			// and an unknown literal still rejects rather than silently reading false
 			Assert.That(() => CrystalJson.Deserialize<OmitWhenFalseDto>("""{"Flag":"maybe"}"""), Throws.InstanceOf<JsonBindingException>());
 		}
 
@@ -141,7 +141,7 @@ namespace SnowBank.Data.Json.Tests
 		{
 			// RULED HERE, since the combination has no obvious prior answer: with whenFalse null there is no configured
 			// false literal, so a present `false` reads as FALSE even under StrictLiterals. Absence already means
-			// false in this shape, and an explicit false is that same state spelled out, so refusing it would reject a
+			// false in this shape, and an explicit false is that same state spelled out, so rejecting it would reject a
 			// value the shape considers legal. Strict still does its job on anything that is not a configured literal.
 			Assert.That(CrystalJson.Deserialize<OmitWhenFalseBoolDto>("""{"Strict":false}""")!.Strict, Is.False, "an explicit false reads false, even under StrictLiterals");
 			Assert.That(CrystalJson.Deserialize<OmitWhenFalseBoolDto>("""{"Strict":true}""")!.Strict, Is.True, "and the configured literal IS a genuine boolean here, so strict must not reject it");

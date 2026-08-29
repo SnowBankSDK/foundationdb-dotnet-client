@@ -418,7 +418,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// <summary>Declares its own contract namespace, and holds the three members whose namespace treatment differs</summary>
 	/// <remarks><see cref="Nested"/> is a cross-namespace member, since <see cref="Shelf"/> derives its contract namespace
 	/// from the CLR namespace; <see cref="NullableCount"/> carries the null marker; <see cref="Boxed"/> carries the type
-	/// annotation. This probe exists for the namespaced default, so it must not be enrolled in a namespace-free container.</remarks>
+	/// annotation. This probe exists for the namespaced default, so it must not be registered in a namespace-free container.</remarks>
 	[DataContract(Namespace = "urn:acme:legacy:catalog")]
 	public sealed class NamespacedProbe
 	{
@@ -476,7 +476,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// <summary>The same compat XML format, declared next to <c>PropertyNameCaseInsensitive</c></summary>
 	/// <remarks>
 	/// <para>The flag governs how INCOMING JSON names are matched; the XML side is write-only, so it has nothing to act
-	/// on and CXML0001 does not refuse the container. This one exists so that claim is executed, not just asserted on the
+	/// on and CXML0001 does not reject the container. This one exists so that claim is executed, not just asserted on the
 	/// parser's metadata: its documents must be the ones <see cref="LegacySerializers"/> writes, character for character.</para>
 	/// <para>The JSON profile is the STANDARD one, with the compat XML format asked for explicitly: this predates
 	/// XW-Q11, which later narrowed CJSON0013 so the DataContractCompat JSON profile itself also tolerates the flag
@@ -495,9 +495,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 	/// <summary>The compat OUTPUT itself (not just the derived XML format) declared next to <c>PropertyNameCaseInsensitive</c>, with no XML output at all (XW-Q11)</summary>
 	/// <remarks>
 	/// <para>Strict on output, lenient on input: <c>PropertyNameCaseInsensitive</c> is a READ-side tolerance for
-	/// incoming member names, and changes nothing about what the DataContractCompat format WRITES. CJSON0013 refuses
+	/// incoming member names, and changes nothing about what the DataContractCompat format WRITES. CJSON0013 rejects
 	/// a NAMING POLICY next to the profile (that changes the written names, a genuine contradiction), but no longer
-	/// refuses this flag. This container exists so that claim is executed, not just asserted on the parser's
+	/// rejects this flag. This container exists so that claim is executed, not just asserted on the parser's
 	/// metadata: its JSON must be the one <see cref="LegacySerializers"/> writes, character for character.</para>
 	/// </remarks>
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.DataContractCompat, PropertyNameCaseInsensitive = true)]
@@ -509,7 +509,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests.AcmeLegacy
 
 	/// <summary>The natural dual-format container XW-Q11 unlocks: the compat format, case-insensitive reads, AND its derived XML output, all in one container</summary>
 	/// <remarks>
-	/// Before XW-Q11 this container was refused at build time by CJSON0013 (the flag alone, with no naming policy,
+	/// Before XW-Q11 this container was rejected at build time by CJSON0013 (the flag alone, with no naming policy,
 	/// tripped the same trigger as a genuine naming-policy contradiction). Both its JSON and its derived DataContract
 	/// XML must be byte-identical to <see cref="LegacySerializers"/>, which carries the same types without the flag.
 	/// </remarks>
@@ -576,7 +576,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Case_Insensitive_Names_Leave_The_Compat_Output_Untouched()
 		{
-			// the container compiled at all, which is half the claim (CXML0001 no longer refuses the flag alone);
+			// the container compiled at all, which is half the claim (CXML0001 no longer rejects the flag alone);
 			// the other half is that the flag changed nothing about what gets written
 			var shelf = new Shelf { Label = "novels" };
 			var scalars = new ScalarProbe { TrueBool = true, Decimal = 12.50m, Long = -9007199254740993L, Char = 'A', SpecialChars = "<&>", Uri = new("https://example.org/x") };
@@ -596,7 +596,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Case_Insensitive_Names_Leave_The_Compat_Output_Untouched_On_The_Json_Side()
 		{
-			// the container compiled at all, which is half the claim (CJSON0013 no longer refuses the flag alone
+			// the container compiled at all, which is half the claim (CJSON0013 no longer rejects the flag alone
 			// when it is not paired with a naming policy); the other half is that the flag changed nothing about
 			// what gets written: strict on output, lenient on input
 			var shelf = new Shelf { Label = "novels" };
@@ -613,7 +613,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		public void Test_The_Dual_Output_Container_Compiles_And_Matches_Both_Outputs_Byte_For_Byte()
 		{
 			// the natural container from the owner's question: the compat format, PropertyNameCaseInsensitive, AND
-			// its derived XML output, all on one container - refused before XW-Q11, now compiles with no diagnostic
+			// its derived XML output, all on one container - rejected before XW-Q11, now compiles with no diagnostic
 			var shelf = new Shelf { Label = "novels" };
 			var scalars = new ScalarProbe { TrueBool = true, Decimal = 12.50m, Long = -9007199254740993L, Char = 'A', SpecialChars = "<&>", Uri = new("https://example.org/x") };
 
@@ -817,7 +817,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_An_Instance_Of_A_Concrete_Polymorphic_Root_Writes_Its_Own_Body()
 		{
-			// DELIBERATE DIVERGENCE from the general format, which refuses this exact value with
+			// DELIBERATE DIVERGENCE from the general format, which rejects this exact value with
 			// CrystalXmlUnknownTypeException. Here the live DCS oracle writes the root's own body, unannotated (the
 			// runtime contract IS the declared one), and byte compatibility is what this profile exists for.
 			Assert.That(
@@ -934,7 +934,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				// measured: the root takes the same composed contract name the item elements above carry
 				Assert.That(nested, Is.EqualTo("""<Outer.Inner><Label>x</Label></Outer.Inner>"""), "a nested type is named after its declaration chain");
 				Assert.That(boxed, Is.EqualTo("""<BoxOfstring><Payload>s</Payload></BoxOfstring>"""), "a generic with no declared name composes XOfY");
-				Assert.That(spaced, Is.EqualTo("""<with_x0020_space><Label>l</Label></with_x0020_space>"""), "a declared name that is not an XML name is encoded, not refused");
+				Assert.That(spaced, Is.EqualTo("""<with_x0020_space><Label>l</Label></with_x0020_space>"""), "a declared name that is not an XML name is encoded, not rejected");
 				Assert.That(digested, Is.EqualTo("""<Digestedstring><Payload>s</Payload></Digestedstring>"""), "{0} expands to the argument's contract name, {#} to nothing");
 				// deviation 1 again: the reference format writes <DigestedSupportCmwZw7JZ>, because {#} asks for the digest
 				Assert.That(digestedEnum, Is.EqualTo("""<DigestedSupport><Payload>numerique</Payload></DigestedSupport>"""), "{0} reads the ENUM's renamed contract, and {#} stays empty");
@@ -1135,7 +1135,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
-		#region Typed refusals (acted deviation 3)...
+		#region Typed rejections (acted deviation 3)...
 
 		[Test]
 		public void Test_Deviation_3_An_Undeclared_Enum_Value_Raises_A_Typed_Exception()
@@ -1162,10 +1162,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Refused_In_An_AnyType_Slot()
+		public void Test_A_Runtime_Type_The_Container_Cannot_Name_Is_Rejected_In_An_AnyType_Slot()
 		{
 			// the anyType switch is closed at generation time (the lexical types, plus this container's own types): a
-			// value outside it has no contract name this emission can compute, so it fails loudly instead of guessing
+			// value outside it has no contract name this emission can compute, so it throws instead of guessing
 			var probe = new PolymorphicProbe { AsObjectString = new List<string> { "a" } };
 
 			Assert.That(
@@ -1198,7 +1198,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// a type argument reaches the emitter as a TypeRef, which carries no element type: naming Envelope<List<string>>
 			// would produce "EnvelopeList" where the reference format writes "EnvelopeArrayOfstring". A wrong name is the
-			// silent divergence this profile exists to prevent, so the emission refuses instead of guessing
+			// silent divergence this profile exists to prevent, so the emission rejects instead of guessing
 			var errors = EmissionErrorsOf("""
 					[System.Runtime.Serialization.DataContract]
 					public sealed class ProbeDto<T>

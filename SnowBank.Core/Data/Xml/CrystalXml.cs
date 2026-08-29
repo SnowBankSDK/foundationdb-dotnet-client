@@ -53,7 +53,7 @@ namespace SnowBank.Data.Xml
 		/// <summary>Maximum nesting depth a generated XML emission may reach before it raises <see cref="CrystalXmlCycleException"/></summary>
 		/// <remarks>
 		/// <para>Locked to <see cref="CrystalJsonWriter.MaxDepth"/>, which documents the depth/cycle guard shared by both
-		/// formats: a document must not serialize on one and be refused by the other over where "too deep" starts.</para>
+		/// formats: a document must not serialize on one and be rejected by the other over where "too deep" starts.</para>
 		/// <para>The counter only tracks generated recursion: it resets to zero across a call into <see cref="ICrystalXmlSerializer{T}.WriteXml{TEmitter}"/>
 		/// (a custom member converter) or <see cref="ICrystalXmlSerializable.WriteXml{TEmitter}"/> (a self-writing type), so a
 		/// cycle running through such a hook is not covered and still overflows the native stack. The measured overflow point

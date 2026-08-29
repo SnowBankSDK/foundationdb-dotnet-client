@@ -206,7 +206,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 	}
 
-	/// <summary>Minimal shape for the required-member contract (both paths must refuse a null-or-missing member)</summary>
+	/// <summary>Minimal shape for the required-member contract (both paths must reject a null-or-missing member)</summary>
 	public sealed record RequiredProbeDto
 	{
 		public required string Name { get; init; }
@@ -319,7 +319,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_Required_Member_Throws_On_Both_Paths()
 		{
-			// the C# `required` contract: a null-or-missing member refuses to bind, with the same exception
+			// the C# `required` contract: a null-or-missing member rejects to bind, with the same exception
 			// family on the generated path (which always enforced it) and the reflection path (which now does)
 			Assert.That(
 				() => GeneratedConverters.RequiredProbeDto.Deserialize("""{ "age": 5 }"""),

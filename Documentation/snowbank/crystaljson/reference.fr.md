@@ -47,12 +47,12 @@ Book back = AcmeSerializers.Book.Deserialize(json);
 ## Attributs de *container*
 
 Le *container* déclare trois choses indépendantes : quelle classe héberge le code, quels formats elle
-produit, et quels types elle enrôle.
+produit, et quels types elle enregistre.
 
 | Attribut | *Namespace* | Rôle |
 |---|---|---|
 | `[CrystalConverter]` | `SnowBank.Data` | le marqueur de *container* ; ne nomme aucun format à lui seul |
-| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enrôle un type ; répétable ; alimente chaque format que le *container* produit |
+| `[CrystalSerializable(typeof(T))]` | `SnowBank.Data` | enregistre un type ; répétable ; alimente chaque format que le *container* produit |
 | `[CrystalJsonOutput(...)]` | `SnowBank.Data.Json` | demande le format JSON et porte ses paramètres (profil, politique de nommage) |
 | `[CrystalJsonConverter(...)]` | `SnowBank.Data.Json` | alias : `[CrystalConverter]` + `[CrystalJsonOutput]` avec les mêmes paramètres, pour un *container* JSON seul |
 | `[CrystalJsonSelfSerializable]` | `SnowBank.Data.Json` | méta-attribut pour les types auto-sérialisables (un type sert de son propre *container*) ; voir le [guide de migration](../../releases/7.4.3.md#new-apis) |
@@ -62,7 +62,7 @@ par défaut du *container*, `CrystalJsonSerializerDefaults.Web` pour le *camelCa
 `.DataContractCompat` pour le format historique de `DataContractJsonSerializer`. Des *settings* passés
 au site d'appel remplacent le profil pour cet appel.
 
-`[CrystalSerializable]` remplace l'ancien `[CrystalJsonSerializable]` ; l'enrôlement est désormais
+`[CrystalSerializable]` remplace l'ancien `[CrystalJsonSerializable]` ; l'enregistrement est désormais
 neutre vis-à-vis du format. La sortie XML a ses propres attributs et sa propre page,
 [CrystalXml](../CrystalXml.md).
 
@@ -178,7 +178,7 @@ est rapporté au même endroit par les deux chemins : le générateur émet le d
 par réflexion *throw* le même message quand il construit le contrat du type. Le
 [guide de migration](../../releases/7.4.3.md) donne le traitement complet de chacun.
 
-| Id | Sévérité | Refuse | Remède |
+| Id | Sévérité | Rejette | Remède |
 |---|---|---|---|
 | `CJSON0008` | Error | un `[JsonIgnore]` inconditionnel à côté d'un signal d'inclusion (`[DataMember]`, `[JsonInclude]`, un attribut de nommage) | scinder en un *DTO* par format, ou retirer un des deux attributs |
 | `CJSON0010` | Error | `[JsonConvertWith]` nomme un type qui n'implémente ni `IJsonPacker<T>` ni `IJsonDeserializer<T>` | implémenter une facette de convertisseur, ou corriger le type nommé |

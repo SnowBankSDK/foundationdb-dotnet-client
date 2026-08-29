@@ -203,7 +203,7 @@ namespace SnowBank.Networking.Http
 		/// <param name="context">Short description of the call site (e.g. the protocol type name), included in the exception message.</param>
 		/// <remarks>
 		/// <para>The contract: per-call configuration = protocol/client behavior only (default headers, request options, hooks, timeout, per-request-only credentials); transport policy = the named policy, registered at startup with <c>AddBetterHttpClient(name, ...)</c>.</para>
-		/// <para>Transport policy set at a call site can never reach the shared pooled transport: silently ignoring it would be a silent security/behavior break, so it fails loudly instead.</para>
+		/// <para>Transport policy set at a call site can never reach the shared pooled transport: silently ignoring it would be a silent security/behavior break, so it throws instead.</para>
 		/// </remarks>
 		/// <exception cref="InvalidOperationException">When a transport- or pipeline-tier member is set on this instance.</exception>
 		public void EnsureOnlyProtocolBehavior(string context)

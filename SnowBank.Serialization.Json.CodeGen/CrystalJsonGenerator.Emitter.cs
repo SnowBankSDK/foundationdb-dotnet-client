@@ -104,7 +104,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private bool WritesProxies => this.Metadata.SupportsJsonProxies && this.WritesJson;
 
 			/// <summary>The container gets a proxy surface AND this type has a shape the generator can describe</summary>
-			/// <remarks>Suppression is per type, not per container: a plain member-shaped type keeps its proxies next to a type that answers a facet itself. See <see cref="CrystalJsonTypeMetadata.SuppressesProxies"/>.</remarks>
+			/// <remarks>Suppression is per type, not per container: a plain member-based type keeps its proxies next to a type that answers a facet itself. See <see cref="CrystalJsonTypeMetadata.SuppressesProxies"/>.</remarks>
 			private bool WritesProxiesFor(CrystalJsonTypeMetadata typeDef) => this.WritesProxies && !typeDef.SuppressesProxies;
 
 			/// <summary>Resolves a member's type to a locally generated type that still has a proxy to point at</summary>
@@ -1152,7 +1152,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{ // a custom converter takes over the member's format form; the proxy must decode through it
 								var converterRef = $"JsonConverter.{GetMemberConverterRef(member)}";
 								if (!member.CustomConverterHasDeserializer)
-								{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
+								{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else throws
 									getterExpr = $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), typeof({member.CustomConverterType}), {GetForgivingDefaultLiteral(member)})!";
 								}
 								else if (member.CustomConverterIsNullableForm)
@@ -1440,7 +1440,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 							{ // a custom converter takes over the member's format form; the proxy must encode and decode through it
 								var converterRef = $"JsonConverter.{GetMemberConverterRef(member)}";
 								if (!member.CustomConverterHasDeserializer)
-								{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
+								{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else throws
 									getterExpr = $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedNameAnnotated}>(m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), typeof({member.CustomConverterType}), {defaultValue})!";
 								}
 								else if (member.CustomConverterIsNullableForm)
@@ -1463,7 +1463,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 									getterExpr = $"/* member-converter */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), {defaultValue}, null)!";
 								}
 								if (!member.CustomConverterHasPacker)
-								{ // asymmetric converter without the packing facet: any attempt to set the member fails loudly
+								{ // asymmetric converter without the packing facet: any attempt to set the member throws
 									setterExpr = $"m_value.Set({GetTargetPropertyNameRef(typeDef, member)}, {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingPackerFacet(typeof({member.CustomConverterType}), typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName})))";
 								}
 								else if (member.Type.IsValueType() && member.Type.NullableOfType is null)
@@ -2455,7 +2455,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{ // a custom converter takes over the member's format form
 						var converterRef = GetMemberConverterRef(member);
 						if (!member.CustomConverterHasDeserializer)
-						{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else fails loudly
+						{ // asymmetric converter without the deserializing facet: an absent value binds to the default, anything else throws
 							if (member.IsRequired)
 							{
 								EmitUnpackAssignment(sb, member, $"/* member-converter (missing deserializer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingDeserializerFacet<{member.Type.FullyQualifiedName}>(typeof({member.CustomConverterType}))");
@@ -2706,7 +2706,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private bool UnpackAsStatements { get; set; }
 
 			/// <summary>Returns the settings expression a generated entry point uses when the caller passed none: the container's baked format profile, or the standard defaults</summary>
-			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging): a merged format would be unauditable. Settings the baked names cannot honor are refused by the guard in the Serialize method.</remarks>
+			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging): a merged format would be unauditable. Settings the baked names cannot honor are rejected by the guard in the Serialize method.</remarks>
 			private string GetSettingsFallbackExpr(string settingsVar, bool compact)
 			{
 				if (this.Metadata.OutputProfile == "DataContractCompat")
@@ -3175,7 +3175,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				if (typeDef.HasSerializeHook)
-				{ // the author took control of this facet in the container's scope; a hook outranks the type's own method, which is
+				{ // the author took control of this facet in the container's scope; a hook takes precedence over the type's own method, which is
 					// what lets a second container give a bespoke format to a type that already has one
 					sb.AppendLine($"{GetHookRef(typeDef, "Serialize")}(writer, instance);");
 					sb.LeaveBlock("Serialize()");
@@ -3287,7 +3287,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (member.CustomConverterType != null)
 				{ // a custom converter takes over the member's format form
 					if (!member.CustomConverterHasPacker)
-					{ // asymmetric converter without the packing facet: any attempt to serialize fails loudly
+					{ // asymmetric converter without the packing facet: any attempt to serialize throws
 						return $"/* member-converter (missing packer facet) */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingPackerFacet(typeof({member.CustomConverterType}), typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}))";
 					}
 					if (member.Type.IsValueType() && member.Type.NullableOfType is null)
@@ -3542,7 +3542,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{ // always emitted, and the member has a custom converter: pack through it, writing an explicit null
 						sb.AppendLine($"writer.WriteName({propertyName});");
 						if (!member.CustomConverterHasPacker)
-						{ // asymmetric converter without the packing facet: any attempt to serialize fails loudly
+						{ // asymmetric converter without the packing facet: any attempt to serialize throws
 							sb.AppendLine($"{KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingPackerFacet(typeof({member.CustomConverterType}), typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName})).JsonSerialize(writer); // member-converter (missing packer facet)");
 						}
 						else if (member.Type.IsValueType() && member.Type.NullableOfType is null)
@@ -3588,7 +3588,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				if (member.CustomConverterType != null)
 				{ // a custom converter takes over the member's format form
 					if (!member.CustomConverterHasPacker)
-					{ // asymmetric converter without the packing facet: any attempt to serialize fails loudly
+					{ // asymmetric converter without the packing facet: any attempt to serialize throws
 						sb.AppendLine($"writer.WriteField({propertyName}, {KnownTypeSymbols.JsonSerializerExtensionsFullName}.FailConverterMissingPackerFacet(typeof({member.CustomConverterType}), typeof({(member.Type.NullableOfType ?? member.Type).FullyQualifiedName}))); // member-converter (missing packer facet)");
 					}
 					else if (member.Type.IsValueType() && member.Type.NullableOfType is null)

@@ -41,7 +41,7 @@ namespace SnowBank.Data.Json.Tests
 
 	}
 
-	// The one deliberate use of the obsolete enrollment spelling in this repository: the alias must keep working for
+	// The one deliberate use of the obsolete registration spelling in this repository: the alias must keep working for
 	// applications that have not migrated yet, and "keeps working" is only worth anything if something exercises it.
 #pragma warning disable CS0618
 	[CrystalJsonConverter]
@@ -79,7 +79,7 @@ namespace SnowBank.Data.Json.Tests
 		private static VocabularyDto MakeSample() => new() { Id = 42, Label = "hello", Enabled = true };
 
 		[Test]
-		public void Test_Obsolete_Enrollment_Spelling_Still_Generates_A_Working_Container()
+		public void Test_Obsolete_Attribute_Spelling_Still_Generates_A_Working_Container()
 		{
 			var dto = MakeSample();
 

@@ -29,7 +29,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.Collections.Immutable;
 	using Microsoft.CodeAnalysis;
 
-	/// <summary>Pins how the generator reads <c>[CrystalXmlOutput]</c>: the container opt-in, the resolution of the XML format profile against the JSON profile, the dictionary-format default, and the two refusals (<c>CXML0001</c>, <c>CXML0002</c>)</summary>
+	/// <summary>Pins how the generator reads <c>[CrystalXmlOutput]</c>: the container opt-in, the resolution of the XML format profile against the JSON profile, the dictionary-format default, and the two rejections (<c>CXML0001</c>, <c>CXML0002</c>)</summary>
 	/// <remarks>Parsing only: nothing is emitted for XML yet, so every assertion reads the metadata the parser resolved (through the driver's tracked steps) or the diagnostics it reported.</remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
@@ -37,7 +37,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	public sealed class XmlOutputProfileFacts : SimpleTest
 	{
 
-		/// <summary>Wraps a container declaration into a compilable probe (a DTO plus the container that enrols it)</summary>
+		/// <summary>Wraps a container declaration into a compilable probe (a DTO plus the container that registers it)</summary>
 		private static string Probe(string containerAttributes, string containerName = "ProbeConverters") => $$"""
 			namespace Probe
 			{
@@ -76,11 +76,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			return (containers, diagnostics);
 		}
 
-		/// <summary>Reads back the metadata of the single container of a probe (a missing container means the parser refused it, which is itself the failure to report)</summary>
+		/// <summary>Reads back the metadata of the single container of a probe (a missing container means the parser rejected it, which is itself the failure to report)</summary>
 		private CrystalJsonContainerMetadata RunOnSingleContainer(string source, string containerName = "ProbeConverters")
 		{
 			var (containers, diagnostics) = RunOn(source);
-			Assert.That(diagnostics.Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty, "the probe must not be refused by the generator");
+			Assert.That(diagnostics.Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty, "the probe must not be rejected by the generator");
 			Assert.That(containers.ContainsKey(containerName), Is.True, $"the parser must have produced metadata for container '{containerName}'");
 			return containers[containerName];
 		}
@@ -260,12 +260,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#region CXML0001: a naming policy cannot be combined with the DataContract XML format...
 
-		private void AssertNamingPolicyRefusal(ImmutableArray<Diagnostic> diagnostics)
+		private void AssertNamingPolicyRejection(ImmutableArray<Diagnostic> diagnostics)
 		{
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CXML0001");
-			Assert.That(refusal, Is.Not.Null, "the DataContract XML format next to a naming policy must be refused at build time");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "a silently wrong format is worse than a build failure");
-			Assert.That(refusal.GetMessage(), Does.Contain("DataContract"), "the message names the XML format that cannot honor the naming policy");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CXML0001");
+			Assert.That(rejection, Is.Not.Null, "the DataContract XML format next to a naming policy must be rejected at build time");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error), "a silently wrong format is worse than a build failure");
+			Assert.That(rejection.GetMessage(), Does.Contain("DataContract"), "the message names the XML format that cannot honor the naming policy");
 		}
 
 		[Test]
@@ -278,8 +278,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
 				"""));
 
-			AssertNamingPolicyRefusal(diagnostics);
-			Assert.That(containers["ProbeConverters"].XmlProfile, Is.Null, "the refused XML request produces no XML output (the container's JSON is untouched)");
+			AssertNamingPolicyRejection(diagnostics);
+			Assert.That(containers["ProbeConverters"].XmlProfile, Is.Null, "the rejected XML request produces no XML output (the container's JSON is untouched)");
 		}
 
 		[Test]
@@ -310,7 +310,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
 				"""));
 
-			AssertNamingPolicyRefusal(diagnostics);
+			AssertNamingPolicyRejection(diagnostics);
 		}
 
 		[Test]
@@ -323,7 +323,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
 				"""));
 
-			AssertNamingPolicyRefusal(diagnostics);
+			AssertNamingPolicyRejection(diagnostics);
 		}
 
 		[Test]
@@ -346,7 +346,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		[Test]
 		public void Test_General_Xml_With_A_CamelCase_Policy_Is_Accepted()
 		{
-			// the General format follows the naming policy instead of fighting it: nothing to refuse
+			// the General format follows the naming policy instead of fighting it: nothing to reject
 			var (containers, diagnostics) = RunOn(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.Web)]
@@ -369,7 +369,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		{
 			// DictionaryFormat picks between the general profile's dictionary shapes. The compat format has exactly ONE
 			// (KeyValueOfKV), so the option is read, resolved, and then never consulted: the member-level twin of this
-			// is already a hard refusal (CXML0004), and the container level deserves at least to be said out loud.
+			// is already a hard rejection (CXML0004), and the container level deserves at least to be said out loud.
 			var (containers, diagnostics) = RunOn(Probe("""
 					[SnowBank.Data.CrystalConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput(SnowBank.Data.Json.CrystalJsonSerializerDefaults.DataContractCompat)]
@@ -380,7 +380,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(note, Is.Not.Null, "the inert container option must be reported");
-				Assert.That(note?.Severity, Is.EqualTo(DiagnosticSeverity.Info), "the output it produces is correct: a note, never a refusal");
+				Assert.That(note?.Severity, Is.EqualTo(DiagnosticSeverity.Info), "the output it produces is correct: a note, never a rejection");
 				Assert.That(note?.GetMessage(), Does.Contain("DictionaryFormat"), "the message names the setting");
 				Assert.That(containers["ProbeConverters"].XmlProfile, Is.EqualTo("DataContract"), "and the container is otherwise untouched");
 			}
@@ -438,10 +438,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				Log($"generator: [{d.Severity}] {d}");
 			}
 
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CXML0002");
-			Assert.That(refusal, Is.Not.Null, "an inert [CrystalXmlOutput] must be reported, not ignored");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(refusal.GetMessage(), Does.Contain("CrystalConverter"), "the remedy names the marker the class is missing");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CXML0002");
+			Assert.That(rejection, Is.Not.Null, "an inert [CrystalXmlOutput] must be reported, not ignored");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(rejection.GetMessage(), Does.Contain("CrystalConverter"), "the remedy names the marker the class is missing");
 		}
 
 		[Test]

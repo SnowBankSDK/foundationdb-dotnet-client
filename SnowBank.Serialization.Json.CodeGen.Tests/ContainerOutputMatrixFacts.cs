@@ -29,10 +29,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	using System.Collections.Immutable;
 	using Microsoft.CodeAnalysis;
 
-	/// <summary>Pins the container truth table: which output formats a set of container attributes produces, and which combinations are refused</summary>
+	/// <summary>Pins the container truth table: which output formats a set of container attributes produces, and which combinations are rejected</summary>
 	/// <remarks>
 	/// <para>One fact per row of the table. A row that generates asserts BOTH presence and absence: "generates XML" is only meaningful next to "and no JSON entry point", since the failure mode being guarded against is a format that quietly rides along.</para>
-	/// <para>A row that is refused asserts the diagnostic id AND that the message names the remedy: a build error nobody can act on is barely better than silence.</para>
+	/// <para>A row that is rejected asserts the diagnostic id AND that the message names the remedy: a build error nobody can act on is barely better than silence.</para>
 	/// </remarks>
 	[TestFixture]
 	[Category("Core-SDK")]
@@ -40,7 +40,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 	public sealed class ContainerOutputMatrixFacts : SimpleTest
 	{
 
-		/// <summary>Wraps a set of container attributes into a compilable probe (a DTO plus the container that enrols it)</summary>
+		/// <summary>Wraps a set of container attributes into a compilable probe (a DTO plus the container that registers it)</summary>
 		private static string Probe(string containerAttributes) => $$"""
 			namespace Probe
 			{
@@ -231,38 +231,38 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		#endregion
 
-		#region Rows that are refused...
+		#region Rows that are rejected...
 
 		[Test]
-		public void Test_Json_Alias_With_Xml_Output_Is_Refused()
+		public void Test_Json_Alias_With_Xml_Output_Is_Rejected()
 		{
 			var (_, diagnostics) = RunOn("""
 					[SnowBank.Data.Json.CrystalJsonConverter]
 					[SnowBank.Data.Xml.CrystalXmlOutput]
 				""");
 
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0002");
-			Assert.That(refusal, Is.Not.Null, "a mono-format alias cannot host a second output format");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(refusal.GetMessage(), Does.Contain("[CrystalConverter]"), "the remedy names the marker that does combine");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0002");
+			Assert.That(rejection, Is.Not.Null, "a mono-format alias cannot host a second output format");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(rejection.GetMessage(), Does.Contain("[CrystalConverter]"), "the remedy names the marker that does combine");
 		}
 
 		[Test]
-		public void Test_Xml_Alias_With_Json_Output_Is_Refused()
+		public void Test_Xml_Alias_With_Json_Output_Is_Rejected()
 		{
 			var (_, diagnostics) = RunOn("""
 					[SnowBank.Data.Xml.CrystalXmlConverter]
 					[SnowBank.Data.Json.CrystalJsonOutput]
 				""");
 
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0002");
-			Assert.That(refusal, Is.Not.Null, "the refusal is symmetrical: neither alias combines");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(refusal.GetMessage(), Does.Contain("[CrystalConverter]"), "the remedy names the marker that does combine");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0002");
+			Assert.That(rejection, Is.Not.Null, "the rejection is symmetrical: neither alias combines");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(rejection.GetMessage(), Does.Contain("[CrystalConverter]"), "the remedy names the marker that does combine");
 		}
 
 		[Test]
-		public void Test_Json_Alias_With_Both_Outputs_Is_Refused()
+		public void Test_Json_Alias_With_Both_Outputs_Is_Rejected()
 		{
 			var (_, diagnostics) = RunOn("""
 					[SnowBank.Data.Json.CrystalJsonConverter]
@@ -270,36 +270,36 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					[SnowBank.Data.Xml.CrystalXmlOutput]
 				""");
 
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0002");
-			Assert.That(refusal, Is.Not.Null, "a mono-format alias cannot host either output attribute, let alone both");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(refusal.GetMessage(), Does.Contain("[CrystalJsonOutput] and [CrystalXmlOutput]"), "both names are reported, each bracketed on its own, not one pair of brackets wrapped around both");
-			Assert.That(refusal.GetMessage(), Does.Not.Contain("[[").And.Not.Contain("]]"), "the message must never double up brackets around the pair");
-			Assert.That(refusal.GetMessage(), Does.Contain("[CrystalConverter]"), "the remedy names the marker that does combine");
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0002");
+			Assert.That(rejection, Is.Not.Null, "a mono-format alias cannot host either output attribute, let alone both");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(rejection.GetMessage(), Does.Contain("[CrystalJsonOutput] and [CrystalXmlOutput]"), "both names are reported, each bracketed on its own, not one pair of brackets wrapped around both");
+			Assert.That(rejection.GetMessage(), Does.Not.Contain("[[").And.Not.Contain("]]"), "the message must never double up brackets around the pair");
+			Assert.That(rejection.GetMessage(), Does.Contain("[CrystalConverter]"), "the remedy names the marker that does combine");
 		}
 
 		[Test]
-		public void Test_Neutral_Marker_Without_Any_Output_Is_Refused()
+		public void Test_Neutral_Marker_Without_Any_Output_Is_Rejected()
 		{
 			var (_, diagnostics) = RunOn("""
 					[SnowBank.Data.CrystalConverter]
 				""");
 
-			var refusal = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0001");
-			Assert.That(refusal, Is.Not.Null, "a container that produces nothing is never what the author meant");
-			Assert.That(refusal!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			var rejection = diagnostics.SingleOrDefault(static d => d.Id == "CRYS0001");
+			Assert.That(rejection, Is.Not.Null, "a container that produces nothing is never what the author meant");
+			Assert.That(rejection!.Severity, Is.EqualTo(DiagnosticSeverity.Error));
 			using (Assert.EnterMultipleScope())
 			{
 				// the message lists the concrete options, so the reader never has to go looking for the vocabulary
-				Assert.That(refusal.GetMessage(), Does.Contain("[CrystalJsonOutput]"));
-				Assert.That(refusal.GetMessage(), Does.Contain("[CrystalXmlOutput]"));
-				Assert.That(refusal.GetMessage(), Does.Contain("[CrystalJsonConverter]"));
-				Assert.That(refusal.GetMessage(), Does.Contain("[CrystalXmlConverter]"));
+				Assert.That(rejection.GetMessage(), Does.Contain("[CrystalJsonOutput]"));
+				Assert.That(rejection.GetMessage(), Does.Contain("[CrystalXmlOutput]"));
+				Assert.That(rejection.GetMessage(), Does.Contain("[CrystalJsonConverter]"));
+				Assert.That(rejection.GetMessage(), Does.Contain("[CrystalXmlConverter]"));
 			}
 		}
 
 		[Test]
-		public void Test_Several_Container_Markers_Are_Refused_Once()
+		public void Test_Several_Container_Markers_Are_Rejected_Once()
 		{
 			var (generated, diagnostics) = RunOn("""
 					[SnowBank.Data.CrystalConverter]
@@ -307,10 +307,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					[SnowBank.Data.Json.CrystalJsonOutput]
 				""");
 
-			var refusals = diagnostics.Where(static d => d.Id == "CRYS0003").ToList();
-			Assert.That(refusals, Has.Count.EqualTo(1), "several markers means several matching pipelines, but exactly one refusal");
-			Assert.That(refusals[0].Severity, Is.EqualTo(DiagnosticSeverity.Error));
-			Assert.That(generated, Is.Empty, "a refused container generates nothing at all");
+			var rejections = diagnostics.Where(static d => d.Id == "CRYS0003").ToList();
+			Assert.That(rejections, Has.Count.EqualTo(1), "several markers means several matching pipelines, but exactly one rejection");
+			Assert.That(rejections[0].Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(generated, Is.Empty, "a rejected container generates nothing at all");
 		}
 
 		#endregion

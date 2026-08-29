@@ -79,12 +79,12 @@ the POCO route (`Serialize`, `Deserialize`); the DOM types parse and build thems
 
 A type with no generated converter still serializes: the **reflection path** builds a contract at
 run time from the same attributes. The two paths are held to the same output byte for byte, and
-where an attribute combination would give them two different answers, the policy is to refuse it
-loudly rather than let the output depend on which path serialized the value.
+where an attribute combination would give them two different answers, the policy is a compile error
+rather than letting the output depend on which path serialized the value.
 
 ## One type, one output
 
-That refusal policy has a name because it targets a specific legacy pattern: the **dual-output
+That rejection policy has a name because it targets a specific legacy pattern: the **dual-output
 DTO**. Some estates grew types annotated for two serializers at once, so the same class produced
 two different documents depending on which library serialized it:
 
@@ -105,11 +105,11 @@ This was always a hack, not a supported technique: it holds only while every cal
 picks the right serializer, and one wrong pick sends a consumer the other consumer's document.
 CrystalJson cannot honor it even in principle, because it has two serialization paths of its own
 (reflection and generated), and "which document do I get" must never depend on the path. So both
-members above are **build errors**, not choices: the double name is refused (`CJSON0011`), and
-the include-plus-unconditional-ignore pair is refused (`CJSON0008`). The remedy is always the
+members above are **build errors**, not choices: the double name is rejected (`CJSON0011`), and
+the include-plus-unconditional-ignore pair is rejected (`CJSON0008`). The remedy is always the
 split: one DTO per format contract, each carrying a single coherent set of attributes. The same
 policy rejects the `DataContractJsonSerializer`-era callback signature rather than approximating
-it. The [migration guide](../../releases/7.4.3.md) documents each refusal with its
+it. The [migration guide](../../releases/7.4.3.md) documents each rejection with its
 diagnostic id and remedy.
 
 Note that the dual-output DTO is a different need than serving legacy and modern consumers from
@@ -137,6 +137,6 @@ a supported migration path rather than an obstacle:
 
 CrystalJson is a `SnowBank.Core` component with no dependency on the rest of the SDK, so any .NET
 application can use it on its own. [CrystalXml](../CrystalXml.md) reuses the same containers,
-enrollment and settings to emit XML from the same types. Layers in this SDK that store or transmit
+registration and settings to emit XML from the same types. Layers in this SDK that store or transmit
 documents serialize through CrystalJson, so a document keeps one representation across the layers
 that handle it.

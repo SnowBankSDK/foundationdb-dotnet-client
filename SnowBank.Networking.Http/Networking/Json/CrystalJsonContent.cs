@@ -134,7 +134,7 @@ namespace SnowBank.Data.Json
 					: SliceOwner.Create(encoding.GetBytes(CrystalJson.Serialize(value, serializer, jsonSettings, resolver)).AsSlice()));
 		}
 
-		internal const string ReflectionMessage = "JSON body serialization uses reflection over the value type. Enroll the type with [CrystalJsonConverter] and build the content from the source-generated converter output.";
+		internal const string ReflectionMessage = "JSON body serialization uses reflection over the value type. Register the type with [CrystalJsonConverter] and build the content from the source-generated converter output.";
 
 		private SliceOwner CachedBytes;
 

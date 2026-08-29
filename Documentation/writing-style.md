@@ -38,7 +38,16 @@ The recurring failure is text that sounds technical but tells the reader nothing
   precise. Replace each with its plain word: "knobs" to options or settings; "bake" to store or
   generate; "handle" or "drive" to the concrete action ("control the timeout", "run the request");
   "gives up" to fails; "bump" to upgrade; "seed a chain of builders" to "the starting point for the
-  builder methods". Drop empty intensifiers: "a full 15 ms" is "15 ms".
+  builder methods"; "refuses" or "a refusal" to the concrete outcome (warns, rejects, throws, fails,
+  "is a compile error"); "loud" or "loudly" to the mechanism ("throws NotSupportedException", "fails
+  the build"); "vocabulary" and "jargon" to "wording", "terms", or the actual words being discussed.
+  Drop empty intensifiers: "a full 15 ms" is "15 ms".
+- **No possession or agency verbs on abstract entities.** An interface, an instance, or a subsystem
+  does not "own", "keep", "carry", or "hand out" anything; those verbs apply to physical entities and
+  say nothing about code. State the technical relationship instead: a member, a reference, an
+  attached instance, a call. Write "`IFdbDatabase` has a `Time` property; the watch reads it", not
+  "the database owns a `TimeProvider`"; "the hook must write the discriminator", not "the hooked type
+  owns its discriminator" (owner ruling 2026-08-28).
 - **Do not lift internal code names into prose.** A private field or an internal nickname
   (`PositiveWaitFloor`, `SettlePerStep`) is not a reader-facing term: state the behavior instead. If the
   code name itself does not say what it does, that is a naming defect. Fix the name, and the prose
@@ -59,6 +68,14 @@ The recurring failure is text that sounds technical but tells the reader nothing
 
 - Lead with the conclusion: the first sentence of a section tells the reader whether the
   section concerns them.
+- Release notes: the introduction is ONE sentence giving the theme of the release. The Highlights
+  list is the under-a-minute summary; the introduction does not repeat it. Each section then opens
+  with the symptom, prior workaround, or wrong expectation that tells a reader "this section solves
+  a problem you have", before the mechanism. State the motivation when the change matters in one
+  context only (a test-only improvement says so, and says what it makes possible).
+- Every section describing an API addition or change carries a code sample. A sample is often the
+  reader's first contact with an API they did not know; a small snippet grounds the feature. Every
+  sample compiles and runs against the built assemblies before the notes ship.
 - A change entry states, in order: what changed, old and new behavior, who is affected, what
   to do.
 - A warning states the consequence, not only the rule: "caching the prefix risks corruption",
