@@ -9,13 +9,13 @@ C#/.NET binding for the [FoundationDB](https://www.foundationdb.org/) client lib
 [![Build](https://img.shields.io/github/actions/workflow/status/SnowBankSDK/foundationdb-dotnet-client/dotnetcore.yml)](https://github.com/SnowBankSDK/foundationdb-dotnet-client/actions/workflows/dotnetcore.yml)
 [![Last Commit](https://img.shields.io/github/last-commit/SnowBankSDK/foundationdb-dotnet-client)](https://github.com/SnowBankSDK/foundationdb-dotnet-client/commits/master/)
 
-> **New to FoundationDB, or just trying it out?** The [documentation](Documentation/introduction.md) walks you through it end to end: [Prerequisites](Documentation/prerequisites.md), [How it connects](Documentation/foundationdb-101.md), [Cluster setup](Documentation/cluster-setup.md), then [Getting Started](Documentation/getting-started.md). It covers installing .NET and a local cluster, plus the one pitfall (matching the `FoundationDB.Client.Native` package to your cluster version) that otherwise shows up as mysterious timeouts.
+> **New to FoundationDB, or just trying it out?** The [documentation](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/introduction.html) walks you through it end to end: [Prerequisites](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/prerequisites.html), [How it connects](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/foundationdb-101.html), [Cluster setup](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/cluster-setup.html), then [Getting Started](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/getting-started.html). It covers installing .NET and a local cluster, plus the one pitfall (matching the `FoundationDB.Client.Native` package to your cluster version) that otherwise shows up as mysterious timeouts.
 >
-> Already know FoundationDB? The steps below get you running, and [Getting Started](Documentation/getting-started.md) has the first read and write.
+> Already know FoundationDB? The steps below get you running, and [Getting Started](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/getting-started.html) has the first read and write.
 
 # How to use
 
-Install the managed binding and the native client. Pin the native package to your cluster's `major.minor` version (see [Cluster setup](Documentation/cluster-setup.md)); it is the piece that must match your cluster:
+Install the managed binding and the native client. Pin the native package to your cluster's `major.minor` version (see [Cluster setup](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/cluster-setup.html)); it is the piece that must match your cluster:
 
 ```console
 dotnet add package FoundationDB.Client
@@ -38,7 +38,7 @@ builder.Services.AddFoundationDb(740, options =>
     options.ConnectionOptions.ConnectionString = "docker:docker@127.0.0.1:4500");
 ```
 
-The recommended path is [.NET Aspire](Documentation/aspire.md), which provisions a local cluster and injects the connection for you.
+The recommended path is [.NET Aspire](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/aspire/), which provisions a local cluster and injects the connection for you.
 
 Inject that provider (it arrives as the `db` parameter below) and go through the retry loop. Here are two Minimal API endpoints: one lists every greeting, the other adds one.
 
@@ -73,9 +73,9 @@ app.MapPost("/greetings", async (IFdbDatabaseProvider db, string text, Cancellat
 
 Keys are built with `subspace.Key(...)` and stay lazily tuple-encoded until the transaction runs, the retry loop handles FoundationDB's conflict-and-retry model, and the Directory layer (`db.Root[...]`) maps readable paths to short binary prefixes so your keyspace stays tidy.
 
-**Full walkthrough:** the [documentation](Documentation/introduction.md) takes you from zero (installing .NET, running a local cluster) to your first read and write, then into modeling data with the Directory layer and Layers, and running it all with [.NET Aspire](Documentation/aspire.md).
+**Full walkthrough:** the [documentation](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/introduction.html) takes you from zero (installing .NET, running a local cluster) to your first read and write, then into modeling data with the Directory layer and Layers, and running it all with [.NET Aspire](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/aspire/).
 
-**Upgrading?** The [7.4.5 release notes](Documentation/releases/7.4.5.md) list every change from 7.4.4 and the breaking changes to review before you upgrade the package version.
+**Upgrading?** The [7.4.5 release notes](https://snowbanksdk.github.io/foundationdb-dotnet-client/releases/7.4.5.html) list every change from 7.4.4 and the breaking changes to review before you upgrade the package version.
 
 What you get:
 
@@ -84,7 +84,7 @@ What you get:
 - **The Directory layer**: map readable paths to short, dense key prefixes.
 - **Layers**: a small contract (`IFdbLayer<TState>`) for reusable, composable data access.
 - **Allocation-consciousness**: `Slice`, pooled buffers, and `struct` keys/values keep the hot path free of needless `byte[]`.
-- **.NET Aspire**: start a local cluster and inject the connection automatically. See [Aspire](Documentation/aspire.md).
+- **.NET Aspire**: start a local cluster and inject the connection automatically. See [Aspire](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/aspire/).
 
 # Deployment
 
@@ -167,7 +167,7 @@ Alternatives, if you'd rather not use the plugin system (all of them work at a t
 - **Per-project:** copy them into your app's `.claude/skills/` and commit them.
 - **Submodule users:** point Claude at the checked-out submodule with `claude --add-dir path/to/foundationdb-dotnet-client` (or `/add-dir`), which loads its `.claude/skills/`. A submodule is already pinned to a commit, so this matches your version by construction.
 
-The same material is available as human-readable documentation under [`Documentation/guide/`](Documentation/guide/) for developers (and agents that don't support Agent Skills).
+The same material is available as human-readable documentation in [the guide](https://snowbanksdk.github.io/foundationdb-dotnet-client/fdb/guide/) for developers (and agents that don't support Agent Skills).
 
 # How to build
 
