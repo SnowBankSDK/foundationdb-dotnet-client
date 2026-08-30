@@ -17,7 +17,7 @@ Installez le *binding* managé (utilisez toujours le plus récent) :
 dotnet add package FoundationDB.Client
 ```
 
-Ensuite, installez le client natif, **épinglé à la version `major.minor` de votre *cluster***. C'est l'étape qui piège tout le monde : le *package* natif fixe le *output protocol* et doit correspondre à votre *cluster*, sinon rien ne se connecte (voir [Fonctionnement](foundationdb-101.md)).
+Ensuite, installez le client natif, **épinglé à la version `major.minor` de votre *cluster***. C'est l'étape qui piège tout le monde : le *package* natif fixe le format de sortie et doit correspondre à votre *cluster*, sinon rien ne se connecte (voir [Fonctionnement](foundationdb-101.md)).
 
 Pour un *cluster* **7.4** (y compris celui de Docker local, d'[Installer un cluster](cluster-setup.md)) :
 

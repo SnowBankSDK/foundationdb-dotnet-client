@@ -150,7 +150,7 @@ en charge, pas comme un obstacle :
 
 `FdbValue.ToJson(obj)` encode une valeur FoundationDB à travers CrystalJson ; une couche de
 collection de documents construite sur ce SDK stocke ses documents comme des valeurs sérialisées
-par CrystalJson avec des convertisseurs générés ; [CrystalXml](../CrystalXml.md) réutilise les
+par CrystalJson avec des convertisseurs générés ; [CrystalXml](../crystalxml.md) réutilise les
 mêmes *containers*, le même mécanisme d'enregistrement et les mêmes *settings* pour émettre du XML depuis les mêmes
 types. Une application construite sur ce SDK peut utiliser une autre bibliothèque JSON à sa
 frontière HTTP, mais la couche de données parle CrystalJson de bout en bout.

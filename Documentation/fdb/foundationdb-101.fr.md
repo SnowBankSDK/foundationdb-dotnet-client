@@ -12,19 +12,19 @@ flowchart LR
 ```
 
 - **`FoundationDB.Client`** est le *binding* .NET managé : l'API contre laquelle vous écrivez. Il ne parle pas directement au *cluster*.
-- **`fdb_c`** est la bibliothèque cliente native qu'il charge, livrée par le *package* `FoundationDB.Client.Native`. C'est elle qui parle réellement le *output protocol* au *cluster*.
+- **`fdb_c`** est la bibliothèque cliente native qu'il charge, livrée par le *package* `FoundationDB.Client.Native`. C'est elle qui parle réellement au *cluster* ; son format de sortie doit correspondre.
 - **Le *cluster*** est le ou les serveurs FoundationDB en cours d'exécution.
 
 ## La règle unique
 
-La **bibliothèque native `fdb_c` doit être compatible au niveau protocole avec le *cluster*.** Un client natif `7.4` ne peut pas parler à un *cluster* `7.3`, et inversement : le *output protocol* de FoundationDB change entre versions mineures.
+La **bibliothèque native `fdb_c` doit être compatible au niveau protocole avec le *cluster*.** Un client natif `7.4` ne peut pas parler à un *cluster* `7.3`, et inversement : le format de sortie de FoundationDB change entre versions mineures.
 
-Il y a deux réglages de version, et un seul concerne le *cluster* :
+Trois réglages de version entrent en jeu, et deux d'entre eux sont liés au *cluster* :
 
 | Package / réglage | Ce qu'il contrôle | Règle |
 |---|---|---|
 | `FoundationDB.Client` (managé) | L'API que vous pouvez appeler | Prenez la dernière. Elle ne vous lie pas à une version de *cluster*. |
-| `FoundationDB.Client.Native` | Le `fdb_c` natif, c'est-à-dire le *output protocol* | **Doit correspondre à votre *cluster*.** `7.3.x` pour un *cluster* `7.3`. |
+| `FoundationDB.Client.Native` | Le `fdb_c` natif, c'est-à-dire le format de sortie | **Doit correspondre à votre *cluster*.** `7.3.x` pour un *cluster* `7.3`. |
 | Niveau d'API (`Fdb.Start(730)`, `AddFoundationDb(730, ...)`) | Le niveau de fonctionnalités et de comportement | Au niveau du *cluster* ou en dessous. `<= 730` pour `7.3` ; un *cluster* `7.4+` autorise jusqu'à `740`. |
 
 Donc un *cluster* `7.3` est servi par le dernier `FoundationDB.Client`, plus `FoundationDB.Client.Native` `7.3.x`, plus le niveau d'API `730`.

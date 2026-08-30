@@ -64,7 +64,7 @@ au site d'appel remplacent le profil pour cet appel.
 
 `[CrystalSerializable]` remplace l'ancien `[CrystalJsonSerializable]` ; l'enregistrement est désormais
 neutre vis-à-vis du format. La sortie XML a ses propres attributs et sa propre page,
-[CrystalXml](../CrystalXml.md).
+[CrystalXml](../crystalxml.md).
 
 ## Attributs de membre
 
@@ -194,4 +194,4 @@ par réflexion *throw* le même message quand il construit le contrat du type. L
 
 Les diagnostics des types auto-sérialisables (`CJSON0004` à `CJSON0007`, `CJSON0020`, `CJSON0021`) et
 les codes du générateur XML (`CRYS####`, `CXML####`) sont couverts dans le
-[guide de migration](../../releases/7.4.3.md) et [CrystalXml](../CrystalXml.md).
+[guide de migration](../../releases/7.4.3.md) et [CrystalXml](../crystalxml.md).

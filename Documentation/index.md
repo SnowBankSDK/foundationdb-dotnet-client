@@ -3,13 +3,13 @@
 The SnowBank SDK is a set of .NET libraries for building distributed applications with FoundationDB as the main database. It groups into two families:
 
 - **[SnowBank](snowbank/index.md)**: general-purpose .NET libraries, shared across the SDK and usable on their own. `SnowBank.Core` holds the tools almost every package needs: binary slices and buffers, the tuple encoding, and the CrystalJson serializer. Every type lives under the `SnowBank` namespace root.
-- **[FoundationDB](fdb/introduction.md)**: the .NET client for [FoundationDB](https://www.foundationdb.org/), the distributed ordered key/value store. `FoundationDB.Client` connects to a cluster, and can run against the FakeDb emulator or the FdbLite engine for tests and local use. Reference Layers add higher-level data models on top.
+- **[FoundationDB](fdb/introduction.md)**: the .NET client for [FoundationDB](https://www.foundationdb.org/), the distributed ordered key/value store. `FoundationDB.Client` connects to a cluster, and can run against the FakeDb emulator for tests and local use. Reference Layers add higher-level data models on top.
 
 ## How the pieces fit
 
-The SDK is two stacks side by side. On the left, `FoundationDB.Client` over its backends (the native `fdb_c` client, plus `FdbLite` and `FakeDb` for tests and local use), talking to a FoundationDB cluster. On the right, `SnowBank.Core` over its components (slices, JSON, HTTP, testing), on the .NET runtime. Layers and your application build on top, and the whole runs on Aspire for local development, or Docker, Kubernetes, or bare metal in production.
+The SDK is two stacks side by side. On the left, `FoundationDB.Client` over its backends (the native `fdb_c` client, plus `FakeDb` for tests and local use), talking to a FoundationDB cluster. On the right, `SnowBank.Core` over its components (slices, JSON, HTTP, testing), on the .NET runtime. Layers and your application build on top, and the whole runs on Aspire for local development, or Docker, Kubernetes, or bare metal in production.
 
-<div class="arch" role="img" aria-label="Two component stacks side by side under one application. Left, the FoundationDB stack: FoundationDB.Client over its backends fdb_c, FdbLite and FakeDb, on a FoundationDB cluster. Right, the SnowBank stack: SnowBank.Core over its components Slice, JSON, Http and Testing, on the .NET runtime. Layers and NuGet packages sit above, your application on top, and the whole runs on Aspire, AWS, Azure, Kubernetes, bare metal or another host.">
+<div class="arch" role="img" aria-label="Two component stacks side by side under one application. Left, the FoundationDB stack: FoundationDB.Client over its backends fdb_c and FakeDb, on a FoundationDB cluster. Right, the SnowBank stack: SnowBank.Core over its components Slice, JSON, Http and Testing, on the .NET runtime. Layers and NuGet packages sit above, your application on top, and the whole runs on Aspire, AWS, Azure, Kubernetes, bare metal or another host.">
 <style>
 .arch { width: 100%; margin: 1.4rem 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .arch .cell { border: 1px solid var(--bs-border-color); border-radius: 8px; background: var(--bs-secondary-bg); color: var(--bs-emphasis-color); padding: 0.7rem 0.85rem; text-align: center; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.35rem; }
@@ -35,7 +35,7 @@ The SDK is two stacks side by side. On the left, `FoundationDB.Client` over its 
 <div class="cell">NuGet packages, helper libraries</div>
 <div class="cell group">
 <div class="part">FoundationDB.Client</div>
-<div class="part"><div class="chips"><span>fdb_c</span><span>FdbLite</span><span>FakeDb</span></div></div>
+<div class="part"><div class="chips"><span>fdb_c</span><span>FakeDb</span></div></div>
 </div>
 <div class="cell group">
 <div class="part">SnowBank.Core</div>

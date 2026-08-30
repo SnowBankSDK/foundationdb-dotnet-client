@@ -1,8 +1,8 @@
 # Tuples
 
-> Cette page explique en détail le modèle de tuples. Dans cette bibliothèque, les tuples sont la façon d'encoder les **clés** (et parfois les valeurs) : l'encodage binaire des tuples produit des octets dont l'ordre de tri correspond à l'ordre logique des éléments, exactement ce qu'il faut au *keyspace* ordonné de FoundationDB. Pour savoir comment les tuples deviennent des clés de base de données via les *subspaces*, voir le [guide Clés, valeurs et *Layers*](index.md).
+> Cette page explique en détail le modèle de tuples. Dans cette bibliothèque, les tuples sont la façon d'encoder les **clés** (et parfois les valeurs) : l'encodage binaire des tuples produit des octets dont l'ordre de tri correspond à l'ordre logique des éléments, exactement ce qu'il faut au *keyspace* ordonné de FoundationDB. Pour savoir comment les tuples deviennent des clés de base de données via les *subspaces*, voir le [guide Clés, valeurs et *Layers*](../fdb/guide/keys-and-layers/index.md).
 
-_« Un tuple est une liste ordonnée d'éléments. »_ - [Wikipedia](http://en.wikipedia.org/wiki/Tuple)
+_« Un tuple est une liste ordonnée d'éléments. »_ - [Wikipedia](https://en.wikipedia.org/wiki/Tuple)
 
 <pre>
          0       1                      2
@@ -44,7 +44,7 @@ Le tuple vide a une taille de 0 :
 
 L'implémentation minimale d'un tuple est un tableau `object[]`. Elle n'est ni efficace ni sûre pour des clés construites à partir d'éléments de types différents : chaque type valeur (int, Guid, bool, ...) est *boxé*, et relire un élément est un *cast* aveugle. Le 3e élément était-il un `int` ou un `long` ? Une mauvaise supposition, c'est une `InvalidCastException` à l'exécution.
 
-```CSharp
+```csharp
 // dans l'application A qui a encodé une clé...
 var items = new object[] { "Hello", 123, Guid.NewGuid() };
 // une allocation pour le tableau object[], et deux allocations pour boxer l'int et le guid !
@@ -60,7 +60,7 @@ var d = (int)items[3]; // ÉCHEC : il n'y a pas de 4e élément !
 
 Les classes `Tuple<...>` de la BCL indiquent les types et le nombre d'éléments, ce qui rétablit la sûreté de typage et IntelliSense.
 
-```CSharp
+```csharp
 // dans l'application A qui a encodé une clé...
 Tuple<string, int, Guid> items = Tuple.Create("Hello", 123, Guid.NewGuid());
 // une seule allocation pour l'instance de Tuple
@@ -100,15 +100,15 @@ C'est pourquoi il existe plusieurs variantes, toutes implémentant `IVarTuple` :
 
 La façon la plus simple de créer un tuple est à partir de ses éléments :
 
-```CSharp
+```csharp
 var t = STuple.Create("Hello", 123, Guid.NewGuid());
 ```
 
-Le type réel du tuple sera `STuple<string, int, Guid>`, qui est un `struct`. Comme nous utilisons le mot-clé `var`, tant que `t` reste à l'intérieur de la méthode, il ne sera pas *boxé*.
+Le type réel du tuple est `STuple<string, int, Guid>`, qui est un `struct`. Comme nous utilisons le mot-clé `var`, tant que `t` reste à l'intérieur de la méthode, il n'est pas *boxé*.
 
 On peut aussi créer un tuple en ajoutant quelque chose à un tuple existant, même en partant du tuple Empty :
 
-```CSharp
+```csharp
 var t = STuple.Empty.Append("Hello").Append(123).Append(Guid.NewGuid());
 ```
 
@@ -116,21 +116,21 @@ Ici _t_ est toujours un `struct` de type `STuple<string, int, Guid>`, et rien n'
 
 Si nous avons une liste d'éléments de taille variable, nous pouvons aussi en créer un tuple :
 
-```CSharp
+```csharp
 IEnumerable<MyFoo> xs = ....;
 // xs est une séquence d'objets MyFoo, avec une propriété Id (de type Guid)
 var t = STuple.FromEnumerable(xs.Select(x => x.Id));
 ```
 
 Quand tous les éléments d'un tuple sont du même type, vous pouvez utiliser des versions spécialisées :
-```CSharp
+```csharp
 var xs = new [] { "Bonjour", "le", "Monde!" };
 var t = STuple.FromArray<string>(xs);
 ```
 
 Si vous utilisiez déjà le Tuple de la BCL, vous pouvez facilement convertir de l'un vers l'autre, via un ensemble d'opérateurs de *cast* implicites et explicites :
 
-```CSharp
+```csharp
 var bcl = Tuple.Create("Hello", 123, Guid.NewGuid());
 STuple<string, int, Guid> t = bcl; // cast implicite
 
@@ -140,7 +140,7 @@ Tuple<string, int, Guid> bcl = (Tuple<string, int, Guid>) t; // cast explicite
 
 Vous pouvez aussi créer un tuple en copiant les éléments d'un tableau `object[]` :
 
-```CSharp
+```csharp
 var xs = new object[] { "Hello", 123, Guid.NewGuid() };
 var t1 = STuple.FromObjects(xs); // => ("hello", 123, guid)
 var t2 = STuple.FromObjects(xs, 1, 2); // => (123, guid)
@@ -150,7 +150,7 @@ xs[1] = 456; // ne changera pas le contenu des tuples
 
 `STuple.Wrap` évite la copie en encapsulant le tableau lui-même. Cela casse le contrat d'immuabilité de l'API de tuples : une écriture ultérieure dans le tableau modifie le tuple. Ne l'utilisez que lorsque vous contrôlez le tableau pendant toute sa durée de vie.
 
-```CSharp
+```csharp
 var xs = new object[] { "Hello", 123, Guid.NewGuid() };
 var t1 = STuple.Wrap(xs); // pas de copie !
 var t2 = STuple.Wrap(xs, 1, 2); // pas de copie !
@@ -170,7 +170,7 @@ Avec un `struct` `STuple<T1, ...>`, vous pouvez sauter cette étape, puisque la 
 
 Pour lire le contenu d'un tuple, appelez `t.Get<T>(index)`, où `index` est la position _dans le tuple_ de l'élément, et `T` le type vers lequel la valeur est convertie.
 
-```CSharp
+```csharp
 var t = STuple.Create("hello", 123, Guid.NewGuid());
 var x = t.Get<string>(0); // => "hello"
 var y = t.Get<int>(1); // => 123
@@ -179,7 +179,7 @@ var z = t.Get<Guid>(2); // => guid
 
 Si `index` est négatif, alors il est relatif à la fin du tuple, où -1 est le dernier élément, -2 l'avant-dernier, et -N le premier élément.
 
-```CSharp
+```csharp
 var t = STuple.Create("hello", 123, Guid.NewGuid());
 var x = t.Get<string>(-3); // => "hello"
 var y = t.Get<int>(-2); // => 123
@@ -190,12 +190,12 @@ var z = t.Get<Guid>(-1); // => guid
 
 Chaque tuple redéfinit `ToString()` et rend son contenu dans un format standardisé unique :
 
-```CSharp
+```csharp
 var t1 = STuple.Create("hello", 123, Guid.NewGuid());
 Console.WriteLine("t1 = {0}", t1);
 // => t1 = ("hello", 123, {773166b7-de74-4fcc-845c-84080cc89533})
 var t2 = STuple.Create("hello");
-Console.WriteLine("t1 = {0}", t2);
+Console.WriteLine("t2 = {0}", t2);
 // => t2 = ("hello",)
 var t3 = STuple.Empty;
 Console.WriteLine("t3 = {0}", t3);
@@ -208,7 +208,7 @@ Un tuple de taille 1 se rend avec une virgule finale (`(123,)` au lieu de `(123)
 
 Un tuple est un vecteur d'éléments, donc un tuple peut contenir un autre tuple :
 
-```CSharp
+```csharp
 var t1 = STuple.Create("hello", STuple.Create(123, 456), Guid.NewGuid());
 // t1 = ("hello", (123, 456), {773166b7-de74-4fcc-845c-84080cc89533})
 var t2 = STuple.Create(STuple.Create("a", "b"));
@@ -217,11 +217,11 @@ var t3 = STuple.Create("hello", STuple.Empty, "world");
 // t3 = ("hello", (), "world");
 ```
 
-_note : L'erreur facile est d'appeler `t1.Append(t2)` au lieu de `t1.Concat(t2)`, ce qui ajoutera t2 comme un seul élément à la fin de t1, au lieu d'ajouter les éléments de t2 à la fin de t1._
+_note : L'erreur facile est d'appeler `t1.Append(t2)` au lieu de `t1.Concat(t2)`, ce qui ajoute t2 comme un seul élément à la fin de t1, au lieu d'ajouter les éléments de t2 à la fin de t1._
 
 Cela peut être utile quand vous voulez modéliser une clé de taille fixe : `(product_id, location_id, order_id)` où location_id est une clé hiérarchique de taille variable, tout en gardant une taille fixe de 3 :
 
-```CSharp
+```csharp
 var productId = "B00CS8QSSK";
 var locationId = new [] { "Europe", "France", "Lille" };
 var orderId = Guid.NewGuid();
@@ -241,7 +241,7 @@ Les tuples sont immuables : aucune méthode ne modifie un élément en place. À
 
 Le cas le plus courant ajoute une valeur à un tuple avec `t.Append<T>(T value)` : par exemple, un tuple de base mis en cache plus un identifiant de document.
 
-```CSharp
+```csharp
 var location = STuple.Create("Acme", "Documents");
 
 var documentId = Guid.NewGuid();
@@ -251,7 +251,7 @@ var t = location.Append(documentId);
 
 Rappelez-vous qu'`Append` avec un tuple en argument l'ajoute comme un seul élément imbriqué. Pour fusionner les éléments de deux tuples, utilisez `t1.Concat(t2)`, qui renvoie un nouveau tuple avec les éléments des deux :
 
-```CSharp
+```csharp
 var location = STuple.Create("Acme", "OrdersByProduct");
 
 var productId = "B00CS8QSSK";
@@ -269,7 +269,7 @@ Un sous-ensemble d'un tuple s'obtient via l'une des méthodes `t.Substring(...)`
 
 `Substring()` fonctionne de la même façon que sur une chaîne :
 
-```CSharp
+```csharp
 var t = STuple.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 var u = t.Substring(0, 3); // => (1, 2, 3)
 var v = t.Substring(5, 2); // => (6, 7)
@@ -281,7 +281,7 @@ var w = v.Substring(-3); // => (8, 9, 10)
 
 L'indexeur `t[from, to]` renvoie les éléments aux positions `from <= p < to` : la borne `to` est exclue.
 
-```CSharp
+```csharp
 var t = STuple.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 var u = t[0, 3]; // => (1, 2, 3)
 var v = t[5, 7]; // => (6, 7)
@@ -296,7 +296,7 @@ var w = v[-3, null]; // => (8, 9, 10)
 
 `t.Truncate(3)` est un raccourci pour `t.Substring(0, 3)` :
 
-```CSharp
+```csharp
 var t = STuple.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 var u = t.Truncate(3);
 // u => (1, 2, 3);
@@ -308,7 +308,7 @@ var v = t.Truncate(-3);
 
 Le code qui décode des clés extrait souvent un nombre fixe d'éléments dans des variables locales, puis construit une instance d'une classe modèle de l'application :
 
-```CSharp
+```csharp
 public MyFooBar DecodeFoobar(IVarTuple tuple)
 {
     var x = tuple.Get<string>(0);
@@ -326,7 +326,7 @@ Cette méthode a des problèmes :
 
 Les *helpers* `t.As<T1, ..., TN>()` convertissent un `IVarTuple` en `STuple<T1, ..., TN>`, ce qui rétablit la vérification de taille, la sûreté de typage et IntelliSense :
 
-```CSharp
+```csharp
 public MyFooBar DecodeFoobar(IVarTuple tuple)
 {
     var t = tuple.As<string, int, Guid>();
@@ -337,10 +337,10 @@ public MyFooBar DecodeFoobar(IVarTuple tuple)
 
 Deux éléments du même type peuvent encore être intervertis par erreur. Les surcharges `t.With<T1, ..., TN>(Action<T1, ..., TN>)` et `t.With<T1, ..., TN, TResult>(Func<T1, ..., TN, TResult>)` donnent des noms aux éléments :
 
-```CSharp
+```csharp
 public MyFooBar DecodeFoobar(IVarTuple tuple)
 {
     return tuple.With((Guid productId, Guid categoryId, Guid orderId) => new MyFooBar(productId, categoryId, orderId));
-    // les trois éléments sont des GUID, mais donner un nom aide à repérer les erreurs d'inversion d'arguments
+    // les trois éléments sont des GUID, mais donner des noms aide à repérer les inversions d'arguments
 }
 ```

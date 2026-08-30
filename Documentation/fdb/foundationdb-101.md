@@ -12,20 +12,20 @@ flowchart LR
 ```
 
 - **`FoundationDB.Client`** is the managed .NET binding: the API you write against. It does not talk to the cluster directly.
-- **`fdb_c`** is the native client library it loads, shipped by the `FoundationDB.Client.Native` package. This is what actually speaks the output protocol to the cluster.
+- **`fdb_c`** is the native client library it loads, shipped by the `FoundationDB.Client.Native` package. This is what actually talks to the cluster; its output format must match.
 - **The cluster** is the running FoundationDB server(s).
 
 ## The one rule
 
-The **native `fdb_c` library must be protocol-compatible with the cluster.** A `7.4` native client cannot talk to a `7.3` cluster, and vice versa: FoundationDB's output protocol changes between minor versions.
+The **native `fdb_c` library must be protocol-compatible with the cluster.** A `7.4` native client cannot talk to a `7.3` cluster, and vice versa: FoundationDB's output format changes between minor versions.
 
-There are two version knobs, and only one of them is about the cluster:
+Three version settings are in play, and two of them are tied to the cluster:
 
 | Package / setting | What it controls | Rule |
 |---|---|---|
 | `FoundationDB.Client` (managed) | The API you can call | Use the latest. It does not tie you to a cluster version. |
-| `FoundationDB.Client.Native` | The native `fdb_c`, i.e. the output protocol | **Must match your cluster.** `7.3.x` for a `7.3` cluster. |
-| API level (`Fdb.Start(730)`, `AddFoundationDb(730, ...)`) | The feature and behaviour level | At or below the cluster's level. `<= 730` for `7.3`; a `7.4+` cluster allows up to `740`. |
+| `FoundationDB.Client.Native` | The native `fdb_c`, i.e. the output format | **Must match your cluster.** `7.3.x` for a `7.3` cluster. |
+| API level (`Fdb.Start(730)`, `AddFoundationDb(730, ...)`) | The feature and behavior level | At or below the cluster's level. `<= 730` for `7.3`; a `7.4+` cluster allows up to `740`. |
 
 So a `7.3` cluster is served by the latest `FoundationDB.Client`, plus `FoundationDB.Client.Native` `7.3.x`, plus API level `730`.
 

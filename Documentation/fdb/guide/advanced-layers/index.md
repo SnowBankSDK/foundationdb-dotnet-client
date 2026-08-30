@@ -47,7 +47,7 @@ The sequencer is the only source of "now" that every node agrees on. Use it; nev
 
 Two traps, both real:
 
-1. **Local wall clocks have no shared "now."** Comparing a timestamp minted on one node against another node's `DateTime.UtcNow` is meaningless: skew, drift, NTP steps, and VM pauses make it like comparing times across relativistic frames. A node with a fast clock evicts live peers; one with a slow clock never evicts dead ones.
+1. **Local wall clocks have no shared "now."** Comparing a timestamp minted on one node against another node's `DateTime.UtcNow` is meaningless: skew, drift, NTP steps, and VM pauses make the two clocks disagree by an unknown amount. A node with a fast clock evicts live peers; one with a slow clock never evicts dead ones.
 2. **The version tick-rate is not constant** (~1,000,000/s, but it drifts and slows when the cluster is idle). So do **not** convert a version delta into a duration. Instead, store a database-sourced token and test it for **change** (equality), and measure elapsed time only as the gap between an observer's *own* consecutive local reads.
 
 A shared clock removes *skew*, but not the fundamental **failure-detector impossibility**: you can never be certain whether a peer is slow or dead. Liveness is therefore always a policy (a threshold) backed by **evict-and-resync**, not a proof.

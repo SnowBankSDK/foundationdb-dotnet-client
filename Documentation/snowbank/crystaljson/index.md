@@ -136,7 +136,7 @@ a supported migration path rather than an obstacle:
 ## Where it sits in this stack
 
 CrystalJson is a `SnowBank.Core` component with no dependency on the rest of the SDK, so any .NET
-application can use it on its own. [CrystalXml](../CrystalXml.md) reuses the same containers,
+application can use it on its own. [CrystalXml](../crystalxml.md) reuses the same containers,
 registration and settings to emit XML from the same types. Layers in this SDK that store or transmit
 documents serialize through CrystalJson, so a document keeps one representation across the layers
 that handle it.

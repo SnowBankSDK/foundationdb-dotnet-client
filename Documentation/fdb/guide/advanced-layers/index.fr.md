@@ -43,7 +43,7 @@ Le sequencer est la seule source de « maintenant » sur laquelle tous les nœud
 
 Deux pièges, bien réels :
 
-1. **Les horloges système locales n'ont pas de « maintenant » partagé.** Comparer un *timestamp* émis sur un nœud au `DateTime.UtcNow` d'un autre nœud n'a aucun sens : le *skew*, la dérive, les sauts NTP et les pauses de VM font que cela revient à comparer des temps entre des référentiels relativistes. Un nœud dont l'horloge est rapide évince des pairs vivants ; un nœud dont l'horloge est lente n'évince jamais les pairs morts.
+1. **Les horloges système locales n'ont pas de « maintenant » partagé.** Comparer un *timestamp* émis sur un nœud au `DateTime.UtcNow` d'un autre nœud n'a aucun sens : le *skew*, la dérive, les sauts NTP et les pauses de VM font diverger les deux horloges d'un écart inconnu. Un nœud dont l'horloge est rapide évince des pairs vivants ; un nœud dont l'horloge est lente n'évince jamais les pairs morts.
 2. **Le rythme d'incrémentation des versions n'est pas constant** (~1 000 000/s, mais il dérive et ralentit quand le *cluster* est inactif). Ne convertissez donc **pas** un delta de versions en durée. À la place, stockez un *token* issu de la base de données et testez son **changement** (égalité), et mesurez le temps écoulé uniquement comme l'écart entre deux lectures locales consécutives *propres* à l'observateur.
 
 Une horloge partagée élimine le *skew*, mais pas l'**impossibilité fondamentale du détecteur de défaillances** : vous ne pouvez jamais savoir avec certitude si un pair est lent ou mort. La *liveness* est donc toujours une politique (un seuil) adossée à un **evict-and-resync**, et non une preuve.

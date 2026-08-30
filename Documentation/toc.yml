@@ -97,7 +97,7 @@
           nameFr: Référence
           href: snowbank/crystaljson/reference.md
     - name: XML
-      href: snowbank/CrystalXml.md
+      href: snowbank/crystalxml.md
 - name: Release notes
   nameFr: Notes de version
   items:

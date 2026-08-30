@@ -13,8 +13,8 @@ It is organized in four parts:
 
 ## The mental model in one screen
 
-- The database is **one flat, sorted map of bytes → bytes.** Keys sort lexicographically by their raw bytes, and that ordering is the *only* structure you get. Every table, index, queue, and document collection is an illusion you build by choosing key bytes carefully.
-- **Tuples are how you choose those bytes.** The tuple encoding turns typed values (strings, integers, GUIDs, `VersionStamp`s) into bytes whose order matches the logical order of the values. `(42, "a")` always sorts before `(42, "b")` before `(43, …)`. This is why tuples are the default key encoding.
+- The database is **one flat, sorted map of bytes to bytes**: keys sort by their raw bytes, and that ordering is the only structure you get.
+- **Tuples are the default key encoding**: they turn typed values into bytes whose order matches the logical order of the values.
 - A **subspace** is a key prefix you get by resolving a logical *location* (usually through the Directory layer). All your keys live inside it.
 - A **transaction** is serializable and ACID, but may need to be retried, and is bounded to **5 seconds** and **10 MB** of writes.
 - A **Layer** is a small, reusable component that turns the raw key/value API into a meaningful abstraction (a map, an index, a document store, a change feed).
@@ -24,11 +24,11 @@ It is organized in four parts:
 These recur throughout the guide; they're worth internalizing up front.
 
 - **Never touch raw bytes.** Build keys with `subspace.Key(...)` and values with `FdbValue.*`, and hand those objects straight to the transaction. Manual string/byte concatenation breaks ordering and escaping.
-- **Keys are lazy.** `subspace.Key("a", 1)` is a small struct that remembers its parts; it's rendered to bytes only when the transaction needs it. Don't eagerly call `.ToSlice()`.
+- **Keys are lazy.** `subspace.Key("a", 1)` is a small struct that remembers its parts; it renders to bytes only when the transaction needs it. Don't eagerly call `.ToSlice()`.
 - **Your transaction handler runs more than once.** It must be a pure function of database state: no external side effects (caches, counters, logging) inside it.
 - **Use atomic operations for contention.** A single hot counter serializes all writers at the resolver; `AtomicAdd64` and sharding don't.
-- **There is no global wall clock.** Different nodes' clocks can't be compared. When you need a shared notion of time or order, use the database's **read version** (a monotonic clock from the cluster's sequencer), never `DateTime.UtcNow` across nodes.
+- **There is no global wall clock.** You can't compare clocks from different nodes. When you need a shared notion of time or order, use the database's **read version** (a monotonic clock from the cluster's sequencer), never `DateTime.UtcNow` across nodes.
 - **Latency is round-trips.** The client pipelines, so batch independent reads (`GetValuesAsync`, `Task.WhenAll`) and avoid "read, decide, read again" chains.
-- **Unbounded logs must be trimmed, and consumers must be able to detect they fell behind.** A change feed isn't done until it has retention *and* a way to tell a stalled subscriber to resync.
+- **Trim unbounded logs, and let consumers detect that they fell behind.** A change feed isn't done until it has retention *and* a way to tell a stalled subscriber to resync.
 
 If a piece of code you're writing or reviewing touches keys, transactions, or multi-node coordination, the relevant guide below has the idiomatic pattern, and the reasoning behind it.

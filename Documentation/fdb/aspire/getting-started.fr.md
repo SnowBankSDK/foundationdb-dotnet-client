@@ -31,13 +31,13 @@ Ou ajoutez les références directement dans vos fichiers projet :
 <!-- Acme.AppHost.csproj -->
 <ItemGroup>
   <!-- autres packages -->
-  <PackageReference Include="FoundationDB.Aspire.Hosting" Version="7.4.2" />
+  <PackageReference Include="FoundationDB.Aspire.Hosting" Version="7.4.5" />
 </ItemGroup>
 
 <!-- Acme.Backend.csproj -->
 <ItemGroup>
   <!-- autres packages -->
-  <PackageReference Include="FoundationDB.Aspire" Version="7.4.2" />
+  <PackageReference Include="FoundationDB.Aspire" Version="7.4.5" />
 </ItemGroup>
 ```
 
@@ -92,8 +92,8 @@ Ou ajoutez la référence dans le fichier projet du service :
 </ItemGroup>
 ```
 
-Le client natif définit le protocole réseau, donc sa version suit le *cluster*, pas les *packages* du SDK.
-`FoundationDB.Aspire` reste à la version de la bibliothèque (`7.4.2`), et `FoundationDB.Client.Native`
+Le client natif définit le format de sortie, donc sa version suit le *cluster*, pas les *packages* du SDK.
+`FoundationDB.Aspire` reste à la version de la bibliothèque (`7.4.5`), et `FoundationDB.Client.Native`
 suit `clusterVersion`. Si vous visez plus tard un *cluster* 7.3, réglez `apiVersion` sur `730` et
 `clusterVersion` sur un `7.3.x` à l'étape 2, et changez cet épinglage en `7.3.*` : les deux évoluent
 toujours ensemble. Une incompatibilité est la raison habituelle pour laquelle un service se connecte

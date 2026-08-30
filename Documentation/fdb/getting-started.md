@@ -17,7 +17,7 @@ Install the managed binding (always use the latest):
 dotnet add package FoundationDB.Client
 ```
 
-Then install the native client, **pinned to your cluster's `major.minor` version**. This is the step that catches people: the native package sets the output protocol and must match your cluster, or nothing connects (see [How it connects](foundationdb-101.md)).
+Then install the native client, **pinned to your cluster's `major.minor` version**. This is the step that catches people: the native package sets the output format and must match your cluster, or nothing connects (see [How it connects](foundationdb-101.md)).
 
 For a **7.4** cluster (including the local Docker one from [Cluster setup](cluster-setup.md)):
 

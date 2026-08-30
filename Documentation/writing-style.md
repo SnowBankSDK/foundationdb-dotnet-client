@@ -114,6 +114,7 @@ One term per concept. The left column is the term these pages use; do not substi
 | an enrolled type | a type named by `[CrystalSerializable(typeof(T))]` | registered type |
 | the DCS format | XML byte-compatible with `DataContractSerializer` | legacy XML, compat XML |
 | the emulator | `FoundationDB.FakeDb`, the in-memory backend | the fake, the mock |
+| the output format | the client-to-cluster protocol version carried by `fdb_c` (must match the cluster) | wire protocol, output protocol |
 
 A term specific to one page (for example `SliceOwner`) does not need a row here; use the type
 name itself, consistently.

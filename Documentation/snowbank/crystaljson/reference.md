@@ -62,7 +62,7 @@ that call.
 
 `[CrystalSerializable]` replaces the obsolete `[CrystalJsonSerializable]`; registration is
 format-neutral now. XML output has its own attributes and its own page,
-[CrystalXml](../CrystalXml.md).
+[CrystalXml](../crystalxml.md).
 
 ## Member attributes
 
@@ -188,4 +188,4 @@ same message when it builds the type's contract. The
 
 The self-serializable diagnostics (`CJSON0004` to `CJSON0007`, `CJSON0020`, `CJSON0021`) and the XML
 generator codes (`CRYS####`, `CXML####`) are covered in the
-[migration guide](../../releases/7.4.3.md) and [CrystalXml](../CrystalXml.md).
+[migration guide](../../releases/7.4.3.md) and [CrystalXml](../crystalxml.md).

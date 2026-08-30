@@ -75,7 +75,7 @@ Keys are built with `subspace.Key(...)` and stay lazily tuple-encoded until the 
 
 **Full walkthrough:** the [documentation](Documentation/introduction.md) takes you from zero (installing .NET, running a local cluster) to your first read and write, then into modeling data with the Directory layer and Layers, and running it all with [.NET Aspire](Documentation/aspire.md).
 
-**Upgrading?** The [7.4.4 release notes](Documentation/releases/7.4.4.md) list every change from 7.4.3 and the breaking changes to review before you bump the package version.
+**Upgrading?** The [7.4.5 release notes](Documentation/releases/7.4.5.md) list every change from 7.4.4 and the breaking changes to review before you upgrade the package version.
 
 What you get:
 
@@ -94,7 +94,7 @@ The easiest way to deploy is to use one of the [ASP.NET Core Runtime docker imag
 
 In order to function, the FoundationDB Native client library (`fdb_c.dll` on Windows, `libfdb_c.so`) needs to be present in the container image. The easiest way is to simply copy them from the [FoundationDB Docker image](https://hub.docker.com/r/foundationdb/foundationdb) that contains these files.
 
-Example of a `Dockerfile` that will grab v7.4.x binaries and inject them into you application container:
+Example of a `Dockerfile` that will grab v7.4.x binaries and inject them into your application container:
 
 ```Dockerfile
 # Version of the FoundationDB Client Library
@@ -119,9 +119,9 @@ ENTRYPOINT ["dotnet", "MyWebApp.dll"]
 
 The easiest solution is to install the `foundationdb-clients-X.Y.Z` packages from `https://apple.github.io/foundationdb/downloads.html`. Only the client packages should be installed, unless you also intend to run the cluster locally.
 
-If you are manually copying your application files to the destination, either by unzip into a folder, or using a single-exe deployment, it is still necessary to also copy the `fdb_c.dll` or `libfdb_c.so` binaries to the destination
+If you are manually copying your application files to the destination, either by unzipping into a folder, or using a single-exe deployment, it is still necessary to also copy the `fdb_c.dll` or `libfdb_c.so` binaries to the destination.
 
-If, for any reason, you cannot copy the client binary to the default platform location (ex: `/usr/lib` on Linux), you can specify the full path to the library by settings the `NativeLibraryPath` option, or setting the `Aspire:FoundationDb:Client:NativeLibraryPath` key in the `appSettings.json` file (see the `FdbClientSettings` class other available settings).
+If, for any reason, you cannot copy the client binary to the default platform location (ex: `/usr/lib` on Linux), you can specify the full path to the library by setting the `NativeLibraryPath` option, or setting the `Aspire:FoundationDb:Client:NativeLibraryPath` key in the `appSettings.json` file (see the `FdbClientSettings` class for the other available settings).
 
 If you need to troubleshoot the connection to the FoundationDB cluster, from the point of view of your application, it is also recommended to install `fdbcli` (comes with the `foundationdb-clients` package, needs to be manually deployed if not).
 
@@ -188,26 +188,26 @@ The `scripts/` folder contains helpers for common tasks:
 
 ### As a sub-module
 
-Most projects in this repository are targeting multiple frameworks, meaning that each project will be build several times, one for each target.
+Most projects in this repository are targeting multiple frameworks, meaning that each project will be built several times, one for each target.
 
 When consuming this repository as a sub-module inside another repository, all the included projects will still want to build for all these targets, even if your parent solution only targets one framework (or a different subset).
 
-This can also cause issues if you application is targeting an older .NET runtime and SDK (for example `net10.0` using the .NET 10.0.x SDK), which do not support more recent targets from this repo (ex: `net11.0`).
+This can also cause issues if your application is targeting an older .NET runtime and SDK (for example `net10.0` using the .NET 10.0.x SDK), which do not support more recent targets from this repo (ex: `net11.0`).
 
 By default, the `Directory.Build.props` will attempt to detect when it is inside a git sub-module, and import any `Directory.Build.props` in the parent directory.
 
-> **Note:** Some CI build environments may checkout sub-module in non-standard way. If this happens, you can set the environment variable `FDB_BUILD_PROPS_OVERRIDE` to `1` in order to bypass the check.
+> **Note:** Some CI build environments may check out sub-modules in a non-standard way. If this happens, you can set the environment variable `FDB_BUILD_PROPS_OVERRIDE` to `1` in order to bypass the check.
 
 This parent props file can then override a series of msbuild variables that are injected in the `TargetFrameworks` property of all `.csproj` in this repo:
-- `CoreSdkVersions`: overrides the value of all the other variables at once. Use this is you are single-targeting.
+- `CoreSdkVersions`: overrides the value of all the other variables at once. Use this if you are single-targeting.
 
-If you are multi-targeting and need more fine grained precision, you can use the following variables:
+If you are multi-targeting and need more fine-grained precision, you can use the following variables:
 - `CoreSdkRuntimeVersions`: targets for all the core libraries (FoundationDB.Client.dll, ...) that are redistributed
 - `CoreSdkToolsVersions`: targets for all the tools and executables (FdbShell, FdbTop, ...) that are redistributed
-- `CoreSdkUtilityVersions`: targets for all the internal tools and executables that are only used for building, testing, and are not expected to be redistributed.
-- `CloudSdkRuntimeVersions`: targets for all libraries that reference .NET Aspire (which is only supports .NET 8 or later).
+- `CoreSdkUtilityVersions`: targets for all the internal tools and executables that are only used for building and testing, and are not expected to be redistributed.
+- `CloudSdkRuntimeVersions`: targets for all libraries that reference .NET Aspire (which only supports .NET 8 or later).
 
-If you parent repository is also multi-targeting, you can specify several targets, like for example `net10.0;net11.0`. Please note that is you target a more recent framework that is not supported by this repo, they may fail to build properly!
+If your parent repository is also multi-targeting, you can specify several targets, like for example `net10.0;net11.0`. Note that if you target a more recent framework that this repo does not support, the build may fail.
 
 An example of a parent `Directory.Build.props` that overrides the build to only target `net10.0`:
 ```xml
@@ -221,7 +221,7 @@ An example of a parent `Directory.Build.props` that overrides the build to only 
 </Project>
 ```
 
-An example of a parent `Directory.Build.props` that multi-targets `net10.0` and `net11.0`, but only want to build the tools for `net11.0`:
+An example of a parent `Directory.Build.props` that multi-targets `net10.0` and `net11.0`, but only wants to build the tools for `net11.0`:
 ```xml
 <Project>
 	<PropertyGroup>
@@ -260,43 +260,43 @@ Or use the helper scripts, which run a consistent `restore`, `clean` and `build`
 
 # How to test
 
-The test projects are using NUnit 4, and the test running must run as a 64-bit process (32-bit is not supported).
+The test projects are using NUnit 4, and the test runner must run as a 64-bit process (32-bit is not supported).
 
-> In order to run the tests, you will also need to obtain the 'fdb_c.dll'/`libfdb_c.so` native library.
+> In order to run the tests, you will also need to obtain the `fdb_c.dll`/`libfdb_c.so` native library.
 
 You can either run the tests from Visual Studio or Visual Studio Code, using any extension (like ReSharper), or from the command line via `dotnet test`.
 
-> WARNING: All the tests try to run in a dedicated subspace, but there is a possibility of data corruption if they are running against a test or staging cluster! You should run the test against a local cluster where all the data is considered expandable!
+> WARNING: All the tests try to run in a dedicated subspace, but there is a possibility of data corruption if they are running against a test or staging cluster! You should run the tests against a local cluster where all the data is considered expendable!
 
 # Implementation Notes
 
-Please refer to https://apple.github.io/foundationdb/ to get an overview on the FoundationDB API, if you haven't already.
+Please refer to https://apple.github.io/foundationdb/ to get an overview of the FoundationDB API, if you haven't already.
 
 This .NET binding has been modeled to be as close as possible to the other bindings (Python especially), while still having a '.NET' style API. 
 
-There were a few design goals, that you may agree with or not:
+There were a few design goals that you may agree with or not:
 * Reducing the need to allocate `byte[]` as much as possible. To achieve that, I'm using a `Slice` struct that is the logical equivalent of `ReadOnlyMemory<byte>`, but more versatile.
 * Mapping FoundationDB's Future into `Task<T>` to be able to use `async`/`await`. 
 * Reducing the risks of memory leaks in long running server processes by wrapping all FDB_xxx handles with .NET `SafeHandle`. This adds a little overhead when P/Invoking into native code, but will guarantee that all handles get released at some time (during the next GC).
 * The Tuple layer has also been optimized to reduce the number of allocations required, and cache the packed bytes of often used tuples (in subspaces, for example).
 
 However, there are some key differences between Python and .NET that may cause problems:
-* Python's dynamic types and auto casting of Tuples values, are difficult to model in .NET (without relying on the DLR). The Tuple implementation try to be as dynamic as possible, but if you want to be safe, please try to only use strings, longs, bools and byte[] to be 100% compatible with other bindings. You should refrain from using the untyped `tuple[index]` indexer (that returns an object), and instead use the generic `tuple.Get<T>(index)` that will try to adapt the underlying type into a T.
-* The Tuple layer uses ASCII and Unicode strings, while .NET only have Unicode strings. That means that all strings in .NET will be packed with prefix type 0x02 and byte arrays with prefix type 0x01. An ASCII string packed in Python will be seen as a byte[] unless you use `ITuple.Get<string>()` that will automatically convert it to Unicode.
-* There is no dedicated 'UUID' type prefix, so that means that `System.Guid` would be serialized as byte arrays, and all instances of byte 0 would need to be escaped. Since `System.Guid` are frequently used as primary keys, I added a new custom type prefix (0x30) for 128-bits UUIDs and (0x31) for 64-bits UUIDs. This simplifies packing/unpacking and speeds up writing/reading/comparing Guid keys.
+* Python's dynamic types and auto casting of Tuple values are difficult to model in .NET (without relying on the DLR). The Tuple implementation tries to be as dynamic as possible, but if you want to be safe, please try to only use strings, longs, bools and byte[] to be 100% compatible with other bindings. You should refrain from using the untyped `tuple[index]` indexer (that returns an object), and instead use the generic `tuple.Get<T>(index)` that will try to adapt the underlying type into a T.
+* The Tuple layer uses ASCII and Unicode strings, while .NET only has Unicode strings. That means that all strings in .NET will be packed with prefix type 0x02 and byte arrays with prefix type 0x01. An ASCII string packed in Python will be seen as a byte[] unless you use `ITuple.Get<string>()` that will automatically convert it to Unicode.
+* There is no dedicated 'UUID' type prefix, so that means that `System.Guid` would be serialized as byte arrays, and all instances of byte 0 would need to be escaped. Since `System.Guid` is frequently used as primary keys, I added a new custom type prefix (0x30) for 128-bit UUIDs and (0x31) for 64-bit UUIDs. This simplifies packing/unpacking and speeds up writing/reading/comparing Guid keys.
 
 The following files will be required by your application
 * `FoundationDB.Client.dll` : Contains the core types (FdbDatabase, FdbTransaction, ...) and infrastructure to connect to a FoundationDB cluster and execute basic queries, as well as the Tuple and Subspace layers.
-* `FoundationDB.Layers.Commmon.dll` : Contains common Layers that emulates Tables, Indexes, Document Collections, Blobs, ...
+* `FoundationDB.Layers.Common.dll` : Contains common Layers that emulate Tables, Indexes, Document Collections, Blobs, ...
 * `fdb_c.dll`/`libfdb_c.so` : The native C client that you will need to obtain from the official FoundationDB Windows setup or Linux client packages.
 
 # Known Limitations
 
-* Since the native FoundationDB client is 64-bit only, this .NET library is also for 64-bit only applications! Even though it targets AnyCPU, it would fail at runtime. _Don't forget to disable the `Prefer 32-bit` option in your project Build properties, that is enabled by default!_ 
+* Since the native FoundationDB client is 64-bit only, this .NET library is also for 64-bit only applications! Even though it targets AnyCPU, it would fail at runtime. _Don't forget to disable the `Prefer 32-bit` option in your project Build properties, which is enabled by default!_ 
 * You cannot unload the fdb C native client from the process once the network thread has started. You can stop the network thread once, but it does not support being restarted. This can cause problems when running under ASP.NET.
-* FoundationDB does not support long running batch or range queries if they take too much time. Such queries will fail with a 'past_version' error. The current maximum duration for read transactions is 5 seconds.
-* FoundationDB has a maximum allowed size of 100,000 bytes for values, and 10,000 bytes for keys. Larger values must be split into multiple keys
-* FoundationDB has a maximum allowed size of 10,000,000 bytes for writes per transactions (some of all key+values that are mutated). You need multiple transaction if you need to store more data. There is a Bulk API (`Fdb.Bulk.*`) to help for the most common cases (import, export, backup/restore, ...)
+* FoundationDB does not support long-running batch or range queries if they take too much time. Such queries will fail with a 'past_version' error. The current maximum duration for read transactions is 5 seconds.
+* FoundationDB has a maximum allowed size of 100,000 bytes for values, and 10,000 bytes for keys. Larger values must be split into multiple keys.
+* FoundationDB has a maximum allowed size of 10,000,000 bytes for writes per transaction (sum of all keys and values that are mutated). You need multiple transactions if you need to store more data. There is a Bulk API (`Fdb.Bulk.*`) to help with the most common cases (import, export, backup/restore, ...)
 * See https://apple.github.io/foundationdb/known-limitations.html for other known limitations of the FoundationDB database.
 
 # License

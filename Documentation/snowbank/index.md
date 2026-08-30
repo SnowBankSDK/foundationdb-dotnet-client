@@ -11,7 +11,7 @@ Documented here:
 - **[Slices and buffers](slices-and-buffers.md)**: `Slice`, a read-only view over bytes, with `SliceReader` and `SliceWriter`, pooled buffers, and the integer encodings. The byte-level toolkit under the rest.
 - **[Tuples](tuples.md)**: `TuPack` and `IVarTuple`, the tuple encoding that turns typed values into bytes whose order matches the values. FoundationDB keys use it; it stands alone.
 - **[JSON](crystaljson/index.md)**: CrystalJson, an in-memory JSON model (`JsonValue`) with a source generator for reflection-free serializers.
-- **[XML](CrystalXml.md)**: CrystalXml, compile-time XML output for CrystalJson types, byte-compatible with `DataContractSerializer`.
+- **[XML](crystalxml.md)**: CrystalXml, compile-time XML output for CrystalJson types, byte-compatible with `DataContractSerializer`.
 
 Shipped, not yet documented here:
 

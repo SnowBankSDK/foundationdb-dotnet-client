@@ -14,7 +14,7 @@ propre.
 
 Il n'y a délibérément pas de `FromXml` : CrystalXml écrit du XML, il ne le lit jamais.
 
-## Vocabulaire déclaratif
+## Déclarer la sortie
 
 Deux niveaux : le *container* dit quels formats il produit, les membres disent à quoi ils
 ressemblent dans le format XML.
@@ -103,7 +103,7 @@ l'exécution, jamais un *fallback* silencieux.
    code généré (un corps par type)
         |   WriteXml<TEmitter>(ref TEmitter emitter, T value)   where TEmitter : struct, ICrystalXmlEmitter
         v
-  ICrystalXmlEmitter    -- vocabulaire d'événements : StartElement / Attribute / Text / EndElement / RawAscii
+  ICrystalXmlEmitter    -- jeu d'événements : StartElement / Attribute / Text / EndElement / RawAscii
         |
         +-- CrystalXmlWriter<TRune, TWriter>       TEXT : l'unique implémentation char + byte
         |     where TRune : unmanaged (char|byte)    formes exactes à l'octet, toujours passée par ref
@@ -143,8 +143,9 @@ XML).
 
 ### Racines collection et scalaire
 
-Une collection ou un scalaire nu ne s'enregistre pas (CJSON0019 le rejette : enregistrez le type d'élément,
-pas la collection). Ces documents passent par des points d'entrée sur `CrystalXml`, qui reflètent
+L'enregistrement d'une collection ou d'un scalaire nu ne génère aucun convertisseur (le générateur
+signale l'avertissement CJSON0019 : enregistrez le type d'élément, pas la collection). Ces documents
+passent par des points d'entrée sur `CrystalXml`, qui reflètent
 les huit sorties ci-dessus :
 
 ```csharp
@@ -330,7 +331,7 @@ Les diagnostics au moment du build sur le format XML lui-même vivent dans la pl
 | CXML0001 | incohérence profil/politique sur le container : une politique de nommage (camelCase et consorts) à côté du format XML DataContract, dont les noms d'éléments viennent du contrat de données. `PropertyNameCaseInsensitive` n'est PAS un déclencheur : il décide comment un nom entrant est apparié à la lecture du JSON, et cette surcouche ne lit jamais |
 | CXML0002 | forme d'enregistrement : `[CrystalXmlOutput]` sur une classe qui n'héberge aucun sérialiseur généré |
 | CXML0003 | projection en attribut d'un membre sans forme lexicale |
-| CXML0004 | le vocabulaire de nommage XML sur le profil de compatibilité |
+| CXML0004 | les attributs de nommage XML sur le profil de compatibilité |
 | CXML0005 | deux membres se résolvant vers le même nom XML, discriminant compris |
 | CXML0006 | une collection imbriquée nue sur le profil général |
 | CXML0007 | tout nom qui n'est pas un NCName légal : un nom `[XmlProperty]` ou `ItemName` déclaré, un `@` seul, la contradiction `"@x"` + `Attribute = false`, un nom de membre DÉRIVÉ de son nom JSON, et un `[DataContract(Name = ...)]` qui nommerait l'élément racine. Profil général uniquement pour les cas dérivé et racine : le format de compatibilité encode chaque nom via `XmlConvert.EncodeLocalName` |

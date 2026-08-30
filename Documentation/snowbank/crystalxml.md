@@ -7,12 +7,12 @@ runtime reflection, no `System.Xml.Serialization`, and byte-exact output on the 
 
 It exists to let an application replace `DataContractSerializer`-based XML production (the
 "DCS format") with generated code while keeping byte compatibility with the documents its
-consumers (for example an XSLT rendering layer) already parse - and, independently, to give
+consumers (for example an XSLT rendering layer) already parse. Independently, it gives
 modern JSON-first containers a clean XML projection.
 
 There is deliberately no `FromXml`: CrystalXml writes XML, it never reads it.
 
-## Declarative vocabulary
+## Declaring the output
 
 Two levels: the container says WHICH formats it produces, the members say how they look on the XML one.
 
@@ -97,7 +97,7 @@ error (the CXML diagnostic range) or a typed runtime exception, never a silent f
    generated code (one body per type)
         |   WriteXml<TEmitter>(ref TEmitter emitter, T value)   where TEmitter : struct, ICrystalXmlEmitter
         v
-  ICrystalXmlEmitter    -- event vocabulary: StartElement / Attribute / Text / EndElement / RawAscii
+  ICrystalXmlEmitter    -- event set: StartElement / Attribute / Text / EndElement / RawAscii
         |
         +-- CrystalXmlWriter<TRune, TWriter>       TEXT: the single char + byte implementation
         |     where TRune : unmanaged (char|byte)    byte-exact forms; always passed by ref
@@ -109,7 +109,7 @@ error (the CXML diagnostic range) or a typed runtime exception, never a silent f
 
 Element and attribute names are precomputed by the generator in dual representation (a string
 plus a frozen UTF-8 literal) inside static `CrystalXmlName` fields, with the contract namespace
-baked into the name on the DCS format, so the byte path never transcodes a name at run time. A
+stored in the name on the DCS format, so the byte path never transcodes a name at run time. A
 name never holds a prefix: the emitter assigns prefixes by what is in scope at its depth.
 Non-public members go through the same `[UnsafeAccessor]` thunks as the JSON side. Polymorphism
 is a generated switch over the graph's known derived types; a runtime type outside the graph
@@ -123,7 +123,7 @@ Public outputs on the generated holder (none goes through another):
 | `WriteXmlTo(TextWriter, value)` | adapter to the char core |
 | `ToXmlSlice(value)` / `ToXmlBytes(value)` | byte core (UTF-8, no intermediate string) |
 | `WriteXmlTo(Stream / IBufferWriter<byte>, value)` | byte core |
-| `ToXDocument(value)` / `WriteXmlTo(XmlWriter, value)` | infoset emitters - infoset-level guarantees only, never byte-exact |
+| `ToXDocument(value)` / `WriteXmlTo(XmlWriter, value)` | infoset emitters: infoset-level guarantees only, never byte-exact |
 
 Every output accepts an optional `rootName` and an optional `CrystalXmlSettings` (see
 [Runtime output options](#runtime-output-options-crystalxmlsettings) below). A `null` settings
@@ -168,8 +168,9 @@ with the default encoding it streams directly.
 
 ### Collection and scalar roots
 
-A bare collection or scalar cannot be registered (CJSON0019 rejects it: register the element type,
-not the collection). Those documents go through entry points on `CrystalXml` instead, mirroring
+Registering a bare collection or scalar generates no converter (the generator reports the
+CJSON0019 warning: register the element type, not the collection). Those documents go through
+entry points on `CrystalXml` instead, mirroring
 the eight outputs above:
 
 ```csharp
@@ -209,12 +210,12 @@ stripped output byte for byte. Highlights:
 - Member order: base class first (recursive), members without `Order=` in ordinal-alphabetical
   order of the output name, then `Order=` groups ascending with alphabetical ties.
 - Read-only members: a get-only property, or a property with a private setter and no opt-in,
-  never reaches the output - matching what the reference serializer's reflection path takes on a
+  never reaches the output, matching what the reference serializer's reflection path takes on a
   plain POCO. On a `[DataContract]` type that same shape carrying `[DataMember]` is rejected at
   generation time instead (CXML0013): the reference serializer's no-set-method check rejects it
   outright (`InvalidDataContractException`, "No set method for property"), so there is no format to
-  match either way. A `readonly` `[DataMember]` **field** is a different shape - that check is
-  property-only - and does reach the output, byte for byte with the live oracle.
+  match either way. A `readonly` `[DataMember]` **field** is a different shape (that check is
+  property-only) and does reach the output, byte for byte with the live oracle.
 - Null members: `<X nil="true" />` by default; `[DataMember(EmitDefaultValue = false)]` makes the
   member absent when at its CLR default.
 - Collections: the item element is named after the item type's contract name (`<string>`,
@@ -236,7 +237,7 @@ stripped output byte for byte. Highlights:
   the declared one; the element name stays that of the declared type, in the declaring contract's
   namespace. A derived type in the slot's own namespace writes a bare local name; one in another
   namespace writes a prefixed QName and declares the prefix on the same element. An instance of a
-  concrete polymorphic root writes its own body, unannotated - which is what the oracle does, and
+  concrete polymorphic root writes its own body, unannotated, which is what the oracle does, and
   where this profile deliberately parts ways with the general one (see below).
 - `ISerializable` dialect: each `SerializationInfo` entry becomes an element named after the
   (encoded) key, values declared `object` carry a `type=` discriminator.
@@ -256,7 +257,7 @@ Three deliberate deviations from raw DCS, each pinned by a dedicated test, are r
 2. Control characters are sanitized at the value level (raw DCS emits `&#x1;`, a document a
    conformant parser rejects). A strict reproduction mode exists for certification harnesses.
    **Text sinks only**: this filter lives in `CrystalXmlWriter`, which is what produces the output.
-   The infoset emitters (`CrystalXDocumentEmitter`, `CrystalXmlWriterEmitter`) apply none of it - the DOM sees
+   The infoset emitters (`CrystalXDocumentEmitter`, `CrystalXmlWriterEmitter`) apply none of it: the DOM sees
    the characters verbatim, and `XmlWriter` answers for them under its own `CheckCharacters`.
 3. Typed exceptions (`CrystalXmlCycleException`, `CrystalXmlUnknownTypeException`,
    `CrystalXmlRootNameException`, `NotSupportedException`, `XmlException`) replace
@@ -266,13 +267,13 @@ Three deliberate deviations from raw DCS, each pinned by a dedicated test, are r
 
 | JSON | General XML |
 |---|---|
-| `{"title": "x"}` | `<title>x</title>` - same naming ladder as the JSON |
+| `{"title": "x"}` | `<title>x</title>`: same naming ladder as the JSON |
 | root | the type name through the same ladder; optional `rootName` per call |
 | null member | absent (like JSON by default); `WithNullMembers()` gives `<x nil="true" />`; per-member `[JsonIgnore(Condition = ...)]` honored |
-| `"tags": ["a","b"]` | unwrapped by default: `<tags>a</tags><tags>b</tags>`; `[XmlProperty(ItemName = "tag")]` wraps: `<tags><tag>a</tag>...</tags>`; a bare nested collection (`List<List<T>>`) is a build error (CXML0006) - introduce an intermediate type |
+| `"tags": ["a","b"]` | unwrapped by default: `<tags>a</tags><tags>b</tags>`; `[XmlProperty(ItemName = "tag")]` wraps: `<tags><tag>a</tag>...</tags>`; a bare nested collection (`List<List<T>>`) is a build error (CXML0006): introduce an intermediate type |
 | dictionary | `CrystalXmlDictionaryFormat { Default, Direct, KeyAttribute, KeyValueAttributes, KeyValueElements }`; general default is `Direct` (`<scores><math>12</math></scores>`, non-NCName key = typed runtime exception) |
-| `"$type": "cat"` | `type="cat"` attribute - the discriminator is an annotation |
-| `[XmlProperty("@id")]` | `<book id="42">` - data as an attribute, scalars only; forbidden on the compat profile (DCS has no user attributes) |
+| `"$type": "cat"` | `type="cat"` attribute: the discriminator is an annotation |
+| `[XmlProperty("@id")]` | `<book id="42">`: data as an attribute, scalars only; forbidden on the compat profile (DCS has no user attributes) |
 
 An instance of a concrete polymorphic root is rejected here with
 `CrystalXmlUnknownTypeException`, where the compat profile writes the root's own body. This format
@@ -282,7 +283,7 @@ a shape nobody can interpret.
 
 Unlike the compat profile, the general format carries no read-only restriction at all: a get-only
 property, a `readonly` field, and an init-only member are all emitted, mirroring the JSON format
-(which never filters by read-only-ness either - only the generated deserializer skips assigning
+(which never filters by read-only-ness either: only the generated deserializer skips assigning
 one back).
 
 ## Example
@@ -327,8 +328,8 @@ Three ways a construct is rejected, and which one applies is a rule, not a case-
 | **`#error` in the emitted source** | a structural impossibility discovered inside emission, which no declaration could have predicted. Also kept as an unreachable backstop under a diagnostic that already covers the case. |
 | **typed exception** | the decision is data-dependent: only the value being written can make it (a runtime type outside the graph, a non-NCName dictionary key, an undeclared enum value, a graph deeper than the cap, a collection root that neither the caller nor the profile names). |
 
-The rules about the container as a whole - which output formats it names, and whether its markers
-combine - are not about either format, so they carry a neutral id instead:
+The rules about the container as a whole (which output formats it names, and whether its markers
+combine) are not about either format, so they carry a neutral id instead:
 
 | Id | Rejects |
 |---|---|
@@ -343,7 +344,7 @@ Build-time diagnostics about the XML format itself live in the CXML range:
 | CXML0001 | profile/policy incoherence on the container: a naming policy (camelCase and friends) next to the DataContract XML format, whose element names come from the data contract. `PropertyNameCaseInsensitive` is NOT a trigger: it decides how an incoming name is matched when reading JSON, and this overlay never reads |
 | CXML0002 | registration shape: `[CrystalXmlOutput]` on a class that hosts no generated serializer |
 | CXML0003 | attribute projection of a member with no lexical form |
-| CXML0004 | the XML naming vocabulary on the compat profile |
+| CXML0004 | the XML naming attributes on the compat profile |
 | CXML0005 | two members resolving to the same XML name, discriminator included |
 | CXML0006 | a bare nested collection on the general profile |
 | CXML0007 | any name that is not a legal NCName: a declared `[XmlProperty]` name or `ItemName`, a bare `@`, the `"@x"` + `Attribute = false` contradiction, a member's name DERIVED from its JSON name, and a `[DataContract(Name = ...)]` that would name the root element. General profile only for the derived and root cases: the compat format encodes every name through `XmlConvert.EncodeLocalName` |
@@ -351,12 +352,12 @@ Build-time diagnostics about the XML format itself live in the CXML range:
 | CXML0009 | an attribute-projected member with a custom converter |
 | CXML0010 | `[CollectionDataContract]` on a compat member's type |
 | CXML0011 | a dictionary whose resolved shape carries the value as text (`KeyAttribute`, `KeyValueAttributes`) while the value type has no lexical form |
-| CXML0012 | **Info, not an error** - a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, on a member whose RESOLVED dictionary shape is `Direct` (whose entries are named after their own key), or on a member whose type writes its own XML content (`ICrystalXmlSerializable`, which also makes a member-level `DictionaryFormat` inert - only the element NAME still comes from the member there); a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way); a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape); and a `[CrystalXmlOutput(OmitNamespaces = true)]` on a container whose resolved profile is the general one (the stripped output is a variant of the DCS format) |
-| CXML0013 | compat profile only - a read-only (get-only, or non-public-setter with no opt-in) PROPERTY carrying `[DataMember]` on a `[DataContract]` type: the reference serializer rejects that contract outright (`InvalidDataContractException`, "No set method for property"), so there is no format to reproduce. Does not fire on a `readonly` `[DataMember]` FIELD (DCS's check is property-only) or on an init-only member (a different flag; DCS emits it) |
+| CXML0012 | **Info, not an error**: a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, on a member whose RESOLVED dictionary shape is `Direct` (whose entries are named after their own key), or on a member whose type writes its own XML content (`ICrystalXmlSerializable`, which also makes a member-level `DictionaryFormat` inert: only the element NAME still comes from the member there); a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way); a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape); and a `[CrystalXmlOutput(OmitNamespaces = true)]` on a container whose resolved profile is the general one (the stripped output is a variant of the DCS format) |
+| CXML0013 | compat profile only: a read-only (get-only, or non-public-setter with no opt-in) PROPERTY carrying `[DataMember]` on a `[DataContract]` type: the reference serializer rejects that contract outright (`InvalidDataContractException`, "No set method for property"), so there is no format to reproduce. Does not fire on a `readonly` `[DataMember]` FIELD (DCS's check is property-only) or on an init-only member (a different flag; DCS emits it) |
 
 At run time, graphs deeper than `CrystalXml.MaxDepth` (64 levels of generated recursion, the
 System.Text.Json default) raise
-`CrystalXmlCycleException` - the guard cannot distinguish a genuine cycle from a legitimately
+`CrystalXmlCycleException`: the guard cannot distinguish a genuine cycle from a legitimately
 deeper acyclic graph, and its message says so. The depth counter cannot cross a call into
 `ICrystalXmlSerializer<T>.WriteXml` or `ICrystalXmlSerializable.WriteXml`: a cycle running
 entirely through such hooks is not covered by the guard.
