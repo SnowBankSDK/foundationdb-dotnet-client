@@ -39,7 +39,7 @@ namespace FoundationDB.Client.Tests
 	{
 
 		internal const string DockerImageTag73 = "7.3.68";
-		internal const string DockerImageTag74 = "7.4.6";
+		internal const string DockerImageTag74 = "7.4.7";
 
 		protected int OverrideApiVersion;
 

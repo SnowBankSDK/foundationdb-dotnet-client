@@ -40,7 +40,7 @@ namespace Aspire.Hosting
 	{
 
 		/// <summary>Tag for the latest v7.4 docker image</summary>
-		public static readonly Version LatestVersion74 = new Version(7, 4, 6);
+		public static readonly Version LatestVersion74 = new Version(7, 4, 7);
 
 		/// <summary>Tag for the latest v7.3 docker image</summary>
 		public static readonly Version LatestVersion73 = new Version(7, 3, 78);
@@ -507,9 +507,12 @@ namespace Aspire.Hosting
 		private static string ComputeDockerTagFromVersion(Version version, FdbVersionPolicy rollForward)
 		{
 			// Important Note:
-			// - As of now, they are always released in pairs: one with AVX instructions enabled (odd number, ex: 7.3.71) and one without AVX enabled (even number, ex: 7.3.70)
-			// - The AVX enabled versions are faster, but are not compatible with ARM64 and will not run on Apple M-chip enabled laptops, where you need a non-AVX version.
-			// - As this method is mostly used for the local dev loop, and to make it easier to develop on MBP or Mac Mini, we will always roll forward to even version (non-AVX)
+			// - The 7.3, 7.2 and 7.1 lines ship each build as a pair: the even patch is built without AVX (ex: 7.3.78) and the odd patch with AVX (ex: 7.3.79).
+			//   The non-AVX build runs on every x64 host and, under emulation, on Apple Silicon, so those lines roll forward to the newest even tag.
+			// - The 7.4 line stopped pairing after 7.4.4/7.4.5: 7.4.5 and every later 7.4 image is built with AVX, has no non-AVX twin,
+			//   and is published for amd64 and arm64 (arm64 since 7.4.6). An Apple Silicon host pulls the arm64 image natively,
+			//   so the patch number no longer selects anything and 7.4 rolls forward to the newest tag.
+			// - An amd64 host without AVX (a VM on the qemu64, kvm64 or x86-64-v2 CPU model) cannot run any 7.4 image since 7.4.5.
 			// => In production deployment, you should use the most appropriate version depending on the target platform.
 
 			//TODO: maybe query the docker hub API, but use a local cache?

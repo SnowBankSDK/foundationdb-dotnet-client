@@ -5,18 +5,19 @@
 # FdbAspireHostingExtensions.cs hard-codes four constants (LatestVersion74/73/72/71) that the Latest*
 # roll-forward policies resolve to when an app asks for the "latest" fdb image. They are maintained by
 # hand and drift as FoundationDB publishes new images. This script queries the Docker Hub tags API for
-# each 7.x branch, computes the newest NON-AVX tag, and compares it to what the source currently pins.
+# each 7.x branch, computes the newest usable tag, and compares it to what the source currently pins.
 #
-# AVX rule: FoundationDB ships each build as an even/odd pair of the SAME code. The EVEN patch is built
-# WITHOUT AVX and runs everywhere (x64, and ARM64 / Apple Silicon laptops under Docker emulation); the
-# ODD patch enables AVX and is x64-only (it will not run on an M-series Mac). For the local dev loop we
-# always want the highest EVEN tag, so this script only ever considers even patch numbers.
+# AVX rule: the 7.3, 7.2 and 7.1 lines ship each build as an even/odd pair of the SAME code. The EVEN
+# patch is built WITHOUT AVX and runs everywhere (x64, and ARM64 / Apple Silicon laptops under Docker
+# emulation); the ODD patch enables AVX and is x64-only. For those lines the script keeps the highest
+# EVEN tag. The 7.4 line stopped pairing after 7.4.5: every later 7.4 image is AVX and is published for
+# amd64 and arm64, so 7.4 takes the highest tag regardless of parity.
 #
 # Usage:
 #   ./scripts/check-fdb-image-tags.sh          # report only (default); exit 1 if any constant is stale
 #   ./scripts/check-fdb-image-tags.sh --fix    # patch the stale constants in place, then report
 #
-# Note: uses page_size=100 ordered by last_updated (newest first), so the latest even tag is on page 1.
+# Note: uses page_size=100 ordered by last_updated (newest first), so the latest usable tag is on page 1.
 # That holds comfortably for the current release cadence; revisit if a branch ever gets 100+ newer tags.
 #
 # Dependencies: curl + coreutils (grep/sed/awk/sort). No jq required.
@@ -35,24 +36,24 @@ if [[ ! -f "$source_file" ]]; then
     exit 2
 fi
 
-# maj min suffix
-branches=("7 4 74" "7 3 73" "7 2 72" "7 1 71")
+# maj min suffix even_only (1 = the line still ships AVX pairs, keep the even patch)
+branches=("7 4 74 0" "7 3 73 1" "7 2 72 1" "7 1 71 1")
 
 failed=0
 stale_count=0
 stale_specs=()   # "suffix maj min newbuild current latest" for --fix
 
-printf '%-16s %-9s %-13s %s\n' "Constant" "Current" "LatestNonAvx" "Status"
-printf '%-16s %-9s %-13s %s\n' "--------" "-------" "------------" "------"
+printf '%-16s %-9s %-13s %s\n' "Constant" "Current" "Latest" "Status"
+printf '%-16s %-9s %-13s %s\n' "--------" "-------" "------" "------"
 
 for b in "${branches[@]}"; do
-    read -r maj min suffix <<< "$b"
+    read -r maj min suffix even_only <<< "$b"
     prefix="$maj.$min"
 
     # current pinned build, parsed straight from the source constant
     current="$(sed -nE "s/.*LatestVersion${suffix}[[:space:]]*=[[:space:]]*new Version\([[:space:]]*${maj}[[:space:]]*,[[:space:]]*${min}[[:space:]]*,[[:space:]]*([0-9]+)[[:space:]]*\).*/\1/p" "$source_file" | head -1)"
 
-    # latest NON-AVX (even) tag from Docker Hub
+    # newest usable tag from Docker Hub (even patch only where the line still ships AVX pairs)
     latest=""
     url="https://registry.hub.docker.com/v2/repositories/foundationdb/foundationdb/tags?name=${prefix}&page_size=100"
     if json="$(curl -fsSL "$url" 2>/dev/null)"; then
@@ -60,7 +61,7 @@ for b in "${branches[@]}"; do
             | grep -oE '"name":"[^"]*"' \
             | sed -E 's/"name":"([^"]*)"/\1/' \
             | grep -E "^${maj}\.${min}\.[0-9]+$" \
-            | awk -F. '$3 % 2 == 0' \
+            | awk -F. -v even_only="$even_only" 'even_only == 0 || $3 % 2 == 0' \
             | sort -V \
             | tail -1 || true)"
     else
@@ -98,7 +99,7 @@ if [[ "$stale_count" -eq 0 ]]; then
         echo "One or more branches could not be queried; see above."
         exit 2
     fi
-    echo "All four constants are current (latest non-AVX)."
+    echo "All four constants are current."
     exit 0
 fi
 
