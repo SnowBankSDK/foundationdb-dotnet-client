@@ -1158,6 +1158,45 @@ namespace SnowBank.Serialization.Json.CodeGen
 				bool ignoreCustom = this.ContextIgnoreCustomSerialization.Contains(type);
 				var hooks = ResolveConverterHooks(type);
 
+				// .NET 11 union: recognized by the IUnion interface or the [Union] attribute, both matched by name so the
+				// generator needs no reference to the marker types (which exist only on net11.0 and later, or as a polyfill).
+				bool isUnion =
+					type.AllInterfaces.Any(static i => i.ToDisplayString() == KnownTypeSymbols.IUnionInterfaceFullName)
+					|| type.GetAttributes().Any(static a => a.AttributeClass?.ToDisplayString() == KnownTypeSymbols.UnionAttributeFullName);
+				List<(TypeMetadata Type, bool HasTryGetValue)>? unionCases = null;
+				if (isUnion)
+				{
+					// the non-boxing access pattern: one 'bool TryGetValue(out TCase)' per case that a hand-written union may add
+					var tryGetValueCases = new HashSet<string>(StringComparer.Ordinal);
+					foreach (var method in type.GetMembers("TryGetValue").OfType<IMethodSymbol>())
+					{
+						if (method.DeclaredAccessibility == Accessibility.Public
+							&& method.ReturnType.SpecialType == SpecialType.System_Boolean
+							&& method.Parameters.Length == 1
+							&& method.Parameters[0].RefKind == RefKind.Out)
+						{
+							tryGetValueCases.Add(method.Parameters[0].Type.ToDisplayString());
+						}
+					}
+
+					// the case types are the public single-parameter constructors' parameter types
+					unionCases = [ ];
+					var seenCases = new HashSet<string>(StringComparer.Ordinal);
+					foreach (var ctor in type.InstanceConstructors)
+					{
+						if (ctor.DeclaredAccessibility != Accessibility.Public || ctor.Parameters.Length != 1) continue;
+						var caseSymbol = ctor.Parameters[0].Type;
+						var caseName = caseSymbol.ToDisplayString();
+						if (!seenCases.Add(caseName)) continue;
+						var caseMetadata = TypeMetadata.Create(caseSymbol);
+						unionCases.Add((caseMetadata, tryGetValueCases.Contains(caseName)));
+						if (caseSymbol is INamedTypeSymbol namedCase)
+						{ // enroll the case type so its converter is generated (MaybeAddLinkedType skips primitives and BCL types)
+							MaybeAddLinkedType(caseMetadata, namedCase, mappedTypes, work);
+						}
+					}
+				}
+
 				var metadata = new CrystalJsonTypeMetadata
 				{
 					Type = typeMetadata,
@@ -1169,6 +1208,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					HasSerializeHook = hooks.Serialize,
 					HasPackHook = hooks.Pack,
 					HasUnpackHook = hooks.Unpack,
+					IsUnion = isUnion,
+					UnionCases = unionCases is null ? ImmutableEquatableArray<(TypeMetadata, bool)>.Empty : unionCases.ToImmutableEquatableArray(),
 					HasDataContract = hasDataContract,
 					DataContractName = dataContract.Name,
 					DataContractNamespace = dataContract.Namespace,

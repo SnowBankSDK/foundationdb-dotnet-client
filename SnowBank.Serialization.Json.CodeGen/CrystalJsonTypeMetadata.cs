@@ -140,6 +140,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks>A <c>ReadOnly</c>/<c>Writable</c> proxy is a typed view of a shape the generator knows: it reads and writes the JSON by the member names it chose. Once a type answers a facet itself, or an author hooks one, that shape is decided elsewhere and the generator cannot describe it, so it emits no proxy rather than one that reads the wrong names.</remarks>
 		public bool SuppressesProxies => this.DefersSerialize || this.DefersPack || this.DefersUnpack || this.HasSerializeHook || this.HasPackHook || this.HasUnpackHook;
 
+		/// <summary>Indicates if this type is a .NET 11 (C# 15) union, serialized as its bare active case value.</summary>
+		public bool IsUnion { get; init; }
+
+		/// <summary>Case types of this union (the public single-parameter constructor parameter types), with a flag telling whether the union exposes a non-boxing <c>bool TryGetValue(out TCase)</c> for that case.</summary>
+		/// <remarks>Empty unless <see cref="IsUnion"/> is <see langword="true"/>. When every case carries a <c>TryGetValue</c>, the generated code dispatches without boxing; otherwise it switches on the boxed <c>Value</c>.</remarks>
+		public ImmutableEquatableArray<(TypeMetadata Type, bool HasTryGetValue)> UnionCases { get; init; } = ImmutableEquatableArray<(TypeMetadata, bool)>.Empty;
+
 		/// <summary>The type's serialization lifecycle callbacks, if any</summary>
 		public CrystalJsonCallbackMetadata? OnSerializing { get; init; }
 

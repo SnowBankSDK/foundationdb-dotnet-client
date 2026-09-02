@@ -202,6 +202,17 @@ namespace SnowBank.Data.Json
 
 			runtimeType ??= value.GetType();
 
+			// a .NET 11 union packs its active case value untagged (no envelope, no "$type"), matching System.Text.Json
+			if (CrystalJson.IsReflectionSupported && runtimeType.IsValueType && CrystalJsonTypeResolver.IsUnionType(runtimeType))
+			{
+				var valueProperty = runtimeType.GetProperty("Value");
+				if (valueProperty is not null && valueProperty.CanRead)
+				{
+					var active = valueProperty.GetValue(value);
+					return active is null ? JsonNull.Null : ParseObjectInternal(ref context, active, typeof(object), null);
+				}
+			}
+
 			if (runtimeType.IsPrimitive)
 			{ // int, bool, char, float, ...
 				if (TryConvertPrimitiveObject(value, runtimeType, out result))

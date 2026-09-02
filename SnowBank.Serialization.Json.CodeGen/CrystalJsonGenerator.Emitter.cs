@@ -2998,6 +2998,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
+				// a .NET 11 union packs its active case value untagged (no envelope, no $type), matching System.Text.Json
+				if (typeDef.IsUnion)
+				{
+					WriteUnionPack(sb, typeDef);
+					sb.LeaveBlock("Pack");
+					sb.NewLine();
+					return;
+				}
+
 				// if the type is polymorphic, we have to dispatch to the corresponding serializer
 				// (dispatch BEFORE Enter: the delegate packs THIS object, and its own Pack is what enters it)
 				if (typeDef.IsPolymorphicRoot)
@@ -3193,6 +3202,15 @@ namespace SnowBank.Serialization.Json.CodeGen
 					return;
 				}
 
+				// a .NET 11 union writes its active case value untagged (no envelope, no $type), matching System.Text.Json
+				if (typeDef.IsUnion)
+				{
+					WriteUnionSerialize(sb, typeDef);
+					sb.LeaveBlock("Serialize()");
+					sb.NewLine();
+					return;
+				}
+
 				// if the type is polymorphic, we have to dispatch to the corresponding serializer
 				if (typeDef.IsPolymorphicRoot)
 				{
@@ -3280,6 +3298,108 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.AppendLine("writer.LeaveDepth();");
 				sb.LeaveBlock("Serialize()");
 				sb.NewLine();
+			}
+
+			/// <summary>Emits the streaming Serialize body of a union: writes the active case value untagged.</summary>
+			private void WriteUnionSerialize(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
+			{
+				// non-boxing when every case exposes a 'bool TryGetValue(out TCase)'; otherwise switch on the boxed Value
+				bool nonBoxing = typeDef.UnionCases.Count > 0 && typeDef.UnionCases.All(static c => c.HasTryGetValue);
+				int i = 0;
+				if (nonBoxing)
+				{
+					foreach (var (caseType, _) in typeDef.UnionCases)
+					{
+						sb.AppendLine($"if (instance.TryGetValue(out {caseType.FullyQualifiedName} v{i}))");
+						sb.EnterBlock();
+						WriteUnionCaseSerialize(sb, caseType, $"v{i}");
+						sb.AppendLine("return;");
+						sb.LeaveBlock();
+						++i;
+					}
+					sb.AppendLine("writer.WriteNull();");
+				}
+				else
+				{
+					sb.AppendLine("switch (instance.Value)");
+					sb.EnterBlock();
+					foreach (var (caseType, _) in typeDef.UnionCases)
+					{
+						sb.AppendLine($"case {caseType.FullyQualifiedName} v{i}:");
+						sb.EnterBlock();
+						WriteUnionCaseSerialize(sb, caseType, $"v{i}");
+						sb.AppendLine("break;");
+						sb.LeaveBlock();
+						++i;
+					}
+					sb.AppendLine("case null: writer.WriteNull(); break;");
+					sb.AppendLine($"default: throw {KnownTypeSymbols.CrystalJsonFullName}.Errors.Serialization_DoesNotKnowHowToSerializeType(instance.Value?.GetType() ?? typeof(object));");
+					sb.LeaveBlock();
+				}
+			}
+
+			/// <summary>Emits a single union case value on the streaming writer, unnamed.</summary>
+			private void WriteUnionCaseSerialize(CSharpCodeBuilder sb, TypeMetadata caseType, string valueExpr)
+			{
+				if (IsFastPathSerializable(caseType))
+				{
+					sb.AppendLine($"writer.WriteValue({valueExpr});");
+				}
+				else if (IsLocallyGeneratedType(caseType, out var target, out _))
+				{
+					sb.AppendLine($"{GetLocalSerializerRef(target)}.Serialize(writer, {valueExpr});");
+				}
+				else
+				{
+					sb.AppendLine($"{KnownTypeSymbols.CrystalJsonVisitorFullName}.VisitValue<{caseType.FullyQualifiedNameAnnotated}>({valueExpr}, writer);");
+				}
+			}
+
+			/// <summary>Emits the Pack body of a union: returns the active case value as a JsonValue, untagged.</summary>
+			private void WriteUnionPack(CSharpCodeBuilder sb, CrystalJsonTypeMetadata typeDef)
+			{
+				bool nonBoxing = typeDef.UnionCases.Count > 0 && typeDef.UnionCases.All(static c => c.HasTryGetValue);
+				int i = 0;
+				if (nonBoxing)
+				{
+					foreach (var (caseType, _) in typeDef.UnionCases)
+					{
+						sb.AppendLine($"if (instance.TryGetValue(out {caseType.FullyQualifiedName} v{i}))");
+						sb.EnterBlock();
+						sb.AppendLine($"return {GetUnionCasePackExpression(caseType, $"v{i}")};");
+						sb.LeaveBlock();
+						++i;
+					}
+					sb.AppendLine($"return {KnownTypeSymbols.JsonNullFullName}.Null;");
+				}
+				else
+				{
+					sb.AppendLine("switch (instance.Value)");
+					sb.EnterBlock();
+					foreach (var (caseType, _) in typeDef.UnionCases)
+					{
+						sb.AppendLine($"case {caseType.FullyQualifiedName} v{i}: return {GetUnionCasePackExpression(caseType, $"v{i}")};");
+						++i;
+					}
+					sb.AppendLine($"case null: return {KnownTypeSymbols.JsonNullFullName}.Null;");
+					sb.AppendLine($"default: throw {KnownTypeSymbols.CrystalJsonFullName}.Errors.Serialization_DoesNotKnowHowToSerializeType(instance.Value?.GetType() ?? typeof(object));");
+					sb.LeaveBlock();
+				}
+			}
+
+			/// <summary>Returns the expression that packs a single union case value into a JsonValue.</summary>
+			private string GetUnionCasePackExpression(TypeMetadata caseType, string valueExpr)
+			{
+				if (IsLocallyGeneratedType(caseType, out var target, out _))
+				{
+					return $"{GetLocalSerializerRef(target)}.Pack(ref context, {valueExpr})";
+				}
+				var concrete = caseType.NullableOfType ?? caseType;
+				if (concrete.IsBooleanLike()) return $"{KnownTypeSymbols.JsonBooleanFullName}.Return({valueExpr})";
+				if (concrete.IsStringLike()) return $"{KnownTypeSymbols.JsonStringFullName}.Return({valueExpr})";
+				if (concrete.IsNumberLike()) return $"{KnownTypeSymbols.JsonNumberFullName}.Return({valueExpr})";
+				if (concrete.IsDateLike()) return $"{KnownTypeSymbols.JsonDateTimeFullName}.Return({valueExpr})";
+				return $"{KnownTypeSymbols.JsonValueFullName}.FromValue({valueExpr}, settings, resolver)";
 			}
 
 			private string GetMemberPackerExpression(CrystalJsonMemberMetadata member, string getterExpr)

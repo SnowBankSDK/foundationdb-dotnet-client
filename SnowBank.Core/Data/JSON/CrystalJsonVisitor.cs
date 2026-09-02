@@ -152,6 +152,12 @@ namespace SnowBank.Data.Json
 				return visitor;
 			}
 
+			// a .NET 11 union serializes its active case value untagged; the [Union] attribute wins over duck-typing, same as STJ
+			if (CrystalJsonTypeResolver.IsUnionType(type))
+			{
+				return CreateVisitorForUnionType(type);
+			}
+
 			// If the type has a static "JsonSerialize(...)", we defer to it (aka "duck typing")
 			visitor = TryGetSerializeMethodVisitor(type);
 			if (visitor != null)
@@ -252,6 +258,33 @@ namespace SnowBank.Data.Json
 		private static void VisitStringInternal(object? value, Type declaredType, Type? runtimeType, CrystalJsonWriter writer)
 		{
 			writer.WriteValue(value as string);
+		}
+
+		/// <summary>Create a visitor for a .NET 11 union type, writing the active case value untagged.</summary>
+		/// <remarks>A union stores its active case in the public <c>object? Value</c> property (the IUnion contract, present
+		/// on every union). This reads that value and serializes it by its runtime type, with no envelope and no <c>$type</c>,
+		/// matching System.Text.Json. Reading <c>Value</c> by reflection avoids a compile-time reference to <c>IUnion</c>, so
+		/// the same code runs on every target framework, including the ones where the union marker is polyfilled.</remarks>
+		[RequiresUnreferencedCode("This uses reflection over the union's case types; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		private static CrystalJsonTypeVisitor CreateVisitorForUnionType([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type type)
+		{
+			var valueProperty = type.GetProperty("Value", BindingFlags.Public | BindingFlags.Instance);
+			if (valueProperty is null || !valueProperty.CanRead)
+			{
+				throw new InvalidOperationException($"Type '{type.Name}' is marked as a union but does not expose a readable public 'Value' property.");
+			}
+
+			return (value, _, _, writer) =>
+			{
+				if (value is null)
+				{
+					writer.WriteNull(); // "null"
+					return;
+				}
+
+				var active = valueProperty.GetValue(value);
+				VisitObjectAtRuntime(active, typeof(object), null, writer);
+			};
 		}
 
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]

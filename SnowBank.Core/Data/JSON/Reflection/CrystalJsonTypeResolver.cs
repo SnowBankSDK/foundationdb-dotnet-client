@@ -2139,6 +2139,26 @@ namespace SnowBank.Data.Json
 
 		private static readonly CrystalJsonTypeBinder GenericJsonValueBinder = (v, t, r) => (v ?? JsonNull.Missing).Bind(t, r);
 
+		/// <summary>Full name of the C# 15 union marker attribute, matched by name so no reference to the type is needed.</summary>
+		internal const string UnionAttributeFullName = "System.Runtime.CompilerServices.UnionAttribute";
+
+		/// <summary>Tests whether a type is a .NET 11 (C# 15) union.</summary>
+		/// <remarks>A type is a union when it carries <c>[System.Runtime.CompilerServices.UnionAttribute]</c>. The
+		/// attribute is matched by full name, the same way System.Text.Json does it, so the check works whether the
+		/// marker is present in the runtime (net11.0 and later) or polyfilled on an older target framework, and needs
+		/// no compile-time reference to the marker type.</remarks>
+		internal static bool IsUnionType(Type type)
+		{
+			foreach (var attr in type.GetCustomAttributesData())
+			{
+				if (attr.AttributeType.FullName == UnionAttributeFullName)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+
 #if !NETSTANDARD2_0
 		// System.Text.Json interop is disabled on the netstandard2.0 build: [JsonPolymorphic]/[JsonDerivedType] on consumer DTOs are not recognized there
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]

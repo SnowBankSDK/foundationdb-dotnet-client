@@ -74,6 +74,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public const string CrystalJsonSettingsFullName = CrystalJsonNamespace + ".CrystalJsonSettings";
 		public const string CrystalJsonVisitorFullName = CrystalJsonNamespace + ".CrystalJsonVisitor";
 		public const string CrystalJsonWriterFullName = CrystalJsonNamespace + ".CrystalJsonWriter";
+
+		/// <summary>Full name of the C# 15 union marker attribute, matched by name (the type is not referenced).</summary>
+		public const string UnionAttributeFullName = "System.Runtime.CompilerServices.UnionAttribute";
+
+		/// <summary>Full name of the C# 15 union interface, matched by name (the type is not referenced).</summary>
+		public const string IUnionInterfaceFullName = "System.Runtime.CompilerServices.IUnion";
 		public const string CrystalJsonMarshallFullName = CrystalJsonNamespace + ".CrystalJsonMarshall";
 		public const string JsonSerializerExtensionsFullName = CrystalJsonNamespace + ".JsonSerializerExtensions";
 
