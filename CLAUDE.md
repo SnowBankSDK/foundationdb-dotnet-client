@@ -101,6 +101,44 @@ The published NuGet packages are cut from [`Common/VersionInfo.props`](Common/Ve
 - **Before packing**, bump the pinned `FoundationDB.*` versions in the standalone samples ([`samples/getting-started/`](samples/getting-started/)) and any sandbox projects to the version being released. The same sweep bumps the documentation's own version pins: `version` in [`Documentation/docgen.json`](Documentation/docgen.json), and the package snippets in [`Documentation/fdb/aspire/getting-started.md`](Documentation/fdb/aspire/getting-started.md) plus its `.fr.md` twin (7.4.5 shipped with all three still saying 7.4.2/7.4.3). This puts the correct pins in the commit that gets packed and tagged, so the tag (which targets the packed commit, for SourceLink) also carries samples that point at the release. The bump is a pin, not a verification: the samples do not restore until the packages are live, which is expected. **After** upload, when the packages are live, `restore` + build the samples to confirm they work against the shipping packages. Do NOT defer the pin bump to after upload: the pin then lands in a commit after the packed one, and the tag ships stale sample pins (7.4.4 did this, tag `292796a7` pins the samples to 7.4.3).
 - **After the push**, publish the documentation: dispatch the [`docs.yml`](.github/workflows/docs.yml) workflow (manual, from `master`), and wait for it before publishing the GitHub release, whose body links to `releases/<N>.html`. Each dispatch republishes the whole site, so a correction to a past release-notes page reaches readers on the next documentation update with no further step.
 
+## Releasing FoundationDB.Client.Native (one package per FoundationDB branch)
+
+`FoundationDB.Client.Native` ships the native client libraries, and a native client only talks to a
+cluster of its own major.minor, so the package exists once per FoundationDB branch: today 7.3.x and 7.4.x
+(the 7.4.7 package and the 7.3.78 package). Its version follows the native version, not the binding's.
+The csproj takes that version as the MSBuild property `FdbNativeVersion`, which names the
+[`FoundationDB.Client.Native/manifest.json`](FoundationDB.Client.Native/manifest.json) entry to ship
+and becomes `VersionPrefix`; its default is the manifest's `latest`. The pack refuses to run when
+`runtimes\` holds the files of another version: `DownloadBinaries.ps1` (and `.sh`) write the version
+they fetched into `runtimes\fdb-native-version.txt`, and the `CheckFdbNativeVersionStamp` target
+compares that stamp with `FdbNativeVersion`. The steps, and who does what:
+
+1. **Owner: the binaries exist.** The Windows and macOS files of the version are published on the
+   `SnowBankSDK/foundationdb-windows-build` release of that tag (built and checked by that repository's
+   kit), the Linux files are the upstream release assets.
+2. **Session: the manifest entry.** `manifest.json` gains the `<version>` entry: 10 files (`win-x64`,
+   `osx-arm64` and `osx-x64` pairs from our release, `linux-x64` and `linux-arm64` pairs from upstream),
+   checksums from the `.sha256` assets. `latest` moves only when the newest branch's newest version is
+   meant to be the default package. One commit, `Fdb: add the <version> manifest entry`.
+3. **Session: fetch the branch's files.** In `FoundationDB.Client.Native`:
+   `.\DownloadBinaries.ps1 -version <version>` (Linux and macOS: `./DownloadBinaries.sh --version <version>`).
+   It verifies every checksum and stamps `runtimes\fdb-native-version.txt`. Files of another version
+   already present are replaced (the checksum check re-downloads them).
+4. **Session: pack the branch.** From the repository root:
+   `dotnet pack FoundationDB.Client.Native/FoundationDB.Client.Native.csproj -c Release -p:CORESDK_STANDALONE_BUILD=true -p:FdbNativeVersion=<version> -o artifacts/packages/native-<version>`
+   (standalone, so the package carries the complete target set; the property may be omitted when
+   `<version>` is the manifest's `latest`). A stamp mismatch stops the pack with the message naming both
+   versions. Inspect the `.nupkg`: version `<version>`, `runtimes/<rid>/native/` holding one file per
+   supported rid.
+5. **Session: prove the package.** Restore it into a throwaway console project (a `nuget.config`
+   pointing at the output folder) built for `win-x64` on net10.0, and check that the `fdb_c.dll` in the
+   output hashes to the manifest entry's checksum.
+6. **Repeat 3 to 5 for the other branch** in the same tree: the download replaces the files and the stamp,
+   the pack takes the other `-p:FdbNativeVersion`. Nothing in the csproj changes between branches.
+7. **Owner: publish.** Push each `.nupkg` to nuget.org; the two branches are two versions of one package id,
+   and applications pin the branch their cluster runs (`7.3.*` or `7.4.*`).
+
+
 ## Coding conventions
 
 Style is enforced by [`.editorconfig`](.editorconfig) and the `.DotSettings` files. Match the surrounding code; notable points:

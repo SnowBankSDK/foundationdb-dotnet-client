@@ -31,11 +31,12 @@ This package includes the `fdb_c` client library, built for the following suppor
 - `linux-x64` (requires a CPU with AVX, see below)
 - `linux-arm64` (aka `aarch64`)
 - `osx-arm64`
+- `osx-x64`
 
 Since FoundationDB 7.4.5, the upstream `linux-x64` client library is compiled with AVX instructions.
 On an x86-64 host without AVX (a virtual machine on the `qemu64`, `kvm64` or `x86-64-v2` CPU model, or hardware older than 2011),
 the process is killed by an illegal-instruction signal the first time the library runs, before any transaction.
-Any CPU at the `x86-64-v3` level or above has AVX. The `win-x64`, `linux-arm64` and `osx-arm64` libraries have no such requirement.
+Any CPU at the `x86-64-v3` level or above has AVX. The `win-x64`, `linux-arm64`, `osx-arm64` and `osx-x64` libraries have no such requirement.
 
 The assembly redistributed in the package contains a mini loader that will locate and use the correct library at runtime.
 
@@ -100,6 +101,9 @@ bin\debug\net10.0\
     - native\
       - libfdb_c.so
   - osx-arm64\
+    - native\
+      - libfdb_c.dylib
+  - osx-x64\
     - native\
       - libfdb_c.dylib
 ```

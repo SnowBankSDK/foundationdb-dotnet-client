@@ -170,5 +170,14 @@ foreach ($file in $files) {
 
 }
 
+# Record the version runtimes\ now holds. The csproj refuses to pack when this stamp differs from the package version.
+if (-not $offline) {
+	$stampDir = Join-Path -Path $outputDir -ChildPath "runtimes"
+	if (-not (Test-Path -Path $stampDir)) { New-Item -ItemType Directory -Path $stampDir | Out-Null }
+	$stampPath = Join-Path -Path (Resolve-Path -Path $stampDir).Path -ChildPath "fdb-native-version.txt"
+	[System.IO.File]::WriteAllText($stampPath, "$version`n")
+	Write-Host "Stamped runtimes\fdb-native-version.txt = $version" -ForegroundColor DarkGray
+}
+
 Write-Host ""
 Write-Host "Download complete." -ForegroundColor Green

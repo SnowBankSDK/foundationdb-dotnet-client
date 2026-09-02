@@ -38,6 +38,7 @@ packages/
 # do not include the native libraries that are packed in the NuGet package:
 **/runtimes/**/*fdb_c*
 **/runtimes/**/fdbcli*
+**/runtimes/fdb-native-version.txt
 
 [Aa]rtifacts/
 Redist/

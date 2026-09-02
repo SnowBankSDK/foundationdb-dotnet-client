@@ -13,14 +13,19 @@
 		<ProduceReferenceAssembly>true</ProduceReferenceAssembly>
 		<!--<IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">true</IsAotCompatible>-->
 		<!-- Define the platforms that we support -->
-		<RuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-arm64</RuntimeIdentifiers>
+		<RuntimeIdentifiers>win-x64;linux-x64;linux-arm64;osx-arm64;osx-x64</RuntimeIdentifiers>
 	</PropertyGroup>
 	
 	<Import Project="..\Common\VersionInfo.props" />
 
 	<PropertyGroup>
-		<!-- Override the version here, because it must match the verison of the native dlls, NOT the .NET binding itself! -->
-		<VersionPrefix>7.4.4.1</VersionPrefix>
+		<!-- The package version follows the native FoundationDB version it ships, NOT the .NET binding.
+		     FdbNativeVersion names the manifest.json entry whose files DownloadBinaries fetched into runtimes\.
+		     Default: the manifest's "latest" (the first version string of the file, "latest" being its first key).
+		     One branch at a time: dotnet pack -p:FdbNativeVersion=7.3.78 after DownloadBinaries.ps1 -version 7.3.78. -->
+		<FdbNativeManifest>$(MSBuildThisFileDirectory)manifest.json</FdbNativeManifest>
+		<FdbNativeVersion Condition="'$(FdbNativeVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(FdbNativeManifest)')), '[0-9]+\.[0-9]+\.[0-9]+').Value)</FdbNativeVersion>
+		<VersionPrefix>$(FdbNativeVersion)</VersionPrefix>
 		<VersionSuffix></VersionSuffix>
 		<AssemblyTitle>Native Client Libraries for FoundationDB</AssemblyTitle>
 		<Description>FoundationDB Native Client libraries for Windows (fdb_c.dll), Linux (libfdb_c.so) and macOS (libfdb_c.dylib).</Description>
@@ -46,11 +51,11 @@
 	</ItemGroup>
 	
 	<ItemGroup Condition="'$(IsPackingSelf)' == 'true'">
-		<!-- Reference FoundationDB.Client via NuGet, with the widest compatible range for each target:
-		     this package only adds the native libraries (and a small helper), so it works with much older
-		     versions of the binding. The exception is netstandard2.0, which only exists since 7.4.1. -->
-		<PackageReference Include="FoundationDB.Client" VersionOverride="[7.3.1,8.0)" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
-		<PackageReference Include="FoundationDB.Client" VersionOverride="[7.4.1,8.0)" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
+		<!-- Reference FoundationDB.Client via NuGet with an open-ended range: this package only adds the native
+		     libraries (and a small helper), and the binding's version is no longer tied to the cluster version
+		     (8.x, 9.x binding releases will follow). The floor is 7.4.1, the first version with a netstandard2.0
+		     target; no upper bound, so a future major of the binding keeps loading these packages. -->
+		<PackageReference Include="FoundationDB.Client" VersionOverride="7.4.1" />
 		<!-- Exclude the other dependencies to prevent them from appearing in the .nuspec -->
 		<!-- How to update: comment all of them, rebuild the package, inspect the .nuspec, and re-add the deps that have appeared (only keep FoundationDB.Client) -->
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" ExcludeAssets="All" />
@@ -92,6 +97,21 @@
 		<!-- macOS arm64 -->
 		<None Include="runtimes\osx-arm64\native\libfdb_c.dylib" Pack="true" PackagePath="runtimes/osx-arm64/native/" />
 
+		<!-- macOS x64 -->
+		<None Include="runtimes\osx-x64\native\libfdb_c.dylib" Pack="true" PackagePath="runtimes/osx-x64/native/" />
+
 	</ItemGroup>
+
+	<!-- The files under runtimes\ must belong to $(FdbNativeVersion). DownloadBinaries writes the version it fetched into
+	     runtimes\fdb-native-version.txt; a pack whose stamp is missing or names another version stops here. -->
+	<Target Name="CheckFdbNativeVersionStamp" BeforeTargets="GenerateNuspec" Condition="'$(IsPackingSelf)' == 'true'">
+		<PropertyGroup>
+			<FdbNativeStampFile>$(MSBuildThisFileDirectory)runtimes\fdb-native-version.txt</FdbNativeStampFile>
+			<FdbNativeStamp Condition="Exists('$(FdbNativeStampFile)')">$([System.IO.File]::ReadAllText('$(FdbNativeStampFile)').Trim())</FdbNativeStamp>
+		</PropertyGroup>
+		<Error Condition="'$(FdbNativeStamp)' == ''" Text="runtimes\ carries no version stamp: run DownloadBinaries.ps1 -version $(FdbNativeVersion) (or DownloadBinaries.sh --version $(FdbNativeVersion)) before packing." />
+		<Error Condition="'$(FdbNativeStamp)' != '' and '$(FdbNativeStamp)' != '$(FdbNativeVersion)'" Text="runtimes\ holds the native libraries of $(FdbNativeStamp) but the package version is $(FdbNativeVersion): run DownloadBinaries.ps1 -version $(FdbNativeVersion) first, or pack with -p:FdbNativeVersion=$(FdbNativeStamp)." />
+		<Message Importance="high" Text="FoundationDB.Client.Native $(FdbNativeVersion): the runtimes\ stamp matches." />
+	</Target>
 
 </Project>

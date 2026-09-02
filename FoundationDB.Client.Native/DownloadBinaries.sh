@@ -161,4 +161,11 @@ for entry in "${files[@]}"; do
 	downloaded=$((downloaded + 1))
 done
 
+# Record the version runtimes/ now holds. The csproj refuses to pack when this stamp differs from the package version.
+if [ "$offline" -eq 0 ]; then
+	mkdir -p "$output/runtimes"
+	printf '%s\n' "$resolved_version" > "$output/runtimes/fdb-native-version.txt"
+	printf '%sStamped runtimes/fdb-native-version.txt = %s%s\n' "$c_dim" "$resolved_version" "$c_reset"
+fi
+
 printf '\n%sDone.%s downloaded=%d cached=%d skipped=%d\n' "$c_green" "$c_reset" "$downloaded" "$cached" "$skipped"
