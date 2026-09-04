@@ -197,7 +197,7 @@ namespace FoundationDB.Testing
 				this.Store = store;
 				this.Db = db;
 				this.Error = e;
-				this.IsAvailable = db != null && e != null;
+				this.IsAvailable = db != null && e == null;
 			}
 		}
 
@@ -215,7 +215,7 @@ namespace FoundationDB.Testing
 			services.Configure<FakeDbProviderOptions>(c =>
 			{
 				c.ApiVersion = apiVersion;
-				c.ConnectionOptions.Root = root;
+				c.ConnectionOptions.Root = root.IsEmpty ? FdbPath.Root : root; // the default(FdbPath) of an omitted argument is the relative empty path, not the cluster root
 				c.Time = time; // explicit override, wins over the DI-resolved provider when set
 				configure?.Invoke(c);
 			});
@@ -232,7 +232,7 @@ namespace FoundationDB.Testing
 			{
 				c.Store = store;
 				c.ApiVersion = store.ApiVersion;
-				c.ConnectionOptions.Root = root;
+				c.ConnectionOptions.Root = root.IsEmpty ? FdbPath.Root : root; // the default(FdbPath) of an omitted argument is the relative empty path, not the cluster root
 				configure?.Invoke(c);
 			});
 			return services;
