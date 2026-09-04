@@ -248,11 +248,12 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_The_Default_Metadata_Import_Loses_The_Same_Members()
+		public void Test_The_Default_Metadata_Import_Serializes_A_Hidden_Setter_Member()
 		{
-			// the measurement this fixture's .All import exists to fix, pinned so the contrast stays observable: the
-			// same contract through a DEFAULT-import compilation loses its private member and rejects the
-			// private-setter property as read-only. If Roslyn ever changes the default, this fact says so.
+			// a normal consumer build imports references with MetadataImportOptions.Public, which drops a non-public
+			// setter: the private-setter property reads as read-only. The write-only DataContract XML format needs
+			// only the getter, so the member is serialized from its getter, not rejected with CXML0013. A fully
+			// private member stays invisible under the default import and cannot be generated at all.
 			var dtoReference = GeneratorProbeHarness.CompileToReference(MetadataDtoSource, "ProbeDtoAssembly");
 
 			var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);
@@ -263,10 +264,89 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 			var (output, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
 
-			Assert.That(diagnostics.Select(static d => d.Id), Does.Contain("CXML0013"), "under the default import the private setter is invisible, so the property looks read-only and is rejected");
+			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "the private-setter member is serialized from its getter, not rejected: no diagnostic");
 
 			var generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
-			Assert.That(generated, Does.Not.Contain("Secret"), "under the default import the private member does not exist at all");
+			Assert.That(generated, Does.Contain("Counted"), "the private-setter [DataMember] is serialized from its getter under the default import");
+			Assert.That(generated, Does.Not.Contain("Secret"), "a fully private member is invisible under the default import and cannot be generated at all");
+		}
+
+		// The Syracuse SDI shape: a [DataContract] DTO whose [DataMember] properties are settable only through
+		// non-public setters (or a no-op setter), plus one genuinely computed get-only member. It lives in a
+		// referenced assembly, so a normal consumer build sees the setters hidden by the default metadata import.
+		private const string SdiShapedDtoSource = """
+			namespace Probe
+			{
+
+				[System.Runtime.Serialization.DataContract]
+				public sealed class SdiShapedDto
+				{
+					[System.Runtime.Serialization.DataMember]
+					public string PublicSet { get; set; } = "";
+
+					[System.Runtime.Serialization.DataMember]
+					public string InternalSet { get; internal set; } = "";
+
+					[System.Runtime.Serialization.DataMember]
+					public string PrivateSet { get; private set; } = "";
+
+					private string EmptyBacking = "";
+					[System.Runtime.Serialization.DataMember]
+					public string EmptySet { get { return this.EmptyBacking; } private set { } }
+
+					[System.Runtime.Serialization.DataMember]
+					public string GetOnlyComputed { get { return "computed"; } }
+				}
+
+			}
+			""";
+
+		private const string SdiShapedContainerSource = """
+			namespace Probe
+			{
+
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Xml.CrystalXmlOutput(SnowBank.Data.Xml.CrystalXmlSerializerDefaults.DataContractCompat)]
+				[SnowBank.Data.CrystalSerializable(typeof(Probe.SdiShapedDto))]
+				public static partial class SdiConverters
+				{
+				}
+
+			}
+			""";
+
+		[Test]
+		public void Test_Cross_Assembly_Hidden_Setter_DataMembers_Are_Serialized()
+		{
+			// a [CrystalXmlOutput(DataContract)] container in assembly B enrolling a [DataContract] DTO from
+			// referenced assembly A, whose [DataMember] setters are non-public. Under the default import their
+			// setters are hidden, so before the fix every non-public-setter member (and the computed get-only one)
+			// was rejected with CXML0013. The write-only XML format serializes each from its getter.
+			var dtoReference = GeneratorProbeHarness.CompileToReference(SdiShapedDtoSource, "SdiDtoAssembly");
+
+			var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);
+			var compilation = CSharpCompilation.Create(
+				"SdiConsumerAssembly",
+				syntaxTrees: [ CSharpSyntaxTree.ParseText(SdiShapedContainerSource, parseOptions) ],
+				references: [ ..GeneratorProbeHarness.References, dtoReference ],
+				options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+			var (output, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+
+			Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty, "every member is serializable from its getter: no rejection");
+
+			var generated = string.Join("\n", output.SyntaxTrees.Skip(1).Select(static t => t.ToString()));
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(generated, Does.Contain("PublicSet"), "a public-setter member is written");
+				Assert.That(generated, Does.Contain("InternalSet"), "an internal-setter member is written from its getter");
+				Assert.That(generated, Does.Contain("PrivateSet"), "a private-setter member is written from its getter");
+				Assert.That(generated, Does.Contain("EmptySet"), "a no-op-setter member is written from its getter");
+				Assert.That(generated, Does.Contain("GetOnlyComputed"), "a computed get-only member is written from its getter");
+			}
+
+			var errors = output.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error).ToList();
+			foreach (var d in errors) Log(d.ToString());
+			Assert.That(errors, Is.Empty, "the generated write path reads getters only, so it compiles against the referenced DTO");
 		}
 
 		/// <summary>Builds a netstandard2.0 reference set (the SDK's bundled `ref/netstandard.dll` facade + the lite build of SnowBank.Core and its own dependency closure), or <see langword="null"/> when either is absent</summary>

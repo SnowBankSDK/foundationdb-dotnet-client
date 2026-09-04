@@ -614,14 +614,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Returns the members of a type in the exact order the DataContract format writes them</summary>
 			/// <remarks>
 			/// <para>Base level first (recursively), then, inside each level, the members with no declared <c>Order</c> sorted by
-			/// their OUTPUT name in ordinal order, then the <c>Order</c> groups ascending with ordinal ties. Ordering by the output name
+			/// their output name in ordinal order, then the <c>Order</c> groups ascending with ordinal ties. Ordering by the output name
 			/// and not by the C# name matters: <c>[DataMember(Name = "renamed_member")]</c> sorts where the output spells it.</para>
-			/// <para>Read-only (get-only, or non-public-setter with no opt-in) PROPERTIES are dropped: the reference serializer's
+			/// <para>Read-only (get-only, or non-public-setter with no opt-in) properties are dropped: the reference serializer's
 			/// no-set-method check is property-only. On a POCO it just omits them (only public get+set members are taken); on a
-			/// <c>[DataContract]</c> type a read-only <c>[DataMember]</c> PROPERTY is not a valid contract at all
+			/// <c>[DataContract]</c> type a read-only <c>[DataMember]</c> property is not a valid contract at all
 			/// (<c>InvalidDataContractException</c>, "No set method for property"), which <c>CrystalJsonSourceGenerator.Parser.ReportReadOnlyDataMemberProperty</c>
 			/// rejects with <c>CXML0013</c> at generation time; this filter is only the emission-side backstop for that rejection.
-			/// A read-only FIELD is a different shape: that check does
+			/// A serialize-only property is the exception kept in: a referenced-assembly <c>[DataMember]</c> whose non-public
+			/// setter the default metadata import hides reads as read-only, but the write-only DataContract format needs its
+			/// getter alone, so <see cref="CrystalJsonMemberMetadata.SerializeOnly"/> keeps it in the output.
+			/// A read-only field is a different shape: that check does
 			/// not look at fields, so DCS emits one, and this filter keeps it in for a <c>[DataContract]</c> type. Init-only members
 			/// are unaffected either way, because <see cref="CrystalJsonMemberMetadata.IsReadOnly"/> is <see langword="false"/> for
 			/// them (a separate <see cref="CrystalJsonMemberMetadata.IsInitOnly"/> flag), matching DCS emitting them.</para>
@@ -629,7 +632,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			private static List<(CrystalJsonMemberMetadata Member, string OutputName)> GetXmlDcsOrderedMembers(CrystalJsonTypeMetadata typeDef)
 			{
 				return typeDef.Members
-					.Where(m => !m.IsReadOnly || (m.IsField && typeDef.HasDataContract))
+					.Where(m => !m.IsReadOnly || m.SerializeOnly || (m.IsField && typeDef.HasDataContract))
 					.Select(m => (Member: m, OutputName: GetXmlDcsMemberName(m)))
 					.OrderBy(x => x.Member.InheritanceLevel)
 					.ThenBy(x => x.Member.DataMemberOrder.HasValue ? 1 : 0)

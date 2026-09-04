@@ -402,6 +402,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <summary>The member is reachable but its get accessor is not (e.g. a public property with a private getter): reads go through an accessor thunk</summary>
 		public bool HasNonPublicGetter { get; init; }
 
+		/// <summary>The member has a readable getter but no set path the generator can reach, and is kept for the write side only</summary>
+		/// <remarks>Set for a <c>[DataMember]</c> property from a referenced assembly whose setter the default metadata import
+		/// (<c>MetadataImportOptions.Public</c>) hides, so the property reads as setter-less. The DataContract XML format is
+		/// write-only and needs the getter alone, so the member is serialized rather than rejected as read-only. A read path,
+		/// when it lands, reaches the value through the backing field (an auto-property) or the hidden setter.</remarks>
+		public bool SerializeOnly { get; init; }
+
 		/// <summary>Reads of this member go through the <c>__get_X</c> accessor thunk</summary>
 		public bool NeedsGetterThunk => this.IsNonPublic || this.HasNonPublicGetter;
 
@@ -434,6 +441,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			if (this.IsField) sb.Append(indent).AppendLine("IsField = true");
 			if (this.IsNotNull) sb.Append(indent).AppendLine("IsNotNull = true");
 			if (this.IsReadOnly) sb.Append(indent).AppendLine("IsReadOnly = true");
+			if (this.SerializeOnly) sb.Append(indent).AppendLine("SerializeOnly = true");
 			if (this.IsInitOnly) sb.Append(indent).AppendLine("IsInitOnly = true");
 			if (this.IsRequired) sb.Append(indent).AppendLine("IsRequired = true");
 			if (this.IsKey) sb.Append(indent).AppendLine("IsKey = true");
