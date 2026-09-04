@@ -73,7 +73,7 @@ namespace FoundationDB.Client.Tests
 			string portBindingName = this.PortName; // ex: "4530/tcp"
 
 			// Create a new instance of a container.
-			var container = new ContainerBuilder(this.Image)
+			IContainer BuildContainer() => new ContainerBuilder(this.Image)
 				.WithName(name)
 				.WithReuse(reuse: true)
 				.WithPortBinding(port, port)
@@ -116,25 +116,45 @@ namespace FoundationDB.Client.Tests
 				})
 				.Build();
 
-			this.Container = container;
-
 			using (var cts = CancellationTokenSource.CreateLinkedTokenSource(ct))
 			{
 				cts.CancelAfter(startTimeout);
 				try
 				{
-					await container.StartAsync(cts.Token).ConfigureAwait(false);
+					using var docker = TestcontainersSettings.OS.DockerEndpointAuthConfig.GetDockerClientBuilder(Guid.Empty).Build();
+
+					// Testcontainers matches a reusable container by a hash of its configuration (which includes the image), not by its name:
+					// a container left by a run with the previous image tag is not reused, and the create call fails with Conflict on the name.
+					// The test containers and their volumes are transient: remove both, and create a fresh one.
+					var stale = await InspectContainerAsync(docker, name, cts.Token).ConfigureAwait(false);
+					if (stale != null && stale.Config?.Image != this.Image)
+					{
+						SimpleTest.Log($"Stale FdbServer test container '{name}' (image {TagOf(stale.Config?.Image)}) and its volume removed, recreating with {this.Tag}");
+						await RemoveContainerAsync(docker, stale.ID, removeVolume: true, cts.Token).ConfigureAwait(false);
+					}
+
+					var container = BuildContainer();
+					this.Container = container;
+					try
+					{
+						await container.StartAsync(cts.Token).ConfigureAwait(false);
+					}
+					catch (DockerApiException dex) when (dex.StatusCode == HttpStatusCode.Conflict)
+					{
+						// same image, but a container that Testcontainers does not recognize (ex: created by another version of Testcontainers): replace it, keep the volume
+						var other = await InspectContainerAsync(docker, name, cts.Token).ConfigureAwait(false);
+						if (other == null) throw;
+						SimpleTest.Log($"Stale FdbServer test container '{name}' (image {TagOf(other.Config?.Image)}, unknown to Testcontainers) removed, recreating with {this.Tag}");
+						await container.DisposeAsync().ConfigureAwait(false);
+						await RemoveContainerAsync(docker, other.ID, removeVolume: false, cts.Token).ConfigureAwait(false);
+						container = BuildContainer();
+						this.Container = container;
+						await container.StartAsync(cts.Token).ConfigureAwait(false);
+					}
 				}
 				catch (DockerApiException dex)
 				{
-					if (dex.StatusCode == HttpStatusCode.Conflict)
-					{
-						SimpleTest.LogError($"FdbServer test container '{name}' is conflicting with another container! Please delete the old container (but keep the volumes!), and restart the test.", dex);
-					}
-					else
-					{
-						SimpleTest.LogError($"FdbServer test container '{name}' failed to start due to a Docker error", dex);
-					}
+					SimpleTest.LogError($"FdbServer test container '{name}' failed to start due to a Docker error", dex);
 					throw;
 				}
 				catch (Exception e)
@@ -148,6 +168,32 @@ namespace FoundationDB.Client.Tests
 			await Fdb.Provisioning.EnsureDatabaseConfiguredAsync(this.RunFdbCliAsync, TimeSpan.FromSeconds(30), log: SimpleTest.Log, ct: ct).ConfigureAwait(false);
 
 			SimpleTest.Log($"FdbServer test container '{name}' ready");
+		}
+
+		private static async Task<ContainerInspectResponse?> InspectContainerAsync(IDockerClient docker, string name, CancellationToken ct)
+		{
+			try
+			{
+				return await docker.Containers.InspectContainerAsync(name, ct).ConfigureAwait(false);
+			}
+			catch (DockerContainerNotFoundException)
+			{
+				return null;
+			}
+		}
+
+		private async Task RemoveContainerAsync(IDockerClient docker, string id, bool removeVolume, CancellationToken ct)
+		{
+			await docker.Containers.RemoveContainerAsync(id, new() { Force = true }, ct).ConfigureAwait(false);
+			if (removeVolume)
+			{
+				try
+				{
+					await docker.Volumes.RemoveAsync(this.VolumeName, force: true, ct).ConfigureAwait(false);
+				}
+				catch (DockerApiException e) when (e.StatusCode == HttpStatusCode.NotFound)
+				{ }
+			}
 		}
 
 		/// <summary>Runs <c>fdbcli</c> inside the test container, and returns its exit code and combined console output</summary>
@@ -174,8 +220,17 @@ namespace FoundationDB.Client.Tests
 				cts.CancelAfter(startTimeout);
 				var token = cts.Token;
 
-				// reuse the container if it already exists (same behavior as WithReuse(reuse: true))
-				var (code, state) = await RunDockerAsync($"inspect --format {{{{.State.Running}}}} {name}", token).ConfigureAwait(false);
+				// reuse the container if it already exists (same behavior as WithReuse(reuse: true)), unless it was built from another image tag
+				var (code, state) = await RunDockerAsync($"inspect --format {{{{.Config.Image}}}}|{{{{.State.Running}}}} {name}", token).ConfigureAwait(false);
+				if (code == 0 && !state.Trim().StartsWith(this.Image + "|", StringComparison.Ordinal))
+				{ // the test containers and their volumes are transient: remove both, and create a fresh one below
+					var image = state.Trim().Split('|')[0];
+					SimpleTest.Log($"Stale FdbServer test container '{name}' (image {TagOf(image)}) and its volume removed, recreating with {this.Tag}");
+					await RunDockerAsync($"rm --force {name}", token).ConfigureAwait(false);
+					await RunDockerAsync($"volume rm --force {this.VolumeName}", token).ConfigureAwait(false);
+					code = 1;
+				}
+
 				if (code != 0)
 				{ // the container does not exist yet: create and start it
 					string output;
@@ -186,7 +241,7 @@ namespace FoundationDB.Client.Tests
 						throw new InvalidOperationException($"Failed to start docker container '{name}': {output}");
 					}
 				}
-				else if (!state.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
+				else if (!state.Trim().EndsWith("|true", StringComparison.OrdinalIgnoreCase))
 				{ // the container exists but is stopped: restart it
 					string output;
 					(code, output) = await RunDockerAsync($"start {name}", token).ConfigureAwait(false);
@@ -255,6 +310,9 @@ namespace FoundationDB.Client.Tests
 			return (process.ExitCode, output.Length != 0 ? output : error);
 		}
 #endif
+
+		/// <summary>Returns the tag of an image reference (<c>"7.4.6"</c> for <c>"foundationdb/foundationdb:7.4.6"</c>)</summary>
+		private static string TagOf(string? image) => image == null ? "?" : image.Substring(image.LastIndexOf(':') + 1);
 
 		public ValueTask DisposeAsync()
 		{
