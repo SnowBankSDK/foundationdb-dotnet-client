@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -24,46 +24,43 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Types.ProtocolBuffers
+namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FdbLite;
 
-	public class ProtobufCodec<TDocument> : IValueEncoder<TDocument>
+	/// <summary>Reusable FdbLite backend for a dual-backend layer fixture: the persistent engine over the heap, through the binding.</summary>
+	/// <remarks>The sibling of <see cref="FakeDbTestBackend"/>: same lifecycle (lazy store, reset per test, fresh store after a dispose), different storage. Watch buggify is enabled the same way, since the chaos machinery lives on the shared base.</remarks>
+	internal sealed class FdbLiteTestBackend
 	{
 
-		public ProtobufCodec()
-		{
-			ProtoBuf.Serializer.PrepareSerializer<TDocument>();
-		}
+		private FdbLiteStore? Store { get; set; }
 
-		public Slice EncodeValue(TDocument? document)
+		public void Reset() => this.Store = null;
+
+		public Task<IFdbDatabase> OpenAsync(FdbPath path, bool readOnly = false)
 		{
-			using (var ms = new MemoryStream())
+			try
 			{
-				ProtoBuf.Serializer.Serialize<TDocument?>(ms, document);
-
-				// Overflow protection (should never happen since a MemoryStream won't let us write more than 2G, but just to be sure ...)
-				if (ms.Length > int.MaxValue) throw new OutOfMemoryException("The serialized JSON document exceeds the maximum allowed size");
-
-				// Reuse the stream's internal buffer to reduce the need for allocations!
-				var tmp = ms.GetBuffer();
-				int size = checked((int)ms.Length);
-				Debug.Assert(tmp != null && size >= 0 && size <= tmp.Length);
-
-				return tmp.AsSlice(0, size);
+				var db = (this.Store ??= NewStore()).OpenDatabase(path, readOnly);
+				db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
+				return Task.FromResult<IFdbDatabase>(db);
+			}
+			catch (ObjectDisposedException)
+			{
+				this.Store = NewStore();
+				var db = this.Store.OpenDatabase(path, readOnly);
+				db.Options.WithDefaultTimeout(TimeSpan.FromSeconds(15));
+				return Task.FromResult<IFdbDatabase>(db);
 			}
 		}
 
-		public TDocument? DecodeValue(Slice encoded)
+		private static FdbLiteStore NewStore()
 		{
-			if (encoded.IsNullOrEmpty) return default(TDocument);
-
-			using (var sr = encoded.ToStream())
-			{
-				return ProtoBuf.Serializer.Deserialize<TDocument>(sr);
-			}
+			var store = FdbLiteStore.CreateInMemory(FdbLiteGeometry.Default);
+			store.Buggify.EnableChaos(NUnit.Framework.TestContext.CurrentContext.Test.FullName);
+			return store;
 		}
 
 	}
 
 }
-
