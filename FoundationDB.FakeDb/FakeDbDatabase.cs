@@ -1382,8 +1382,14 @@ namespace FoundationDB.Testing
 		/// <remarks>The per-transaction <c>MaxRetryDelay</c> option, when set, only tightens this cap (it never enables the backoff).</remarks>
 		public TimeSpan RetryDelayMaximum { get; set; } = TimeSpan.Zero;
 
-		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null)
-			: this(apiVersion, protocolVersion, time)
+		/// <summary>Opens an in-memory store.</summary>
+		/// <param name="apiVersion">API version the emulated client speaks.</param>
+		/// <param name="protocolVersion">API version of the emulated cluster.</param>
+		/// <param name="initialVersion">Version of the initial snapshot, or 0 for the default.</param>
+		/// <param name="time">Clock of the emulated cluster; a fake provider virtualizes retry delays, watch timeouts and the retention window.</param>
+		/// <param name="retention">Policy deciding which published versions stay readable. <see langword="null"/> (the default) is the real-cluster behavior: <see cref="FdbSnapshotRetention.KeepWindow"/> over the 5 second <see cref="FdbSnapshotRetention.DefaultWindow"/>, on the store's clock. <see cref="FdbSnapshotRetention.KeepEverything"/> keeps the whole run inspectable.</param>
+		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null, FdbSnapshotRetentionPolicy? retention = null)
+			: this(apiVersion, protocolVersion, time, retention ?? FdbSnapshotRetention.KeepWindow(FdbSnapshotRetention.DefaultWindow))
 		{
 			if (initialVersion <= 0)
 			{
@@ -1415,7 +1421,8 @@ namespace FoundationDB.Testing
 		protected static readonly Slice SystemRootSentinelValue = Slice.FromString("You shall not pass!");
 
 		/// <summary>Shared initialization for backend subclasses: the derived constructor must call <see cref="InitializeSnapshot"/> (with a snapshot seeding the same system keys a fresh in-memory store gets) before the store is used.</summary>
-		protected FakeDbStore(int apiVersion, int protocolVersion, TimeProvider? time)
+		/// <remarks>A <see langword="null"/> <paramref name="retention"/> keeps every published version.</remarks>
+		protected FakeDbStore(int apiVersion, int protocolVersion, TimeProvider? time, FdbSnapshotRetentionPolicy? retention = null)
 		{
 			if (protocolVersion < MIN_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be less than the minimum supported version");
 			if (protocolVersion > MAX_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be greater than the maximum supported version");
@@ -1429,6 +1436,7 @@ namespace FoundationDB.Testing
 			this.ApiVersion = apiVersion;
 			this.ProtocolVersion = protocolVersion;
 			this.Time = time ?? TimeProvider.System;
+			this.RetentionPolicy = retention ?? FdbSnapshotRetention.KeepEverything;
 			this.CurrentSnapshotUnsafe = null!;
 		}
 
@@ -1436,9 +1444,36 @@ namespace FoundationDB.Testing
 		protected void InitializeSnapshot(Snapshot snapshot)
 		{
 			Contract.NotNull(snapshot);
-			this.Snapshots[0] = snapshot;
+			this.Snapshots[snapshot.Version] = snapshot;
+			this.RetentionContext.Entries.Add(new(snapshot.Version, this.Time.GetUtcNow()));
 			this.CurrentSnapshotUnsafe = snapshot;
 			this.ReadVersion = snapshot.Version;
+		}
+
+		/// <summary>Policy deciding which published versions stay readable.</summary>
+		private FdbSnapshotRetentionPolicy RetentionPolicy { get; }
+
+		/// <summary>Reusable retained-set view handed to the policy; only touched under the global write lock.</summary>
+		private FdbSnapshotRetentionContext RetentionContext { get; } = new();
+
+		/// <summary>Drops the published versions the retention policy reclaims; a read at a dropped version then fails with <see cref="FdbError.TransactionTooOld"/>.</summary>
+		/// <remarks>Called under the global write lock, right after a publish.</remarks>
+		private void TrimRetainedSnapshots()
+		{
+			var ctx = this.RetentionContext;
+			ctx.Begin(this.Time);
+			this.RetentionPolicy(ctx);
+			if (ctx.Dropped is { Count: > 0 } dropped)
+			{
+				foreach (var version in dropped)
+				{
+					if (this.Snapshots.Remove(version))
+					{
+						int i = ctx.Entries.FindIndex(e => e.Version == version);
+						if (i >= 0) ctx.Entries.RemoveAt(i);
+					}
+				}
+			}
 		}
 
 		[Conditional("FULL_DEBUG")]
@@ -1631,7 +1666,11 @@ namespace FoundationDB.Testing
 				{
 					return Task.FromCanceled<ReadYourWritesSnapshot>(ct);
 				}
-				return Task.FromResult(new ReadYourWritesSnapshot(this.Snapshots[version], arena));
+				if (!this.Snapshots.TryGetValue(version, out var snapshot))
+				{ // dropped by the retention policy, or never a published version at all
+					return Task.FromException<ReadYourWritesSnapshot>(new FdbException(FdbError.TransactionTooOld, $"Version {version} is no longer retained by this store"));
+				}
+				return Task.FromResult(new ReadYourWritesSnapshot(snapshot, arena));
 			}
 		}
 
@@ -1872,13 +1911,15 @@ namespace FoundationDB.Testing
 
 		}
 
-		/// <summary>Backend hook, called under the global write lock: makes a committed snapshot durable, applies the backend's retention policy, and publishes it as the current state; returns the instance the rest of the commit works with.</summary>
-		/// <remarks>The in-memory backend keeps every version forever (the test-mode movie) and returns the snapshot unchanged; a persistent backend flushes its generation first, may return a frozen re-wrap, and trims its retained window.</remarks>
+		/// <summary>Backend hook, called under the global write lock: makes a committed snapshot durable, publishes it as the current state, then applies the store's retention policy; returns the instance the rest of the commit works with.</summary>
+		/// <remarks>The in-memory backend returns the snapshot unchanged; a persistent backend flushes its generation first and may return a frozen re-wrap. A subclass that overrides this hook must call the base to keep the retained set in step with <see cref="Snapshots"/>.</remarks>
 		protected virtual Snapshot PublishSnapshot(Snapshot updated, long commitVersion)
 		{
 			this.CurrentSnapshotUnsafe = updated;
 			this.Snapshots[commitVersion] = updated;
+			this.RetentionContext.Entries.Add(new(commitVersion, this.Time.GetUtcNow()));
 			this.ReadVersion = commitVersion;
+			TrimRetainedSnapshots();
 			return updated;
 		}
 
