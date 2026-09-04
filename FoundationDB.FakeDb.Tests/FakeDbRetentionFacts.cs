@@ -180,6 +180,57 @@ namespace FoundationDB.Testing.Tests
 			Assert.That((await ReadAtVersion(db, v3, "k", this.Cancellation)).ToInt32(), Is.EqualTo(3), "the head always survives");
 		}
 
+		[Test]
+		public async Task Test_A_Commit_Whose_Read_Version_Left_The_Window_Fails_Like_The_Real_Resolver()
+		{
+			// a real cluster's resolver only keeps the MVCC window of conflict history: a commit whose
+			// read version is older cannot be validated and fails with transaction_too_old
+			var clock = new FakeTimeProvider();
+			using var store = new FakeDbStore(time: clock);
+			using var db = store.OpenDatabase(FdbPath.Root, readOnly: false);
+
+			using var slow = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
+			_ = await slow.GetAsync(Slice.FromString("anchor")); // resolves and pins the read version
+
+			// peers age the store past the 5 s window
+			for (int i = 0; i < 3; i++)
+			{
+				clock.Advance(TimeSpan.FromSeconds(3));
+				await CommitValue(db, "filler", i, this.Cancellation);
+			}
+
+			slow.Set(Slice.FromString("anchor"), Slice.FromInt32(42));
+			var ex = Assert.ThrowsAsync<FdbException>(async () => await slow.CommitAsync(), "the slow transaction's read version is 9 s old: below the conflict-history floor");
+			Assert.That(ex!.Code, Is.EqualTo(FdbError.TransactionTooOld));
+		}
+
+		[Test]
+		public async Task Test_Conflict_History_Below_The_Floor_Is_Pruned()
+		{
+			var clock = new FakeTimeProvider();
+			using var store = new FakeDbStore(time: clock);
+			using var db = store.OpenDatabase(FdbPath.Root, readOnly: false);
+
+			// append a NEW key per commit over 40 virtual seconds: without the prune, the conflict map
+			// would accumulate one range per key for the whole run
+			for (int i = 0; i < 400; i++)
+			{
+				await CommitValue(db, $"k{i:D4}", i, this.Cancellation);
+				clock.Advance(TimeSpan.FromMilliseconds(100));
+			}
+
+			Assert.That(FakeDbDebugger.GetConflictPrunes(store), Is.GreaterThan(0), "the prune must actually have fired, a bounded count without it would pass trivially");
+			Assert.That(FakeDbDebugger.GetConflictRangeCount(store), Is.LessThan(200), "the head map holds the 5 s window's writes (~50 commits), not the whole 400-commit run");
+
+			// pruning must not lose IN-window detection: a peer write after our read still conflicts
+			using var w1 = db.BeginTransaction(FdbTransactionMode.Default, this.Cancellation);
+			_ = await w1.GetAsync(Slice.FromString("contended"));
+			await CommitValue(db, "contended", 1, this.Cancellation);
+			w1.Set(Slice.FromString("contended"), Slice.FromInt32(2));
+			var ex = Assert.ThrowsAsync<FdbException>(async () => await w1.CommitAsync(), "an in-window conflict is still detected after pruning");
+			Assert.That(ex!.Code, Is.EqualTo(FdbError.NotCommitted));
+		}
+
 	}
 
 }
