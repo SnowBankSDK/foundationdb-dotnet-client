@@ -43,14 +43,19 @@ for pkg in "$out"/*.nupkg; do
     readme="$(unzip -Z1 "$pkg" 2>/dev/null | grep -ic '^README\.md$' || true)"
     printf '  %-54s %s\n' "$(basename "$pkg")" "${tfms:-(tool/analyzer)}"
     [ "${readme:-0}" -ge 1 ] || { echo "    ! no README.md"; problems=$((problems+1)); }
-    if [ -n "$tfms" ] && ! printf '%s' "$tfms" | grep -qw 'net8.0'; then
-        echo "    ! missing net8.0 (incomplete target set)"; problems=$((problems+1))
+    # the storage engine package (FdbLite) has a net10.0 floor (CoreSdkStorageVersions); every other package keeps net8.0
+    case "$(basename "$pkg")" in
+        FoundationDB.FdbLite.*) floor='net10.0' ;;
+        *) floor='net8.0' ;;
+    esac
+    if [ -n "$tfms" ] && ! printf '%s' "$tfms" | grep -qw "$floor"; then
+        echo "    ! missing $floor (incomplete target set)"; problems=$((problems+1))
     fi
 done
 
 echo
 if [ "$problems" -eq 0 ]; then
-    echo "All packages carry a README and net8.0 (complete target set)."
+    echo "All packages carry a README and their floor target (net8.0, or net10.0 for FdbLite)."
     echo "NOT pushed - publish the .nupkg files manually."
 else
     echo "VALIDATION FAILED ($problems problem(s))"
