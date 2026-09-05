@@ -170,14 +170,6 @@ namespace SnowBank.Testing
 
 		}
 
-		/// <summary>Advances a fake time source in small increments, yielding between steps so that fired timer
-		/// callbacks and their async continuations get a chance to run before virtual time moves further.</summary>
-		/// <param name="provider">The fake, advanceable time source driving the test</param>
-		/// <param name="total">Total amount of virtual time to advance</param>
-		/// <param name="step">Increment per advance (defaults to 250 ms of virtual time; use smaller steps when asserting around fine-grained thresholds)</param>
-		/// <remarks>A single big <c>Advance()</c> fires every due timer INLINE on the calling thread: a callback that
-		/// awaits other virtual events can deadlock, and work scheduled by a fired timer would observe virtual time
-		/// far past its own due time. Stepping with yields keeps the virtual universe causally sane.</remarks>
 		/// <summary>Real time given to pending asynchronous callbacks between two virtual-time advances, sized to the platform timer resolution (about one Windows scheduler tick).</summary>
 		/// <remarks>Not a shorter value on purpose. <c>Task.Delay</c> rounds a request up to the platform timer resolution:
 		/// about 15.6 ms on Windows, about 1 ms on Linux and macOS. A 1 ms request therefore gave each platform a different
@@ -186,6 +178,14 @@ namespace SnowBank.Testing
 		/// time: the amount Windows always had, now applied everywhere.</remarks>
 		private static readonly TimeSpan MinimumResolutionDelay = TimeSpan.FromMilliseconds(15);
 
+		/// <summary>Advances a fake time source in small increments, yielding between steps so that fired timer
+		/// callbacks and their async continuations get a chance to run before virtual time moves further.</summary>
+		/// <param name="provider">The fake, advanceable time source driving the test</param>
+		/// <param name="total">Total amount of virtual time to advance</param>
+		/// <param name="step">Increment per advance (defaults to 250 ms of virtual time; use smaller steps when asserting around fine-grained thresholds)</param>
+		/// <remarks>A single big <c>Advance()</c> fires every due timer INLINE on the calling thread: a callback that
+		/// awaits other virtual events can deadlock, and work scheduled by a fired timer would observe virtual time
+		/// far past its own due time. Stepping with yields keeps the virtual universe causally sane.</remarks>
 		protected static async Task AdvanceAndPump(Microsoft.Extensions.Time.Testing.FakeTimeProvider provider, TimeSpan total, TimeSpan? step = null)
 		{
 			Contract.NotNull(provider);

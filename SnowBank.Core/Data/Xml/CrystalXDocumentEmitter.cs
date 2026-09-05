@@ -41,7 +41,7 @@ namespace SnowBank.Data.Xml
 	/// represent (C0 controls, unpaired surrogate halves, U+FFFE/U+FFFF) land in the node tree verbatim, producing a
 	/// document no conformant parser would accept back; content that may carry them must be sanitized before it reaches the
 	/// emitter.</para>
-	/// <para>Elements are built bottom-up: <see cref="WriteStartElement"/> pushes an unparented <see cref="XElement"/> onto a
+	/// <para>Elements are built bottom-up: <see cref="WriteStartElement(in CrystalXmlName)"/> pushes an unparented <see cref="XElement"/> onto a
 	/// stack, attributes and text accumulate on the element at the top, and <see cref="WriteEndElement"/> pops it and appends
 	/// it to its parent (or records it as the document root). The attribute-ordering precondition from
 	/// <see cref="ICrystalXmlEmitter"/> is still asserted in DEBUG, for consistency with the other emitters.</para>
@@ -56,12 +56,12 @@ namespace SnowBank.Data.Xml
 	/// <c>XNode.DeepEquals(emitter.ToDocument(), XDocument.Parse(referenceOutput))</c> holds for any text containing a line
 	/// break.</para>
 	/// <para><b>Namespace declarations are the DOM's business, not this emitter's.</b> An element and an attribute each carry
-	/// their namespace in their <see cref="XName"/>, and <see cref="XElement.ToString()"/> derives the declarations and the
+	/// their namespace in their <see cref="XName"/>, and <see cref="XNode.ToString()"/> derives the declarations and the
 	/// prefixes a document needs from those names when it serializes the tree. So
 	/// <see cref="WriteNamespaceDeclaration"/> and <see cref="WriteDefaultNamespaceDeclaration"/> do nothing here: a caller
 	/// placing a declaration high in a document is expressing where the TEXT should carry it, and this emitter produces no
 	/// text. The one exception is a qualified name inside an attribute value, whose namespace the DOM cannot see; see
-	/// <see cref="WriteQNameAttribute"/>.</para>
+	/// <see cref="WriteQNameAttribute(in CrystalXmlName, in CrystalXmlName)"/>.</para>
 	/// <para>Not thread-safe, and, like every <see cref="ICrystalXmlEmitter"/>, must be passed by <see langword="ref"/>:
 	/// <see cref="Root"/> is a plain field assigned once by the final <see cref="WriteEndElement"/>, so a copy taken before
 	/// that point would never see it.</para>
@@ -85,7 +85,7 @@ namespace SnowBank.Data.Xml
 
 		/// <summary>Returns the document built from the events written so far</summary>
 		/// <returns>A new <see cref="XDocument"/> wrapping the completed root element</returns>
-		/// <exception cref="ContractException">If any element written via <see cref="WriteStartElement"/> has not been
+		/// <exception cref="ContractException">If any element written via <see cref="WriteStartElement(in CrystalXmlName)"/> has not been
 		/// matched by a <see cref="WriteEndElement"/> yet, or if nothing was ever written</exception>
 		public readonly XDocument ToDocument()
 		{

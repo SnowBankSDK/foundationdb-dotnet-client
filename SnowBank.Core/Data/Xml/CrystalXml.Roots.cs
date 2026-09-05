@@ -75,11 +75,15 @@ namespace SnowBank.Data.Xml
 		}
 
 		/// <summary>Serializes a sequence of <paramref name="items"/> to a <see cref="Slice"/> of XML, as a single collection root element</summary>
+		/// <param name="itemSerializer">Serializer of the item type, which names the item elements and, on the DataContract profile, the root</param>
+		/// <param name="items">Items to serialize, or <see langword="null"/> for the empty root element, marked nil when the item serializer's profile marks nulls</param>
+		/// <param name="settings">Optional settings passed through to <paramref name="itemSerializer"/></param>
+		/// <param name="rootName">Optional name for the root element, in place of the profile's <c>ArrayOfX</c> convention; required on the General profile, which has no convention</param>
+		/// <param name="itemName">Optional name for the item elements, in place of the item type's own element name</param>
 		/// <param name="encoding">Encoding of the returned bytes, defaulting to UTF-8 with no byte-order mark. The writer
 		/// always produces UTF-8 internally; a non-default encoding transcodes the finished buffer once, so the UTF-8 path
 		/// stays untouched. When <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> is set, the declaration names this
 		/// encoding.</param>
-		/// <inheritdoc cref="ToText{T}(ICrystalXmlElementSerializer{T},IEnumerable{T},CrystalXmlSettings?,string?,string?)"/>
 		public static Slice ToSlice<T>(ICrystalXmlElementSerializer<T> itemSerializer, IEnumerable<T>? items, CrystalXmlSettings? settings = null, string? rootName = null, string? itemName = null, Encoding? encoding = null)
 		{
 			Contract.NotNull(itemSerializer);
@@ -98,11 +102,19 @@ namespace SnowBank.Data.Xml
 
 		/// <summary>Serializes a sequence of <paramref name="items"/> as XML into <paramref name="destination"/>, as a single collection root element</summary>
 		/// <param name="destination">Destination stream; ownership stays with the caller, who is responsible for flushing and disposing it</param>
-		/// <remarks>Same buffering and failure-path contract as <see cref="WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>.
+		/// <param name="itemSerializer">Serializer of the item type, which names the item elements and, on the DataContract profile, the root</param>
+		/// <param name="items">Items to serialize, or <see langword="null"/> for the empty root element, marked nil when the item serializer's profile marks nulls</param>
+		/// <param name="settings">Optional settings passed through to <paramref name="itemSerializer"/></param>
+		/// <param name="rootName">Optional name for the root element, in place of the profile's <c>ArrayOfX</c> convention; required on the General profile, which has no convention</param>
+		/// <param name="itemName">Optional name for the item elements, in place of the item type's own element name</param>
+		/// <param name="encoding">Encoding of the returned bytes, defaulting to UTF-8 with no byte-order mark. The writer
+		/// always produces UTF-8 internally; a non-default encoding transcodes the finished buffer once, so the UTF-8 path
+		/// stays untouched. When <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> is set, the declaration names this
+		/// encoding.</param>
+		/// <remarks>Same buffering and failure-path contract as <see cref="WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/>.
 		/// A non-default <paramref name="encoding"/> takes the simpler
 		/// <see cref="ToSlice{T}(ICrystalXmlElementSerializer{T},IEnumerable{T},CrystalXmlSettings?,string?,string?,Encoding?)"/>
 		/// path instead, building the whole buffer before writing it out in one call.</remarks>
-		/// <inheritdoc cref="ToSlice{T}(ICrystalXmlElementSerializer{T},IEnumerable{T},CrystalXmlSettings?,string?,string?,Encoding?)"/>
 		public static void WriteTo<T>(Stream destination, ICrystalXmlElementSerializer<T> itemSerializer, IEnumerable<T>? items, CrystalXmlSettings? settings = null, string? rootName = null, string? itemName = null, Encoding? encoding = null)
 		{
 			Contract.NotNull(destination);
@@ -131,8 +143,12 @@ namespace SnowBank.Data.Xml
 
 		/// <summary>Serializes a sequence of <paramref name="items"/> as XML text into <paramref name="destination"/>, as a single collection root element</summary>
 		/// <param name="destination">Destination writer; ownership stays with the caller, who is responsible for flushing and disposing it</param>
+		/// <param name="itemSerializer">Serializer of the item type, which names the item elements and, on the DataContract profile, the root</param>
+		/// <param name="items">Items to serialize, or <see langword="null"/> for the empty root element, marked nil when the item serializer's profile marks nulls</param>
+		/// <param name="settings">Optional settings passed through to <paramref name="itemSerializer"/></param>
+		/// <param name="rootName">Optional name for the root element, in place of the profile's <c>ArrayOfX</c> convention; required on the General profile, which has no convention</param>
+		/// <param name="itemName">Optional name for the item elements, in place of the item type's own element name</param>
 		/// <remarks>Same buffering and failure-path contract as <see cref="WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>.</remarks>
-		/// <inheritdoc cref="ToText{T}(ICrystalXmlElementSerializer{T},IEnumerable{T},CrystalXmlSettings?,string?,string?)"/>
 		public static void WriteTo<T>(TextWriter destination, ICrystalXmlElementSerializer<T> itemSerializer, IEnumerable<T>? items, CrystalXmlSettings? settings = null, string? rootName = null, string? itemName = null)
 		{
 			Contract.NotNull(destination);
@@ -153,8 +169,12 @@ namespace SnowBank.Data.Xml
 
 		/// <summary>Serializes a sequence of <paramref name="items"/> as UTF-8 encoded XML into <paramref name="destination"/>, as a single collection root element</summary>
 		/// <param name="destination">Destination buffer writer</param>
+		/// <param name="itemSerializer">Serializer of the item type, which names the item elements and, on the DataContract profile, the root</param>
+		/// <param name="items">Items to serialize, or <see langword="null"/> for the empty root element, marked nil when the item serializer's profile marks nulls</param>
+		/// <param name="settings">Optional settings passed through to <paramref name="itemSerializer"/></param>
+		/// <param name="rootName">Optional name for the root element, in place of the profile's <c>ArrayOfX</c> convention; required on the General profile, which has no convention</param>
+		/// <param name="itemName">Optional name for the item elements, in place of the item type's own element name</param>
 		/// <remarks>Same ownership contract as <see cref="WriteTo{T}(IBufferWriter{byte},ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>: this overload owns no pooled resource of its own.</remarks>
-		/// <inheritdoc cref="ToText{T}(ICrystalXmlElementSerializer{T},IEnumerable{T},CrystalXmlSettings?,string?,string?)"/>
 		public static void WriteTo<T>(IBufferWriter<byte> destination, ICrystalXmlElementSerializer<T> itemSerializer, IEnumerable<T>? items, CrystalXmlSettings? settings = null, string? rootName = null, string? itemName = null)
 		{
 			Contract.NotNull(destination);
@@ -178,8 +198,12 @@ namespace SnowBank.Data.Xml
 
 		/// <summary>Serializes a sequence of <paramref name="items"/> into <paramref name="destination"/>, as a single collection root element</summary>
 		/// <param name="destination">Destination writer, not owned: the caller flushes and disposes it, and configures its <see cref="XmlWriterSettings"/></param>
+		/// <param name="itemSerializer">Serializer of the item type, which names the item elements and, on the DataContract profile, the root</param>
+		/// <param name="items">Items to serialize, or <see langword="null"/> for the empty root element, marked nil when the item serializer's profile marks nulls</param>
+		/// <param name="settings">Optional settings passed through to <paramref name="itemSerializer"/></param>
+		/// <param name="rootName">Optional name for the root element, in place of the profile's <c>ArrayOfX</c> convention; required on the General profile, which has no convention</param>
+		/// <param name="itemName">Optional name for the item elements, in place of the item type's own element name</param>
 		/// <remarks>Only infoset equivalence with the byte-exact output is guaranteed here: see the remarks on <see cref="CrystalXmlWriterEmitter"/>.</remarks>
-		/// <inheritdoc cref="ToText{T}(ICrystalXmlElementSerializer{T},IEnumerable{T},CrystalXmlSettings?,string?,string?)"/>
 		public static void WriteTo<T>(XmlWriter destination, ICrystalXmlElementSerializer<T> itemSerializer, IEnumerable<T>? items, CrystalXmlSettings? settings = null, string? rootName = null, string? itemName = null)
 		{
 			Contract.NotNull(destination);
@@ -249,7 +273,7 @@ namespace SnowBank.Data.Xml
 		{
 
 			/// <summary>Serializes a scalar <paramref name="value"/> to a <see cref="string"/> of XML text, as a single root element</summary>
-			/// <typeparam name="T">Type of the value being serialized: one of the xsd lexical scalar types (<see cref="string"/>, the numbers, <see cref="bool"/>, <see cref="DateTime"/>, <see cref="TimeSpan"/>, <see cref="Guid"/>, <see cref="char"/>, <c>byte[]</c>, <see cref="Uri"/>)</typeparam>
+			/// <typeparam name="T">Type of the value being serialized: one of the xsd lexical scalar types (<see cref="string"/>, the numbers, <see cref="bool"/>, <see cref="System.DateTime"/>, <see cref="TimeSpan"/>, <see cref="Guid"/>, <see cref="char"/>, <c>byte[]</c>, <see cref="Uri"/>)</typeparam>
 			/// <param name="value">Value to serialize, or <see langword="null"/> for the empty root element, marked nil when the settings ask for null members</param>
 			/// <param name="settings">Optional settings; the reference DataContract behavior is the default</param>
 			/// <param name="rootName">Optional name for the root element, in place of the type's xsd lexical name; the root stays in the Serialization namespace either way</param>
@@ -275,11 +299,13 @@ namespace SnowBank.Data.Xml
 			}
 
 			/// <summary>Serializes a scalar <paramref name="value"/> to a <see cref="Slice"/> of XML, as a single root element</summary>
+			/// <param name="value">Value to serialize, or <see langword="null"/> for the empty root element, marked nil when the settings ask for null members</param>
+			/// <param name="settings">Optional settings; the reference DataContract behavior is the default</param>
+			/// <param name="rootName">Optional name for the root element, in place of the type's xsd lexical name; the root stays in the Serialization namespace either way</param>
 			/// <param name="encoding">Encoding of the returned bytes, defaulting to UTF-8 with no byte-order mark. The writer
 			/// always produces UTF-8 internally; a non-default encoding transcodes the finished buffer once, so the UTF-8 path
 			/// stays untouched. When <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> is set, the declaration names this
 			/// encoding.</param>
-			/// <inheritdoc cref="ToText{T}(T,CrystalXmlSettings?,string?)"/>
 			public static Slice ToSlice<T>(T? value, CrystalXmlSettings? settings = null, string? rootName = null, Encoding? encoding = null)
 			{
 				bool isUtf8 = IsDefaultOrUtf8(encoding);
@@ -297,10 +323,16 @@ namespace SnowBank.Data.Xml
 
 			/// <summary>Serializes a scalar <paramref name="value"/> as XML into <paramref name="destination"/>, as a single root element</summary>
 			/// <param name="destination">Destination stream; ownership stays with the caller, who is responsible for flushing and disposing it</param>
-			/// <remarks>Same buffering and failure-path contract as <see cref="WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>.
+			/// <param name="value">Value to serialize, or <see langword="null"/> for the empty root element, marked nil when the settings ask for null members</param>
+			/// <param name="settings">Optional settings; the reference DataContract behavior is the default</param>
+			/// <param name="rootName">Optional name for the root element, in place of the type's xsd lexical name; the root stays in the Serialization namespace either way</param>
+			/// <param name="encoding">Encoding of the returned bytes, defaulting to UTF-8 with no byte-order mark. The writer
+			/// always produces UTF-8 internally; a non-default encoding transcodes the finished buffer once, so the UTF-8 path
+			/// stays untouched. When <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> is set, the declaration names this
+			/// encoding.</param>
+			/// <remarks>Same buffering and failure-path contract as <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/>.
 			/// A non-default <paramref name="encoding"/> takes the simpler <see cref="ToSlice{T}(T,CrystalXmlSettings?,string?,Encoding?)"/>
 			/// path instead, building the whole buffer before writing it out in one call.</remarks>
-			/// <inheritdoc cref="ToSlice{T}(T,CrystalXmlSettings?,string?,Encoding?)"/>
 			public static void WriteTo<T>(Stream destination, T? value, CrystalXmlSettings? settings = null, string? rootName = null, Encoding? encoding = null)
 			{
 				Contract.NotNull(destination);
@@ -328,8 +360,10 @@ namespace SnowBank.Data.Xml
 
 			/// <summary>Serializes a scalar <paramref name="value"/> as XML text into <paramref name="destination"/>, as a single root element</summary>
 			/// <param name="destination">Destination writer; ownership stays with the caller, who is responsible for flushing and disposing it</param>
-			/// <remarks>Same buffering and failure-path contract as <see cref="WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>.</remarks>
-			/// <inheritdoc cref="ToText{T}(T,CrystalXmlSettings?,string?)"/>
+			/// <param name="value">Value to serialize, or <see langword="null"/> for the empty root element, marked nil when the settings ask for null members</param>
+			/// <param name="settings">Optional settings; the reference DataContract behavior is the default</param>
+			/// <param name="rootName">Optional name for the root element, in place of the type's xsd lexical name; the root stays in the Serialization namespace either way</param>
+			/// <remarks>Same buffering and failure-path contract as <see cref="CrystalXml.WriteTo{T}(TextWriter,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>.</remarks>
 			public static void WriteTo<T>(TextWriter destination, T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 			{
 				Contract.NotNull(destination);
@@ -349,8 +383,10 @@ namespace SnowBank.Data.Xml
 
 			/// <summary>Serializes a scalar <paramref name="value"/> as UTF-8 encoded XML into <paramref name="destination"/>, as a single root element</summary>
 			/// <param name="destination">Destination buffer writer</param>
-			/// <remarks>Same ownership contract as <see cref="WriteTo{T}(IBufferWriter{byte},ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>: this overload owns no pooled resource of its own.</remarks>
-			/// <inheritdoc cref="ToText{T}(T,CrystalXmlSettings?,string?)"/>
+			/// <param name="value">Value to serialize, or <see langword="null"/> for the empty root element, marked nil when the settings ask for null members</param>
+			/// <param name="settings">Optional settings; the reference DataContract behavior is the default</param>
+			/// <param name="rootName">Optional name for the root element, in place of the type's xsd lexical name; the root stays in the Serialization namespace either way</param>
+			/// <remarks>Same ownership contract as <see cref="CrystalXml.WriteTo{T}(IBufferWriter{byte},ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>: this overload owns no pooled resource of its own.</remarks>
 			public static void WriteTo<T>(IBufferWriter<byte> destination, T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 			{
 				Contract.NotNull(destination);
@@ -372,8 +408,10 @@ namespace SnowBank.Data.Xml
 
 			/// <summary>Serializes a scalar <paramref name="value"/> into <paramref name="destination"/>, as a single root element</summary>
 			/// <param name="destination">Destination writer, not owned: the caller flushes and disposes it, and configures its <see cref="XmlWriterSettings"/></param>
+			/// <param name="value">Value to serialize, or <see langword="null"/> for the empty root element, marked nil when the settings ask for null members</param>
+			/// <param name="settings">Optional settings; the reference DataContract behavior is the default</param>
+			/// <param name="rootName">Optional name for the root element, in place of the type's xsd lexical name; the root stays in the Serialization namespace either way</param>
 			/// <remarks>Only infoset equivalence with the byte-exact output is guaranteed here: see the remarks on <see cref="CrystalXmlWriterEmitter"/>.</remarks>
-			/// <inheritdoc cref="ToText{T}(T,CrystalXmlSettings?,string?)"/>
 			public static void WriteTo<T>(XmlWriter destination, T? value, CrystalXmlSettings? settings = null, string? rootName = null)
 			{
 				Contract.NotNull(destination);

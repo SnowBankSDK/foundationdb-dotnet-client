@@ -422,7 +422,7 @@ namespace SnowBank.Networking
 			}
 		}
 
-		/// <summary>Cuts both directions of the link between two hosts, with the given failure mode (see <see cref="Cut"/>)</summary>
+		/// <summary>Cuts both directions of the link between two hosts, with the given failure mode (see <see cref="Cut(string, string, VirtualNetworkFault)"/>)</summary>
 		public void CutBoth(string hostA, string hostB, VirtualNetworkFault fault)
 		{
 			Cut(hostA, hostB, fault);

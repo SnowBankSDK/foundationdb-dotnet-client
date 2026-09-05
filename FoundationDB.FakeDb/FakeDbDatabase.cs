@@ -810,7 +810,7 @@ namespace FoundationDB.Testing
 			}
 
 			/// <summary>Checks whether a key is a present boundary key for selector / range-bound resolution (fdb 7.4.6 <c>RYWIterator::is_kv()</c>): the offset walk counts the key, not its coalesced value.</summary>
-			/// <remarks>This is the selector-walk present-set (used only by <see cref="GetMergedVisibleKeys"/> -> <see cref="ResolveMerged"/>), not read content. A key with a pending write is present unless its net effect is a pure clear (<c>CLEARED_RANGE</c>). Read content (which excludes a CompareAndClear'd key) is a separate scan.</remarks>
+			/// <remarks>This is the selector-walk present-set (used only by <see cref="EnumerateMergedVisibleKeys"/> -> <see cref="ResolveMerged"/>), not read content. A key with a pending write is present unless its net effect is a pure clear (<c>CLEARED_RANGE</c>). Read content (which excludes a CompareAndClear'd key) is a separate scan.</remarks>
 			private bool IsVisibleInMergedView(Key key)
 			{
 				var mutation = FindCoveringMutation(key);

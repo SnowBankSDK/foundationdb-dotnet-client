@@ -41,8 +41,8 @@ namespace SnowBank.Data.Xml
 	/// emitter's own <c>Writer</c>, never through the caller's writer variable (the emitter copies the writer struct by
 	/// value: see the remarks on <see cref="CrystalXmlWriter{TRune,TWriter}"/>). Keeping that dance inside these helpers
 	/// means nobody outside this file has to know the rule exists.</para>
-	/// <para><see cref="ToText{T}"/> and <see cref="ToSlice{T}"/>/<see cref="ToBytes{T}"/> go through the byte-exact
-	/// <see cref="CrystalXmlWriter{TRune,TWriter}"/>. <see cref="ToXDocument{T}"/> and the <see cref="XmlWriter"/> overload of
+	/// <para><see cref="ToText{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/> and <see cref="ToSlice{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/>/<see cref="ToBytes{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/> go through the byte-exact
+	/// <see cref="CrystalXmlWriter{TRune,TWriter}"/>. <see cref="ToXDocument{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/> and the <see cref="XmlWriter"/> overload of
 	/// <see cref="WriteTo{T}(XmlWriter,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/> go through the infoset
 	/// emitters instead, and only guarantee infoset equivalence, not a byte-exact output.</para>
 	/// </remarks>
@@ -114,7 +114,10 @@ namespace SnowBank.Data.Xml
 		/// <param name="value">Value to serialize, or <see langword="null"/> to write the empty/self-closing root element</param>
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
-		/// <inheritdoc cref="ToSlice{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)" path="/param[@name='encoding']"/>
+		/// <param name="encoding">Encoding of the returned bytes, defaulting to UTF-8 with no byte-order mark. The writer
+		/// always produces UTF-8 internally; a non-default encoding transcodes the finished buffer once, so the UTF-8 path
+		/// stays untouched. When <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> is set, the declaration names this
+		/// encoding.</param>
 		public static byte[] ToBytes<T>(ICrystalXmlSerializer<T> serializer, T? value, CrystalXmlSettings? settings = null, string? rootName = null, Encoding? encoding = null)
 			=> ToSlice(serializer, value, settings, rootName, encoding).ToArray();
 
@@ -125,7 +128,10 @@ namespace SnowBank.Data.Xml
 		/// <param name="value">Value to serialize, or <see langword="null"/> to write the empty/self-closing root element</param>
 		/// <param name="settings">Optional settings passed through to <paramref name="serializer"/></param>
 		/// <param name="rootName">Optional override for the name of the root element</param>
-		/// <inheritdoc cref="ToSlice{T}(ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)" path="/param[@name='encoding']"/>
+		/// <param name="encoding">Encoding of the returned bytes, defaulting to UTF-8 with no byte-order mark. The writer
+		/// always produces UTF-8 internally; a non-default encoding transcodes the finished buffer once, so the UTF-8 path
+		/// stays untouched. When <see cref="CrystalXmlSettings.WriteXmlDeclaration"/> is set, the declaration names this
+		/// encoding.</param>
 		/// <remarks>
 		/// <para>Writes synchronously through a pooled <see cref="byte"/> buffer (<see cref="StreamBufferProxy"/>), draining
 		/// to <paramref name="destination"/> via <see cref="Stream.Write(byte[],int,int)"/> whenever the buffer would need to
@@ -178,7 +184,7 @@ namespace SnowBank.Data.Xml
 		/// <para>Writes through a pooled <see cref="char"/> buffer (<see cref="TextWriterBufferProxy"/>), draining to
 		/// <paramref name="destination"/> via <see cref="TextWriter.Write(char[],int,int)"/> whenever the buffer would need
 		/// to grow.</para>
-		/// <para>Same failure-path contract as <see cref="WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>:
+		/// <para>Same failure-path contract as <see cref="WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/>:
 		/// on failure the pooled buffer is always returned, the un-drained tail is not written, and the caller sees the
 		/// original exception; either way <paramref name="destination"/> is never closed or disposed.</para>
 		/// </remarks>
@@ -312,7 +318,7 @@ namespace SnowBank.Data.Xml
 		/// <para><see cref="Stream"/> is a push-based sink, not an <see cref="IBufferWriter{T}"/>: writes accumulate in a
 		/// rented array that is drained synchronously whenever it would need to grow, and once more at the end via
 		/// <see cref="Drain"/> (success) or <see cref="Abandon"/> (failure); the exact contract of each is on
-		/// <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>.</para>
+		/// <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/>.</para>
 		/// <para><b>Single-owner discipline.</b> <see cref="Buffer"/> is returned to <see cref="ArrayPool{Byte}.Shared"/> in
 		/// exactly one place each (<see cref="Drain"/> and <see cref="Abandon"/>), and both null the field before writing
 		/// anything, so no code path can return the same array twice.</para>
@@ -395,7 +401,7 @@ namespace SnowBank.Data.Xml
 			}
 
 			/// <summary>Returns the buffer to the pool WITHOUT writing the still-pending tail: the failure-path cleanup</summary>
-			/// <remarks>Deliberately writes nothing: the failure-path contract on <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?)"/>
+			/// <remarks>Deliberately writes nothing: the failure-path contract on <see cref="CrystalXml.WriteTo{T}(Stream,ICrystalXmlSerializer{T},T,CrystalXmlSettings?,string?,Encoding?)"/>
 			/// forbids writing content after the serializer has thrown.</remarks>
 			public void Abandon()
 			{

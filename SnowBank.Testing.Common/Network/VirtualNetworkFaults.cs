@@ -53,7 +53,7 @@ namespace SnowBank.Networking
 		Blackhole,
 	}
 
-	/// <summary>Describes the failure mode applied to a cut virtual link (see <see cref="VirtualNetworkTopology.Cut"/>)</summary>
+	/// <summary>Describes the failure mode applied to a cut virtual link (see <see cref="VirtualNetworkTopology.Cut(string, string, VirtualNetworkFault)"/>)</summary>
 	public sealed record VirtualNetworkFault
 	{
 
@@ -103,7 +103,7 @@ namespace SnowBank.Networking
 
 	/// <summary>Live state of one DIRECTIONAL edge of the virtual network (all the traffic going FROM one host TO another)</summary>
 	/// <remarks>
-	/// <para>Edges are created lazily (on first use by the transport, or on the first <see cref="VirtualNetworkTopology.Cut"/>)
+	/// <para>Edges are created lazily (on first use by the transport, or on the first <see cref="VirtualNetworkTopology.Cut(string, string, VirtualNetworkFault)"/>)
 	/// and live for the rest of the test: the transport captures <see cref="CutToken"/> per connection, so an edge that is
 	/// cut LATER can still abort the streams that were established while it was healthy - the same latch-then-renew pattern
 	/// as <see cref="VirtualNetworkTopology.SimulatedHost.SetOffline"/>.</para>
