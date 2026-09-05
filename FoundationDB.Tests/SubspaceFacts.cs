@@ -232,6 +232,9 @@ namespace FoundationDB.Client.Tests
 			Assert.That(location.DecodeFirst<string>(Slice.Unescape("PREFIX<02>hello<00><15>{<02>world<00><16><01><C8><02>!<00><16><03><15>")), Is.EqualTo("hello"));
 			Assert.That(location.DecodeLast<int>(Slice.Unescape("PREFIX<02>hello<00><15>{<02>world<00><16><01><C8><02>!<00><16><03><15>")), Is.EqualTo(789));
 
+			// ITuple Unpack(ReadOnlySpan<byte>, Span<Range>): same decoder over a caller-supplied buffer
+			Assert.That(location.Unpack(Slice.Unescape("PREFIX<02>hello<00><15>{").Span, stackalloc Range[8]).ToTuple(), Is.EqualTo(STuple.Create("hello", 123)));
+
 		}
 
 	}

@@ -1094,6 +1094,10 @@ namespace FoundationDB.Client
 			return SpanTuple.Unpack(self.ExtractKey(packedKey));
 		}
 
+		/// <summary>Decodes a binary key of this subspace into a tuple of arbitrary length, using a caller-supplied buffer for the element ranges</summary>
+		public static SpanTuple Unpack(this IKeySubspace self, ReadOnlySpan<byte> packedKey, Span<Range> buffer)
+			=> SpanTuple.Unpack(self.ExtractKey(packedKey), buffer);
+
 		/// <summary>Decode a key of this subspace, composed of a single element</summary>
 		[MustUseReturnValue, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static T1? Decode<T1>(this IKeySubspace self, Slice packedKey)

@@ -70,8 +70,9 @@ namespace SnowBank.Data.Tuples.Binary
 			if (packedKey.IsNull) throw new ArgumentNullException(nameof(packedKey), "Cannot unpack tuple from Nil");
 			if (packedKey.Count == 0) return SlicedTuple.Empty;
 
-			var reader = new TupleReader(packedKey.Span);
-			var st = TuplePackers.Unpack(ref reader);
+			scoped var reader = new TupleReader(packedKey.Span);
+			Span<Range> buffer = stackalloc Range[TuplePackers.StackTokenCount];
+			var st = TuplePackers.Unpack(ref reader, buffer);
 			return st.ToTuple(packedKey);
 		}
 
@@ -97,8 +98,9 @@ namespace SnowBank.Data.Tuples.Binary
 				return true;
 			}
 
-			var reader = new TupleReader(packedKey.Span);
-			if (!TuplePackers.TryUnpack(ref reader, out var st, out _))
+			scoped var reader = new TupleReader(packedKey.Span);
+			Span<Range> buffer = stackalloc Range[TuplePackers.StackTokenCount];
+			if (!TuplePackers.TryUnpack(ref reader, buffer, out var st, out _))
 			{
 				tuple = null;
 				return false;

@@ -2659,6 +2659,111 @@ namespace SnowBank.Data.Tuples.Tests
 		}
 
 		[Test]
+		public void Test_SpanTuple_Unpack_With_Buffer()
+		{
+			// unpacking with a caller-supplied buffer must produce the same result as the allocating path,
+			// both when the buffer is large enough and when it is too small and the decoder falls back to the heap
+
+			static void Check(SpanTuple tuple, SpanTuple reference, int count, Slice packed, IVarTuple expected)
+			{
+				Assert.That(tuple.Count, Is.EqualTo(count));
+				Assert.That(tuple.ToSlice(), Is.EqualTo(packed));
+				for (int i = 0; i < count; i++)
+				{
+					Assert.That(tuple.GetSlice(i), Is.EqualTo(reference.GetSlice(i)), $"element {i}");
+					Assert.That(tuple.GetElementType(i), Is.EqualTo(reference.GetElementType(i)), $"element {i}");
+				}
+				Assert.That(tuple.ToTuple(), Is.EqualTo(expected));
+			}
+
+			static void Verify(Slice packed)
+			{
+				var reference = SpanTuple.Unpack(packed.Span);
+				int count = reference.Count;
+				var expected = TuPack.Unpack(packed);
+
+				Check(SpanTuple.Unpack(packed.Span, stackalloc Range[8]), reference, count, packed, expected);
+				Check(SpanTuple.Unpack(packed.Span, stackalloc Range[1]), reference, count, packed, expected); // forces growth for any tuple with 2 or more elements
+				Check(TuPack.Unpack(packed.Span, stackalloc Range[8]), reference, count, packed, expected);
+
+				Assert.That(TuPack.TryUnpack(packed.Span, stackalloc Range[8], out var tried), Is.True);
+				Assert.That(tried.Count, Is.EqualTo(count));
+			}
+
+			// empty tuple
+			Verify(Slice.Empty);
+
+			// one element
+			Verify(TuPack.EncodeKey("hello world"));
+
+			// exactly 8 elements (fills stackalloc Range[8] with no growth)
+			Verify(TuPack.EncodeKey(1, 2, 3, 4, 5, 6, 7, 8));
+			// 9 elements (one growth)
+			Verify(TuPack.EncodeKey(1, 2, 3, 4, 5, 6, 7, 8, 9));
+			// 20 elements (three growths)
+			Verify(TuPack.Pack(STuple.Create(Enumerable.Range(1, 20).Select(i => (object?) i).ToArray())));
+
+			// mixed integer sizes, positive and negative
+			Verify(TuPack.EncodeKey(1, 256, 257, 65536, int.MaxValue, long.MaxValue));
+			Verify(TuPack.EncodeKey(-1, -256, -257, -65536, int.MinValue, long.MinValue));
+
+			// one element of every type
+			Verify(TuPack.EncodeKey(default(string)));
+			Verify(TuPack.EncodeKey(true));
+			Verify(TuPack.EncodeKey(false));
+			Verify(TuPack.EncodeKey(1.5f));
+			Verify(TuPack.EncodeKey(1.5d));
+			Verify(TuPack.EncodeKey("héllo wörld 日本語"));
+			Verify(TuPack.EncodeKey(Slice.FromString("some bytes")));
+			Verify(TuPack.EncodeKey(Guid.NewGuid()));
+			Verify(TuPack.EncodeKey(Uuid128.Parse("00010203-0405-0607-0809-0a0b0c0d0e0f")));
+			Verify(TuPack.EncodeKey(Uuid96.Parse("01234567-89ABCDEF-55AA33CC")));
+			Verify(TuPack.EncodeKey(Uuid80.Parse("0123-456789AB-CDEF55AA")));
+			Verify(TuPack.EncodeKey(Uuid64.Parse("01234567-89ABCDEF")));
+			Verify(TuPack.EncodeKey(VersionStamp.Incomplete()));
+			Verify(TuPack.EncodeKey(new BigInteger(0x0123456789ABCDEF)));
+
+			// nested tuples
+			Verify(TuPack.Pack(STuple.Create(42, STuple.Create(2014, 11, 6), "Hello", true)));
+			Verify(Slice.FromHexa("05 00 FF 00 00")); // (("", ),) with the inner null escaped
+			Verify(Slice.FromHexa("00 05 00 00 05 00 FF 00 00"));
+			Verify(Slice.Unescape("<05><00>")); // ((),) : an embedded empty tuple
+
+			// malformed input: drop the string terminator so parsing fails before reaching the end of the key
+			{
+				var bad = TuPack.EncodeKey("hello");
+				bad = bad[..^1];
+
+				Type? expectedType = null;
+				try
+				{
+					SpanTuple.Unpack(bad.Span);
+					Assert.Fail("expected the reference unpack to throw");
+				}
+				catch (Exception e)
+				{
+					expectedType = e.GetType();
+				}
+
+				Exception? caught = null;
+				try
+				{
+					SpanTuple.Unpack(bad.Span, (Span<Range>) stackalloc Range[8]);
+					Assert.Fail("expected the buffered unpack to throw");
+				}
+				catch (Exception e)
+				{
+					caught = e;
+				}
+				Assert.That(caught, Is.Not.Null);
+				Assert.That(caught!.GetType(), Is.EqualTo(expectedType));
+
+				Assert.That(TuPack.TryUnpack(bad.Span, out _), Is.False);
+				Assert.That(TuPack.TryUnpack(bad.Span, stackalloc Range[8], out _), Is.False);
+			}
+		}
+
+		[Test]
 		public void Test_TuplePack_DecodeKey()
 		{
 			Assert.That(

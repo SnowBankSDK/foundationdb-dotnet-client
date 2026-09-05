@@ -782,9 +782,9 @@ namespace SnowBank.Data.Tuples
 		[Pure]
 		public static bool TryUnpack(Slice packedKey, [MaybeNullWhen(false)] out IVarTuple tuple)
 		{
-			if (!packedKey.IsNull && TryUnpack(packedKey.Span, out var st))
+			if (SlicedTuple.TryUnpack(packedKey, out var st))
 			{
-				tuple = st.ToTuple(packedKey);
+				tuple = st;
 				return true;
 			}
 			tuple = null;
@@ -796,7 +796,14 @@ namespace SnowBank.Data.Tuples
 		/// <param name="tuple">Unpacked tuple, or the empty tuple if the key is <see cref="Slice.Empty"/></param>
 		/// <exception cref="System.ArgumentNullException">If <paramref name="packedKey"/> is equal to <see cref="Slice.Nil"/></exception>
 		[Pure]
-		public static bool TryUnpack(ReadOnlySpan<byte> packedKey, out SpanTuple tuple)
+		public static bool TryUnpack(ReadOnlySpan<byte> packedKey, out SpanTuple tuple) => TryUnpack(packedKey, default, out tuple);
+
+		/// <summary>Unpack a tuple from a serialized key blob, using a caller-supplied buffer for the element ranges</summary>
+		/// <param name="packedKey">Binary key containing a previously packed tuple</param>
+		/// <param name="buffer">Receives the range of each element, typically <c>stackalloc Range[8]</c>. The returned tuple reads from this buffer, so it must stay valid and untouched while the tuple is used. When the tuple has more elements than the buffer, a heap array is allocated instead.</param>
+		/// <param name="tuple">Unpacked tuple, or the empty tuple if the key is <see cref="Slice.Empty"/></param>
+		[Pure]
+		public static bool TryUnpack(ReadOnlySpan<byte> packedKey, Span<Range> buffer, out SpanTuple tuple)
 		{
 			if (packedKey.Length == 0)
 			{
@@ -805,7 +812,7 @@ namespace SnowBank.Data.Tuples
 			}
 
 			var reader = new TupleReader(packedKey);
-			return TuplePackers.TryUnpack(ref reader, out tuple, out _);
+			return TuplePackers.TryUnpack(ref reader, buffer, out tuple, out _);
 		}
 
 		/// <summary>Unpack a tuple from a serialized key blob</summary>
@@ -813,12 +820,19 @@ namespace SnowBank.Data.Tuples
 		/// <returns>Unpacked tuple, or the empty tuple if the key is <see cref="Slice.Empty"/></returns>
 		/// <exception cref="System.ArgumentNullException">If <paramref name="packedKey"/> is equal to <see cref="Slice.Nil"/></exception>
 		[Pure]
-		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey)
+		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey) => Unpack(packedKey, default);
+
+		/// <summary>Unpack a tuple from a serialized key blob, using a caller-supplied buffer for the element ranges</summary>
+		/// <param name="packedKey">Binary key containing a previously packed tuple</param>
+		/// <param name="buffer">Receives the range of each element, typically <c>stackalloc Range[8]</c>. The returned tuple reads from this buffer, so it must stay valid and untouched while the tuple is used. When the tuple has more elements than the buffer, a heap array is allocated instead.</param>
+		/// <returns>Unpacked tuple, or the empty tuple if <paramref name="packedKey"/> is empty</returns>
+		[Pure]
+		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey, Span<Range> buffer)
 		{
 			if (packedKey.Length == 0) return SpanTuple.Empty;
 
 			var reader = new TupleReader(packedKey);
-			return TuplePackers.Unpack(ref reader);
+			return TuplePackers.Unpack(ref reader, buffer);
 		}
 
 		/// <summary>Unpack a tuple from a binary representation</summary>

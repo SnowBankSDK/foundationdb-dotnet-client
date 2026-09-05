@@ -3915,8 +3915,9 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded tuple</returns>
 		internal static SlicedTuple Unpack(Slice buffer, bool embedded)
 		{
-			var reader = new TupleReader(buffer.Span, embedded ? 1 : 0);
-			if (!TryUnpack(ref reader, out var tuple, out var error))
+			scoped var reader = new TupleReader(buffer.Span, embedded ? 1 : 0);
+			Span<Range> tokens = stackalloc Range[StackTokenCount];
+			if (!TryUnpack(ref reader, tokens, out var tuple, out var error))
 			{
 				if (error != null) throw error;
 				return SlicedTuple.Empty;
@@ -3924,14 +3925,16 @@ namespace SnowBank.Data.Tuples.Binary
 			return tuple.ToTuple(buffer);
 		}
 
+		/// <summary>Number of token ranges that callers reserve on the stack before an unpack falls back to a heap array</summary>
+		internal const int StackTokenCount = 8;
+
 		/// <summary>Unpacks a tuple from a buffer</summary>
 		/// <param name="reader">Reader positioned on the start of the packed representation of a tuple with zero or more elements</param>
-		/// <returns>Decoded tuple</returns>
-		internal static SpanTuple Unpack(scoped ref TupleReader reader)
+		/// <param name="buffer">Receives the range of each element. When the tuple has more elements than the buffer can hold, the method continues in a heap-allocated array.</param>
+		/// <returns>Decoded tuple, which references <paramref name="buffer"/> (or the heap array) for as long as it is used</returns>
+		internal static SpanTuple Unpack(scoped ref TupleReader reader, Span<Range> buffer)
 		{
-			// most tuples will probably fit within (prefix, sub-prefix, id, key) so pre-allocating with 4 should be ok...
-			var items = new Range[4];
-
+			var items = buffer;
 			int p = 0;
 			while (true)
 			{
@@ -3943,8 +3946,10 @@ namespace SnowBank.Data.Tuples.Binary
 
 				if (p >= items.Length)
 				{
-					// note: do not grow exponentially, because tuples will never but very large...
-					Array.Resize(ref items, p + 4);
+					// the buffer is full: continue in a heap array, growing by 4 elements at a time (tuples stay small)
+					var tmp = new Range[p + 4];
+					items.CopyTo(tmp);
+					items = tmp;
 				}
 				items[p++] = item;
 			}
@@ -3954,14 +3959,12 @@ namespace SnowBank.Data.Tuples.Binary
 				throw new FormatException("Parsing of tuple failed failed before reaching the end of the key");
 			}
 
-			return new SpanTuple(reader.Input, p == 0 ? [] : items.AsSpan(0, p));
+			return new SpanTuple(reader.Input, items[..p]);
 		}
 
-		internal static bool TryUnpack(scoped ref TupleReader reader, out SpanTuple tuple, out Exception? error)
+		internal static bool TryUnpack(scoped ref TupleReader reader, Span<Range> buffer, out SpanTuple tuple, out Exception? error)
 		{
-			// (PartitionPrefix, SubspacePrefix, TENANT_PREFIX, LAYER_SUBSPACE, A, B, C, D)
-			var items = new Range[8];
-
+			var items = buffer;
 			int p = 0;
 			while (true)
 			{
@@ -3976,8 +3979,10 @@ namespace SnowBank.Data.Tuples.Binary
 
 				if (p >= items.Length)
 				{
-					// note: do not grow exponentially, because tuple keys don't really have that many elements
-					Array.Resize(ref items, p + 4);
+					// the buffer is full: continue in a heap array, growing by 4 elements at a time (tuples stay small)
+					var tmp = new Range[p + 4];
+					items.CopyTo(tmp);
+					items = tmp;
 				}
 				items[p++] = token;
 			}
@@ -3987,7 +3992,7 @@ namespace SnowBank.Data.Tuples.Binary
 				goto too_small;
 			}
 
-			tuple = new SpanTuple(reader.Input, p == 0 ? [ ] : items.AsSpan(0, p));
+			tuple = new SpanTuple(reader.Input, items[..p]);
 			error = null;
 			return true;
 
