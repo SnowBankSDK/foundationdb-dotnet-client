@@ -1503,6 +1503,96 @@ namespace SnowBank.Data.Tuples.Tests
 		}
 
 		[Test]
+		public void Test_TuplePack_Deserialize_Embedded_Tuples_As_SlicedTuple()
+		{
+			// an embedded IVarTuple now decodes to a SlicedTuple that views the source memory, instead of an
+			// allocating ListTuple<object?>. Equality, hashing and ordering must stay identical either way.
+
+			var packed = TuPack.EncodeKey(STuple.Create("a", 123L, true));
+
+			// type: every decode path that reaches an embedded IVarTuple returns a SlicedTuple
+			Assert.That(TuPack.DecodeKey<IVarTuple>(packed), Is.InstanceOf<SlicedTuple>());
+			Assert.That(TuPack.DecodeLast<string, string, IVarTuple>(TuPack.EncodeKey("zone", "node", STuple.Create("a", 123L, true))).Item3, Is.InstanceOf<SlicedTuple>());
+			Assert.That(SlicedTuple.Unpack(packed).Get<IVarTuple>(0), Is.InstanceOf<SlicedTuple>());
+			Assert.That(TuPack.Unpack(packed)[0], Is.InstanceOf<SlicedTuple>());
+
+			var decoded = TuPack.DecodeKey<IVarTuple>(packed)!;
+			var expected = STuple.Create("a", 123L, true);
+			var list = new ListTuple<object?>(decoded.ToArray());
+
+			// equality, both ways, against both an STuple and a ListTuple holding the same boxed values
+			Assert.That(decoded.Equals(expected), Is.True);
+			Assert.That(expected.Equals(decoded), Is.True);
+			Assert.That(decoded.Equals(list), Is.True);
+			Assert.That(list.Equals(decoded), Is.True);
+			Assert.That(decoded, Is.EqualTo(expected));
+
+			// hashing
+			Assert.That(decoded.GetHashCode(), Is.EqualTo(list.GetHashCode()));
+			Assert.That(decoded.GetHashCode(), Is.EqualTo(expected.GetHashCode()));
+			Assert.That(new HashSet<IVarTuple>{ expected }.Contains(decoded), Is.True);
+			Assert.That(new Dictionary<IVarTuple, int> { [expected] = 1 }.TryGetValue(decoded, out var found) && found == 1, Is.True);
+
+			// repeat with a 4-element and a 5-element tuple (the h[^2], h[^1] hash branch)
+			foreach (var inner in new IVarTuple[] { STuple.Create("a", 123L, true, 4.5), STuple.Create("a", 123L, true, 4.5, "z") })
+			{
+				var p = TuPack.EncodeKey(inner);
+				var d = TuPack.DecodeKey<IVarTuple>(p)!;
+				Assert.That(d, Is.InstanceOf<SlicedTuple>());
+				Assert.That(d.GetHashCode(), Is.EqualTo(inner.GetHashCode()));
+				Assert.That(d, Is.EqualTo(inner));
+			}
+
+			// ordering
+			Assert.That(decoded.CompareTo(expected), Is.Zero);
+			Assert.That(decoded.CompareTo(STuple.Create("a", 124L, true)), Is.LessThan(0));
+
+			// empty embedded tuple
+			{
+				var d = TuPack.DecodeKey<IVarTuple>(Slice.Unescape("<05><00>"));
+				Assert.That(d!.Count, Is.EqualTo(0));
+				Assert.That(d, Is.EqualTo(STuple.Empty));
+			}
+
+			// nested embedded tuples
+			{
+				var p = TuPack.EncodeKey(STuple.Create(1, STuple.Create(2, 3)));
+				var d = TuPack.DecodeKey<IVarTuple>(p)!;
+				Assert.That(d.Get<IVarTuple>(1), Is.EqualTo(STuple.Create(2, 3)));
+				Assert.That(d[1], Is.EqualTo(STuple.Create(2, 3)));
+			}
+
+			// every element type, decoded through Get<T> on the nested tuple
+			{
+				var uuid128 = Uuid128.Parse("00010203-0405-0607-0809-0a0b0c0d0e0f");
+				var vs = VersionStamp.Incomplete();
+				var inner = STuple.Create("hello", 123L, true, 4.5, uuid128, vs, Slice.FromString("bytes"));
+				var p = TuPack.EncodeKey(STuple.Create(inner));
+				var d = TuPack.DecodeKey<IVarTuple>(p)!.Get<IVarTuple>(0)!;
+				Assert.That(d, Is.InstanceOf<SlicedTuple>());
+				Assert.That(d.Get<string>(0), Is.EqualTo("hello"));
+				Assert.That(d.Get<long>(1), Is.EqualTo(123L));
+				Assert.That(d.Get<bool>(2), Is.True);
+				Assert.That(d.Get<double>(3), Is.EqualTo(4.5));
+				Assert.That(d.Get<Uuid128>(4), Is.EqualTo(uuid128));
+				Assert.That(d.Get<VersionStamp>(5), Is.EqualTo(vs));
+				Assert.That(d.Get<Slice>(6), Is.EqualTo(Slice.FromString("bytes")));
+			}
+
+			// a span input is copied: mutating the source array after decoding must not affect the result
+			{
+				var bytes = TuPack.EncodeKey(STuple.Create("x", 1L)).ToArray();
+				var d = TuPack.DecodeKey<IVarTuple>(bytes.AsSpan())!;
+				Array.Clear(bytes);
+				Assert.That(d.Get<string>(0), Is.EqualTo("x"));
+				Assert.That(d.Get<long>(1), Is.EqualTo(1L));
+			}
+
+			// SlicedTuple cannot be extended: pinned so a future reader finds it
+			Assert.That(() => decoded.Append(1), Throws.InstanceOf<NotSupportedException>());
+		}
+
+		[Test]
 		public void Test_TuplePack_SameBytes()
 		{
 			// two ways on packing the "same" tuple yield the same binary output

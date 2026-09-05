@@ -66,7 +66,14 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <param name="slice">Slice that contains the binary representation of a tuple item.</param>
 		/// <returns>Decoded value, or an exception if the item type is not compatible.</returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public static T? Deserialize(Slice slice) => Decoder(slice.Span);
+		public static T? Deserialize(Slice slice)
+		{
+			if (typeof(T) == typeof(IVarTuple))
+			{ // the Slice decoder returns a SlicedTuple that views the caller's memory, the span decoder would copy it
+				return (T?) (object?) TuplePackers.DeserializeTuple(slice);
+			}
+			return Decoder(slice.Span);
+		}
 
 		/// <summary>Deserializes a tuple segment into a value of type <typeparamref name="T"/>.</summary>
 		/// <param name="span">Span that contains the binary representation of a tuple item</param>

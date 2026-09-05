@@ -1478,7 +1478,7 @@ namespace SnowBank.Data.Tuples.Binary
 					case TupleTypes.Bytes: return TupleParser.ParseBytes(slice);
 					case TupleTypes.Utf8: return TupleParser.ParseUtf8(slice);
 					case TupleTypes.LegacyTupleStart: throw TupleParser.FailLegacyTupleNotSupported();
-					case TupleTypes.EmbeddedTuple: return TupleParser.ParseEmbeddedTuple(slice).ToTuple();
+					case TupleTypes.EmbeddedTuple: return TupleParser.ParseEmbeddedTuple(Slice.FromBytes(slice));
 					case TupleTypes.NegativeBigInteger: return TupleParser.ParseNegativeBigInteger(slice);
 				}
 			}
@@ -1949,7 +1949,7 @@ namespace SnowBank.Data.Tuples.Binary
 				TupleTypes.Nil => null,
 				TupleTypes.Bytes => TuPack.Unpack(TupleParser.ParseBytes(slice)),
 				TupleTypes.LegacyTupleStart => throw TupleParser.FailLegacyTupleNotSupported(),
-				TupleTypes.EmbeddedTuple => TupleParser.ParseEmbeddedTuple(slice).ToTuple(),
+				TupleTypes.EmbeddedTuple => TupleParser.ParseEmbeddedTuple(Slice.FromBytes(slice)),
 				_ => throw new FormatException("Cannot convert tuple segment into a Tuple")
 			};
 		}
