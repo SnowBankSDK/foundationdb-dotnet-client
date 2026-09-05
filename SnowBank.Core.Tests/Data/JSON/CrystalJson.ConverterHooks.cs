@@ -30,6 +30,8 @@ namespace SnowBank.Data.Json.Tests
 	using SnowBank.Data;
 
 	/// <summary>A plain member-based type, given a bespoke format by an author-written hook in its container</summary>
+	// this type decides its own JSON format on purpose; the generator tests assert the diagnostic
+#pragma warning disable CJSON0025
 	public sealed record HookedCat
 	{
 
@@ -38,8 +40,11 @@ namespace SnowBank.Data.Json.Tests
 		public int Lives { get; set; }
 
 	}
+#pragma warning restore CJSON0025
 
 	/// <summary>Root of a small polymorphic tree, whose derived type is hooked</summary>
+	// this type decides its own JSON format on purpose; the generator tests assert the diagnostic
+#pragma warning disable CJSON0025
 	[JsonPolymorphic]
 	[JsonDerivedType(typeof(HookedDog), "dog")]
 	public abstract record HookedAnimal
@@ -48,14 +53,18 @@ namespace SnowBank.Data.Json.Tests
 		public string? Name { get; set; }
 
 	}
+#pragma warning restore CJSON0025
 
 	/// <inheritdoc cref="HookedAnimal" />
+	// this type decides its own JSON format on purpose; the generator tests assert the diagnostic
+#pragma warning disable CJSON0025
 	public sealed record HookedDog : HookedAnimal
 	{
 
 		public bool Barks { get; set; }
 
 	}
+#pragma warning restore CJSON0025
 
 	/// <summary>Container whose per-type scopes carry author-written converter methods</summary>
 	/// <remarks>A scope is named after the type it serves, so inside the container that name refers to the SCOPE. Both the registration and the hook signatures name the serialized type with a qualified name.</remarks>
@@ -152,7 +161,7 @@ namespace SnowBank.Data.Json.Tests
 			// ever let a null through, both asserts below would die on a NullReferenceException instead of passing.
 			var settings = CrystalJsonSettings.JsonCompact;
 
-			var text = CrystalJson.Serialize<HookedCat?>(null, HookedHost.HookedCat.Default, settings);
+			var text = CrystalJson.Serialize<HookedCat>(null, HookedHost.HookedCat.Default, settings);
 			Log($"serialize(null): {text}");
 
 			var context = CrystalJsonPackContext.Create(settings, null);

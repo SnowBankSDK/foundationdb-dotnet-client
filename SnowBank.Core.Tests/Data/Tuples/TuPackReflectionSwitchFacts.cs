@@ -74,7 +74,7 @@ namespace SnowBank.Data.Tuples.Tests
 
 		/// <summary>Asserts the delegate throws <see cref="NotSupportedException"/>, unwrapping the <see cref="TypeInitializationException"/>
 		/// that the runtime raises when the failing builder runs inside a static field initializer.</summary>
-		private static void AssertThrowsReflectionDisabled(TestDelegate action)
+		private static void AssertThrowsReflectionDisabled(Action action)
 		{
 			var ex = Assert.Catch(action);
 			while (ex is TypeInitializationException && ex.InnerException is not null)

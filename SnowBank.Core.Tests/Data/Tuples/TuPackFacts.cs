@@ -1584,7 +1584,7 @@ namespace SnowBank.Data.Tuples.Tests
 			{
 				var bytes = TuPack.EncodeKey(STuple.Create("x", 1L)).ToArray();
 				var d = TuPack.DecodeKey<IVarTuple>(bytes.AsSpan())!;
-				Array.Clear(bytes);
+				Array.Clear(bytes, 0, bytes.Length);
 				Assert.That(d.Get<string>(0), Is.EqualTo("x"));
 				Assert.That(d.Get<long>(1), Is.EqualTo(1L));
 			}

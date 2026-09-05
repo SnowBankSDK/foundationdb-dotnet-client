@@ -201,7 +201,8 @@ namespace FoundationDB.Client.Tests
 		{
 			var container = this.Container ?? throw new InvalidOperationException("The container has not been started.");
 			var result = await container.ExecAsync([ "fdbcli", ..arguments ], ct).ConfigureAwait(false);
-			return ((int) result.ExitCode, result.Stdout.Length != 0 ? result.Stdout : result.Stderr);
+			var exitCode = result.ExitCode ?? throw new InvalidOperationException("Docker did not report an exit code for the fdbcli exec.");
+			return ((int) exitCode, result.Stdout.Length != 0 ? result.Stdout : result.Stderr);
 		}
 #else
 		// Docker.DotNet cannot run on the .NET Framework CLR (its request serialization reads generic attributes,

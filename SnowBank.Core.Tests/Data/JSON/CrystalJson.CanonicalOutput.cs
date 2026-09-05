@@ -142,7 +142,7 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(text, Is.EqualTo("""{"Customer":"acme","Id":"X-42","Total":9.9,"Weight":1.0}"""));
 
 			// the core invariant: parse-then-reserialize equals built-from-scratch
-			Assert.That(CrystalJson.SerializeJson(CrystalJson.Parse(text), canonical), Is.EqualTo(text));
+			Assert.That(CrystalJson.Parse(text).ToJsonText(canonical), Is.EqualTo(text));
 
 			// bytes route agrees with the text route
 			Assert.That(CrystalJson.ToSlice(order, canonical).ToStringUtf8(), Is.EqualTo(text));
@@ -217,8 +217,8 @@ namespace SnowBank.Data.Json.Tests
 			{
 				foreach (var subject in subjects)
 				{
-					string once = CrystalJson.SerializeJson(subject, s);
-					string twice = CrystalJson.SerializeJson(CrystalJson.Parse(once), s);
+					string once = subject.ToJsonText(s);
+					string twice = CrystalJson.Parse(once).ToJsonText(s);
 					Assert.That(twice, Is.EqualTo(once), $"not closed under reparse for settings {s.Flags}");
 				}
 			}
@@ -233,14 +233,14 @@ namespace SnowBank.Data.Json.Tests
 			var canonical = CrystalJsonSettings.JsonCompact.Canonical();
 			var doc = CrystalJson.Parse("""{"zeta":1.0,"alpha":1.10,"Baz":1E1,"bar":{"b":18446744073709551615,"a":[1e-7,0.000001,-0]}}""");
 			Assert.That(
-				CrystalJson.SerializeJson(doc, canonical),
+				doc.ToJsonText(canonical),
 				Is.EqualTo("""{"Baz":10.0,"alpha":1.1,"bar":{"a":[1e-7,0.000001,0],"b":18446744073709551615},"zeta":1.0}"""));
 
 			// FROZEN: same document, CrystalJsonSettings.Json's default layout (single-line, spaced).
 			// Sanity-checked: keys still sort ordinally (Baz, alpha, bar, zeta), numbers are still
 			// canonical (10.0, 1.1, 1e-7, 0.000001, 0, the full-width ulong, 1.0); only the spacing differs.
 			Assert.That(
-				CrystalJson.SerializeJson(doc, CrystalJsonSettings.Json.Canonical()),
+				doc.ToJsonText(CrystalJsonSettings.Json.Canonical()),
 				Is.EqualTo("""{ "Baz": 10.0, "alpha": 1.1, "bar": { "a": [ 1e-7, 0.000001, 0 ], "b": 18446744073709551615 }, "zeta": 1.0 }"""));
 
 			// FROZEN: same document, the genuinely indented layout (multi-line, tab-indented) —
@@ -263,7 +263,7 @@ namespace SnowBank.Data.Json.Tests
 				"\t},",
 				"\t\"zeta\": 1.0",
 				"}");
-			Assert.That(CrystalJson.SerializeJson(doc, CrystalJsonSettings.JsonIndented.Canonical()), Is.EqualTo(indentedExpected));
+			Assert.That(doc.ToJsonText(CrystalJsonSettings.JsonIndented.Canonical()), Is.EqualTo(indentedExpected));
 
 			// FROZEN: same document, compact layout plus WithNullMembers(). A DOM-level explicit JSON
 			// null (JsonNull.Null, what a parser produces for a literal "null") is never discarded
@@ -271,7 +271,7 @@ namespace SnowBank.Data.Json.Tests
 			// is. This document has no member that hits that path, so this case proves layout stability
 			// under the combination, not null emission; the next case proves emission, on a typed value.
 			Assert.That(
-				CrystalJson.SerializeJson(doc, CrystalJsonSettings.JsonCompact.Canonical().WithNullMembers()),
+				doc.ToJsonText(CrystalJsonSettings.JsonCompact.Canonical().WithNullMembers()),
 				Is.EqualTo("""{"Baz":10.0,"alpha":1.1,"bar":{"a":[1e-7,0.000001,0],"b":18446744073709551615},"zeta":1.0}"""));
 
 			// FROZEN: a tiny typed value with one null member. Null-member visibility is a
