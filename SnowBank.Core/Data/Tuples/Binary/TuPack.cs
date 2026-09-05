@@ -796,12 +796,22 @@ namespace SnowBank.Data.Tuples
 		/// <param name="tuple">Unpacked tuple, or the empty tuple if the key is <see cref="Slice.Empty"/></param>
 		/// <exception cref="System.ArgumentNullException">If <paramref name="packedKey"/> is equal to <see cref="Slice.Nil"/></exception>
 		[Pure]
-		public static bool TryUnpack(ReadOnlySpan<byte> packedKey, out SpanTuple tuple) => TryUnpack(packedKey, default, out tuple);
+		public static bool TryUnpack(ReadOnlySpan<byte> packedKey, out SpanTuple tuple)
+		{
+			if (packedKey.Length == 0)
+			{
+				tuple = SpanTuple.Empty;
+				return true;
+			}
+
+			return TuplePackers.TryUnpackWithHeapBuffer(packedKey, 0, out tuple);
+		}
 
 		/// <summary>Unpack a tuple from a serialized key blob, using a caller-supplied buffer for the element ranges</summary>
 		/// <param name="packedKey">Binary key containing a previously packed tuple</param>
-		/// <param name="buffer">Receives the range of each element, typically <c>stackalloc Range[8]</c>. The returned tuple reads from this buffer, so it must stay valid and untouched while the tuple is used. When the tuple has more elements than the buffer, a heap array is allocated instead.</param>
+		/// <param name="buffer">Receives the range of each element, typically <c>stackalloc Range[8]</c>. The returned tuple reads from this buffer, so it must stay valid and untouched while the tuple is used.</param>
 		/// <param name="tuple">Unpacked tuple, or the empty tuple if the key is <see cref="Slice.Empty"/></param>
+		/// <returns><see langword="false"/> when the buffer is too small or the bytes are not a valid tuple; use <see cref="CountItems"/> to size a buffer</returns>
 		[Pure]
 		public static bool TryUnpack(ReadOnlySpan<byte> packedKey, Span<Range> buffer, out SpanTuple tuple)
 		{
@@ -820,12 +830,18 @@ namespace SnowBank.Data.Tuples
 		/// <returns>Unpacked tuple, or the empty tuple if the key is <see cref="Slice.Empty"/></returns>
 		/// <exception cref="System.ArgumentNullException">If <paramref name="packedKey"/> is equal to <see cref="Slice.Nil"/></exception>
 		[Pure]
-		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey) => Unpack(packedKey, default);
+		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey)
+		{
+			if (packedKey.Length == 0) return SpanTuple.Empty;
+
+			return TuplePackers.UnpackWithHeapBuffer(packedKey, 0);
+		}
 
 		/// <summary>Unpack a tuple from a serialized key blob, using a caller-supplied buffer for the element ranges</summary>
 		/// <param name="packedKey">Binary key containing a previously packed tuple</param>
-		/// <param name="buffer">Receives the range of each element, typically <c>stackalloc Range[8]</c>. The returned tuple reads from this buffer, so it must stay valid and untouched while the tuple is used. When the tuple has more elements than the buffer, a heap array is allocated instead.</param>
+		/// <param name="buffer">Receives the range of each element, typically <c>stackalloc Range[8]</c>. The returned tuple reads from this buffer, so it must stay valid and untouched while the tuple is used.</param>
 		/// <returns>Unpacked tuple, or the empty tuple if <paramref name="packedKey"/> is empty</returns>
+		/// <exception cref="ArgumentException">The tuple has more elements than <paramref name="buffer"/> can hold. Use <see cref="CountItems"/> to size the buffer first.</exception>
 		[Pure]
 		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey, Span<Range> buffer)
 		{
@@ -833,6 +849,36 @@ namespace SnowBank.Data.Tuples
 
 			var reader = new TupleReader(packedKey);
 			return TuplePackers.Unpack(ref reader, buffer);
+		}
+
+		/// <summary>Counts the number of items in a packed tuple, without decoding them</summary>
+		/// <param name="packedKey">Binary key containing a previously packed tuple</param>
+		/// <returns>Number of items in the tuple, so a caller can size a <see cref="Range"/> buffer for the buffered <c>Unpack</c>/<c>TryUnpack</c> overloads</returns>
+		/// <exception cref="FormatException">The bytes are not a valid tuple</exception>
+		[Pure]
+		public static int CountItems(ReadOnlySpan<byte> packedKey)
+		{
+			var reader = new TupleReader(packedKey);
+			return TuplePackers.CountItems(ref reader);
+		}
+
+		/// <summary>Counts the number of items in a packed tuple, without decoding them</summary>
+		/// <param name="packedKey">Binary key containing a previously packed tuple</param>
+		/// <param name="count">Number of items in the tuple, or 0 if the bytes are not a valid tuple</param>
+		/// <returns><see langword="false"/> if the bytes are not a valid tuple</returns>
+		[Pure]
+		public static bool TryCountItems(ReadOnlySpan<byte> packedKey, out int count)
+		{
+			try
+			{
+				count = CountItems(packedKey);
+				return true;
+			}
+			catch (FormatException)
+			{
+				count = 0;
+				return false;
+			}
 		}
 
 		/// <summary>Unpack a tuple from a binary representation</summary>

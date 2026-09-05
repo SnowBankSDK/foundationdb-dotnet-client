@@ -3915,12 +3915,14 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <returns>Decoded tuple</returns>
 		internal static SlicedTuple Unpack(Slice buffer, bool embedded)
 		{
-			scoped var reader = new TupleReader(buffer.Span, embedded ? 1 : 0);
+			int depth = embedded ? 1 : 0;
+			scoped var reader = new TupleReader(buffer.Span, depth);
 			Span<Range> tokens = stackalloc Range[StackTokenCount];
+			// try the stack buffer first, and only allocate a heap array, sized exactly, when the tuple does not fit in it.
 			if (!TryUnpack(ref reader, tokens, out var tuple, out var error))
 			{
 				if (error != null) throw error;
-				return SlicedTuple.Empty;
+				tuple = UnpackWithHeapBuffer(buffer.Span, depth);
 			}
 			return tuple.ToTuple(buffer);
 		}
@@ -3930,11 +3932,11 @@ namespace SnowBank.Data.Tuples.Binary
 
 		/// <summary>Unpacks a tuple from a buffer</summary>
 		/// <param name="reader">Reader positioned on the start of the packed representation of a tuple with zero or more elements</param>
-		/// <param name="buffer">Receives the range of each element. When the tuple has more elements than the buffer can hold, the method continues in a heap-allocated array.</param>
-		/// <returns>Decoded tuple, which references <paramref name="buffer"/> (or the heap array) for as long as it is used</returns>
+		/// <param name="buffer">Receives the range of each element.</param>
+		/// <returns>Decoded tuple, which references <paramref name="buffer"/> for as long as it is used</returns>
+		/// <exception cref="ArgumentException">The tuple has more items than <paramref name="buffer"/> can hold. Call <see cref="CountItems"/> first to size the buffer.</exception>
 		internal static SpanTuple Unpack(scoped ref TupleReader reader, Span<Range> buffer)
 		{
-			var items = buffer;
 			int p = 0;
 			while (true)
 			{
@@ -3944,14 +3946,11 @@ namespace SnowBank.Data.Tuples.Binary
 					break;
 				}
 
-				if (p >= items.Length)
+				if (p >= buffer.Length)
 				{
-					// the buffer is full: continue in a heap array, growing by 4 elements at a time (tuples stay small)
-					var tmp = new Range[p + 4];
-					items.CopyTo(tmp);
-					items = tmp;
+					throw new ArgumentException($"The buffer holds {buffer.Length} ranges, but the tuple has more than {buffer.Length} items.", nameof(buffer));
 				}
-				items[p++] = item;
+				buffer[p++] = item;
 			}
 
 			if (reader.HasMore)
@@ -3959,12 +3958,17 @@ namespace SnowBank.Data.Tuples.Binary
 				throw new FormatException("Parsing of tuple failed failed before reaching the end of the key");
 			}
 
-			return new SpanTuple(reader.Input, items[..p]);
+			return new SpanTuple(reader.Input, buffer[..p]);
 		}
 
+		/// <summary>Unpacks a tuple from a buffer</summary>
+		/// <param name="reader">Reader positioned on the start of the packed representation of a tuple with zero or more elements</param>
+		/// <param name="buffer">Receives the range of each element.</param>
+		/// <param name="tuple">Decoded tuple, which references <paramref name="buffer"/> for as long as it is used</param>
+		/// <param name="error">Set when the bytes are not a valid tuple; left <see langword="null"/> when <paramref name="buffer"/> was simply too small</param>
+		/// <returns><see langword="false"/> when the tuple has more items than <paramref name="buffer"/> can hold (with <paramref name="error"/> left <see langword="null"/>, call <see cref="CountItems"/> to size the buffer), or when the bytes are not a valid tuple (with <paramref name="error"/> set)</returns>
 		internal static bool TryUnpack(scoped ref TupleReader reader, Span<Range> buffer, out SpanTuple tuple, out Exception? error)
 		{
-			var items = buffer;
 			int p = 0;
 			while (true)
 			{
@@ -3972,34 +3976,109 @@ namespace SnowBank.Data.Tuples.Binary
 				{
 					if (error != null)
 					{
-						goto too_small;
+						tuple = default;
+						return false;
 					}
 					break;
 				}
 
-				if (p >= items.Length)
+				if (p >= buffer.Length)
 				{
-					// the buffer is full: continue in a heap array, growing by 4 elements at a time (tuples stay small)
-					var tmp = new Range[p + 4];
-					items.CopyTo(tmp);
-					items = tmp;
+					tuple = default;
+					error = null;
+					return false;
 				}
-				items[p++] = token;
+				buffer[p++] = token;
 			}
 
 			if (reader.HasMore)
 			{
-				goto too_small;
+				tuple = default;
+				error = new FormatException("Parsing of tuple failed failed before reaching the end of the key");
+				return false;
 			}
 
-			tuple = new SpanTuple(reader.Input, items[..p]);
+			tuple = new SpanTuple(reader.Input, buffer[..p]);
 			error = null;
 			return true;
+		}
 
-		too_small:
-			tuple = default;
-			return false;
+		/// <summary>Unpacks a tuple into a heap array sized exactly for it</summary>
+		/// <param name="input">Bytes of the tuple (or embedded tuple content) to unpack</param>
+		/// <param name="depth">Depth to open the reader at, matching the attempt that ran out of buffer</param>
+		/// <returns>Decoded tuple, backed by a freshly allocated array holding exactly its item count</returns>
+		/// <remarks>Called once a caller-supplied stack buffer turned out to be too small: it counts the items, allocates exactly that many ranges, and unpacks again.</remarks>
+		internal static SpanTuple UnpackWithHeapBuffer(ReadOnlySpan<byte> input, int depth)
+		{
+			var countReader = new TupleReader(input, depth);
+			int count = CountItems(ref countReader);
+			var heap = new Range[count];
+			var reader = new TupleReader(input, depth);
+			return Unpack(ref reader, heap);
+		}
 
+		/// <summary>Unpacks a tuple into a heap array sized exactly for it, without throwing when the bytes are not a valid tuple</summary>
+		/// <param name="input">Bytes of the tuple (or embedded tuple content) to unpack</param>
+		/// <param name="depth">Depth to open the reader at, matching the attempt that ran out of buffer</param>
+		/// <param name="tuple">Decoded tuple, backed by a freshly allocated array holding exactly its item count</param>
+		/// <returns><see langword="false"/> if the bytes are not a valid tuple</returns>
+		internal static bool TryUnpackWithHeapBuffer(ReadOnlySpan<byte> input, int depth, out SpanTuple tuple)
+		{
+			var countReader = new TupleReader(input, depth);
+			if (!TryCountItems(ref countReader, out int count, out _))
+			{
+				tuple = default;
+				return false;
+			}
+
+			var reader = new TupleReader(input, depth);
+			return TryUnpack(ref reader, new Range[count], out tuple, out _);
+		}
+
+		/// <summary>Counts the number of items in a packed tuple, without decoding them</summary>
+		/// <param name="reader">Reader positioned on the start of the packed representation of a tuple with zero or more elements</param>
+		/// <returns>Number of items in the tuple</returns>
+		/// <exception cref="FormatException">The bytes are not a valid tuple</exception>
+		internal static int CountItems(scoped ref TupleReader reader)
+		{
+			if (!TryCountItems(ref reader, out int count, out var error))
+			{
+				throw error!;
+			}
+			return count;
+		}
+
+		/// <summary>Counts the number of items in a packed tuple, without decoding them</summary>
+		/// <param name="reader">Reader positioned on the start of the packed representation of a tuple with zero or more elements</param>
+		/// <param name="count">Number of items in the tuple, or 0 if the bytes are not a valid tuple</param>
+		/// <param name="error">Set when the bytes are not a valid tuple</param>
+		/// <returns><see langword="false"/> if the bytes are not a valid tuple</returns>
+		internal static bool TryCountItems(scoped ref TupleReader reader, out int count, out Exception? error)
+		{
+			count = 0;
+			while (true)
+			{
+				if (!TupleParser.TryParseNext(ref reader, out _, out error))
+				{
+					if (error != null)
+					{
+						count = 0;
+						return false;
+					}
+					break;
+				}
+				count++;
+			}
+
+			if (reader.HasMore)
+			{
+				count = 0;
+				error = new FormatException("Parsing of tuple failed failed before reaching the end of the key");
+				return false;
+			}
+
+			error = null;
+			return true;
 		}
 
 		/// <summary>Ensure that a slice is a packed tuple that contains a single and valid element</summary>

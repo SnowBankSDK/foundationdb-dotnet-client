@@ -34,6 +34,7 @@
 
 namespace SnowBank.Data.Tuples.Tests
 {
+	using System.Buffers;
 	using System.Net;
 	using System.Numerics;
 
@@ -2772,12 +2773,36 @@ namespace SnowBank.Data.Tuples.Tests
 				int count = reference.Count;
 				var expected = TuPack.Unpack(packed);
 
-				Check(SpanTuple.Unpack(packed.Span, stackalloc Range[8]), reference, count, packed, expected);
-				Check(SpanTuple.Unpack(packed.Span, stackalloc Range[1]), reference, count, packed, expected); // forces growth for any tuple with 2 or more elements
-				Check(TuPack.Unpack(packed.Span, stackalloc Range[8]), reference, count, packed, expected);
+				Assert.That(TuPack.CountItems(packed.Span), Is.EqualTo(count));
+				Assert.That(TuPack.TryCountItems(packed.Span, out var counted), Is.True);
+				Assert.That(counted, Is.EqualTo(count));
 
-				Assert.That(TuPack.TryUnpack(packed.Span, stackalloc Range[8], out var tried), Is.True);
+				// a buffer that exactly fits, or one with room to spare, must produce the same result as the allocating path
+				Check(SpanTuple.Unpack(packed.Span, stackalloc Range[count]), reference, count, packed, expected);
+				Check(SpanTuple.Unpack(packed.Span, stackalloc Range[count + 8]), reference, count, packed, expected);
+				Check(TuPack.Unpack(packed.Span, stackalloc Range[count + 8]), reference, count, packed, expected);
+
+				Assert.That(TuPack.TryUnpack(packed.Span, stackalloc Range[count + 8], out var tried), Is.True);
 				Assert.That(tried.Count, Is.EqualTo(count));
+
+				if (count > 0)
+				{
+					// a buffer with one less slot than the tuple needs must reject, never grow
+					ArgumentException? caught = null;
+					try
+					{
+						SpanTuple.Unpack(packed.Span, stackalloc Range[count - 1]);
+						Assert.Fail("expected ArgumentException for a buffer smaller than the tuple");
+					}
+					catch (ArgumentException e)
+					{
+						caught = e;
+					}
+					Assert.That(caught, Is.Not.Null);
+					Assert.That(caught!.ParamName, Is.EqualTo("buffer"));
+
+					Assert.That(TuPack.TryUnpack(packed.Span, stackalloc Range[count - 1], out _), Is.False);
+				}
 			}
 
 			// empty tuple
@@ -2850,6 +2875,80 @@ namespace SnowBank.Data.Tuples.Tests
 
 				Assert.That(TuPack.TryUnpack(bad.Span, out _), Is.False);
 				Assert.That(TuPack.TryUnpack(bad.Span, stackalloc Range[8], out _), Is.False);
+
+				Assert.That(TuPack.TryCountItems(bad.Span, out var badCount), Is.False);
+				Assert.That(badCount, Is.EqualTo(0));
+				Assert.That(() => TuPack.CountItems(bad.Span), Throws.InstanceOf(expectedType!));
+			}
+		}
+
+		[Test]
+		public void Test_TuPack_Unpack_Buffer_Overflow_Throws()
+		{
+			// a tuple with more items than the buffer holds must reject (never grow), and CountItems must report the real count
+
+			var packed = TuPack.EncodeKey(1, 2, 3, 4, 5, 6, 7, 8, 9);
+
+			Assert.That(TuPack.CountItems(packed.Span), Is.EqualTo(9));
+			Assert.That(TuPack.TryCountItems(packed.Span, out var counted), Is.True);
+			Assert.That(counted, Is.EqualTo(9));
+
+			// buffer too small: Unpack throws, TryUnpack returns false
+			var ex = Assert.Throws<ArgumentException>(() => TuPack.Unpack(packed.Span, new Range[8]));
+			Assert.That(ex!.ParamName, Is.EqualTo("buffer"));
+
+			Assert.That(TuPack.TryUnpack(packed.Span, new Range[8], out var failed), Is.False);
+			Assert.That(failed.Count, Is.EqualTo(0));
+
+			// buffer that fits exactly, and a buffer with room to spare, both succeed with the same items
+			var expected = TuPack.Unpack(packed);
+			foreach (int size in new[] { 9, 16 })
+			{
+				var buffer = new Range[size];
+				var tuple = TuPack.Unpack(packed.Span, buffer);
+				Assert.That(tuple.Count, Is.EqualTo(9));
+				Assert.That(tuple.ToTuple(), Is.EqualTo(expected));
+
+				Assert.That(TuPack.TryUnpack(packed.Span, new Range[size], out var tried), Is.True);
+				Assert.That(tried.Count, Is.EqualTo(9));
+				Assert.That(tried.ToTuple(), Is.EqualTo(expected));
+			}
+		}
+
+		[Test]
+		public void Test_TuPack_Unpack_Empty_Tuple()
+		{
+			Assert.That(TuPack.CountItems(Slice.Empty.Span), Is.EqualTo(0));
+			Assert.That(TuPack.TryCountItems(Slice.Empty.Span, out var count), Is.True);
+			Assert.That(count, Is.EqualTo(0));
+
+			Assert.That(TuPack.TryUnpack(Slice.Empty.Span, out var tuple), Is.True);
+			Assert.That(tuple.Count, Is.EqualTo(0));
+		}
+
+		[Test]
+		public void Test_TuPack_Unpack_Buffer_Rent_Pattern()
+		{
+			// a caller that does not know the tuple's size up front: try a small stack buffer, count on failure, then rent exactly enough
+
+			var packed = TuPack.EncodeKey("alpha", "bravo", "charlie", "delta", "echo");
+			var expected = TuPack.Unpack(packed);
+
+			Assert.That(TuPack.TryUnpack(packed.Span, stackalloc Range[2], out _), Is.False);
+
+			int count = TuPack.CountItems(packed.Span);
+			Assert.That(count, Is.EqualTo(5));
+
+			var rented = ArrayPool<Range>.Shared.Rent(count);
+			try
+			{
+				Assert.That(TuPack.TryUnpack(packed.Span, rented.AsSpan(0, count), out var tuple), Is.True);
+				Assert.That(tuple.Count, Is.EqualTo(count));
+				Assert.That(tuple.ToTuple(), Is.EqualTo(expected));
+			}
+			finally
+			{
+				ArrayPool<Range>.Shared.Return(rented);
 			}
 		}
 

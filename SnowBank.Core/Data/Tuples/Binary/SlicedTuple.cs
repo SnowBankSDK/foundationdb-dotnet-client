@@ -72,7 +72,12 @@ namespace SnowBank.Data.Tuples.Binary
 
 			scoped var reader = new TupleReader(packedKey.Span);
 			Span<Range> buffer = stackalloc Range[TuplePackers.StackTokenCount];
-			var st = TuplePackers.Unpack(ref reader, buffer);
+			// try the stack buffer first, and only allocate a heap array, sized exactly, when the tuple does not fit in it.
+			if (!TuplePackers.TryUnpack(ref reader, buffer, out var st, out var error))
+			{
+				if (error != null) throw error;
+				st = TuplePackers.UnpackWithHeapBuffer(packedKey.Span, 0);
+			}
 			return st.ToTuple(packedKey);
 		}
 
@@ -100,10 +105,14 @@ namespace SnowBank.Data.Tuples.Binary
 
 			scoped var reader = new TupleReader(packedKey.Span);
 			Span<Range> buffer = stackalloc Range[TuplePackers.StackTokenCount];
-			if (!TuplePackers.TryUnpack(ref reader, buffer, out var st, out _))
+			if (!TuplePackers.TryUnpack(ref reader, buffer, out var st, out var error))
 			{
-				tuple = null;
-				return false;
+				if (error != null)
+				{
+					tuple = null;
+					return false;
+				}
+				st = TuplePackers.UnpackWithHeapBuffer(packedKey.Span, 0);
 			}
 
 			tuple = st.ToTuple(packedKey);

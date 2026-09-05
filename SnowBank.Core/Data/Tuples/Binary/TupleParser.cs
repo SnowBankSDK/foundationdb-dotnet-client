@@ -2703,7 +2703,12 @@ namespace SnowBank.Data.Tuples.Binary
 			var chunk = slice.Substring(1, slice.Count - 2);
 			scoped var reader = new TupleReader(chunk.Span, depth: 1);
 			Span<Range> buffer = stackalloc Range[TuplePackers.StackTokenCount];
-			return TuplePackers.Unpack(ref reader, buffer).ToTuple(chunk);
+			if (!TuplePackers.TryUnpack(ref reader, buffer, out var tuple, out var error))
+			{
+				if (error != null) throw error;
+				tuple = TuplePackers.UnpackWithHeapBuffer(chunk.Span, 1);
+			}
+			return tuple.ToTuple(chunk);
 		}
 
 		/// <summary>Parse a tuple segment containing an embedded tuple</summary>
@@ -2717,8 +2722,8 @@ namespace SnowBank.Data.Tuples.Binary
 				return true;
 			}
 
-			var reader = new TupleReader(slice.Slice(1, slice.Length - 2), depth: 1);
-			return TuplePackers.TryUnpack(ref reader, default, out value, out _);
+			var content = slice.Slice(1, slice.Length - 2);
+			return TuplePackers.TryUnpackWithHeapBuffer(content, 1, out value);
 		}
 
 		/// <summary>Parse a tuple segment containing an embedded tuple</summary>
@@ -2728,8 +2733,8 @@ namespace SnowBank.Data.Tuples.Binary
 			Contract.Debug.Requires(slice.Length > 0 && slice[0] == TupleTypes.EmbeddedTuple && slice[^1] == 0);
 			if (slice.Length <= 2) return SpanTuple.Empty;
 
-			var reader = new TupleReader(slice.Slice(1, slice.Length - 2), depth: 1);
-			return TuplePackers.Unpack(ref reader, default);
+			var content = slice.Slice(1, slice.Length - 2);
+			return TuplePackers.UnpackWithHeapBuffer(content, 1);
 		}
 
 #if !NET5_0_OR_GREATER

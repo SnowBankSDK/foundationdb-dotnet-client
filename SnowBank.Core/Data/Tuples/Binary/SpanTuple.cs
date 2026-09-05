@@ -80,12 +80,16 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <para>This is the same as <see cref="TuPack.Unpack(System.Slice)"/>, except that it will expose the concrete type <see cref="SpanTuple"/> instead of the <see cref="IVarTuple"/> interface.</para>
 		/// </remarks>
 		[Pure]
-		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey) => Unpack(packedKey, default);
+		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey)
+		{
+			return TuplePackers.UnpackWithHeapBuffer(packedKey, 0);
+		}
 
 		/// <summary>Unpack a tuple from a serialized key blob, using a caller-supplied buffer for the element ranges</summary>
 		/// <param name="packedKey">Binary key containing a previously packed tuple</param>
-		/// <param name="buffer">Receives the range of each element, typically <c>stackalloc Range[8]</c>. The returned tuple reads from this buffer, so it must stay valid and untouched while the tuple is used. When the tuple has more elements than the buffer, a heap array is allocated instead.</param>
+		/// <param name="buffer">Receives the range of each element, typically <c>stackalloc Range[8]</c>. The returned tuple reads from this buffer, so it must stay valid and untouched while the tuple is used.</param>
 		/// <returns>Unpacked tuple, or the empty tuple if <paramref name="packedKey"/> is empty</returns>
+		/// <exception cref="ArgumentException">The tuple has more elements than <paramref name="buffer"/> can hold. Use <see cref="TuPack.CountItems"/> to size the buffer first.</exception>
 		[Pure]
 		public static SpanTuple Unpack(ReadOnlySpan<byte> packedKey, Span<Range> buffer)
 		{
