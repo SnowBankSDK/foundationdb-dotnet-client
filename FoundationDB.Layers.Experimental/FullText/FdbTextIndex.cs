@@ -197,7 +197,7 @@ namespace FoundationDB.Layers.FullText
 				}
 
 				// Store the new document (so a later Update/Remove can recompute these terms) and index it.
-				trans.Set(documentKey, FdbValue.ToTextUtf8(CrystalJson.Serialize(document)));
+				trans.Set(documentKey, FdbValue.ToTextUtf8(document.ToJsonText()));
 				this.Index(trans, id, document);
 			}
 
