@@ -235,6 +235,22 @@ namespace FoundationDB.Client.Tests
 			// ITuple Unpack(ReadOnlySpan<byte>, Span<Range>): same decoder over a caller-supplied buffer
 			Assert.That(location.Unpack(Slice.Unescape("PREFIX<02>hello<00><15>{").Span, stackalloc Range[8]).ToTuple(), Is.EqualTo(STuple.Create("hello", 123)));
 
+			// same decoders over a span
+			{
+				var packed = Slice.Unescape("PREFIX<02>hello<00><15>{<02>world<00><16><01><C8><02>!<00><16><03><15>");
+				Assert.That(location.DecodeLast<int>(packed.Span), Is.EqualTo(789));
+				Assert.That(location.DecodeLast<string, int>(packed.Span), Is.EqualTo(("!", 789)));
+				Assert.That(location.DecodeLast<int, string, int>(packed.Span), Is.EqualTo((456, "!", 789)));
+				Assert.That(location.DecodeAt<string>(packed.Span, 2), Is.EqualTo("world"));
+			}
+
+			// a key outside the subspace fails the same way on both overloads
+			{
+				var outside = Slice.Unescape("OTHER<15>{");
+				Assert.That(() => location.DecodeLast<int>(outside), Throws.InvalidOperationException);
+				Assert.That(() => location.DecodeLast<int>(outside.Span), Throws.InvalidOperationException);
+			}
+
 		}
 
 	}
