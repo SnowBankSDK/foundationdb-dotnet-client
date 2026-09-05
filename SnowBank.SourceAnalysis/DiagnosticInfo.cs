@@ -36,6 +36,28 @@ namespace SnowBank.SourceAnalysis
 		public Diagnostic CreateDiagnostic()
 			=> Diagnostic.Create(this.Descriptor, this.Location, this.MessageArgs);
 
+		/// <summary>Creates the diagnostic with its location bound to the tree of <paramref name="compilation"/> that has the same path</summary>
+		/// <remarks>The stored location carries a path and a span but no tree, so that the pipeline value stays equatable and holds no compilation. The compiler applies <c>#pragma warning</c> directives and per-file <c>.editorconfig</c> severities through the tree of the location, so the tree is put back here, from the compilation being reported on.</remarks>
+		public Diagnostic CreateDiagnostic(Compilation compilation)
+			=> Diagnostic.Create(this.Descriptor, Rebind(this.Location, compilation), this.MessageArgs);
+
+		private static Location? Rebind(Location? location, Compilation compilation)
+		{
+			if (location is not { Kind: LocationKind.ExternalFile }) return location;
+
+			var path = location.GetLineSpan().Path;
+			SyntaxTree? match = null;
+			foreach (var tree in compilation.SyntaxTrees)
+			{
+				if (tree.FilePath != path) continue;
+				// two trees with one path (in-memory trees with no path): keep the file location rather than guess
+				if (match is not null) return location;
+				match = tree;
+			}
+
+			return match is null || location.SourceSpan.End > match.Length ? location : Location.Create(match, location.SourceSpan);
+		}
+
 		public readonly override bool Equals(object? obj) => obj is DiagnosticInfo info && this.Equals(info);
 
 		public readonly bool Equals(DiagnosticInfo other)

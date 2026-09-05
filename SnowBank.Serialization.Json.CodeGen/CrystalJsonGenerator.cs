@@ -137,7 +137,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					.WithTrackingName("CrystalJsonSpec")
 					;
 
-				context.RegisterSourceOutput(converterTypes, EmitSourceCode);
+				RegisterOutputs(context, converterTypes);
 			}
 
 			// find all self-serializable types: partial types decorated with an attribute whose class carries the
@@ -160,7 +160,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				.WithTrackingName("CrystalJsonSelfSpec")
 				;
 
-			context.RegisterSourceOutput(selfSerializableTypes, EmitSourceCode);
+			RegisterOutputs(context, selfSerializableTypes);
 
 			// find the types that ask for XML output without hosting any generated serializer: neither pipeline above
 			// ever sees them, so the attribute would be silently inert (CXML0002)
@@ -184,7 +184,26 @@ namespace SnowBank.Serialization.Json.CodeGen
 				.WithTrackingName("CrystalXmlOrphanSpec")
 				;
 
-			context.RegisterSourceOutput(orphanXmlOutputTypes, EmitSourceCode);
+			RegisterOutputs(context, orphanXmlOutputTypes);
+		}
+
+		/// <summary>Registers the two outputs of a container pipeline: the emitted code, cached on the metadata alone, and the diagnostics, bound to the trees of the current compilation</summary>
+		private static void RegisterOutputs(IncrementalGeneratorInitializationContext context, IncrementalValuesProvider<(CrystalJsonContainerMetadata? Metadata, ImmutableEquatableArray<DiagnosticInfo> Diagnostics)> containers)
+		{
+			// the code depends on the metadata only, so it stays cached while the rest of the compilation changes
+			context.RegisterSourceOutput(
+				containers.Select(static (c, _) => c.Metadata).Where(static m => m is not null),
+				static (ctx, metadata) => EmitSourceCode(ctx, metadata!));
+
+			// the compiler applies #pragma and .editorconfig through the tree of a location, so each diagnostic is
+			// bound to the tree of the compilation being reported on; this node re-runs on every compilation, and
+			// only for the containers that have something to report
+			context.RegisterSourceOutput(
+				containers.Select(static (c, _) => c.Diagnostics).Where(static d => d.Count > 0).Combine(context.CompilationProvider),
+				static (ctx, pair) =>
+				{
+					foreach (var diagnostic in pair.Left) ctx.ReportDiagnostic(diagnostic.CreateDiagnostic(pair.Right));
+				});
 		}
 
 		/// <summary>Returns the container marker that owns this type, or <see langword="null"/> when it carries none</summary>
@@ -264,20 +283,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 			return default;
 		}
 
-		private void EmitSourceCode(SourceProductionContext ctx, (CrystalJsonContainerMetadata? Metadata, ImmutableEquatableArray<DiagnosticInfo> Diagnostics) args)
+		private static void EmitSourceCode(SourceProductionContext ctx, CrystalJsonContainerMetadata metadata)
 		{
 			try
 			{
-				foreach (DiagnosticInfo diagnostic in args.Diagnostics)
-				{
-					ctx.ReportDiagnostic(diagnostic.CreateDiagnostic());
-				}
-
-				if (args.Metadata is not null)
-				{
-					var emitter = new Emitter(ctx, args.Metadata);
-					emitter.GenerateCode();
-				}
+				var emitter = new Emitter(ctx, metadata);
+				emitter.GenerateCode();
 			}
 			catch (Exception ex)
 			{

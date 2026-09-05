@@ -26,7 +26,10 @@
 
 namespace SnowBank.Serialization.Json.CodeGen.Tests
 {
+	using System.Collections.Immutable;
+	using System.Threading;
 	using Microsoft.CodeAnalysis;
+	using Microsoft.CodeAnalysis.CSharp;
 
 	/// <summary>Pins that a type whose format the generator does not control gets no <c>ReadOnly</c>/<c>Writable</c> proxy, and that CJSON0025 says so</summary>
 	/// <remarks>A proxy is a typed view of a shape the generator knows. For a type that answers a facet itself, or whose facet an author hooked, the generator does not know the shape, so it must not claim to offer a view of it.</remarks>
@@ -209,6 +212,94 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 				diagnostics.Select(static d => d.Id),
 				Does.Not.Contain("CJSON0025"),
 				"a container with no proxy surface must not warn about suppressing one");
+		}
+
+		/// <summary>Diagnostics actually reported to the user for CJSON0025</summary>
+		/// <remarks>A <c>#pragma</c> marks the diagnostic <see cref="Diagnostic.IsSuppressed"/> and the compiler drops it; a severity of <c>none</c> removes it from the array outright. One predicate covers both shapes.</remarks>
+		private static Diagnostic[] Reported(IEnumerable<Diagnostic> diagnostics)
+			=> diagnostics.Where(static d => d.Id == "CJSON0025" && !d.IsSuppressed).ToArray();
+
+		[Test]
+		public void Test_CJSON0025_Is_Reported_On_The_Probe_Tree()
+		{
+			var compilation = GeneratorProbeHarness.Compile(ProbeSource);
+			var (_, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+			var reported = Reported(diagnostics);
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(reported, Is.Not.Empty, "the unsuppressed control must still warn");
+				Assert.That(reported.Select(static d => d.Location.SourceTree), Is.All.SameAs(compilation.SyntaxTrees.Single()), "the location must be bound to the probe's tree, which is what #pragma and .editorconfig are applied through");
+				Assert.That(reported.Select(static d => d.Location.Kind), Is.All.EqualTo(LocationKind.SourceFile));
+			}
+		}
+
+		[Test]
+		public void Test_CJSON0025_Honors_Pragma_Warning_Disable()
+		{
+			var compilation = GeneratorProbeHarness.Compile("#pragma warning disable CJSON0025\n" + ProbeSource);
+			var (_, diagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+			foreach (var diagnostic in diagnostics) { Log($"generator: {diagnostic} (suppressed: {diagnostic.IsSuppressed})"); }
+
+			Assert.That(Reported(diagnostics), Is.Empty, "a #pragma at the top of the file covers every declaration it reports on");
+		}
+
+		[Test]
+		public void Test_CJSON0025_Honors_EditorConfig_Severity_None()
+		{
+			var root = TestContext.CurrentContext.TestDirectory;
+			var config = AnalyzerConfig.Parse("[*.cs]\ndotnet_diagnostic.CJSON0025.severity = none\n", Path.Combine(root, ".editorconfig"));
+			var treeOptions = AnalyzerConfigSet.Create(new[] { config }).GetOptionsForSourcePath(Path.Combine(root, "Probe.cs")).TreeOptions;
+
+			Compilation compilation = GeneratorProbeHarness.Compile(ProbeSource);
+			var tree = compilation.SyntaxTrees.Single();
+			compilation = compilation.WithOptions(compilation.Options.WithSyntaxTreeOptionsProvider(new SingleTreeOptions(tree, treeOptions)));
+
+			var (_, diagnostics) = GeneratorProbeHarness.RunGenerator((CSharpCompilation) compilation);
+
+			Assert.That(Reported(diagnostics), Is.Empty, "dotnet_diagnostic.<id>.severity = none must reach a generator diagnostic");
+		}
+
+		/// <summary>The per-tree options the compiler derives from an .editorconfig, for one tree</summary>
+		private sealed class SingleTreeOptions : SyntaxTreeOptionsProvider
+		{
+
+			public SingleTreeOptions(SyntaxTree tree, ImmutableDictionary<string, ReportDiagnostic> options)
+			{
+				this.Tree = tree;
+				this.Options = options;
+			}
+
+			private SyntaxTree Tree { get; }
+
+			private ImmutableDictionary<string, ReportDiagnostic> Options { get; }
+
+			public override GeneratedKind IsGenerated(SyntaxTree tree, CancellationToken cancellationToken) => GeneratedKind.Unknown;
+
+			public override bool TryGetDiagnosticValue(SyntaxTree tree, string diagnosticId, CancellationToken cancellationToken, out ReportDiagnostic severity)
+			{
+				if (ReferenceEquals(tree, this.Tree) && this.Options.TryGetValue(diagnosticId, out severity)) return true;
+				severity = ReportDiagnostic.Default;
+				return false;
+			}
+
+			public override bool TryGetGlobalDiagnosticValue(string diagnosticId, CancellationToken cancellationToken, out ReportDiagnostic severity)
+			{
+				severity = ReportDiagnostic.Default;
+				return false;
+			}
+
+		}
+
+		[Test]
+		public void Test_CJSON0025_Honors_NoWarn()
+		{
+			Compilation compilation = GeneratorProbeHarness.Compile(ProbeSource);
+			compilation = compilation.WithOptions(compilation.Options.WithSpecificDiagnosticOptions([ new KeyValuePair<string, ReportDiagnostic>("CJSON0025", ReportDiagnostic.Suppress) ]));
+
+			var (_, diagnostics) = GeneratorProbeHarness.RunGenerator((CSharpCompilation) compilation);
+
+			Assert.That(Reported(diagnostics), Is.Empty, "<NoWarn> is a compilation option and needs no tree; it worked before the fix and must keep working");
 		}
 
 	}

@@ -1236,7 +1236,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		/// <summary>Returns the line of <paramref name="source"/> that a diagnostic points at, so a location is asserted without hard-coding a line number</summary>
-		/// <remarks>The source text is passed in rather than read off <c>Location.SourceTree</c>, which is <see langword="null"/> here: the generator caches its diagnostics as file/span pairs (so that nothing holds on to a compilation), and the location it recreates carries no tree.</remarks>
+		/// <remarks>The location now carries the tree of the probe's compilation, but the source text is passed in anyway: it is shorter than reading the line back off the tree.</remarks>
 		private static string LineAt(string source, Location location)
 		{
 			var lines = source.Replace("\r\n", "\n").Split('\n');

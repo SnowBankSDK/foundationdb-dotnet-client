@@ -30,6 +30,8 @@ namespace SnowBank.Data.Json.Tests
 
 	/// <summary>An address whose JSON form is a compact array, and not an object with one property per member</summary>
 	/// <remarks>The member-based form of this type would be <c>{"Tenant":"acme","Zone":"eu","Node":"n1"}</c>; its own form is <c>["acme","eu","n1"]</c>.</remarks>
+	// this type decides its own JSON format on purpose; the generator tests assert the diagnostic
+#pragma warning disable CJSON0025
 	public sealed record SelfShapedAddress : IJsonPackable, IJsonSerializable, IJsonDeserializable<SelfShapedAddress>
 	{
 
@@ -59,9 +61,12 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 	}
+#pragma warning restore CJSON0025
 
 	/// <summary>A witness summary that hand-rolls all three JSON interfaces, in the shape of the Teleport wire type it stands for</summary>
 	/// <remarks>Its own form differs from a member-based converter in three ways at once: the property names are lower-cased, the <see cref="Authority"/> member is written as a compact array, and a format marker that matches no member is added.</remarks>
+	// this type decides its own JSON format on purpose; the generator tests assert the diagnostic
+#pragma warning disable CJSON0025
 	public sealed record SelfShapedWitness : IJsonPackable, IJsonSerializable, IJsonDeserializable<SelfShapedWitness>
 	{
 
@@ -106,6 +111,7 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 	}
+#pragma warning restore CJSON0025
 
 	/// <summary>A plain member-based envelope, registered next to <see cref="SelfShapedWitness"/> so that the witness is reached as a MEMBER of another generated type</summary>
 	public sealed record SelfShapedEnvelope
@@ -118,6 +124,8 @@ namespace SnowBank.Data.Json.Tests
 	}
 
 	/// <summary>A type that implements ONE facet only: its packed form is an array, while it has no say on how it is written or read</summary>
+	// this type decides its own JSON format on purpose; the generator tests assert the diagnostic
+#pragma warning disable CJSON0025
 	public sealed record SelfShapedPackOnly : IJsonPackable
 	{
 
@@ -129,6 +137,7 @@ namespace SnowBank.Data.Json.Tests
 		JsonValue IJsonPackable.JsonPack(CrystalJsonSettings settings, ICrystalJsonTypeResolver resolver) => JsonArray.Create(JsonString.Return(this.Name), JsonNumber.Return(this.Rank));
 
 	}
+#pragma warning restore CJSON0025
 
 	/// <summary>Container registering the hand-rolled types and the envelope that nests one of them</summary>
 	[CrystalConverter]
