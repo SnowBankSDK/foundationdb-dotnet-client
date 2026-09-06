@@ -844,7 +844,14 @@ with exactly `Key` and `Value`)*. To **emit** either legacy shape, opt in with `
 `WithDictionariesAsPairArrays()` (section 4).
 
 **Lifecycle:** deserialization runs the **parameterless constructor** (public or not), then assigns members; missing
-and explicit-null fields are skipped, so ctor-initialised state survives.
+and explicit-null fields are skipped, so ctor-initialised state survives. A type with **no parameterless constructor**
+(a positional record, a class whose constructors all take parameters) is built through a constructor instead
+*(7.4.6+, both paths)*: the one marked `[JsonConstructor]` (System.Text.Json's attribute, matched by name), else the
+single public constructor whose every parameter matches a serialized member by name (case-insensitive) and type. A
+parameter takes the member's value, its own default value when the member is absent (`record Toy(string Name, int Size = 3)`
+reads `{ "Name": "ball" }` as `Toy("ball", 3)`), and a member no parameter covers is assigned after construction. Two
+matching constructors without `[JsonConstructor]`, or a parameter that matches no member, is `CJSON0027` (error) in a
+generated container, and a `JsonBindingException` at bind time on the reflection path.
 
 The four `[OnSerializing]` / `[OnSerialized]` / `[OnDeserializing]` / `[OnDeserialized]` callbacks **are invoked**
 *(7.4.3+)*, on both write routes (text and DOM) and on read, so a `DataContractJsonSerializer` estate keeps the

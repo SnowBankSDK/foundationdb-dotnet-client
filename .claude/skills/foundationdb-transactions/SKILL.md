@@ -153,7 +153,7 @@ await watch;   // resolves when signalKey's value changes after this tx commits
 - ⚠️ Pass an **application/outer** `CancellationToken` to `Watch` — **not** the transaction's own `tr.Cancellation`. The watch outlives the transaction, so binding it to the transaction's token is rejected.
 - A watch only **notifies** that the key changed — it does not deliver the new value. When it fires you must **re-read**.
 - Watches are limited in number per database and should be used for low-frequency signals, not high-throughput streaming.
-- To bound the wait, `watch.WaitAsync(timeout, ct)` returns `true` when the key changed and `false` on timeout. An overload takes a `TimeProvider`, `watch.WaitAsync(timeout, clock, ct)`, so a test that injects a fake clock drives the timeout deterministically *(7.4.4+)*.
+- To bound the wait, `watch.WaitAsync(timeout, ct)` returns `true` when the key changed and `false` on timeout. An overload takes a `TimeProvider`, `watch.WaitAsync(timeout, clock, ct)`, so a test that injects a fake clock drives the timeout deterministically *(7.4.4+)*. *(7.4.5+)* the two-argument `WaitAsync(timeout, ct)` measures its timeout on the database clock, `IFdbDatabase.Time` (a `TimeProvider`, system clock by default), so watch timeouts on a database created with a fake TimeProvider run on virtual time, with no per-call clock argument.
 
 ### The signal-key + watch pattern (producer/consumer)
 
