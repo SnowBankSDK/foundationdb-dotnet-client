@@ -45,6 +45,8 @@ namespace SnowBank.Data.Json
 		OmitDefaultValues = 1 << 9,
 		/// <summary>The member must be PRESENT in the document when binding (<c>[DataMember(IsRequired = true)]</c>): an absent member throws, an explicit <see langword="null"/> satisfies it (DCJS semantics), unlike <see cref="Required"/> which rejects null as well</summary>
 		RequiredPresence = 1 << 10,
+		/// <summary>The member receives its value through a constructor parameter of the same name, so the member loop does not assign it after construction</summary>
+		ConstructorBound = 1 << 11,
 	}
 
 	/// <summary>Structure that holds the cached serialization metadata for a field or property of a class or struct</summary>
@@ -126,6 +128,9 @@ namespace SnowBank.Data.Json
 		/// <summary>The member must be present in the document when binding (<c>[DataMember(IsRequired = true)]</c>)</summary>
 		/// <remarks>An absent member throws; an explicit <see langword="null"/> satisfies it (DCJS semantics), unlike <see cref="IsRequired"/> which rejects null as well.</remarks>
 		public bool IsRequiredPresence => this.Flags.HasFlag(CrystalJsonMemberFlags.RequiredPresence);
+
+		/// <summary>The member is bound through a constructor parameter (see <see cref="CrystalJsonTypeDefinition.ConstructorBinder"/>), and is not assigned after construction</summary>
+		public bool IsConstructorBound => this.Flags.HasFlag(CrystalJsonMemberFlags.ConstructorBound);
 
 		/// <summary>The member has the <see cref="System.ComponentModel.DataAnnotations.KeyAttribute"/> attribute</summary>
 		/// <remarks>Examples: <code>

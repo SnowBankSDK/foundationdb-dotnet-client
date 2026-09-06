@@ -140,6 +140,13 @@ namespace SnowBank.Serialization.Json.CodeGen
 		/// <remarks>A <c>ReadOnly</c>/<c>Writable</c> proxy is a typed view of a shape the generator knows: it reads and writes the JSON by the member names it chose. Once a type answers a facet itself, or an author hooks one, that shape is decided elsewhere and the generator cannot describe it, so it emits no proxy rather than one that reads the wrong names.</remarks>
 		public bool SuppressesProxies => this.DefersSerialize || this.DefersPack || this.DefersUnpack || this.HasSerializeHook || this.HasPackHook || this.HasUnpackHook;
 
+		/// <summary>Parameters of the constructor the generated <c>Unpack</c> calls, in declaration order; empty when the type has a parameterless constructor the generated code can reach</summary>
+		/// <remarks>Each parameter receives the binding of the serialized member of the same name (case-insensitive), and that member leaves the object initializer.</remarks>
+		public ImmutableEquatableArray<CrystalJsonConstructorParameterMetadata> ConstructorParameters { get; init; } = ImmutableEquatableArray<CrystalJsonConstructorParameterMetadata>.Empty;
+
+		/// <summary>The parser found no constructor the generated code can call, and reported <c>CJSON0027</c>: <c>Unpack</c> throws instead of calling one</summary>
+		public bool CannotConstruct { get; init; }
+
 		/// <summary>Indicates if this type is a .NET 11 (C# 15) union, serialized as its bare active case value.</summary>
 		public bool IsUnion { get; init; }
 
@@ -459,5 +466,20 @@ namespace SnowBank.Serialization.Json.CodeGen
 		}
 
 	}
-	
+
+	/// <summary>A constructor parameter of a serialized type, bound from the document when the generated <c>Unpack</c> constructs the instance</summary>
+	public sealed record CrystalJsonConstructorParameterMetadata
+	{
+
+		/// <summary>Name of the parameter, as declared</summary>
+		public required string ParameterName { get; init; }
+
+		/// <summary>Name of the serialized member (<see cref="CrystalJsonMemberMetadata.MemberName"/>) whose binding the parameter receives</summary>
+		public required string MemberName { get; init; }
+
+		/// <summary>C# literal of the parameter's explicit default value, used when the member is absent from the document; <see langword="null"/> when the parameter has no default, in which case the member's own default applies</summary>
+		public string? DefaultLiteral { get; init; }
+
+	}
+
 }

@@ -855,16 +855,20 @@ namespace SnowBank.Data.Json
 				throw JsonBindingException.CannotBindJsonObjectToThisType(data, type);
 			}
 
-			if (typeDef.Generator == null)
+			if (typeDef.Generator == null && typeDef.ConstructorBinder == null)
 			{ // we don't have an instance generator for this type, we won't be able to do anything!
 				throw JsonBindingException.CannotDeserializeCustomTypeNoBinderOrGenerator(data, type);
 			}
 
-			// create a new (empty) instance of this type
+			// create a new instance of this type: empty, or built from the document when the type only has constructors with parameters
 			object instance;
 			try
 			{
-				instance = typeDef.Generator();
+				instance = typeDef.ConstructorBinder != null ? typeDef.ConstructorBinder(data, resolver) : typeDef.Generator!();
+			}
+			catch (JsonBindingException)
+			{ // a constructor argument failed to bind: the error already names the member
+				throw;
 			}
 			catch (Exception e) when (!e.IsFatalError())
 			{ // This could happen if there is no parameterless ctor, or trimming was too aggressive...
@@ -882,8 +886,8 @@ namespace SnowBank.Data.Json
 
 			foreach (var member in typeDef.Members)
 			{
-				// skip readonly members
-				if (member.IsReadOnly) continue;
+				// skip readonly members, and the ones the constructor already received
+				if (member.IsReadOnly || member.IsConstructorBound) continue;
 
 				// do we have a value for this field?
 				if (!data.TryGetValue(member.Name, out var child))

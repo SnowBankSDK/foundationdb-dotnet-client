@@ -1197,14 +1197,19 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
+				bool defersUnpack = !ignoreCustom && typeMetadata.IsJsonDeserializable();
+				var (constructorParameters, cannotConstruct) = ResolveBindingConstructor(type, members, memberSymbols, unpackIsDelegated: defersUnpack || hooks.Unpack || isUnion);
+
 				var metadata = new CrystalJsonTypeMetadata
 				{
 					Type = typeMetadata,
 					Members = members.ToImmutableEquatableArray(),
+					ConstructorParameters = constructorParameters,
+					CannotConstruct = cannotConstruct,
 					IsPolymorphicRoot = isPolymorphic,
 					DefersSerialize = !ignoreCustom && typeMetadata.IsJsonSerializable(),
 					DefersPack = !ignoreCustom && typeMetadata.IsJsonPackable(),
-					DefersUnpack = !ignoreCustom && typeMetadata.IsJsonDeserializable(),
+					DefersUnpack = defersUnpack,
 					HasSerializeHook = hooks.Serialize,
 					HasPackHook = hooks.Pack,
 					HasUnpackHook = hooks.Unpack,
@@ -1229,6 +1234,177 @@ namespace SnowBank.Serialization.Json.CodeGen
 				}
 
 				return metadata;
+			}
+
+			/// <summary>Selects the constructor the generated <c>Unpack</c> calls, when the type has no parameterless constructor the generated code can reach</summary>
+			/// <remarks>
+			/// <para>The rule is the one System.Text.Json applies: the constructor marked <c>[JsonConstructor]</c> (matched by name, whatever its namespace), else the single reachable constructor whose every parameter matches a serialized member by name (case-insensitive) and type. A parameterless constructor keeps the object-initializer form, so a type that deserialized before this rule existed still does, the same way.</para>
+			/// <para>Reports <c>CJSON0027</c> and returns <c>CannotConstruct</c> when no constructor can be called: several match, or a parameter names no member. The emitter then generates an <c>Unpack</c> that throws, so that the consumer sees one diagnostic and not a compiler error inside generated code.</para>
+			/// </remarks>
+			private (ImmutableEquatableArray<CrystalJsonConstructorParameterMetadata> Parameters, bool CannotConstruct) ResolveBindingConstructor(INamedTypeSymbol type, List<CrystalJsonMemberMetadata> members, Dictionary<string, ISymbol> memberSymbols, bool unpackIsDelegated)
+			{
+				var none = ImmutableEquatableArray<CrystalJsonConstructorParameterMetadata>.Empty;
+
+				// a value type always has a parameterless constructor; an abstract type is never constructed; a type that reads
+				// itself (IJsonDeserializable<T>, an Unpack hook, a union) never reaches the member binding at all
+				if (unpackIsDelegated || type.IsValueType || type.IsAbstract || type.IsStatic || type.TypeKind != TypeKind.Class)
+				{
+					return (none, false);
+				}
+
+				// an internal constructor is reachable when the type is declared in the consuming compilation, since the generated code is emitted there
+				bool inSource = type.Locations.Any(static l => l.IsInSource);
+				var constructors = new List<IMethodSymbol>();
+				foreach (var constructor in type.InstanceConstructors)
+				{
+					if (constructor.IsStatic) continue;
+					bool reachable = constructor.DeclaredAccessibility == Accessibility.Public
+						|| (inSource && constructor.DeclaredAccessibility is Accessibility.Internal or Accessibility.ProtectedOrInternal);
+					if (!reachable) continue;
+					if (constructor.Parameters.IsEmpty)
+					{ // the object-initializer form: the shape every generated converter used before constructor binding existed
+						return (none, false);
+					}
+					constructors.Add(constructor);
+				}
+
+				if (constructors.Count == 0)
+				{
+					ReportUnconstructibleType(type, "no constructor is reachable from the generated code");
+					return (none, true);
+				}
+
+				var membersByName = new Dictionary<string, CrystalJsonMemberMetadata>(StringComparer.OrdinalIgnoreCase);
+				foreach (var member in members)
+				{
+					membersByName[member.MemberName] = member;
+				}
+
+				var marked = constructors.Where(static c => c.GetAttributes().Any(static a => a.AttributeClass?.Name == "JsonConstructorAttribute")).ToList();
+				if (marked.Count > 1)
+				{
+					ReportUnconstructibleType(type, $"[JsonConstructor] is on {marked.Count} constructors");
+					return (none, true);
+				}
+				if (marked.Count == 1)
+				{
+					if (TryBindConstructor(marked[0], membersByName, memberSymbols, out var parameters, out var unmatched))
+					{
+						return (parameters!.ToImmutableEquatableArray(), false);
+					}
+					ReportUnconstructibleType(type, $"the constructor marked [JsonConstructor] has a parameter '{unmatched}' that matches no serialized member by name and type");
+					return (none, true);
+				}
+
+				List<CrystalJsonConstructorParameterMetadata>? match = null;
+				int matches = 0;
+				string? firstUnmatched = null;
+				foreach (var constructor in constructors)
+				{
+					if (TryBindConstructor(constructor, membersByName, memberSymbols, out var parameters, out var unmatched))
+					{
+						match = parameters;
+						matches++;
+					}
+					else
+					{
+						firstUnmatched ??= unmatched;
+					}
+				}
+				switch (matches)
+				{
+					case 1:
+					{
+						return (match!.ToImmutableEquatableArray(), false);
+					}
+					case 0:
+					{
+						ReportUnconstructibleType(type, $"no constructor has parameters that all match a serialized member by name and type (the parameter '{firstUnmatched}' matches none)");
+						return (none, true);
+					}
+					default:
+					{
+						ReportUnconstructibleType(type, $"{matches} constructors have parameters that all match a serialized member, so the generator cannot pick one");
+						return (none, true);
+					}
+				}
+			}
+
+			/// <summary>Binds each parameter of <paramref name="constructor"/> to the serialized member of the same name and type</summary>
+			/// <returns><see langword="false"/> when a parameter matches no member, with that parameter's name in <paramref name="unmatched"/></returns>
+			private static bool TryBindConstructor(IMethodSymbol constructor, Dictionary<string, CrystalJsonMemberMetadata> membersByName, Dictionary<string, ISymbol> memberSymbols, out List<CrystalJsonConstructorParameterMetadata>? parameters, out string? unmatched)
+			{
+				var bound = new List<CrystalJsonConstructorParameterMetadata>(constructor.Parameters.Length);
+				foreach (var parameter in constructor.Parameters)
+				{
+					ITypeSymbol? memberType = null;
+					CrystalJsonMemberMetadata? member = null;
+					if (parameter.RefKind == RefKind.None
+						&& !parameter.IsParams
+						&& membersByName.TryGetValue(parameter.Name, out member)
+						&& memberSymbols.TryGetValue(member.MemberName, out var symbol))
+					{
+						memberType = symbol switch
+						{
+							IPropertySymbol property => property.Type,
+							IFieldSymbol field => field.Type,
+							_ => null,
+						};
+					}
+					// nullability annotations are not part of the match: a 'string?' parameter receives a 'string' member and the other way around
+					if (memberType is null || !SymbolEqualityComparer.Default.Equals(parameter.Type, memberType))
+					{
+						parameters = null;
+						unmatched = parameter.Name;
+						return false;
+					}
+					bound.Add(new()
+					{
+						ParameterName = parameter.Name,
+						MemberName = member!.MemberName,
+						DefaultLiteral = GetParameterDefaultLiteral(parameter),
+					});
+				}
+				parameters = bound;
+				unmatched = null;
+				return true;
+			}
+
+			/// <summary>C# literal of a parameter's explicit default value, or <see langword="null"/> when it has none</summary>
+			/// <remarks>A <c>float</c> or <c>decimal</c> default is cast, because the boxed value formats without a suffix (<c>1.5</c> is a <c>double</c> literal); an enum default is its underlying integer, cast to the enum. Every other primitive converts implicitly from its literal.</remarks>
+			private static string? GetParameterDefaultLiteral(IParameterSymbol parameter)
+			{
+				if (!parameter.HasExplicitDefaultValue) return null;
+				var value = parameter.ExplicitDefaultValue;
+				switch (value)
+				{
+					case null: return "default";
+					case string s: return CSharpCodeBuilder.Constant(s);
+					case bool b: return CSharpCodeBuilder.Constant(b);
+					case char c: return CSharpCodeBuilder.Constant(c);
+				}
+				string literal = SymbolDisplay.FormatPrimitive(value, quoteStrings: true, useHexadecimalNumbers: false);
+				var underlying = parameter.Type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T, TypeArguments.Length: 1 } nullable ? nullable.TypeArguments[0] : parameter.Type;
+				bool needsCast = underlying.TypeKind == TypeKind.Enum || underlying.SpecialType is SpecialType.System_Single or SpecialType.System_Decimal;
+				return needsCast ? $"({underlying.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}) {literal}" : literal;
+			}
+
+			/// <summary>Reports <c>CJSON0027</c> on a type the generated <c>Unpack</c> cannot construct</summary>
+			/// <remarks>An error: without it the consumer gets a compiler error inside generated source, pointing at a constructor call they never wrote.</remarks>
+			private void ReportUnconstructibleType(INamedTypeSymbol type, string reason)
+			{
+				ReportDiagnostic(
+					new(
+						"CJSON0027",
+						"No constructor to deserialize this type",
+						"The type '{0}' has no parameterless constructor, and {1}. Deserialization binds each constructor parameter to the serialized member of the same name (case-insensitive) and type; mark the constructor to use with [JsonConstructor].",
+						"SnowBank.Serialization.Json.CodeGen",
+						DiagnosticSeverity.Error,
+						isEnabledByDefault: true
+					),
+					type.Locations.Length > 0 ? type.Locations[0] : this.ContextClassLocation,
+					[ type.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString(), reason ]
+				);
 			}
 
 			/// <summary>Reports <c>CJSON0025</c> on a type that gets no <c>ReadOnly</c>/<c>Writable</c> proxy, because the generator does not decide its format</summary>

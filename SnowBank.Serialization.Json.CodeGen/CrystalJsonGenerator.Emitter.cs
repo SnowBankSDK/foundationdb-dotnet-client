@@ -2409,14 +2409,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				//BUGBUG: we need to check that, if there is a $type, it matches with the expected value ?
 
-				// members behind a setter thunk cannot appear in the object initializer: they are written after
-				// construction, so the initializer form only remains when every bound member is directly reachable
-				this.DeferredUnpackAssignments.Clear();
-				bool hasThunkedWrites = false;
-				foreach (var member in typeDef.Members)
-				{
-					if (member.NeedsSetterThunk) { hasThunkedWrites = true; break; }
+				if (typeDef.CannotConstruct)
+				{ // the parser reported CJSON0027; this body keeps the generated code compiling so that the diagnostic is the only error the consumer sees
+					sb.AppendLine($"throw new global::System.NotSupportedException({CSharpCodeBuilder.Constant($"Cannot deserialize '{typeDef.Type.Name}': it has no constructor the generated code can call (CJSON0027).")});");
+					sb.LeaveBlock();
+					sb.NewLine();
+					return;
 				}
+
+				// the members a constructor parameter covers are bound as arguments, the others as initializer entries or statements
+				var constructorBound = new Dictionary<string, CrystalJsonConstructorParameterMetadata>(StringComparer.Ordinal);
+				foreach (var parameter in typeDef.ConstructorParameters)
+				{
+					constructorBound[parameter.MemberName] = parameter;
+				}
+				this.UnpackBindings.Clear();
 
 				// [DataMember(IsRequired = true)]: presence is independent of how the value decodes, so it is one guard per
 				// member emitted before the initializer, rather than a variant of every decoding shape below.
@@ -2429,23 +2436,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 				}
 
-				// [OnDeserializing] must observe a constructed, unpopulated instance, which an object initializer cannot offer
-				this.UnpackAsStatements = typeDef.OnDeserializing != null;
-				if (this.UnpackAsStatements)
+				foreach (var declared in typeDef.Members)
 				{
-					sb.AppendLine($"var instance = new {typeDef.Type.FullyQualifiedName}();");
-					EmitCallbackInvocation(sb, typeDef.OnDeserializing, "instance", "obj");
-					sb.NewLine();
-				}
-				else
-				{ // a post-populate callback also needs a local to run against, so it forces the instance form (initializer kept, so init-only and required members still bind)
-					bool needsLocal = hasThunkedWrites || typeDef.OnDeserialized != null;
-					sb.AppendLine(needsLocal ? $"{typeDef.Type.FullyQualifiedName} instance = new ()" : "return new ()");
-					sb.EnterBlock();
-				}
-				foreach (var member in typeDef.Members)
-				{
-					if (member.IsReadOnly)
+					var member = declared;
+					if (constructorBound.TryGetValue(member.MemberName, out var parameter))
+					{ // the parameter's own default value replaces the member's when the document has no value for it
+						if (parameter.DefaultLiteral is not null) member = member with { DefaultLiteral = parameter.DefaultLiteral };
+					}
+					else if (member.IsReadOnly)
 					{ // get-only property (or readonly field): serialization-only, matching DataContract POCO semantics.
 					  // It cannot be assigned in an object initializer (CS0200/CS0191), and its value is recomputed by the type, so skip it on deserialization.
 						continue;
@@ -2651,24 +2649,51 @@ namespace SnowBank.Serialization.Json.CodeGen
 					EmitUnpackAssignment(sb, member, $"{getterExpr}");
 
 				}
-				if (this.UnpackAsStatements)
+
+				// construction: each constructor parameter takes the binding of the member it covers, in parameter order
+				var arguments = new List<string>(typeDef.ConstructorParameters.Count);
+				foreach (var parameter in typeDef.ConstructorParameters)
 				{
+					arguments.Add(this.UnpackBindings.First(b => b.Member.MemberName == parameter.MemberName).Expr);
+				}
+				string constructorArgs = string.Join(", ", arguments);
+				var assignments = this.UnpackBindings.Where(b => !constructorBound.ContainsKey(b.Member.MemberName)).ToList();
+				this.UnpackBindings.Clear();
+				string instanceArg = typeDef.Type.IsValueType() ? "ref instance" : "instance";
+
+				if (typeDef.OnDeserializing != null)
+				{ // [OnDeserializing] must observe a constructed, unpopulated instance, which an object initializer cannot offer: the members are written as statements
+					sb.AppendLine($"var instance = new {typeDef.Type.FullyQualifiedName}({constructorArgs});");
+					EmitCallbackInvocation(sb, typeDef.OnDeserializing, "instance", "obj");
+					sb.NewLine();
+					foreach (var (member, expr) in assignments)
+					{
+						sb.AppendLine(member.NeedsSetterThunk
+							? $"__set_{member.MemberName}({instanceArg}, {expr});"
+							: $"instance.{member.MemberName} = {expr};");
+					}
 					sb.NewLine();
 					EmitCallbackInvocation(sb, typeDef.OnDeserialized, "instance", "obj");
 					sb.AppendLine("return instance;");
-					this.UnpackAsStatements = false;
 				}
 				else
-				{
-					sb.LeaveBlock(suffix: ';');
-					if (hasThunkedWrites || typeDef.OnDeserialized != null)
+				{ // members behind a setter thunk cannot appear in the object initializer: they are written after construction, which
+				  // needs a local; a post-populate callback needs one too (the initializer is kept, so init-only and required members still bind)
+					bool hasThunkedWrites = assignments.Any(static b => b.Member.NeedsSetterThunk);
+					bool needsLocal = hasThunkedWrites || typeDef.OnDeserialized != null;
+					sb.AppendLine(needsLocal ? $"{typeDef.Type.FullyQualifiedName} instance = new ({constructorArgs})" : $"return new ({constructorArgs})");
+					sb.EnterBlock();
+					foreach (var (member, expr) in assignments)
 					{
-						string instanceArg = typeDef.Type.IsValueType() ? "ref instance" : "instance";
-						foreach (var (member, expr) in this.DeferredUnpackAssignments)
+						if (!member.NeedsSetterThunk) sb.AppendLine($"{member.MemberName} = {expr},");
+					}
+					sb.LeaveBlock(suffix: ';');
+					if (needsLocal)
+					{
+						foreach (var (member, expr) in assignments)
 						{
-							sb.AppendLine($"__set_{member.MemberName}({instanceArg}, {expr});");
+							if (member.NeedsSetterThunk) sb.AppendLine($"__set_{member.MemberName}({instanceArg}, {expr});");
 						}
-						this.DeferredUnpackAssignments.Clear();
 						EmitCallbackInvocation(sb, typeDef.OnDeserialized, "instance", "obj");
 						sb.AppendLine("return instance;");
 					}
@@ -2677,33 +2702,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.NewLine();
 			}
 
-			/// <summary>List of member bindings of the Unpack method being generated that must go through a setter thunk (filled while the object-initializer entries are emitted, flushed after construction)</summary>
-			private List<(CrystalJsonMemberMetadata Member, string Expr)> DeferredUnpackAssignments { get; } = [ ];
+			/// <summary>Member bindings of the Unpack method being generated, in member order: the decode expression of each member, collected before the construction is written so that a constructor parameter can take the expression of the member it covers</summary>
+			private List<(CrystalJsonMemberMetadata Member, string Expr)> UnpackBindings { get; } = [ ];
 
-			/// <summary>Emits one member binding of the Unpack method: an object-initializer entry for a directly-reachable member, or a deferred thunk write for a non-public one</summary>
+			/// <summary>Records one member binding of the Unpack method; the construction code written after the member loop decides whether it becomes a constructor argument, an object-initializer entry, or a statement</summary>
 			private void EmitUnpackAssignment(CSharpCodeBuilder sb, CrystalJsonMemberMetadata member, string expr)
 			{
-				if (this.UnpackAsStatements)
-				{ // construct-then-assign form: the members are written as statements so a pre-populate callback can bracket them
-					sb.AppendLine(member.NeedsSetterThunk
-						? $"__set_{member.MemberName}(instance, {expr});"
-						: $"instance.{member.MemberName} = {expr};");
-					return;
-				}
-
-				if (!member.NeedsSetterThunk)
-				{
-					sb.AppendLine($"{member.MemberName} = {expr},");
-				}
-				else
-				{
-					this.DeferredUnpackAssignments.Add((member, expr));
-				}
+				this.UnpackBindings.Add((member, expr));
 			}
-
-			/// <summary>When set, Unpack constructs the instance first and writes members as statements, instead of using an object initializer</summary>
-			/// <remarks>Required by <c>[OnDeserializing]</c>, which must run on a constructed but UNPOPULATED instance: an object initializer leaves no point between the two.</remarks>
-			private bool UnpackAsStatements { get; set; }
 
 			/// <summary>Returns the settings expression a generated entry point uses when the caller passed none: the container's baked format profile, or the standard defaults</summary>
 			/// <remarks>Explicitly passed settings always replace the profile ENTIRELY (no merging): a merged format would be unauditable. Settings the baked names cannot honor are rejected by the guard in the Serialize method.</remarks>

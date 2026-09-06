@@ -69,6 +69,10 @@ namespace SnowBank.Data.Json
 		/// <summary>Factory method that can instantiate a new value of this type</summary>
 		public Func<object>? Generator { get; init; }
 
+		/// <summary>Builds the instance from the document by calling a constructor with parameters, for a type that has no parameterless one (a positional record, a class whose constructors all take parameters)</summary>
+		/// <remarks>Each parameter receives the value of the serialized member of the same name; those members are flagged <see cref="CrystalJsonMemberFlags.ConstructorBound"/> and the member loop skips them. When set, <see cref="Generator"/> is <see langword="null"/>.</remarks>
+		public Func<JsonObject, ICrystalJsonTypeResolver, object>? ConstructorBinder { get; init; }
+
 		/// <summary>Custom handler for deserializing <see cref="JsonValue"/> into instances of this type.</summary>
 		public CrystalJsonTypeBinder? CustomBinder { get; init; }
 

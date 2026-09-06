@@ -2375,6 +2375,7 @@ namespace SnowBank.Data.Json
 
 			// look for any custom binders
 			var binder = FindCustomBinder(type, out var generator, members);
+			Func<JsonObject, ICrystalJsonTypeResolver, object>? constructorBinder = null;
 
 			// classified once, here, so that the binder pays a single flag test per value instead of this scan
 			var typeFlags = binder == null && IsOpaqueValueType(type, members) ? CrystalJsonTypeFlags.OpaqueValueType : CrystalJsonTypeFlags.None;
@@ -2390,6 +2391,14 @@ namespace SnowBank.Data.Json
 				{ // we are part of a polymorphic chain but cannot be constructed
 					//generator = null;
 				}
+				else if (generator == null && type.IsClass && type.GetConstructor(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null) == null)
+				{ // no parameterless constructor: a positional record, or a class whose constructors all take parameters
+					constructorBinder = CreateConstructorBinder(type, ref members, out var reason);
+					if (constructorBinder == null)
+					{ // the failure surfaces at bind time, wrapped in the "failed to construct" error, so that a type that is only ever serialized still resolves
+						generator = () => throw new InvalidOperationException($"Cannot deserialize '{type.GetFriendlyName()}': it has no parameterless constructor, and {reason}. Deserialization binds each constructor parameter to the serialized member of the same name (case-insensitive) and type; mark the constructor to use with [JsonConstructor].");
+					}
+				}
 				else
 				{
 					generator ??= RequireGeneratorForType(type);
@@ -2400,11 +2409,171 @@ namespace SnowBank.Data.Json
 
 			return new CrystalJsonTypeDefinition(type, typeFlags, binder, generator, members, null, baseType, typeDiscriminatorProperty, typeDiscriminatorValue, derivedTypeMap)
 			{
+				ConstructorBinder = constructorBinder,
 				OnSerializing = callbacks.OnSerializing,
 				OnSerialized = callbacks.OnSerialized,
 				OnDeserializing = callbacks.OnDeserializing,
 				OnDeserialized = callbacks.OnDeserialized,
 			};
+		}
+
+		/// <summary>Selects the constructor that deserializes a type with no parameterless one, and builds the delegate that calls it from a document</summary>
+		/// <remarks>
+		/// <para>The rule is the one System.Text.Json applies, and the one the source generator applies: the constructor marked <c>[JsonConstructor]</c> (matched by name, whatever its namespace), else the single public constructor whose every parameter matches a serialized member by name (case-insensitive) and type.</para>
+		/// <para>The members the constructor covers are flagged <see cref="CrystalJsonMemberFlags.ConstructorBound"/> in <paramref name="members"/>, so that the member loop leaves them alone; a get-only member is bound this way even though it has no setter.</para>
+		/// </remarks>
+		/// <returns>The binder, or <see langword="null"/> with <paramref name="reason"/> stating why no constructor can be called</returns>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		private static Func<JsonObject, ICrystalJsonTypeResolver, object>? CreateConstructorBinder(Type type, ref CrystalJsonMemberDefinition[] members, out string? reason)
+		{
+			var candidates = new List<ConstructorInfo>();
+			var marked = new List<ConstructorInfo>();
+			foreach (var constructor in type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+			{
+				// matched by name, without referencing System.Text.Json: a consumer's own attribute of that name works the same
+				bool isMarked = false;
+				foreach (var attribute in constructor.GetCustomAttributes(inherit: false))
+				{
+					if (attribute.GetType().Name == "JsonConstructorAttribute") { isMarked = true; break; }
+				}
+				if (isMarked) marked.Add(constructor);
+				else if (constructor.IsPublic) candidates.Add(constructor);
+			}
+
+			if (marked.Count > 1)
+			{
+				reason = $"[JsonConstructor] is on {marked.Count} constructors";
+				return null;
+			}
+
+			var membersByName = new Dictionary<string, CrystalJsonMemberDefinition>(StringComparer.OrdinalIgnoreCase);
+			foreach (var member in members)
+			{
+				membersByName[member.OriginalName] = member;
+			}
+
+			ConstructorInfo? selected = null;
+			(CrystalJsonMemberDefinition Member, ParameterInfo Parameter)[]? bound = null;
+			if (marked.Count == 1)
+			{
+				if (!TryBindConstructor(marked[0], membersByName, out bound, out var unmatched))
+				{
+					reason = $"the constructor marked [JsonConstructor] has a parameter '{unmatched}' that matches no serialized member by name and type";
+					return null;
+				}
+				selected = marked[0];
+			}
+			else
+			{
+				int matches = 0;
+				string? firstUnmatched = null;
+				foreach (var constructor in candidates)
+				{
+					if (TryBindConstructor(constructor, membersByName, out var parameters, out var unmatched))
+					{
+						selected = constructor;
+						bound = parameters;
+						matches++;
+					}
+					else
+					{
+						firstUnmatched ??= unmatched;
+					}
+				}
+				if (matches == 0)
+				{
+					reason = candidates.Count == 0
+						? "no public constructor is available"
+						: $"no constructor has parameters that all match a serialized member by name and type (the parameter '{firstUnmatched}' matches none)";
+					return null;
+				}
+				if (matches > 1)
+				{
+					reason = $"{matches} constructors have parameters that all match a serialized member, so none can be picked";
+					return null;
+				}
+			}
+			Contract.Debug.Assert(selected != null && bound != null);
+
+			// the covered members leave the member loop
+			var updated = new CrystalJsonMemberDefinition[members.Length];
+			for (int i = 0; i < members.Length; i++)
+			{
+				var member = members[i];
+				bool covered = false;
+				foreach (var entry in bound)
+				{
+					if (ReferenceEquals(entry.Member, member)) { covered = true; break; }
+				}
+				updated[i] = covered ? member with { Flags = member.Flags | CrystalJsonMemberFlags.ConstructorBound } : member;
+			}
+			members = updated;
+
+			reason = null;
+			var selectedConstructor = selected;
+			var fields = bound;
+			return (obj, resolver) =>
+			{
+				var arguments = new object?[fields.Length];
+				for (int i = 0; i < fields.Length; i++)
+				{
+					var (member, parameter) = fields[i];
+					if (!obj.TryGetValue(member.Name, out var child))
+					{ // absent from the document
+						if (member.IsRequired || member.IsRequiredPresence)
+						{ // C# `required` and [DataMember(IsRequired=true)] both reject an absent member
+							throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(obj, member.Name, null);
+						}
+						// the parameter's own default value wins over the member's, and both over the type's default
+						arguments[i] = parameter.HasDefaultValue ? parameter.DefaultValue : member.HasDefaultValue ? member.DefaultValue : member.Type.GetDefaultValue();
+						continue;
+					}
+					if (child.IsNull)
+					{ // explicit null: rejects the C# `required` contract, but satisfies [DataMember(IsRequired=true)] (DCJS semantics)
+						if (member.IsRequired)
+						{
+							throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(obj, member.Name, null);
+						}
+						arguments[i] = member.Type.GetDefaultValue();
+						continue;
+					}
+					// a binding failure surfaces as the member binder's own JsonBindingException, which names the member
+					arguments[i] = member.Binder(child, member.Type, resolver);
+				}
+				try
+				{
+					return selectedConstructor.Invoke(arguments);
+				}
+				catch (TargetInvocationException e) when (e.InnerException != null)
+				{ // the constructor itself threw: report its own exception, not the reflection wrapper
+					throw JsonBindingException.FailedToConstructTypeInstanceErrorOccurred(obj, type, e.InnerException);
+				}
+			};
+		}
+
+		/// <summary>Binds each parameter of <paramref name="constructor"/> to the serialized member of the same name (case-insensitive) and type</summary>
+		/// <returns><see langword="false"/> when a parameter matches no member, with that parameter's name in <paramref name="unmatched"/></returns>
+		private static bool TryBindConstructor(ConstructorInfo constructor, Dictionary<string, CrystalJsonMemberDefinition> membersByName, out (CrystalJsonMemberDefinition Member, ParameterInfo Parameter)[]? bound, out string? unmatched)
+		{
+			var parameters = constructor.GetParameters();
+			var result = new (CrystalJsonMemberDefinition, ParameterInfo)[parameters.Length];
+			for (int i = 0; i < parameters.Length; i++)
+			{
+				var parameter = parameters[i];
+				if (parameter.ParameterType.IsByRef
+					|| parameter.Name == null
+					|| !membersByName.TryGetValue(parameter.Name, out var member)
+					|| member.Type != parameter.ParameterType)
+				{
+					bound = null;
+					unmatched = parameter.Name ?? $"#{i}";
+					return false;
+				}
+				result[i] = (member, parameter);
+			}
+			bound = result;
+			unmatched = null;
+			return true;
 		}
 
 		/// <summary>Tests if a JSON object is an invalid representation of <paramref name="type"/>, because no member can carry its state</summary>
