@@ -510,6 +510,14 @@ namespace SnowBank.Runtime.Converters.Tests
 			Assert.That(StringConverters.ParseDateTime("19780922000000"), Is.EqualTo(new DateTime(1978, 09, 22))); // without time
 			Assert.That(StringConverters.ParseDateTime("19780922235959"), Is.EqualTo(new DateTime(1978, 09, 22, 23, 59, 59))); // almost next day
 
+			//YYYY-MM-DDTHH:mm:ss and YYYY-MM-DDTHH:mm:ssZ: the minutes are the minutes, not the month
+			Assert.That(StringConverters.ParseDateTime("1978-09-22T12:30:45"), Is.EqualTo(new DateTime(1978, 09, 22, 12, 30, 45)));
+			Assert.That(StringConverters.ParseDateTime("1978-09-22T12:30:45Z"), Is.EqualTo(new DateTime(1978, 09, 22, 12, 30, 45, DateTimeKind.Utc)));
+			Assert.That(StringConverters.ParseDateTime("1978-09-22T12:30:45Z").Kind, Is.EqualTo(DateTimeKind.Utc));
+			// a leap second is not representable: rejected, never thrown from the DateTime constructor
+			Assert.That(StringConverters.TryParseDateTime("2016-12-31T23:59:60Z", CultureInfo.InvariantCulture, out _, false), Is.False);
+			Assert.That(() => StringConverters.ParseDateTime("2016-12-31T23:59:60Z"), Throws.InstanceOf<FormatException>());
+
 			//exceptions
 			Assert.That(() => StringConverters.ParseDateTime("20070230"), Throws.InstanceOf<ArgumentOutOfRangeException>());
 			Assert.That(() => StringConverters.ParseDateTime(null), Throws.InstanceOf<ArgumentNullException>());

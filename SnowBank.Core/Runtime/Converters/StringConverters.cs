@@ -1759,8 +1759,8 @@ namespace SnowBank.Runtime.Converters
 							int n = ParseDateSegment(date[14..16]);
 							if (n < 0 || n > 59) break;
 							int s = ParseDateSegment(date[17..]);
-							if (s < 0 || s > 60) break; // note: extra UTC second at 23:59:60 !
-							result = new DateTime(y, m, d, h, m, s, DateTimeKind.Unspecified);
+							if (s < 0 || s > 59) break;
+							result = new DateTime(y, m, d, h, n, s, DateTimeKind.Unspecified);
 							return true;
 						}
 						case 20:
@@ -1777,8 +1777,8 @@ namespace SnowBank.Runtime.Converters
 							int n = ParseDateSegment(date[14..16]);
 							if (n < 0 || n > 59) break;
 							int s = ParseDateSegment(date[17..19]);
-							if (s < 0 || s > 60) break; // note: extra UTC second at 23:59:60 !
-							result = new DateTime(y, m, d, h, m, s, DateTimeKind.Utc);
+							if (s < 0 || s > 59) break;
+							result = new DateTime(y, m, d, h, n, s, DateTimeKind.Utc);
 							return true;
 						}
 					}
