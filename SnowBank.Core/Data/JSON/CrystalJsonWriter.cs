@@ -2766,6 +2766,19 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+		/// <summary>Writes a value between quotes, formatted in place in the buffer</summary>
+		/// <param name="value">Value to format</param>
+		/// <param name="maxSize">Maximum number of characters of the formatted value</param>
+		private void WriteQuoted<T>(T value, int maxSize) where T : ISpanFormattable
+		{
+			char quote = m_javascript ? '\'' : '"';
+			var buf = m_buffer.GetSpan(maxSize + 2);
+			buf[0] = quote;
+			if (!value.TryFormat(buf[1..], out int written, default, null)) SnowBank.Runtime.Converters.StringConverters.ReportInternalFormattingError();
+			buf[written + 1] = quote;
+			m_buffer.Advance(written + 2);
+		}
+
 		/// <summary>Writes a <see cref="Guid"/>, as a string literal</summary>
 		/// <param name="value">Value to write</param>
 		/// <example><code>
@@ -2778,18 +2791,25 @@ namespace SnowBank.Data.Json
 			{
 				WriteNull();
 			}
+#if NET8_0_OR_GREATER
+			else
+			{
+				WriteQuoted(value, 36);
+			}
+#else
 			else if (!m_javascript)
 			{
 				m_buffer.Write('"');
-				m_buffer.Write(value);
+				m_buffer.Write(value.ToString());
 				m_buffer.Write('"');
 			}
 			else
 			{
 				m_buffer.Write('\'');
-				m_buffer.Write(value);
+				m_buffer.Write(value.ToString());
 				m_buffer.Write('\'');
 			}
+#endif
 		}
 
 		/// <summary>Writes a nullable <see cref="Guid"/>, as a number of seconds</summary>
@@ -2822,18 +2842,25 @@ namespace SnowBank.Data.Json
 			{
 				WriteNull();
 			}
+#if NET8_0_OR_GREATER
+			else
+			{
+				WriteQuoted(value, 36);
+			}
+#else
 			else if (!m_javascript)
 			{
 				m_buffer.Write('"');
-				m_buffer.Write(value);
+				m_buffer.Write(value.ToString());
 				m_buffer.Write('"');
 			}
 			else
 			{
 				m_buffer.Write('\'');
-				m_buffer.Write(value);
+				m_buffer.Write(value.ToString());
 				m_buffer.Write('\'');
 			}
+#endif
 		}
 
 		/// <summary>Writes a nullable <see cref="Uuid128"/>, as a string literal</summary>
@@ -2861,6 +2888,12 @@ namespace SnowBank.Data.Json
 			{
 				WriteNull();
 			}
+#if NET8_0_OR_GREATER
+			else
+			{
+				WriteQuoted(value, 26);
+			}
+#else
 			else if (!m_javascript)
 			{
 				m_buffer.Write('"');
@@ -2873,6 +2906,7 @@ namespace SnowBank.Data.Json
 				m_buffer.Write(value.ToString());
 				m_buffer.Write('\'');
 			}
+#endif
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -2894,6 +2928,12 @@ namespace SnowBank.Data.Json
 			{
 				WriteNull();
 			}
+#if NET8_0_OR_GREATER
+			else
+			{
+				WriteQuoted(value, 22);
+			}
+#else
 			else if (!m_javascript)
 			{
 				m_buffer.Write('"');
@@ -2906,6 +2946,7 @@ namespace SnowBank.Data.Json
 				m_buffer.Write(value.ToString());
 				m_buffer.Write('\'');
 			}
+#endif
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -2927,18 +2968,25 @@ namespace SnowBank.Data.Json
 			{
 				WriteNull();
 			}
+#if NET8_0_OR_GREATER
+			else
+			{
+				WriteQuoted(value, 17);
+			}
+#else
 			else if (!m_javascript)
 			{
 				m_buffer.Write('"');
-				m_buffer.Write(value);
+				m_buffer.Write(value.ToString());
 				m_buffer.Write('"');
 			}
 			else
 			{
 				m_buffer.Write('\'');
-				m_buffer.Write(value);
+				m_buffer.Write(value.ToString());
 				m_buffer.Write('\'');
 			}
+#endif
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -262,6 +262,9 @@ namespace SnowBank.Data.Json
 			return value ?? throw InvalidNumberFormat(literal, "malformed");
 		}
 
+		/// <summary>Powers of ten from 1 to 1e22, the ones a double represents exactly</summary>
+		internal static readonly double[] PowersOfTen = [ 1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22 ];
+
 		internal static JsonNumber? ParseNumberFromLiteral(ReadOnlySpan<char> literal, string? original, bool negative, bool hasDot, bool hasExponent)
 		{
 			var styles = NumberStyles.AllowLeadingSign;
@@ -1078,10 +1081,23 @@ namespace SnowBank.Data.Json
 			return ParseJsonStringInternal(ref reader, reader.GetStringTable(JsonLiteralKind.Field));
 		}
 
-		private static unsafe string ParseJsonStringInternal(ref CrystalJsonTokenizer<TReader> reader, StringTable? table)
+		private static string ParseJsonStringInternal(ref CrystalJsonTokenizer<TReader> reader, StringTable? table)
 		{
 			// note: we have already parsed the opening double-quote (")
 
+#if NET8_0_OR_GREATER
+			if (TryReadPlainString(ref reader, table, out string? plain))
+			{
+				return plain;
+			}
+#endif
+			// the character loop lives in its own method, so that its scratch buffer is not zeroed on the fast path
+			return ParseJsonStringSlow(ref reader, table);
+		}
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		private static unsafe string ParseJsonStringSlow(ref CrystalJsonTokenizer<TReader> reader, StringTable? table)
+		{
 			const int SIZE = 128;
 
 			Span<char> buf = stackalloc char[SIZE];
@@ -1138,6 +1154,35 @@ namespace SnowBank.Data.Json
 			}
 
 		}
+
+#if NET8_0_OR_GREATER
+
+		/// <summary>Reads the rest of a string literal in one scan, when the reader is in-memory and the literal has no escape sequence</summary>
+		/// <remarks>The literal is located with a vectorized search, then copied or interned in bulk. When the reader declines, nothing was consumed and the caller reads the literal character by character.</remarks>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static bool TryReadPlainString(ref CrystalJsonTokenizer<TReader> reader, StringTable? table, [MaybeNullWhen(false)] out string result)
+		{
+			if (typeof(TReader) == typeof(JsonUnmanagedReader))
+			{
+				return Unsafe.As<TReader, JsonUnmanagedReader>(ref reader.Source).TryReadPlainString(table, out result);
+			}
+			if (typeof(TReader) == typeof(JsonSliceReader))
+			{
+				return Unsafe.As<TReader, JsonSliceReader>(ref reader.Source).TryReadPlainString(table, out result);
+			}
+			if (typeof(TReader) == typeof(JsonStringReader))
+			{
+				return Unsafe.As<TReader, JsonStringReader>(ref reader.Source).TryReadPlainString(table, out result);
+			}
+			if (typeof(TReader) == typeof(JsonCharReader))
+			{
+				return Unsafe.As<TReader, JsonCharReader>(ref reader.Source).TryReadPlainString(table, out result);
+			}
+			result = null;
+			return false;
+		}
+
+#endif
 
 		private static char ParseEscapedCharacter(ref CrystalJsonTokenizer<TReader> reader)
 		{
@@ -1207,6 +1252,7 @@ namespace SnowBank.Data.Json
 			bool incomplete = first is < '0' or > '9';
 			bool computed = negative || !incomplete;
 			bool overflow = false;
+			int fractionDigits = 0;
 			ulong num = incomplete ? 0 : (ulong)(first - '0');
 			while (p < MAX_NUMBER_CHARS)
 			{
@@ -1218,6 +1264,7 @@ namespace SnowBank.Data.Json
 					ulong digit = (ulong)(c - '0');
 					if (num > (ulong.MaxValue - digit) / 10) overflow = true; // no longer fits in a UInt64: fall back to the literal parser below
 					num = (num * 10) + digit;
+					if (hasDot & !hasExponent) fractionDigits++;
 				}
 				else if (CrystalJsonParser.ValidNumberTrailingCharacters.Contains(c))
 				{ // this is a valid end-of-stream character
@@ -1328,6 +1375,12 @@ namespace SnowBank.Data.Json
 			// we may get the literal from a string table
 			var table = reader.GetStringTable(computed ? JsonLiteralKind.Integer : JsonLiteralKind.Decimal);
 			string? original = table?.Add(literal);
+
+			if (hasDot && !hasExponent && !overflow && num <= (1UL << 53) && fractionDigits <= 22)
+			{ // the digits and the power of ten are both exact doubles, so one division gives the correctly rounded value
+				double d = (double) num / CrystalJsonParser.PowersOfTen[fractionDigits];
+				return JsonNumber.Parse(negative ? -d : d, literal, original);
+			}
 
 			// complete the parsing
 			var value = CrystalJsonParser.ParseNumberFromLiteral(literal, original, negative, hasDot, hasExponent);

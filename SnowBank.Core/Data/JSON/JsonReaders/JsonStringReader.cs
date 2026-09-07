@@ -62,6 +62,28 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public readonly int? Remaining => Math.Max(this.Text.Length - this.Pos, 0);
 
+
+#if NET8_0_OR_GREATER
+		/// <summary>Reads the rest of a string literal up to its closing quote, when it holds no escape sequence</summary>
+		/// <param name="table">Table used to intern the result, or <see langword="null"/> to allocate it</param>
+		/// <param name="result">Receives the literal (without the quotes)</param>
+		/// <returns><see langword="false"/> if the literal has an escape or no closing quote: nothing is consumed, the caller reads it character by character</returns>
+		internal bool TryReadPlainString(SnowBank.Text.StringTable? table, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out string result)
+		{
+			var span = this.Text.AsSpan(this.Pos);
+			int idx = span.IndexOfAny('"', '\\');
+			if (idx < 0 || span[idx] != '"')
+			{
+				result = null;
+				return false;
+			}
+			var body = span[..idx];
+			this.Pos += idx + 1;
+			result = body.Length == 0 ? string.Empty : table != null ? table.Add(body) : new string(body);
+			return true;
+		}
+#endif
+
 	}
 
 }

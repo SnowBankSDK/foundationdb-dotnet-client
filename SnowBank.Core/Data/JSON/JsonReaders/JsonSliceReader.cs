@@ -97,6 +97,33 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public readonly int? Remaining => this.Cursor < this.End ? (this.End - this.Cursor) : 0;
 
+
+#if NET8_0_OR_GREATER
+		/// <summary>Reads the rest of a string literal up to its closing quote, when it holds only ASCII and no escape sequence</summary>
+		/// <param name="table">Table used to intern the result, or <see langword="null"/> to allocate it</param>
+		/// <param name="result">Receives the decoded literal (without the quotes)</param>
+		/// <returns><see langword="false"/> if the literal has an escape, a non-ASCII byte or no closing quote: nothing is consumed, the caller reads it character by character</returns>
+		internal bool TryReadPlainString(StringTable? table, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out string result)
+		{
+			var span = this.Array.AsSpan(this.Cursor, this.End - this.Cursor);
+			int idx = span.IndexOfAny((byte) '"', (byte) '\\');
+			if (idx < 0 || span[idx] != (byte) '"')
+			{
+				result = null;
+				return false;
+			}
+			var body = span[..idx];
+			if (!System.Text.Ascii.IsValid(body))
+			{
+				result = null;
+				return false;
+			}
+			this.Cursor += idx + 1;
+			result = body.Length == 0 ? string.Empty : table != null ? table.Add(body) : System.Text.Encoding.ASCII.GetString(body);
+			return true;
+		}
+#endif
+
 	}
 
 }

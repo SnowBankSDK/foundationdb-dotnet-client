@@ -68,6 +68,28 @@ namespace SnowBank.Data.Json
 		/// <summary>Number of characters consumed from the start</summary>
 		public int Consumed => checked((int) (this.Cursor - this.Start));
 
+
+#if NET8_0_OR_GREATER
+		/// <summary>Reads the rest of a string literal up to its closing quote, when it holds no escape sequence</summary>
+		/// <param name="table">Table used to intern the result, or <see langword="null"/> to allocate it</param>
+		/// <param name="result">Receives the literal (without the quotes)</param>
+		/// <returns><see langword="false"/> if the literal has an escape or no closing quote: nothing is consumed, the caller reads it character by character</returns>
+		internal bool TryReadPlainString(SnowBank.Text.StringTable? table, [System.Diagnostics.CodeAnalysis.MaybeNullWhen(false)] out string result)
+		{
+			var span = new ReadOnlySpan<char>(this.Cursor, (int) (this.End - this.Cursor));
+			int idx = span.IndexOfAny('"', '\\');
+			if (idx < 0 || span[idx] != '"')
+			{
+				result = null;
+				return false;
+			}
+			var body = span[..idx];
+			this.Cursor += idx + 1;
+			result = body.Length == 0 ? string.Empty : table != null ? table.Add(body) : new string(body);
+			return true;
+		}
+#endif
+
 	}
 
 }
