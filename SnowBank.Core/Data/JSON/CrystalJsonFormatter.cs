@@ -28,6 +28,7 @@
 
 namespace SnowBank.Data.Json
 {
+	using System.Runtime.InteropServices;
 	using System.Text;
 	using SnowBank.Buffers.Text;
 	using SnowBank.Runtime.Converters;
@@ -196,175 +197,163 @@ namespace SnowBank.Data.Json
 				_ => throw new ArgumentException(null, nameof(format))
 			};
 
-		private static readonly int[] DaysToMonth365 = [ 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 ];
-		private static readonly int[] DaysToMonth366 = [ 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366 ];
+		/// <summary>Maximum size of an ISO 8601 date, with quotes, nine fraction digits and a time zone offset</summary>
+		internal const int ISO8601_MAX_FORMATTED_SIZE = 40;
 
-		internal const int ISO8601_MAX_FORMATTED_SIZE = 35; // With quotes and TimeZone
+		/// <summary>The decimal digits of 0 to 99, as pairs of ASCII characters</summary>
+		private static ReadOnlySpan<byte> TwoDigits => "00010203040506070809101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899"u8;
+
+		/// <summary>No suffix after the time</summary>
+		private const int SuffixNone = 0;
+
+		/// <summary>The <c>Z</c> suffix</summary>
+		private const int SuffixUtc = 1;
+
+		/// <summary>A <c>+HH:MM</c> suffix</summary>
+		private const int SuffixOffset = 2;
+
+		/// <summary>Parts of an ISO 8601 date, kept as the state of a <see cref="string.Create{TState}"/> call</summary>
+		private readonly struct Iso8601Parts
+		{
+			public readonly int Days;
+			public readonly uint SecondOfDay;
+			public readonly uint Nanos;
+			public readonly bool HasTime;
+			public readonly int Suffix;
+			public readonly int OffsetMinutes;
+			public readonly char Quotes;
+
+			public Iso8601Parts(int days, uint secondOfDay, uint nanos, bool hasTime, int suffix, int offsetMinutes, char quotes)
+			{
+				this.Days = days;
+				this.SecondOfDay = secondOfDay;
+				this.Nanos = nanos;
+				this.HasTime = hasTime;
+				this.Suffix = suffix;
+				this.OffsetMinutes = offsetMinutes;
+				this.Quotes = quotes;
+			}
+		}
 
 		public static string ToIso8601String(DateTime date)
 		{
 			if (date == DateTime.MinValue) return string.Empty;
-
-			Span<char> buf = stackalloc char[ISO8601_MAX_FORMATTED_SIZE];
-			return FormatIso8601DateTime(buf, date, date.Kind, null, quotes: '\0').ToString();
+			return ToIso8601String(date, date.Kind, null, omitTimeIfZero: false);
 		}
 
 		public static string ToIso8601String(DateTimeOffset date)
 		{
 			if (date == DateTimeOffset.MinValue) return string.Empty;
-
-			Span<char> buf = stackalloc char[ISO8601_MAX_FORMATTED_SIZE];
-			return FormatIso8601DateTime(buf, date.DateTime, DateTimeKind.Local, date.Offset, quotes: '\0').ToString();
+			return ToIso8601String(date.DateTime, DateTimeKind.Local, date.Offset, omitTimeIfZero: false);
 		}
 
 		public static string ToIso8601String(DateOnly date)
 		{
 			if (date == DateOnly.MinValue) return string.Empty;
-
+#if NET8_0_OR_GREATER
+			return string.Create(10, date, static (span, d) =>
+			{
+				d.Deconstruct(out var year, out var month, out var day);
+				FormatDatePart(ref span[0], (uint) year, (uint) month, (uint) day);
+			});
+#else
 			Span<char> buf = stackalloc char[ISO8601_MAX_FORMATTED_SIZE];
-			return FormatIso8601DateTime(buf, date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified, null, quotes: '\0', omitTimeIfZero: true).ToString();
+			return FormatIso8601DateOnly(buf, date, quotes: '\0').ToString();
+#endif
 		}
 
+		/// <summary>Formats a date using the ISO 8601 format, into a new string of the exact size</summary>
+		/// <param name="date">Date to format (only the ticks are used, the kind is taken from <paramref name="kind"/>)</param>
+		/// <param name="kind">Kind that decides the suffix: <c>Z</c> for UTC, an offset for local, nothing for unspecified</param>
+		/// <param name="utcOffset">Explicit offset (for a <see cref="DateTimeOffset"/>), or <see langword="null"/> to use the offset of the local time zone</param>
+		/// <param name="omitTimeIfZero">If <see langword="true"/>, a date at midnight is written as <c>YYYY-MM-DD</c></param>
+		/// <param name="quotes">Character used to quote the result, or the null character for none</param>
+		internal static string ToIso8601String(DateTime date, DateTimeKind kind, TimeSpan? utcOffset, bool omitTimeIfZero, char quotes = '\0')
+		{
+			SplitTicks(date.Ticks, out int days, out uint secondOfDay, out uint nanos);
+			bool hasTime = !omitTimeIfZero || (secondOfDay | nanos) != 0;
+			int suffix = ResolveSuffix(date, kind, utcOffset, forceLocal: kind == DateTimeKind.Local, out int offsetMinutes);
+			return CreateString(new Iso8601Parts(days, secondOfDay, nanos, hasTime, suffix, offsetMinutes, quotes));
+		}
+
+		/// <summary>Formats an instant using the ISO 8601 format, into a new string of the exact size</summary>
+		/// <param name="instant">Instant to format, on or after 0001-01-01T00:00:00Z</param>
+		/// <param name="quotes">Character used to quote the result, or the null character for none</param>
+		/// <remarks>An instant with tick precision has the same text as the equivalent UTC <see cref="System.DateTime"/>. Nanoseconds below the tick add two more fraction digits, so that the instant parses back without loss.</remarks>
+		internal static string ToIso8601String(NodaTime.Instant instant, char quotes = '\0')
+		{
+			SplitInstant(instant, out int days, out uint secondOfDay, out uint nanos);
+			return CreateString(new Iso8601Parts(days, secondOfDay, nanos, hasTime: true, SuffixUtc, 0, quotes));
+		}
+
+		/// <summary>Writes the parts into a new string of the exact size</summary>
+		private static string CreateString(in Iso8601Parts parts)
+		{
+			int size = ComputeSize(parts.Nanos, parts.HasTime, parts.Suffix, parts.Quotes);
+#if NET8_0_OR_GREATER
+			return string.Create(size, parts, static (span, p) => WriteIso8601(ref span[0], p.Days, p.SecondOfDay, p.Nanos, p.HasTime, p.Suffix, p.OffsetMinutes, p.Quotes));
+#else
+			Span<char> buf = stackalloc char[ISO8601_MAX_FORMATTED_SIZE];
+			WriteIso8601(ref buf[0], parts.Days, parts.SecondOfDay, parts.Nanos, parts.HasTime, parts.Suffix, parts.OffsetMinutes, parts.Quotes);
+			return buf[..size].ToString();
+#endif
+		}
+
+		/// <summary>Formats a date using the ISO 8601 format: <c>YYYY-MM-DDTHH:mm:ss[.fffffff][Z|+HH:MM]</c></summary>
+		/// <param name="output">Buffer of at least <see cref="ISO8601_MAX_FORMATTED_SIZE"/> characters</param>
+		/// <param name="date">Date to format (only the ticks are used, the kind is taken from <paramref name="kind"/>)</param>
+		/// <param name="kind">Kind that decides the suffix: <c>Z</c> for UTC, an offset for local, nothing for unspecified</param>
+		/// <param name="utcOffset">Explicit offset (for a <see cref="DateTimeOffset"/>), or <see langword="null"/> to use the offset of the local time zone</param>
+		/// <param name="quotes">Character used to quote the result, or the null character for none</param>
+		/// <param name="omitTimeIfZero">If <see langword="true"/>, a date at midnight is written as <c>YYYY-MM-DD</c></param>
+		/// <returns>Slice of <paramref name="output"/> that contains the formatted date</returns>
 		internal static ReadOnlySpan<char> FormatIso8601DateTime(Span<char> output, DateTime date, DateTimeKind kind, TimeSpan? utcOffset, char quotes = '\0', bool omitTimeIfZero = false)
 		{
-			// we will need between 28 and 33 (+2 with quotes) characters for the buffer
 			if (output.Length < ISO8601_MAX_FORMATTED_SIZE) ThrowHelper.ThrowArgumentException(nameof(output), "Output buffer size is too small");
 
-			GetDateParts(date.Ticks, out var year, out var month, out var day, out var hour, out var min, out var sec, out var millis);
-
-			bool hasTimePart = !omitTimeIfZero || (hour | min | sec | millis) != 0;
-
-			ref char cursor = ref output[0];
-
-			if (quotes != '\0')
-			{
-				cursor = quotes;
-				cursor = ref Unsafe.Add(ref cursor, 1);
-			}
-
-			cursor = ref FormatDatePart(ref cursor, year, month, day);
-
-			if (hasTimePart)
-			{
-				cursor = 'T';
-				cursor = ref Unsafe.Add(ref cursor, 1);
-
-				cursor = ref FormatTimePart(ref cursor, hour, min, sec, millis);
-			}
-
-			if (kind == DateTimeKind.Utc)
-			{ // "Z"
-				cursor = 'Z';
-				cursor = ref Unsafe.Add(ref cursor, 1);
-			} 
-			else if (utcOffset.HasValue)
-			{
-				cursor = ref FormatTimeZoneOffset(ref cursor, utcOffset.Value, kind == DateTimeKind.Local);
-			}
-			else if (kind == DateTimeKind.Local)
-			{
-				cursor = ref FormatTimeZoneOffset(ref cursor, TimeZoneInfo.Local.GetUtcOffset(date), true);
-			}
-
-			if (quotes != '\0')
-			{
-				cursor = quotes;
-				cursor = ref Unsafe.Add(ref cursor, 1);
-			}
-
-			int offset = (int) (Unsafe.ByteOffset(ref output[0], ref cursor).ToInt64() / Unsafe.SizeOf<char>());
-			if ((uint) offset > output.Length) throw ThrowHelper.InvalidOperationException("Internal formatting error");
-
-			return output[..offset];
+			SplitTicks(date.Ticks, out int days, out uint secondOfDay, out uint nanos);
+			bool hasTime = !omitTimeIfZero || (secondOfDay | nanos) != 0;
+			int suffix = ResolveSuffix(date, kind, utcOffset, forceLocal: kind == DateTimeKind.Local, out int offsetMinutes);
+			int size = ComputeSize(nanos, hasTime, suffix, quotes);
+			WriteIso8601(ref output[0], days, secondOfDay, nanos, hasTime, suffix, offsetMinutes, quotes);
+			return output[..size];
 		}
 
-		internal static int ComputeIso8601DateTimeSize(bool hasTimeComponent, bool hasMilliseconds, DateTimeKind kind, TimeSpan? utcOffset, char quotes)
+		/// <summary>Formats an instant using the ISO 8601 format: <c>YYYY-MM-DDTHH:mm:ss[.fffffff[ff]]Z</c></summary>
+		/// <param name="output">Buffer of at least <see cref="ISO8601_MAX_FORMATTED_SIZE"/> characters</param>
+		/// <param name="instant">Instant to format, on or after 0001-01-01T00:00:00Z</param>
+		/// <param name="quotes">Character used to quote the result, or the null character for none</param>
+		/// <returns>Slice of <paramref name="output"/> that contains the formatted instant</returns>
+		/// <remarks>An instant with tick precision has the same text as the equivalent UTC <see cref="System.DateTime"/>. Nanoseconds below the tick add two more fraction digits, so that the instant parses back without loss.</remarks>
+		internal static ReadOnlySpan<char> FormatIso8601Instant(Span<char> output, NodaTime.Instant instant, char quotes = '\0')
 		{
-			// Compute the exact required size
-			// - 'YYYY-DD-MM' => at least 10
-			// - '___THH:MM:SS___' => +9
-			// - '"...."' if quotes != 0 => +2
-			// - '___.0000000____" if there are milliseconds => +8
-			// - '___Z" if UTC => +1
-			// - '___' if no offset and kind unspecified => +0
-			// - '___+XX:XX" if offset => +6
+			if (output.Length < ISO8601_MAX_FORMATTED_SIZE) ThrowHelper.ThrowArgumentException(nameof(output), "Output buffer size is too small");
 
-			return (quotes == '\0' ? 0 : 2) + (hasTimeComponent ? 19 : 10) + (hasMilliseconds ? 8 : 0) + ((kind == DateTimeKind.Utc ? 1 : (kind == DateTimeKind.Local || utcOffset != null) ? 6 : 0));
+			SplitInstant(instant, out int days, out uint secondOfDay, out uint nanos);
+			int size = ComputeSize(nanos, hasTime: true, SuffixUtc, quotes);
+			WriteIso8601(ref output[0], days, secondOfDay, nanos, hasTime: true, SuffixUtc, 0, quotes);
+			return output[..size];
 		}
 
 		internal static bool TryFormatIso8601DateTime(Span<char> output, out int charsWritten, DateTime date, DateTimeKind kind, TimeSpan? utcOffset, char quotes = '\0', bool omitTimeIfZero = false)
 		{
-			GetDateParts(date.Ticks, out var year, out var month, out var day, out var hour, out var min, out var sec, out var millis);
-
-			bool hasTimePart = !omitTimeIfZero || (hour | min | sec | millis) != 0;
-
-			int size = ComputeIso8601DateTimeSize(hasTimePart, millis != 0, kind, utcOffset, quotes);
-
-			// we will need between 28 and 33 (+2 with quotes) characters for the buffer
+			SplitTicks(date.Ticks, out int days, out uint secondOfDay, out uint nanos);
+			bool hasTime = !omitTimeIfZero || (secondOfDay | nanos) != 0;
+			// an explicit offset of zero is written as "+00:00", even for an unspecified kind
+			int suffix = ResolveSuffix(date, kind, utcOffset, forceLocal: true, out int offsetMinutes);
+			int size = ComputeSize(nanos, hasTime, suffix, quotes);
 			if (output.Length < size)
 			{
 				charsWritten = 0;
 				return false;
 			}
-
-			ref char cursor = ref output[0];
-
-			if (quotes != '\0')
-			{
-				cursor = quotes;
-				cursor = ref Unsafe.Add(ref cursor, 1);
-			}
-
-			cursor = ref FormatDatePart(ref cursor, year, month, day);
-
-			if (hasTimePart)
-			{
-				cursor = 'T';
-				cursor = ref Unsafe.Add(ref cursor, 1);
-				cursor = ref FormatTimePart(ref cursor, hour, min, sec, millis);
-			}
-
-			switch (kind)
-			{
-				case DateTimeKind.Utc:
-				{ // "Z"
-					cursor = 'Z';
-					cursor = ref Unsafe.Add(ref cursor, 1);
-					break;
-				}
-				case DateTimeKind.Local:
-				{
-					cursor = ref FormatTimeZoneOffset(ref cursor, utcOffset ?? TimeZoneInfo.Local.GetUtcOffset(date), true);
-					break;
-				}
-				default:
-				{
-					if (utcOffset is not null)
-					{
-						cursor = ref FormatTimeZoneOffset(ref cursor, utcOffset.Value, true);
-					}
-					break;
-				}
-			}
-
-			if (quotes != '\0')
-			{
-				cursor = quotes;
-				cursor = ref Unsafe.Add(ref cursor, 1);
-			}
-
-			{
-				int offset = (int) (Unsafe.ByteOffset(ref output[0], ref cursor).ToInt64() / Unsafe.SizeOf<char>());
-				if (offset > size) throw ThrowHelper.InvalidOperationException("Internal formatting error");
-
-				charsWritten = offset;
-				return true;
-			}
+			WriteIso8601(ref output[0], days, secondOfDay, nanos, hasTime, suffix, offsetMinutes, quotes);
+			charsWritten = size;
+			return true;
 		}
 
 		internal static ReadOnlySpan<char> FormatIso8601DateOnly(Span<char> output, DateOnly date, char quotes = '\0')
 		{
-			// we will need between 28 and 33 (+2 with quotes) characters for the buffer
 			if (output.Length < ISO8601_MAX_FORMATTED_SIZE) ThrowHelper.ThrowArgumentException(nameof(output), "Output buffer size is too small");
 
 #if NET8_0_OR_GREATER
@@ -382,7 +371,7 @@ namespace SnowBank.Data.Json
 				cursor = ref Unsafe.Add(ref cursor, 1);
 			}
 
-			cursor = ref FormatDatePart(ref cursor, year, month, day);
+			cursor = ref FormatDatePart(ref cursor, (uint) year, (uint) month, (uint) day);
 
 			if (quotes != '\0')
 			{
@@ -393,139 +382,241 @@ namespace SnowBank.Data.Json
 			return output[..(int) (Unsafe.ByteOffset(ref output[0], ref cursor).ToInt64() / Unsafe.SizeOf<char>())];
 		}
 
-		private static ref char FormatDatePart(ref char ptr, int year, int month, int day)
+		/// <summary>Splits the ticks of a date into the day number, the second within the day, and the nanoseconds within the second</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static void SplitTicks(long ticks, out int days, out uint secondOfDay, out uint nanos)
 		{
-			Paranoid.Requires(year >= 0 && month is >= 1 and <= 12 && day is >= 1 and <= 31);
+			// unsigned arithmetic lets the JIT use the cheaper multiply-high sequence for each constant division
+			ulong t = (ulong) ticks;
+			ulong d = t / TimeSpan.TicksPerDay;
+			ulong ticksOfDay = t - (d * TimeSpan.TicksPerDay);
+			uint sod = (uint) (ticksOfDay / TimeSpan.TicksPerSecond);
+			days = (int) d;
+			secondOfDay = sod;
+			nanos = (uint) (ticksOfDay - (sod * (ulong) TimeSpan.TicksPerSecond)) * 100;
+		}
 
-			// Year
-			Unsafe.Add(ref ptr, 3) = (char) ('0' + (year % 10)); year /= 10;
-			Unsafe.Add(ref ptr, 2) = (char) ('0' + (year % 10)); year /= 10;
-			Unsafe.Add(ref ptr, 1) = (char) ('0' + (year % 10));
-			Unsafe.Add(ref ptr, 0) = (char) ('0' + (year / 10));
+		/// <summary>Splits an instant on or after 0001-01-01T00:00:00Z into the day number, the second within the day, and the nanoseconds within the second</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static void SplitInstant(NodaTime.Instant instant, out int days, out uint secondOfDay, out uint nanos)
+		{
+			// the duration since year 1 is never negative here, so Days and NanosecondOfDay are both non-negative
+			var sinceYearOne = instant - NodaTime.NodaConstants.BclEpoch;
+			Contract.Debug.Requires(sinceYearOne >= NodaTime.Duration.Zero);
+			days = sinceYearOne.Days;
+			ulong nanosOfDay = (ulong) sinceYearOne.NanosecondOfDay;
+			uint sod = (uint) (nanosOfDay / 1_000_000_000);
+			secondOfDay = sod;
+			nanos = (uint) (nanosOfDay - (sod * 1_000_000_000UL));
+		}
 
-			// Month
+		/// <summary>Decides the suffix of a date: <see cref="SuffixUtc"/>, <see cref="SuffixOffset"/> (with the offset in minutes), or <see cref="SuffixNone"/></summary>
+		/// <param name="date">Date, used to compute the offset of the local time zone when needed</param>
+		/// <param name="kind">Kind that decides the suffix: <c>Z</c> for UTC, an offset for local, nothing for unspecified</param>
+		/// <param name="utcOffset">Explicit offset, or <see langword="null"/> to use the offset of the local time zone</param>
+		/// <param name="forceLocal">If <see langword="true"/>, an explicit offset of zero is written as <c>+00:00</c> instead of <c>Z</c></param>
+		/// <param name="offsetMinutes">Receives the offset in minutes, for <see cref="SuffixOffset"/></param>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static int ResolveSuffix(DateTime date, DateTimeKind kind, TimeSpan? utcOffset, bool forceLocal, out int offsetMinutes)
+		{
+			offsetMinutes = 0;
+			if (kind == DateTimeKind.Utc)
+			{
+				return SuffixUtc;
+			}
+
+			TimeSpan offset;
+			if (utcOffset.HasValue)
+			{
+				offset = utcOffset.Value;
+				// special case: we still output 'Z' for DateTimeOffset with GMT offset, since we cannot distinguish with values set to UTC
+				// => we may mix up times set to GMT offset with UTC times, but if the server is set to GMT without any DST, this should not change the actual instant
+				if (offset == TimeSpan.Zero && !forceLocal)
+				{
+					return SuffixUtc;
+				}
+			}
+			else if (kind == DateTimeKind.Local)
+			{
+				offset = TimeZoneInfo.Local.GetUtcOffset(date);
+			}
+			else
+			{
+				return SuffixNone;
+			}
+
+			offsetMinutes = (int) (offset.Ticks / TimeSpan.TicksPerMinute);
+			return SuffixOffset;
+		}
+
+		/// <summary>Number of characters that <see cref="WriteIso8601"/> writes</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static int ComputeSize(uint nanos, bool hasTime, int suffix, char quotes)
+		{
+			// "YYYY-MM-DD" is 10, "THH:mm:ss" is 9, ".fffffff" is 8, "ff" is 2, "Z" is 1, "+HH:MM" is 6
+			return (quotes != '\0' ? 2 : 0)
+				+ 10
+				+ (hasTime ? 9 + (nanos != 0 ? 8 : 0) + (nanos % 100 != 0 ? 2 : 0) : 0)
+				+ (suffix == SuffixUtc ? 1 : suffix == SuffixOffset ? 6 : 0);
+		}
+
+		/// <summary>Writes an ISO 8601 date at <paramref name="ptr"/></summary>
+		/// <param name="ptr">Position of the first character to write; the caller reserves <see cref="ComputeSize"/> characters</param>
+		/// <param name="days">Day number since 0001-01-01</param>
+		/// <param name="secondOfDay">Second within the day (0 to 86399)</param>
+		/// <param name="nanos">Nanoseconds within the second: seven fraction digits when non-zero, nine when the last two digits are non-zero</param>
+		/// <param name="hasTime">If <see langword="false"/>, only the date is written</param>
+		/// <param name="suffix">One of <see cref="SuffixNone"/>, <see cref="SuffixUtc"/> or <see cref="SuffixOffset"/></param>
+		/// <param name="offsetMinutes">Offset in minutes, for <see cref="SuffixOffset"/></param>
+		/// <param name="quotes">Character written before and after the date, or the null character for none</param>
+		private static void WriteIso8601(ref char ptr, int days, uint secondOfDay, uint nanos, bool hasTime, int suffix, int offsetMinutes, char quotes)
+		{
+			if (quotes != '\0')
+			{
+				ptr = quotes;
+				ptr = ref Unsafe.Add(ref ptr, 1);
+			}
+
+			var day = new DateTime(days * TimeSpan.TicksPerDay);
+#if NET8_0_OR_GREATER
+			day.Deconstruct(out int year, out int month, out int dayOfMonth);
+#else
+			int year = day.Year;
+			int month = day.Month;
+			int dayOfMonth = day.Day;
+#endif
+			ptr = ref FormatDatePart(ref ptr, (uint) year, (uint) month, (uint) dayOfMonth);
+
+			if (hasTime)
+			{
+				ptr = 'T';
+				ptr = ref Unsafe.Add(ref ptr, 1);
+				ptr = ref FormatTimePart(ref ptr, secondOfDay, nanos);
+			}
+
+			if (suffix == SuffixUtc)
+			{
+				ptr = 'Z';
+				ptr = ref Unsafe.Add(ref ptr, 1);
+			}
+			else if (suffix == SuffixOffset)
+			{
+				ptr = ref FormatTimeZoneOffset(ref ptr, offsetMinutes);
+			}
+
+			if (quotes != '\0')
+			{
+				ptr = quotes;
+			}
+		}
+
+		/// <summary>Writes the two decimal digits of a value between 0 and 99</summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static void WriteTwoDigits(ref char ptr, uint value)
+		{
+			Contract.Debug.Requires(value < 100);
+			ref byte digits = ref Unsafe.Add(ref MemoryMarshal.GetReference(TwoDigits), (nint) (value * 2));
+			ptr = (char) digits;
+			Unsafe.Add(ref ptr, 1) = (char) Unsafe.Add(ref digits, 1);
+		}
+
+		private static ref char FormatDatePart(ref char ptr, uint year, uint month, uint day)
+		{
+			Paranoid.Requires(year <= 9999 && month is >= 1 and <= 12 && day is >= 1 and <= 31);
+
+			// "YYYY-MM-DD"
+			uint century = year / 100;
+			WriteTwoDigits(ref ptr, century);
+			WriteTwoDigits(ref Unsafe.Add(ref ptr, 2), year - (century * 100));
 			Unsafe.Add(ref ptr, 4) = '-';
-			Unsafe.Add(ref ptr, 5) = (char) ('0' + (month / 10));
-			Unsafe.Add(ref ptr, 6) = (char) ('0' + (month % 10));
-
-			// Day
+			WriteTwoDigits(ref Unsafe.Add(ref ptr, 5), month);
 			Unsafe.Add(ref ptr, 7) = '-';
-			Unsafe.Add(ref ptr, 8) = (char) ('0' + (day / 10));
-			Unsafe.Add(ref ptr, 9) = (char) ('0' + (day % 10));
+			WriteTwoDigits(ref Unsafe.Add(ref ptr, 8), day);
 
 			return ref Unsafe.Add(ref ptr, 10);
 		}
 
-		private static ref char FormatTimePart(ref char ptr, int hour, int min, int sec, int ticks)
+		private static ref char FormatTimePart(ref char ptr, uint secondOfDay, uint nanos)
 		{
-			Paranoid.Requires(hour is >= 0 and < 24 && min is >= 0 and < 60 && sec is >= 0 and < 60 && ticks >= 0 && ticks < TimeSpan.TicksPerSecond);
+			Paranoid.Requires(secondOfDay < 86400 && nanos < 1_000_000_000);
 
-			Unsafe.Add(ref ptr, 0) = (char)(48 + (hour / 10));
-			Unsafe.Add(ref ptr, 1) = (char)(48 + (hour % 10));
+			// x / 60 and x / 3600 as fixed-point multiplications, exact for any second of a day.
+			// The minute and the second come from the identity x mod 60 == (x + 4 * (x / 60)) mod 64,
+			// which turns each remainder into a shift, an add, and a mask.
+			uint minuteOfDay = (uint) (((ulong) secondOfDay * 71_582_789) >> 32);
+			uint hour = (uint) (((ulong) secondOfDay * 1_193_047) >> 32);
+			uint second = (secondOfDay + (minuteOfDay << 2)) & 63;
+			uint minute = (minuteOfDay + (hour << 2)) & 63;
 
-			// Minutes
+			// "HH:mm:ss"
+			WriteTwoDigits(ref ptr, hour);
 			Unsafe.Add(ref ptr, 2) = ':';
-			Unsafe.Add(ref ptr, 3) = (char)(48 + (min / 10));
-			Unsafe.Add(ref ptr, 4) = (char)(48 + (min % 10));
-
-			// Seconds
+			WriteTwoDigits(ref Unsafe.Add(ref ptr, 3), minute);
 			Unsafe.Add(ref ptr, 5) = ':';
-			Unsafe.Add(ref ptr, 6) = (char)(48 + (sec / 10));
-			Unsafe.Add(ref ptr, 7) = (char)(48 + (sec % 10));
-
+			WriteTwoDigits(ref Unsafe.Add(ref ptr, 6), second);
 			ptr = ref Unsafe.Add(ref ptr, 8);
 
-			if (ticks > 0)
-			{ // writes the milliseconds (7 digits)
+			if (nanos != 0)
+			{ // ".fffffff" (ticks), plus "ff" when there are nanoseconds below the tick
 
-				Unsafe.Add(ref ptr, 0) = '.';
-				Unsafe.Add(ref ptr, 7) = (char) (48 + (ticks % 10)); ticks /= 10;
-				Unsafe.Add(ref ptr, 6) = (char) (48 + (ticks % 10)); ticks /= 10;
-				Unsafe.Add(ref ptr, 5) = (char) (48 + (ticks % 10)); ticks /= 10;
-				Unsafe.Add(ref ptr, 4) = (char) (48 + (ticks % 10)); ticks /= 10;
-				Unsafe.Add(ref ptr, 3) = (char) (48 + (ticks % 10)); ticks /= 10;
-				Unsafe.Add(ref ptr, 2) = (char) (48 + (ticks % 10));
-				Unsafe.Add(ref ptr, 1) = (char) (48 + (ticks / 10));
+				uint ticks = nanos / 100;
+				uint subTick = nanos - (ticks * 100);
 
+				// split the seven tick digits into three pairs and a unit: "ab" "cd" "ef" "g"
+				uint high = ticks / 1000;            // "abcd"
+				uint low = ticks - (high * 1000);    // "efg"
+				uint ab = high / 100;
+				uint cd = high - (ab * 100);
+				uint ef = low / 10;
+				uint g = low - (ef * 10);
+
+				ptr = '.';
+				WriteTwoDigits(ref Unsafe.Add(ref ptr, 1), ab);
+				WriteTwoDigits(ref Unsafe.Add(ref ptr, 3), cd);
+				WriteTwoDigits(ref Unsafe.Add(ref ptr, 5), ef);
+				Unsafe.Add(ref ptr, 7) = (char) ('0' + g);
 				ptr = ref Unsafe.Add(ref ptr, 8);
+
+				if (subTick != 0)
+				{
+					WriteTwoDigits(ref ptr, subTick);
+					ptr = ref Unsafe.Add(ref ptr, 2);
+				}
 			}
 
 			return ref ptr;
-
 		}
 
-		private static ref char FormatTimeZoneOffset(ref char ptr, TimeSpan utcOffset, bool forceLocal)
+		/// <summary>Writes a time zone offset as <c>+HH:MM</c> or <c>-HH:MM</c></summary>
+		private static ref char FormatTimeZoneOffset(ref char ptr, int offsetMinutes)
 		{
-			// special case: we still output 'Z' for DateTimeOffset with GMT offset, since we cannot distinguish with values set to UTC
-			// => we may mix up times set to GMT offset with UTC times, but if the server is set to GMT without any DST, this should not change the actual instant
-			if (utcOffset == TimeSpan.Zero && !forceLocal)
-			{ // "Z"
-				Unsafe.Add(ref ptr, 0) = 'Z';
-				return ref Unsafe.Add(ref ptr, 1);
-			}
-			
-			// "+HH:MM"
+			Unsafe.Add(ref ptr, 0) = offsetMinutes >= 0 ? '+' : '-';
 
-			int minutes = (int) (utcOffset.Ticks / TimeSpan.TicksPerMinute);
-			Unsafe.Add(ref ptr, 0) = minutes >= 0 ? '+' : '-';
-
-			minutes = Math.Abs(minutes);
-			int hour = minutes / 60;
-			minutes %= 60;
-
-			Unsafe.Add(ref ptr, 1) = (char)(48 + (hour / 10));
-			Unsafe.Add(ref ptr, 2) = (char)(48 + (hour % 10));
+			uint total = (uint) Math.Abs(offsetMinutes);
+			uint hours = total / 60;
+			WriteTwoDigits(ref Unsafe.Add(ref ptr, 1), hours);
 			Unsafe.Add(ref ptr, 3) = ':';
-			Unsafe.Add(ref ptr, 4) = (char)(48 + (minutes / 10));
-			Unsafe.Add(ref ptr, 5) = (char)(48 + (minutes % 10));
+			WriteTwoDigits(ref Unsafe.Add(ref ptr, 4), total - (hours * 60));
 			return ref Unsafe.Add(ref ptr, 6);
 		}
 
 		public static void GetDateParts(long ticks, out int year, out int month, out int day, out int hour, out int minute, out int second, out int remainder)
 		{
-			// n = number of days since 1/1/0001
-			int n = (int)(ticks / (TimeSpan.TicksPerSecond * 86400));
-			// y400 = number of whole 400-year periods since 1/1/0001
-			int y400 = n / 146097;
-			// n = day number within 400-year period
-			n -= y400 * 146097;
-			// y100 = number of whole 100-year periods within 400-year period
-			int y100 = n / 36524;
-			// Last 100-year period has an extra day, so decrement result if 4
-			if (y100 == 4) y100 = 3;
-
-			// n = day number within 100-year period
-			n -= y100 * 36524;
-			// y4 = number of whole 4-year periods within 100-year period
-			int y4 = n / 1461;
-			// n = day number within 4-year period
-			n -= y4 * 1461;
-			// y1 = number of whole years within 4-year period
-			int y1 = n / 365;
-			// Last year has an extra day, so decrement result if 4
-			if (y1 == 4) y1 = 3;
-
-			year = y400 * 400 + y100 * 100 + y4 * 4 + y1 + 1;
-
-			// n = day number within year
-			n -= y1 * 365;
-
-			// Leap year calculation looks different from IsLeapYear since y1, y4,
-			// and y100 are relative to year 1, not year 0
-			var days = ((y1 == 3) && ((y4 != 24) || (y100 == 3))) ? DaysToMonth366 : DaysToMonth365;
-			// All months have less than 32 days, so n >> 5 is a good conservative
-			// estimate for the month
-			int m = (n >> 5) + 1;
-			// m = 1-based month number
-			while (n >= days[m]) m++;
-			month = m;
-			// Return 1-based day-of-month
-			day = (n - days[m - 1]) + 1;
-
-			hour = (int)((ticks / 36000000000L) % 24L);
-			minute = (int)((ticks / 600000000L) % 60L);
-			second = (int)((ticks / 10000000L) % 60L);
-			remainder = (int)(ticks % TimeSpan.TicksPerSecond);
+			var date = new DateTime(ticks);
+#if NET8_0_OR_GREATER
+			date.Deconstruct(out year, out month, out day);
+#else
+			year = date.Year;
+			month = date.Month;
+			day = date.Day;
+#endif
+			SplitTicks(ticks, out _, out uint secondOfDay, out uint nanos);
+			uint minuteOfDay = (uint) (((ulong) secondOfDay * 71_582_789) >> 32);
+			uint h = (uint) (((ulong) secondOfDay * 1_193_047) >> 32);
+			hour = (int) h;
+			minute = (int) ((minuteOfDay + (h << 2)) & 63);
+			second = (int) ((secondOfDay + (minuteOfDay << 2)) & 63);
+			remainder = (int) (nanos / 100);
 		}
 
 	}

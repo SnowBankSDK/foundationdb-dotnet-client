@@ -172,7 +172,7 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		public static JsonString Create(DateTime value)
 		{
-			return value == DateTime.MinValue ? EmptyString : new JsonString(value.ToString("O"));
+			return value == DateTime.MinValue ? EmptyString : new JsonString(FormatDateTime(value));
 		}
 
 		/// <summary>Returns the equivalent <see cref="JsonString"/></summary>
@@ -180,7 +180,7 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		public static JsonString Create(DateTimeOffset value)
 		{
-			return value == DateTime.MinValue ? EmptyString : new JsonString(value.ToString("O"));
+			return value == DateTimeOffset.MinValue ? EmptyString : new JsonString(FormatDateTimeOffset(value));
 		}
 
 		/// <summary>Returns the equivalent <see cref="JsonString"/></summary>
@@ -203,7 +203,30 @@ namespace SnowBank.Data.Json
 		/// <seealso cref="Return(NodaTime.Instant)"/>
 		public static JsonString Create(NodaTime.Instant value)
 		{
-			return value.ToUnixTimeTicks() == 0 ? EmptyString : new JsonString(CrystalJsonNodaPatterns.Instants.Format(value));
+			return value.ToUnixTimeTicks() == 0 ? EmptyString : new JsonString(FormatInstant(value));
+		}
+
+		/// <summary>Formats a date like the writer does: ISO 8601, time omitted at midnight for an unspecified kind, no time zone for <see cref="DateTime.MaxValue"/></summary>
+		internal static string FormatDateTime(DateTime value)
+		{
+			if (value == DateTime.MaxValue) return JsonTokens.Iso8601DateTimeMaxValueLiteral;
+			if (value == JsonDateTime.MaxValueDate) return JsonTokens.Iso8601DateOnlyMaxValueLiteral;
+			return CrystalJsonFormatter.ToIso8601String(value, value.Kind, null, omitTimeIfZero: value.Kind == DateTimeKind.Unspecified);
+		}
+
+		/// <summary>Formats a date with offset like the writer does: ISO 8601 with a <c>+HH:MM</c> suffix, no time zone for <see cref="DateTimeOffset.MaxValue"/></summary>
+		internal static string FormatDateTimeOffset(DateTimeOffset value)
+		{
+			if (value == DateTimeOffset.MaxValue) return JsonTokens.Iso8601DateTimeMaxValueLiteral;
+			return CrystalJsonFormatter.ToIso8601String(value.DateTime, DateTimeKind.Local, value.Offset, omitTimeIfZero: false);
+		}
+
+		/// <summary>Formats an instant like the writer does: ISO 8601 with a <c>Z</c> suffix, nine fraction digits when there are nanoseconds below the tick</summary>
+		internal static string FormatInstant(NodaTime.Instant value)
+		{
+			if (value == NodaTime.Instant.MaxValue) return JsonTokens.Iso8601DateTimeMaxValueLiteral;
+			if (value < NodaTime.NodaConstants.BclEpoch) return CrystalJsonNodaPatterns.Instants.Format(value);
+			return CrystalJsonFormatter.ToIso8601String(value);
 		}
 
 		//TODO: more to have parity with all non-nullable Return(...) overloads
@@ -542,28 +565,28 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		public static JsonValue Return(DateTime value)
 		{
-			return value == DateTime.MinValue ? JsonString.Empty : new JsonString(value.ToString("O"));
+			return value == DateTime.MinValue ? JsonString.Empty : new JsonString(JsonString.FormatDateTime(value));
 		}
 
 		/// <summary>Returns the equivalent <see cref="JsonString"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		public static JsonValue Return(DateTime? value)
 		{
-			return value is null ? JsonNull.Null : value.Value == DateTime.MinValue ? JsonString.Empty : new JsonString(value.Value.ToString("O"));
+			return value is null ? JsonNull.Null : value.Value == DateTime.MinValue ? JsonString.Empty : new JsonString(JsonString.FormatDateTime(value.Value));
 		}
 
 		/// <summary>Returns the equivalent <see cref="JsonString"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		public static JsonValue Return(DateTimeOffset value)
 		{
-			return value == DateTime.MinValue ? JsonString.Empty : new JsonString(value.ToString("O"));
+			return value == DateTimeOffset.MinValue ? JsonString.Empty : new JsonString(JsonString.FormatDateTimeOffset(value));
 		}
 
 		/// <summary>Returns the equivalent <see cref="JsonString"/></summary>
 		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
 		public static JsonValue Return(DateTimeOffset? value)
 		{
-			return value is null ? JsonNull.Null : value.Value == DateTime.MinValue ? JsonString.Empty : new JsonString(value.Value.ToString("O"));
+			return value is null ? JsonNull.Null : value.Value == DateTimeOffset.MinValue ? JsonString.Empty : new JsonString(JsonString.FormatDateTimeOffset(value.Value));
 		}
 
 		/// <summary>Returns the equivalent <see cref="JsonString"/></summary>
@@ -600,7 +623,7 @@ namespace SnowBank.Data.Json
 		public static JsonValue Return(NodaTime.Instant value)
 		{
 			if (value.ToUnixTimeTicks() == 0) return JsonString.Empty;
-			return new JsonString(CrystalJsonNodaPatterns.Instants.Format(value));
+			return new JsonString(JsonString.FormatInstant(value));
 		}
 
 		/// <summary>Returns the equivalent <see cref="JsonString"/></summary>
@@ -608,7 +631,7 @@ namespace SnowBank.Data.Json
 		{
 			if (!value.HasValue) return JsonNull.Null;
 			if (value.Value.ToUnixTimeTicks() == 0) return JsonString.Empty;
-			return new JsonString(CrystalJsonNodaPatterns.Instants.Format(value.Value));
+			return new JsonString(JsonString.FormatInstant(value.Value));
 		}
 
 		/// <summary>Returns the equivalent <see cref="JsonString"/></summary>
@@ -2176,8 +2199,14 @@ namespace SnowBank.Data.Json
 				return defaultValue;
 			}
 
+			if (CrystalJsonParser.TryParseIso8601Instant(m_value, out var instant))
+			{
+				return instant;
+			}
+
+			// negative years and other spellings go through the NodaTime pattern, which needs a string
 			var parseResult = CrystalJsonNodaPatterns.Instants.Parse(m_value);
-			if (parseResult.TryGetValue(default(NodaTime.Instant), out var instant))
+			if (parseResult.TryGetValue(default(NodaTime.Instant), out instant))
 			{
 				return instant;
 			}
@@ -2203,6 +2232,12 @@ namespace SnowBank.Data.Json
 				return true;
 			}
 
+			if (CrystalJsonParser.TryParseIso8601Instant(literal, out result))
+			{
+				return true;
+			}
+
+			// negative years and other spellings go through the NodaTime pattern, which needs a string
 			var parseResult = CrystalJsonNodaPatterns.Instants.Parse(literal);
 			if (parseResult.TryGetValue(default(NodaTime.Instant), out result))
 			{

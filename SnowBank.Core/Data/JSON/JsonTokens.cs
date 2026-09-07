@@ -54,6 +54,12 @@ namespace SnowBank.Data.Json
 		public const string JavaScriptDateTimeMaxValue = "new Date(253402300799999)";
 		public const string Iso8601DateTimeMaxValue = "\"9999-12-31T23:59:59.9999999\"";
 		public const string Iso8601DateOnlyMaxValue = "\"9999-12-31\"";
+
+		/// <summary>Text of <see cref="DateTime.MaxValue"/>, without quotes</summary>
+		public const string Iso8601DateTimeMaxValueLiteral = "9999-12-31T23:59:59.9999999";
+
+		/// <summary>Text of the last day of the calendar, without quotes</summary>
+		public const string Iso8601DateOnlyMaxValueLiteral = "9999-12-31";
 		public const string CustomClassAttribute = "$type";
 
 		/// <summary>Instant member of the object that <c>DataContractJsonSerializer</c> writes for a <see cref="DateTimeOffset"/></summary>

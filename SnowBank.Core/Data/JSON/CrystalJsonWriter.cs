@@ -2649,8 +2649,9 @@ namespace SnowBank.Data.Json
 			}
 			else
 			{
-				Span<char> buf = stackalloc char[CrystalJsonFormatter.ISO8601_MAX_FORMATTED_SIZE];
-				m_buffer.Write(CrystalJsonFormatter.FormatIso8601DateTime(buf, date, date.Kind, null, '"', omitTimeIfZero: date.Kind == DateTimeKind.Unspecified));
+				// format in place: the buffer reserves the maximum size, the cursor advances by the actual size
+				var buf = m_buffer.GetSpan(CrystalJsonFormatter.ISO8601_MAX_FORMATTED_SIZE);
+				m_buffer.Advance(CrystalJsonFormatter.FormatIso8601DateTime(buf, date, date.Kind, null, '"', omitTimeIfZero: date.Kind == DateTimeKind.Unspecified).Length);
 			}
 		}
 
@@ -2667,8 +2668,8 @@ namespace SnowBank.Data.Json
 			}
 			else
 			{
-				Span<char> buf = stackalloc char[CrystalJsonFormatter.ISO8601_MAX_FORMATTED_SIZE];
-				m_buffer.Write(CrystalJsonFormatter.FormatIso8601DateTime(buf, date.DateTime, DateTimeKind.Local, date.Offset, '"'));
+				var buf = m_buffer.GetSpan(CrystalJsonFormatter.ISO8601_MAX_FORMATTED_SIZE);
+				m_buffer.Advance(CrystalJsonFormatter.FormatIso8601DateTime(buf, date.DateTime, DateTimeKind.Local, date.Offset, '"').Length);
 			}
 		}
 
@@ -2681,8 +2682,8 @@ namespace SnowBank.Data.Json
 			}
 			else
 			{
-				Span<char> buf = stackalloc char[CrystalJsonFormatter.ISO8601_MAX_FORMATTED_SIZE];
-				m_buffer.Write(CrystalJsonFormatter.FormatIso8601DateOnly(buf, date, '"'));
+				var buf = m_buffer.GetSpan(CrystalJsonFormatter.ISO8601_MAX_FORMATTED_SIZE);
+				m_buffer.Advance(CrystalJsonFormatter.FormatIso8601DateOnly(buf, date, '"').Length);
 			}
 		}
 
@@ -2987,18 +2988,18 @@ namespace SnowBank.Data.Json
 			{ // MaxValue does not have any timezone
 				m_buffer.Write(JsonTokens.Iso8601DateTimeMaxValue);
 			}
+			else if (m_dateFormat is not (CrystalJsonSettings.DateFormat.Default or CrystalJsonSettings.DateFormat.TimeStampIso8601))
+			{ // the Microsoft and JavaScript formats have tick precision, and take the DateTime path
+				WriteValue(date.ToDateTimeUtc());
+			}
+			else if (date >= NodaConstants.BclEpoch)
+			{ // "2013-07-26T16:45:20.1234567Z", with two more digits when there are nanoseconds below the tick
+				var buf = m_buffer.GetSpan(CrystalJsonFormatter.ISO8601_MAX_FORMATTED_SIZE);
+				m_buffer.Advance(CrystalJsonFormatter.FormatIso8601Instant(buf, date, '"').Length);
+			}
 			else
-			{ // "2013-07-26T16:45:20.1234567Z"
-
-				// "uuuu'-'MM'-'dd'T'HH':'mm':'ss;FFFFFFFFF'Z'"
-				if (date >= NodaConstants.BclEpoch)
-				{
-					WriteValue(date.ToDateTimeUtc());
-				}
-				else
-				{
-					WriteValue(InstantPattern.ExtendedIso.Format(date));
-				}
+			{ // before year 1: "uuuu'-'MM'-'dd'T'HH':'mm':'ss;FFFFFFFFF'Z'"
+				WriteValue(InstantPattern.ExtendedIso.Format(date));
 			}
 		}
 

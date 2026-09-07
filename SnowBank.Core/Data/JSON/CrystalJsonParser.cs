@@ -392,9 +392,6 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public static bool TryParseIso8601DateTime(ReadOnlySpan<char> value, out DateTime result)
 		{
-#if DEBUG_JSON_PARSER
-			Debug.WriteLine("CrystalJsonConverter.TryParseMicrosoftDateTime(" + value +")");
-#endif
 			result = DateTime.MinValue;
 
 			if (value.Length == 0 || !CouldBeIso8601DateTime(value, out _))
@@ -402,7 +399,36 @@ namespace SnowBank.Data.Json
 				return false;
 			}
 
-			// cf http://msdn.microsoft.com/en-us/library/bb882584.aspx
+			if (TryParseDateTimeOffsetComponents(value, out var date, out var time, out var nanos, out var offset, out var kind))
+			{
+				long ticks = date.ToDateTime(time, DateTimeKind.Unspecified).Ticks + (nanos / 100); // 100 nanoseconds per tick
+				switch (kind)
+				{
+					case DateTimeKind.Utc:
+					{
+						result = new DateTime(ticks, DateTimeKind.Utc);
+						return true;
+					}
+					case DateTimeKind.Unspecified:
+					{
+						result = new DateTime(ticks, DateTimeKind.Unspecified);
+						return true;
+					}
+					default:
+					{ // with an offset, the result is converted to local time, as DateTime.TryParse does with RoundtripKind
+						long utcTicks = ticks - offset.Ticks;
+						if ((ulong) utcTicks <= (ulong) DateTime.MaxValue.Ticks)
+						{
+							result = new DateTime(utcTicks, DateTimeKind.Utc).ToLocalTime();
+							return true;
+						}
+						// a shift past the extremes is left to the BCL
+						break;
+					}
+				}
+			}
+
+			// other spellings that the BCL accepts, cf http://msdn.microsoft.com/en-us/library/bb882584.aspx
 #if NET5_0_OR_GREATER
 			return DateTime.TryParse(value, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.RoundtripKind, out result);
 #else
@@ -475,6 +501,25 @@ namespace SnowBank.Data.Json
 				}
 			}
 
+			return true;
+		}
+
+		/// <summary>Parses an ISO 8601 date with a time and a <c>Z</c> or <c>+HH:MM</c> suffix into an instant, keeping every nanosecond</summary>
+		/// <remarks>A literal without a suffix, or with a negative year, is not handled here: the caller decides what an unspecified kind means.</remarks>
+		[Pure]
+		public static bool TryParseIso8601Instant(ReadOnlySpan<char> value, out NodaTime.Instant result)
+		{
+			if (!TryParseDateTimeOffsetComponents(value, out DateOnly date, out TimeOnly time, out long nanos, out TimeSpan offset, out DateTimeKind kind)
+			 || kind == DateTimeKind.Unspecified)
+			{
+				result = default;
+				return false;
+			}
+
+			// seconds since the Unix epoch: the day number counts from 0001-01-01, the epoch is day 719162; the offset moves the wall clock back to UTC
+			long days = (date.ToDateTime(TimeOnly.MinValue).Ticks / TimeSpan.TicksPerDay) - 719_162;
+			long seconds = (days * 86_400) + (time.Ticks / TimeSpan.TicksPerSecond) - (offset.Ticks / TimeSpan.TicksPerSecond);
+			result = NodaTime.Instant.FromUnixTimeSeconds(seconds).PlusNanoseconds(nanos);
 			return true;
 		}
 
@@ -553,32 +598,40 @@ namespace SnowBank.Data.Json
 			return false;
 		}
 
+		/// <summary>Reads two ASCII digits at <paramref name="index"/></summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static bool TryReadTwoDigits(ReadOnlySpan<char> value, int index, out int result)
+		{
+			uint tens = (uint) (value[index] - '0');
+			uint units = (uint) (value[index + 1] - '0');
+			result = (int) ((tens * 10) + units);
+			return tens <= 9 & units <= 9;
+		}
+
+		/// <summary>Reads four ASCII digits at <paramref name="index"/></summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		private static bool TryReadFourDigits(ReadOnlySpan<char> value, int index, out int result)
+		{
+			uint a = (uint) (value[index] - '0');
+			uint b = (uint) (value[index + 1] - '0');
+			uint c = (uint) (value[index + 2] - '0');
+			uint d = (uint) (value[index + 3] - '0');
+			result = (int) ((a * 1000) + (b * 100) + (c * 10) + d);
+			return a <= 9 & b <= 9 & c <= 9 & d <= 9;
+		}
+
+		/// <summary>Multiplier that scales a fraction of 0 to 8 digits to nanoseconds</summary>
+		private static ReadOnlySpan<uint> NanosScale => [ 1_000_000_000, 100_000_000, 10_000_000, 1_000_000, 100_000, 10_000, 1_000, 100, 10 ];
+
 		private static bool TryParseDateOnlyComponent(ReadOnlySpan<char> value, out DateOnly date, out ReadOnlySpan<char> remainder)
 		{
 			// YYYY-MM-DD
-
-#if NET5_0_OR_GREATER
 			if (value.Length >= 10
 			 && value[4] == '-' && value[7] == '-'
-			 && int.TryParse(value[..4], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var year)
-			 && year is (>= 1 and <= 9999)
-			 && int.TryParse(value[5..7], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var month)
-			 && month is (>= 1 and <= 12)
-			 && int.TryParse(value[8..10], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var day)
-			 && day is >= 1 && day <= DateTime.DaysInMonth(year, month)
+			 && TryReadFourDigits(value, 0, out var year) && year >= 1
+			 && TryReadTwoDigits(value, 5, out var month) && month is (>= 1 and <= 12)
+			 && TryReadTwoDigits(value, 8, out var day) && day >= 1 && day <= DateTime.DaysInMonth(year, month)
 			)
-#else
-			// span-based TryParse is not on netstandard2.0
-			if (value.Length >= 10
-			 && value[4] == '-' && value[7] == '-'
-			 && int.TryParse(value[..4].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var year)
-			 && year is (>= 1 and <= 9999)
-			 && int.TryParse(value[5..7].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var month)
-			 && month is (>= 1 and <= 12)
-			 && int.TryParse(value[8..10].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var day)
-			 && day is >= 1 && day <= DateTime.DaysInMonth(year, month)
-			)
-#endif
 			{
 				date = new DateOnly(year, month, day);
 				remainder = value[10..];
@@ -592,87 +645,41 @@ namespace SnowBank.Data.Json
 
 		private static bool TryParseTimeOnlyComponent(ReadOnlySpan<char> value, out TimeOnly time, out long nanos, out ReadOnlySpan<char> remainder)
 		{
-			// hh:mm:ss[.ffffff]
-
-#if NET5_0_OR_GREATER
+			// hh:mm:ss[.fffffffff]
 			if (value.Length >= 8
-				&& value[2] == ':' && value[5] == ':'
-				&& int.TryParse(value[..2], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
-				&& hour is (>= 0 and <= 23)
-				&& int.TryParse(value[3..5], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
-				&& minute is (>= 0 and <= 59)
-				&& int.TryParse(value[6..8], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var second)
-				&& second is >= 0 && second <= 60 /* leap second! */
+			 && value[2] == ':' && value[5] == ':'
+			 && TryReadTwoDigits(value, 0, out var hour) && hour <= 23
+			 && TryReadTwoDigits(value, 3, out var minute) && minute <= 59
+			 && TryReadTwoDigits(value, 6, out var second) && second <= 59
 			)
-#else
-			// span-based TryParse is not on netstandard2.0
-			if (value.Length >= 8
-				&& value[2] == ':' && value[5] == ':'
-				&& int.TryParse(value[..2].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
-				&& hour is (>= 0 and <= 23)
-				&& int.TryParse(value[3..5].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
-				&& minute is (>= 0 and <= 59)
-				&& int.TryParse(value[6..8].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var second)
-				&& second is >= 0 && second <= 60 /* leap second! */
-			)
-#endif
 			{
 				value = value[8..];
 				nanos = 0;
-				if (value.Length > 0)
-				{ // there may be a millisecond part
-					if (value[0] == '.')
-					{ // ".f" minimum, up to any number of digits?
-						value = value[1..];
-						// count the number of digits
-#if NET5_0_OR_GREATER
-						int digits = value.IndexOfAnyExceptInRange('0', '9');
-#else
-						// IndexOfAnyExceptInRange is not on netstandard2.0
-						int digits = -1;
-						for (int i = 0; i < value.Length; i++)
-						{
-							if (value[i] is < '0' or > '9')
-							{
-								digits = i;
-								break;
-							}
-						}
-#endif
-						if (digits == -1) digits = value.Length;
-#if NET5_0_OR_GREATER
-						if (digits is (0 or > 15) || !ulong.TryParse(value[..digits], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var fractional))
-#else
-						// span-based TryParse is not on netstandard2.0
-						if (digits is (0 or > 15) || !ulong.TryParse(value[..digits].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var fractional))
-#endif
-						{
-							goto invalid;
-						}
-						value = value[digits..];
-
-						if (fractional != 0)
-						{
-							// adjust the fractional part until we have nanoseconds
-							while (digits < 9)
-							{
-								fractional *= 10;
-								++digits;
-							}
-							while (digits > 9)
-							{
-								fractional /= 10; //TODO: how should we round? up or down?
-								--digits;
-							}
-						}
-						nanos = (long) fractional;
+				if (value.Length > 0 && value[0] == '.')
+				{ // ".f" at least; digits past the ninth are read and dropped
+					value = value[1..];
+					int digits = 0;
+					ulong fraction = 0;
+					while (digits < value.Length)
+					{
+						uint digit = (uint) (value[digits] - '0');
+						if (digit > 9) break;
+						if (digits < 9) fraction = (fraction * 10) + digit;
+						digits++;
 					}
+					if (digits is (0 or > 15))
+					{
+						goto invalid;
+					}
+					value = value[digits..];
+					nanos = (long) (digits < 9 ? fraction * NanosScale[digits] : fraction);
 				}
 
 				time = new TimeOnly(hour, minute, second);
 				remainder = value;
 				return true;
 			}
+
 		invalid:
 			time = default;
 			nanos = 0;
@@ -682,30 +689,20 @@ namespace SnowBank.Data.Json
 
 		private static bool TryParseTimeOffsetComponent(ReadOnlySpan<char> value, out TimeSpan offset, out ReadOnlySpan<char> remainder)
 		{
-			// +hh:mm or -hh:mm
-#if NET5_0_OR_GREATER
+			// +hh:mm or -hh:mm; DateTimeOffset accepts offsets up to 14 hours (Line Islands are +14:00, Chatham is +12:45 and +13:45)
 			if (value.Length >= 6
 			 && value[0] is ('+' or '-') && value[3] == ':'
-			 && int.TryParse(value[1..3], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
-			 && hour is (>= 0 and <= 12)
-			 && int.TryParse(value[4..6], NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
-			 && minute is (>= 0 and < 60)
+			 && TryReadTwoDigits(value, 1, out var hour)
+			 && TryReadTwoDigits(value, 4, out var minute) && minute <= 59
 			)
-#else
-			// span-based TryParse is not on netstandard2.0
-			if (value.Length >= 6
-			 && value[0] is ('+' or '-') && value[3] == ':'
-			 && int.TryParse(value[1..3].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var hour)
-			 && hour is (>= 0 and <= 12)
-			 && int.TryParse(value[4..6].ToString(), NumberStyles.Integer, NumberFormatInfo.InvariantInfo, out var minute)
-			 && minute is (>= 0 and < 60)
-			)
-#endif
 			{
-				var minutes = (hour * 60) + minute;
-				offset = TimeSpan.FromMinutes(value[0] == '+' ? minutes : -minutes);
-				remainder = value[6..];
-				return true;
+				int minutes = (hour * 60) + minute;
+				if (minutes <= 14 * 60)
+				{
+					offset = new TimeSpan((value[0] == '+' ? minutes : -minutes) * TimeSpan.TicksPerMinute);
+					remainder = value[6..];
+					return true;
+				}
 			}
 
 			offset = TimeSpan.Zero;

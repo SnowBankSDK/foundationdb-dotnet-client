@@ -445,15 +445,17 @@ namespace SnowBank.Data.Json
 		/// <inheritdoc />
 		public override string ToJsonText(CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
+			// same text as the writer: MinValue is the empty string, the extremes carry no time zone, an unspecified midnight is a date only
+			if (m_value == DateTime.MinValue) return "\"\"";
+			if (m_value == DateTime.MaxValue) return JsonTokens.Iso8601DateTimeMaxValue;
 			if (m_offset == NO_TIMEZONE)
 			{ // DateTime
-				if (m_value == DateTime.MinValue) return "\"\"";
-				return "\"" + CrystalJsonFormatter.ToIso8601String(m_value) + "\"";
+				if (m_value == JsonDateTime.MaxValueDate) return JsonTokens.Iso8601DateOnlyMaxValue;
+				return CrystalJsonFormatter.ToIso8601String(m_value, m_value.Kind, null, omitTimeIfZero: m_value.Kind == DateTimeKind.Unspecified, quotes: '"');
 			}
 			else
 			{ // DateTimeOffset
-				if (m_value == DateTime.MinValue) return "''";
-				return "'" + CrystalJsonFormatter.ToIso8601String(this.DateWithOffset) + "'";
+				return CrystalJsonFormatter.ToIso8601String(m_value, DateTimeKind.Local, this.DateWithOffset.Offset, omitTimeIfZero: false, quotes: '"');
 			}
 		}
 
