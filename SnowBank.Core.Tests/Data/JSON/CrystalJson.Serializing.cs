@@ -2359,8 +2359,12 @@ namespace SnowBank.Data.Json.Tests
 
 			#region Instant
 
+			// the default value (the Unix epoch) is the empty string, like DateTime.MinValue; NodaTime's MinValue is a regular date
 			var instant = default(NodaTime.Instant);
-			CheckSerialize(instant, default, "\"1970-01-01T00:00:00Z\"");
+			CheckSerialize(instant, default, "\"\"");
+
+			instant = NodaTime.Instant.MinValue;
+			CheckSerialize(instant, default, "\"-9998-01-01T00:00:00Z\"");
 
 			instant = NodaTime.Instant.FromUtc(2013, 6, 7, 11, 06, 58);
 			CheckSerialize(instant, default, "\"2013-06-07T11:06:58Z\"");

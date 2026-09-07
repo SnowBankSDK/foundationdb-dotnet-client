@@ -210,6 +210,13 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonValue.FromValue(Instant.MaxValue).ToJsonText(), Is.EqualTo(CrystalJson.Serialize(Instant.MaxValue)));
 				Assert.That(JsonValue.FromValue(DateTime.MinValue).ToJsonText(), Is.EqualTo(CrystalJson.Serialize(DateTime.MinValue)));
 				Assert.That(JsonValue.FromValue(DateTimeOffset.MinValue).ToJsonText(), Is.EqualTo(CrystalJson.Serialize(DateTimeOffset.MinValue)));
+				// the default instant (the Unix epoch) is the empty string on both routes, and NodaTime's MinValue is a regular date that round-trips
+				Assert.That(CrystalJson.Serialize(default(Instant)), Is.EqualTo("\"\""));
+				Assert.That(JsonValue.FromValue(default(Instant)).ToJsonText(), Is.EqualTo("\"\""));
+				Assert.That(CrystalJson.Deserialize<Instant>("\"\""), Is.EqualTo(default(Instant)));
+				Assert.That(JsonValue.FromValue(Instant.MinValue).ToJsonText(), Is.EqualTo(CrystalJson.Serialize(Instant.MinValue)));
+				Assert.That(CrystalJson.Deserialize<Instant>(CrystalJson.Serialize(Instant.MinValue)), Is.EqualTo(Instant.MinValue));
+				Assert.That(JsonValue.FromValue(Instant.MinValue).ToInstant(), Is.EqualTo(Instant.MinValue));
 			}
 		}
 

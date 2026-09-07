@@ -3028,8 +3028,8 @@ namespace SnowBank.Data.Json
 
 		public void WriteValue(NodaTime.Instant date)
 		{
-			if (date == NodaTime.Instant.MinValue)
-			{ // MinValue is serialized as the empty string
+			if (date == default)
+			{ // the default value (the Unix epoch) is serialized as the empty string, like JsonString.Return does
 				m_buffer.Write("\"\"");
 			}
 			else if (date == NodaTime.Instant.MaxValue)
