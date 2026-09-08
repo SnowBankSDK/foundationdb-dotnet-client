@@ -79,6 +79,11 @@ foreach (var kv in chunk)
 
 Use `Decode`/`DecodeLast`/`Unpack`; never slice bytes by hand.
 
+For a hot decode loop, avoid the per-call `Range[]` allocation: size a `Span<Range>` with
+`TuPack.CountItems`, then `subspace.Unpack(kv.Key.Span, buffer)` returns a `SpanTuple` backed by
+your buffer (`TuPack.Unpack(ReadOnlySpan<byte>, Span<Range>)` is the raw form). Keep the buffer alive
+while the tuple is used.
+
 ## Resolve a subspace through the Directory layer
 
 You never hard-code a prefix. Declare a logical **path**, and resolve it to a subspace through the

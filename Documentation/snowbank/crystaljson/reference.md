@@ -185,6 +185,7 @@ same message when it builds the type's contract. The
 | `CJSON0018` | Warning | `StrictLiterals = true` with a `null` false literal (nothing to enforce on the false side) | remove `StrictLiterals`, or give the member a real false literal |
 | `CJSON0019` | Warning | a `[CrystalSerializable]` registration of a type CrystalJson already serializes natively | remove the registration |
 | `CJSON0022` | Error | `[DataMember]` on an explicit interface implementation: it belongs to the contract, and generated code cannot declare an accessor for a qualified member name | promote it to a normal member, or move the contract onto its own DTO |
+| `CJSON0027` | Error | a type with no parameterless constructor whose constructor cannot be chosen: two public constructors match the members and none carries `[JsonConstructor]`, `[JsonConstructor]` is on two of them, or a constructor parameter matches no serialized member | mark one constructor with `[JsonConstructor]`, or align the parameter name with a member |
 
 The self-serializable diagnostics (`CJSON0004` to `CJSON0007`, `CJSON0020`, `CJSON0021`) and the XML
 generator codes (`CRYS####`, `CXML####`) are covered in the

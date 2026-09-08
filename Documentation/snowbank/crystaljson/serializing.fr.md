@@ -44,6 +44,19 @@ Book? maybe = CrystalJson.Deserialize<Book>(json, defaultValue: null);
 Slice bytes = CrystalJson.ToSlice(book);
 ```
 
+Quand un type n'a pas de constructeur sans paramètre, CrystalJson le construit via l'un de ses autres
+constructeurs : celui marqué `[JsonConstructor]`, ou l'unique constructeur public où chaque paramètre
+correspond à un membre sérialisé par nom (insensible à la casse) et par type. Un membre absent prend
+la valeur par défaut du paramètre. Un *record* positionnel n'a donc pas besoin de propriétés `init` ;
+CrystalJson le désérialise via son constructeur principal :
+
+```csharp
+public sealed record Toy(string Name, int Size = 3);
+
+CrystalJson.Deserialize<Toy>("""{ "Name": "ball" }""");
+// => Toy { Name = ball, Size = 3 }
+```
+
 Pour un type qui vous appartient et que vous sérialisez souvent, préférez le ***source
 generator*** : déclarez un *container* une fois, et le compilateur émet le convertisseur que le
 chemin par réflexion reconstruirait sinon à l'exécution :

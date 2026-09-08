@@ -181,6 +181,16 @@ foreach (var kv in chunk)
 
 `Decode<T...>` strips the subspace prefix and tuple-decodes the remainder. Use it; don't slice bytes by hand.
 
+**Hot path, no allocation:** `Unpack` and `Decode` allocate a `Range[]` per call for the element boundaries. In a tight decode loop, size a `Span<Range>` with `TuPack.CountItems`, then read from the returned `SpanTuple`:
+
+```csharp
+Span<Range> buffer = stackalloc Range[TuPack.CountItems(kv.Key.Span)];
+SpanTuple t = subspace.Unpack(kv.Key.Span, buffer); // t is backed by buffer: keep it alive and untouched while t is used
+int id = t.Get<int>(1);
+```
+
+`TuPack.Unpack(ReadOnlySpan<byte>, Span<Range>)` is the raw form, and `IKeySubspace.Unpack(ReadOnlySpan<byte>, Span<Range>)` its subspace form. A buffer too small throws `ArgumentException`; `TryUnpack` returns `false`.
+
 ---
 
 ## 6. Subspaces, locations, and the Directory layer

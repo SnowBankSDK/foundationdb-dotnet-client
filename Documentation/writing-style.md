@@ -40,7 +40,8 @@ The recurring failure is text that sounds technical but tells the reader nothing
   "gives up" to fails; "bump" to upgrade; "seed a chain of builders" to "the starting point for the
   builder methods"; "refuses" or "a refusal" to the concrete outcome (warns, rejects, throws, fails,
   "is a compile error"); "loud" or "loudly" to the mechanism ("throws NotSupportedException", "fails
-  the build"); "vocabulary" and "jargon" to "wording", "terms", or the actual words being discussed.
+  the build"); "vocabulary" and "jargon" to "wording", "terms", or the actual words being discussed;
+  "honors" (a setting, a pragma, a flag) to "respects", "complies with", "understands" or "reacts to".
   Drop empty intensifiers: "a full 15 ms" is "15 ms".
 - **No possession or agency verbs on abstract entities.** An interface, an instance, or a subsystem
   does not "own", "keep", "carry", or "hand out" anything; those verbs apply to physical entities and
@@ -69,7 +70,9 @@ The recurring failure is text that sounds technical but tells the reader nothing
 - Lead with the conclusion: the first sentence of a section tells the reader whether the
   section concerns them.
 - Release notes: the introduction is ONE sentence giving the theme of the release. The Highlights
-  list is the under-a-minute summary; the introduction does not repeat it. Each section then opens
+  list is a table of contents: one linked line per section, in page order, with at most a short
+  clause after the link; the summary bullets go in the GitHub release body, which links to the
+  published page. Each section then opens
   with the symptom, prior workaround, or wrong expectation that tells a reader "this section solves
   a problem you have", before the mechanism. State the motivation when the change matters in one
   context only (a test-only improvement says so, and says what it makes possible).
@@ -111,7 +114,7 @@ One term per concept. The left column is the term these pages use; do not substi
 | the reflection path | CrystalJson serialization driven by runtime contracts | the runtime path, dynamic mode |
 | generated converters | output of the CrystalJson source generator | codegen output, compiled serializers |
 | a container | a class hosting generated serializers | registry, hub |
-| an enrolled type | a type named by `[CrystalSerializable(typeof(T))]` | registered type |
+| a registered type | a type named by `[CrystalSerializable(typeof(T))]` | enrolled type |
 | the DCS format | XML byte-compatible with `DataContractSerializer` | legacy XML, compat XML |
 | the emulator | `FoundationDB.FakeDb`, the in-memory backend | the fake, the mock |
 | the output format | the client-to-cluster protocol version carried by `fdb_c` (must match the cluster) | wire protocol, output protocol |

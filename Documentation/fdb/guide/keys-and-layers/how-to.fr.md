@@ -83,6 +83,11 @@ foreach (var kv in chunk)
 
 Utilisez `Decode`/`DecodeLast`/`Unpack` ; ne découpez jamais les octets à la main.
 
+Pour décoder des clés dans une *hot loop*, évitez l'allocation de `Range[]` par appel :
+dimensionnez un `Span<Range>` avec `TuPack.CountItems`, puis `subspace.Unpack(kv.Key.Span, buffer)`
+renvoie un `SpanTuple` qui utilise votre *buffer* (`TuPack.Unpack(ReadOnlySpan<byte>, Span<Range>)`
+est la forme brute). Gardez le *buffer* en vie tant que le tuple est utilisé.
+
 ## Résoudre un *subspace* via le *Directory layer*
 
 Vous ne codez jamais un préfixe en dur. Déclarez un **chemin** logique, et résolvez-le en *subspace*
