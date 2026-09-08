@@ -31,13 +31,13 @@ Or add the references to your project files directly:
 <!-- Acme.AppHost.csproj -->
 <ItemGroup>
   <!-- other packages -->
-  <PackageReference Include="FoundationDB.Aspire.Hosting" Version="7.4.5" />
+  <PackageReference Include="FoundationDB.Aspire.Hosting" Version="7.4.6" />
 </ItemGroup>
 
 <!-- Acme.Backend.csproj -->
 <ItemGroup>
   <!-- other packages -->
-  <PackageReference Include="FoundationDB.Aspire" Version="7.4.5" />
+  <PackageReference Include="FoundationDB.Aspire" Version="7.4.6" />
 </ItemGroup>
 ```
 
@@ -93,7 +93,7 @@ Or add the reference to the service project file:
 ```
 
 The native client sets the output format, so its version tracks the cluster, not the SDK packages.
-`FoundationDB.Aspire` stays at the library version (`7.4.5`), and `FoundationDB.Client.Native` follows
+`FoundationDB.Aspire` stays at the library version (`7.4.6`), and `FoundationDB.Client.Native` follows
 `clusterVersion`. If you later target a 7.3 cluster, set `apiVersion` to `730` and `clusterVersion` to
 a `7.3.x` in step 2, and change this pin to `7.3.*`: the two always move together. A mismatch is the
 usual reason a service connects and then times out on every operation; see

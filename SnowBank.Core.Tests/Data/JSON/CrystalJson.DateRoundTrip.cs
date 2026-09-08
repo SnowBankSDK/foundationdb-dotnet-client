@@ -106,7 +106,7 @@ namespace SnowBank.Data.Json.Tests
 			{
 				// offsets are whole minutes within +/- 14 hours, and the UTC instant must stay in range
 				var offset = TimeSpan.FromMinutes(rnd.Next(-14 * 60, 14 * 60 + 1));
-				long ticks = Math.Clamp(RandomTicks(rnd), TimeSpan.TicksPerDay, DateTime.MaxValue.Ticks - TimeSpan.TicksPerDay);
+				long ticks = Math.Min(Math.Max(RandomTicks(rnd), TimeSpan.TicksPerDay), DateTime.MaxValue.Ticks - TimeSpan.TicksPerDay);
 				var dto = new DateTimeOffset(ticks, offset);
 				string json = CrystalJson.Serialize(dto);
 				Assert.That(json, Is.EqualTo(Expected(dto.DateTime, ExpectedOffset(offset))), $"ticks={ticks} offset={offset}");
@@ -193,7 +193,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(JsonValue.FromValue(unspecified).ToDateTime(), Is.EqualTo(unspecified));
 
 				var offset = TimeSpan.FromMinutes(rnd.Next(-14 * 60, 14 * 60 + 1));
-				var dto = new DateTimeOffset(Math.Clamp(RandomTicks(rnd), TimeSpan.TicksPerDay, DateTime.MaxValue.Ticks - TimeSpan.TicksPerDay), offset);
+				var dto = new DateTimeOffset(Math.Min(Math.Max(RandomTicks(rnd), TimeSpan.TicksPerDay), DateTime.MaxValue.Ticks - TimeSpan.TicksPerDay), offset);
 				Assert.That(JsonValue.FromValue(dto).ToJsonText(), Is.EqualTo(CrystalJson.Serialize(dto)), $"ticks={dto.Ticks} offset={offset}");
 				Assert.That(JsonValue.FromValue(dto).ToDateTimeOffset(), Is.EqualTo(dto));
 
