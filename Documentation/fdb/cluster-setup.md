@@ -62,14 +62,14 @@ docker run --detach --name fdb \
   --env FDB_NETWORKING_MODE=host \
   --env FDB_PORT=4500 \
   --env FDB_COORDINATOR_PORT=4500 \
-  foundationdb/foundationdb:7.4.6
+  foundationdb/foundationdb:7.4.7
 ```
 
 `FDB_NETWORKING_MODE=host` makes the server advertise `127.0.0.1` so your app on the host can reach it, and the matched `--publish 127.0.0.1:4500:4500` keeps the port identical inside and outside the container. Both matter: without them the client connects once, is handed an address it cannot reach, and every transaction times out.
 
 - `Cannot connect to the Docker daemon`: Docker is not running (see [Prerequisites](prerequisites.md)).
 - `The container name "/fdb" is already in use`: you already have one. Reuse it with `docker start fdb`, or remove it with `docker rm -f fdb` and re-run.
-- On an Apple Silicon Mac, Docker may run the image under emulation if there is no native arm64 build (it works, just slower). If it refuses to start, add `--platform linux/amd64`.
+- Since 7.4.6 the upstream 7.4 image is published for both `amd64` and `arm64`, so Docker on an Apple Silicon Mac runs it natively. Older non-AVX branches (7.3, 7.2, 7.1) ship `amd64`-only images and may run under emulation; add `--platform linux/amd64` if one refuses to start.
 
 ### 2. Initialize the database (once)
 

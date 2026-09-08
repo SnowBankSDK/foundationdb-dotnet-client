@@ -98,12 +98,12 @@ Without it, a bare `dotnet run` on the AppHost crashes at startup: *"Failed to c
 
 The .NET client talks to the cluster through the native **`libfdb_c`** library. `options.UseNativeClient(allowSystemFallback: false)` loads **only** the copy shipped by the `FoundationDB.Client.Native` package.
 
-⚠️ **That package ships `libfdb_c` only for `linux-arm64`, `linux-x64`, and `win-x64` — there is no macOS build.** On macOS you must:
+That package ships `libfdb_c` for `linux-arm64`, `linux-x64`, `win-x64`, `osx-arm64`, and (since the 7.4.6 native repackaging) `osx-x64`, so `UseNativeClient(allowSystemFallback: false)` loads the redistributed client on macOS too, with no system install. Use the system fallback only when your `FoundationDB.Client.Native` pin predates the macOS RID you need:
 
-1. install a system `libfdb_c.dylib` (Homebrew `foundationdb`, or the official client package) **of a matching version (§6) and matching CPU arch** (an arm64 process cannot load an x64 dylib), and
+1. install a system `libfdb_c.dylib` (Homebrew `foundationdb`, or the official client package) of a matching version (§6) and matching CPU arch (an arm64 process cannot load an x64 dylib), and
 2. call `UseNativeClient(allowSystemFallback: true)`.
 
-The loader searches the **app's output directory** and the standard dyld paths — but **not** `/usr/local/lib` by bare name. The reliable fix is to place (or copy) `libfdb_c.dylib` next to the built app. Symptom when it's missing: `DllNotFoundException: Unable to load shared library 'fdb_c'`.
+The loader searches the **app's output directory** and the standard dyld paths, not `/usr/local/lib` by bare name. To force a system copy, place (or copy) `libfdb_c.dylib` next to the built app. Symptom when no client loads: `DllNotFoundException: Unable to load shared library 'fdb_c'`.
 
 ---
 
@@ -125,7 +125,7 @@ For talking to **multiple** cluster versions from one process, FoundationDB's mu
 - Pick the provider source by context: Aspire client integration under an AppHost; plain `services.AddFoundationDb(...)` / `FdbDatabaseProvider.Create(...)` otherwise.
 - Launch the AppHost with `aspire run`; keep a `launchSettings.json` only as the `dotnet run`/F5 fallback.
 - Keep the cluster image and the client library on the **same major.minor** (7.4 with 7.4). Omitting `clusterVersion` lets the hosting package pair them for you against the `libfdb_c` that `FoundationDB.Client.Native` redistributes; pin it only when you supply your own client library, and then verify both with `fdbcli --version`.
-- On macOS, ensure a matching-arch `libfdb_c.dylib` is loadable (next to the app) and use `UseNativeClient(allowSystemFallback: true)`.
+- On macOS, the redistributed client covers `osx-arm64` and `osx-x64` (since 7.4.6), so `UseNativeClient(allowSystemFallback: false)` works; fall back to a system `libfdb_c.dylib` and `allowSystemFallback: true` only for an older pin without your RID.
 
 ⚠️ **GOTCHAS**
 - **Transactions that hang on a brand-new cluster** are almost always a client/cluster **version mismatch**, not a deadlock — check versions first.

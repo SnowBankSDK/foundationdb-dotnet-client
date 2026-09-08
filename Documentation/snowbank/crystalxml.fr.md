@@ -187,15 +187,16 @@ saillants :
 - Ordre des membres : classe de base d'abord (récursivement), les membres sans `Order=` dans
   l'ordre ordinal-alphabétique du nom de sortie, puis les groupes `Order=` croissants avec départage
   alphabétique.
-- Membres en lecture seule : une propriété get-only, ou une propriété avec un *setter* privé et
-  sans activation explicite, n'atteint jamais la sortie, ce qui correspond à ce que le chemin par
-  réflexion du sérialiseur de référence prend sur un POCO ordinaire. Sur un type `[DataContract]`,
-  cette même forme portant `[DataMember]` est au contraire rejetée au moment de la génération
-  (CXML0013) : la vérification « pas de méthode set » du sérialiseur de référence la rejette
-  d'emblée (`InvalidDataContractException`, "No set method for property"), donc il n'y a de toute
-  façon aucun format à reproduire. Un **champ** `[DataMember]` `readonly` est une forme différente
-  (cette vérification ne concerne que les propriétés) et atteint bien la sortie, octet pour octet
-  avec l'oracle réel.
+- Membres en lecture seule : une propriété get-only n'atteint jamais la sortie, ce qui correspond à
+  ce que le chemin par réflexion du sérialiseur de référence prend sur un POCO ordinaire. Une
+  propriété avec un *setter* non public (`private` ou `internal`) portant `[DataMember]` sur un type
+  `[DataContract]` est sérialisée depuis son *getter*, le sens écriture seule dont ce format a
+  besoin ; `DataContractSerializer` la lit et l'écrit via ce *setter* non public. Seule une vraie
+  propriété `[DataMember]` get-only (sans aucun *setter*) est rejetée au moment de la génération
+  (CXML0013), où la vérification « pas de méthode set » du sérialiseur de référence rejette le
+  contrat d'emblée (`InvalidDataContractException`, "No set method for property"). Un **champ**
+  `[DataMember]` `readonly` est une forme différente (cette vérification ne concerne que les
+  propriétés) et atteint bien la sortie, octet pour octet avec l'oracle réel.
 - Membres null : `<X nil="true" />` par défaut ; `[DataMember(EmitDefaultValue = false)]` rend le
   membre absent quand il est à sa valeur CLR par défaut.
 - Collections : l'élément d'*item* est nommé d'après le nom de contrat du type d'*item* (`<string>`,
@@ -340,7 +341,7 @@ Les diagnostics au moment du build sur le format XML lui-même vivent dans la pl
 | CXML0010 | `[CollectionDataContract]` sur le type d'un membre compat |
 | CXML0011 | un dictionnaire dont la forme résolue porte la valeur comme texte (`KeyAttribute`, `KeyValueAttributes`) alors que le type de la valeur n'a pas de forme lexicale |
 | CXML0012 | **Info, pas une erreur** : un *setting* qui a été écrit explicitement, résolu, puis jamais consulté : un `[XmlProperty(ItemName = ...)]` sur un membre sans *items*, sur un membre dont la forme de dictionnaire RÉSOLUE est `Direct` (dont les entrées sont nommées d'après leur propre clé), ou sur un membre dont le type écrit son propre contenu XML (`ICrystalXmlSerializable`, ce qui rend aussi inerte un `DictionaryFormat` au niveau du membre : seul le NOM d'élément vient encore du membre là) ; un `[JsonIgnore(Condition = Never)]` sur un membre projeté en attribut (un attribut n'a pas de forme nil, donc un attribut null est absent de toute façon) ; un `[CrystalXmlOutput(DictionaryFormat = ...)]` sur un container dont le profil résolu est celui de compatibilité (qui a une seule forme de dictionnaire) ; et un `[CrystalXmlOutput(OmitNamespaces = true)]` sur un container dont le profil résolu est le général (le fil dépouillé est une variante du format DCS) |
-| CXML0013 | profil de compatibilité uniquement : une PROPRIÉTÉ en lecture seule (get-only, ou *setter* non public sans activation explicite) portant `[DataMember]` sur un type `[DataContract]` : le sérialiseur de référence rejette ce contrat d'emblée (`InvalidDataContractException`, "No set method for property"), donc il n'y a aucun format à reproduire. Ne se déclenche pas sur un CHAMP `[DataMember]` `readonly` (la vérification du DCS ne concerne que les propriétés) ni sur un membre init-only (un *flag* différent ; le DCS l'émet) |
+| CXML0013 | profil de compatibilité uniquement : une PROPRIÉTÉ get-only (sans aucun *setter*) portant `[DataMember]` sur un type `[DataContract]` : le sérialiseur de référence rejette ce contrat d'emblée (`InvalidDataContractException`, "No set method for property"), donc il n'y a aucun format à reproduire. Une propriété `[DataMember]` avec un *setter* non public est sérialisée depuis son *getter* depuis la 7.4.6 et ne déclenche pas ceci. Ne se déclenche pas sur un CHAMP `[DataMember]` `readonly` (la vérification du DCS ne concerne que les propriétés) ni sur un membre init-only (un *flag* différent ; le DCS l'émet) |
 
 À l'exécution, les graphes plus profonds que `CrystalXml.MaxDepth` (64 niveaux de récursion
 générée, la valeur par défaut de System.Text.Json) lèvent

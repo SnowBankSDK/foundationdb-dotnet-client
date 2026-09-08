@@ -209,13 +209,15 @@ stripped output byte for byte. Highlights:
   `XmlConvert.EncodeLocalName` applied.
 - Member order: base class first (recursive), members without `Order=` in ordinal-alphabetical
   order of the output name, then `Order=` groups ascending with alphabetical ties.
-- Read-only members: a get-only property, or a property with a private setter and no opt-in,
-  never reaches the output, matching what the reference serializer's reflection path takes on a
-  plain POCO. On a `[DataContract]` type that same shape carrying `[DataMember]` is rejected at
-  generation time instead (CXML0013): the reference serializer's no-set-method check rejects it
-  outright (`InvalidDataContractException`, "No set method for property"), so there is no format to
-  match either way. A `readonly` `[DataMember]` **field** is a different shape (that check is
-  property-only) and does reach the output, byte for byte with the live oracle.
+- Read-only members: a get-only property never reaches the output, matching what the reference
+  serializer's reflection path takes on a plain POCO. A property with a non-public setter (`private`
+  or `internal`) carrying `[DataMember]` on a `[DataContract]` type serializes from its getter, the
+  write-only direction this format needs; `DataContractSerializer` reads and writes it through that
+  non-public setter. Only a true get-only `[DataMember]` property (no setter at all) is rejected at
+  generation time (CXML0013), where the reference serializer's no-set-method check rejects the
+  contract outright (`InvalidDataContractException`, "No set method for property"). A `readonly`
+  `[DataMember]` **field** is a different shape (that check is property-only) and does reach the
+  output, byte for byte with the live oracle.
 - Null members: `<X nil="true" />` by default; `[DataMember(EmitDefaultValue = false)]` makes the
   member absent when at its CLR default.
 - Collections: the item element is named after the item type's contract name (`<string>`,
@@ -353,7 +355,7 @@ Build-time diagnostics about the XML format itself live in the CXML range:
 | CXML0010 | `[CollectionDataContract]` on a compat member's type |
 | CXML0011 | a dictionary whose resolved shape carries the value as text (`KeyAttribute`, `KeyValueAttributes`) while the value type has no lexical form |
 | CXML0012 | **Info, not an error**: a setting that was written explicitly, resolved, and then never consulted: an `[XmlProperty(ItemName = ...)]` on a member with no items, on a member whose RESOLVED dictionary shape is `Direct` (whose entries are named after their own key), or on a member whose type writes its own XML content (`ICrystalXmlSerializable`, which also makes a member-level `DictionaryFormat` inert: only the element NAME still comes from the member there); a `[JsonIgnore(Condition = Never)]` on an attribute-projected member (an attribute has no nil form, so a null one is absent either way); a `[CrystalXmlOutput(DictionaryFormat = ...)]` on a container whose resolved profile is the compat one (which has a single dictionary shape); and a `[CrystalXmlOutput(OmitNamespaces = true)]` on a container whose resolved profile is the general one (the stripped output is a variant of the DCS format) |
-| CXML0013 | compat profile only: a read-only (get-only, or non-public-setter with no opt-in) PROPERTY carrying `[DataMember]` on a `[DataContract]` type: the reference serializer rejects that contract outright (`InvalidDataContractException`, "No set method for property"), so there is no format to reproduce. Does not fire on a `readonly` `[DataMember]` FIELD (DCS's check is property-only) or on an init-only member (a different flag; DCS emits it) |
+| CXML0013 | compat profile only: a get-only PROPERTY (no setter at all) carrying `[DataMember]` on a `[DataContract]` type: the reference serializer rejects that contract outright (`InvalidDataContractException`, "No set method for property"), so there is no format to reproduce. A `[DataMember]` property with a non-public setter serializes from its getter since 7.4.6 and does not trigger this. Does not fire on a `readonly` `[DataMember]` FIELD (DCS's check is property-only) or on an init-only member (a different flag; DCS emits it) |
 
 At run time, graphs deeper than `CrystalXml.MaxDepth` (64 levels of generated recursion, the
 System.Text.Json default) raise
