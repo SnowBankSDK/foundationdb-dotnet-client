@@ -396,13 +396,13 @@ namespace SnowBank.Text
 				throw new ArgumentException($"Value is too large to fit in a {bits} bits integer", nameof(literal));
 			}
 
-			ref int map = ref Unsafe.AsRef(in MemoryMarshal.GetReference(GetDecodeMap(options)));
+			ReadOnlySpan<int> map = GetDecodeMap(options);
 
 			ulong acc = 0;
 			foreach (var c in literal)
 			{
 				int x = c - DecodeMapOffset;
-				x = (uint) x < DecodeMapSize ? Unsafe.Add(ref map, x) : -1;
+				x = (uint) x < (uint) map.Length ? map[x] : -1;
 				if (x < 0)
 				{
 					goto invalid;
@@ -424,13 +424,13 @@ namespace SnowBank.Text
 				goto invalid;
 			}
 
-			ref int map = ref Unsafe.AsRef(in MemoryMarshal.GetReference(GetDecodeMap(options)));
+			ReadOnlySpan<int> map = GetDecodeMap(options);
 
 			ulong acc = 0;
 			foreach (var c in literal)
 			{
 				int x = c - DecodeMapOffset;
-				x = (uint) x < DecodeMapSize ? Unsafe.Add(ref map, x) : -1;
+				x = (uint) x < (uint) map.Length ? map[x] : -1;
 				if (x < 0)
 				{
 					goto invalid;
@@ -456,13 +456,13 @@ namespace SnowBank.Text
 				throw new ArgumentException($"Value is too large to fit in a {bits} bits integer", nameof(literal));
 			}
 
-			ref int map = ref Unsafe.AsRef(ref MemoryMarshal.GetReference(GetDecodeMap(options)));
+			ReadOnlySpan<int> map = GetDecodeMap(options);
 
 			UInt128 acc = 0;
 			foreach (var c in literal)
 			{
 				int x = c - DecodeMapOffset;
-				x = (uint) x < DecodeMapSize ? Unsafe.Add(ref map, x) : -1;
+				x = (uint) x < (uint) map.Length ? map[x] : -1;
 				if (x < 0)
 				{
 					goto invalid;
@@ -485,13 +485,13 @@ namespace SnowBank.Text
 				goto invalid;
 			}
 
-			ref int map = ref Unsafe.AsRef(ref MemoryMarshal.GetReference(GetDecodeMap(options)));
+			ReadOnlySpan<int> map = GetDecodeMap(options);
 
 			UInt128 acc = 0;
 			foreach (var c in literal)
 			{
 				int x = c - DecodeMapOffset;
-				x = (uint) x < DecodeMapSize ? Unsafe.Add(ref map, x) : -1;
+				x = (uint) x < (uint) map.Length ? map[x] : -1;
 				if (x < 0)
 				{
 					goto invalid;
