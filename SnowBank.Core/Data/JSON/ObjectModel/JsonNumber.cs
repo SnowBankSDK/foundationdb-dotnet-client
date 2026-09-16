@@ -1316,8 +1316,6 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public static JsonNumber Create(int value)
 		{
-			//note: this method has been optimized looking at the JIT disassembly, to maximize inlining (as of .NET 9)
-
 			// check if this is a cached number, removing an extra bound check
 			var xs = SmallNumbers;
 			uint p = unchecked((uint) (value - CACHED_SIGNED_MIN));
@@ -1338,8 +1336,6 @@ namespace SnowBank.Data.Json
 		[Pure]
 		public static JsonNumber Create(uint value)
 		{
-			//note: this method has been optimized looking at the JIT disassembly, to maximize inlining (as of .NET 9)
-
 			// check if this is a cached number, removing an extra bound check
 			var xs = SmallNumbers;
 			long p = (long) value + CACHED_OFFSET_ZERO;
