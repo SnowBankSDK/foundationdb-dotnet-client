@@ -431,6 +431,29 @@ namespace SnowBank.Text.Tests
 			});
 		}
 
+		[Test]
+		public void Test_JsonEncoding_EscapeSet_Matches_LookupTable()
+		{
+			// The span scanners (net8+ SearchValues, netstandard2.0 unrolled table walk) must flag exactly the characters
+			// that the per-character NeedsEscaping(char) marks in the lookup table. Check every one of the 65536 code units,
+			// so a change to the escape ranges that touches only one of the two representations is caught.
+			var mismatches = new List<string>();
+			Span<char> one = stackalloc char[1];
+			for (int i = 0; i <= 0xFFFF; i++)
+			{
+				char c = (char) i;
+				one[0] = c;
+				bool table = JsonEncoding.NeedsEscaping(c);
+				bool span = JsonEncoding.NeedsEscaping(one);
+				int idx = JsonEncoding.IndexOfFirstInvalidChar(one);
+				if (span != table || (idx == 0) != table)
+				{
+					mismatches.Add($"U+{i:X4}: table={table} span={span} idx={idx}");
+				}
+			}
+			Assert.That(mismatches, Is.Empty, "the span escape scanners diverged from the NeedsEscaping(char) lookup table");
+		}
+
 	}
 
 }
