@@ -97,6 +97,14 @@ namespace SnowBank.Analyzers
 			AnalyzerCategories.SnowBankPerformance,
 			DiagnosticSeverity.Warning);
 
+		/// <summary>SBK2002: a Slice decoded or encoded through a temporary byte array, where a Slice method does the same without the copy.</summary>
+		public static readonly DiagnosticDescriptor SliceRoundTrip = RuleFactory.Create(
+			"SBK2002",
+			"Slice to byte[] round trip",
+			"'{0}' copies the bytes into a temporary array. Call {1} instead.",
+			AnalyzerCategories.SnowBankPerformance,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>Every SnowBank.Core descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
 			AsciiLiteralNotEncodable,
@@ -106,7 +114,8 @@ namespace SnowBank.Analyzers
 			BinaryPrefixAsUtf8,
 			JsonValueNullTest,
 			ContractOnPublicArgument,
-			PooledBufferNeverReturned);
+			PooledBufferNeverReturned,
+			SliceRoundTrip);
 
 	}
 }

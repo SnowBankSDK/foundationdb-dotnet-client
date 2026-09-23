@@ -44,3 +44,4 @@ A `dotnet_diagnostic.<ID>.severity` line for one rule takes precedence over the 
 | [SBK1003](SBK1003.md) | Null test on a JSON value | Warning (correctness) | SnowBank.Core |
 | [SBK1004](SBK1004.md) | Contract.Requires used to validate a public argument | Warning (correctness) | SnowBank.Core |
 | [SBK2001](SBK2001.md) | Pooled buffer never returned | Warning (performance) | SnowBank.Core |
+| [SBK2002](SBK2002.md) | Slice to byte[] round trip | Warning (performance) | SnowBank.Core |

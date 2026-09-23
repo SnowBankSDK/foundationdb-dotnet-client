@@ -11,3 +11,4 @@ SBK1002 | SnowBankCorrectness | Warning | SliceLiteralAnalyzer
 SBK1003 | SnowBankCorrectness | Warning | JsonValueNullTestAnalyzer
 SBK1004 | SnowBankCorrectness | Warning | ContractArgumentAnalyzer
 SBK2001 | SnowBankPerformance | Warning | PooledBufferAnalyzer
+SBK2002 | SnowBankPerformance | Warning | SliceRoundTripAnalyzer
