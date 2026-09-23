@@ -17,3 +17,4 @@ FDB1005 | FdbCorrectness | Warning | MissingKeyTestAnalyzer
 FDB1006 | FdbCorrectness | Warning | MutationEncodingAnalyzer
 FDB2001 | FdbPerformance | Warning | EncodingPerformanceAnalyzer
 FDB2002 | FdbPerformance | Warning | EncodingPerformanceAnalyzer
+FDB2003 | FdbPerformance | Warning | ProviderUnwrapAnalyzer

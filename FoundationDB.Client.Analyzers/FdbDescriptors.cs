@@ -133,6 +133,14 @@ namespace FoundationDB.Analyzers
 			AnalyzerCategories.FdbPerformance,
 			DiagnosticSeverity.Warning);
 
+		/// <summary>FDB2003: a database awaited from the provider only to run a retry loop that the provider runs itself.</summary>
+		public static readonly DiagnosticDescriptor ProviderUnwrapped = RuleFactory.Create(
+			"FDB2003",
+			"Database obtained only to run a retry loop",
+			"IFdbDatabaseProvider has ReadAsync, WriteAsync, ReadWriteAsync and Root. Call them on the provider and drop the GetDatabase call.",
+			AnalyzerCategories.FdbPerformance,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>Every FoundationDB.Client descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
 			DatabaseInjection,
@@ -146,7 +154,8 @@ namespace FoundationDB.Analyzers
 			MissingKeyEmptyTest,
 			VersionStampedKeySet,
 			IntermediateValueBuffer,
-			EagerKeySlice);
+			EagerKeySlice,
+			ProviderUnwrapped);
 
 	}
 }
