@@ -81,6 +81,14 @@ namespace SnowBank.Analyzers
 			AnalyzerCategories.SnowBankCorrectness,
 			DiagnosticSeverity.Warning);
 
+		/// <summary>SBK1004: Contract.Requires, Assert, or Debug.Requires used to check an argument of a public member.</summary>
+		public static readonly DiagnosticDescriptor ContractOnPublicArgument = RuleFactory.Create(
+			"SBK1004",
+			"Contract.Requires used to validate a public argument",
+			"Contract.Requires reports a bug in this code, not a bad argument from the caller. Use {0}, which throws the matching ArgumentException.",
+			AnalyzerCategories.SnowBankCorrectness,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>SBK2001: a pooled writer, allocator, or owner local that is never disposed and never leaves the method.</summary>
 		public static readonly DiagnosticDescriptor PooledBufferNeverReturned = RuleFactory.Create(
 			"SBK2001",
@@ -97,6 +105,7 @@ namespace SnowBank.Analyzers
 			PooledBufferEscape,
 			BinaryPrefixAsUtf8,
 			JsonValueNullTest,
+			ContractOnPublicArgument,
 			PooledBufferNeverReturned);
 
 	}

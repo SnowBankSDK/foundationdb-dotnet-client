@@ -9,4 +9,5 @@ SBK0100 | SnowBankCorrectness | Error | RemovedSliceApiAnalyzer
 SBK1001 | SnowBankCorrectness | Warning | PooledBufferAnalyzer
 SBK1002 | SnowBankCorrectness | Warning | SliceLiteralAnalyzer
 SBK1003 | SnowBankCorrectness | Warning | JsonValueNullTestAnalyzer
+SBK1004 | SnowBankCorrectness | Warning | ContractArgumentAnalyzer
 SBK2001 | SnowBankPerformance | Warning | PooledBufferAnalyzer
