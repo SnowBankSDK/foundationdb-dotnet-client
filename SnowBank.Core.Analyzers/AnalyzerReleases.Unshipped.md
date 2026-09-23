@@ -5,3 +5,4 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
+SBK1003 | SnowBankCorrectness | Warning | JsonValueNullTestAnalyzer

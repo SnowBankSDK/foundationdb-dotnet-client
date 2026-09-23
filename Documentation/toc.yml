@@ -98,6 +98,14 @@
           href: snowbank/crystaljson/reference.md
     - name: XML
       href: snowbank/crystalxml.md
+- name: Analyzers
+  nameFr: Analyseurs
+  items:
+    - name: Overview
+      nameFr: Vue d'ensemble
+      href: analyzers/index.md
+    - name: SBK1003
+      href: analyzers/SBK1003.md
 - name: Release notes
   nameFr: Notes de version
   items:

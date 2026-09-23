@@ -33,8 +33,17 @@ namespace SnowBank.Analyzers
 	public static class SbkDescriptors
 	{
 
+		/// <summary>SBK1003: null test on a JsonValue expression that is never a null reference.</summary>
+		public static readonly DiagnosticDescriptor JsonValueNullTest = RuleFactory.Create(
+			"SBK1003",
+			"Null test on a JSON value",
+			"A JsonValue is never a null reference: a missing member reads as JsonNull.Missing. Test it with IsNullOrMissing().",
+			AnalyzerCategories.SnowBankCorrectness,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>Every SnowBank.Core descriptor, in ID order.</summary>
-		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray<DiagnosticDescriptor>.Empty;
+		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
+			JsonValueNullTest);
 
 	}
 }
