@@ -11,6 +11,12 @@
 		<EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
 	</PropertyGroup>
 
+	<!-- Test projects skip the performance tier: they feed the plain Slice factories on purpose, to exercise the Slice
+	     overloads, and use the BCL encoders as oracles. The error and correctness tiers stay on. -->
+	<PropertyGroup Condition="'$(AttachDogfoodAnalyzers)' == 'true' AND '$(IsTestProject)' == 'true'">
+		<NoWarn>$(NoWarn);FDB2001;FDB2002;FDB2003;SBK2001;SBK2002</NoWarn>
+	</PropertyGroup>
+
 	<ItemGroup Condition="'$(AttachDogfoodAnalyzers)' == 'true'">
 		<ProjectReference Include="$(MSBuildThisFileDirectory)SnowBank.Core.Analyzers\SnowBank.Core.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="$(MSBuildThisFileDirectory)FoundationDB.Client.Analyzers\FoundationDB.Client.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
