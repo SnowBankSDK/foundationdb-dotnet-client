@@ -41,6 +41,14 @@ namespace SnowBank.Analyzers
 			AnalyzerCategories.SnowBankCorrectness,
 			DiagnosticSeverity.Error);
 
+		/// <summary>SBK0002: mutation of a local assigned once from a read-only JSON factory, ToReadOnly(), or Freeze().</summary>
+		public static readonly DiagnosticDescriptor ReadOnlyJsonMutation = RuleFactory.Create(
+			"SBK0002",
+			"Mutation of a read-only JSON value",
+			"'{0}' is read-only, and this call throws InvalidOperationException. Call ToMutable() to get an editable copy.",
+			AnalyzerCategories.SnowBankCorrectness,
+			DiagnosticSeverity.Error);
+
 		/// <summary>SBK0100: Slice factory removed in version 7, reported next to the compiler error with its replacement.</summary>
 		public static readonly DiagnosticDescriptor RemovedSliceApi = RuleFactory.Create(
 			"SBK0100",
@@ -68,6 +76,7 @@ namespace SnowBank.Analyzers
 		/// <summary>Every SnowBank.Core descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
 			AsciiLiteralNotEncodable,
+			ReadOnlyJsonMutation,
 			RemovedSliceApi,
 			BinaryPrefixAsUtf8,
 			JsonValueNullTest);

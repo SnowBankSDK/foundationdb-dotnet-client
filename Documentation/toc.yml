@@ -132,6 +132,8 @@
       href: analyzers/FDB2003.md
     - name: SBK0001
       href: analyzers/SBK0001.md
+    - name: SBK0002
+      href: analyzers/SBK0002.md
     - name: SBK0100
       href: analyzers/SBK0100.md
     - name: SBK1002
