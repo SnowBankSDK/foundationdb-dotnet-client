@@ -85,6 +85,22 @@ namespace FoundationDB.Analyzers
 			DiagnosticSeverity.Warning,
 			WellKnownDiagnosticTags.CompilationEnd);
 
+		/// <summary>FDB1003: AtomicMax or AtomicMin on a value whose encoding compares byte by byte, not as a little-endian integer.</summary>
+		public static readonly DiagnosticDescriptor ByteOrderAtomic = RuleFactory.Create(
+			"FDB1003",
+			"Byte-order atomic on a value that is not a little-endian number",
+			"AtomicMax compares little-endian integers, and '{0}' is not one, so the stored value can be wrong. Use tr.Atomic(key, value, FdbMutationType.ByteMax) for a byte-order comparison (API level 520 or higher).",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Warning);
+
+		/// <summary>FDB1006: Set called with a key that holds a version stamp placeholder, which only SetVersionStampedKey fills in.</summary>
+		public static readonly DiagnosticDescriptor VersionStampedKeySet = RuleFactory.Create(
+			"FDB1006",
+			"Version-stamped key written with Set",
+			"The key contains a version stamp placeholder, and Set does not fill in the stamp. Use tr.SetVersionStampedKey(key, value) so the database fills it in at commit.",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>Every FoundationDB.Client descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
 			DatabaseInjection,
@@ -92,7 +108,9 @@ namespace FoundationDB.Analyzers
 			WatchAwaitedInHandler,
 			RemovedApi,
 			SubspaceStoredAcrossTransactions,
-			SubspaceReturnedFromHandler);
+			SubspaceReturnedFromHandler,
+			ByteOrderAtomic,
+			VersionStampedKeySet);
 
 	}
 }
