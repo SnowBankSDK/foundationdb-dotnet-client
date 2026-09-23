@@ -67,12 +67,32 @@ namespace FoundationDB.Analyzers
 			AnalyzerCategories.FdbCorrectness,
 			DiagnosticSeverity.Error);
 
+		/// <summary>FDB1001: a field, auto-property, or singleton registration keeps a subspace or a layer state across transactions.</summary>
+		public static readonly DiagnosticDescriptor SubspaceStoredAcrossTransactions = RuleFactory.Create(
+			"FDB1001",
+			"Subspace or layer state stored across transactions",
+			"A directory can move, so '{0}' may point at a stale prefix in a later transaction. Store the location (db.Root[...]) and call Resolve(tr) inside each transaction.",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Warning,
+			WellKnownDiagnosticTags.CompilationEnd);
+
+		/// <summary>FDB1002: a ReadAsync or ReadWriteAsync handler returns a subspace or a layer state.</summary>
+		public static readonly DiagnosticDescriptor SubspaceReturnedFromHandler = RuleFactory.Create(
+			"FDB1002",
+			"Subspace returned out of a retry-loop handler",
+			"The subspace returned by this handler belongs to its transaction and can be stale in the next one. Return the location, and call Resolve(tr) inside each transaction.",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Warning,
+			WellKnownDiagnosticTags.CompilationEnd);
+
 		/// <summary>Every FoundationDB.Client descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
 			DatabaseInjection,
 			WatchTransactionToken,
 			WatchAwaitedInHandler,
-			RemovedApi);
+			RemovedApi,
+			SubspaceStoredAcrossTransactions,
+			SubspaceReturnedFromHandler);
 
 	}
 }

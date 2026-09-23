@@ -9,3 +9,5 @@ FDB0001 | FdbCorrectness | Error | DatabaseInjectionAnalyzer
 FDB0002 | FdbCorrectness | Error | WatchAnalyzer
 FDB0003 | FdbCorrectness | Error | WatchAnalyzer
 FDB0100 | FdbCorrectness | Error | RemovedApiAnalyzer
+FDB1001 | FdbCorrectness | Warning | SubspaceLifetimeAnalyzer
+FDB1002 | FdbCorrectness | Warning | SubspaceLifetimeAnalyzer
