@@ -39,5 +39,7 @@ A `dotnet_diagnostic.<ID>.severity` line for one rule takes precedence over the 
 | [SBK0001](SBK0001.md) | Slice.FromStringAscii on text that cannot be encoded | Error | SnowBank.Core |
 | [SBK0002](SBK0002.md) | Mutation of a read-only JSON value | Error | SnowBank.Core |
 | [SBK0100](SBK0100.md) | Removed API | Error | SnowBank.Core |
+| [SBK1001](SBK1001.md) | Pooled buffer escaping its using scope | Warning (correctness) | SnowBank.Core |
 | [SBK1002](SBK1002.md) | Binary prefix encoded as UTF-8 text | Warning (correctness) | SnowBank.Core |
 | [SBK1003](SBK1003.md) | Null test on a JSON value | Warning (correctness) | SnowBank.Core |
+| [SBK2001](SBK2001.md) | Pooled buffer never returned | Warning (performance) | SnowBank.Core |

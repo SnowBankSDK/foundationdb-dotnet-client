@@ -57,6 +57,14 @@ namespace SnowBank.Analyzers
 			AnalyzerCategories.SnowBankCorrectness,
 			DiagnosticSeverity.Error);
 
+		/// <summary>SBK1001: a view into a pooled buffer (Data, Span, ToSlice(), ...) that leaves the using scope of its owner.</summary>
+		public static readonly DiagnosticDescriptor PooledBufferEscape = RuleFactory.Create(
+			"SBK1001",
+			"Pooled buffer escaping its using scope",
+			"'{0}' points into a pooled buffer that returns to the pool at the end of this using block. Copy it with ToArray(), or return the owner with ToSliceOwner().",
+			AnalyzerCategories.SnowBankCorrectness,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>SBK1002: Slice.FromString or FromStringUtf8 on a literal whose first character is a binary prefix (0x80 to 0xFF).</summary>
 		public static readonly DiagnosticDescriptor BinaryPrefixAsUtf8 = RuleFactory.Create(
 			"SBK1002",
@@ -73,13 +81,23 @@ namespace SnowBank.Analyzers
 			AnalyzerCategories.SnowBankCorrectness,
 			DiagnosticSeverity.Warning);
 
+		/// <summary>SBK2001: a pooled writer, allocator, or owner local that is never disposed and never leaves the method.</summary>
+		public static readonly DiagnosticDescriptor PooledBufferNeverReturned = RuleFactory.Create(
+			"SBK2001",
+			"Pooled buffer never returned",
+			"'{0}' rents a buffer from a pool and is never disposed, so the buffer never returns. Declare it with 'using'.",
+			AnalyzerCategories.SnowBankPerformance,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>Every SnowBank.Core descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
 			AsciiLiteralNotEncodable,
 			ReadOnlyJsonMutation,
 			RemovedSliceApi,
+			PooledBufferEscape,
 			BinaryPrefixAsUtf8,
-			JsonValueNullTest);
+			JsonValueNullTest,
+			PooledBufferNeverReturned);
 
 	}
 }

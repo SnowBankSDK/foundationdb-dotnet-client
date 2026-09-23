@@ -136,10 +136,14 @@
       href: analyzers/SBK0002.md
     - name: SBK0100
       href: analyzers/SBK0100.md
+    - name: SBK1001
+      href: analyzers/SBK1001.md
     - name: SBK1002
       href: analyzers/SBK1002.md
     - name: SBK1003
       href: analyzers/SBK1003.md
+    - name: SBK2001
+      href: analyzers/SBK2001.md
 - name: Release notes
   nameFr: Notes de version
   items:
