@@ -5,6 +5,8 @@
     <Project Path="FoundationDB.BindingTester/FoundationDB.BindingTester.csproj" />
     <Project Path="FoundationDB.Client.Native/FoundationDB.Client.Native.csproj" />
     <Project Path="FoundationDB.Client/FoundationDB.Client.csproj" />
+    <Project Path="FoundationDB.Client.Analyzers/FoundationDB.Client.Analyzers.csproj" />
+    <Project Path="FoundationDB.Client.CodeFixes/FoundationDB.Client.CodeFixes.csproj" />
     <Project Path="FoundationDB.FakeDb/FoundationDB.FakeDb.csproj" />
     <Project Path="FoundationDB.Layers.Common/FoundationDB.Layers.Common.csproj" />
     <Project Path="FoundationDB.Layers.Experimental/FoundationDB.Layers.Experimental.csproj" />
@@ -22,6 +24,8 @@
   </Folder>
   <Folder Name="/Core/">
     <Project Path="SnowBank.Core/SnowBank.Core.csproj" />
+    <Project Path="SnowBank.Core.Analyzers/SnowBank.Core.Analyzers.csproj" />
+    <Project Path="SnowBank.Core.CodeFixes/SnowBank.Core.CodeFixes.csproj" />
     <Project Path="SnowBank.Networking.Http/SnowBank.Networking.Http.csproj" />
     <Project Path="SnowBank.Networking.PacketCapture/SnowBank.Networking.PacketCapture.csproj" />
     <Project Path="SnowBank.Serialization.Json.CodeGen/SnowBank.Serialization.Json.CodeGen.csproj" />
@@ -32,6 +36,7 @@
     <Project Path="SnowBank.Testing.Framework.Playwright/SnowBank.Testing.Framework.Playwright.csproj" />
   </Folder>
   <Folder Name="/Core/Tests/">
+    <Project Path="SnowBank.Analyzers.Tests/SnowBank.Analyzers.Tests.csproj" />
     <Project Path="SnowBank.Core.Tests/SnowBank.Core.Tests.csproj" />
     <Project Path="SnowBank.Serialization.Json.CodeGen.Tests/SnowBank.Serialization.Json.CodeGen.Tests.csproj" />
     <Project Path="SnowBank.Shell.Tests/SnowBank.Shell.Tests.csproj" />

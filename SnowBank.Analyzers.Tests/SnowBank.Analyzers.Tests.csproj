@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- Microsoft.Testing.Platform runner (like every other test project): the assembly is a self-contained
+		     executable, run directly with `dotnet <dll>` instead of `dotnet test` / classic VSTest -->
+		<OutputType>Exe</OutputType>
+		<TargetFrameworks>net10.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<LangVersion>preview</LangVersion>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<PropertyGroup>
+		<IsTestProject>true</IsTestProject>
+		<EnableNUnitRunner>true</EnableNUnitRunner>
+		<IsPackable>false</IsPackable>
+		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- the documentation tests locate Documentation/analyzers through this value -->
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+			<_Parameter1>RepositoryRoot</_Parameter1>
+			<_Parameter2>$(MSBuildThisFileDirectory)..\</_Parameter2>
+		</AssemblyAttribute>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" />
+		<!-- explicit, or the restore picks the 1.0.1 floor that the testing packages declare -->
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
+		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" />
+		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
+		<PackageReference Include="NUnit" />
+		<PackageReference Include="NUnit.Analyzers">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="NUnit3TestAdapter">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- plain references: the tests instantiate the analyzers and pass the library assemblies to the test compilations -->
+		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
+		<ProjectReference Include="..\SnowBank.Core.Analyzers\SnowBank.Core.Analyzers.csproj" />
+		<ProjectReference Include="..\SnowBank.Core.CodeFixes\SnowBank.Core.CodeFixes.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client.Analyzers\FoundationDB.Client.Analyzers.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client.CodeFixes\FoundationDB.Client.CodeFixes.csproj" />
+	</ItemGroup>
+
+</Project>

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<LangVersion>preview</LangVersion>
+		<Nullable>enable</Nullable>
+		<IsRoslynComponent>true</IsRoslynComponent>
+		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+		<IsPackable>false</IsPackable>
+		<CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
+		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+		<RootNamespace>FoundationDB.Analyzers</RootNamespace>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<PropertyGroup>
+		<AssemblyTitle>FoundationDB Client analyzers</AssemblyTitle>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\Common\Analyzers\*.cs" LinkBase="Shared" />
+		<AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+		<AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+	</ItemGroup>
+
+</Project>
