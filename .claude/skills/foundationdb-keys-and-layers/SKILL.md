@@ -584,7 +584,7 @@ Older code (and older docs) used a **dynamic** subspace API — `IDynamicKeySubs
 Notes:
 - The biggest win is **type safety**: `subspace.Key(CHUNKS, rid, chunkId, count)` returns `FdbTupleKey<int,long,int,int>`, caught at compile time, and stays lazy until handed to `tr`.
 - Keep using `subspace.Key(prefix...).Tuple(runtimeTuple)` wherever the old code packed a fixed prefix followed by a runtime `IVarTuple` (the common case for generic indexes).
-- Scalar metadata setters (`tr.SetValueString/Int32/Int64/...`) are unchanged and still the most convenient way to write scalar values.
+- The scalar setters `tr.SetValueString/Int32/Int64/Guid/...` are obsolete. Pass a value encoder to `tr.Set` instead: `FdbValue.ToTextUtf8(s)`, `FdbValue.ToFixed32LittleEndian(n)`, `FdbValue.ToFixed64LittleEndian(n)`, `FdbValue.ToUuid128(g)`. Each obsolete message names the exact replacement.
 
 ## 12. Advanced techniques (production layers)
 
