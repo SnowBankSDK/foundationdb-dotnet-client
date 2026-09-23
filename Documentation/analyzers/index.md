@@ -23,4 +23,5 @@ A `dotnet_diagnostic.<ID>.severity` line for one rule takes precedence over the 
 
 | ID | Title | Severity | Analyzer |
 |---|---|---|---|
+| [FDB0001](FDB0001.md) | IFdbDatabase requested from dependency injection | Error | FoundationDB.Client |
 | [SBK1003](SBK1003.md) | Null test on a JSON value | Warning (correctness) | SnowBank.Core |

@@ -34,8 +34,18 @@ namespace FoundationDB.Analyzers
 	public static class FdbDescriptors
 	{
 
+		/// <summary>FDB0001: IFdbDatabase requested from dependency injection, where nothing registers it.</summary>
+		public static readonly DiagnosticDescriptor DatabaseInjection = RuleFactory.Create(
+			"FDB0001",
+			"IFdbDatabase requested from dependency injection",
+			"IFdbDatabase is not registered in dependency injection. Inject IFdbDatabaseProvider, which has ReadAsync, WriteAsync, ReadWriteAsync and Root.",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Error,
+			WellKnownDiagnosticTags.CompilationEnd);
+
 		/// <summary>Every FoundationDB.Client descriptor, in ID order.</summary>
-		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray<DiagnosticDescriptor>.Empty;
+		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
+			DatabaseInjection);
 
 	}
 }

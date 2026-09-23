@@ -62,12 +62,24 @@ namespace SnowBank.Analyzers.Tests
 		public static Task CodeFix<TAnalyzer, TFix>(string source, string fixedSource, ReferenceAssemblies references, OutputKind outputKind, params DiagnosticResult[] expected)
 			where TAnalyzer : DiagnosticAnalyzer, new()
 			where TFix : CodeFixProvider, new()
+			=> CodeFix<TAnalyzer, TFix>(source, fixedSource, references, outputKind, CodeFixTestBehaviors.None, expected);
+
+		/// <summary>Code fix of a compilation-end diagnostic: the testing library rejects a fix for a non-local diagnostic unless told otherwise.</summary>
+		public static Task CodeFixAtCompilationEnd<TAnalyzer, TFix>(string source, string fixedSource, ReferenceAssemblies references, OutputKind outputKind, params DiagnosticResult[] expected)
+			where TAnalyzer : DiagnosticAnalyzer, new()
+			where TFix : CodeFixProvider, new()
+			=> CodeFix<TAnalyzer, TFix>(source, fixedSource, references, outputKind, CodeFixTestBehaviors.SkipLocalDiagnosticCheck, expected);
+
+		private static Task CodeFix<TAnalyzer, TFix>(string source, string fixedSource, ReferenceAssemblies references, OutputKind outputKind, CodeFixTestBehaviors behaviors, DiagnosticResult[] expected)
+			where TAnalyzer : DiagnosticAnalyzer, new()
+			where TFix : CodeFixProvider, new()
 		{
 			var test = new CSharpCodeFixTest<TAnalyzer, TFix, DefaultVerifier>
 			{
 				TestCode = source,
 				FixedCode = fixedSource,
 				ReferenceAssemblies = references,
+				CodeFixTestBehaviors = behaviors,
 			};
 			// FixedState inherits the references and output kind of TestState (default inheritance mode).
 			test.TestState.OutputKind = outputKind;

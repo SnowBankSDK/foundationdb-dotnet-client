@@ -104,6 +104,8 @@
     - name: Overview
       nameFr: Vue d'ensemble
       href: analyzers/index.md
+    - name: FDB0001
+      href: analyzers/FDB0001.md
     - name: SBK1003
       href: analyzers/SBK1003.md
 - name: Release notes

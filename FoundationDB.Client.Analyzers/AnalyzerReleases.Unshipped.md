@@ -5,3 +5,4 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
+FDB0001 | FdbCorrectness | Error | DatabaseInjectionAnalyzer
