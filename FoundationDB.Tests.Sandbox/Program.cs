@@ -266,7 +266,7 @@ namespace FoundationDB.Tests.Sandbox
 				// Writes some data in to the database
 				using (var tr = db.BeginTransaction(ct))
 				{
-					tr.Set(TuPack.EncodeKey("Test", 123), Slice.FromString("Hello World!"));
+					tr.Set(TuPack.EncodeKey("Test", 123), FdbValue.ToTextUtf8("Hello World!"));
 					tr.Set(TuPack.EncodeKey("Test", 456), Slice.FromInt64(DateTime.UtcNow.Ticks));
 				}
 

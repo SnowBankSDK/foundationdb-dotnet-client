@@ -57,19 +57,17 @@ namespace FoundationDB.Samples.Benchmarks
 		/// </summary>
 		public async Task Init(IFdbDatabase db, CancellationToken ct)
 		{
-			await db.ReadWriteAsync(async tr =>
+			await db.WriteAsync(async tr =>
 			{
 				// open the folder where we will store everything
 				var subspace = await db.DirectoryLayer.CreateOrOpenAsync(tr, this.Location.Path);
 
 				// clear all previous values
-				await db.ClearRangeAsync(subspace, ct);
+				tr.ClearRange(subspace);
 
 				// insert all the classes
-				tr.Set(subspace.First(), Slice.FromString("BEGIN"));
-				tr.Set(subspace.Last(), Slice.FromString("END"));
-
-				return subspace;
+				tr.Set(subspace.First(), FdbValue.ToTextUtf8("BEGIN"));
+				tr.Set(subspace.Last(), FdbValue.ToTextUtf8("END"));
 			}, ct);
 		}
 
@@ -105,7 +103,7 @@ namespace FoundationDB.Samples.Benchmarks
 					var subspace = await this.Location.Resolve(tr);
 					for (int j = 0; j < values.Length; j++)
 					{
-						tr.Set(subspace.Key(student, j, now), Slice.FromString(values[j] + new string('A', 100)));
+						tr.Set(subspace.Key(student, j, now), FdbValue.ToTextUtf8(values[j] + new string('A', 100)));
 					}
 				}, ct);
 				Console.Write(".");

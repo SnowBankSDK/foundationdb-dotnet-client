@@ -47,21 +47,22 @@ namespace FoundationDB.Samples.Tutorials
 
 		public string[] ClassNames { get; }
 
-		public IKeySubspace? Subspace { get; private set; }
+		/// <summary>Location of the tutorial data. A location is safe to keep: each transaction resolves it to its current subspace.</summary>
+		public FdbDirectorySubspaceLocation? Location { get; private set; }
 
-		protected FdbTupleKey<string, string> ClassKey(string c)
+		protected static FdbTupleKey<string, string> ClassKey(IKeySubspace subspace, string c)
 		{
-			return this.Subspace!.Key("class", c);
+			return subspace.Key("class", c);
 		}
 
-		protected FdbTupleKey<string, string, string> AttendsKey(string s, string c)
+		protected static FdbTupleKey<string, string, string> AttendsKey(IKeySubspace subspace, string s, string c)
 		{
-			return this.Subspace!.Key("attends", s, c);
+			return subspace.Key("attends", s, c);
 		}
 
-		protected FdbKeyRange<FdbTupleKey<string, string>, FdbTupleKey<string, string>> AttendsKeys(string s)
+		protected static FdbKeyRange<FdbTupleKey<string, string>, FdbTupleKey<string, string>> AttendsKeys(IKeySubspace subspace, string s)
 		{
-			return this.Subspace!.Key("attends", s).ToRange();
+			return subspace.Key("attends", s).ToRange();
 		}
 
 		/// <summary>
@@ -69,10 +70,12 @@ namespace FoundationDB.Samples.Tutorials
 		/// </summary>
 		public async Task Init(IFdbDatabase db, CancellationToken ct)
 		{
-			// open the folder where we will store everything
-			this.Subspace = await db.ReadWriteAsync(async tr =>
+			// the folder where we will store everything
+			var location = db.Root["Tutorials"]["ClassScheduling"];
+
+			await db.WriteAsync(async tr =>
 			{
-				var subspace = await db.Root["Tutorials"]["ClassScheduling"].CreateOrOpenAsync(tr);
+				var subspace = await location.CreateOrOpenAsync(tr);
 
 				// clear all previous values
 				tr.ClearRange(subspace);
@@ -80,21 +83,22 @@ namespace FoundationDB.Samples.Tutorials
 				// insert all the classes
 				foreach (var c in this.ClassNames)
 				{
-					tr.Set(ClassKey(c), Slice.FromStringAscii("100"));
+					tr.Set(ClassKey(subspace, c), FdbValue.ToTextUtf8("100"));
 				}
-
-				return subspace;
 			}, ct);
+
+			this.Location = location;
 		}
 
 		/// <summary>
 		/// Returns the list of names of all existing classes
 		/// </summary>
-		public Task<List<string>> AvailableClasses(IFdbReadOnlyTransaction tr)
+		public async Task<List<string>> AvailableClasses(IFdbReadOnlyTransaction tr)
 		{
-			return tr.GetRange(this.Subspace!.Key("class").ToRange())
+			var subspace = await this.Location!.Resolve(tr);
+			return await tr.GetRange(subspace.Key("class").ToRange())
 				.Where(kvp => int.TryParse(kvp.Value.Span, out _)) // (step 3)
-				.Select(kvp => this.Subspace!.DecodeLast<string>(kvp.Key)!)
+				.Select(kvp => subspace.DecodeLast<string>(kvp.Key)!)
 				.ToListAsync();
 		}
 
@@ -103,22 +107,23 @@ namespace FoundationDB.Samples.Tutorials
 		/// </summary>
 		public async Task Signup(IFdbTransaction tr, string s, string c)
 		{
-			var rec = AttendsKey(s, c);
+			var subspace = await this.Location!.Resolve(tr);
+			var rec = AttendsKey(subspace, s, c);
 
 			if ((await tr.GetAsync(rec)).IsPresent)
 			{ // already signed up
 				return;
 			}
-			int seatsLeft = int.Parse((await tr.GetAsync(ClassKey(c))).ToStringAscii()!);
+			int seatsLeft = int.Parse((await tr.GetAsync(ClassKey(subspace, c))).ToStringAscii()!);
 			if (seatsLeft <= 0)
 			{
 				throw new InvalidOperationException("No remaining seats");
 			}
 
-			var classes = await tr.GetRange(AttendsKeys(s)).ToListAsync();
+			var classes = await tr.GetRange(AttendsKeys(subspace, s)).ToListAsync();
 			if (classes.Count >= 5) throw new InvalidOperationException("Too many classes");
 
-			tr.Set(ClassKey(c), Slice.FromStringAscii((seatsLeft - 1).ToString()));
+			tr.Set(ClassKey(subspace, c), FdbValue.ToTextUtf8((seatsLeft - 1).ToString(CultureInfo.InvariantCulture)));
 			tr.Set(rec, Slice.Empty);
 		}
 
@@ -127,14 +132,15 @@ namespace FoundationDB.Samples.Tutorials
 		/// </summary>
 		public async Task Drop(IFdbTransaction tr, string s, string c)
 		{
-			var rec = AttendsKey(s, c);
+			var subspace = await this.Location!.Resolve(tr);
+			var rec = AttendsKey(subspace, s, c);
 			if ((await tr.GetAsync(rec)).IsNullOrEmpty)
 			{ // not taking this class
 				return;
 			}
 
-			var students = int.Parse((await tr.GetAsync(ClassKey(c))).ToStringAscii()!);
-			tr.Set(ClassKey(c), Slice.FromStringAscii((students + 1).ToString()));
+			var students = int.Parse((await tr.GetAsync(ClassKey(subspace, c))).ToStringAscii()!);
+			tr.Set(ClassKey(subspace, c), FdbValue.ToTextUtf8((students + 1).ToString(CultureInfo.InvariantCulture)));
 			tr.Clear(rec);
 		}
 

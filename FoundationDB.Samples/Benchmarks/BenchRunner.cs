@@ -55,7 +55,11 @@ namespace FoundationDB.Samples.Benchmarks
 
 		public BenchMode Mode { get; }
 
+		// The benchmark measures the latency of one operation, so it resolves the directory once instead of in every
+		// transaction; nothing moves the directory during the run.
+#pragma warning disable FDB1001
 		public IKeySubspace? Subspace { get; private set; }
+#pragma warning restore FDB1001
 
 		public RobustHistogram Histo { get; }
 
@@ -65,7 +69,9 @@ namespace FoundationDB.Samples.Benchmarks
 		public async Task Init(IFdbDatabase db, CancellationToken ct)
 		{
 			// open the folder where we will store everything
+#pragma warning disable FDB1002 // resolved once on purpose, see the Subspace property
 			this.Subspace = await db.ReadWriteAsync(tr => db.Root["Benchmarks"].CreateOrOpenAsync(tr), ct);
+#pragma warning restore FDB1002
 		}
 
 		public async Task Run(IFdbDatabase db, TextWriter log, CancellationToken ct)

@@ -85,7 +85,7 @@ namespace FoundationDB.Samples.Tutorials
 		public async Task Init(IFdbDatabase db, CancellationToken ct)
 		{
 			// open the folder where we will store everything
-			await db.ReadWriteAsync(tr => db.DirectoryLayer.CreateOrOpenAsync(tr, this.Location.Path), ct);
+			await db.WriteAsync(async tr => { await db.DirectoryLayer.CreateOrOpenAsync(tr, this.Location.Path); }, ct);
 		}
 
 		/// <summary>
