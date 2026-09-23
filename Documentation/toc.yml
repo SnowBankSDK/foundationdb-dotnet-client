@@ -118,6 +118,8 @@
       href: analyzers/FDB1002.md
     - name: FDB1003
       href: analyzers/FDB1003.md
+    - name: FDB1004
+      href: analyzers/FDB1004.md
     - name: FDB1006
       href: analyzers/FDB1006.md
     - name: SBK0100

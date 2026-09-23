@@ -30,6 +30,7 @@ A `dotnet_diagnostic.<ID>.severity` line for one rule takes precedence over the 
 | [FDB1001](FDB1001.md) | Subspace or layer state stored across transactions | Warning (correctness) | FoundationDB.Client |
 | [FDB1002](FDB1002.md) | Subspace returned out of a retry-loop handler | Warning (correctness) | FoundationDB.Client |
 | [FDB1003](FDB1003.md) | Byte-order atomic on a value that is not a little-endian number | Warning (correctness) | FoundationDB.Client |
+| [FDB1004](FDB1004.md) | Id or clock read inside a retry-loop handler | Warning (correctness) | FoundationDB.Client |
 | [FDB1006](FDB1006.md) | Version-stamped key written with Set | Warning (correctness) | FoundationDB.Client |
 | [SBK0100](SBK0100.md) | Removed API | Error | SnowBank.Core |
 | [SBK1003](SBK1003.md) | Null test on a JSON value | Warning (correctness) | SnowBank.Core |

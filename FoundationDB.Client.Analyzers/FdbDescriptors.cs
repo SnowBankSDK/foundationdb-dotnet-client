@@ -93,6 +93,14 @@ namespace FoundationDB.Analyzers
 			AnalyzerCategories.FdbCorrectness,
 			DiagnosticSeverity.Warning);
 
+		/// <summary>FDB1004: an id or clock read inside a retry-loop handler, whose value changes on every attempt.</summary>
+		public static readonly DiagnosticDescriptor RetryLoopValue = RuleFactory.Create(
+			"FDB1004",
+			"Id or clock read inside a retry-loop handler",
+			"The handler runs again on every retry, so '{0}' produces a different value on each attempt. Compute it before the call and capture it.",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>FDB1006: Set called with a key that holds a version stamp placeholder, which only SetVersionStampedKey fills in.</summary>
 		public static readonly DiagnosticDescriptor VersionStampedKeySet = RuleFactory.Create(
 			"FDB1006",
@@ -110,6 +118,7 @@ namespace FoundationDB.Analyzers
 			SubspaceStoredAcrossTransactions,
 			SubspaceReturnedFromHandler,
 			ByteOrderAtomic,
+			RetryLoopValue,
 			VersionStampedKeySet);
 
 	}

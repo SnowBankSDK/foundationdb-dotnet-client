@@ -59,6 +59,10 @@ namespace FoundationDB.Analyzers
 			this.AspireComponentExtensions = compilation.GetTypeByMetadataName("Microsoft.Extensions.Hosting.FdbAspireComponentExtensions");
 			this.Slice = compilation.GetTypeByMetadataName("System.Slice");
 			this.CancellationToken = compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
+			this.Guid = compilation.GetTypeByMetadataName("System.Guid");
+			this.DateTime = compilation.GetSpecialType(SpecialType.System_DateTime);
+			this.DateTimeOffset = compilation.GetTypeByMetadataName("System.DateTimeOffset");
+			this.TimeProvider = compilation.GetTypeByMetadataName("System.TimeProvider");
 		}
 
 		/// <summary>Resolves the symbols, or returns null when the compilation does not reference FoundationDB.Client.</summary>
@@ -114,6 +118,15 @@ namespace FoundationDB.Analyzers
 		public INamedTypeSymbol? Slice { get; }
 
 		public INamedTypeSymbol? CancellationToken { get; }
+
+		public INamedTypeSymbol? Guid { get; }
+
+		public INamedTypeSymbol DateTime { get; }
+
+		public INamedTypeSymbol? DateTimeOffset { get; }
+
+		/// <summary>System.TimeProvider, null on a target framework that predates it.</summary>
+		public INamedTypeSymbol? TimeProvider { get; }
 
 		/// <summary>The type is <paramref name="target"/>, derives from it, or implements it.</summary>
 		public static bool IsOrImplements(ITypeSymbol? type, INamedTypeSymbol? target)
