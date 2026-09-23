@@ -65,14 +65,15 @@ namespace SnowBank.Analyzers.Tests
 		public Task Reports_Other_Byte_Order_Encodings() => Verify.Analyzer<MutationEncodingAnalyzer>(Usings + """
 			class C
 			{
-				void M(IFdbTransaction tr, Slice key, string name, Guid g)
+				void M(IFdbTransaction tr, Slice key, string name, Guid g, object obj)
 				{
 					tr.AtomicMax(key, {|#0:FdbValue.ToTextUtf16(name)|});
 					tr.AtomicMax(key, {|#1:Slice.FromGuid(g)|});
 					tr.AtomicMin(key, {|#2:Slice.FromStringAscii(name)|});
+					tr.AtomicMin(key, {|#3:FdbValue.ToJson(obj)|});
 				}
 			}
-			""", Atomic(0, "FdbValue.ToTextUtf16(name)"), Atomic(1, "Slice.FromGuid(g)"), Atomic(2, "Slice.FromStringAscii(name)"));
+			""", Atomic(0, "FdbValue.ToTextUtf16(name)"), Atomic(1, "Slice.FromGuid(g)"), Atomic(2, "Slice.FromStringAscii(name)"), Atomic(3, "FdbValue.ToJson(obj)"));
 
 		[Test]
 		public Task Ignores_The_Byte_Order_Mutation() => Verify.Analyzer<MutationEncodingAnalyzer>(Usings + """
