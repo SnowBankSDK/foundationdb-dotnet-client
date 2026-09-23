@@ -124,6 +124,10 @@
       href: analyzers/FDB1005.md
     - name: FDB1006
       href: analyzers/FDB1006.md
+    - name: FDB2001
+      href: analyzers/FDB2001.md
+    - name: FDB2002
+      href: analyzers/FDB2002.md
     - name: SBK0100
       href: analyzers/SBK0100.md
     - name: SBK1003

@@ -117,6 +117,22 @@ namespace FoundationDB.Analyzers
 			AnalyzerCategories.FdbCorrectness,
 			DiagnosticSeverity.Warning);
 
+		/// <summary>FDB2001: a transaction write whose value is built by a Core factory into a buffer that the transaction copies again.</summary>
+		public static readonly DiagnosticDescriptor IntermediateValueBuffer = RuleFactory.Create(
+			"FDB2001",
+			"Value built with a Core factory in a transaction write",
+			"'{0}' allocates an intermediate buffer that the transaction copies again. Pass {1} instead.",
+			AnalyzerCategories.FdbPerformance,
+			DiagnosticSeverity.Warning);
+
+		/// <summary>FDB2002: a typed key serialized with ToSlice() before a transaction call that encodes typed keys itself.</summary>
+		public static readonly DiagnosticDescriptor EagerKeySlice = RuleFactory.Create(
+			"FDB2002",
+			"Key serialized with .ToSlice() before a transaction call",
+			"The transaction encodes a typed key into its own buffer. Remove .ToSlice() and pass '{0}' directly.",
+			AnalyzerCategories.FdbPerformance,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>Every FoundationDB.Client descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
 			DatabaseInjection,
@@ -128,7 +144,9 @@ namespace FoundationDB.Analyzers
 			ByteOrderAtomic,
 			RetryLoopValue,
 			MissingKeyEmptyTest,
-			VersionStampedKeySet);
+			VersionStampedKeySet,
+			IntermediateValueBuffer,
+			EagerKeySlice);
 
 	}
 }

@@ -63,6 +63,9 @@ namespace FoundationDB.Analyzers
 			this.DateTime = compilation.GetSpecialType(SpecialType.System_DateTime);
 			this.DateTimeOffset = compilation.GetTypeByMetadataName("System.DateTimeOffset");
 			this.TimeProvider = compilation.GetTypeByMetadataName("System.TimeProvider");
+			this.Encoding = compilation.GetTypeByMetadataName("System.Text.Encoding");
+			this.MemoryExtensions = compilation.GetTypeByMetadataName("System.MemoryExtensions");
+			this.CrystalJson = compilation.GetTypeByMetadataName("SnowBank.Data.Json.CrystalJson");
 		}
 
 		/// <summary>Resolves the symbols, or returns null when the compilation does not reference FoundationDB.Client.</summary>
@@ -127,6 +130,12 @@ namespace FoundationDB.Analyzers
 
 		/// <summary>System.TimeProvider, null on a target framework that predates it.</summary>
 		public INamedTypeSymbol? TimeProvider { get; }
+
+		public INamedTypeSymbol? Encoding { get; }
+
+		public INamedTypeSymbol? MemoryExtensions { get; }
+
+		public INamedTypeSymbol? CrystalJson { get; }
 
 		/// <summary>The type is <paramref name="target"/>, derives from it, or implements it.</summary>
 		public static bool IsOrImplements(ITypeSymbol? type, INamedTypeSymbol? target)

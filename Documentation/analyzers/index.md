@@ -33,5 +33,7 @@ A `dotnet_diagnostic.<ID>.severity` line for one rule takes precedence over the 
 | [FDB1004](FDB1004.md) | Id or clock read inside a retry-loop handler | Warning (correctness) | FoundationDB.Client |
 | [FDB1005](FDB1005.md) | Missing key tested with Slice.Empty | Warning (correctness) | FoundationDB.Client |
 | [FDB1006](FDB1006.md) | Version-stamped key written with Set | Warning (correctness) | FoundationDB.Client |
+| [FDB2001](FDB2001.md) | Value built with a Core factory in a transaction write | Warning (performance) | FoundationDB.Client |
+| [FDB2002](FDB2002.md) | Key serialized with .ToSlice() before a transaction call | Warning (performance) | FoundationDB.Client |
 | [SBK0100](SBK0100.md) | Removed API | Error | SnowBank.Core |
 | [SBK1003](SBK1003.md) | Null test on a JSON value | Warning (correctness) | SnowBank.Core |
