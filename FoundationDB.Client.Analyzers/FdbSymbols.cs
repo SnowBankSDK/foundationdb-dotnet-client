@@ -57,6 +57,7 @@ namespace FoundationDB.Analyzers
 			this.ServiceCollectionExtensions = compilation.GetTypeByMetadataName("FoundationDB.DependencyInjection.FdbDatabaseServiceCollectionExtensions");
 			this.AspireComponentExtensions = compilation.GetTypeByMetadataName("Microsoft.Extensions.Hosting.FdbAspireComponentExtensions");
 			this.Slice = compilation.GetTypeByMetadataName("System.Slice");
+			this.CancellationToken = compilation.GetTypeByMetadataName("System.Threading.CancellationToken");
 		}
 
 		/// <summary>Resolves the symbols, or returns null when the compilation does not reference FoundationDB.Client.</summary>
@@ -109,6 +110,8 @@ namespace FoundationDB.Analyzers
 
 		public INamedTypeSymbol? Slice { get; }
 
+		public INamedTypeSymbol? CancellationToken { get; }
+
 		/// <summary>The type is <paramref name="target"/>, derives from it, or implements it.</summary>
 		public static bool IsOrImplements(ITypeSymbol? type, INamedTypeSymbol? target)
 		{
@@ -121,12 +124,20 @@ namespace FoundationDB.Analyzers
 		}
 
 		/// <summary>The lambda is the handler of ReadAsync, WriteAsync, or ReadWriteAsync on a database, a transaction retry loop, or a database provider.</summary>
-		public bool IsRetryLoopHandler(IAnonymousFunctionOperation lambda)
+		public bool IsRetryLoopHandler(IAnonymousFunctionOperation lambda) => GetRetryLoopInvocation(lambda) is not null;
+
+		/// <summary>The ReadAsync, WriteAsync, or ReadWriteAsync invocation that the lambda is the handler of, or null when it is not a retry-loop handler.</summary>
+		public IInvocationOperation? GetRetryLoopInvocation(IAnonymousFunctionOperation lambda)
 		{
 			IOperation? current = lambda.Parent;
 			while (current is IDelegateCreationOperation or IConversionOperation) current = current.Parent;
-			if (current is not IArgumentOperation { Parent: IInvocationOperation invocation }) return false;
+			if (current is not IArgumentOperation { Parent: IInvocationOperation invocation }) return null;
+			return IsRetryLoopInvocation(invocation) ? invocation : null;
+		}
 
+		/// <summary>The invocation is ReadAsync, WriteAsync, or ReadWriteAsync on a database, a transaction retry loop, or a database provider.</summary>
+		public bool IsRetryLoopInvocation(IInvocationOperation invocation)
+		{
 			var method = invocation.TargetMethod;
 			if (method.Name is not ("ReadAsync" or "WriteAsync" or "ReadWriteAsync")) return false;
 			var receiver = method.IsExtensionMethod ? method.Parameters.FirstOrDefault()?.Type : method.ContainingType;
@@ -134,6 +145,52 @@ namespace FoundationDB.Analyzers
 			return IsOrImplements(receiver, this.IFdbReadOnlyRetryable)
 				|| IsOrImplements(receiver, this.IFdbRetryable)
 				|| IsOrImplements(receiver, this.IFdbDatabaseScopeProvider);
+		}
+
+		/// <summary>The first lambda that encloses the operation, or null when it is not inside a lambda.</summary>
+		public static IAnonymousFunctionOperation? GetEnclosingLambda(IOperation op)
+		{
+			for (var current = op.Parent; current is not null; current = current.Parent)
+			{
+				if (current is IAnonymousFunctionOperation lambda) return lambda;
+			}
+			return null;
+		}
+
+		/// <summary>The receiver of an invocation: the instance, or the first argument of an extension method.</summary>
+		public static IOperation? GetReceiver(IInvocationOperation op)
+		{
+			if (op.Instance is not null) return op.Instance;
+			if (!op.TargetMethod.IsExtensionMethod) return null;
+			return op.Arguments.FirstOrDefault(a => a.Parameter?.Ordinal == 0)?.Value;
+		}
+
+		/// <summary>The operation without its implicit conversions.</summary>
+		public static IOperation Unwrap(IOperation op)
+		{
+			while (op is IConversionOperation { IsImplicit: true } conversion) op = conversion.Operand;
+			return op;
+		}
+
+		/// <summary>The local, parameter, field, or property that the expression reads, or null for any other expression.</summary>
+		public static ISymbol? GetReferencedSymbol(IOperation op) => Unwrap(op) switch
+		{
+			ILocalReferenceOperation local => local.Local,
+			IParameterReferenceOperation parameter => parameter.Parameter,
+			IFieldReferenceOperation field => field.Field,
+			IPropertyReferenceOperation property => property.Property,
+			_ => null,
+		};
+
+		/// <summary>The initializer of the local's declaration, or null when the local has none in source.</summary>
+		public static IOperation? GetLocalInitializer(ILocalSymbol local, SemanticModel? model)
+		{
+			if (model is null) return null;
+			foreach (var reference in local.DeclaringSyntaxReferences)
+			{
+				if (model.GetOperation(reference.GetSyntax()) is IVariableDeclaratorOperation { Initializer.Value: { } value }) return value;
+			}
+			return null;
 		}
 
 	}

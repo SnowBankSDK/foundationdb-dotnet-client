@@ -43,9 +43,27 @@ namespace FoundationDB.Analyzers
 			DiagnosticSeverity.Error,
 			WellKnownDiagnosticTags.CompilationEnd);
 
+		/// <summary>FDB0002: Watch called with the cancellation token of its own transaction, which the method rejects.</summary>
+		public static readonly DiagnosticDescriptor WatchTransactionToken = RuleFactory.Create(
+			"FDB0002",
+			"Watch created with the transaction's own token",
+			"A watch outlives its transaction, so it cannot use tr.Cancellation. Pass the token of the code that awaits the watch.",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Error);
+
+		/// <summary>FDB0003: FdbWatch awaited inside the retry-loop handler that created it.</summary>
+		public static readonly DiagnosticDescriptor WatchAwaitedInHandler = RuleFactory.Create(
+			"FDB0003",
+			"Watch awaited inside the handler that created it",
+			"A watch fires only after its transaction commits, and this await blocks the commit. Return the FdbWatch from the handler and await it after WriteAsync returns.",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Error);
+
 		/// <summary>Every FoundationDB.Client descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
-			DatabaseInjection);
+			DatabaseInjection,
+			WatchTransactionToken,
+			WatchAwaitedInHandler);
 
 	}
 }

@@ -106,6 +106,10 @@
       href: analyzers/index.md
     - name: FDB0001
       href: analyzers/FDB0001.md
+    - name: FDB0002
+      href: analyzers/FDB0002.md
+    - name: FDB0003
+      href: analyzers/FDB0003.md
     - name: SBK1003
       href: analyzers/SBK1003.md
 - name: Release notes

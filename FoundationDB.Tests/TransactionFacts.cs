@@ -2956,7 +2956,9 @@ namespace FoundationDB.Client.Tests
 				var subspace = await db.Root.Resolve(tr);
 				var key = subspace.Key("watched");
 
+#pragma warning disable FDB0002 // tests that Watch throws for the transaction token
 				Assert.That(() => tr.Watch(key, tr.Cancellation), Throws.Exception, "Watch(...) should reject the transaction's own cancellation");
+#pragma warning restore FDB0002
 
 				// should accept the same token used for the retry loop
 				var w = tr.Watch(key, this.Cancellation);
