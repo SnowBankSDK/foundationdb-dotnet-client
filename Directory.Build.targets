@@ -1,0 +1,26 @@
+<Project>
+
+	<!-- Dogfood run: `dotnet build -p:DogfoodAnalyzers=true` attaches the SnowBank.Core and FoundationDB.Client analyzers
+	     to every test and sample project, and turns analyzers on for that build only. The regular build is unchanged. -->
+
+	<PropertyGroup Condition="'$(DogfoodAnalyzers)' == 'true' AND ('$(IsTestProject)' == 'true' OR $(MSBuildProjectName.Contains('Samples')) OR $(MSBuildProjectName.Contains('Sandbox')))">
+		<RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+		<AttachDogfoodAnalyzers>true</AttachDogfoodAnalyzers>
+		<!-- only the SnowBank and FoundationDB rules: the CA and code style analyzers stay off, as in the regular build -->
+		<EnableNETAnalyzers>false</EnableNETAnalyzers>
+		<EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+	</PropertyGroup>
+
+	<ItemGroup Condition="'$(AttachDogfoodAnalyzers)' == 'true'">
+		<ProjectReference Include="$(MSBuildThisFileDirectory)SnowBank.Core.Analyzers\SnowBank.Core.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="$(MSBuildThisFileDirectory)FoundationDB.Client.Analyzers\FoundationDB.Client.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<!-- NUnit.Analyzers comes from a package reference, so it is removed from the compiler inputs; source generators stay -->
+	<Target Name="RemoveNonDogfoodAnalyzers" BeforeTargets="CoreCompile" Condition="'$(AttachDogfoodAnalyzers)' == 'true'">
+		<ItemGroup>
+			<Analyzer Remove="@(Analyzer)" Condition="$([System.String]::Copy('%(Filename)').ToLowerInvariant().StartsWith('nunit.analyzers'))" />
+		</ItemGroup>
+	</Target>
+
+</Project>
