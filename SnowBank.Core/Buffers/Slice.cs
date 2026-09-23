@@ -2359,12 +2359,12 @@ namespace System
 
 		/// <summary>Determines whether two specified instances of <see cref="Slice"/> are equal</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		[Obsolete("This is dangerous! Please use `value.IsNil` or `value == Slice.Nil` instead.")]
+		[Obsolete("This is dangerous! Please use `value.IsNull` or `value == Slice.Nil` instead.")]
 		public static bool operator ==(Slice? a, Slice? b) => a.GetValueOrDefault().Equals(b.GetValueOrDefault());
 
 		/// <summary>Determines whether two specified instances of <see cref="Slice"/> are not equal</summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		[Obsolete("This is dangerous! Please use `!value.IsNil` or `value != Slice.Nil` instead.")]
+		[Obsolete("This is dangerous! Please use `!value.IsNull` or `value != Slice.Nil` instead.")]
 		public static bool operator !=(Slice? a, Slice? b) => !a.GetValueOrDefault().Equals(b.GetValueOrDefault());
 
 		/// <summary>Determines whether one specified <see cref="Slice"/> is less than another specified <see cref="Slice"/>.</summary>
