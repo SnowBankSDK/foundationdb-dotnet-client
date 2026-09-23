@@ -24,6 +24,8 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
+#pragma warning disable FDB1002 // the Directory layer tests return subspaces from the retry loop to inspect them
+
 // ReSharper disable AccessToDisposedClosure
 // ReSharper disable RedundantCast
 // ReSharper disable ReplaceAsyncWithTaskReturn

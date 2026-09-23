@@ -280,7 +280,9 @@ namespace SnowBank.Buffers.Tests
 
 			// if the string contains non-ASCII chars, it would be corrupted so FromAscii() should throw
 			// note: the line below should contain two kanjis. If your editor displays '??' or squares, it is probably not able to display unicode chars properly
+#pragma warning disable SBK0001 // tests that FromStringAscii throws above 0xFF
 			Assert.That(() => Slice.FromStringAscii("hello 世界"), Throws.Exception, "String that contains code points >= 0x80 should throw");
+#pragma warning restore SBK0001
 		}
 
 		[Test]
@@ -367,8 +369,10 @@ namespace SnowBank.Buffers.Tests
 			Assert.That(slice.Count, Is.EqualTo(14));
 
 			// UTF8 does not map \xFF or \xFE directly to a single byte (but at least it should round-trip)
+#pragma warning disable SBK1002 // tests the UTF-8 encoding of a binary prefix
 			Assert.That(Slice.FromString("\xFF").GetBytes(), Is.EqualTo("ÿ"u8.ToArray()));
 			Assert.That(Slice.FromString("\xFE").GetBytes(), Is.EqualTo("þ"u8.ToArray()));
+#pragma warning restore SBK1002
 			Assert.That("ÿ"u8.ToArray().AsSlice().ToUnicode(), Is.EqualTo("\xFF"));
 			Assert.That("þ"u8.ToArray().AsSlice().ToUnicode(), Is.EqualTo("\xFE"));
 		}
@@ -390,8 +394,10 @@ namespace SnowBank.Buffers.Tests
 			Assert.That(slice.Count, Is.EqualTo(14));
 
 			// UTF8 does not map \xFF or \xFE directly to a single byte (but at least it should round-trip)
+#pragma warning disable SBK1002 // tests the UTF-8 encoding of a binary prefix
 			Assert.That(Slice.FromStringUtf8("\xFF").GetBytes(), Is.EqualTo("ÿ"u8.ToArray()));
 			Assert.That(Slice.FromStringUtf8("\xFE").GetBytes(), Is.EqualTo("þ"u8.ToArray()));
+#pragma warning restore SBK1002
 			Assert.That("ÿ"u8.ToArray().AsSlice().ToStringUtf8(), Is.EqualTo("\xFF"));
 			Assert.That("ÿ"u8.ToArray().AsSlice().ToUnicode(), Is.EqualTo("\xFF"));
 			Assert.That("þ"u8.ToArray().AsSlice().ToStringUtf8(), Is.EqualTo("\xFE"));

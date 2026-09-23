@@ -197,7 +197,9 @@ namespace FoundationDB.Client.Tests
 
 				tr.Set(Pack(("tests", "hello")), Text("inside tenant acme"));
 
+#pragma warning disable FDB1004 // the handler returns the token of the attempt that commits
 				var token = Slice.FromGuid(Guid.NewGuid());
+#pragma warning restore FDB1004
 
 				Log($"Write a random token '{token}' to tenant {tr.Tenant?.Name}");
 				tr.Set(Pack(("tests", "random")), token);

@@ -51,7 +51,9 @@ namespace FoundationDB.Client.Tests
 
 			public IFdbTransaction? Transaction { get; set; }
 
+#pragma warning disable FDB1001 // the actor state lives exactly as long as its Transaction
 			public IKeySubspace? Subspace { get; set; }
+#pragma warning restore FDB1001
 
 		}
 
