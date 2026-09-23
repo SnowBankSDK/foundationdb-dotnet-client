@@ -101,6 +101,14 @@ namespace FoundationDB.Analyzers
 			AnalyzerCategories.FdbCorrectness,
 			DiagnosticSeverity.Warning);
 
+		/// <summary>FDB1005: a GetAsync result tested against Slice.Empty or with IsEmpty, which a missing key (Slice.Nil) never satisfies.</summary>
+		public static readonly DiagnosticDescriptor MissingKeyEmptyTest = RuleFactory.Create(
+			"FDB1005",
+			"Missing key tested with Slice.Empty",
+			"A missing key reads as Slice.Nil, which is not equal to Slice.Empty. Test it with IsNull, or IsNullOrEmpty to also accept an empty value.",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Warning);
+
 		/// <summary>FDB1006: Set called with a key that holds a version stamp placeholder, which only SetVersionStampedKey fills in.</summary>
 		public static readonly DiagnosticDescriptor VersionStampedKeySet = RuleFactory.Create(
 			"FDB1006",
@@ -119,6 +127,7 @@ namespace FoundationDB.Analyzers
 			SubspaceReturnedFromHandler,
 			ByteOrderAtomic,
 			RetryLoopValue,
+			MissingKeyEmptyTest,
 			VersionStampedKeySet);
 
 	}

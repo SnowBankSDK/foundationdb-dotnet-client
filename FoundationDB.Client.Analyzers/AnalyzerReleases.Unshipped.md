@@ -13,4 +13,5 @@ FDB1001 | FdbCorrectness | Warning | SubspaceLifetimeAnalyzer
 FDB1002 | FdbCorrectness | Warning | SubspaceLifetimeAnalyzer
 FDB1003 | FdbCorrectness | Warning | MutationEncodingAnalyzer
 FDB1004 | FdbCorrectness | Warning | RetryLoopValueAnalyzer
+FDB1005 | FdbCorrectness | Warning | MissingKeyTestAnalyzer
 FDB1006 | FdbCorrectness | Warning | MutationEncodingAnalyzer
