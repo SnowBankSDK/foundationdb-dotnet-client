@@ -33,6 +33,14 @@ namespace SnowBank.Analyzers
 	public static class SbkDescriptors
 	{
 
+		/// <summary>SBK0001: Slice.FromStringAscii on a literal with a character above 0xFF, which the method rejects at run time.</summary>
+		public static readonly DiagnosticDescriptor AsciiLiteralNotEncodable = RuleFactory.Create(
+			"SBK0001",
+			"Slice.FromStringAscii on text that cannot be encoded",
+			"'{0}' contains characters above 0xFF, which this method rejects at run time. Use Slice.FromStringUtf8.",
+			AnalyzerCategories.SnowBankCorrectness,
+			DiagnosticSeverity.Error);
+
 		/// <summary>SBK0100: Slice factory removed in version 7, reported next to the compiler error with its replacement.</summary>
 		public static readonly DiagnosticDescriptor RemovedSliceApi = RuleFactory.Create(
 			"SBK0100",
@@ -40,6 +48,14 @@ namespace SnowBank.Analyzers
 			"'{0}' was removed in version 7. {1}",
 			AnalyzerCategories.SnowBankCorrectness,
 			DiagnosticSeverity.Error);
+
+		/// <summary>SBK1002: Slice.FromString or FromStringUtf8 on a literal whose first character is a binary prefix (0x80 to 0xFF).</summary>
+		public static readonly DiagnosticDescriptor BinaryPrefixAsUtf8 = RuleFactory.Create(
+			"SBK1002",
+			"Binary prefix encoded as UTF-8 text",
+			"'{0}' starts with a binary prefix, and UTF-8 encodes that character as two bytes. Use Slice.FromByteString to write one byte per character.",
+			AnalyzerCategories.SnowBankCorrectness,
+			DiagnosticSeverity.Warning);
 
 		/// <summary>SBK1003: null test on a JsonValue expression that is never a null reference.</summary>
 		public static readonly DiagnosticDescriptor JsonValueNullTest = RuleFactory.Create(
@@ -51,7 +67,9 @@ namespace SnowBank.Analyzers
 
 		/// <summary>Every SnowBank.Core descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
+			AsciiLiteralNotEncodable,
 			RemovedSliceApi,
+			BinaryPrefixAsUtf8,
 			JsonValueNullTest);
 
 	}
