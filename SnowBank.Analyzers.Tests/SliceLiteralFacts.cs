@@ -103,6 +103,17 @@ namespace SnowBank.Analyzers.Tests
 			""");
 
 		[Test]
+		public Task Ignores_FromString_Of_Text_That_Starts_With_A_Latin1_Letter() => Verify.Analyzer<SliceLiteralAnalyzer>(Usings + """
+			class C
+			{
+				Slice M() => Slice.FromString("écrit");
+				Slice N() => Slice.FromStringUtf8("Über");
+				Slice O() => Slice.FromString("é");
+				Slice P(string name) => Slice.FromString($"Ångström {name}");
+			}
+			""");
+
+		[Test]
 		public Task Fixes_FromString_To_FromByteString() => Verify.CodeFix<SliceLiteralAnalyzer, SliceLiteralCodeFix>(Usings + """
 			class C
 			{

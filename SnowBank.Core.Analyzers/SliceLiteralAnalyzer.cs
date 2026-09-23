@@ -26,8 +26,10 @@
 
 namespace SnowBank.Analyzers
 {
+	using System;
 	using System.Collections.Immutable;
 	using Microsoft.CodeAnalysis;
+	using Microsoft.CodeAnalysis.CSharp.Syntax;
 	using Microsoft.CodeAnalysis.Diagnostics;
 	using Microsoft.CodeAnalysis.Operations;
 
@@ -67,7 +69,7 @@ namespace SnowBank.Analyzers
 						}
 						case "FromString" or "FromStringUtf8":
 						{
-							if (GetHead(op.Arguments[0].Value) is { Length: > 0 } text && text[0] >= 0x80 && text[0] <= 0xFF)
+							if (GetHead(op.Arguments[0].Value) is { Length: > 0 } text && text[0] >= 0x80 && text[0] <= 0xFF && StartsWithEscape(op.Arguments[0].Value))
 							{
 								Report(ctx, SbkDescriptors.BinaryPrefixAsUtf8, op.Arguments[0], "FromByteString");
 							}
@@ -95,6 +97,22 @@ namespace SnowBank.Analyzers
 				return head;
 			}
 			return null;
+		}
+
+		/// <summary>The literal (or the literal head of an interpolated string) spells its first character as an escape sequence.</summary>
+		/// <remarks>A byte prefix is written "\xFF/..." in source, while text that starts with a Latin-1 letter ("Über", "écrit") spells the letter itself and is valid UTF-8 text.</remarks>
+		private static bool StartsWithEscape(IOperation value)
+		{
+			while (value is IConversionOperation { IsImplicit: true } conversion) value = conversion.Operand;
+			string? token = value.Syntax switch
+			{
+				LiteralExpressionSyntax literal => literal.Token.Text,
+				InterpolatedStringExpressionSyntax { Contents.Count: > 0 } interpolated when interpolated.Contents[0] is InterpolatedStringTextSyntax head => head.TextToken.Text,
+				_ => null,
+			};
+			if (token is null) return false;
+			token = token.TrimStart('$', '@', '"');
+			return token.StartsWith("\\x", StringComparison.Ordinal) || token.StartsWith("\\u00", StringComparison.Ordinal) || token.StartsWith("\\U000000", StringComparison.Ordinal);
 		}
 
 		private static bool HasCharAbove(string text, int max)
