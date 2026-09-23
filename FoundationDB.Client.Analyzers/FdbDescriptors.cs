@@ -59,11 +59,20 @@ namespace FoundationDB.Analyzers
 			AnalyzerCategories.FdbCorrectness,
 			DiagnosticSeverity.Error);
 
+		/// <summary>FDB0100: member removed in version 7, reported next to the compiler error with its replacement.</summary>
+		public static readonly DiagnosticDescriptor RemovedApi = RuleFactory.Create(
+			"FDB0100",
+			"Removed API",
+			"'{0}' was removed in version 7. {1}",
+			AnalyzerCategories.FdbCorrectness,
+			DiagnosticSeverity.Error);
+
 		/// <summary>Every FoundationDB.Client descriptor, in ID order.</summary>
 		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
 			DatabaseInjection,
 			WatchTransactionToken,
-			WatchAwaitedInHandler);
+			WatchAwaitedInHandler,
+			RemovedApi);
 
 	}
 }

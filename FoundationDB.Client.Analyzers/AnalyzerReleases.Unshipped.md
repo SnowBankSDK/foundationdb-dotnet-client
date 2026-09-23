@@ -8,3 +8,4 @@ Rule ID | Category | Severity | Notes
 FDB0001 | FdbCorrectness | Error | DatabaseInjectionAnalyzer
 FDB0002 | FdbCorrectness | Error | WatchAnalyzer
 FDB0003 | FdbCorrectness | Error | WatchAnalyzer
+FDB0100 | FdbCorrectness | Error | RemovedApiAnalyzer

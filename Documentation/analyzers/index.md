@@ -26,4 +26,6 @@ A `dotnet_diagnostic.<ID>.severity` line for one rule takes precedence over the 
 | [FDB0001](FDB0001.md) | IFdbDatabase requested from dependency injection | Error | FoundationDB.Client |
 | [FDB0002](FDB0002.md) | Watch created with the transaction's own token | Error | FoundationDB.Client |
 | [FDB0003](FDB0003.md) | Watch awaited inside the handler that created it | Error | FoundationDB.Client |
+| [FDB0100](FDB0100.md) | Removed API | Error | FoundationDB.Client |
+| [SBK0100](SBK0100.md) | Removed API | Error | SnowBank.Core |
 | [SBK1003](SBK1003.md) | Null test on a JSON value | Warning (correctness) | SnowBank.Core |

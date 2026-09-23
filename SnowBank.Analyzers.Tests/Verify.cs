@@ -70,7 +70,13 @@ namespace SnowBank.Analyzers.Tests
 			where TFix : CodeFixProvider, new()
 			=> CodeFix<TAnalyzer, TFix>(source, fixedSource, references, outputKind, CodeFixTestBehaviors.SkipLocalDiagnosticCheck, expected);
 
-		private static Task CodeFix<TAnalyzer, TFix>(string source, string fixedSource, ReferenceAssemblies references, OutputKind outputKind, CodeFixTestBehaviors behaviors, DiagnosticResult[] expected)
+		/// <summary>Code fix of a diagnostic reported next to a compiler error: the fixed code compiles, so the fixed state declares its own (empty) diagnostics instead of inheriting the compiler errors.</summary>
+		public static Task CodeFixOfCompilerError<TAnalyzer, TFix>(string source, string fixedSource, params DiagnosticResult[] expected)
+			where TAnalyzer : DiagnosticAnalyzer, new()
+			where TFix : CodeFixProvider, new()
+			=> CodeFix<TAnalyzer, TFix>(source, fixedSource, TestReferences.Net100, OutputKind.DynamicallyLinkedLibrary, CodeFixTestBehaviors.None, expected, fixedExpected: [ ]);
+
+		private static Task CodeFix<TAnalyzer, TFix>(string source, string fixedSource, ReferenceAssemblies references, OutputKind outputKind, CodeFixTestBehaviors behaviors, DiagnosticResult[] expected, DiagnosticResult[]? fixedExpected = null)
 			where TAnalyzer : DiagnosticAnalyzer, new()
 			where TFix : CodeFixProvider, new()
 		{
@@ -85,6 +91,14 @@ namespace SnowBank.Analyzers.Tests
 			test.TestState.OutputKind = outputKind;
 			test.TestState.AdditionalReferences.AddRange(TestReferences.Libraries);
 			test.ExpectedDiagnostics.AddRange(expected);
+			if (fixedExpected is not null)
+			{
+				// the default mode inherits the non-fixable expected diagnostics of TestState, whose markup spans do not exist in the fixed code
+				test.FixedState.InheritanceMode = StateInheritanceMode.Explicit;
+				test.FixedState.OutputKind = outputKind;
+				test.FixedState.AdditionalReferences.AddRange(TestReferences.Libraries);
+				test.FixedState.ExpectedDiagnostics.AddRange(fixedExpected);
+			}
 			return test.RunAsync();
 		}
 

@@ -54,6 +54,7 @@ namespace FoundationDB.Analyzers
 			this.FdbWatch = compilation.GetTypeByMetadataName("FoundationDB.Client.FdbWatch");
 			this.FdbTransactionExtensions = compilation.GetTypeByMetadataName("FoundationDB.Client.FdbTransactionExtensions");
 			this.FdbKeyExtensions = compilation.GetTypeByMetadataName("FoundationDB.Client.FdbKeyExtensions");
+			this.KeySelector = compilation.GetTypeByMetadataName("FoundationDB.Client.KeySelector");
 			this.ServiceCollectionExtensions = compilation.GetTypeByMetadataName("FoundationDB.DependencyInjection.FdbDatabaseServiceCollectionExtensions");
 			this.AspireComponentExtensions = compilation.GetTypeByMetadataName("Microsoft.Extensions.Hosting.FdbAspireComponentExtensions");
 			this.Slice = compilation.GetTypeByMetadataName("System.Slice");
@@ -102,6 +103,8 @@ namespace FoundationDB.Analyzers
 		public INamedTypeSymbol? FdbTransactionExtensions { get; }
 
 		public INamedTypeSymbol? FdbKeyExtensions { get; }
+
+		public INamedTypeSymbol? KeySelector { get; }
 
 		public INamedTypeSymbol? ServiceCollectionExtensions { get; }
 

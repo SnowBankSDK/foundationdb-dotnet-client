@@ -1,6 +1,6 @@
 #region Copyright (c) 2023-2026 SnowBank SAS, (c) 2005-2023 Doxense SAS
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // 	* Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // 	* Neither the name of SnowBank nor the
 // 	  names of its contributors may be used to endorse or promote products
 // 	  derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -27,32 +27,35 @@
 namespace SnowBank.Analyzers
 {
 	using System.Collections.Immutable;
+	using System.Composition;
+	using System.Threading.Tasks;
 	using Microsoft.CodeAnalysis;
+	using Microsoft.CodeAnalysis.CodeActions;
+	using Microsoft.CodeAnalysis.CodeFixes;
+	using Microsoft.CodeAnalysis.CSharp.Syntax;
+	using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 
-	/// <summary>Descriptors of the SnowBank.Core rules.</summary>
-	public static class SbkDescriptors
+	/// <summary>Renames a removed Slice factory to its replacement.</summary>
+	[ExportCodeFixProvider(LanguageNames.CSharp), Shared]
+	public sealed class RemovedSliceApiCodeFix : CodeFixProvider
 	{
 
-		/// <summary>SBK0100: Slice factory removed in version 7, reported next to the compiler error with its replacement.</summary>
-		public static readonly DiagnosticDescriptor RemovedSliceApi = RuleFactory.Create(
-			"SBK0100",
-			"Removed API",
-			"'{0}' was removed in version 7. {1}",
-			AnalyzerCategories.SnowBankCorrectness,
-			DiagnosticSeverity.Error);
+		public override ImmutableArray<string> FixableDiagnosticIds { get; } = ImmutableArray.Create("SBK0100");
 
-		/// <summary>SBK1003: null test on a JsonValue expression that is never a null reference.</summary>
-		public static readonly DiagnosticDescriptor JsonValueNullTest = RuleFactory.Create(
-			"SBK1003",
-			"Null test on a JSON value",
-			"A JsonValue is never a null reference: a missing member reads as JsonNull.Missing. Test it with IsNullOrMissing().",
-			AnalyzerCategories.SnowBankCorrectness,
-			DiagnosticSeverity.Warning);
+		public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
 
-		/// <summary>Every SnowBank.Core descriptor, in ID order.</summary>
-		public static ImmutableArray<DiagnosticDescriptor> All { get; } = ImmutableArray.Create(
-			RemovedSliceApi,
-			JsonValueNullTest);
+		public override async Task RegisterCodeFixesAsync(CodeFixContext context)
+		{
+			var diagnostic = context.Diagnostics[0];
+			if (!diagnostic.Properties.TryGetValue(RemovedSliceApiAnalyzer.ReplacementProperty, out var replacement) || replacement is null) return;
+			var root = await context.Document.GetSyntaxRootAsync(context.CancellationToken).ConfigureAwait(false);
+			if (root?.FindNode(context.Span, getInnermostNodeForTie: true) is not SimpleNameSyntax name) return;
+
+			var newRoot = root.ReplaceNode(name, IdentifierName(replacement).WithTriviaFrom(name));
+			context.RegisterCodeFix(
+				CodeAction.Create($"Use {replacement}", _ => Task.FromResult(context.Document.WithSyntaxRoot(newRoot)), equivalenceKey: "SBK0100"),
+				diagnostic);
+		}
 
 	}
 }
