@@ -1,0 +1,19 @@
+<Project>
+
+	<!-- Packs the assemblies of the projects listed in @(EmbeddedAnalyzerProject) under analyzers/dotnet/roslyn4.8/cs.
+	     The versioned folder makes a compiler older than Roslyn 4.8 skip them instead of reporting CS8032. -->
+
+	<ItemGroup>
+		<ProjectReference Include="@(EmbeddedAnalyzerProject)" ReferenceOutputAssembly="false" PrivateAssets="all" />
+	</ItemGroup>
+
+	<Target Name="AddEmbeddedAnalyzersToPackage" BeforeTargets="_GetPackageFiles" Condition="'@(EmbeddedAnalyzerProject)' != ''">
+		<MSBuild Projects="@(EmbeddedAnalyzerProject)" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+			<Output TaskParameter="TargetOutputs" ItemName="_EmbeddedAnalyzerAssembly" />
+		</MSBuild>
+		<ItemGroup>
+			<None Include="@(_EmbeddedAnalyzerAssembly)" Pack="true" PackagePath="analyzers/dotnet/roslyn4.8/cs" Visible="false" />
+		</ItemGroup>
+	</Target>
+
+</Project>

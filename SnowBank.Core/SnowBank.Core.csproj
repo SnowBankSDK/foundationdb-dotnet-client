@@ -96,4 +96,10 @@
 	     '#if !NETSTANDARD2_0' guard at the top of each excluded source file. Everything else compiles with
 	     the fallbacks in Polyfills/ and the targeted guards in the shared sources. -->
 
+	<ItemGroup>
+		<EmbeddedAnalyzerProject Include="..\SnowBank.Core.Analyzers\SnowBank.Core.Analyzers.csproj" />
+		<EmbeddedAnalyzerProject Include="..\SnowBank.Core.CodeFixes\SnowBank.Core.CodeFixes.csproj" />
+	</ItemGroup>
+	<Import Project="..\Common\EmbeddedAnalyzers.targets" />
+
 </Project>

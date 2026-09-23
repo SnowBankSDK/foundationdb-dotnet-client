@@ -89,7 +89,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+		<!-- PrivateAssets="none": the SnowBank.Core analyzers reach the consumers of this package -->
+		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" PrivateAssets="none" />
 	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedAnalyzerProject Include="..\FoundationDB.Client.Analyzers\FoundationDB.Client.Analyzers.csproj" />
+		<EmbeddedAnalyzerProject Include="..\FoundationDB.Client.CodeFixes\FoundationDB.Client.CodeFixes.csproj" />
+	</ItemGroup>
+	<Import Project="..\Common\EmbeddedAnalyzers.targets" />
 
 </Project>
