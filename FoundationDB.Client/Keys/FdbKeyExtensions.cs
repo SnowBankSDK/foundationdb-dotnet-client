@@ -263,8 +263,8 @@ namespace FoundationDB.Client
 		/// <typeparam name="T1">Type of the cursor</typeparam>
 		/// <param name="subspace">Parent subspace that will be used as a prefix</param>
 		/// <param name="cursor1">Value that will be used as a cursor under this key.</param>
-		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are strictly less than <c>key.Key(cursor1)</c></returns>
-		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRangeExclusive{T1}(IKeySubspace,T1)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are greater than or equal to <c>key.Key(cursor1)</c></returns>
+		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRangeExclusive{T1}(IKeySubspace,T1)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleKey<T1>, FdbSubspaceKey> ToTailRange<T1>(this IKeySubspace subspace, T1 cursor1)
 		{
 			return FdbKeyRange.Between(subspace.Key(cursor1), lowerMode: KeyRangeMode.Inclusive, subspace.Key(), upperMode: KeyRangeMode.Last);
@@ -274,8 +274,8 @@ namespace FoundationDB.Client
 		/// <typeparam name="T1">Type of the cursor</typeparam>
 		/// <param name="subspace">Parent subspace that will be used as a prefix</param>
 		/// <param name="cursor1">Value that will be used as a cursor under this key.</param>
-		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are strictly less than the next sibling of <c>key.Key(cursor1)</c></returns>
-		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRange{T1}(IKeySubspace,T1)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are greater than or equal to the next sibling of <c>key.Key(cursor1)</c></returns>
+		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRange{T1}(IKeySubspace,T1)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleKey<T1>, FdbSubspaceKey> ToTailRangeExclusive<T1>(this IKeySubspace subspace, T1 cursor1)
 		{
 			return FdbKeyRange.Between(subspace.Key(cursor1), lowerMode: KeyRangeMode.NextSibling, subspace.Key(), upperMode: KeyRangeMode.Last);
@@ -287,8 +287,8 @@ namespace FoundationDB.Client
 		/// <param name="subspace">Subspace that will be used as a prefix</param>
 		/// <param name="cursor1">First part of the cursor.</param>
 		/// <param name="cursor2">Second part of the cursor.</param>
-		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are strictly less than <c>key.Key(cursor1, cursor2)</c></returns>
-		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRangeExclusive{T1,T2}(IKeySubspace,T1,T2)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are greater than or equal to <c>key.Key(cursor1, cursor2)</c></returns>
+		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRangeExclusive{T1,T2}(IKeySubspace,T1,T2)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleKey<T1, T2>, FdbSubspaceKey> ToTailRange<T1, T2>(this IKeySubspace subspace, T1 cursor1, T2 cursor2)
 		{
 			return FdbKeyRange.Between(subspace.Key(cursor1, cursor2), lowerMode: KeyRangeMode.Inclusive, subspace.Key(), upperMode: KeyRangeMode.Last);
@@ -300,8 +300,8 @@ namespace FoundationDB.Client
 		/// <param name="subspace">Subspace that will be used as a prefix</param>
 		/// <param name="cursor1">First part of the cursor.</param>
 		/// <param name="cursor2">Second part of the cursor.</param>
-		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are strictly less than the next sibling of <c>key.Key(cursor1, cursor2)</c></returns>
-		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRange{T1,T2}(IKeySubspace,T1,T2)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are greater than or equal to the next sibling of <c>key.Key(cursor1, cursor2)</c></returns>
+		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRange{T1,T2}(IKeySubspace,T1,T2)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleKey<T1, T2>, FdbSubspaceKey> ToTailRangeExclusive<T1, T2>(this IKeySubspace subspace, T1 cursor1, T2 cursor2)
 		{
 			return FdbKeyRange.Between(subspace.Key(cursor1, cursor2), lowerMode: KeyRangeMode.NextSibling, subspace.Key(), upperMode: KeyRangeMode.Last);
@@ -315,8 +315,8 @@ namespace FoundationDB.Client
 		/// <param name="cursor1">First part of the cursor.</param>
 		/// <param name="cursor2">Second part of the cursor.</param>
 		/// <param name="cursor3">Third part of the cursor.</param>
-		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are strictly less than <c>key.Key(cursor1, cursor2, cursor3)</c></returns>
-		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRangeExclusive{T1,T2}(IKeySubspace,T1,T2)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are greater than or equal to <c>key.Key(cursor1, cursor2, cursor3)</c></returns>
+		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRangeExclusive{T1,T2,T3}(IKeySubspace,T1,T2,T3)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleKey<T1, T2, T3>, FdbSubspaceKey> ToTailRange<T1, T2, T3>(this IKeySubspace subspace, T1 cursor1, T2 cursor2, T3 cursor3)
 		{
 			return FdbKeyRange.Between(subspace.Key(cursor1, cursor2, cursor3), lowerMode: KeyRangeMode.Inclusive, subspace.Key(), upperMode: KeyRangeMode.Last);
@@ -330,8 +330,8 @@ namespace FoundationDB.Client
 		/// <param name="cursor1">First part of the cursor.</param>
 		/// <param name="cursor2">Second part of the cursor.</param>
 		/// <param name="cursor3">Third part of the cursor.</param>
-		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are strictly less than the next sibling of <c>key.Key(cursor1, cursor2, cursor3)</c></returns>
-		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRange{T1,T2}(IKeySubspace,T1,T2)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under the <paramref name="subspace"/> that are greater than or equal to the next sibling of <c>key.Key(cursor1, cursor2, cursor3)</c></returns>
+		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRange{T1,T2,T3}(IKeySubspace,T1,T2,T3)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleKey<T1, T2, T3>, FdbSubspaceKey> ToTailRangeExclusive<T1, T2, T3>(this IKeySubspace subspace, T1 cursor1, T2 cursor2, T3 cursor3)
 		{
 			return FdbKeyRange.Between(subspace.Key(cursor1, cursor2, cursor3), lowerMode: KeyRangeMode.NextSibling, subspace.Key(), upperMode: KeyRangeMode.Last);
@@ -346,8 +346,8 @@ namespace FoundationDB.Client
 		/// <typeparam name="T1">Type of the cursor</typeparam>
 		/// <param name="key">Key that will be used as a prefix</param>
 		/// <param name="cursor1">Value that will be used as a cursor under this key.</param>
-		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are strictly less than <c>key.Key(cursor1)</c></returns>
-		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRangeExclusive{TKey,T1}(TKey,T1)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are greater than or equal to <c>key.Key(cursor1)</c></returns>
+		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRangeExclusive{TKey,T1}(TKey,T1)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleSuffixKey<TKey, STuple<T1>>, TKey> ToTailRange<TKey, T1>(this TKey key, T1 cursor1)
 			where TKey : struct, IFdbKey
 		{
@@ -359,8 +359,8 @@ namespace FoundationDB.Client
 		/// <typeparam name="T1">Type of the cursor</typeparam>
 		/// <param name="key">Key that will be used as a prefix</param>
 		/// <param name="cursor1">Value that will be used as a cursor under this key.</param>
-		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are strictly less than the next sibling of <c>key.Key(cursor1)</c></returns>
-		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRange{TKey,T1}(TKey,T1)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are greater than or equal to the next sibling of <c>key.Key(cursor1)</c></returns>
+		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRange{TKey,T1}(TKey,T1)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleSuffixKey<TKey, STuple<T1>>, TKey> ToTailRangeExclusive<TKey, T1>(this TKey key, T1 cursor1)
 			where TKey : struct, IFdbKey
 		{
@@ -374,8 +374,8 @@ namespace FoundationDB.Client
 		/// <param name="key">Key that will be used as a prefix</param>
 		/// <param name="cursor1">First part of the cursor.</param>
 		/// <param name="cursor2">Second part of the cursor.</param>
-		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are strictly less than <c>key.Key(cursor1, cursor2)</c></returns>
-		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRangeExclusive{TKey,T1,T2}(TKey,T1,T2)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are greater than or equal to <c>key.Key(cursor1, cursor2)</c></returns>
+		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRangeExclusive{TKey,T1,T2}(TKey,T1,T2)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleSuffixKey<TKey, STuple<T1, T2>>, TKey> ToTailRange<TKey, T1, T2>(this TKey key, T1 cursor1, T2 cursor2)
 			where TKey : struct, IFdbKey
 		{
@@ -389,8 +389,8 @@ namespace FoundationDB.Client
 		/// <param name="key">Key that will be used as a prefix</param>
 		/// <param name="cursor1">First part of the cursor.</param>
 		/// <param name="cursor2">Second part of the cursor.</param>
-		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are strictly less than the next sibling of <c>key.Key(cursor1, cursor2)</c></returns>
-		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRange{TKey,T1,T2}(TKey,T1,T2)"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are greater than or equal to the next sibling of <c>key.Key(cursor1, cursor2)</c></returns>
+		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRange{TKey,T1,T2}(TKey,T1,T2)"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleSuffixKey<TKey, STuple<T1, T2>>, TKey> ToTailRangeExclusive<TKey, T1, T2>(this TKey key, T1 cursor1, T2 cursor2)
 			where TKey : struct, IFdbKey
 		{
@@ -406,8 +406,8 @@ namespace FoundationDB.Client
 		/// <param name="cursor1">First part of the cursor.</param>
 		/// <param name="cursor2">Second part of the cursor.</param>
 		/// <param name="cursor3">Third part of the cursor.</param>
-		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are strictly less than <c>key.Key(cursor1, cursor2, cursor3)</c></returns>
-		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRangeExclusive{TKey,T1,T2,T3}"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are greater than or equal to <c>key.Key(cursor1, cursor2, cursor3)</c></returns>
+		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRangeExclusive{TKey,T1,T2,T3}"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleSuffixKey<TKey, STuple<T1, T2, T3>>, TKey> ToTailRange<TKey, T1, T2, T3>(this TKey key, T1 cursor1, T2 cursor2, T3 cursor3)
 			where TKey : struct, IFdbKey
 		{
@@ -423,8 +423,8 @@ namespace FoundationDB.Client
 		/// <param name="cursor1">First part of the cursor.</param>
 		/// <param name="cursor2">Second part of the cursor.</param>
 		/// <param name="cursor3">Third part of the cursor.</param>
-		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are strictly less than the next sibling of <c>key.Key(cursor1, cursor2, cursor3)</c></returns>
-		/// <remarks>If the cursor must be excluded from the results, use <see cref="ToTailRange{TKey,T1,T2,T3}"/> instead</remarks>
+		/// <returns>Range that matches all keys <c>k</c> under <paramref name="key"/> that are greater than or equal to the next sibling of <c>key.Key(cursor1, cursor2, cursor3)</c></returns>
+		/// <remarks>If the cursor must be included in the results, use <see cref="ToTailRange{TKey,T1,T2,T3}"/> instead</remarks>
 		public static FdbKeyRange<FdbTupleSuffixKey<TKey, STuple<T1, T2, T3>>, TKey> ToTailRangeExclusive<TKey, T1, T2, T3>(this TKey key, T1 cursor1, T2 cursor2, T3 cursor3)
 			where TKey : struct, IFdbKey
 		{
