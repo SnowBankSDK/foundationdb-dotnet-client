@@ -184,9 +184,9 @@ namespace Microsoft.Extensions.Hosting
 				}
 
 				// ReadOnly=(true|false) (default: false)
-				if (cnx != null && cnx.ContainsKey("ReadOly"))
+				if (cnx != null && cnx.ContainsKey("ReadOnly"))
 				{
-					options.ConnectionOptions.ReadOnly = !string.Equals((string) cnx["ReadOnly"], "true", StringComparison.OrdinalIgnoreCase);
+					options.ConnectionOptions.ReadOnly = string.Equals((string) cnx["ReadOnly"], "true", StringComparison.OrdinalIgnoreCase);
 				}
 				else
 				{
