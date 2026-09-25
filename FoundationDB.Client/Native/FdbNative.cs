@@ -43,6 +43,9 @@ namespace FoundationDB.Client.Native
 		/// <summary>Handle on the native FDB C API library</summary>
 		private static readonly UnmanagedLibrary? FdbCLib;
 
+		/// <summary>Path of the preloaded native library, or <see langword="null"/> when the runtime resolved it by name</summary>
+		internal static string? LibraryPath => FdbCLib?.Path;
+
 		/// <summary>Exception that was thrown when we last tried to load the native FDB C library (or null if nothing wrong happened)</summary>
 		private static readonly ExceptionDispatchInfo? LibraryLoadError;
 
@@ -1104,10 +1107,19 @@ namespace FoundationDB.Client.Native
 
 		static FdbNative()
 		{
-			var libraryPath = GetPreloadPath();
+			string? libraryPath;
+			try
+			{
+				libraryPath = GetPreloadPath();
+			}
+			catch (Exception e)
+			{ // no library found in the default locations, or a platform without a native client
+				LibraryLoadError = ExceptionDispatchInfo.Capture(e);
+				return;
+			}
 
 			if (libraryPath == null)
-			{ // PInvoke will load
+			{ // explicit opt-in: the runtime and the operating system search for the library
 				return;
 			}
 
@@ -1156,44 +1168,93 @@ namespace FoundationDB.Client.Native
 #endif
 		}
 
+		/// <summary>Returns the full path of the library to preload, or <see langword="null"/> when the runtime must search for it</summary>
+		/// <remarks>
+		/// <para><see cref="Fdb.Options.NativeLibPath"/> selects the behavior, the same on every platform:</para>
+		/// <list type="bullet">
+		/// <item><see langword="null"/> (the default): the first file found in <see cref="GetDefaultNativeLibraryCandidates"/>, or an exception that lists them.</item>
+		/// <item><see cref="string.Empty"/>: no preload. The runtime resolves the name, which ends in the search order of the operating system.</item>
+		/// <item>a file path, or a folder that contains the file of the platform: that file.</item>
+		/// </list>
+		/// </remarks>
 		private static string? GetPreloadPath()
 		{
-			// we need to provide sensible defaults for loading the native library
-			// if this method returns null we'll let PInvoke deal
-			// otherwise - use explicit platform-specific dll loading
 			var libraryPath = Fdb.Options.NativeLibPath;
 
-			// on non-windows, library loading by convention just works.
-			// unless override is provided, just let PInvoke do the work
-			if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+			if (libraryPath == null)
 			{
-				if (string.IsNullOrEmpty(libraryPath))
+				var (fileName, rid, candidates) = GetDefaultNativeLibraryCandidates(
+					AppContext.BaseDirectory,
+					RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? OSPlatform.Windows
+					: RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? OSPlatform.OSX
+					: RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? OSPlatform.Linux
+					: (OSPlatform?) null,
+					RuntimeInformation.ProcessArchitecture,
+					Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)
+				);
+				foreach (var candidate in candidates)
 				{
-					return null;
+					if (File.Exists(candidate)) return candidate;
 				}
-				// otherwise just use the provided path
-				return libraryPath;
+				throw new DllNotFoundException(
+					$"The native FoundationDB client library '{fileName}' for '{rid}' was not found. Checked: {string.Join(", ", candidates)}. "
+					+ "Add the FoundationDB.Client.Native package with the same major.minor version as the cluster (7.4.* for a 7.4 cluster), "
+					+ "or set the path of the library with FdbDatabaseProviderOptions.NativeLibraryPath or Fdb.Options.SetNativeLibPath(). "
+					+ "FdbDatabaseProviderOptions.UseSystemNativeClient() lets the operating system search for it instead."
+				);
 			}
 
-			// Impact of NativeLibPath on windows:
-			// - If null, don't preload the library, and let the CLR find the file using the default P/Invoke behavior
-			// - If String.Empty, call win32 LoadLibrary(FDB_C_DLL + ".dll") and let the os find the file (using the standard OS behavior)
-			// - If path is folder, append the FDB_C_DLL
-			var winDllWithExtension = FDB_C_DLL + ".dll";
-			if (libraryPath == null)
+			if (libraryPath.Length == 0)
 			{
 				return null;
 			}
-			if (libraryPath.Length == 0)
+
+			if (global::System.IO.Directory.Exists(libraryPath))
 			{
-				return winDllWithExtension;
-			}
-			var fileName = Path.GetFileName(libraryPath);
-			if (string.IsNullOrEmpty(fileName))
-			{
-				libraryPath = Path.Combine(libraryPath, winDllWithExtension);
+				libraryPath = Path.Combine(libraryPath, Fdb.Options.GetExpectedNativeLibraryName());
 			}
 			return libraryPath;
+		}
+
+		/// <summary>Lists the files the default loading checks, in order</summary>
+		/// <param name="baseDirectory">Base directory of the application (<see cref="AppContext.BaseDirectory"/>)</param>
+		/// <param name="os">Operating system of the process, or <see langword="null"/> for another one</param>
+		/// <param name="architecture">Architecture of the process</param>
+		/// <param name="programFiles">The Program Files folder on Windows</param>
+		/// <returns>The file name of the platform, its runtime identifier, and the candidate paths: the two locations where the <c>FoundationDB.Client.Native</c> package deploys the library, then the location of the official client installer.</returns>
+		/// <exception cref="PlatformNotSupportedException">No native client exists for this operating system and architecture.</exception>
+		/// <remarks>
+		/// <para>The list holds fixed paths only, and never the folders of <c>PATH</c> or <c>LD_LIBRARY_PATH</c>: a user who can write to one of those folders could otherwise supply a different library.</para>
+		/// <para>The package deploys under <c>runtimes/{rid}/native/</c> for a build without a runtime identifier, and next to the application for a build with one.</para>
+		/// </remarks>
+		internal static (string FileName, string Rid, string[] Candidates) GetDefaultNativeLibraryCandidates(string baseDirectory, OSPlatform? os, Architecture architecture, string programFiles)
+		{
+			string? arch = architecture switch
+			{
+				Architecture.X64 => "x64",
+				Architecture.Arm64 => "arm64",
+				_ => null,
+			};
+
+			(string Platform, string FileName, string InstallPath)? target =
+				os == OSPlatform.Windows ? ("win", "fdb_c.dll", Path.Combine(programFiles, "foundationdb", "bin", "fdb_c.dll"))
+				: os == OSPlatform.Linux ? ("linux", "libfdb_c.so", "/usr/lib/libfdb_c.so")
+				: os == OSPlatform.OSX ? ("osx", "libfdb_c.dylib", "/usr/local/lib/libfdb_c.dylib")
+				: null;
+
+			// FoundationDB publishes no client for Windows on Arm64, nor for 32-bit processes
+			if (target == null || arch == null || (os == OSPlatform.Windows && architecture != Architecture.X64))
+			{
+				throw new PlatformNotSupportedException($"FoundationDB has no native client library for {RuntimeInformation.OSDescription} ({architecture}). Supported: win-x64, linux-x64, linux-arm64, osx-x64, osx-arm64.");
+			}
+
+			var (platform, fileName, installPath) = target.Value;
+			string rid = platform + "-" + arch;
+			return (fileName, rid, [
+				Path.Combine(baseDirectory, "runtimes", rid, "native", fileName),
+				Path.Combine(baseDirectory, fileName),
+				installPath,
+			]);
 		}
 
 		private static void EnsureLibraryIsLoaded()
@@ -1301,7 +1362,19 @@ namespace FoundationDB.Client.Native
 		public static int GetMaxApiVersion()
 		{
 			EnsureLibraryIsLoaded();
-			return NativeMethods.fdb_get_max_api_version();
+			try
+			{
+				return NativeMethods.fdb_get_max_api_version();
+			}
+			catch (DllNotFoundException e)
+			{ // first call into the library: without a preloaded path, the runtime searched for it by name and found nothing
+				throw new DllNotFoundException(
+					"The search of the operating system did not find the native FoundationDB client library ('fdb_c'). On macOS, this search does not include /usr/local/lib. "
+					+ "Add the FoundationDB.Client.Native package with the same major.minor version as the cluster (7.4.* for a 7.4 cluster), "
+					+ "or set the path of the library with FdbDatabaseProviderOptions.NativeLibraryPath or Fdb.Options.SetNativeLibPath().",
+					e
+				);
+			}
 		}
 
 		/// <summary>fdb_get_client_version</summary>

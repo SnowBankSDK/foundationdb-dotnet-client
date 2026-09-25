@@ -57,11 +57,23 @@ namespace FoundationDB.DependencyInjection
 
 		/// <summary>Overrides the path to the native library (aka "fdb_c.dll", "fdb_c.so", ...) that must be used.</summary>
 		/// <remarks>
-		/// <para>If <see langword="null"/>, pre-loading of the native C API library will be disabled, and the CLR will handle the binding of the library.</para>
-		/// <para>If <see cref="string.Empty">empty</see>, pre-loading of the native C API library will be enabled, and the operating system will handle the binding of the library.</para>
+		/// <para>If <see langword="null"/> (the default), the library is loaded from the locations where the <c>FoundationDB.Client.Native</c> package deploys it, then from the location of the official client installer. See <see cref="Fdb.Options.NativeLibPath"/> for the list. The startup fails with the list of these paths when none exists.</para>
+		/// <para>If <see cref="string.Empty">empty</see>, the runtime and the operating system search for the library. <see cref="UseSystemNativeClient"/> sets this value and explains the risk.</para>
 		/// <para>If not empty, the native C API library will be pre-loaded using the specified path. If the file does not exist, is not readable, or is corrupted, the startup will fail.</para>
 		/// </remarks>
-		public string? NativeLibraryPath { get; set; } = string.Empty;
+		public string? NativeLibraryPath { get; set; }
+
+		/// <summary>Lets the runtime and the operating system search for the native library, instead of the fixed locations of the default</summary>
+		/// <returns>The same options</returns>
+		/// <remarks>
+		/// <para>Use it for a host where the library is installed in a folder that the default does not check, and only found through <c>PATH</c> (Windows) or <c>LD_LIBRARY_PATH</c> (Linux).</para>
+		/// <para>The search visits folders that other users or programs may be able to write to, and loads the first file named like the native library. A library planted in one of these folders runs inside the process. Prefer the <c>FoundationDB.Client.Native</c> package, or set <see cref="NativeLibraryPath"/> to the full path of the library.</para>
+		/// </remarks>
+		public FdbDatabaseProviderOptions UseSystemNativeClient()
+		{
+			this.NativeLibraryPath = string.Empty;
+			return this;
+		}
 
 		/// <summary>If not null, log handler that will be applied to all transactions</summary>
 		public Action<FdbTransactionLog>? DefaultLogHandler { get; set; }

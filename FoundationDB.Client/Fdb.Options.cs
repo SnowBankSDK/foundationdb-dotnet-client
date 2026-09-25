@@ -41,19 +41,30 @@ namespace FoundationDB.Client
 
 			#region Native Library Preloading...
 
-			/// <summary>Custom path from where to load the native C API library. If <see langword="null"/>, let the CLR find the dll. If String.Empty let Win32's LoadLibrary find the correct dll, else use the specified path to load the library</summary>
+			/// <summary>Custom path from where to load the native C API library</summary>
+			/// <remarks>
+			/// <para>If <see langword="null"/> (the default), the library is loaded from the locations where the <c>FoundationDB.Client.Native</c> package deploys it (<c>runtimes/{rid}/native/</c> under the application folder, then the application folder), then from the location of the official client installer (<c>/usr/lib/libfdb_c.so</c>, <c>/usr/local/lib/libfdb_c.dylib</c>, <c>%ProgramFiles%\foundationdb\bin\fdb_c.dll</c>). The start fails with the list of these paths when none exists.</para>
+			/// <para>If <see cref="string.Empty"/>, the runtime and the operating system search for the library. See <see cref="EnableNativeLibraryPreloading"/> for the risk.</para>
+			/// <para>Otherwise, the library is loaded from this file, or from this folder with the file name of the platform.</para>
+			/// </remarks>
 			//REVIEW: change this into a get-only, and force people to call SetNativeLibPath(..)?
-			public static string? NativeLibPath = string.Empty;
+			public static string? NativeLibPath;
 
-			/// <summary>Disable preloading of the native C API library. The CLR will handle the binding of the library.</summary>
-			/// <remarks>This *must* be called before the start of the network thread, otherwise it won't have any effects.</remarks>
+			/// <summary>Lets the runtime and the operating system search for the native C API library, instead of the fixed locations of the default</summary>
+			/// <remarks>
+			/// <para>Same as <see cref="EnableNativeLibraryPreloading"/>.</para>
+			/// <para>This *must* be called before the start of the network thread, otherwise it won't have any effects.</para>
+			/// </remarks>
 			public static void DisableNativeLibraryPreloading()
 			{
-				Fdb.Options.NativeLibPath = null;
+				Fdb.Options.NativeLibPath = string.Empty;
 			}
 
-			/// <summary>Enable automatic preloading of the native C API library. The operating system will handle the binding of the library</summary>
-			/// <remarks>This *must* be called before the start of the network thread, otherwise it won't have any effects.</remarks>
+			/// <summary>Lets the runtime and the operating system search for the native C API library, instead of the fixed locations of the default</summary>
+			/// <remarks>
+			/// <para>The search visits folders that other users or programs may be able to write to: the folders of <c>PATH</c> on Windows, of <c>LD_LIBRARY_PATH</c> on Linux, and the current directory on some systems. A file named like the native library in one of them is loaded into the process. Prefer the default (the <c>FoundationDB.Client.Native</c> package) or <see cref="SetNativeLibPath"/>.</para>
+			/// <para>This *must* be called before the start of the network thread, otherwise it won't have any effects.</para>
+			/// </remarks>
 			public static void EnableNativeLibraryPreloading()
 			{
 				Fdb.Options.NativeLibPath = string.Empty;

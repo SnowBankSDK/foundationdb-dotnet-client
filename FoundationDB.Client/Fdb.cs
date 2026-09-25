@@ -171,7 +171,11 @@ namespace FoundationDB.Client
 			int min = GetMinApiVersion();
 			if (value < min) throw new ArgumentException($"The minimum API version supported by the native fdb client is {min}, which is higher than version {value} requested by the application. You must upgrade the application and/or .NET binding!");
 			int max = GetMaxApiVersion();
-			if (value > max) throw new ArgumentException($"The maximum API version supported by the native fdb client is {max}, which is lower than version {value} required by the application. You must upgrade the native fdb client to a higher version!");
+			if (value > max)
+			{
+				string loadedFrom = FdbNative.LibraryPath is { } path ? $" loaded from '{path}'" : "";
+				throw new ArgumentException($"The native fdb client{loadedFrom} supports API version {max} at most, and the application requires {value}. The client library must have the same major.minor version as the cluster: add the FoundationDB.Client.Native package of that version (7.4.* for a 7.4 cluster), or point NativeLibraryPath at a matching library.");
+			}
 
 			return value;
 		}

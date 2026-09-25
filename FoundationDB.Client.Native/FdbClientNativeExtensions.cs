@@ -51,6 +51,7 @@ namespace FoundationDB.Client
 		/// <item>The application's base directory.</item>
 		/// </list></para>
 		/// <para>The loader will <b>NOT</b> probe any other locations, like the default system folders (<c>System32</c>, ...) or any location defined in the <c>PATH</c> environment variable.</para>
+		/// <para>The default of <see cref="FdbDatabaseProviderOptions.NativeLibraryPath"/> checks the same two locations first, so the package works without this call. The call states the dependency in the code, and reports a missing library while the services are configured instead of when the database starts.</para>
 		/// </remarks>
 		public static FdbDatabaseProviderOptions UseNativeClient(this FdbDatabaseProviderOptions options, bool allowSystemFallback = false)
 		{

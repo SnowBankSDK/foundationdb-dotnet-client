@@ -98,12 +98,12 @@ namespace FoundationDB.DependencyInjection
 			switch (this.ProviderOptions.NativeLibraryPath)
 			{
 				case null:
-				{ // disable pre-loading
-					Fdb.Options.DisableNativeLibraryPreloading();
+				{ // the package locations, then the official install location
+					Fdb.Options.NativeLibPath = null;
 					break;
 				}
 				case "":
-				{ // enable pre-loading
+				{ // the runtime and the operating system search for the library
 					Fdb.Options.EnableNativeLibraryPreloading();
 					break;
 				}
