@@ -63,16 +63,18 @@ namespace FoundationDB.Client.Native
 
 	}
 
-	[StructLayout(LayoutKind.Sequential, Pack = 4)]
-	internal ref struct FdbMappedKeyValueNative
+	/// <summary>Memory layout of <c>FDBMappedKeyValue</c>: 112 bytes, natural alignment (only <c>FDBKey</c> and <c>FDBKeyValue</c> are packed)</summary>
+	[StructLayout(LayoutKind.Sequential)]
+	internal unsafe ref struct FdbMappedKeyValueNative
 	{
 		public FdbKeyNative Key;
 		public FdbKeyNative Value;
 		public FdbGetRangeReqAndResultNative GetRange;
-		public byte Buffer; // note: this is a byte[32] !
+		public fixed byte Buffer[32];
 	}
 
-	[StructLayout(LayoutKind.Sequential, Pack = 4)]
+	/// <summary>Memory layout of <c>FDBGetRangeReqAndResult</c>: 56 bytes, natural alignment</summary>
+	[StructLayout(LayoutKind.Sequential)]
 	internal unsafe struct FdbGetRangeReqAndResultNative
 	{
 		public FdbKeySelectorNative Begin;
@@ -82,11 +84,12 @@ namespace FoundationDB.Client.Native
 		public int Capacity;
 	}
 
-	[StructLayout(LayoutKind.Sequential, Pack = 4)]
+	/// <summary>Memory layout of <c>FDBKeySelector</c>: 20 bytes; <c>orEqual</c> is an <c>fdb_bool_t</c>, a 4-byte int</summary>
+	[StructLayout(LayoutKind.Sequential)]
 	internal struct FdbKeySelectorNative
 	{
 		public FdbKeyNative Key;
-		public bool OrEqual;
+		public int OrEqual;
 		public int Offset;
 	}
 
