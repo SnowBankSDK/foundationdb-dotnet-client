@@ -499,7 +499,7 @@ namespace Aspire.Hosting
 			}
 			else if (!string.IsNullOrWhiteSpace(connection.NativeLibraryPath))
 			{
-				jsonWriter.WriteString("nativeLibrary", connection.ClusterContents);
+				jsonWriter.WriteString("nativeLibrary", connection.NativeLibraryPath);
 			}
 
 		}

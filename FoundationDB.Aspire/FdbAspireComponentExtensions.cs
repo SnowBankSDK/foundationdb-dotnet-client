@@ -116,16 +116,9 @@ namespace Microsoft.Extensions.Hosting
 						options.NativeLibraryPath = nativeLibraryPath;
 					}
 				}
-				else if (cnx != null && cnx.ContainsKey("PreloadNativeLibrary"))
-				{
-					if (string.Equals((string) cnx["PreloadNativeLibrary"], "true", StringComparison.OrdinalIgnoreCase))
-					{ // automatic pre-loading, OS will resolve
-						options.NativeLibraryPath = "";
-					}
-					else
-					{ // disable pre-loading, CLR will resolve
-						options.NativeLibraryPath = null;
-					}
+				else if (cnx != null && (cnx.ContainsKey("PreloadNativeLibrary") || cnx.ContainsKey("DisableNativePreloading")))
+				{ // both values of PreloadNativeLibrary, and the DisableNativePreloading key that the hosting resources write, ask the runtime and the operating system to search for the library
+					options.UseSystemNativeClient();
 				}
 				else if (settings.NativeLibraryPath != null)
 				{
