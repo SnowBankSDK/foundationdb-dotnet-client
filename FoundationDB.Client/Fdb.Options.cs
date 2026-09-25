@@ -157,6 +157,47 @@ namespace FoundationDB.Client
 
 			#endregion
 
+			#region Network Options...
+
+			/// <summary>Network options that <see cref="Fdb.Start"/> applies after the trace and TLS options, in the order they were added</summary>
+			internal static readonly List<(FdbNetworkOption Option, object? Value)> NetworkOptions = [];
+
+			/// <summary>Sets a network option that takes no parameter</summary>
+			/// <param name="option">Option to set</param>
+			/// <remarks>
+			/// <para>The option is applied when the network thread starts, after the trace and TLS options. Options are applied in the order of the calls, and an option set twice is applied twice: <see cref="FdbNetworkOption.ExternalClientLibrary"/> loads one library per call.</para>
+			/// <para>This *must* be called before the start of the network thread; afterward it throws <see cref="InvalidOperationException"/>.</para>
+			/// <para>Applications that register the client with <c>AddFoundationDb</c> call <see cref="FoundationDB.DependencyInjection.FdbDatabaseProviderOptions.SetNetworkOption(FdbNetworkOption)"/> instead.</para>
+			/// </remarks>
+			public static void SetNetworkOption(FdbNetworkOption option) => AddNetworkOption(option, null);
+
+			/// <summary>Sets a network option that takes a string parameter, for example a path</summary>
+			/// <param name="option">Option to set</param>
+			/// <param name="value">Value of the option</param>
+			/// <remarks>
+			/// <para>The multi-version client uses these options: <see cref="FdbNetworkOption.ExternalClientLibrary"/> and <see cref="FdbNetworkOption.ExternalClientDirectory"/> load other versions of the native library next to the primary one. All loaded libraries share one API version, so a 7.3 library next to a 7.4 one requires an API version of 730 or lower.</para>
+			/// <para>See <see cref="SetNetworkOption(FdbNetworkOption)"/> for when and in which order the options are applied.</para>
+			/// </remarks>
+			public static void SetNetworkOption(FdbNetworkOption option, string value)
+			{
+				Contract.NotNull(value);
+				AddNetworkOption(option, value);
+			}
+
+			/// <summary>Sets a network option that takes an integer parameter</summary>
+			/// <param name="option">Option to set</param>
+			/// <param name="value">Value of the option</param>
+			/// <remarks>See <see cref="SetNetworkOption(FdbNetworkOption)"/> for when and in which order the options are applied.</remarks>
+			public static void SetNetworkOption(FdbNetworkOption option, long value) => AddNetworkOption(option, value);
+
+			internal static void AddNetworkOption(FdbNetworkOption option, object? value)
+			{
+				if (s_started) throw new InvalidOperationException($"The network option {option} must be set before the network thread starts.");
+				NetworkOptions.Add((option, value));
+			}
+
+			#endregion
+
 			#region TLS...
 
 			/// <summary>Content of the TLS root and client certificates used for TLS connections (none by default)</summary>

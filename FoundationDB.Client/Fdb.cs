@@ -698,6 +698,18 @@ namespace FoundationDB.Client
 
 			#endregion
 
+			foreach (var (option, value) in Fdb.Options.NetworkOptions)
+			{
+				if (Logging.On) Logging.Verbose(typeof(Fdb), "Start", $"Setting network option {option}");
+				FdbNative.DieOnError(value switch
+				{
+					null => SetNetworkOption(option, ReadOnlySpan<byte>.Empty),
+					string text => SetNetworkOption(option, text),
+					long number => SetNetworkOption(option, Slice.FromFixed64(number)),
+					_ => throw new InvalidOperationException($"Unsupported value for network option {option}"),
+				});
+			}
+
 			try { }
 			finally
 			{

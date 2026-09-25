@@ -113,6 +113,11 @@ namespace FoundationDB.DependencyInjection
 				}
 			}
 
+			foreach (var (option, value) in this.ProviderOptions.NetworkOptions)
+			{
+				Fdb.Options.AddNetworkOption(option, value);
+			}
+
 			// configure the API version
 			Fdb.Start(this.ProviderOptions.ApiVersion);
 		}

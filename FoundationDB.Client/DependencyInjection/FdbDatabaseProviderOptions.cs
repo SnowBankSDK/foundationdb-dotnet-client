@@ -75,6 +75,48 @@ namespace FoundationDB.DependencyInjection
 			return this;
 		}
 
+		/// <summary>Network options that the provider applies before the network thread starts, in the order they were added</summary>
+		internal List<(FdbNetworkOption Option, object? Value)> NetworkOptions { get; } = [];
+
+		/// <summary>Sets a network option that takes no parameter</summary>
+		/// <param name="option">Option to set</param>
+		/// <returns>The same options</returns>
+		/// <remarks>
+		/// <para>The provider applies the option when it starts the network thread, after the trace and TLS options. Options are applied in the order of the calls, and an option set twice is applied twice: <see cref="FdbNetworkOption.ExternalClientLibrary"/> loads one library per call.</para>
+		/// <para>The network thread starts once per process, so the options of the first provider that starts apply to the whole process.</para>
+		/// </remarks>
+		public FdbDatabaseProviderOptions SetNetworkOption(FdbNetworkOption option)
+		{
+			this.NetworkOptions.Add((option, null));
+			return this;
+		}
+
+		/// <summary>Sets a network option that takes a string parameter, for example a path</summary>
+		/// <param name="option">Option to set</param>
+		/// <param name="value">Value of the option</param>
+		/// <returns>The same options</returns>
+		/// <remarks>
+		/// <para>The multi-version client uses these options: <see cref="FdbNetworkOption.ExternalClientLibrary"/> and <see cref="FdbNetworkOption.ExternalClientDirectory"/> load other versions of the native library next to the primary one. All loaded libraries share one API version, so a 7.3 library next to a 7.4 one requires an <see cref="ApiVersion"/> of 730 or lower.</para>
+		/// <para>See <see cref="SetNetworkOption(FdbNetworkOption)"/> for when and in which order the options are applied.</para>
+		/// </remarks>
+		public FdbDatabaseProviderOptions SetNetworkOption(FdbNetworkOption option, string value)
+		{
+			Contract.NotNull(value);
+			this.NetworkOptions.Add((option, value));
+			return this;
+		}
+
+		/// <summary>Sets a network option that takes an integer parameter</summary>
+		/// <param name="option">Option to set</param>
+		/// <param name="value">Value of the option</param>
+		/// <returns>The same options</returns>
+		/// <remarks>See <see cref="SetNetworkOption(FdbNetworkOption)"/> for when and in which order the options are applied.</remarks>
+		public FdbDatabaseProviderOptions SetNetworkOption(FdbNetworkOption option, long value)
+		{
+			this.NetworkOptions.Add((option, value));
+			return this;
+		}
+
 		/// <summary>If not null, log handler that will be applied to all transactions</summary>
 		public Action<FdbTransactionLog>? DefaultLogHandler { get; set; }
 
