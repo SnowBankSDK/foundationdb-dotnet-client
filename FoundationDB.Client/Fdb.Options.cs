@@ -159,7 +159,7 @@ namespace FoundationDB.Client
 
 			#region Network Options...
 
-			/// <summary>Network options that <see cref="Fdb.Start"/> applies after the trace and TLS options, in the order they were added</summary>
+			/// <summary>Network options that <see cref="Fdb.Start(int)"/> applies after the trace and TLS options, in the order they were added</summary>
 			internal static readonly List<(FdbNetworkOption Option, object? Value)> NetworkOptions = [];
 
 			/// <summary>Sets a network option that takes no parameter</summary>

@@ -65,7 +65,7 @@ namespace FoundationDB.Client.Native
 
 	/// <summary>Memory layout of <c>FDBMappedKeyValue</c>: 112 bytes, natural alignment (only <c>FDBKey</c> and <c>FDBKeyValue</c> are packed)</summary>
 	[StructLayout(LayoutKind.Sequential)]
-	internal unsafe ref struct FdbMappedKeyValueNative
+	internal unsafe struct FdbMappedKeyValueNative
 	{
 		public FdbKeyNative Key;
 		public FdbKeyNative Value;
