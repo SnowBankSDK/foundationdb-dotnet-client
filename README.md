@@ -171,22 +171,26 @@ The same material is available as human-readable documentation in [the guide](ht
 
 # How to build
 
-## Visual Studio Solution
+This section is for contributors who build and test this repository. To use the packages in an application, see [How to use](#how-to-use).
 
-You will need Visual Studio 2022 version 17.14 or above to build the solution (C# 14 and .NET 10.0 support is required).
+## Prerequisites
 
-### From the Command Line
+- The .NET SDK version pinned in [`global.json`](global.json). It is a .NET 11 preview, so Linux distribution packages do not ship it. Install it with the [install script](https://learn.microsoft.com/dotnet/core/install/linux-scripted-manual): `./dotnet-install.sh --jsonfile global.json`.
+- The .NET 10 and .NET 8 runtimes, to run the `net10.0` and `net8.0` test targets (`./dotnet-install.sh --channel 10.0 --runtime aspnetcore`, then the same with `8.0`).
+- A Docker engine that the current user can reach without `sudo`, for the tests that need a real cluster (see [How to test](#how-to-test)).
+- On Linux and macOS, `curl` and `python3`, for `FoundationDB.Client.Native/DownloadBinaries.sh`.
 
-You can also build, test and compile the NuGet packages from the command line using the `dotnet` CLI:
+Node.js is needed only to render the documentation site (`SnowBank.DocGen`). An IDE is optional, and must support the SDK version in `global.json`.
 
-- `dotnet build` to build (in DEBUG) all the projects in the solution
-- `dotnet test` to run the unit tests (requires a working local FoundationDB cluster).
+## From the command line
+
+- `dotnet build FoundationDB.Client.slnx` builds every project in Debug, for every target framework: `net8.0`, `net10.0`, `net11.0`, `netstandard2.0`, and the `net472` test targets. The `net472` targets also build on Linux and macOS, but only Windows runs them.
 
 The `scripts/` folder contains helpers for common tasks:
 - `scripts/build.ps1` / `scripts/build.sh`: run a fully isolated **standalone** restore, clean and build (this repo's complete target set), even when it is checked out as a sub-module (see the *As a sub-module* section below). Add `Release` for a Release build.
 - `scripts/pack.ps1` / `scripts/pack.sh`: build and validate the NuGet packages (they do not push to any feed).
 
-### As a sub-module
+## As a sub-module
 
 Most projects in this repository are targeting multiple frameworks, meaning that each project will be built several times, one for each target.
 
@@ -239,7 +243,7 @@ An example of a parent `Directory.Build.props` that multi-targets `net10.0` and 
 </Project>
 ```
 
-### Building this repository on its own (standalone)
+## Building this repository on its own (standalone)
 
 When you want to build, test, or package **this repository on its own** while it is still checked out inside such a parent (for example to validate the `net8.0` or `netstandard2.0` targets that a target-trimming parent would otherwise hide, or to produce a complete NuGet package), force a **standalone** build with the `CORESDK_STANDALONE_BUILD` property set to `true`. This makes the `Directory.Build.props` ignore the parent overrides entirely and restore this repo's own complete target set.
 
@@ -260,11 +264,26 @@ Or use the helper scripts, which run a consistent `restore`, `clean` and `build`
 
 # How to test
 
-The test projects are using NUnit 4, and the test runner must run as a 64-bit process (32-bit is not supported).
+The test projects use NUnit 4 with the Microsoft.Testing.Platform runner. The test runner must run as a 64-bit process (32-bit is not supported).
 
-> In order to run the tests, you will also need to obtain the `fdb_c.dll`/`libfdb_c.so` native library.
+Run one test project and one target framework at a time; `dotnet test` on the whole solution is not supported. Exclude the benchmark categories from normal runs:
 
-You can either run the tests from Visual Studio or Visual Studio Code, using any extension (like ReSharper), or from the command line via `dotnet test`.
+```bash
+dotnet test FoundationDB.Tests/FoundationDB.Tests.csproj -f net11.0 --filter "TestCategory!=LongRunning&TestCategory!=Benchmark"
+```
+
+What each test project needs:
+
+- `SnowBank.*.Tests` and `FoundationDB.FakeDb.Tests` need nothing more than the SDK.
+- `FoundationDB.Tests`, and the real-cluster fixtures of `FoundationDB.Layers.Tests`, need Docker and the native client library (`fdb_c.dll`, `libfdb_c.so` or `libfdb_c.dylib`).
+
+Download the native client library before the first build: the build copies it into each test output folder. On Windows, run `FoundationDB.Client.Native/DownloadBinaries.ps1`. On Linux and macOS, run `FoundationDB.Client.Native/DownloadBinaries.sh --rid <rid>` (for example `linux-x64`). After a late download, build again.
+
+The Docker-backed tests start a `foundationdb/foundationdb` container, one per FoundationDB version and .NET runtime. The first run pulls the image (about 2 GB), and the test fixture allows 20 seconds for the container to start, pull included. On a slow network, run `docker pull` for the image first. Set `FDB_TEST_DOCKER_TAG` to test another image tag. Without a reachable Docker daemon, these tests fail within seconds with "Could not reach a Docker daemon".
+
+On Linux, a user added to the `docker` group needs a new login before `docker ps` works without `sudo`. Reboot if a logout is not enough: background processes (for example the MSBuild worker nodes that `dotnet build` keeps alive) can keep the old session running.
+
+You can also run the tests from an IDE (Visual Studio, Visual Studio Code, Rider, or ReSharper).
 
 > WARNING: All the tests try to run in a dedicated subspace, but there is a possibility of data corruption if they are running against a test or staging cluster! You should run the tests against a local cluster where all the data is considered expendable!
 
