@@ -193,7 +193,7 @@ namespace FoundationDB.Client.Tests
 				catch (Exception e)
 				{
 					LogError("FDB Test Server failed to start!", e);
-					Assert.Warn($"Failed to start docker container '{container.Id}': [{e.GetType().Name}] {e.Message}");
+					Assert.Warn($"Failed to start docker container '{container.Name}': [{e.GetType().Name}] {e.Message}");
 					FdbTest.ServerReadySignal.TrySetException(e);
 				}
 			}
@@ -581,6 +581,15 @@ namespace FoundationDB.Client.Tests
 			Assume.That(this.SharedServices, Is.Null, "Common services can only be configured once per test class!");
 			var server = FdbTest.ServerContainer!;
 			Assume.That(server, Is.Not.Null, "FDB Test Server was not started properly");
+
+			// the container exists even when it failed to start: without this check, the test would wait on a cluster that never answers
+			var ready = FdbTest.ServerReadySignal.Task;
+			if (ready.IsFaulted)
+			{
+				var error = ready.Exception!.InnerException ?? ready.Exception;
+				Assert.Fail($"FDB Test Server container '{server.Name}' failed to start: [{error.GetType().Name}] {error.Message}");
+			}
+
 			Assume.That(Fdb.ApiVersion, Is.GreaterThan(0), "The fdb API version was not configured properly!");
 
 			var services = new ServiceCollection();
@@ -589,6 +598,8 @@ namespace FoundationDB.Client.Tests
 			services.AddFoundationDb(Fdb.ApiVersion, (options) =>
 			{
 				options.ConnectionOptions.ConnectionString = server.ConnectionString;
+				// same limit as OpenTestDatabaseAsync: an unreachable cluster fails the transaction instead of blocking the test run
+				options.ConnectionOptions.DefaultTimeout = TimeSpan.FromSeconds(15);
 			});
 
 			configure?.Invoke(services);

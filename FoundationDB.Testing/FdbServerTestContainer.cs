@@ -121,7 +121,9 @@ namespace FoundationDB.Client.Tests
 				cts.CancelAfter(startTimeout);
 				try
 				{
-					using var docker = TestcontainersSettings.OS.DockerEndpointAuthConfig.GetDockerClientBuilder(Guid.Empty).Build();
+					// Testcontainers leaves the endpoint null when no Docker daemon answered its probe (daemon stopped, socket access denied, ...)
+					var endpoint = TestcontainersSettings.OS.DockerEndpointAuthConfig ?? throw new InvalidOperationException("Could not reach a Docker daemon. Check that Docker is running, and on Linux that the current user can access the Docker socket (member of the 'docker' group, after logging out and back in).");
+					using var docker = endpoint.GetDockerClientBuilder(Guid.Empty).Build();
 
 					// Testcontainers matches a reusable container by a hash of its configuration (which includes the image), not by its name:
 					// a container left by a run with the previous image tag is not reused, and the create call fails with Conflict on the name.
