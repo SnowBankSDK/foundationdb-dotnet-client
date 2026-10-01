@@ -271,7 +271,8 @@ namespace Aspire.Hosting
 				.WithAnnotation(new ManifestPublishingCallbackAnnotation((ctx) => WriteFdbClusterToManifest(ctx, fdbCluster)))
 				.WithImage(image: "foundationdb/foundationdb", tag: fdbCluster.DockerTag)
 				.WithImageRegistry(imageRegistry)
-				.WithVolume("fdb_data", "/var/fdb/data", isReadOnly: false) //HACKHACK: TODO: make this configurable!
+				// every AppHost that keeps this default shares the same volume: WithDataVolume() gives the cluster its own
+				.WithVolume(DefaultDataVolumeName, DataFolder, isReadOnly: false)
 				.WithEndpoint("tcp", ep =>
 				{
 					// note: both Port and TargetPort must be the same (see above)
@@ -308,6 +309,36 @@ namespace Aspire.Hosting
 			}
 
 			return cluster;
+		}
+
+		/// <summary>Name of the volume that holds the data of a cluster, unless <see cref="WithDataVolume"/> names another one</summary>
+		public const string DefaultDataVolumeName = "fdb_data";
+
+		/// <summary>Folder of the container where <c>fdbserver</c> stores its data</summary>
+		private const string DataFolder = "/var/fdb/data";
+
+		/// <summary>Stores the data of the cluster in a named volume, instead of the <see cref="DefaultDataVolumeName"/> volume</summary>
+		/// <param name="builder">Builder for the FoundationDB cluster resource</param>
+		/// <param name="name">Name of the volume, or <c>null</c> for a name generated from the AppHost and the resource (ex: <c>"myapphost-1a2b3c4d5e-fdb-data"</c>)</param>
+		/// <param name="isReadOnly">If <c>true</c>, the volume is mounted read-only</param>
+		/// <returns>The same builder</returns>
+		/// <remarks>
+		/// <para>Every AppHost that keeps the default volume shares it, with the clusters of other AppHosts, worktrees or FoundationDB versions.
+		/// A 7.4 server upgrades the data files of a 7.3 cluster in place, and a 7.3 server cannot open them anymore.</para>
+		/// <para>The generated name is unique per AppHost and per resource: two copies of the same AppHost in different folders (ex: git worktrees) get different volumes.</para>
+		/// </remarks>
+		/// <example><code>builder.AddFoundationDb("fdb", apiVersion: 740, root: "/MyApp").WithDataVolume();</code></example>
+		public static IResourceBuilder<FdbClusterResource> WithDataVolume(this IResourceBuilder<FdbClusterResource> builder, string? name = null, bool isReadOnly = false)
+		{
+			Contract.NotNull(builder);
+
+			// replace the volume mounted on the data folder
+			foreach (var mount in builder.Resource.Annotations.OfType<ContainerMountAnnotation>().Where(m => m.Target == DataFolder).ToList())
+			{
+				builder.Resource.Annotations.Remove(mount);
+			}
+
+			return builder.WithVolume(name ?? VolumeNameGenerator.Generate(builder, "data"), DataFolder, isReadOnly);
 		}
 
 		/// <summary>Enables or disables the automatic <c>configure new</c> of a database when the container starts on a fresh volume</summary>

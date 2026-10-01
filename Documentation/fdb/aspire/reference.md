@@ -72,6 +72,7 @@ Applied to the builder that `AddFoundationDb` or `AddFoundationDbCluster` return
 |---|---|---|
 | `WithAutoProvisioning(bool enabled = true)` | `FdbClusterResource` | turns first-start provisioning on or off (on by default) |
 | `WithClusterVersion(string version)` | `FdbConnectionResource` | sets the client library version |
+| `WithDataVolume(string? name = null, bool isReadOnly = false)` | `FdbClusterResource` | stores the data in a volume of its own, named by the AppHost and the resource when `name` is `null` |
 | `WithLifetime(ContainerLifetime.Persistent)` | container resources (Aspire) | reuses the container and its volume across runs |
 | `WithReference(fdb)` | a project (Aspire) | injects the cluster's connection string under its name |
 | `WaitFor(fdb)` | a project (Aspire) | holds the project until the cluster reports healthy |
@@ -150,7 +151,7 @@ The call is idempotent: an already-configured database is left untouched.
 | host and container port | `4550` (both equal, Aspire proxy off) |
 | image | `foundationdb/foundationdb` |
 | image registry | `docker.io` |
-| data volume | `fdb_data` mounted at `/var/fdb/data` |
+| data volume | `fdb_data` mounted at `/var/fdb/data`, shared by every AppHost that keeps it (see `WithDataVolume`) |
 
 ## Telemetry
 
