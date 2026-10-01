@@ -33,6 +33,7 @@ namespace FdbShell
 	using System.CommandLine;
 	using System.CommandLine.Invocation;
 	using FoundationDB.DependencyInjection;
+	using FoundationDB.Tools;
 	using Spectre.Console;
 	using Microsoft.Extensions.DependencyInjection;
 	using Mono.Terminal;
@@ -42,54 +43,6 @@ namespace FdbShell
 
 		public static async Task<int> Main(string[] args)
 		{
-			//TODO: move this to the main, and add a command line argument to on/off ?
-
-			// Initialize FDB
-
-			if (args.Contains("--spawn"))
-			{
-				// compute a hash of the arguments, to detect if the child process is already started
-				var hash = SnowBank.IO.Hashing.Fnv1aHash64.FromString(string.Join("¤", args), ignoreCase: false);
-
-
-				// respawn this process in a new terminal window, with the same arguments (minus the --spawn)
-				// -> this is a workaround to an issue in Aspire that, when FdbShell is started in the AppHost, it will not have a valid console (stdin/stdout)
-				var process = Process.GetCurrentProcess();
-				var psi = new ProcessStartInfo()
-				{
-					WorkingDirectory = Environment.CurrentDirectory,
-					FileName = process.ProcessName,
-					CreateNoWindow = false,
-					UseShellExecute = true,
-					WindowStyle = ProcessWindowStyle.Normal,
-				};
-
-				// we may be started via "dotnet FdbShell.dll --args", so we have to use the actual process args, and not the one passed to Main(...)
-				var commandLineArgs = Environment.GetCommandLineArgs();
-
-				foreach (var arg in commandLineArgs)
-				{
-					if (arg == "--spawn") continue;
-					psi.ArgumentList.Add(arg);
-				}
-				// add the hashcode
-				psi.ArgumentList.Add("--child=" + hash.ToString("x08", CultureInfo.InvariantCulture));
-				psi.ArgumentList.Add("--parent=" + process.Id.ToString(CultureInfo.InvariantCulture));
-
-				try
-				{
-					var child = Process.Start(psi)!;
-					child.WaitForExit();
-					Environment.ExitCode = child.ExitCode;
-				}
-				catch (Exception e)
-				{
-					Console.Error.WriteLine($"CRASHED: {e}");
-					Environment.ExitCode = -1;
-				}
-				return 0;
-			}
-
 			try
 			{
 				using var go = new CancellationTokenSource();
@@ -111,7 +64,8 @@ namespace FdbShell
 
 				await result.InvokeAsync(cancellationToken: go.Token);
 
-				return 0;
+				// the shell reports its failures through Environment.ExitCode
+				return Environment.ExitCode;
 			}
 			catch (Exception e)
 			{
@@ -138,8 +92,6 @@ namespace FdbShell
 				this.Options.Add(RetriesOption);
 				this.Options.Add(AspireOption);
 				this.Options.Add(DockerOption);
-				this.Options.Add(ChildHashOption);
-				this.Options.Add(ParentProcessOption);
 				this.Options.Add(ExecOption);
 
 				this.SetAction((result) => RunShell(result, cancel));
@@ -193,27 +145,16 @@ namespace FdbShell
 				//*****
 			};
 
-			private static readonly Option<bool> AspireOption = new("--aspire")
+			private static readonly Option<string?> AspireOption = new("--aspire")
 			{
-				Description = "Connect to a local docker instance managed by .NET Aspire",
+				Description = "Connect to the FoundationDB resource of a .NET Aspire AppHost, using the connection string that Aspire injects into the environment. Specify the resource name when the AppHost references more than one cluster.",
+				Arity = ArgumentArity.ZeroOrOne,
 				Recursive = true,
 			};
 
 			private static readonly Option<int?> DockerOption = new("--docker")
 			{
 				Description = "Connect to a local docker instance running on the given port",
-				Recursive = true,
-			};
-
-			private static readonly Option<string> ChildHashOption = new("--child")
-			{
-				Description = "Hash of the arguments of the parent process that spawned this instance",
-				Recursive = true,
-			};
-
-			private static readonly Option<int?> ParentProcessOption = new("--parent")
-			{
-				Description = "PID of the parent process that spawned this instance",
 				Recursive = true,
 			};
 
@@ -226,16 +167,48 @@ namespace FdbShell
 				var timeout = result.GetValue(TimeoutOption) ?? 30;
 				var maxRetries = result.GetValue(RetriesOption) ?? 10;
 				var execCommand = result.GetValue(ExecOption);
-				var aspire = result.GetValue(AspireOption);
+				var aspire = result.GetResult(AspireOption) != null;
 				var docker = result.GetValue(DockerOption);
-				var childHash = result.GetValue(ChildHashOption);
-				var parentProcess = result.GetValue(ParentProcessOption);
 
-				if (aspire || docker != null)
+				// the shell opens the whole database, but starts in the root folder of the applications when connected via Aspire
+				var initialPath = FdbPath.Root;
+				FdbAspireConnection? aspireConnection = null;
+
+				if (aspire)
+				{
+					if (docker != null)
+					{
+						Console.Error.WriteLine("The --aspire and --docker options cannot be combined.");
+						Environment.ExitCode = 1;
+						return;
+					}
+
+					FdbAspireConnection connection;
+					try
+					{
+						connection = FdbAspireConnection.Resolve(result.GetValue(AspireOption));
+					}
+					catch (InvalidOperationException e)
+					{
+						Console.Error.WriteLine(e.Message);
+						Environment.ExitCode = 1;
+						return;
+					}
+
+					aspireConnection = connection;
+					clusterFile = connection.ClusterFile;
+					connectionString = connection.ClusterFileContents;
+					apiVersion ??= connection.ApiVersion;
+					// an explicit --partition takes precedence over the root folder of the applications
+					if (string.IsNullOrEmpty(partition))
+					{
+						initialPath = connection.Root ?? FdbPath.Root;
+					}
+				}
+				else if (docker != null)
 				{
 					clusterFile = null;
-					var port = docker ?? 4550;
-					connectionString = "docker:docker@127.0.0.1:" + port.ToString(CultureInfo.InvariantCulture);
+					connectionString = "docker:docker@127.0.0.1:" + docker.Value.ToString(CultureInfo.InvariantCulture);
 				}
 
 				if (apiVersion == null)
@@ -255,27 +228,6 @@ namespace FdbShell
 				//	startCommand = string.Join(" ", extra);
 				//}
 
-				if (parentProcess != null)
-				{
-					Process? parent;
-					try
-					{
-						parent = Process.GetProcessById(parentProcess.Value);
-					}
-					catch (ArgumentException)
-					{
-						Console.Error.WriteLine($"Parent process {parentProcess.Value} not found, or has already terminated.");
-						Environment.Exit(-1);
-						return;
-					}
-
-					_ = parent.WaitForExitAsync(this.Cancellation).ContinueWith(_ =>
-					{
-						Console.WriteLine($"Parent process {parent.Id} has exited!");
-						Environment.Exit(-1);
-					}, this.Cancellation);
-				}
-
 				var builder = new ServiceCollection();
 
 				builder.AddFoundationDb(apiVersion.Value, options =>
@@ -287,7 +239,14 @@ namespace FdbShell
 					options.ConnectionOptions.DefaultTimeout = TimeSpan.FromSeconds(Math.Max(0, timeout));
 					options.ConnectionOptions.DefaultRetryLimit = Math.Max(0, maxRetries);
 
-					options.UseNativeClient(allowSystemFallback: false);
+					if (aspireConnection?.NativeLibrary is { } nativeLibrary)
+					{ // the AppHost names the native client of the branch of the cluster, the one that the applications load
+						options.NativeLibraryPath = nativeLibrary;
+					}
+					else
+					{
+						options.UseNativeClient(allowSystemFallback: false);
+					}
 				});
 
 				builder.AddSingleton<FdbShellRunner>();
@@ -327,6 +286,7 @@ namespace FdbShell
 
 				var shellArgs = new FdbShellRunnerArguments()
 				{
+					InitialPath = initialPath,
 					StartCommand = startCommand,
 					RunSingleCommand = execCommand != null,
 				};
@@ -334,9 +294,15 @@ namespace FdbShell
 				// pre-start FDB client
 				dbProvider.Start();
 
-				if (parentProcess != null)
+				// a native client talks only to clusters of its own major.minor version: stop with the reason, instead of retrying forever
+				if (aspireConnection?.ClusterVersion is { } clusterVersion
+					&& Version.TryParse(Fdb.GetClientVersion().Version, out var clientVersion)
+					&& (clientVersion.Major != clusterVersion.Major || clientVersion.Minor != clusterVersion.Minor))
 				{
-					terminal.StdOut($"Attaching to parent process {parentProcess.Value} and token {childHash}.");
+					terminal.StdErr($"The native client {clientVersion} cannot connect to the '{aspireConnection.Name}' cluster, which runs version {clusterVersion}.", ConsoleColor.Red);
+					terminal.StdErr($"Load a {clusterVersion.Major}.{clusterVersion.Minor}.x native client: start FdbShell from the AppHost, which references the FoundationDB.Client.Native package of the cluster, or connect with --connfile or --docker instead of --aspire.");
+					Environment.ExitCode = 1;
+					return;
 				}
 
 				await runner.RunAsync(shellArgs, this.Cancellation);

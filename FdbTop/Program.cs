@@ -30,6 +30,7 @@
 namespace FdbTop
 {
 	using System.CommandLine;
+	using FoundationDB.Tools;
 	using SnowBank.Data.Json;
 
 	public static class Program
@@ -152,9 +153,10 @@ namespace FdbTop
 				Description = "The API version level that should be used.",
 			};
 
-			private static readonly Option<bool> AspireOption = new("--aspire")
+			private static readonly Option<string?> AspireOption = new("--aspire")
 			{
-				Description = "Connect to a local docker instance managed by .NET Aspire.",
+				Description = "Connect to the FoundationDB resource of a .NET Aspire AppHost, using the connection string that Aspire injects into the environment. Specify the resource name when the AppHost references more than one cluster.",
+				Arity = ArgumentArity.ZeroOrOne,
 			};
 
 			private static readonly Option<int?> DockerOption = new("--docker")
@@ -173,15 +175,42 @@ namespace FdbTop
 				var clusterFile = result.GetValue(ClusterFileOption) ?? result.GetValue(ClusterFileArgument);
 				var connectionString = result.GetValue(ConnectionStringOption);
 				var apiVersion = result.GetValue(ApiVersionOption);
-				var aspire = result.GetValue(AspireOption);
+				var aspire = result.GetResult(AspireOption) != null;
 				var docker = result.GetValue(DockerOption);
 				var timeout = result.GetValue(TimeoutOption) ?? 10;
+				// the AppHost can name the native client of the branch of the cluster
+				string? nativeLibraryOverride = null;
 
-				if (aspire || docker != null)
-				{ // connect to a local FoundationDB running in Docker (optionally managed by .NET Aspire)
+				if (aspire)
+				{ // connect to the cluster of an Aspire AppHost, using the connection string injected into the environment
+					if (docker != null)
+					{
+						Console.Error.WriteLine("The --aspire and --docker options cannot be combined.");
+						Environment.ExitCode = 1;
+						return;
+					}
+
+					FdbAspireConnection connection;
+					try
+					{
+						connection = FdbAspireConnection.Resolve(result.GetValue(AspireOption));
+					}
+					catch (InvalidOperationException e)
+					{
+						Console.Error.WriteLine(e.Message);
+						Environment.ExitCode = 1;
+						return;
+					}
+
+					clusterFile = connection.ClusterFile;
+					connectionString = connection.ClusterFileContents;
+					apiVersion ??= connection.ApiVersion;
+					nativeLibraryOverride = connection.NativeLibrary;
+				}
+				else if (docker != null)
+				{ // connect to a local FoundationDB running in Docker
 					clusterFile = null;
-					var port = docker ?? 4550;
-					connectionString = "docker:docker@127.0.0.1:" + port.ToString();
+					connectionString = "docker:docker@127.0.0.1:" + docker.Value.ToString();
 				}
 
 				apiVersion ??= (aspire || docker != null) ? 730 : !string.IsNullOrEmpty(connectionString) ? 720 : 620;
@@ -194,7 +223,7 @@ namespace FdbTop
 
 				// prefer the fdb_c library that is bundled with the tool (either next to the executable, or under runtimes/{rid}/native/ when running from source);
 				// if none is found, fall back to the operating system mechanism for locating a system-installed client library.
-				var (nativeLibraryPath, _, _, _) = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
+				var nativeLibraryPath = nativeLibraryOverride ?? FdbClientNativeExtensions.ProbeNativeLibraryPaths().Path;
 				if (nativeLibraryPath != null)
 				{
 					Fdb.Options.SetNativeLibPath(nativeLibraryPath);

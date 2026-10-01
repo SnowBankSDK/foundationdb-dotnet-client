@@ -26,7 +26,7 @@ By default `fdbtop` uses the standard FoundationDB cluster file. A few options m
 - a positional path, or `-c`, `-C`, `--connfile <path>`: path to a cluster file.
 - `--connStr <string>`: a connection string, instead of a file.
 - `--docker <port>`: connect to a local FoundationDB running in Docker on the given port.
-- `--aspire`: connect to a local FoundationDB Docker instance managed by .NET Aspire.
+- `--aspire [name]`: connect to the FoundationDB resource of a .NET Aspire AppHost, using the connection string that Aspire injects into the environment (`ConnectionStrings__<name>`). The name is required only when the environment holds more than one FoundationDB connection string. Outside of an AppHost, `--aspire` stops with an error that lists the alternatives.
 - `--api <version>`: the API version level to use.
 - `--timeout <seconds>` (`-t`): default transaction timeout.
 
@@ -34,7 +34,7 @@ By default `fdbtop` uses the standard FoundationDB cluster file. A few options m
 fdbtop                          # the default cluster file
 fdbtop /path/to/fdb.cluster     # a specific cluster file
 fdbtop --docker 4550            # a cluster running in Docker on port 4550
-fdbtop --aspire                 # a cluster managed by .NET Aspire
+fdbtop --aspire                 # the cluster of the Aspire AppHost that started fdbtop
 ```
 
 > Requires the native FoundationDB client (`fdb_c` / `libfdb_c`) matching your cluster's version.

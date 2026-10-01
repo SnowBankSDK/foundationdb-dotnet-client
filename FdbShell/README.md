@@ -26,7 +26,7 @@ By default `fdbshell` uses the standard FoundationDB cluster file. A few options
 - `-c`, `-C`, `--connfile <path>`: path to a cluster file.
 - `--connStr <string>`: a connection string, instead of a file.
 - `--docker <port>`: connect to a local FoundationDB running in Docker on the given port.
-- `--aspire`: connect to a local FoundationDB Docker instance managed by .NET Aspire.
+- `--aspire [name]`: connect to the FoundationDB resource of a .NET Aspire AppHost, using the connection string that Aspire injects into the environment (`ConnectionStrings__<name>`). The name is required only when the environment holds more than one FoundationDB connection string. Outside of an AppHost, `--aspire` stops with an error that lists the alternatives. It starts in the `Root` folder of the applications, unless `--partition` is specified.
 - `--api <version>`: the API version level to use.
 - `--partition <name>` (`-p`): open a named database partition.
 - `--timeout <seconds>` (`-t`), `--retries <n>` (`-r`): transaction defaults.
@@ -34,7 +34,7 @@ By default `fdbshell` uses the standard FoundationDB cluster file. A few options
 
 ```
 fdbshell --docker 4550             # a cluster running in Docker on port 4550
-fdbshell --aspire                  # a cluster managed by .NET Aspire
+fdbshell --aspire                  # the cluster of the Aspire AppHost that started fdbshell
 fdbshell --exec "dir ls /"         # run one command and exit
 ```
 

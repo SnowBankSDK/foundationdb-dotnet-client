@@ -57,6 +57,11 @@
 		<ProjectReference Include="..\FoundationDB.Client.Native\FoundationDB.Client.Native.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- shared with the other command-line tools: implementation of the "aspire" option -->
+		<Compile Include="..\Common\Tools\FdbAspireConnection.cs" Link="Utils\FdbAspireConnection.cs" />
+	</ItemGroup>
+
 	<Import Project="..\FoundationDB.Client.Native\build\FoundationDB.Client.Native.targets" />
 
 </Project>
