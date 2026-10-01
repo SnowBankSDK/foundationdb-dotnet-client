@@ -582,6 +582,9 @@ namespace FdbShell
 			["wide"] = "Switch to wide screen (only on Windows)",
 		};
 
+		/// <summary>Tests if an error comes from a missing or invalid cluster file, which fails every attempt to connect</summary>
+		private static bool IsClusterFileError(FdbError code) => code is FdbError.NoClusterFileFound or FdbError.FileNotFound or FdbError.FileNotReadable or FdbError.ClusterFileTooLarge or FdbError.ConnectionStringInvalid;
+
 		private void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
 		{
 			e.Cancel = true;
@@ -653,7 +656,8 @@ namespace FdbShell
 										}
 
 
-										if (Console.KeyAvailable)
+										// Console.KeyAvailable throws when the input is redirected (ex: --exec from a script)
+										if (!Console.IsInputRedirected && Console.KeyAvailable)
 										{
 											switch (Console.ReadKey().Key)
 											{
@@ -696,10 +700,12 @@ namespace FdbShell
 									{
 										await taskConnect;
 									}
-									catch (FdbException)
+									catch (FdbException e) when (!IsClusterFileError(e.Code))
 									{
-										// retry!
+										// retry, but back off first: a failure that completes immediately would otherwise retry in a tight loop
 									}
+
+									await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(2_000, 100 << Math.Min(attempt - 1, 5))), cancel).ConfigureAwait(false);
 								}
 							});
 				}
@@ -709,6 +715,10 @@ namespace FdbShell
 					{
 						StdOut("");
 						StdErr($"Failed to get coordinators state from cluster: {e.Message}");
+						if (e is FdbException fe && IsClusterFileError(fe.Code))
+						{
+							StdErr("Specify the cluster with --connfile <path> or --connStr <description:id@ip:port>, connect to a local Docker container with --docker <port>, or start the shell from an Aspire AppHost with --aspire.");
+						}
 					}
 					Environment.ExitCode = -1;
 					return;

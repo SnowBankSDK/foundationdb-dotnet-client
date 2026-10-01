@@ -245,9 +245,13 @@ namespace Mono.Terminal
 			UpdateHomeRow(max);
 		}
 
+		// A pseudo-terminal can report a width of 0 until a viewer sizes it (ex: a terminal hosted by Aspire),
+		// so fall back to 80 columns instead of dividing by zero.
+		static int ScreenWidth => Console.WindowWidth is > 0 and var width ? width : 80;
+
 		void UpdateHomeRow(int screenpos)
 		{
-			int lines = 1 + (screenpos / Console.WindowWidth);
+			int lines = 1 + (screenpos / ScreenWidth);
 
 			home_row = Console.CursorTop - (lines - 1);
 			if (home_row < 0)
@@ -334,7 +338,7 @@ namespace Mono.Terminal
 		{
 			get
 			{
-				return (shown_prompt.Length + rendered_text.Length) / Console.WindowWidth;
+				return (shown_prompt.Length + rendered_text.Length) / ScreenWidth;
 			}
 		}
 
@@ -343,8 +347,8 @@ namespace Mono.Terminal
 			cursor = newpos;
 
 			int actual_pos = shown_prompt.Length + TextToRenderPos(cursor);
-			int row = home_row + (actual_pos / Console.WindowWidth);
-			int col = actual_pos % Console.WindowWidth;
+			int row = home_row + (actual_pos / ScreenWidth);
+			int col = actual_pos % ScreenWidth;
 
 			if (row >= Console.BufferHeight)
 				row = Console.BufferHeight - 1;
