@@ -48,6 +48,25 @@ private static void Main(string[] args)
 }
 ```
 
+#### Interactive tools in the dashboard
+
+The local cluster resource can add commands to the Aspire dashboard that open an interactive tool in the terminal dock:
+
+```c#
+var fdb = builder
+    .AddFoundationDb("fdb", apiVersion: 730, root: "/Sandbox/MySuperApp")
+    .WithFdbCli()   // "FdbCli" command: fdbcli, inside the cluster container
+    .WithFdbShell() // "FdbShell" command: FdbShell on the host, started in the root folder of the applications
+    ;
+```
+
+- `WithFdbCli()` runs the `fdbcli` of the container image, so it always matches the version of the cluster.
+- `WithFdbShell()` runs the [FdbShell](https://www.nuget.org/packages/FdbShell) .NET tool with `dotnet tool exec`, so the AppHost needs no reference to it. The first run downloads the package. The command runs the FdbShell released with this package, of the same version, so the tool and the AppHost always agree on how FdbShell finds the cluster.
+  FdbShell loads the native client of the cluster's branch, the same one as the applications: the AppHost must reference the `FoundationDB.Client.Native` package of that branch (`<PackageReference Include="FoundationDB.Client.Native" />`, with the version that central package management gives to every project). The AppHost stops at startup, with this fix in the message, when the package is missing or belongs to another major.minor version than the cluster.
+- In a solution that holds the source of FdbShell, `WithFdbShell<Projects.FdbShell>()` runs the project instead. It needs a `ProjectReference` from the AppHost to `FdbShell.csproj`, pinned to the framework of the AppHost (`SetTargetFramework="TargetFramework=net10.0"`). It loads the native client of the AppHost's `FoundationDB.Client.Native` reference when there is one, and its own otherwise.
+
+Each click on a command opens a new tab in the terminal dock. Type `exit` in `fdbcli` (or `quit` in FdbShell) before closing the tab.
+
 Then, in the Program.cs, or where you are declaring your services with the DI, use the following extension method to add support for FoundationDB:
 
 ```c#
