@@ -1504,6 +1504,26 @@ namespace SnowBank.Data.Tuples.Tests
 		}
 
 		[Test]
+		public void Test_TuplePack_Repack_A_Decoded_Embedded_Tuple()
+		{
+			// a decoded embedded tuple is a SlicedTuple, and it must pack again at any depth with the original bytes
+			var inner = STuple.Create("a", default(string), 123L, STuple.Create("b", default(string)));
+			var outer = STuple.Create("x", inner, 456L);
+			var packed = TuPack.Pack(outer);
+
+			var (x, decoded, n) = TuPack.DecodeKey<string, IVarTuple, long>(packed);
+			Assert.That(decoded, Is.InstanceOf<SlicedTuple>());
+			Assert.That(decoded, Is.EqualTo(inner));
+
+			// embedded again, through the span writer and through the boxed writer
+			Assert.That(TuPack.EncodeKey(x, decoded, n), Is.EqualTo(packed));
+			Assert.That(TuPack.Pack(STuple.Create<object?, object?, object?>(x, decoded, n)), Is.EqualTo(packed));
+
+			// at the top level
+			Assert.That(TuPack.Pack(decoded), Is.EqualTo(TuPack.Pack(inner)));
+		}
+
+		[Test]
 		public void Test_TuplePack_Deserialize_Embedded_Tuples_As_SlicedTuple()
 		{
 			// an embedded IVarTuple now decodes to a SlicedTuple that views the source memory, instead of an
