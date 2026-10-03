@@ -42,6 +42,12 @@ namespace FoundationDB.Client
 
 		/// <summary>Tenant of this transaction</summary>
 		/// <remarks>If <see langword="null"/>, the transaction can interact with the complete keyspace</remarks>
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		IFdbTenant? Tenant { get; }
 
 		/// <summary>Context of this transaction.</summary>
@@ -279,6 +285,20 @@ namespace FoundationDB.Client
 		/// <returns>Task that will return an array of keys that split the range in equally sized chunks, or an exception</returns>
 		/// <remarks>The returned split points contain the start key and end key of the given range</remarks>
 		Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize);
+
+		/// <summary>Returns a list of keys that can split the given range into (roughly) equally sized chunks based on <paramref name="chunkSize"/>, with at most <paramref name="limit"/> split points between the bounds when a limit is given.</summary>
+		/// <param name="beginKey">Name of the key of the start of the range</param>
+		/// <param name="endKey">Name of the key of the end of the range</param>
+		/// <param name="chunkSize">Size of chunks that will be used to split the range</param>
+		/// <param name="limit">Maximum number of split points between the start and end keys, shard boundaries included (0 or more), or <see langword="null"/> for every split point</param>
+		/// <returns>Task that will return an array of keys that split the range in equally sized chunks, or an exception</returns>
+		/// <remarks>
+		/// <para>The returned split points contain the start key and end key of the given range, so with a limit the array holds at most <paramref name="limit"/> + 2 keys.</para>
+		/// <para>A limit requires API version 800 and a cluster of version 8.0 or later. A <see langword="null"/> limit returns the same keys as <see cref="GetRangeSplitPointsAsync(ReadOnlySpan{byte},ReadOnlySpan{byte},long)"/>, with any API version.</para>
+		/// </remarks>
+		/// <exception cref="ArgumentOutOfRangeException"><paramref name="limit"/> is negative.</exception>
+		/// <exception cref="NotSupportedException"><paramref name="limit"/> is not <see langword="null"/>, and the selected API version is lower than 800.</exception>
+		Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit);
 
 		/// <summary>Returns an estimated byte size of the key range.</summary>
 		/// <param name="beginKey">Name of the key of the start of the range</param>

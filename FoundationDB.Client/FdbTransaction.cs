@@ -130,6 +130,12 @@ namespace FoundationDB.Client
 		IFdbDatabase IFdbReadOnlyTransaction.Database => this.Database;
 
 		/// <summary>Tenant where this transaction will be executed</summary>
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public FdbTenant? Tenant { get; }
 
 		/// <inheritdoc />
@@ -1674,6 +1680,19 @@ namespace FoundationDB.Client
 
 		/// <inheritdoc />
 		public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize)
+			=> GetRangeSplitPointsCore(beginKey, endKey, chunkSize, null);
+
+		/// <inheritdoc />
+		public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit)
+		{
+			if (limit is not null)
+			{
+				Contract.GreaterOrEqual(limit.Value, 0, "The limit of range split points cannot be negative. Pass null to get every split point.", valueExpression: nameof(limit));
+			}
+			return GetRangeSplitPointsCore(beginKey, endKey, chunkSize, limit);
+		}
+
+		private Task<Slice[]> GetRangeSplitPointsCore(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit)
 		{
 			FdbKey.EnsureKeyIsValid(beginKey);
 			FdbKey.EnsureKeyIsValid(endKey);
@@ -1693,25 +1712,31 @@ namespace FoundationDB.Client
 				}
 			}
 
+			// the limit is available since 8.0
+			if (limit is not null && this.Database.GetApiVersion() < 800)
+			{
+				throw new NotSupportedException($"Limiting the number of range split points is only supported starting from API level 800 but you have selected API level {this.Database.GetApiVersion()}. Pass a null limit, or select API level 800 or more at the start of your process.");
+			}
+
 #if DEBUG
 			if (Logging.On && Logging.IsVerbose) Logging.Verbose(this, "GetRangeSplitPointsAsync", $"Getting split points for range '{FdbKey.Dump(beginKey)}'..'{FdbKey.Dump(endKey)}'");
 #endif
 
-			return PerformGetRangeSplitPointsOperation(beginKey, endKey, chunkSize);
+			return PerformGetRangeSplitPointsOperation(beginKey, endKey, chunkSize, limit);
 		}
 
-		private Task<Slice[]> PerformGetRangeSplitPointsOperation(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize)
+		private Task<Slice[]> PerformGetRangeSplitPointsOperation(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit)
 		{
 			return m_log is null
-				? m_handler.GetRangeSplitPointsAsync(beginKey, endKey, chunkSize, m_cancellation)
-				: ExecuteLogged(this, beginKey, endKey, chunkSize);
+				? m_handler.GetRangeSplitPointsAsync(beginKey, endKey, chunkSize, limit, m_cancellation)
+				: ExecuteLogged(this, beginKey, endKey, chunkSize, limit);
 
 			[MethodImpl(MethodImplOptions.NoInlining)]
-			static Task<Slice[]> ExecuteLogged(FdbTransaction self, ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize)
+			static Task<Slice[]> ExecuteLogged(FdbTransaction self, ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit)
 				=> self.m_log!.ExecuteAsync(
 					self,
-					new FdbTransactionLog.GetRangeSplitPointsCommand(self.m_log.Grab(beginKey), self.m_log.Grab(endKey), chunkSize),
-					(tr, cmd) => tr.m_handler.GetRangeSplitPointsAsync(cmd.Begin.Span, cmd.End.Span, cmd.ChunkSize, tr.m_cancellation)
+					new FdbTransactionLog.GetRangeSplitPointsCommand(self.m_log.Grab(beginKey), self.m_log.Grab(endKey), chunkSize, limit),
+					(tr, cmd) => tr.m_handler.GetRangeSplitPointsAsync(cmd.Begin.Span, cmd.End.Span, cmd.ChunkSize, cmd.Limit, tr.m_cancellation)
 				);
 		}
 

@@ -863,11 +863,14 @@ namespace FoundationDB.Client.Native
 		}
 
 		/// <inheritdoc />
-		public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, CancellationToken ct)
+		public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit, CancellationToken ct)
 		{
 			if (ct.IsCancellationRequested) return Task.FromCanceled<Slice[]>(ct);
 
-			var future = FdbNative.TransactionGetRangeSplitPoints(m_handle, beginKey, endKey, chunkSize);
+			// without a limit, the call goes to fdb_transaction_get_range_split_points, which every client version exports
+			var future = limit is null
+				? FdbNative.TransactionGetRangeSplitPoints(m_handle, beginKey, endKey, chunkSize)
+				: FdbNative.TransactionGetRangeSplitPointsWithLimit(m_handle, beginKey, endKey, chunkSize, limit.Value);
 
 			return FdbFuture.CreateTaskFromHandle(
 				future,

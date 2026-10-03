@@ -260,6 +260,8 @@ namespace FoundationDB.Client
 		RetryCleanUpDatamoveTombstoneAdded = 1229,
 		/// <summary>Persist new audit metadata error</summary>
 		PersistNewAuditMetadataError = 1230,
+		/// <summary>The GRV proxy rejected the read version request because its estimated queue wait exceeds the <see cref="FdbTransactionOption.MaxGrvQueueDelay"/> limit of the transaction</summary>
+		TransactionGrvQueueRejected = 1251,
 
 		/// <summary>Platform error</summary>
 		PlatformError = 1500,

@@ -52,6 +52,12 @@
 		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8769;CS8777</NoWarn>
 	</PropertyGroup>
 
+	<PropertyGroup>
+		<!-- Tenant support stays for API versions below 800. -->
+		<NoWarn>$(NoWarn);FDB0800</NoWarn>
+		<NoWarn Condition="'$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == 'net472'">$(NoWarn);CS0618</NoWarn>
+	</PropertyGroup>
+
 	<ItemGroup Condition="'$(TargetFramework)' == 'net472'">
 		<!-- net472 is the ".NET Framework validation" target: it consumes the netstandard2.0 builds of the
 		     FoundationDB.* libraries and runs (a subset of) the test suite on the real .NET Framework CLR. -->

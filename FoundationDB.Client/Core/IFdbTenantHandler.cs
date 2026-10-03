@@ -29,6 +29,12 @@ namespace FoundationDB.Client.Core
 
 	/// <summary>Basic API for FoundationDB tenants</summary>
 	[PublicAPI]
+	[Obsolete(
+		"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+		, DiagnosticId = "FDB0800"
+#endif
+	)]
 	public interface IFdbTenantHandler : IDisposable
 	{
 

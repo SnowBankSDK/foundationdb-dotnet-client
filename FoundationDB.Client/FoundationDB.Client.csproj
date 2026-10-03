@@ -55,6 +55,12 @@
 		     source compiles with full annotations on net8+, which is where nullable correctness is enforced. -->
 		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8777</NoWarn>
 	</PropertyGroup>
+
+	<PropertyGroup>
+		<!-- Tenant support stays for API versions below 800. -->
+		<NoWarn>$(NoWarn);FDB0800</NoWarn>
+		<NoWarn Condition="'$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == 'net472'">$(NoWarn);CS0618</NoWarn>
+	</PropertyGroup>
 	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

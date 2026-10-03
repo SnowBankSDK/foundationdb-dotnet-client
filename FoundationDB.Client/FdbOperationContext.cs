@@ -42,6 +42,12 @@ namespace FoundationDB.Client
 		private readonly FdbDatabase m_db;
 
 		/// <summary>The tenant used by the operation, if present</summary>
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public IFdbTenant? Tenant => m_tenant;
 		private readonly FdbTenant? m_tenant;
 

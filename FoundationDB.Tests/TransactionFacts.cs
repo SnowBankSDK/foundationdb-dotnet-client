@@ -4455,6 +4455,31 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
+		public async Task Test_Range_Split_Points_Limit_Requires_Api_800()
+		{
+			Assume.That(Fdb.ApiVersion, Is.LessThan(800), "At API version 800 and later, ApiVersion800Facts covers the limit.");
+
+			using var db = await OpenTestPartitionAsync();
+
+			await db.ReadAsync(async (tr) =>
+			{
+				var subspace = await db.Root.Resolve(tr);
+				var begin = subspace.Key(0).ToSlice();
+				var end = subspace.Key(1).ToSlice();
+
+				// the check comes before any native call: a 7.x fdb_c does not export the function with the limit
+				Assert.That(() => tr.GetRangeSplitPointsAsync(begin, end, 1_000, 3), Throws.TypeOf<NotSupportedException>().With.Message.Contains("API level 800"));
+
+				// without a limit, the call goes to the function that every client version exports
+				var keys = await tr.GetRangeSplitPointsAsync(begin, end, 1_000);
+				Assert.That(keys, Is.EqualTo(new[] { begin, end }));
+
+				// a null limit is the same call, so it works below API version 800
+				Assert.That(await tr.GetRangeSplitPointsAsync(begin, end, 1_000, null), Is.EqualTo(new[] { begin, end }));
+			}, this.Cancellation);
+		}
+
+		[Test]
 		public async Task Test_Can_Get_Range_Split_Points()
 		{
 			const int NUM_ITEMS = 100_000;

@@ -46,16 +46,50 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
+		/// <summary>Codes removed in fdb_c 8.0: <c>fdb_get_error</c> returns <c>UNKNOWN_ERROR</c> for them, and 7.x clients and clusters still use them</summary>
+		private static readonly HashSet<int> RemovedAt800 =
+		[
+			1003, 1057, 1061, 1063, 1064, 1065, 1067, 1077, 1079, 1223, 1225,
+			2027, 2028, 2029, 2036, 2037, 2045,
+			2130, 2131, 2132, 2133, 2134, 2135, 2136, 2138, 2139, 2140, 2141, 2142, 2143, 2144,
+			2160, 2161, 2162, 2163, 2164, 2165, 2166, 2167, 2168, 2169, 2170, 2171, 2172, 2173, 2174, 2175,
+		];
+
+		/// <summary>Codes added in fdb_c 8.0: a 7.x <c>fdb_get_error</c> returns <c>UNKNOWN_ERROR</c> for them</summary>
+		private static readonly HashSet<int> AddedAt800 = [ 1251 ];
+
+		/// <summary>Codes with a new message in fdb_c 8.0 (the table has the 7.x text)</summary>
+		private static readonly Dictionary<int, string> RewordedAt800 = new()
+		{
+			[2117] = "Api call through special keys failed. For more information, call get - within the same transaction - on special key 0xff0xff/error_message to get a json string of the error message.",
+		};
+
 		/// <summary>Every code of this build's <see cref="FdbError"/> enum answers from the table, with the exact <c>fdb_get_error</c> text</summary>
 		[Test]
 		public void Test_Managed_Message_Table_Matches_The_Native_Client()
 		{
 			var seen = new HashSet<int>();
+			bool client800 = Fdb.GetMaxApiVersion() >= 800;
 			Assert.Multiple(() =>
 			{
 				foreach (var code in Enum.GetValues(typeof(FdbError)).Cast<FdbError>().OrderBy(c => (int) c))
 				{
 					if (!seen.Add((int) code)) continue;
+					if (client800 && RemovedAt800.Contains((int) code))
+					{
+						Assert.That(FdbErrorDebugger.GetErrorMessage(code), Is.EqualTo("UNKNOWN_ERROR"), $"native message for {code} ({(int) code}), removed in 8.0");
+						continue;
+					}
+					if (!client800 && AddedAt800.Contains((int) code))
+					{
+						Assert.That(FdbErrorDebugger.GetErrorMessage(code), Is.EqualTo("UNKNOWN_ERROR"), $"native message for {code} ({(int) code}), added in 8.0");
+						continue;
+					}
+					if (client800 && RewordedAt800.TryGetValue((int) code, out var reworded))
+					{
+						Assert.That(FdbErrorDebugger.GetErrorMessage(code), Is.EqualTo(reworded), $"native message for {code} ({(int) code}), reworded in 8.0");
+						continue;
+					}
 					Assert.That(FdbErrorMessages.TryGetMessage(code), Is.EqualTo(FdbErrorDebugger.GetErrorMessage(code)), $"table entry for {code} ({(int) code})");
 				}
 			});

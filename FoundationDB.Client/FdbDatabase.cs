@@ -330,6 +330,12 @@ namespace FoundationDB.Client
 		}
 
 		/// <inheritdoc />
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public IFdbTenant GetTenant(FdbTenantName name)
 		{
 			ThrowIfDisposed();
@@ -340,6 +346,8 @@ namespace FoundationDB.Client
 		internal FdbTenant OpenTenant(FdbTenantName name)
 		{
 			ThrowIfDisposed();
+			// With fdb_c 8.0 and later, the process aborts on any call to a native tenant function, so the check comes first.
+			if (Fdb.ApiVersion >= 800) throw new NotSupportedException($"Tenants were removed from FoundationDB at API version 800, and this process selected API version {Fdb.ApiVersion}. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant).");
 
 			var nameCopy = name.Copy();
 

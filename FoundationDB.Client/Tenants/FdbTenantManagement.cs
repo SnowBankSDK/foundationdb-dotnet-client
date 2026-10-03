@@ -29,6 +29,12 @@ namespace FoundationDB.Client
 
 	/// <summary>Tenant configuration mode of a FoundationDB cluster</summary>
 	[PublicAPI]
+	[Obsolete(
+		"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+		, DiagnosticId = "FDB0800"
+#endif
+	)]
 	public enum FdbTenantMode
 	{
 
@@ -51,6 +57,12 @@ namespace FoundationDB.Client
 
 		/// <summary>Helper methods for managing Tenants in a FoundationDB cluster</summary>
 		[PublicAPI]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static class Tenants
 		{
 
@@ -66,6 +78,7 @@ namespace FoundationDB.Client
 			/// <summary>Queries the current <see cref="FdbTenantMode"/> of the cluster</summary>
 			public static async Task<FdbTenantMode> GetTenantMode(IFdbReadOnlyTransaction tr)
 			{
+				if (Fdb.ApiVersion >= 800) throw new NotSupportedException($"Tenants were removed from FoundationDB at API version 800, and this process selected API version {Fdb.ApiVersion}. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant).");
 				tr.Options.WithReadAccessToSystemKeys();
 				var val = await tr.GetAsync(TenantModeKey).ConfigureAwait(false);
 				if (val.IsNullOrEmpty) return FdbTenantMode.Disabled;
@@ -82,6 +95,7 @@ namespace FoundationDB.Client
 			/// <summary>Creates a new tenant in the cluster</summary>
 			public static void CreateTenant(IFdbTransaction tr, FdbTenantName name)
 			{
+				if (Fdb.ApiVersion >= 800) throw new NotSupportedException($"Tenants were removed from FoundationDB at API version 800, and this process selected API version {Fdb.ApiVersion}. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant).");
 				// just setting the key in the tenant module will trigger the creation of the tenant, once the transaction commits
 				// the tenant module will do the prefix allocation and generate the new tenant entry in the cluster.
 				tr.Options.WithSpecialKeySpaceEnableWrites();
@@ -92,6 +106,7 @@ namespace FoundationDB.Client
 			/// <summary>Tests if a tenant already exists in the cluster</summary>
 			public static async Task<bool> HasTenant(IFdbReadOnlyTransaction tr, FdbTenantName name)
 			{
+				if (Fdb.ApiVersion >= 800) throw new NotSupportedException($"Tenants were removed from FoundationDB at API version 800, and this process selected API version {Fdb.ApiVersion}. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant).");
 				var value = await tr.GetAsync(TenantMapPrefix + name.Value).ConfigureAwait(false);
 				return value.HasValue;
 			}
@@ -130,6 +145,7 @@ namespace FoundationDB.Client
 			/// <summary>Fetches the metadata for a tenant in the cluster</summary>
 			public static async Task<FdbTenantMetadata?> GetTenantMetadata(IFdbReadOnlyTransaction tr, FdbTenantName name)
 			{
+				if (Fdb.ApiVersion >= 800) throw new NotSupportedException($"Tenants were removed from FoundationDB at API version 800, and this process selected API version {Fdb.ApiVersion}. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant).");
 				var data = await tr.GetAsync(TenantMapPrefix + name.Value).ConfigureAwait(false);
 				return data.HasValue ? ParseTenantMetadata(name, data) : null;
 			}
@@ -137,6 +153,7 @@ namespace FoundationDB.Client
 			/// <summary>Deletes an existing tenant in the cluster</summary>
 			public static void DeleteTenant(IFdbTransaction tr, FdbTenantName name)
 			{
+				if (Fdb.ApiVersion >= 800) throw new NotSupportedException($"Tenants were removed from FoundationDB at API version 800, and this process selected API version {Fdb.ApiVersion}. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant).");
 				Contract.NotNull(tr);
 
 				// just deleting the key in the tenant module will trigger the deletion of the tenant, once the transaction commits
@@ -146,6 +163,7 @@ namespace FoundationDB.Client
 
 			public static IAsyncQuery<FdbTenantMetadata> QueryTenants(IFdbReadOnlyTransaction tr, Slice prefix = default, Func<Slice, bool>? filter = null)
 			{
+				if (Fdb.ApiVersion >= 800) throw new NotSupportedException($"Tenants were removed from FoundationDB at API version 800, and this process selected API version {Fdb.ApiVersion}. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant).");
 				Contract.NotNull(tr);
 				return tr
 					// get all keys in the "/management/tenant/map/...." table

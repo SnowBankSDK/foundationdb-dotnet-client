@@ -473,9 +473,9 @@ namespace FoundationDB.Client.Tests
 
 			// the upper 8 bits are the 
 			var majorMinor = (pv.Version >> 24) & 0xFF;
-			if (majorMinor <= 0x74)
+			if (majorMinor <= 0x80)
 			{ // known versions
-				Assert.That(majorMinor, Is.AnyOf(0x61, 0x62, 0x63, 0x70, 0x71, 0x72, 0x73, 0x74));
+				Assert.That(majorMinor, Is.AnyOf(0x61, 0x62, 0x63, 0x70, 0x71, 0x72, 0x73, 0x74, 0x80));
 			}
 			else
 			{ // future version ?
@@ -494,6 +494,7 @@ namespace FoundationDB.Client.Tests
 			Assert.That(pv.SupportsOTELSpanContext(), Is.EqualTo(productVersion >= new Version(7, 2))); // added in 7.2
 			Assert.That(pv.SupportsGcTxnGenerations(), Is.EqualTo(productVersion >= new Version(7, 3))); // added in 7.3
 			Assert.That(pv.SupportsMutationChecksum(), Is.EqualTo(productVersion >= new Version(7, 4))); // added in 7.4
+			Assert.That(pv.SupportsNativeCdc(), Is.EqualTo(productVersion >= new Version(8, 0))); // added in 8.0
 		}
 
 		[Test]

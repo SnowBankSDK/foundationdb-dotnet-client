@@ -106,6 +106,12 @@ namespace FoundationDB.Client
 		/// <summary>Gets a <see cref="IFdbTenant">tenant</see> from this database</summary>
 		/// <param name="name">Name of the tenant</param>
 		/// <returns>Instance that can execute transactions in the context of this tenant</returns>
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		IFdbTenant GetTenant(FdbTenantName name);
 
 		/// <summary>Returns the currently enforced API version for this database instance.</summary>

@@ -35,7 +35,7 @@ namespace FoundationDB.Client.Native
 	internal static unsafe partial class FdbNative
 	{
 		public const int FDB_API_MIN_VERSION = 610;
-		public const int FDB_API_MAX_VERSION = 740;
+		public const int FDB_API_MAX_VERSION = 800;
 
 		/// <summary>Name of the C API dll used for P/Invoking</summary>
 		internal const string FDB_C_DLL = "fdb_c";
@@ -503,6 +503,21 @@ namespace FoundationDB.Client.Native
 #else
 			[DllImport(FDB_C_DLL, CallingConvention = CallingConvention.Cdecl)]
 			public static extern FutureHandle fdb_transaction_get_range_split_points(TransactionHandle transaction, byte* beginKeyName, int beginKeyNameLength, byte* endKeyName, int endKeyNameLength, long chunkSize);
+#endif
+
+			/// <summary>Returns at most <paramref name="limit"/> interior split points of the given range, shard boundaries included.</summary>
+			/// <returns>Returns an <see cref="FutureHandle">FDBFuture</see> which will be set to the list of split points.</returns>
+			/// <remarks>
+			/// <para>The start and end keys of the range are always included. A negative <paramref name="limit"/> returns every split point, like <see cref="fdb_transaction_get_range_split_points"/>.</para>
+			/// <para>Added in 800</para>
+			/// </remarks>
+#if NET8_0_OR_GREATER
+			[LibraryImport(FDB_C_DLL, StringMarshalling = StringMarshalling.Utf8)]
+			[UnmanagedCallConv(CallConvs = [ typeof(CallConvCdecl) ])]
+			public static partial FutureHandle fdb_transaction_get_range_split_points_with_limit(TransactionHandle transaction, byte* beginKeyName, int beginKeyNameLength, byte* endKeyName, int endKeyNameLength, long chunkSize, int limit);
+#else
+			[DllImport(FDB_C_DLL, CallingConvention = CallingConvention.Cdecl)]
+			public static extern FutureHandle fdb_transaction_get_range_split_points_with_limit(TransactionHandle transaction, byte* beginKeyName, int beginKeyNameLength, byte* endKeyName, int endKeyNameLength, long chunkSize, int limit);
 #endif
 
 			/// <summary>Returns an estimated byte size of the key range.</summary>
@@ -1644,10 +1659,10 @@ namespace FoundationDB.Client.Native
 
 		#region Tenants...
 
-		/// <summary>fdb_tenant_destroy, >= 710</summary>
+		/// <summary>fdb_tenant_destroy, >= 710, &lt; 800</summary>
 		public static void TenantDestroy(IntPtr handle)
 		{
-			Contract.Debug.Requires(Fdb.BindingVersion >= 710);
+			Contract.Debug.Requires(Fdb.BindingVersion >= 710 && Fdb.ApiVersion < 800);
 
 			if (handle != IntPtr.Zero)
 			{
@@ -1655,10 +1670,10 @@ namespace FoundationDB.Client.Native
 			}
 		}
 
-		/// <summary>fdb_tenant_create_transaction, >= 710</summary>
+		/// <summary>fdb_tenant_create_transaction, >= 710, &lt; 800</summary>
 		public static FdbError TenantCreateTransaction(TenantHandle tenant, out TransactionHandle transaction)
 		{
-			Contract.Debug.Requires(Fdb.BindingVersion >= 710);
+			Contract.Debug.Requires(Fdb.BindingVersion >= 710 && Fdb.ApiVersion < 800);
 
 			var err = NativeMethods.fdb_tenant_create_transaction(tenant, out transaction);
 #if DEBUG_NATIVE_CALLS
@@ -1667,10 +1682,10 @@ namespace FoundationDB.Client.Native
 			return err;
 		}
 
-		/// <summary>fdb_tenant_get_id, >= 730</summary>
+		/// <summary>fdb_tenant_get_id, >= 730, &lt; 800</summary>
 		public static FutureHandle TenantGetId(TenantHandle tenant)
 		{
-			Contract.Debug.Requires(Fdb.BindingVersion >= 730);
+			Contract.Debug.Requires(Fdb.BindingVersion >= 730 && Fdb.ApiVersion < 800);
 
 			var future = NativeMethods.fdb_tenant_get_id(tenant);
 			Contract.Debug.Assert(future != null);
@@ -1931,6 +1946,22 @@ namespace FoundationDB.Client.Native
 				Contract.Debug.Assert(future != null);
 #if DEBUG_NATIVE_CALLS
 				LogNative($"fdb_transaction_get_range_split_points(tr: 0x{transaction.Handle:x}, begin: '{FdbKey.Dump(beginKey)}', end: '{FdbKey.Dump(endKey)}') => 0x{future.Handle:x}");
+#endif
+				return future;
+			}
+		}
+
+		/// <summary>fdb_transaction_get_range_split_points_with_limit, >= 800</summary>
+		public static FutureHandle TransactionGetRangeSplitPointsWithLimit(TransactionHandle transaction, ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int limit)
+		{
+			Contract.Debug.Requires(Fdb.BindingVersion >= 800);
+			fixed (byte* ptrBeginKey = beginKey)
+			fixed (byte* ptrEndKey = endKey)
+			{
+				var future = NativeMethods.fdb_transaction_get_range_split_points_with_limit(transaction, ptrBeginKey, beginKey.Length, ptrEndKey, endKey.Length, chunkSize, limit);
+				Contract.Debug.Assert(future != null);
+#if DEBUG_NATIVE_CALLS
+				LogNative($"fdb_transaction_get_range_split_points_with_limit(tr: 0x{transaction.Handle:x}, begin: '{FdbKey.Dump(beginKey)}', end: '{FdbKey.Dump(endKey)}', limit: {limit}) => 0x{future.Handle:x}");
 #endif
 				return future;
 			}

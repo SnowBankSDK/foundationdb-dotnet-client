@@ -67,6 +67,12 @@ namespace FoundationDB.Client
 			public IFdbDatabase Database => m_parent.Database;
 
 			/// <inheritdoc />
+			[Obsolete(
+				"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+				, DiagnosticId = "FDB0800"
+#endif
+			)]
 			public IFdbTenant? Tenant => m_parent.Tenant;
 
 			/// <inheritdoc />
@@ -334,7 +340,15 @@ namespace FoundationDB.Client
 			public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize)
 			{
 				EnsureCanRead();
-				return m_parent.PerformGetRangeSplitPointsOperation(beginKey, endKey, chunkSize);
+				return m_parent.PerformGetRangeSplitPointsOperation(beginKey, endKey, chunkSize, null);
+			}
+
+			/// <inheritdoc />
+			public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit)
+			{
+				EnsureCanRead();
+				// same version checks as the parent transaction
+				return m_parent.GetRangeSplitPointsAsync(beginKey, endKey, chunkSize, limit);
 			}
 
 			/// <inheritdoc />

@@ -1647,18 +1647,24 @@ namespace FoundationDB.Filters.Logging
 			/// <summary>Size of the chunks</summary>
 			public long ChunkSize { get; }
 
+			/// <summary>Maximum number of split points between the bounds, or <see langword="null"/> for no limit</summary>
+			public int? Limit { get; }
+
 			public override Operation Op => Operation.GetRangeSplitPoints;
 
-			public GetRangeSplitPointsCommand(Slice beginKey, Slice endKey, long chunkSize)
+			public GetRangeSplitPointsCommand(Slice beginKey, Slice endKey, long chunkSize, int? limit = null)
 			{
 				this.Begin = beginKey;
 				this.End = endKey;
 				this.ChunkSize = chunkSize;
+				this.Limit = limit;
 			}
 
 			public override int? ArgumentBytes => this.Begin.Count + this.End.Count;
 
-			public override string GetArguments(KeyResolver resolver) => string.Format(CultureInfo.InvariantCulture, "({0}...{1}) / {2}", resolver.ResolveBegin(this.Begin), resolver.ResolveEnd(this.End), this.ChunkSize);
+			public override string GetArguments(KeyResolver resolver) => this.Limit is null
+				? string.Format(CultureInfo.InvariantCulture, "({0}...{1}) / {2}", resolver.ResolveBegin(this.Begin), resolver.ResolveEnd(this.End), this.ChunkSize)
+				: string.Format(CultureInfo.InvariantCulture, "({0}...{1}) / {2}, limit {3}", resolver.ResolveBegin(this.Begin), resolver.ResolveEnd(this.End), this.ChunkSize, this.Limit);
 
 			protected override string Dump(Slice[] res, KeyResolver resolver)
 			{

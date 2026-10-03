@@ -295,6 +295,14 @@ namespace FoundationDB.Client
 		/// <remarks>Primarily used for the read version cache's background updater to avoid attempting to read a cached entry in specific situations.</remarks>
 		SkipGrvCache = 1102, // hidden
 
+		/// <summary>With this option, the read version request fails with <see cref="FdbError.TransactionGrvQueueRejected"/> when the GRV proxy estimates that ratekeeper throttling would queue it longer than this limit.</summary>
+		/// <remarks>
+		/// <para>Parameter: (Int) maximum estimated queue delay, in milliseconds, between 0 and <see cref="int.MaxValue"/></para>
+		/// <para>The estimate only counts the time queued at the GRV proxy because of ratekeeper throttling.</para>
+		/// <para>Requires API version 800 or later.</para>
+		/// </remarks>
+		MaxGrvQueueDelay = 1103,
+
 		/// <summary>Attach given authorization token to the transaction such that subsequent tenant-aware requests are authorized.</summary>
 		/// <remarks>
 		/// <para>Parameter: (String) A JSON Web Token authorized to access data belonging to one or more tenants, indicated by 'tenants' claim of the token's payload.</para>

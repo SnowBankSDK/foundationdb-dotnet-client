@@ -3832,6 +3832,12 @@ namespace FoundationDB.Client
 			return trans.GetRangeSplitPointsAsync(ToSpanKey(beginKey), ToSpanKey(endKey), chunkSize);
 		}
 
+		/// <inheritdoc cref="IFdbReadOnlyTransaction.GetRangeSplitPointsAsync(ReadOnlySpan{byte},ReadOnlySpan{byte},long,int)"/>
+		public static Task<Slice[]> GetRangeSplitPointsAsync(this IFdbReadOnlyTransaction trans, Slice beginKey, Slice endKey, long chunkSize, int? limit)
+		{
+			return trans.GetRangeSplitPointsAsync(ToSpanKey(beginKey), ToSpanKey(endKey), chunkSize, limit);
+		}
+
 		/// <inheritdoc cref="IFdbReadOnlyTransaction.GetRangeSplitPointsAsync"/>
 		public static Task<Slice[]> GetRangeSplitPointsAsync<TBeginKey, TEndKey>(this IFdbReadOnlyTransaction trans, in TBeginKey beginKey, in TEndKey endKey, long chunkSize)
 			where TBeginKey : struct, IFdbKey

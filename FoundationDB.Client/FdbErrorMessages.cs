@@ -156,6 +156,7 @@ namespace FoundationDB.Client
 			FdbError.TestFailed => "Test failed",
 			FdbError.RetryCleanUpDatamoveTombstoneAdded => "Need background datamove cleanup",
 			FdbError.PersistNewAuditMetadataError => "Persist new audit metadata error",
+			FdbError.TransactionGrvQueueRejected => "GRV request rejected because estimated queue wait exceeds transaction limit",
 			FdbError.PlatformError => "Platform error",
 			FdbError.LargeAllocFailed => "Large block allocation failed",
 			FdbError.PerformanceCounterError => "QueryPerformanceCounter error",

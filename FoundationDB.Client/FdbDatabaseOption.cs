@@ -114,6 +114,12 @@ namespace FoundationDB.Client
 		TransactionReportConflictingKeys = 702,
 
 		/// <summary>Use configuration database.</summary>
+		[Obsolete(
+			"The configuration database was removed from FoundationDB at API version 800, together with this option."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		UseConfigDatabase = 800,
 
 		/// <summary>Enables verification of causal read risky by checking whether clients are able to read stale data when they detect a recovery, and logging an error if so.</summary>

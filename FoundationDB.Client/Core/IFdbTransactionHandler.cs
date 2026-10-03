@@ -191,10 +191,11 @@ namespace FoundationDB.Client.Core
 		/// <param name="beginKey">Name of the key of the start of the range</param>
 		/// <param name="endKey">Name of the key of the end of the range</param>
 		/// <param name="chunkSize">Size of chunks that will be used to split the range</param>
+		/// <param name="limit">Maximum number of split points between the start and end keys, shard boundaries included, or <see langword="null"/> for no limit. A limit requires API version 800.</param>
 		/// <param name="ct">Token used to cancel the operation from the outside</param>
 		/// <returns>Task that will return an array of keys that split the range in equally sized chunks, or an exception</returns>
 		/// <remarks>The returned split points contain the start key and end key of the given range</remarks>
-		Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, CancellationToken ct);
+		Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit, CancellationToken ct);
 
 		/// <summary>Returns an estimated byte size of the key range.</summary>
 		/// <param name="beginKey">Name of the key of the start of the range</param>

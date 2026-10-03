@@ -565,6 +565,21 @@ namespace FoundationDB.Client
 			/// <summary>Tests if this version supports the <c>MutationChecksum</c> feature</summary>
 			public bool SupportsMutationChecksum() => pv.Version >= FdbProtocolVersionMap.FDB_PV_MUTATION_CHECKSUM;
 
+			/// <summary>Minimum <see cref="FdbProtocolVersion"/> required for support of the <c>GrpcEndpoint</c> feature</summary>
+			public static FdbProtocolVersion GrpcEndpoint => new(FdbProtocolVersionMap.FDB_PV_GRPC_ENDPOINT);
+			/// <summary>Tests if this version supports the <c>GrpcEndpoint</c> feature</summary>
+			public bool SupportsGrpcEndpoint() => pv.Version >= FdbProtocolVersionMap.FDB_PV_GRPC_ENDPOINT;
+
+			/// <summary>Minimum <see cref="FdbProtocolVersion"/> required for support of the <c>RangePartitionedBackupWorker</c> feature</summary>
+			public static FdbProtocolVersion RangePartitionedBackupWorker => new(FdbProtocolVersionMap.FDB_PV_RANGE_PARTITIONED_BACKUP_WORKER);
+			/// <summary>Tests if this version supports the <c>RangePartitionedBackupWorker</c> feature</summary>
+			public bool SupportsRangePartitionedBackupWorker() => pv.Version >= FdbProtocolVersionMap.FDB_PV_RANGE_PARTITIONED_BACKUP_WORKER;
+
+			/// <summary>Minimum <see cref="FdbProtocolVersion"/> required for support of the <c>NativeCdc</c> feature</summary>
+			public static FdbProtocolVersion NativeCdc => new(FdbProtocolVersionMap.FDB_PV_NATIVE_CDC);
+			/// <summary>Tests if this version supports the <c>NativeCdc</c> feature</summary>
+			public bool SupportsNativeCdc() => pv.Version >= FdbProtocolVersionMap.FDB_PV_NATIVE_CDC;
+
 		}
 
 		#endregion
@@ -670,13 +685,32 @@ namespace FoundationDB.Client
 		private const ulong FDB_74_PV_MIN_COMPATIBLE_VERSION               = 0x0FDB00B073000000ul;
 		private const ulong FDB_74_PV_MIN_INVALID_VERSION                  = 0x0FDB00B081000000ul;
 
-		/// <summary>Version ranges supported by FoundationDB v7.3</summary>
+		/// <summary>Version ranges supported by FoundationDB v7.4</summary>
 		public static FdbProtocolVersionMap Version74 { get; } = new(
 			new Version(7, 4),
 			FDB_74_PV_DEFAULT_VERSION,
 			FDB_74_PV_FUTURE_VERSION,
 			FDB_74_PV_MIN_COMPATIBLE_VERSION,
 			FDB_74_PV_MIN_INVALID_VERSION
+		);
+
+		#endregion
+
+		#region 8.0...
+
+		// from ProtocolVersions.cmake in release-8.0 branch
+		private const ulong FDB_80_PV_DEFAULT_VERSION                      = 0x0FDB00B080000000ul;
+		private const ulong FDB_80_PV_FUTURE_VERSION                       = 0x0FDB00B081000000ul;
+		private const ulong FDB_80_PV_MIN_COMPATIBLE_VERSION               = 0x0FDB00B074000000ul;
+		private const ulong FDB_80_PV_MIN_INVALID_VERSION                  = 0x0FDB00B082000000ul;
+
+		/// <summary>Version ranges supported by FoundationDB v8.0</summary>
+		public static FdbProtocolVersionMap Version80 { get; } = new(
+			new Version(8, 0),
+			FDB_80_PV_DEFAULT_VERSION,
+			FDB_80_PV_FUTURE_VERSION,
+			FDB_80_PV_MIN_COMPATIBLE_VERSION,
+			FDB_80_PV_MIN_INVALID_VERSION
 		);
 
 		#endregion
@@ -763,6 +797,9 @@ namespace FoundationDB.Client
 		public const long FDB_PV_BLOB_RANGE_CHANGE_LOG                = 0x0FDB00B072000000L;
 		public const long FDB_PV_GC_TXN_GENERATIONS                   = 0x0FDB00B073000000L;
 		public const long FDB_PV_MUTATION_CHECKSUM                    = 0x0FDB00B074000000L;
+		public const long FDB_PV_GRPC_ENDPOINT                        = 0x0FDB00B080000000L;
+		public const long FDB_PV_RANGE_PARTITIONED_BACKUP_WORKER      = 0x0FDB00B080000000L;
+		public const long FDB_PV_NATIVE_CDC                           = 0x0FDB00B080000000L;
 
 		#endregion
 

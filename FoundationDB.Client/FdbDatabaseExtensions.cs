@@ -92,6 +92,12 @@ namespace FoundationDB.Client
 		#region Tenants...
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static IFdbTenant GetTenant(this IFdbDatabase db, Slice name)
 		{
 			Contract.NotNull(db);
@@ -100,6 +106,12 @@ namespace FoundationDB.Client
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static IFdbTenant GetTenant(this IFdbDatabase db, ReadOnlySpan<byte> name)
 		{
 			Contract.NotNull(db);
@@ -108,6 +120,12 @@ namespace FoundationDB.Client
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static IFdbTenant GetTenant<TTuple>(this IFdbDatabase db, TTuple name)
 			where TTuple : IVarTuple
 		{
@@ -118,6 +136,12 @@ namespace FoundationDB.Client
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static IFdbTenant GetTenant<T1>(this IFdbDatabase db, ValueTuple<T1> name)
 		{
 			Contract.NotNull(db);
@@ -126,6 +150,12 @@ namespace FoundationDB.Client
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static IFdbTenant GetTenant<T1, T2>(this IFdbDatabase db, ValueTuple<T1, T2> name)
 		{
 			Contract.NotNull(db);
@@ -134,6 +164,12 @@ namespace FoundationDB.Client
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static IFdbTenant GetTenant<T1, T2, T3>(this IFdbDatabase db, ValueTuple<T1, T2, T3> name)
 		{
 			Contract.NotNull(db);
@@ -142,6 +178,12 @@ namespace FoundationDB.Client
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static IFdbTenant GetTenant<T1, T2, T3, T4>(this IFdbDatabase db, ValueTuple<T1, T2, T3, T4> name)
 		{
 			Contract.NotNull(db);
@@ -150,6 +192,12 @@ namespace FoundationDB.Client
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		[Obsolete(
+			"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+			, DiagnosticId = "FDB0800"
+#endif
+		)]
 		public static IFdbTenant GetTenant<T1, T2, T3, T4, T5>(this IFdbDatabase db, ValueTuple<T1, T2, T3, T4, T5> name)
 		{
 			Contract.NotNull(db);

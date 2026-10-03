@@ -2927,8 +2927,10 @@ namespace FoundationDB.Testing
 				return !ct.IsCancellationRequested ? Task.FromResult<string[]>([ address ]) : Task.FromCanceled<string[]>(ct);
 			}
 
-			public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, CancellationToken ct)
+			public Task<Slice[]> GetRangeSplitPointsAsync(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey, long chunkSize, int? limit, CancellationToken ct)
 			{
+				// the limit needs API version 800, above the API versions that FakeDb emulates
+				if (limit is not null) throw new NotSupportedException($"FakeDb emulates API versions up to {MAX_API_VERSION}, and limiting the number of range split points requires API version 800.");
 				// deterministic walk over the committed snapshot, emitting a split every ~chunkSize of exact key+value
 				// bytes, both endpoints always included: the real API derives splits from storage samples (uneven chunks),
 				// so consumers already tolerate jitter, and deterministic splits are the better behavior for a test emulator

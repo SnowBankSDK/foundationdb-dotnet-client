@@ -35,6 +35,12 @@
 		<!-- Nullable-flow false positives: see SnowBank.Core.csproj for the rationale -->
 		<NoWarn>$(NoWarn);CS8602;CS8603;CS8604;CS8767;CS8777</NoWarn>
 	</PropertyGroup>
+
+	<PropertyGroup>
+		<!-- Tenant support stays for API versions below 800. -->
+		<NoWarn>$(NoWarn);FDB0800</NoWarn>
+		<NoWarn Condition="'$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == 'net472'">$(NoWarn);CS0618</NoWarn>
+	</PropertyGroup>
 	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
 		<!-- Span<T> / Memory<T> / ReadOnlySpan<T> for netstandard2.0 -->
 		<PackageReference Include="System.Memory" />

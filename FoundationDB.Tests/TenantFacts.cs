@@ -42,6 +42,8 @@ namespace FoundationDB.Client.Tests
 
 		protected override async Task OnBeforeAllTests()
 		{
+			Assume.That(Fdb.ApiVersion, Is.LessThan(800), "Tenants were removed at API version 800, and ApiVersion800Facts covers that version.");
+
 			m_db = await OpenTestDatabaseAsync();
 
 			var mode = await m_db.ReadAsync(tr => Fdb.Tenants.GetTenantMode(tr), this.Cancellation);

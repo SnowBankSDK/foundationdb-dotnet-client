@@ -34,6 +34,12 @@ namespace FoundationDB.Client
 	/// var name3 = FdbTenantName.FromTuple(("MyAwesomeApp", "ACME", 123));
 	/// </code></example>
 	[DebuggerDisplay("{ToString(),nq}")]
+	[Obsolete(
+		"Tenants were removed from FoundationDB at API version 800, and only work with API versions below 800. Store each tenant under its own directory subspace instead (Directory Layer, one FdbPath per tenant)."
+#if NET5_0_OR_GREATER
+		, DiagnosticId = "FDB0800"
+#endif
+	)]
 	public readonly struct FdbTenantName : IEquatable<FdbTenantName>, IComparable<FdbTenantName>
 	{
 

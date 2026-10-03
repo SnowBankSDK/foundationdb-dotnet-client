@@ -232,6 +232,14 @@ namespace FoundationDB.Client
 		/// <summary>Set the probability of an active CLIENT_BUGGIFY section being fired. A section will only fire if it was activated</summary>
 		ClientBuggifySectionFiredProbability = 83,
 
+		/// <summary>Sets the IP address to use for tracing.</summary>
+		/// <remarks>
+		/// <para>Parameter: (String) IP address in IPv4 or IPv6 format</para>
+		/// <para>If not provided, the client determines the IP address when it connects to a cluster.</para>
+		/// <para>Requires API version 800 or later.</para>
+		/// </remarks>
+		TraceIp = 84,
+
 		/// <summary>Set a tracer to run on the client.</summary>
 		/// <remarks>
 		/// <para>Parameter: (String) Distributed tracer type. Choose from <c>none</c>, <c>log_file</c>, or <c>network_lossy</c></para>
