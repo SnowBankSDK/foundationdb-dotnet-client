@@ -21,6 +21,7 @@
 
 		<CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
 		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+		<CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
 
 		<!-- source-only helper: nothing consumes the built dll, so do not pack it -->
 		<IsPackable>false</IsPackable>
