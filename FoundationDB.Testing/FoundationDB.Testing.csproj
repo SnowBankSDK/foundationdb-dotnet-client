@@ -2,6 +2,8 @@
 
 	<PropertyGroup>
 		<OutputType>Library</OutputType>
+		<!-- Not published. IsTestProject comes from the props of Microsoft.NET.Test.Sdk, which are only imported after restore, so the default IsPackable (and the SourceLink reference that depends on it) would differ between restore and build. -->
+		<IsPackable>false</IsPackable>
 		<TargetFrameworks>$(CoreSdkRuntimeVersions)</TargetFrameworks>
 		<!-- the net472 validation target consumes the netstandard2.0 builds of the FoundationDB.* libraries, so it follows the same switch -->
 		<TargetFrameworks Condition="'$(CoreSdkNetStandardEnabled)' == 'true'">$(TargetFrameworks);net472</TargetFrameworks>
