@@ -33,7 +33,9 @@ $tf*/
 packages/
 *.ide/
 .vs/
-.vscode/
+# keep the shared VS Code settings (the default solution of C# Dev Kit), ignore the rest
+.vscode/*
+!.vscode/settings.json
 
 # do not include the native libraries that are packed in the NuGet package:
 **/runtimes/**/*fdb_c*
