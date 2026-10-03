@@ -1,8 +1,8 @@
 <Project>
 
 	<PropertyGroup>
-		<VersionPrefix>7.4.7</VersionPrefix>
-		<VersionSuffix></VersionSuffix>
+		<VersionPrefix>8.0.0</VersionPrefix>
+		<VersionSuffix>dev</VersionSuffix>
 		<Authors>SnowBank SAS</Authors>
 		<PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/SnowBankSDK/foundationdb-dotnet-client</PackageProjectUrl>
