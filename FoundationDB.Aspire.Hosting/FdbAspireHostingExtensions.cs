@@ -39,6 +39,9 @@ namespace Aspire.Hosting
 	public static class FdbAspireHostingExtensions
 	{
 
+		/// <summary>Tag for the latest v8.0 docker image</summary>
+		public static readonly Version LatestVersion80 = new Version(8, 0, 0);
+
 		/// <summary>Tag for the latest v7.4 docker image</summary>
 		public static readonly Version LatestVersion74 = new Version(7, 4, 7);
 
@@ -563,6 +566,10 @@ namespace Aspire.Hosting
 				{ // Keep major.minor but use the latest patch (ie: X.Y.*)
 					switch (version.Major, version.Minor)
 					{
+						case (8, 0):
+						{
+							return LatestVersion80.ToString();
+						}
 						case (7, 4):
 						{
 							return LatestVersion74.ToString();
@@ -594,6 +601,10 @@ namespace Aspire.Hosting
 				{ // Keep major but use latest patch of latest minor (ie: X.*.*)
 					switch (version.Major)
 					{
+						case 8:
+						{
+							return Latest80(version);
+						}
 						case 7:
 						{
 							if (version.Minor > 4)
@@ -614,6 +625,12 @@ namespace Aspire.Hosting
 				case FdbVersionPolicy.LatestMajor:
 				{ // Use the latest (stable) version available
 
+					// A client only talks to a cluster of its own major.minor version, so a 7.x version stays on 7.4.
+					if (version.Major == 8)
+					{
+						return Latest80(version);
+					}
+
 					if (version.Major > 7 || (version.Major == 7 && version.Minor > 4))
 					{
 						throw ErrorVersionIsGreaterThanSupportedByThisPackage(version);
@@ -630,6 +647,19 @@ namespace Aspire.Hosting
 					throw new InvalidOperationException($"The roll forward policy '{rollForward}' is not supported.");
 				}
 			}
+		}
+
+		private static string Latest80(Version version)
+		{
+			if (version.Minor > 0)
+			{
+				throw ErrorVersionIsGreaterThanSupportedByThisPackage(version);
+			}
+
+			// an 8.0 version released after this code was packaged is allowed
+			return version.Build > LatestVersion80.Build
+				? string.CreateInvariant($"8.0.{version.Build}")
+				: LatestVersion80.ToString();
 		}
 
 		[MustUseReturnValue]
