@@ -153,6 +153,8 @@
 - name: Release notes
   nameFr: Notes de version
   items:
+    - name: "8.0"
+      href: releases/8.0.md
     - name: "7.4.6"
       href: releases/7.4.6.md
     - name: "7.4.5"
