@@ -164,6 +164,8 @@ namespace FoundationDB.Client.Tests
 					if (Fdb.ApiVersion == 0)
 					{
 						int version = OverrideApiVersion;
+						// FDB_TEST_API_VERSION selects the API version of the whole test process (ex: 800, with FDB_TEST_DOCKER_TAG=8.0.0)
+						if (version == 0 && !int.TryParse(Environment.GetEnvironmentVariable("FDB_TEST_API_VERSION"), out version)) version = 0;
 						if (version == 0) version = Fdb.GetDefaultApiVersion();
 						if (version > Fdb.GetMaxApiVersion())
 						{

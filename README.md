@@ -279,7 +279,7 @@ What each test project needs:
 
 Download the native client library before the first build: the build copies it into each test output folder. On Windows, run `FoundationDB.Client.Native/DownloadBinaries.ps1`. On Linux and macOS, run `FoundationDB.Client.Native/DownloadBinaries.sh --rid <rid>` (for example `linux-x64`). After a late download, build again.
 
-The Docker-backed tests start a `foundationdb/foundationdb` container, one per FoundationDB version and .NET runtime. The first run pulls the image (about 2 GB), and the test fixture allows 20 seconds for the container to start, pull included. On a slow network, run `docker pull` for the image first. Set `FDB_TEST_DOCKER_TAG` to test another image tag. Without a reachable Docker daemon, these tests fail within seconds with "Could not reach a Docker daemon".
+The Docker-backed tests start a `foundationdb/foundationdb` container, one per FoundationDB version and .NET runtime. The first run pulls the image (about 2 GB), and the test fixture allows 20 seconds for the container to start, pull included. On a slow network, run `docker pull` for the image first. Set `FDB_TEST_DOCKER_TAG` to test another image tag, and `FDB_TEST_API_VERSION` to select another API version (for FoundationDB 8.0: `FDB_TEST_DOCKER_TAG=8.0.0` and `FDB_TEST_API_VERSION=800`, with an 8.0 native client). Without a reachable Docker daemon, these tests fail within seconds with "Could not reach a Docker daemon".
 
 On Linux, a user added to the `docker` group needs a new login before `docker ps` works without `sudo`. Reboot if a logout is not enough: background processes (for example the MSBuild worker nodes that `dotnet build` keeps alive) can keep the old session running.
 
