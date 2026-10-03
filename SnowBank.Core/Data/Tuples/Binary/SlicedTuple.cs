@@ -160,19 +160,35 @@ namespace SnowBank.Data.Tuples.Binary
 
 		void ITuplePackable.PackTo(TupleWriter writer)
 		{
+			if (writer.Depth != 0)
+			{ // the chunks hold the top-level encoding of the items, and a null item is encoded differently inside an embedded tuple
+				for (int i = 0; i < m_slices.Length; i++)
+				{
+					TuplePackers.SerializeObjectTo(writer, this[i]);
+				}
+				return;
+			}
+
 			foreach(var slice in m_slices.Span)
 			{
 				writer.Output.WriteBytes(slice);
 			}
 		}
 
-		[Pure, MethodImpl(MethodImplOptions.NoInlining)]
-		private static InvalidOperationException ErrorCanOnlyBeTopLevel() => new($"Tuples of type {nameof(SlicedTuple)} can only be packed as top-level.");
-
 		/// <inheritdoc />
 		public bool TryPackTo(ref TupleSpanWriter writer)
 		{
-			if (writer.Depth != 0) throw ErrorCanOnlyBeTopLevel();
+			if (writer.Depth != 0)
+			{ // the chunks hold the top-level encoding of the items, and a null item is encoded differently inside an embedded tuple
+				for (int i = 0; i < m_slices.Length; i++)
+				{
+					if (!TuplePackers.TrySerializeObjectTo(ref writer, this[i]))
+					{
+						return false;
+					}
+				}
+				return true;
+			}
 
 			foreach(var slice in m_slices.Span)
 			{
@@ -187,7 +203,11 @@ namespace SnowBank.Data.Tuples.Binary
 		/// <inheritdoc />
 		public bool TryGetSizeHint(bool embedded, out int sizeHint)
 		{
-			if (embedded) throw ErrorCanOnlyBeTopLevel();
+			if (embedded)
+			{ // the items are encoded again inside an embedded tuple (see TryPackTo), so the chunk sizes do not apply
+				sizeHint = 0;
+				return false;
+			}
 
 			// we simply have to count the size of the already encoded chunks
 
