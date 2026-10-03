@@ -112,6 +112,8 @@
       href: analyzers/FDB0003.md
     - name: FDB0100
       href: analyzers/FDB0100.md
+    - name: FDB0800
+      href: analyzers/FDB0800.md
     - name: FDB1001
       href: analyzers/FDB1001.md
     - name: FDB1002

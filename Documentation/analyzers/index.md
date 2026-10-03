@@ -27,6 +27,7 @@ A `dotnet_diagnostic.<ID>.severity` line for one rule takes precedence over the 
 | [FDB0002](FDB0002.md) | Watch created with the transaction's own token | Error | FoundationDB.Client |
 | [FDB0003](FDB0003.md) | Watch awaited inside the handler that created it | Error | FoundationDB.Client |
 | [FDB0100](FDB0100.md) | Removed API | Error | FoundationDB.Client |
+| [FDB0800](FDB0800.md) | API removed at API version 800 | Warning | FoundationDB.Client (`[Obsolete]`) |
 | [FDB1001](FDB1001.md) | Subspace or layer state stored across transactions | Warning (correctness) | FoundationDB.Client |
 | [FDB1002](FDB1002.md) | Subspace returned out of a retry-loop handler | Warning (correctness) | FoundationDB.Client |
 | [FDB1003](FDB1003.md) | Byte-order atomic on a value that is not a little-endian number | Warning (correctness) | FoundationDB.Client |
