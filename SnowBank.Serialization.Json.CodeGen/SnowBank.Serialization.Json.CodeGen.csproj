@@ -13,6 +13,7 @@
 		
 		<CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
 		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+		<CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
 	</PropertyGroup>
 
 	<Import Project="..\Common\VersionInfo.props" />
