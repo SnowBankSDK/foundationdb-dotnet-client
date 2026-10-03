@@ -29,6 +29,7 @@ namespace FoundationDB.Testing.Tests
 	using System.Collections.Generic;
 	using System.Linq;
 	using FoundationDB.Client;
+	using FoundationDB.FakeDb;
 	using Microsoft.Extensions.Time.Testing;
 
 	/// <summary>Data-correctness guard for the bulk operations after their timers moved from <see cref="System.Diagnostics.Stopwatch"/>

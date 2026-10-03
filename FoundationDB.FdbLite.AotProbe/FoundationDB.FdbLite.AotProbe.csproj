@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		Trim/AoT probe for the FdbLite persistent store. Roots the FdbLite public surface (open a store,
+		run transactions, tuple keys, a range read) so the trimmer analyzes the reachable closure.
+		net11.0 matches the repo floor. Not part of FoundationDB.Client.slnx; publish it directly:
+			dotnet publish FoundationDB.FdbLite.AotProbe -r win-x64 -p:ProbeMode=scd
+		then grep the output for "warning IL".
+	-->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net11.0</TargetFramework>
+		<LangVersion>preview</LangVersion>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<InvariantGlobalization>true</InvariantGlobalization>
+		<!-- surface every trim/AoT warning from the whole closure, do not fold them into one -->
+		<TrimmerSingleWarn>false</TrimmerSingleWarn>
+
+		<!-- Publish shape, one per image. Kept as PROJECT properties (driven by ProbeMode) rather than
+		     global -p: flags: a global -p:PublishTrimmed / -p:PublishAot leaks onto the netstandard2.0
+		     source generator and fails it (NETSDK1124 / NETSDK1207). Pass -p:ProbeMode=sc|scd|aot.
+		       sc  = self-contained            (no trim, no AoT) - the realistic baseline
+		       scd = self-contained + trimmed  (no AoT) - the fast trim-warning pass, about 1 to 2 minutes
+		       aot = Native AoT (implies trimming) - a full ILC compile of a large closure can run long -->
+		<ProbeMode Condition="'$(ProbeMode)' == ''">scd</ProbeMode>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(ProbeMode)' == 'scd'">
+		<PublishTrimmed>true</PublishTrimmed>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(ProbeMode)' == 'aot'">
+		<PublishAot>true</PublishAot>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\FoundationDB.FdbLite\FoundationDB.FdbLite.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
+		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+	</ItemGroup>
+
+</Project>

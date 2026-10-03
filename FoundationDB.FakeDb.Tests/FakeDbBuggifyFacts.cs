@@ -26,6 +26,8 @@
 
 namespace FoundationDB.Testing.Tests
 {
+	using FoundationDB.FakeDb;
+	using FoundationDB.Storage;
 	using System.Text;
 	using FoundationDB.Client;
 	using Microsoft.Extensions.Time.Testing;

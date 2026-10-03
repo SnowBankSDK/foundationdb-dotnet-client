@@ -31,6 +31,8 @@
 
 namespace FoundationDB.Client.Tests
 {
+	using FoundationDB.FakeDb;
+	using FoundationDB.Storage;
 	using System.Diagnostics;
 	using SnowBank.Data.Tuples;
 	using SnowBank.Buffers;

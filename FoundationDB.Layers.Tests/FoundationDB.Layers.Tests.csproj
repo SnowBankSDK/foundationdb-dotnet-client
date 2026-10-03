@@ -87,6 +87,14 @@
 		<ProjectReference Include="..\FoundationDB.Layers.Experimental\FoundationDB.Layers.Experimental.csproj" />
 	</ItemGroup>
 
+	<!-- FdbLite targets net10.0 and later (ref structs as generic type arguments): its layer heads run there only -->
+	<ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net10.0'))">
+		<ProjectReference Include="..\FoundationDB.FdbLite\FoundationDB.FdbLite.csproj" />
+	</ItemGroup>
+	<ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net10.0'))">
+		<Compile Remove="FdbLiteLayerHeads.cs;FdbLiteTestBackend.cs" />
+	</ItemGroup>
+
 	<!-- Copies the native fdb_c client next to the test assembly so the real-cluster fixtures can locate it -->
 	<Import Project="..\FoundationDB.Client.Native\build\FoundationDB.Client.Native.targets" />
 

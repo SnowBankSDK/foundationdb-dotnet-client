@@ -72,6 +72,10 @@ namespace FoundationDB.Storage
 		/// <summary>Creates a mutable copy that can be published as the next snapshot</summary>
 		IFdbCommittedStore Copy();
 
+		/// <summary>Releases an UNCOMMITTED copy produced by <see cref="Copy"/> without publishing it.</summary>
+		/// <remarks>A persistent backend rolls its writable generation back (allocations, buffered pages, recorded frees) and releases the single-writer slot; an in-memory store has nothing to release. EVERY path that drops a copy without publishing it must call this: a conflicted commit, a failed mutation replay, chaos injection.</remarks>
+		void Discard();
+
 		/// <summary>Removes a key</summary>
 		bool Remove(Key key);
 
@@ -83,6 +87,13 @@ namespace FoundationDB.Storage
 
 		/// <summary>Sets the value for a key</summary>
 		Value this[Key key] { set; }
+
+		/// <summary>Sets the value for a key during mutation apply, skipping the write when the stored value is already identical.</summary>
+		/// <param name="key">Key to set.</param>
+		/// <param name="value">Value to store for the key.</param>
+		/// <param name="arena">Arena of the snapshot being built, for a backend that must intern the bytes into stable memory.</param>
+		/// <remarks>An in-memory store does the read-compare-intern dance (reuse the stored key instance, skip no-op sets, intern new bytes). A page-backed backend copies caller bytes into pages anyway, so it skips interning and the extra read descent.</remarks>
+		void Set(Key key, Value value, Arena arena);
 
 		#endregion
 
@@ -138,122 +149,4 @@ namespace FoundationDB.Storage
 		bool Previous();
 
 	}
-
-	/// <summary><see cref="IFdbCommittedStore"/> backed by a <see cref="ColaOrderedDictionary{TKey,TValue}"/></summary>
-	public sealed class ColaCommittedStore : IFdbCommittedStore<ColaCommittedCursor>
-	{
-
-		/// <summary>Underlying ColaStore-backed committed keyspace</summary>
-		internal ColaOrderedDictionary<Key, Value> Inner { get; }
-
-		public ColaCommittedStore(ColaOrderedDictionary<Key, Value> inner)
-		{
-			Contract.Debug.Requires(inner != null);
-			this.Inner = inner;
-		}
-
-		/// <inheritdoc />
-		public int Count => this.Inner.Count;
-
-		/// <inheritdoc />
-		public bool TryGetValue(Key key, out Value value) => this.Inner.TryGetValue(key, out value);
-
-		/// <inheritdoc />
-		public bool ContainsKey(Key key) => this.Inner.ContainsKey(key);
-
-		/// <inheritdoc />
-		public TResult Read<TState, TResult>(Key key, TState state, FdbValueDecoder<TState, TResult> decoder)
-		{
-			return this.Inner.TryGetValue(key, out var value)
-				? decoder(state, value.Span, true)
-				: decoder(state, default, false);
-		}
-
-		/// <inheritdoc />
-		public ColaCommittedCursor GetCursor() => new(this.Inner.GetIterator());
-
-		/// <inheritdoc />
-		IFdbCommittedCursor IFdbCommittedStore.GetCursor() => GetCursor();
-
-		/// <inheritdoc />
-		public IEnumerable<KeyValuePair<Key, Value>> Scan(Key begin, Key end, bool reversed)
-			=> reversed
-				? this.Inner.ScanReverse(begin, true, end, false)
-				: this.Inner.Scan(begin, true, end, false);
-
-		/// <inheritdoc />
-		public IEnumerable<KeyValuePair<Key, Value>> IterateOrdered() => this.Inner.IterateOrdered();
-
-		/// <inheritdoc />
-		public void VisitRange<TState>(Key begin, Key end, bool reversed, TState state, FdbCommittedRangeVisitor<TState> visitor)
-		{
-			// arena-backed: kv.Key/kv.Value are views, so the spans cost nothing; the enumerator is the only allocation (O(1))
-			foreach (var kv in reversed ? this.Inner.ScanReverse(begin, true, end, false) : this.Inner.Scan(begin, true, end, false))
-			{
-				if (!visitor(state, kv.Key.Span, kv.Value.Span)) break;
-			}
-		}
-
-		/// <inheritdoc />
-		public IFdbCommittedStore Copy() => new ColaCommittedStore(this.Inner.Copy());
-
-		/// <inheritdoc />
-		public bool Remove(Key key) => this.Inner.Remove(key);
-
-		/// <inheritdoc />
-		public bool TryGetKeyValue(Key key, out KeyValuePair<Key, Value> entry) => this.Inner.TryGetKeyValue(key, out entry);
-
-		/// <inheritdoc />
-		public int RemoveRange(Key begin, Key end) => this.Inner.RemoveRange(begin, true, end, false);
-
-		/// <inheritdoc />
-		public Value this[Key key] { set => this.Inner[key] = value; }
-
-	}
-
-	/// <summary><see cref="IFdbCommittedCursor"/> backed by a <see cref="ColaOrderedDictionary{TKey,TValue}"/>'s iterator</summary>
-	/// <remarks>A thin struct over the class iterator: the struct satisfies the read hot core's <c>TCursor : struct</c> constraint (devirtualizing the seam), and every member forwards to the wrapped iterator, so copies of the struct share position by construction.</remarks>
-	public readonly struct ColaCommittedCursor : IFdbCommittedCursor
-	{
-
-		private readonly ColaStore<KeyValuePair<Key, Value>>.Iterator Iter;
-
-		public ColaCommittedCursor(ColaStore<KeyValuePair<Key, Value>>.Iterator iter)
-		{
-			Contract.Debug.Requires(iter != null);
-			this.Iter = iter;
-		}
-
-		/// <inheritdoc />
-		public ReadOnlySpan<byte> CurrentKey => this.Iter.Current.Key.Span;
-
-		/// <inheritdoc />
-		public ReadOnlySpan<byte> CurrentValue => this.Iter.Current.Value.Span;
-
-		/// <inheritdoc />
-		public Key CopyKey() => this.Iter.Current.Key; // the arena view is stable for the snapshot's lifetime: no bytes moved
-
-		/// <inheritdoc />
-		public Value CopyValue() => this.Iter.Current.Value;
-
-		/// <inheritdoc />
-		public KeyValuePair<Key, Value> CopyCurrent() => this.Iter.Current;
-
-		/// <inheritdoc />
-		public bool Seek(Key key, bool orEqual) => this.Iter.Seek(new(key, default), orEqual);
-
-		/// <inheritdoc />
-		public bool SeekFirst() => this.Iter.SeekFirst();
-
-		/// <inheritdoc />
-		public void SeekBeforeFirst() => this.Iter.SeekBeforeFirst();
-
-		/// <inheritdoc />
-		public bool Next() => this.Iter.Next();
-
-		/// <inheritdoc />
-		public bool Previous() => this.Iter.Previous();
-
-	}
-
 }

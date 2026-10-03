@@ -30,6 +30,7 @@
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
 namespace FoundationDB.Testing.Tests
 {
+	using FoundationDB.FakeDb;
 	using System.Diagnostics;
 	using System.Text;
 	using FoundationDB.Client;
@@ -62,7 +63,7 @@ namespace FoundationDB.Testing.Tests
 		protected static void Log(ISubspaceLocation? location) => Log(location?.ToString() ?? "<null>");
 
 		[DebuggerNonUserCode]
-		protected void DumpStore(FakeDbStore store, string label)
+		protected void DumpStore(FdbEmulatedDatabase store, string label)
 		{
 			DumpStore(store.CurrentSnapshotUnsafe, label);
 		}
@@ -75,18 +76,17 @@ namespace FoundationDB.Testing.Tests
 			sb.AppendLineInvariant($"### {label}");
 			sb.AppendLineInvariant($"* Version: {snapshot.Version:X}");
 
-			var data = FakeDbDebugger.GetSnapshotData(snapshot);
-			sb.AppendLineInvariant($"* Keys: {data.Count:N0}");
-			foreach (var x in data)
+			sb.AppendLineInvariant($"* Keys: {snapshot.Count:N0}");
+			foreach (var x in snapshot.ReadData())
 			{
 				sb.AppendLineInvariant($"| - {x.Key:K} = {x.Value:P}");
 			}
 
-			var conflicts = FakeDbDebugger.GetSnapshotConflictRanges(snapshot);
+			var conflicts = snapshot.ReadConflicts().ToList();
 			sb.AppendLineInvariant($"* Ranges: {conflicts.Count:N0}");
 			foreach (var x in conflicts)
 			{
-				sb.AppendLineInvariant($"| - {x.Begin:K}..{x.End:K}: {x.Value:N0}");
+				sb.AppendLineInvariant($"| - {x.Begin:K}..{x.End:K}: {x.Version:N0}");
 			}
 			LogPartial(sb);
 		}
@@ -113,8 +113,8 @@ namespace FoundationDB.Testing.Tests
 			Assert.That(tr, Is.Not.Null);
 			Assert.That(tr.Cancellation.IsCancellationRequested, Is.False);
 			Assert.That(tr.Context.Database, Is.SameAs(db));
-			Assert.That(tr.Context.GetTransactionHandler(), Is.InstanceOf<FakeDbStore.TransactionHandler<ColaCommittedCursor>>());
-			var handler = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) tr.Context.GetTransactionHandler();
+			Assert.That(tr.Context.GetTransactionHandler(), Is.InstanceOf<FakeDbStore.TransactionHandler>());
+			var handler = (FakeDbStore.TransactionHandler) tr.Context.GetTransactionHandler();
 			Assert.That(handler.Store, Is.SameAs(store));
 
 			tr.Dispose();
@@ -557,7 +557,7 @@ namespace FoundationDB.Testing.Tests
 						
 						DumpStore(store, "in transaction");
 
-						var h = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) tr.Context.GetTransactionHandler();
+						var h = (FakeDbStore.TransactionHandler) tr.Context.GetTransactionHandler();
 						var s = h.GetSnapshotBlocking();
 						var mutations = FakeDbDebugger.GetSnapshotMutations(s);
 						Log($"% Mutations: {mutations.Count:N0}");
@@ -631,7 +631,7 @@ namespace FoundationDB.Testing.Tests
 
 						DumpStore(store, "in transaction");
 
-						var h = (FakeDbStore.TransactionHandler<ColaCommittedCursor>) tr.Context.GetTransactionHandler();
+						var h = (FakeDbStore.TransactionHandler) tr.Context.GetTransactionHandler();
 						var s = h.GetSnapshotBlocking();
 						var mutations = FakeDbDebugger.GetSnapshotMutations(s);
 						Log($"% Mutations: {mutations.Count:N0}");
@@ -648,7 +648,7 @@ namespace FoundationDB.Testing.Tests
 						}
 
 						var writeConflicts = FakeDbDebugger.GetSnapshotWriteConflicts(s);
-						Log($"% Write Conflicts: {writeConflicts.Count}");
+						Log($"% Write Conflicts: {writeConflicts.Count:N0}");
 						foreach (var entry in writeConflicts.IterateOrdered())
 						{
 							Log($"% - {entry.Begin} ~ {entry.End}");

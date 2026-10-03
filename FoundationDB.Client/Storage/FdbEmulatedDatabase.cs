@@ -32,28 +32,26 @@
 
 // ReSharper disable MemberHidesStaticFromOuterClass
 
-namespace FoundationDB.Testing
+namespace FoundationDB.Storage
 {
+	using System.Buffers.Binary;
 	using System.Runtime.InteropServices;
 	using FoundationDB.Client;
 	using FoundationDB.Client.Core;
 	using FoundationDB.Client.Native;
-	using FoundationDB.Storage;
 	using SnowBank.Collections.CacheOblivious;
 	using SnowBank.Threading;
-	using static FoundationDB.Testing.FakeDbStore;
-	// the engine's key range (a pair of arena-interned keys) shares its name with the client's public Slice-pair range
-	using KeyRange = FoundationDB.Storage.KeyRange;
+	using static FoundationDB.Storage.FdbEmulatedDatabase;
 
 	/// <summary>Simulates a FoundationDB cluster running in-memory in the local process</summary>
 	/// <remarks>This emulator is currently <b>experimental</b> and may not accurately reproduce the behavior of an actual fdb cluster, most notably due to the absence of network latency!</remarks>
 	[PublicAPI]
 	[DebuggerDisplay("Version={CurrentSnapshotUnsafe.Version}, Count={CurrentSnapshotUnsafe.Data.Count}")]
-	public class FakeDbStore : IFdbDatabaseHandler
+	public class FdbEmulatedDatabase : IFdbDatabaseHandler
 	{
 
 		[PublicAPI]
-		[DebuggerDisplay("Id={Id}, Version={Inner.Version}, Mutations={Mutations.Count}, Reads={ReadConflicts.Count}, Writes={WriteConflicts.Count}")]
+		[DebuggerDisplay("Id={Id}, Version={Inner.Version}, Writes={Writes.Count}, Reads={ReadConflicts.Count}")]
 		public sealed record ReadYourWritesSnapshot
 		{
 
@@ -61,11 +59,10 @@ namespace FoundationDB.Testing
 
 			private Snapshot Inner { get; }
 
-			internal ColaRangeDictionary<Key, Mutation> Mutations { get; } = new(Key.Comparer.Default);
+			/// <summary>The transaction's write buffer: mutations and their conflict extents (see <see cref="FdbWriteMap"/>).</summary>
+			internal FdbWriteMap Writes { get; } = new();
 
 			internal ColaRangeSet<Key> ReadConflicts { get; } = new(Key.Comparer.Default);
-
-			internal ColaRangeSet<Key> WriteConflicts { get; } = new(Key.Comparer.Default);
 
 			private Arena Arena { get; }
 
@@ -91,7 +88,7 @@ namespace FoundationDB.Testing
 
 				Value value;
 
-				if (ryw && this.Mutations.FindFirst(key.Begin, key.End, out var mutation))
+				if (ryw && this.Writes.TryFindCovering(key.Begin, out var mutation))
 				{
 					if (mutation.IsKv())
 					{
@@ -128,7 +125,7 @@ namespace FoundationDB.Testing
 							// same result at commit time), and establishes a conflict range on the key if the value
 							// depended on the database; a snapshot read observes the value transiently and leaves the
 							// chain to apply over the committed value at commit time (oracle-pinned)
-							this.Mutations.Mark(key.Begin, key.End, Mutation.Set(value));
+							this.Writes.MarkPoint(key.Begin, key.End, Mutation.Set(value));
 							if (readThrough)
 							{
 								this.ReadConflicts.Mark(key.Begin, key.End);
@@ -384,8 +381,7 @@ namespace FoundationDB.Testing
 					throw ErrorCannotAccessSystemKeys();
 				}
 
-				this.Mutations.Mark(key.Begin, key.End, Mutation.Set(value));
-				this.WriteConflicts.Mark(key.Begin, key.End);
+				this.Writes.MarkPoint(key.Begin, key.End, Mutation.Set(value));
 			}
 
 			public void Clear(KeyRange key, bool accessSystemKeys)
@@ -395,8 +391,7 @@ namespace FoundationDB.Testing
 					throw ErrorCannotAccessSystemKeys();
 				}
 
-				this.Mutations.Mark(key.Begin, key.End, Mutation.Clear());
-				this.WriteConflicts.Mark(key.Begin, key.End);
+				this.Writes.MarkPoint(key.Begin, key.End, Mutation.Clear());
 			}
 
 			public void ClearRange(Key beginInclusive, Key endExclusive, bool accessSystemKeys)
@@ -409,8 +404,7 @@ namespace FoundationDB.Testing
 				{
 					throw ErrorCannotAccessSystemKeys();
 				}
-				this.Mutations.Mark(beginInclusive, endExclusive, Mutation.ClearRange());
-				this.WriteConflicts.Mark(beginInclusive, endExclusive);
+				this.Writes.MarkRange(beginInclusive, endExclusive, Mutation.ClearRange());
 			}
 
 			public void Atomic(KeyRange key, Value value, FdbMutationType type, bool accessSystemKeys)
@@ -441,8 +435,7 @@ namespace FoundationDB.Testing
 					mutation = stacked;
 				}
 
-				this.Mutations.Mark(key.Begin, key.End, mutation);
-				this.WriteConflicts.Mark(key.Begin, key.End);
+				this.Writes.MarkPoint(key.Begin, key.End, mutation);
 			}
 
 			public void ReadConflict(Key beginInclusive, Key endExclusive)
@@ -452,13 +445,13 @@ namespace FoundationDB.Testing
 
 			public void WriteConflict(Key beginInclusive, Key endExclusive)
 			{
-				this.WriteConflicts.Mark(beginInclusive, endExclusive);
+				this.Writes.MarkConflictRange(beginInclusive, endExclusive);
 			}
 
 			public Key Resolve<TCursor>(Selector selector, bool ryw, bool snapshotRead, bool accessSystemKeys)
 				where TCursor : struct, IFdbCommittedCursor
 			{
-				if (!ryw || this.WriteConflicts.Count == 0)
+				if (!ryw || !this.Writes.HasMutations)
 				{ // fast path for read-only transactions!
 					var key = this.Inner.Resolve<TCursor>(selector, accessSystemKeys);
 					if (!snapshotRead)
@@ -650,7 +643,7 @@ namespace FoundationDB.Testing
 			private void MarkMergedRangeReadConflict(Key fromInclusive, Key toExclusive)
 			{
 				var cursor = fromInclusive;
-				foreach (var entry in this.Mutations.IterateOrdered())
+				foreach (var entry in this.Writes.GetView())
 				{
 					if (entry.Begin >= toExclusive) break;
 					if (entry.End <= cursor) continue;
@@ -699,14 +692,9 @@ namespace FoundationDB.Testing
 				}
 			}
 
-			/// <summary>Finds the mutation entry covering a key (its begin at or before the key, its end strictly after), or null.</summary>
-			/// <remarks>Unlike <c>TryGetValue</c>, this never matches a range whose exclusive end equals the key: an entry
-			/// covers the key exactly when it intersects the single-key range <c>[key, key+\0)</c>, which the dictionary
-			/// answers with a seek instead of a scan of the whole mutation set.</remarks>
-			private Mutation? FindCoveringMutation(Key key)
-			{
-				return this.Mutations.Intersect(key, key.GetSuccessor(this.Arena), out var entry) ? entry.Value : null;
-			}
+			/// <summary>Finds the mutation entry covering a key (its begin at or before the key, its END strictly after), or null.</summary>
+			/// <remarks>Unlike <c>TryGetValue</c>, this never matches a range whose exclusive end equals the key.</remarks>
+			private Mutation? FindCoveringMutation(Key key) => this.Writes.FindCovering(key);
 
 			/// <summary>Upper fence for an ascending merged walk: strictly above every key the store can hold (the system space ends at <c>\xFF\xFF</c>).</summary>
 			private static readonly Key MergedWalkUpperFence = new(Slice.FromByteString("\xFF\xFF\xFF"));
@@ -767,41 +755,37 @@ namespace FoundationDB.Testing
 			/// <summary>Enumerates the begins of the key-creating local mutations away from <paramref name="pivot"/>, in walk order.</summary>
 			private IEnumerable<Key> EnumerateMutationBeginsFrom(Key pivot, bool includePivot, bool ascending)
 			{
-				if (this.Mutations.Count == 0) yield break;
-				var it = this.Mutations.GetIterator();
-				var probe = new ColaRangeDictionary<Key, Mutation>.Entry(pivot, pivot, null);
+				var view = this.Writes.GetView();
+				if (view.Length == 0) yield break;
+
+				// lower bound: first index whose Begin is at or above the pivot
+				int lo = 0, hi = view.Length;
+				while (lo < hi)
+				{
+					int mid = (lo + hi) >> 1;
+					if (view[mid].Begin.CompareTo(pivot) < 0) { lo = mid + 1; } else { hi = mid; }
+				}
+
 				if (ascending)
 				{
-					// Seek lands on the last begin at/before the pivot: at most one stale element to step over
-					if (!it.Seek(probe, orEqual: true))
+					int start = lo;
+					if (!includePivot && start < view.Length && view[start].Begin.CompareTo(pivot) == 0) start++;
+					for (int i = start; i < view.Length; i++)
 					{
-						it.SeekFirst();
-					}
-					for (var entry = it.Current; entry is not null; entry = it.Next() ? it.Current : null)
-					{
-						var begin = entry.Begin;
-						int cmp = begin.CompareTo(pivot);
-						if (cmp < 0 || (cmp == 0 && !includePivot)) continue;
-						if (IsKeyCreatingMutation(entry.Value)) yield return begin;
+						if (IsKeyCreatingMutation(view[i].Value)) yield return view[i].Begin;
 					}
 				}
 				else
 				{
-					if (!it.Seek(probe, orEqual: includePivot))
-					{ // every begin is above the walk's start: nothing on this side
-						yield break;
-					}
-					for (var entry = it.Current; entry is not null; entry = it.Previous() ? it.Current : null)
+					int start = (includePivot && lo < view.Length && view[lo].Begin.CompareTo(pivot) == 0) ? lo : lo - 1;
+					for (int i = start; i >= 0; i--)
 					{
-						var begin = entry.Begin;
-						int cmp = begin.CompareTo(pivot);
-						if (cmp > 0 || (cmp == 0 && !includePivot)) continue;
-						if (IsKeyCreatingMutation(entry.Value)) yield return begin;
+						if (IsKeyCreatingMutation(view[i].Value)) yield return view[i].Begin;
 					}
 				}
 			}
 
-			/// <summary>Whether a pending mutation can CREATE its begin key in the merged view: pure clears never do; clear-headed chains (clear then atomic) can.</summary>
+			/// <summary>Whether a pending mutation can create its begin key in the merged view: pure clears never do; clear-headed chains (clear then atomic) can.</summary>
 			private static bool IsKeyCreatingMutation(Mutation? mutation)
 			{
 				if (mutation is null || mutation.Op is Operation.Invalid) return false;
@@ -823,7 +807,7 @@ namespace FoundationDB.Testing
 						// is_kv semantics: a pending atomic is a DEPENDENT_WRITE (or an INDEPENDENT_WRITE when it
 						// coalesces over a cleared span, fdb WriteMap.cpp), both classified KV = a present boundary key.
 						// The walk counts the key, not its coalesced value, so a CompareAndClear that would erase the key
-						// (its value coalesces to absent) STILL counts for resolution; only read CONTENT (a separate
+						// (its value coalesces to absent) still counts for resolution; only read content (a separate
 						// scan via the coalesced value) drops it. Do not coalesce here.
 						return true;
 					}
@@ -867,7 +851,7 @@ namespace FoundationDB.Testing
 			{
 
 				// if there are no writes, it's the same thing as a snapshot read
-				if (!ryw || this.WriteConflicts.Count == 0)
+				if (!ryw || !this.Writes.HasMutations)
 				{
 					var begin = this.Inner.Resolve<TCursor>(beginInclusive, accessSystemKeys);
 					var end = this.Inner.Resolve<TCursor>(endExclusive, accessSystemKeys);
@@ -901,7 +885,7 @@ namespace FoundationDB.Testing
 						Kenobi($"** #{this.Id} - {kv.Key:K} = {kv.Value:V}");
 					}
 					Kenobi($"** #{this.Id} Mutations: rv {this.Inner.Version}");
-					foreach (var entry in this.Mutations.IterateOrdered())
+					foreach (var entry in this.Writes.GetView())
 					{
 						Kenobi($"** #{this.Id} - {entry.Begin:K} ~ {entry.End:K} = {entry.Value}");
 					}
@@ -993,7 +977,7 @@ namespace FoundationDB.Testing
 								// interning boundary (null means "immutable, safe to keep"), and the committed store
 								// would end up aliasing recycled transaction-arena memory
 								var key = new Key(kv.Key.Copy());
-								this.Mutations.Mark(key, key.GetSuccessor(this.Arena), Mutation.Set(new Value(kv.Value.Copy())));
+								this.Writes.MarkPoint(key, key.GetSuccessor(this.Arena), Mutation.Set(new Value(kv.Value.Copy())));
 							}
 						}
 					}
@@ -1021,7 +1005,7 @@ namespace FoundationDB.Testing
 				where TCursor : struct, IFdbCommittedCursor
 			{
 				// fast path: no writes => same as a snapshot read, stream directly off the committed store
-				if (!ryw || this.WriteConflicts.Count == 0)
+				if (!ryw || !this.Writes.HasMutations)
 				{
 					var begin = this.Inner.Resolve<TCursor>(beginInclusive, accessSystemKeys);
 					var end = this.Inner.Resolve<TCursor>(endExclusive, accessSystemKeys);
@@ -1058,7 +1042,7 @@ namespace FoundationDB.Testing
 			public OnionIterator<TCursor> GetIterator<TCursor>()
 				where TCursor : struct, IFdbCommittedCursor
 			{
-				return new OnionIterator<TCursor>((IFdbCommittedStore<TCursor>) this.Inner.Data, this.Mutations, this.Arena, this.Id);
+				return new OnionIterator<TCursor>((IFdbCommittedStore<TCursor>) this.Inner.Data, this.Writes, this.Arena, this.Id);
 			}
 
 			/// <summary>Sums the exact key+value bytes of the committed snapshot over a range (FakeDb's deterministic stand-in for the real sampling estimator).</summary>
@@ -1097,11 +1081,11 @@ namespace FoundationDB.Testing
 			/// <summary>Conflicting read ranges collected by the failed commit, when the <see cref="FdbTransactionOption.ReportConflictingKeys"/> option is set; served through the <c>\xff\xff/transaction/conflicting_keys/</c> special keyspace.</summary>
 			public List<KeyValuePair<Key, Key>>? ConflictingReadRanges { get; private set; }
 
-			public (Snapshot Snapshot, VersionStamp Stamp) ApplyMutations(FakeDbStore store, long commitVersion, Snapshot snapshot, bool reportConflictingKeys = false)
+			public (Snapshot Snapshot, VersionStamp Stamp) ApplyMutations(FdbEmulatedDatabase store, long commitVersion, Snapshot snapshot, bool reportConflictingKeys = false)
 			{
 				var conflicts = snapshot.Conflicts;
 
-				if (this.WriteConflicts.Count > 0 && this.Version < store.ConflictFloor)
+				if (this.Writes.Count > 0 && this.Version < store.ConflictFloor)
 				{ // the conflict history below the retention floor is pruned, so a writer this old cannot be
 				  // validated; the real resolver keeps only its MVCC window of history and rejects such a
 				  // commit the same way (fdb 7.4, "Transaction is too old to perform reads or be committed")
@@ -1133,198 +1117,193 @@ namespace FoundationDB.Testing
 
 				var prevData = snapshot.Data;
 				var newData = prevData.Copy();
-
-				var arena = snapshot.Arena;
-
-				if (this.WriteConflicts.Count > 0)
+				try
 				{
-					conflicts = store.CopyConflictsWithPruning(conflicts);
-					foreach (var x in this.WriteConflicts)
+
+					var arena = snapshot.Arena;
+
+					if (this.Writes.Count > 0)
 					{
-						conflicts.Mark(arena.InternKey(x.Begin), arena.InternKey(x.End), commitVersion);
-					}
-				}
-
-				var stamp = MakeVersionStamp(commitVersion, 0);
-				Kenobi($"$ #{this.Id} apply trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}");
-
-				// a versionstamped key whose placeholder sat inside a clear-range submitted earlier in this same
-				// transaction: the clear was split around the placeholder position, but completing the stamp moves
-				// the key to its final slot, which can land in a remainder of that very clear. Since the clear was
-				// submitted first, the later stamped write must survive it - so defer these completions until after
-				// every clear-range has been applied, out of reach of the remainders.
-				List<(Key Key, Value Value)>? deferredStampedKeys = null;
-
-				foreach (var entry in this.Mutations.IterateOrdered())
-				{
-					var mutation = entry.Value!;
-
-					if (mutation.IsKv())
-					{
-						if (mutation.Parameter.IsNull)
-						{ // clear
-							Kenobi($"$$ #{this.Id} clear {entry.Begin:K}");
-							newData.Remove(entry.Begin);
+						conflicts = store.CopyConflictsWithPruning(conflicts);
+						foreach (var x in this.Writes.GetConflictRanges())
+						{
+							conflicts.Mark(arena.InternKey(x.Begin), arena.InternKey(x.End), commitVersion);
 						}
-						else
-						{ // set
-							// try to reuse previous key
-							Key k;
-							if (newData.TryGetKeyValue(entry.Begin, out var kv))
+					}
+
+					var stamp = MakeVersionStamp(commitVersion, 0);
+					Kenobi($"$ #{this.Id} apply trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}");
+
+					// a versionstamped KEY whose placeholder sat inside a clear-range submitted EARLIER in this same
+					// transaction: the clear was split around the placeholder position, but completing the stamp moves
+					// the key to its final slot, which can land in a remainder of that very clear. Since the clear was
+					// submitted first, the later stamped write must survive it - so defer these completions until after
+					// every clear-range has been applied, out of reach of the remainders.
+					List<(Key Key, Value Value)>? deferredStampedKeys = null;
+
+					foreach (var entry in this.Writes.GetView())
+					{
+						var mutation = entry.Value!;
+
+						if (mutation.IsKv())
+						{
+							if (mutation.Parameter.IsNull)
+							{ // clear
+								Kenobi($"$$ #{this.Id} clear {entry.Begin:K}");
+								newData.Remove(entry.Begin);
+							}
+							else
+							{ // set
+								Kenobi($"$$ #{this.Id} set {entry.Begin:K} = {mutation.Parameter:V}");
+								// the store owns the no-op-skip/interning trade-off: see IFdbCommittedStore.Set
+								newData.Set(entry.Begin, mutation.Parameter, arena);
+							}
+						}
+						else if (mutation.IsRange())
+						{
+							var range = arena.InternKeyRange(entry.Begin, entry.End);
+							Kenobi($"$$ #{this.Id} clearRange {range}");
+
+							_ = newData.RemoveRange(range.Begin, range.End);
+						}
+						else if (mutation.IsAtomic())
+						{
+							if (mutation.Op is (Operation.Set or Operation.Clear)
+							 || !newData.TryGetKeyValue(entry.Begin, out var kv))
 							{
-								if (kv.Value.Equals(mutation.Parameter))
-								{ // value hasn't changed!
-									continue;
+								kv = new(
+									arena.InternKey(entry.Begin),
+									default
+								);
+							}
+
+							Kenobi($"$$ #{this.Id} atomic {mutation}");
+
+							// apply the WHOLE chain in submission order (api 520+ stamp semantics): a stamped KEY
+							// materializes immediately against the commit stamp (identical placeholders complete to the
+							// same key, so the last submitted wins, like any other mutation), a stamped VALUE completes
+							// into the running value, and everything else coalesces on top. The overlay key of a stamped
+							// KEY (placeholder + offset suffix) is synthetic and never lands in the committed data; the
+							// only non-stamped links such a chain can carry are Clear anchors from a covering range wipe.
+							var value = kv.Value;
+							bool stampedKey = false;
+							// the head op tells us whether this chain was anchored by a clear submitted earlier (a covered
+							// wipe): only those completions need deferring past the clear-range remainders (see the preamble)
+							bool clearHeaded = mutation.Op is Operation.Clear or Operation.ClearRange;
+							Key stampedKeyDst = default;
+							Value stampedKeyVal = default;
+							do
+							{
+								switch (mutation.Op)
+								{
+									case Operation.VersionStampedKey:
+									{
+										// offset in last 32 bits of the overlay key
+										int len = kv.Key.Count - 4;
+										if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedKey");
+										int offset = kv.Key.Slice.Substring(len).ToInt32();
+
+										var tmp = arena.AllocateKey(len);
+										kv.Key.Span[..^4].CopyTo(tmp.UnsafeSpan);
+										stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
+
+										// last identical placeholder wins; the actual store happens after the walk (below)
+										stampedKeyDst = tmp;
+										stampedKeyVal = arena.InternValue(mutation.Parameter);
+										stampedKey = true;
+										break;
+									}
+
+									case Operation.VersionStampedValue:
+									{
+										// offset in last 32 bits of the parameter
+										int len = mutation.Parameter.Count - 4;
+										if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedValue");
+										int offset = mutation.Parameter.Slice.Substring(len).ToInt32();
+
+										var tmp = arena.AllocateValue(len);
+										mutation.Parameter.Span[..^4].CopyTo(tmp.UnsafeSpan);
+										stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
+
+										value = tmp;
+										break;
+									}
+
+									default:
+									{
+										value = CoalesceAtomic(arena, value, mutation);
+										break;
+									}
 								}
-								k = kv.Key;
+								mutation = mutation.Next;
+							}
+							while (mutation != null);
+
+							if (stampedKey)
+							{
+								// the synthetic overlay key never lands; only the completed key does. If this chain was
+								// anchored by an earlier clear (a covered wipe), that clear was split around the placeholder
+								// and its remainders are still to be applied below - defer the completed key past them so a
+								// remainder cannot re-wipe the relocated slot. Uncovered stamped keys land now.
+								if (clearHeaded)
+								{
+									(deferredStampedKeys ??= new()).Add((stampedKeyDst, stampedKeyVal));
+								}
+								else
+								{
+									newData[stampedKeyDst] = stampedKeyVal;
+								}
+							}
+							else if (value.IsNull)
+							{
+								newData.Remove(kv.Key);
 							}
 							else
 							{
-								k = arena.InternKey(entry.Begin);
+								// the coalesced value can be a passthrough of a chain anchor's Parameter (backed by
+								// the transaction's recyclable arena): intern it before it becomes committed state
+								newData[kv.Key] = arena.InternValue(value);
 							}
+						}
+						else
+						{
+							throw new NotSupportedException();
+						}
+					}
 
-							var v = arena.InternValue(mutation.Parameter);
-							Kenobi($"$$ #{this.Id} set {k:K} = {v:V}");
+					// completed stamped keys that were covered by an earlier clear land now, after every clear-range
+					// remainder has been applied - so a remainder split off the covering wipe cannot re-wipe them
+					if (deferredStampedKeys != null)
+					{
+						foreach (var (k, v) in deferredStampedKeys)
+						{
 							newData[k] = v;
 						}
 					}
-					else if (mutation.IsRange())
+
+					Kenobi($"$ committed trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}: {prevData.Count:N0} keys => {newData.Count:N0} keys");
+
+	#if CHECK_INVARIANTS
+					// invariant checks: all keys & values are using the snapshot's arena (or null)
+					foreach (var kv in newData.IterateOrdered())
 					{
-						var range = arena.InternKeyRange(entry.Begin, entry.End);
-						Kenobi($"$$ #{this.Id} clearRange {range}");
-
-						_ = newData.RemoveRange(range.Begin, range.End);
+						if (kv.Key.Arena != arena & kv.Key.Arena != null) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' uses an unexpected arena!");
+						if (kv.Key.IsNull) throw new InvalidOperationException("Invariant broken: illegal 'null' key!");
+						if (kv.Value.Arena != arena && kv.Value.Arena != null) throw new InvalidOperationException($"Invariant broken: value '{kv.Value}' (of key '{kv.Key}') uses an unexpected arena!");
+						if (kv.Value.IsNull) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' as illegal null value!");
 					}
-					else if (mutation.IsAtomic())
-					{
-						if (mutation.Op is (Operation.Set or Operation.Clear)
-						 || !newData.TryGetKeyValue(entry.Begin, out var kv))
-						{
-							kv = new(
-								arena.InternKey(entry.Begin),
-								default
-							);
-						}
+	#endif
 
-						Kenobi($"$$ #{this.Id} atomic {mutation}");
-
-						// apply the whole chain in submission order (api 520+ stamp semantics): a stamped key
-						// materializes immediately against the commit stamp (identical placeholders complete to the
-						// same key, so the last submitted wins, like any other mutation), a stamped value completes
-						// into the running value, and everything else coalesces on top. The overlay key of a stamped
-						// key (placeholder + offset suffix) is synthetic and never lands in the committed data; the
-						// only non-stamped links such a chain can carry are Clear anchors from a covering range wipe.
-						var value = kv.Value;
-						bool stampedKey = false;
-						// the head op tells us whether this chain was anchored by a clear submitted earlier (a covered
-						// wipe): only those completions need deferring past the clear-range remainders (see the preamble)
-						bool clearHeaded = mutation.Op is Operation.Clear or Operation.ClearRange;
-						Key stampedKeyDst = default;
-						Value stampedKeyVal = default;
-						do
-						{
-							switch (mutation.Op)
-							{
-								case Operation.VersionStampedKey:
-								{
-									// offset in last 32 bits of the overlay key
-									int len = kv.Key.Count - 4;
-									if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedKey");
-									int offset = kv.Key.Slice.Substring(len).ToInt32();
-
-									var tmp = arena.AllocateKey(len);
-									kv.Key.Span[..^4].CopyTo(tmp.UnsafeSpan);
-									stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
-
-									// last identical placeholder wins; the actual store happens after the walk (below)
-									stampedKeyDst = tmp;
-									stampedKeyVal = arena.InternValue(mutation.Parameter);
-									stampedKey = true;
-									break;
-								}
-
-								case Operation.VersionStampedValue:
-								{
-									// offset in last 32 bits of the parameter
-									int len = mutation.Parameter.Count - 4;
-									if (len < 0) throw new InvalidOperationException("TODO: malformed offset in VersionStampedValue");
-									int offset = mutation.Parameter.Slice.Substring(len).ToInt32();
-
-									var tmp = arena.AllocateValue(len);
-									mutation.Parameter.Span[..^4].CopyTo(tmp.UnsafeSpan);
-									stamp.WriteTo(tmp.UnsafeSpan.Slice(offset));
-
-									value = tmp;
-									break;
-								}
-
-								default:
-								{
-									value = CoalesceAtomic(arena, value, mutation);
-									break;
-								}
-							}
-							mutation = mutation.Next;
-						}
-						while (mutation != null);
-
-						if (stampedKey)
-						{
-							// the synthetic overlay key never lands; only the completed key does. If this chain was
-							// anchored by an earlier clear (a covered wipe), that clear was split around the placeholder
-							// and its remainders are still to be applied below - defer the completed key past them so a
-							// remainder cannot re-wipe the relocated slot. Uncovered stamped keys land now.
-							if (clearHeaded)
-							{
-								(deferredStampedKeys ??= new()).Add((stampedKeyDst, stampedKeyVal));
-							}
-							else
-							{
-								newData[stampedKeyDst] = stampedKeyVal;
-							}
-						}
-						else if (value.IsNull)
-						{
-							newData.Remove(kv.Key);
-						}
-						else
-						{
-							// the coalesced value can be a passthrough of a chain anchor's Parameter (backed by
-							// the transaction's recyclable arena): intern it before it becomes committed state
-							newData[kv.Key] = arena.InternValue(value);
-						}
-					}
-					else
-					{
-						throw new NotSupportedException();
-					}
+					var updated = new Snapshot(commitVersion, newData, conflicts, stamp, arena);
+					return (updated, stamp);
 				}
-
-				// completed stamped keys that were covered by an earlier clear land now, after every clear-range
-				// remainder has been applied - so a remainder split off the covering wipe cannot re-wipe them
-				if (deferredStampedKeys != null)
+				catch
 				{
-					foreach (var (k, v) in deferredStampedKeys)
-					{
-						newData[k] = v;
-					}
+					// a copy that will never publish must not leak its backend generation (with the fdblite
+					// backend, an abandoned engine writer whose allocations roll back); no-op for in-memory data
+					newData.Discard();
+					throw;
 				}
-
-				Kenobi($"$ committed trans #{this.Id} rv {snapshot.Version} => cv {commitVersion}: {prevData.Count:N0} keys => {newData.Count:N0} keys");
-
-#if CHECK_INVARIANTS
-				// invariant checks: all keys & values are using the snapshot's arena (or null)
-				foreach (var kv in newData.IterateOrdered())
-				{
-					if (kv.Key.Arena != arena & kv.Key.Arena != null) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' uses an unexpected arena!");
-					if (kv.Key.IsNull) throw new InvalidOperationException("Invariant broken: illegal 'null' key!");
-					if (kv.Value.Arena != arena && kv.Value.Arena != null) throw new InvalidOperationException($"Invariant broken: value '{kv.Value}' (of key '{kv.Key}') uses an unexpected arena!");
-					if (kv.Value.IsNull) throw new InvalidOperationException($"Invariant broken: key '{kv.Key}' as illegal null value!");
-				}
-#endif
-
-				var updated = new Snapshot(commitVersion, newData, conflicts, stamp, arena);
-				return (updated, stamp);
 			}
 
 		}
@@ -1364,8 +1343,6 @@ namespace FoundationDB.Testing
 		/// <summary>API version of the simulated server</summary>
 		public int ProtocolVersion { get; }
 
-		private static ArrayPool<byte> GlobalPool { get; } = ArrayPool<byte>.Create();
-
 		/// <summary>Time source of the simulated cluster, used to schedule the retry backoff (see <see cref="RetryDelayMaximum"/>)</summary>
 		/// <remarks>A test that installs a fake provider (e.g. <c>NodaTimeProvider</c> over a <c>FakeTimeProvider</c>) gets a
 		/// simulated cluster whose retry timing advances with virtual time, instead of blocking the wall clock.</remarks>
@@ -1389,48 +1366,11 @@ namespace FoundationDB.Testing
 		/// <remarks>The per-transaction <c>MaxRetryDelay</c> option, when set, only tightens this cap (it never enables the backoff).</remarks>
 		public TimeSpan RetryDelayMaximum { get; set; } = TimeSpan.Zero;
 
-		/// <summary>Opens an in-memory store.</summary>
-		/// <param name="apiVersion">API version the emulated client speaks.</param>
-		/// <param name="protocolVersion">API version of the emulated cluster.</param>
-		/// <param name="initialVersion">Version of the initial snapshot, or 0 for the default.</param>
-		/// <param name="time">Clock of the emulated cluster; a fake provider virtualizes retry delays, watch timeouts and the retention window.</param>
-		/// <param name="retention">Policy deciding which published versions stay readable. <see langword="null"/> (the default) is the real-cluster behavior: <see cref="FdbSnapshotRetention.KeepWindow"/> over the 5 second <see cref="FdbSnapshotRetention.DefaultWindow"/>, on the store's clock. <see cref="FdbSnapshotRetention.KeepEverything"/> keeps the whole run inspectable.</param>
-		public FakeDbStore(int apiVersion = DEFAULT_API_VERSION, int protocolVersion = MAX_API_VERSION, long initialVersion = 0, TimeProvider? time = null, FdbSnapshotRetentionPolicy? retention = null)
-			: this(apiVersion, protocolVersion, time, retention ?? FdbSnapshotRetention.KeepWindow(FdbSnapshotRetention.DefaultWindow))
+		/// <summary>Opens a store over a given storage backend.</summary>
+		/// <remarks>The backend supplies the committed state, its durability and its retention ceiling; everything else - read-your-writes, conflict detection, watches, versionstamps - is this class and is identical whichever backend is plugged in. The <paramref name="retention"/> policy decides which published versions stay readable within that ceiling; <see langword="null"/> keeps everything the backend can serve.</remarks>
+		protected FdbEmulatedDatabase(IFdbStorageBackend backend, int apiVersion, int protocolVersion, long initialVersion, TimeProvider? time, FdbSnapshotRetentionPolicy? retention = null)
 		{
-			if (initialVersion <= 0)
-			{
-				initialVersion = 0xfdb1337000000;
-			}
-			var initialStamp = MakeVersionStamp(initialVersion, 0);
-
-			var arena = new Arena(128 * 1024, 512 * 1024, GlobalPool);
-
-			var data = new ColaOrderedDictionary<Key, Value>(Key.Comparer.Default, Value.Comparer.Default);
-			data[SpecialKeys.SystemRoot] = arena.InternValue(SystemRootSentinelValue);
-			data[SpecialKeys.SystemMetadataVersion] = arena.InternValue(initialStamp.ToSlice());
-			data[SpecialKeys.SystemEnd] = Value.Empty;
-
-			var conflicts = new ColaRangeDictionary<Key, long>(Key.Comparer.Default);
-
-			var snapshot = new Snapshot(
-				initialVersion,
-				new ColaCommittedStore(data),
-				conflicts,
-				initialStamp,
-				arena
-			);
-
-			InitializeSnapshot(snapshot);
-		}
-
-		/// <summary>Value seeded under <see cref="SpecialKeys.SystemRoot"/> in every fresh store, whichever backend</summary>
-		protected static readonly Slice SystemRootSentinelValue = Slice.FromString("You shall not pass!");
-
-		/// <summary>Shared initialization for backend subclasses: the derived constructor must call <see cref="InitializeSnapshot"/> (with a snapshot seeding the same system keys a fresh in-memory store gets) before the store is used.</summary>
-		/// <remarks>A <see langword="null"/> <paramref name="retention"/> keeps every published version.</remarks>
-		protected FakeDbStore(int apiVersion, int protocolVersion, TimeProvider? time, FdbSnapshotRetentionPolicy? retention = null)
-		{
+			Contract.NotNull(backend);
 			if (protocolVersion < MIN_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be less than the minimum supported version");
 			if (protocolVersion > MAX_API_VERSION) throw new ArgumentOutOfRangeException(nameof(apiVersion), apiVersion, "Server protocol version cannot be greater than the maximum supported version");
 			if (apiVersion == 0)
@@ -1443,14 +1383,11 @@ namespace FoundationDB.Testing
 			this.ApiVersion = apiVersion;
 			this.ProtocolVersion = protocolVersion;
 			this.Time = time ?? TimeProvider.System;
+			this.Backend = backend;
 			this.RetentionPolicy = retention ?? FdbSnapshotRetention.KeepEverything;
-			this.CurrentSnapshotUnsafe = null!;
-		}
 
-		/// <summary>Installs the store's initial committed snapshot (once, from the constructor path).</summary>
-		protected void InitializeSnapshot(Snapshot snapshot)
-		{
-			Contract.NotNull(snapshot);
+			var snapshot = backend.CreateInitialSnapshot(initialVersion > 0 ? initialVersion : 0xfdb1337000000);
+			Contract.Debug.Assert(snapshot != null);
 			this.Snapshots[snapshot.Version] = snapshot;
 			this.RetentionContext.Entries.Add(new(snapshot.Version, this.Time.GetUtcNow()));
 			this.CurrentSnapshotUnsafe = snapshot;
@@ -1458,7 +1395,7 @@ namespace FoundationDB.Testing
 			this.ConflictFloor = snapshot.Version;
 		}
 
-		/// <summary>Policy deciding which published versions stay readable.</summary>
+		/// <summary>Policy deciding which published versions stay readable, within the backend's ceiling.</summary>
 		private FdbSnapshotRetentionPolicy RetentionPolicy { get; }
 
 		/// <summary>Reusable retained-set view handed to the policy; only touched under the global write lock.</summary>
@@ -1467,14 +1404,17 @@ namespace FoundationDB.Testing
 		/// <summary>Oldest published version still retained: the conflict-history floor. A committing writer whose read version is below it fails with <see cref="FdbError.TransactionTooOld"/> (the real resolver only keeps its MVCC window of history), and conflict ranges below it are pruned.</summary>
 		internal long ConflictFloor { get; private set; }
 
-		/// <summary>Number of times the conflict-map prune fired; lets a test assert the mechanism ran instead of passing trivially.</summary>
+		/// <summary>Number of times the conflict-map prune actually fired; lets a test assert the mechanism ran instead of passing trivially.</summary>
 		internal int ConflictPrunes { get; private set; }
+
+		/// <summary>Conflict-range count of the head snapshot, for tests.</summary>
+		internal int CurrentConflictRangeCount => this.CurrentSnapshotUnsafe.Conflicts.Count;
 
 		/// <summary>Conflict-map size that arms the next prune attempt; doubles from the survivor count after each prune, so the amortized cost stays a constant factor of the copy the prune replaces.</summary>
 		private int ConflictPruneThreshold { get; set; } = 128;
 
 		/// <summary>Copies the head's conflict map for the committing writer, pruning the ranges below <see cref="ConflictFloor"/> once the map has grown past the prune threshold.</summary>
-		/// <remarks>Called under the global lock. A pruned range cannot influence any future commit: a writer with a read version below the floor is rejected before the conflict check. With <see cref="FdbSnapshotRetention.KeepEverything"/> the floor never moves, nothing is ever pruned, and this is a plain copy.</remarks>
+		/// <remarks>Called under the global write lock. A pruned range cannot influence any future commit: a writer with a read version below the floor is rejected before the conflict check. With <see cref="FdbSnapshotRetention.KeepEverything"/> the floor never moves, nothing is ever pruned, and this is a plain copy.</remarks>
 		internal ColaRangeDictionary<Key, long> CopyConflictsWithPruning(ColaRangeDictionary<Key, long> conflicts)
 		{
 			if (conflicts.Count < this.ConflictPruneThreshold)
@@ -1487,7 +1427,7 @@ namespace FoundationDB.Testing
 			{
 				if (entry.Value >= floor)
 				{
-					pruned.Mark(entry.Begin!, entry.End!, entry.Value);
+					pruned.Mark(entry.Begin, entry.End, entry.Value);
 				}
 			}
 			this.ConflictPrunes++;
@@ -1495,30 +1435,8 @@ namespace FoundationDB.Testing
 			return pruned;
 		}
 
-		/// <summary>Drops the published versions the retention policy reclaims; a read at a dropped version then fails with <see cref="FdbError.TransactionTooOld"/>.</summary>
-		/// <remarks>Called under the global write lock, right after a publish.</remarks>
-		private void TrimRetainedSnapshots()
-		{
-			var ctx = this.RetentionContext;
-			ctx.Begin(this.Time);
-			this.RetentionPolicy(ctx);
-			if (ctx.Dropped is { Count: > 0 } dropped)
-			{
-				foreach (var version in dropped)
-				{
-					if (this.Snapshots.Remove(version))
-					{
-						int i = ctx.Entries.FindIndex(e => e.Version == version);
-						if (i >= 0) ctx.Entries.RemoveAt(i);
-					}
-				}
-
-				// a policy drop advances the conflict-history floor: the policy expresses the window semantics
-				// (time or count), so what it drops has aged out of the commit window as well as the read window.
-				// KeepEverything never drops, so the floor never moves and the whole history stays validated.
-				this.ConflictFloor = ctx.Entries[0].Version;
-			}
-		}
+		/// <summary>Storage this store's committed state lives in</summary>
+		protected IFdbStorageBackend Backend { get; }
 
 		[Conditional("FULL_DEBUG")]
 		[System.Diagnostics.Conditional("FULL_DEBUG")]
@@ -1622,7 +1540,7 @@ namespace FoundationDB.Testing
 			}
 		}
 
-		public virtual void Dispose()
+		public void Dispose()
 		{
 			if (!this.IsClosed)
 			{
@@ -1635,6 +1553,7 @@ namespace FoundationDB.Testing
 				{
 					this.CurrentSnapshotUnsafe.Arena?.Dispose();
 					this.LifeTime.Dispose();
+					this.Backend.Dispose();
 				}
 			}
 		}
@@ -1685,7 +1604,7 @@ namespace FoundationDB.Testing
 
 		Task IFdbDatabaseHandler.CreateSnapshotAsync(ReadOnlySpan<char> uid, ReadOnlySpan<char> snapCommand, CancellationToken ct) => throw new NotImplementedException();
 
-		protected internal virtual Task<ReadYourWritesSnapshot> StartNewSnapshot(Arena arena, CancellationToken ct)
+		protected internal Task<ReadYourWritesSnapshot> StartNewSnapshot(Arena arena, CancellationToken ct)
 		{
 			if (ct.IsCancellationRequested) return Task.FromCanceled<ReadYourWritesSnapshot>(ct);
 			using (this.GlobalLock.GetReadLock())
@@ -1697,11 +1616,12 @@ namespace FoundationDB.Testing
 
 				var snapshot = this.CurrentSnapshotUnsafe;
 				Contract.Debug.Assert(snapshot != null && snapshot.Version == this.ReadVersion);
+				this.Backend.Pin(snapshot.Version);
 				return Task.FromResult(new ReadYourWritesSnapshot(snapshot, arena));
 			}
 		}
 
-		protected internal virtual Task<ReadYourWritesSnapshot> StartSnapshotAtVersion(Arena arena, long version, CancellationToken ct)
+		protected internal Task<ReadYourWritesSnapshot> StartSnapshotAtVersion(Arena arena, long version, CancellationToken ct)
 		{
 			if (ct.IsCancellationRequested) return Task.FromCanceled<ReadYourWritesSnapshot>(ct);
 			using (this.GlobalLock.GetReadLock())
@@ -1711,9 +1631,10 @@ namespace FoundationDB.Testing
 					return Task.FromCanceled<ReadYourWritesSnapshot>(ct);
 				}
 				if (!this.Snapshots.TryGetValue(version, out var snapshot))
-				{ // dropped by the retention policy, or never a published version at all
+				{ // outside the backend's retention window (or never a published version at all)
 					return Task.FromException<ReadYourWritesSnapshot>(new FdbException(FdbError.TransactionTooOld, $"Version {version} is no longer retained by this store"));
 				}
+				this.Backend.Pin(snapshot.Version);
 				return Task.FromResult(new ReadYourWritesSnapshot(snapshot, arena));
 			}
 		}
@@ -1777,7 +1698,7 @@ namespace FoundationDB.Testing
 				long commitVersion;
 				Snapshot? updated;
 				VersionStamp stamp;
-				if (snapshot.WriteConflicts.Count != 0)
+				if (snapshot.Writes.Count != 0)
 				{
 					commitVersion = rv + 1;
 					(updated, stamp) = snapshot.ApplyMutations(this, commitVersion, current, handler.OptionReportConflictingKeys);
@@ -1788,194 +1709,242 @@ namespace FoundationDB.Testing
 					updated = null;
 					stamp = default;
 				}
-				Contract.Debug.Assert(snapshot != null && snapshot.Version <= rv);
-
-				using (this.GlobalLock.GetWriteLock())
+				try
 				{
-					ct.ThrowIfCancellationRequested();
+					Contract.Debug.Assert(snapshot != null && snapshot.Version <= rv);
 
-					// keys for watches that have completely triggered in this commit, and should be removed from the active list
-					List<Slice>? deadWatchedKeys = null;
-
-					// buggify: keys whose watch check is deferred (skipped) this commit, so one manual suppression is consumed at most once across the arm branch and the post-commit scan
-					HashSet<Slice>? buggifyDecided = null;
-
-					if (updated != null)
+					using (this.GlobalLock.GetWriteLock())
 					{
-						updated = PublishSnapshot(updated, commitVersion);
-						// native FDB stores the idempotency id of every committed transaction under \xff\x02/idmp/; mirror that so a maybe-committed retry can resolve "did my commit land?"
-						if (!handler.IdempotencyId.IsNull) RecordIdempotencyId(handler.IdempotencyId, commitVersion);
-					}
+						ct.ThrowIfCancellationRequested();
 
-					if (handler.Watches != null)
-					{ // the transaction has some watches to add
+						// keys for watches that have completely triggered in this commit, and should be removed from the active list
+						List<Slice>? deadWatchedKeys = null;
 
-						var source = updated ?? ((snapshot.Version < current.Version) ? current : null);
+						// buggify: keys whose watch check is deferred (skipped) this commit, so one manual suppression is consumed at most once across the arm branch and the post-commit scan
+						HashSet<Slice>? buggifyDecided = null;
 
-						foreach (var w in handler.Watches)
+						if (updated != null)
 						{
-							// set the version of the watch
-							w.ReadVersion = snapshot.Version;
-							w.CommitVersion = commitVersion;
-
-							// the watch value _may_ already have changed
-							if (source != null)
-							{
-								var updatedValue = source.Read(new(w.Key));
-								if (!updatedValue.Slice.Equals(w.Value))
-								{ // it was changed in between the creation of the watch and the commit!
-									if (this.BuggifyState is null || !this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
-									{
-										// queue the watch for triggering
-										(watchesToTrigger ??= [ ]).Add(w);
-										continue;
-									}
-									// buggify: deferred check - fall through and register the node with its original baseline (a later real change self-heals it)
-								}
-								// it is still active
-							}
-
-#if NET6_0_OR_GREATER
-							ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.ActiveWatches, w.Key, out var exists);
-							if (!exists)
-							{
-								slot = [ w ];
-							}
-							else
-							{
-								slot!.Add(w);
-							}
-#else
-							// CollectionsMarshal.GetValueRefOrAddDefault is not available: use a regular lookup + insert (which pays for two hash lookups instead of one)
-							if (!this.ActiveWatches.TryGetValue(w.Key, out var slot))
-							{
-								this.ActiveWatches[w.Key] = [ w ];
-							}
-							else
-							{
-								slot.Add(w);
-							}
-#endif
-							Kenobi($"WWW watching key {w.Key} at rv {w.ReadVersion} and cv {w.CommitVersion}");
+							updated = PublishSnapshot(updated, commitVersion);
+							// native FDB stores the idempotency id of every committed transaction under \xff\x02/idmp/; mirror that so a maybe-committed retry can resolve "did my commit land?"
+							if (!handler.IdempotencyId.IsNull) RecordIdempotencyId(handler.IdempotencyId, commitVersion);
 						}
 
-						// the store now owns these nodes (registered or queued to trigger): whatever remains on the
-						// handler at dispose/reset/failed-commit time is an unarmed watch and must be failed
-						handler.Watches = null;
-					}
+						if (handler.Watches != null)
+						{ // the transaction has some watches to add
 
-					if (updated != null)
-					{
-						// look for all active watches and check them against the new write conflict map
-						foreach (var kv in this.ActiveWatches)
-						{
-							var ver = updated.Conflicts.GetValueOrDefault(new(kv.Key), 0);
-							Kenobi($"WWW checking watch key {kv.Key} for version {ver} (at rv {snapshot.Version} and cv {commitVersion})");
+							var source = updated ?? ((snapshot.Version < current.Version) ? current : null);
 
-							for (int i = 0; i < kv.Value.Count; i++)
+							foreach (var w in handler.Watches)
 							{
-								var w = kv.Value[i];
-								if (ver > w.ReadVersion)
+								// set the version of the watch
+								w.ReadVersion = snapshot.Version;
+								w.CommitVersion = commitVersion;
+
+								// the watch value _may_ already have changed
+								if (source != null)
 								{
-									// we have to check if the value has changed!
-									var updatedValue = updated.Read(new(w.Key));
-									if (!w.Value.Equals(updatedValue.Slice))
-									{
-										if (this.BuggifyState is not null && this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
-										{ // buggify: the deferred check leaves the node registered with its original baseline and read version, so a later commit still differing from the baseline fires it (self-heal), and only a net-reverted change stays pending
-											Kenobi($"WWW watch({w.Key}) check deferred by buggify at commit {commitVersion}");
+									var updatedValue = source.Read(new(w.Key));
+									if (!updatedValue.Slice.Equals(w.Value))
+									{ // it was changed in between the creation of the watch and the commit!
+										if (this.BuggifyState is null || !this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
+										{
+											// queue the watch for triggering
+											(watchesToTrigger ??= [ ]).Add(w);
 											continue;
 										}
-
-										Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) triggered by commit {commitVersion}, changed to {updatedValue} from {w.Value}");
-
-										// queue the watch for triggering
-										(watchesToTrigger ??= [ ]).Add(w);
-
-										// remove it from this key
-										kv.Value.RemoveAt(i);
-										--i;
+										// buggify: deferred check - fall through and register the node with its original baseline (a later real change self-heals it)
 									}
-									else
-									{
-										Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) idempotent");
-									}
+									// it is still active
+								}
+
+	#if NET6_0_OR_GREATER
+								ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.ActiveWatches, w.Key, out var exists);
+								if (!exists)
+								{
+									slot = [ w ];
 								}
 								else
 								{
-									Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) untouched");
+									slot!.Add(w);
+								}
+	#else
+								// CollectionsMarshal.GetValueRefOrAddDefault is not available: use a regular lookup + insert (which pays for two hash lookups instead of one)
+								if (!this.ActiveWatches.TryGetValue(w.Key, out var slot))
+								{
+									this.ActiveWatches[w.Key] = [ w ];
+								}
+								else
+								{
+									slot.Add(w);
+								}
+	#endif
+								Kenobi($"WWW watching key {w.Key} at rv {w.ReadVersion} and cv {w.CommitVersion}");
+							}
+
+							// the store now owns these nodes (registered or queued to trigger): whatever remains on the
+							// handler at dispose/reset/failed-commit time is an unarmed watch and must be failed
+							handler.Watches = null;
+						}
+
+						if (updated != null)
+						{
+							// look for all active watches and check them against the new write conflict map
+							foreach (var kv in this.ActiveWatches)
+							{
+								var ver = updated.Conflicts.GetValueOrDefault(new(kv.Key), 0);
+								Kenobi($"WWW checking watch key {kv.Key} for version {ver} (at rv {snapshot.Version} and cv {commitVersion})");
+
+								for (int i = 0; i < kv.Value.Count; i++)
+								{
+									var w = kv.Value[i];
+									if (ver > w.ReadVersion)
+									{
+										// we have to check if the value has changed!
+										var updatedValue = updated.Read(new(w.Key));
+										if (!w.Value.Equals(updatedValue.Slice))
+										{
+											if (this.BuggifyState is not null && this.BuggifyState.ShouldDeferWatchCheck(w.Key, commitVersion, ref buggifyDecided))
+											{ // buggify: the deferred check leaves the node registered with its ORIGINAL baseline and read version, so a later commit still differing from the baseline fires it (self-heal), and only a net-reverted change stays pending
+												Kenobi($"WWW watch({w.Key}) check deferred by buggify at commit {commitVersion}");
+												continue;
+											}
+
+											Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) triggered by commit {commitVersion}, changed to {updatedValue} from {w.Value}");
+
+											// queue the watch for triggering
+											(watchesToTrigger ??= [ ]).Add(w);
+
+											// remove it from this key
+											kv.Value.RemoveAt(i);
+											--i;
+										}
+										else
+										{
+											Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) idempotent");
+										}
+									}
+									else
+									{
+										Kenobi($"WWW watch({w.Key}, rv {w.ReadVersion}, cv {w.CommitVersion}) untouched");
+									}
+								}
+
+								if (kv.Value.Count == 0)
+								{
+									(deadWatchedKeys ??= [ ]).Add(kv.Key);
 								}
 							}
 
-							if (kv.Value.Count == 0)
+							if (deadWatchedKeys != null)
 							{
-								(deadWatchedKeys ??= [ ]).Add(kv.Key);
-							}
-						}
-
-						if (deadWatchedKeys != null)
-						{
-							foreach (var k in deadWatchedKeys)
-							{
-								Kenobi($"WWW clearing dead watch key {k:K}");
-								this.ActiveWatches.Remove(k);
+								foreach (var k in deadWatchedKeys)
+								{
+									Kenobi($"WWW clearing dead watch key {k:K}");
+									this.ActiveWatches.Remove(k);
+								}
 							}
 						}
 					}
-				}
 
-				if (stamp != default)
-				{
-					handler.StampSignal?.TrySetResult(stamp);
-				}
-
-				// buggify: after arming and the commit-time scan, chaos may inject a spurious fire on one armed key (no-op unless Buggify.Chaos is set)
-				this.BuggifyState?.MaybeInjectSpuriousFire(commitVersion, ref watchesToTrigger);
-
-				if (watchesToTrigger is not null)
-				{
-					foreach (var watch in watchesToTrigger)
+					if (stamp != default)
 					{
-						watch.Trigger();
+						handler.StampSignal?.TrySetResult(stamp);
 					}
-				}
 
-				// buggify: emulate a maybe-committed outcome - the commit applied above, but the acknowledgement is lost
-				if (commitVersion >= 0 && this.BuggifyState?.ConsumeLoseNextCommitAck() == true)
-				{
-					if (handler.IdempotencyId.IsNull)
-					{ // no id: the client cannot resolve the ambiguity, so the loop re-runs the handler on top of the applied writes
-						throw new FdbException(FdbError.CommitUnknownResult);
+					// buggify: after arming and the commit-time scan, chaos may inject a spurious fire on one armed key (no-op unless Buggify.Chaos is set)
+					this.BuggifyState?.MaybeInjectSpuriousFire(commitVersion, ref watchesToTrigger);
+
+					if (watchesToTrigger is not null)
+					{
+						foreach (var watch in watchesToTrigger)
+						{
+							watch.Trigger();
+						}
 					}
-					// an id is set: the client resolves the ambiguity (the id was recorded in idmp above) to a definitive success
-					Interlocked.Increment(ref m_maybeCommittedResolutions);
+
+					// buggify: emulate a maybe-committed outcome - the commit applied above, but the acknowledgement is lost
+					if (commitVersion >= 0 && this.BuggifyState?.ConsumeLoseNextCommitAck() == true)
+					{
+						if (handler.IdempotencyId.IsNull)
+						{ // no id: the client cannot resolve the ambiguity, so the loop re-runs the handler on top of the applied writes
+							throw new FdbException(FdbError.CommitUnknownResult);
+						}
+						// an id is set: the client resolves the ambiguity (the id was recorded in idmp above) to a definitive success
+						Interlocked.Increment(ref m_maybeCommittedResolutions);
+					}
+
+					return commitVersion;
 				}
-				return commitVersion;
+				catch
+				{
+					// a prepared copy that never published must not leak its backend generation (with the
+					// fdblite backend, an engine writer); Discard is commit-aware, so reaching here AFTER a
+					// successful publish is a no-op on the frozen store
+					updated?.Data.Discard();
+					throw;
+				}
 			}
 
 		}
 
-		/// <summary>Backend hook, called under the global write lock: makes a committed snapshot durable, publishes it as the current state, then applies the store's retention policy; returns the instance the rest of the commit works with.</summary>
-		/// <remarks>The in-memory backend returns the snapshot unchanged; a persistent backend flushes its generation first and may return a frozen re-wrap. A subclass that overrides this hook must call the base to keep the retained set in step with <see cref="Snapshots"/>.</remarks>
-		protected virtual Snapshot PublishSnapshot(Snapshot updated, long commitVersion)
+		/// <summary>Called under the global write lock: makes a committed snapshot durable through the backend, publishes it as the current state, and trims the retained window; returns the instance the rest of the commit works with.</summary>
+		/// <remarks>The backend can hand back a different committed store than the one that was written to (a persistent one freezes its writable generation into a readable view at the new durable root), so the published snapshot is a re-wrap rather than <paramref name="updated"/> itself.</remarks>
+		private Snapshot PublishSnapshot(Snapshot updated, long commitVersion)
 		{
-			this.CurrentSnapshotUnsafe = updated;
-			this.Snapshots[commitVersion] = updated;
+			var published = ReplaceSnapshotStore(updated, this.Backend.Publish(updated.Data, commitVersion));
+
+			this.CurrentSnapshotUnsafe = published;
+			this.Snapshots[commitVersion] = published;
 			this.RetentionContext.Entries.Add(new(commitVersion, this.Time.GetUtcNow()));
 			this.ReadVersion = commitVersion;
 			TrimRetainedSnapshots();
-			return updated;
+			return published;
 		}
 
-		/// <summary>Backend hook: a transaction is done with its resolved snapshot (dispose or reset). The in-memory backend does not care; a persistent backend releases the read pin that held the snapshot's generation.</summary>
-		protected internal virtual void OnTransactionEnd(ReadYourWritesSnapshot snapshot)
+		/// <summary>Drops the published versions the backend can no longer serve, then the ones the retention policy reclaims; a read at a dropped version fails with <see cref="FdbError.TransactionTooOld"/>.</summary>
+		private void TrimRetainedSnapshots()
 		{
+			var ctx = this.RetentionContext;
+
+			// the backend's ceiling first: a backend that reclaims storage can only serve this many versions behind the head, whatever the policy keeps
+			int ceiling = this.Backend.RetainedVersions;
+			if (ceiling != int.MaxValue)
+			{
+				while (ctx.Entries.Count > ceiling + 1)
+				{
+					this.Snapshots.Remove(ctx.Entries[0].Version);
+					ctx.Entries.RemoveAt(0);
+				}
+			}
+
+			// then the policy, over what remains
+			ctx.Begin(this.Time);
+			this.RetentionPolicy(ctx);
+			if (ctx.Dropped is { Count: > 0 } dropped)
+			{
+				foreach (var version in dropped)
+				{
+					if (this.Snapshots.Remove(version))
+					{
+						int i = ctx.Entries.FindIndex(e => e.Version == version);
+						if (i >= 0) ctx.Entries.RemoveAt(i);
+					}
+				}
+
+				// only a POLICY drop advances the conflict-history floor: the policy expresses the window
+				// semantics (time or count), so what it drops is truly aged out. A ceiling trim above does
+				// not move the floor: a backend that reclaims old PAGES only limits which versions a read
+				// can start at, and a writer with an older read version stays committable against the full
+				// conflict history, which is how the store behaved before the floor existed.
+				this.ConflictFloor = ctx.Entries[0].Version;
+			}
 		}
 
-		/// <summary>Backend helper: the committed store under a snapshot (the seam surface a backend implements).</summary>
-		protected static IFdbCommittedStore GetSnapshotStore(Snapshot snapshot) => snapshot.Data;
+		/// <summary>A transaction is done with its resolved snapshot (dispose or reset): releases the pin taken when it started.</summary>
+		protected internal void OnTransactionEnd(ReadYourWritesSnapshot snapshot) => this.Backend.Release(snapshot.Version);
 
-		/// <summary>Backend helper: re-wraps a snapshot around a replacement committed store (a persistent backend freezes its writable store into a readable one at publish).</summary>
+		/// <summary>Re-wraps a snapshot around a replacement committed store, keeping its version, conflicts, stamp and arena.</summary>
 		protected static Snapshot ReplaceSnapshotStore(Snapshot snapshot, IFdbCommittedStore data) => new(snapshot.Version, data, snapshot.Conflicts, snapshot.Stamp, snapshot.Arena);
 
 		public IFdbTenantHandler OpenTenant(FdbTenantName name) => throw new NotImplementedException();
@@ -2045,15 +2014,29 @@ namespace FoundationDB.Testing
 			this.Options[option] = Slice.FromBytes(data);
 		}
 
-		public virtual IFdbTransactionHandler CreateTransaction(FdbOperationContext context)
-		{
-			// closes the generic boundary for this backend: the whole handler monomorphizes over the ColaStore cursor
-			return new TransactionHandler<ColaCommittedCursor>(this, context);
-		}
+		public virtual IFdbTransactionHandler CreateTransaction(FdbOperationContext context) => this.Backend.CreateTransaction(this, context);
 
 		#endregion
 
-		public class TransactionHandler<TCursor> : IFdbTransactionHandler
+		/// <summary>Cursor-agnostic face of a transaction handler: what an inspector can reach without knowing which storage is underneath.</summary>
+		/// <remarks>The handler is generic over its backend's cursor so the read core monomorphizes per storage, which makes the closed type a storage detail. Anything that only wants the owning store or the in-flight mutation state - a test probe, a dump helper - names this instead, and keeps working when a store changes storage.</remarks>
+		public abstract class TransactionHandler
+		{
+
+			protected TransactionHandler(FdbEmulatedDatabase store)
+			{
+				this.Store = store;
+			}
+
+			/// <summary>Store this transaction runs against</summary>
+			public FdbEmulatedDatabase Store { get; }
+
+			/// <summary>Returns the transaction's read-your-writes snapshot, waiting for it if it has not been started yet.</summary>
+			public abstract ReadYourWritesSnapshot GetSnapshotBlocking();
+
+		}
+
+		public class TransactionHandler<TCursor> : TransactionHandler, IFdbTransactionHandler
 			where TCursor : struct, IFdbCommittedCursor
 		{
 
@@ -2065,14 +2048,12 @@ namespace FoundationDB.Testing
 			private readonly object Lock = new();
 #endif
 
-			public TransactionHandler(FakeDbStore store, FdbOperationContext context)
+			public TransactionHandler(FdbEmulatedDatabase store, FdbOperationContext context)
+				: base(store)
 			{
-				this.Store = store;
 				this.Context = context;
 				this.Scratch = new Arena(16 * 1024, 128 * 1024, BufferPool);
 			}
-
-			public FakeDbStore Store { get; }
 
 			public FdbOperationContext Context { get; }
 
@@ -2271,7 +2252,7 @@ namespace FoundationDB.Testing
 				return false;
 			}
 
-			public ReadYourWritesSnapshot GetSnapshotBlocking()
+			public override ReadYourWritesSnapshot GetSnapshotBlocking()
 			{
 				if (!TryGetSnapshot(out var snapshot))
 				{
@@ -3118,8 +3099,14 @@ namespace FoundationDB.Testing
 				return new FdbWatch(node.Future, node.Key);
 			}
 
+			/// <summary>Creates an <see cref="FdbException"/> without the native message lookup: the code-only constructor resolves its text through <c>fdb_get_error</c>, and the emulator must work on machines where the <c>fdb_c</c> library is not installed.</summary>
+			private static FdbException CreateError(FdbError error) => new(error, error.ToString());
+
 			/// <summary>Fails every watch this transaction created but never armed (its commit did not succeed), like the real client does.</summary>
-			private void FailPendingWatches(FdbError error)
+			private void FailPendingWatches(FdbError error) => FailPendingWatches(CreateError(error));
+
+			/// <summary>Fails every watch this transaction created but never armed, with the given cause; a watch must always settle, or its awaiter deadlocks.</summary>
+			private void FailPendingWatches(Exception cause)
 			{
 				List<WatchNode>? pending;
 				lock (this.Lock)
@@ -3130,7 +3117,7 @@ namespace FoundationDB.Testing
 				if (pending is null) return;
 				foreach (var node in pending)
 				{
-					node.Future.TrySetException(new FdbException(error));
+					node.Future.TrySetException(cause);
 				}
 			}
 
@@ -3144,8 +3131,15 @@ namespace FoundationDB.Testing
 				catch (FdbException e)
 				{ // a failed commit (e.g. a conflict) kills the futures it would have settled:
 					// the watches fail with the commit error, the versionstamp with TransactionInvalidVersion (there is no commit version), both pinned against the real cluster
-					this.StampSignal?.TrySetException(new FdbException(FdbError.TransactionInvalidVersion));
+					this.StampSignal?.TrySetException(CreateError(FdbError.TransactionInvalidVersion));
 					FailPendingWatches(e.Code);
+					throw;
+				}
+				catch (Exception e) when (e is not OperationCanceledException)
+				{ // an unexpected engine failure must still settle the futures with the crash itself: a pending watch would deadlock its awaiter, which hides the failure instead of surfacing it
+					// (cancellation is excluded: the watch futures observe their own token, and Dispose/Reset settle survivors with TransactionCancelled)
+					this.StampSignal?.TrySetException(e);
+					FailPendingWatches(e);
 					throw;
 				}
 				finally
@@ -3178,7 +3172,7 @@ namespace FoundationDB.Testing
 						// realistic-but-virtual retry backoff: scheduled on the store's TimeProvider, so a fake clock
 						// advances it with everything else (and a real backoff costs zero real time under virtual time).
 						// The default policy is no wait (RetryDelayMaximum == 0), so normal tests retry instantly - a
-						// "broken cluster" test raises FakeDbStore.RetryDelayMaximum to emulate recovery timing.
+						// "broken cluster" test raises FdbEmulatedDatabase.RetryDelayMaximum to emulate recovery timing.
 						var maximum = this.Store.RetryDelayMaximum;
 						if (maximum > TimeSpan.Zero)
 						{
@@ -3200,7 +3194,7 @@ namespace FoundationDB.Testing
 						break;
 					}
 				}
-				throw new FdbException(code);
+				throw CreateError(code);
 			}
 
 			public void Reset()
@@ -3262,7 +3256,7 @@ namespace FoundationDB.Testing
 
 			public KeyValuePair<Key, Value> Current;
 
-			private readonly ColaStore<ColaRangeDictionary<Key, Mutation>.Entry>.Iterator Outer;
+			private readonly FdbWriteMap.Cursor Outer;
 
 			// non-readonly: the cursor is a mutable struct whose position advances in place (copying it would fork the position for a value-state backend cursor)
 			private TCursor Inner;
@@ -3271,11 +3265,11 @@ namespace FoundationDB.Testing
 
 			internal long Id;
 
-			public OnionIterator(IFdbCommittedStore<TCursor> inner, ColaRangeDictionary<Key, Mutation> outer, Arena arena, long id)
+			internal OnionIterator(IFdbCommittedStore<TCursor> inner, FdbWriteMap outer, Arena arena, long id)
 			{
 				this.OuterState = STATE_UNKNOWN;
 				this.InnerState = STATE_UNKNOWN;
-				this.Outer = outer.GetIterator();
+				this.Outer = outer.GetCursor();
 				this.Inner = inner.GetCursor();
 				this.Current = default;
 				this.Arena = arena;
@@ -3325,8 +3319,8 @@ namespace FoundationDB.Testing
 				}
 
 				// setup "outer": position at the first entry that can affect keys at/after the pivot.
-				// Clear/ClearRange entries are never skipped: the merge consumes them as masking directives over the inner layer.
-				if (this.Outer.Seek(new(selector.Key, selector.Key, null), selector.OrEqual))
+				// Clear/ClearRange entries are NEVER skipped: the merge consumes them as masking directives over the inner layer.
+				if (this.Outer.Seek(selector.Key, selector.OrEqual))
 				{ // positioned at the last entry beginning at/before the pivot
 					this.OuterState = STATE_AVAILABLE;
 					Kenobi($"*** #{this.Id} outer: {this.Outer.Current}");
@@ -3615,21 +3609,21 @@ namespace FoundationDB.Testing
 		/// change but loses a net-reverted transient forever). By construction a deferred check only loses fires the contract already
 		/// permits losing, so buggify never makes the emulator contract-illegal.</para>
 		/// <para>Every outcome is a pure function of (seed, transaction schedule, virtual clock): <see cref="Chaos"/> draws are
-		/// deterministic hashes of the commit version and key, and <see cref="FireWatchesAfter"/> schedules on <see cref="FakeDbStore.Time"/>,
+		/// deterministic hashes of the commit version and key, and <see cref="FireWatchesAfter"/> schedules on <see cref="FdbEmulatedDatabase.Time"/>,
 		/// so a test driving a fake clock replays exactly.</para>
 		/// <para>The facet is created lazily and stays inert until used; the shipped emulator default is buggify-off (see the store's
-		/// <see cref="FakeDbStore.Buggify"/> property).</para>
+		/// <see cref="FdbEmulatedDatabase.Buggify"/> property).</para>
 		/// </remarks>
 		[PublicAPI]
 		public sealed class FakeDbBuggify
 		{
 
-			internal FakeDbBuggify(FakeDbStore store)
+			internal FakeDbBuggify(FdbEmulatedDatabase store)
 			{
 				this.Store = store;
 			}
 
-			private FakeDbStore Store { get; }
+			private FdbEmulatedDatabase Store { get; }
 
 			/// <summary>Per-key count of pending deferred watch checks (see <see cref="SuppressNextWatchCheck"/>), consumed by the commit-time trigger check.</summary>
 			private Dictionary<Slice, int>? Suppressions { get; set; }
@@ -3736,7 +3730,7 @@ namespace FoundationDB.Testing
 
 			/// <summary>Schedules a spurious fire of the watches on <paramref name="key"/> after <paramref name="delay"/> elapses on the store clock (the timed variant of <see cref="FireWatches"/>).</summary>
 			/// <param name="key">The (fully-encoded) watched key, as registered by <c>tr.Watch(...)</c>.</param>
-			/// <param name="delay">Delay measured on <see cref="FakeDbStore.Time"/>.</param>
+			/// <param name="delay">Delay measured on <see cref="FdbEmulatedDatabase.Time"/>.</param>
 			/// <remarks>Deterministic only when the store runs on an injectable clock (e.g. a <c>FakeTimeProvider</c>): the test advances
 			/// virtual time and the fire lands exactly then. Under the system clock it degrades to wall-clock timing, the same caveat as
 			/// the retry backoff - reproducible enough for a soak, not for a byte-exact replay.</remarks>
@@ -3884,38 +3878,6 @@ namespace FoundationDB.Testing
 			// top 53 bits of the hash mapped to [0, 1), the standard double construction
 			private static double Fraction(ulong h) => (h >> 11) * (1.0 / (1UL << 53));
 
-		}
-
-		/// <summary>Creates a standalone <see cref="Snapshot"/> that contains a set of initial key/value pairs.</summary>
-		public static Snapshot CreateSnapshotFrom(IEnumerable<KeyValuePair<Slice, Slice>> items)
-		{
-
-			var initialVersion = 0xfdb1337000000;
-			var initialStamp = MakeVersionStamp(initialVersion, 0);
-
-			var arena = new Arena(128 * 1024, 512 * 1024, GlobalPool);
-
-			var data = new ColaOrderedDictionary<Key, Value>(Key.Comparer.Default, Value.Comparer.Default);
-			data[SpecialKeys.SystemRoot] = arena.InternValue(Slice.FromString("You shall not pass!"));
-			data[SpecialKeys.SystemMetadataVersion] = arena.InternValue(initialStamp.ToSlice());
-			data[SpecialKeys.SystemEnd] = Value.Empty;
-
-			var conflicts = new ColaRangeDictionary<Key, long>(Key.Comparer.Default);
-
-			foreach (var kv in items)
-			{
-				data.Add(arena.InternKey(kv.Key), arena.InternValue(kv.Value));
-			}
-
-			var snapshot = new Snapshot(
-				initialVersion,
-				new ColaCommittedStore(data),
-				conflicts,
-				initialStamp,
-				arena
-			);
-
-			return snapshot;
 		}
 
 		/// <summary>Read-only implementation of the DirectoryLayer, that can lookup the path of the <see cref="FdbDirectorySubspace"/> that contains a key</summary>
@@ -4164,25 +4126,42 @@ namespace FoundationDB.Testing
 	}
 
 	/// <summary>Helper method to inspect the internals of a FakeDb, for troubleshooting/testing purpose</summary>
-	/// <remarks>CAUTION: this exposes internal structure that is not guaranteed to be thread-safe, and could cause unexpected behavior or deadlocks!</remarks>
+	/// <remarks>
+	/// <para>CAUTION: this exposes internal structure that is not guaranteed to be thread-safe, and could cause unexpected behavior or deadlocks!</para>
+	/// <para>A committed <see cref="Snapshot"/> is inspected through its own members (<see cref="Snapshot.Count"/>, <see cref="Snapshot.ReadData"/>, <see cref="Snapshot.ReadConflicts"/>, <see cref="Snapshot.Diff"/>), which read through the committed-store seam and therefore work over any storage. What remains here is the in-flight transaction state, which has no storage.</para>
+	/// </remarks>
 	public static class FakeDbDebugger
 	{
 
-		public static ColaOrderedDictionary<Key, Value> GetSnapshotData(Snapshot snapshot) => ((ColaCommittedStore) snapshot.Data).Inner;
+		/// <summary>Materializes the transaction's carved write view in the historical cola shape (the write buffer itself is an <see cref="FdbWriteMap"/> now; this keeps inspection call sites stable).</summary>
+		public static ColaRangeDictionary<Key, Mutation> GetSnapshotMutations(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot)
+		{
+			var res = new ColaRangeDictionary<Key, Mutation>(Key.Comparer.Default);
+			foreach (var entry in snapshot.Writes.GetView())
+			{
+				res.Mark(entry.Begin, entry.End, entry.Value!);
+			}
+			return res;
+		}
 
-		public static ColaRangeDictionary<Key, long> GetSnapshotConflictRanges(Snapshot snapshot) => snapshot.Conflicts;
+		public static ColaRangeSet<Key> GetSnapshotReadConflicts(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot) => snapshot.ReadConflicts;
 
-		public static ColaRangeDictionary<Key, Mutation> GetSnapshotMutations(FakeDbStore.ReadYourWritesSnapshot snapshot) => snapshot.Mutations;
-
-		public static ColaRangeSet<Key> GetSnapshotReadConflicts(FakeDbStore.ReadYourWritesSnapshot snapshot) => snapshot.ReadConflicts;
-
-		public static ColaRangeSet<Key> GetSnapshotWriteConflicts(FakeDbStore.ReadYourWritesSnapshot snapshot) => snapshot.WriteConflicts;
+		/// <summary>Materializes the transaction's write-conflict ranges in the historical cola shape (they ride the <see cref="FdbWriteMap"/> entries now).</summary>
+		public static ColaRangeSet<Key> GetSnapshotWriteConflicts(FdbEmulatedDatabase.ReadYourWritesSnapshot snapshot)
+		{
+			var res = new ColaRangeSet<Key>(Key.Comparer.Default);
+			foreach (var (begin, end) in snapshot.Writes.GetConflictRanges())
+			{
+				res.Mark(begin, end);
+			}
+			return res;
+		}
 
 		/// <summary>Number of times the store pruned its conflict map of the ranges below the retention floor.</summary>
-		public static int GetConflictPrunes(FakeDbStore store) => store.ConflictPrunes;
+		public static int GetConflictPrunes(FdbEmulatedDatabase store) => store.ConflictPrunes;
 
 		/// <summary>Number of conflict ranges held by the store's head snapshot.</summary>
-		public static int GetConflictRangeCount(FakeDbStore store) => store.CurrentSnapshotUnsafe.Conflicts.Count;
+		public static int GetConflictRangeCount(FdbEmulatedDatabase store) => store.CurrentSnapshotUnsafe.Conflicts.Count;
 
 	}
 

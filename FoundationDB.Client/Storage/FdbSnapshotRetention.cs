@@ -24,7 +24,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endregion
 
-namespace FoundationDB.Testing
+namespace FoundationDB.Storage
 {
 
 	/// <summary>Decides, after each published snapshot, which older retained snapshots the store drops.</summary>

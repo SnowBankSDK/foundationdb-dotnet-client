@@ -61,7 +61,9 @@ foreach ($pkg in $packages) {
         $hasReadme = @($names | Where-Object { $_ -ieq 'README.md' }).Count -gt 0
         Write-Host ("  {0,-54} {1}" -f $pkg.Name, $(if ($tfms) { $tfms -join ', ' } else { '(tool/analyzer)' }))
         if (-not $hasReadme) { $problems.Add("$($pkg.Name): no README.md") }
-        if ($tfms -and ($tfms -notcontains 'net8.0')) { $problems.Add("$($pkg.Name): missing net8.0 (incomplete target set - was the standalone build honored?)") }
+        # the storage engine package (FdbLite) has a net10.0 floor (CoreSdkStorageVersions); every other package keeps net8.0
+        $floor = if ($pkg.Name -match '^FoundationDB\.FdbLite\.') { 'net10.0' } else { 'net8.0' }
+        if ($tfms -and ($tfms -notcontains $floor)) { $problems.Add("$($pkg.Name): missing $floor (incomplete target set - was the standalone build honored?)") }
     } finally { $zip.Dispose() }
 }
 
@@ -70,5 +72,5 @@ if ($problems.Count -gt 0) {
     $problems | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
     exit 1
 }
-Write-Host "`nAll packages carry a README and net8.0 (complete target set)." -ForegroundColor Green
+Write-Host "`nAll packages carry a README and their floor target (net8.0, or net10.0 for FdbLite)." -ForegroundColor Green
 Write-Host "NOT pushed - publish the .nupkg files manually." -ForegroundColor Yellow
