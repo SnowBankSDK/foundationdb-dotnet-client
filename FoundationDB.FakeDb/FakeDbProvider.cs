@@ -195,7 +195,7 @@ namespace FoundationDB.Testing
 				this.Store = store;
 				this.Db = db;
 				this.Error = e;
-				this.IsAvailable = db != null && e != null;
+				this.IsAvailable = db != null && e == null;
 			}
 		}
 
