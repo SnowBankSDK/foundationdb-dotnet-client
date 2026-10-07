@@ -45,7 +45,7 @@ function DownloadFile {
 
 	try {
 		# Get the absolute path, otherwise File::Create(...) will not resolve '.' correctly!
-		$output = (Join-Path -Path $PWD.Path -ChildPath $output)
+		$output = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($output)
 
 		# GET ...
 		$request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $uri)
