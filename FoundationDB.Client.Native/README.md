@@ -6,18 +6,19 @@ This package will redistribute the native client libraries required to connect t
 
 The .NET FoundationDB Binding (`FoundationDB.Client`) is a managed .NET assembly that contains the APIs and other facilities to query a FoundationDB cluster from your .NET application.
 
-But like all other bindings, it requires a native library called `FDB Client Library` (usually `lifdb_c.so` or `fdb_c.dll`) to communicate with a compatible FoundationDB cluster.
+But like all other bindings, it requires a native library called `FDB Client Library` (usually `libfdb_c.so` or `fdb_c.dll`) to communicate with a compatible FoundationDB cluster.
 
-Contrary to other database systems, a native client library compiled for 7.4.x can only connect to 7.4.x servers
-and will not be able to connect to older (<= 7.3.x) or newer (>= 7.5.x, 8.x, ...) live cluster.
+A native client library connects only to clusters of its own major.minor version: the 7.4.x library connects to 7.4.x clusters,
+and the 8.0.x library connects to 8.0.x clusters. Neither connects to an older or a newer cluster (7.3.x, 7.5.x, 8.1.x, ...).
+This package is published once per FoundationDB branch (7.3.x, 7.4.x and 8.0.x): pick the version that matches your cluster.
 
 This gives you two choices:
-- Build your application to target a specific minor version of FoundationDB, such as `7.4`
-  - You will need to also deploy a `7.4.x` cluster, and your binaries will not be compatible with any other versions.
-  - You will have to rebuild your application if you decide to upgrade or download to a different minor or major version.
+- Build your application to target a specific minor version of FoundationDB, such as `8.0`
+  - You will need to deploy an `8.0.x` cluster, and your binaries will not be compatible with any other version.
+  - You will have to rebuild your application if you decide to upgrade or downgrade to a different minor or major version.
 - Build your application to target a specific API level such as `730`.
   - You will be able to connect to a live cluster with version _at least_ `7.3.x`.
-  - You will need to redistribute the by a side channel, either by including them manually in a DockerFile, or installing them at the last minute during deployment.
+  - You will need to redistribute the native libraries by a side channel, either by including them manually in a Dockerfile, or installing them at the last minute during deployment.
 
 The `FoundationDB.Client.Native` package helps solve the first case, by allowing you to reference a specific version of the native libraries in your project,
 and redistributes the native client library as part of the your binaries.
@@ -55,8 +56,8 @@ If you are not compiling the source of FoundationDB.Client, but instead are refe
 
 ```msbuild_build_script
 <ItemGroup>
-	<PackageReference Include"FoundationDB.Client" Version="x.y.z" /> <!-- use version compatible with the API level you need -->
-	<PackageReference Include"FoundationDB.Client.Native" Version="7.4.XXX" /> <!-- use a version compatible with your production cluster -->
+	<PackageReference Include="FoundationDB.Client" Version="x.y.z" /> <!-- use version compatible with the API level you need -->
+	<PackageReference Include="FoundationDB.Client.Native" Version="8.0.0" /> <!-- use the version of your production cluster: 7.3.x, 7.4.x or 8.0.x -->
 </ItemGroup>
 ```
 
