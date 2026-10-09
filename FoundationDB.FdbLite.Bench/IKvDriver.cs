@@ -59,6 +59,13 @@ namespace FoundationDB.FdbLite.Bench
 		/// <remarks>A length rather than the bytes, so the timed read does not pay for a copy. Verification uses <see cref="Scan"/>.</remarks>
 		int Probe(Slice key);
 
+		/// <summary>Point read returning the bytes, for verification rather than measurement. <see cref="Slice.Nil"/> when the key is absent.</summary>
+		Slice Read(Slice key)
+		{
+			var hit = Scan(key, Slice.Nil, 1);
+			return hit.Count > 0 && hit[0].Key.Equals(key) ? hit[0].Value : Slice.Nil;
+		}
+
 		/// <summary>Ordered forward scan returning the pairs visited, for verification. <paramref name="end"/> may be <see cref="Slice.Nil"/> (no upper bound); <paramref name="limit"/> 0 means no limit.</summary>
 		List<KeyValuePair<Slice, Slice>> Scan(Slice begin, Slice end, int limit);
 
@@ -66,6 +73,16 @@ namespace FoundationDB.FdbLite.Bench
 		/// <param name="reverse">Walk backwards from <paramref name="end"/> instead of forwards from <paramref name="begin"/>.</param>
 		/// <param name="readValues">Touch each value. False stays inside the key area of each page.</param>
 		int ScanCount(Slice begin, Slice end, int limit, bool reverse, bool readValues);
+
+		/// <summary>Builds the whole dataset through the engine's own sorted bulk-load path, when it has one.</summary>
+		/// <param name="sorted">Every pair of the dataset, in strictly ascending key order.</param>
+		/// <param name="count">Number of pairs, for an engine that sizes something up front.</param>
+		/// <returns>False when the engine has no bulk path, so the caller builds the store by ordinary inserts.</returns>
+		/// <remarks>Opens and commits its own batch: it replaces the BeginBatch/Set/Commit loop and is never called inside one.</remarks>
+		bool TryBulkLoad(IEnumerable<KeyValuePair<Slice, Slice>> sorted, int count) => false;
+
+		/// <summary>True when the store was built by <see cref="TryBulkLoad"/> rather than by ordinary inserts. A bulk-loaded store is packed differently, so a report says which path produced each store.</summary>
+		bool BuiltViaBulk => false;
 
 		/// <summary>Engine counters after a run, as label/value pairs.</summary>
 		IEnumerable<KeyValuePair<string, long>> Stats();

@@ -39,10 +39,15 @@ namespace FoundationDB.FdbLite.Bench
 	{
 
 		private BindingDriver(string engine, FdbEmulatedDatabase store, string? path, FdbLiteGeometry geometry)
+			: this(engine, store.OpenDatabase(FdbPath.Root, readOnly: false, ownsStore: false), store, path, geometry)
+		{
+		}
+
+		private BindingDriver(string engine, IFdbDatabase db, FdbEmulatedDatabase? store, string? path, FdbLiteGeometry geometry)
 		{
 			this.Engine = engine;
 			this.Store = store;
-			this.Db = store.OpenDatabase(FdbPath.Root, readOnly: false, ownsStore: false);
+			this.Db = db;
 			this.Path = path;
 			this.Geometry = geometry;
 		}
@@ -51,8 +56,8 @@ namespace FoundationDB.FdbLite.Bench
 
 		private IFdbDatabase Db { get; set; }
 
-		/// <summary>The emulated store under <see cref="Db"/>.</summary>
-		private FdbEmulatedDatabase Store { get; set; }
+		/// <summary>The emulated store under <see cref="Db"/>, null for a database opened elsewhere (a native cluster connection).</summary>
+		private FdbEmulatedDatabase? Store { get; set; }
 
 		private string? Path { get; }
 
@@ -67,6 +72,14 @@ namespace FoundationDB.FdbLite.Bench
 
 		/// <summary>The in-memory FakeDb store through the binding.</summary>
 		public static BindingDriver ForFakeDb() => new("fakedb", new FakeDbStore(), null, FdbLiteGeometry.Default);
+
+		/// <summary>A database opened by the caller (a native cluster connection, for example), reported under <paramref name="engine"/>. The driver disposes it; there is no file, no audit and no reopen.</summary>
+		public static BindingDriver ForDatabase(string engine, IFdbDatabase db)
+		{
+			Contract.NotNullOrEmpty(engine);
+			Contract.NotNull(db);
+			return new(engine, db, null, null, FdbLiteGeometry.Default);
+		}
 
 		/// <summary>An FdbLite file store through the binding, at the same geometry as the raw driver.</summary>
 		public static BindingDriver ForFdbLite(string path, FdbLiteGeometry geometry)
@@ -185,7 +198,7 @@ namespace FoundationDB.FdbLite.Bench
 
 		public bool Reopen()
 		{
-			if (this.Path is null) return false;
+			if (this.Path is null || this.Store is null) return false;
 			Contract.Requires(this.Tr is null, "a batch is still open");
 			this.Db.Dispose();
 			this.Store.Dispose();
@@ -200,7 +213,7 @@ namespace FoundationDB.FdbLite.Bench
 			this.Lifetime.Cancel();
 			this.Lifetime.Dispose();
 			this.Db.Dispose();
-			this.Store.Dispose();
+			this.Store?.Dispose();
 			if (this.Path is { } p) { try { File.Delete(p); } catch { /* best effort */ } }
 		}
 

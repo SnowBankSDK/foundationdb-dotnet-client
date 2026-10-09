@@ -34,23 +34,31 @@ namespace FoundationDB.FdbLite.Bench
 	public sealed class FdbLiteEngineDriver : IKvDriver
 	{
 
-		/// <param name="path">File of the store. An existing file is deleted first.</param>
-		/// <param name="geometry">Page geometry of the fresh store.</param>
-		public FdbLiteEngineDriver(string path, FdbLiteGeometry geometry)
+		/// <param name="path">File of the store. An existing file is deleted first, unless <paramref name="reopen"/> is set.</param>
+		/// <param name="geometry">Page geometry of a fresh store. An existing file keeps the geometry of its header.</param>
+		/// <param name="reopen">Open the file as it stands on disk instead of starting from an empty store.</param>
+		/// <param name="initialSizeInBytes">Bytes reserved up front by a fresh store; 0 grows on demand.</param>
+		/// <param name="bulkImport">Make <see cref="TryBulkLoad"/> render the dataset through <see cref="FdbLiteEngine.Import"/> instead of reporting no bulk path.</param>
+		/// <param name="configure">Applied to every engine this driver opens, including after <see cref="Reopen"/>, after the consolidation pin.</param>
+		public FdbLiteEngineDriver(string path, FdbLiteGeometry geometry, bool reopen = false, long initialSizeInBytes = 0, bool bulkImport = false, Action<FdbLiteEngine>? configure = null)
 		{
 			Contract.NotNullOrEmpty(path);
 			this.Path = path;
 			this.Geometry = geometry;
-			if (File.Exists(path)) File.Delete(path);
-			this.Engine = Open(path, geometry);
+			this.InitialSizeInBytes = initialSizeInBytes;
+			this.BulkImport = bulkImport;
+			this.Configure = configure;
+			if (!reopen && File.Exists(path)) File.Delete(path);
+			this.Engine = Open();
 			this.Version = this.Engine.Durable.DatabaseVersion;
 		}
 
-		private static FdbLiteEngine Open(string path, FdbLiteGeometry geometry)
+		private FdbLiteEngine Open()
 		{
 			// the geometry argument is ignored when the file already exists: the header is read back instead
-			var engine = FdbLiteEngine.OpenOrCreateFile(path, geometry);
+			var engine = FdbLiteEngine.OpenOrCreateFile(this.Path, this.Geometry, initialSizeInBytes: this.InitialSizeInBytes);
 			engine.PreCommitConsolidation = FdbLitePreCommitConsolidation.Off;
+			this.Configure?.Invoke(engine);
 			return engine;
 		}
 
@@ -60,7 +68,19 @@ namespace FoundationDB.FdbLite.Bench
 
 		private FdbLiteGeometry Geometry { get; }
 
-		private FdbLiteEngine Engine { get; set; }
+		private long InitialSizeInBytes { get; }
+
+		private bool BulkImport { get; }
+
+		private Action<FdbLiteEngine>? Configure { get; }
+
+		/// <summary>The engine of the store currently open. Replaced by <see cref="Reopen"/>.</summary>
+		public FdbLiteEngine Engine { get; private set; }
+
+		/// <summary>Delete the store file with the driver. Off when the caller manages the file (a cold series reopens a store it built earlier).</summary>
+		public bool DeleteOnDispose { get; init; } = true;
+
+		public bool BuiltViaBulk { get; private set; }
 
 		private FdbLiteTreeWriter? Writer { get; set; }
 
@@ -84,6 +104,12 @@ namespace FoundationDB.FdbLite.Bench
 		private long TotalAppended { get; set; }
 
 		private long TotalLeafSplits { get; set; }
+
+		private long TotalSpliced { get; set; }
+
+		private long TotalSplitSiblings { get; set; }
+
+		private long TotalStripped { get; set; }
 
 		public long FileSize => new FileInfo(this.Path).Length;
 
@@ -123,6 +149,21 @@ namespace FoundationDB.FdbLite.Bench
 
 		public void Set(Slice key, Slice value) => this.Current.Insert(key.Span, value.Span);
 
+		/// <summary>Exclusive upper bound handed to <see cref="FdbLiteEngine.Import"/>, above every key the workloads generate. Import throws on a key outside the range.</summary>
+		private static readonly Slice ImportUpperBound = Slice.FromByte(0xFF);
+
+		/// <summary>Renders the whole run into full pages instead of inserting it key by key.</summary>
+		/// <remarks>Import owns its own writer and commits its own generation, so the per-writer counters (splits, copies, descents) stay at zero for this path.</remarks>
+		public bool TryBulkLoad(IEnumerable<KeyValuePair<Slice, Slice>> sorted, int count)
+		{
+			if (!this.BulkImport) return false;
+			Contract.Requires(this.Writer is null, "a batch is already open");
+			ReleasePin();
+			this.Engine.Import(sorted, Slice.Empty, ImportUpperBound, FdbLiteImportOptions.Default, ++this.Version);
+			this.BuiltViaBulk = true;
+			return true;
+		}
+
 		public void Clear(Slice key) => this.Current.Remove(key.Span);
 
 		public void ClearRange(Slice begin, Slice end) => this.Current.RemoveRange(begin.Span, end.Span);
@@ -140,6 +181,9 @@ namespace FoundationDB.FdbLite.Bench
 			this.TotalDescents += w.LeafDescents;
 			this.TotalAppended += w.PagesAppended;
 			this.TotalLeafSplits += w.LeafSplits;
+			this.TotalSpliced += w.CellsSpliced;
+			this.TotalSplitSiblings += w.SplitSiblingsCreated;
+			this.TotalStripped += w.PagesStripped;
 			this.Writer = null;
 		}
 
@@ -147,6 +191,13 @@ namespace FoundationDB.FdbLite.Bench
 		{
 			var pin = AcquirePin();
 			return FdbLiteTreeReader.TryGetValue(this.Engine.Pager, pin.RootPageId, key.Span, out var value) ? value.Length : -1;
+		}
+
+		public Slice Read(Slice key)
+		{
+			var pin = AcquirePin();
+			// copy: the span points into pager memory and dies with the pin
+			return FdbLiteTreeReader.TryGetValue(this.Engine.Pager, pin.RootPageId, key.Span, out var value) ? Slice.FromBytes(value) : Slice.Nil;
 		}
 
 		public List<KeyValuePair<Slice, Slice>> Scan(Slice begin, Slice end, int limit)
@@ -216,7 +267,12 @@ namespace FoundationDB.FdbLite.Bench
 			yield return new("leafDescents", this.TotalDescents);
 			yield return new("pagesAppended", this.TotalAppended);
 			yield return new("leafSplits", this.TotalLeafSplits);
+			yield return new("cellsSpliced", this.TotalSpliced);
+			yield return new("splitSiblings", this.TotalSplitSiblings);
+			yield return new("pagesStripped", this.TotalStripped);
 			yield return new("keyCount", (long) this.Engine.Durable.KeyCount);
+			// the file length is a reservation that grows in large steps; the frontier is what the allocator handed out
+			yield return new("allocationFrontier", (long) this.Engine.Durable.AllocationFrontier);
 			yield return new("pendingReclaimBlocks", s.PendingReclaimBlocks);
 			var (reusable, pending) = this.Engine.MeasureFreeSpace();
 			yield return new("freeReusableBytes", reusable);
@@ -224,7 +280,10 @@ namespace FoundationDB.FdbLite.Bench
 			var t = this.Engine.MeasureTreeStatistics();
 			yield return new("leafPages", t.LeafPages);
 			yield return new("internalPages", t.InternalPages);
+			yield return new("cellCount", t.CellCount);
+			yield return new("leafLiveBytes", t.LeafLiveBytes);
 			yield return new("wastedBytes", t.WastedBytes);
+			yield return new("freeGapBytes", t.FreeGapBytes);
 			long leafCapacity = (long) t.LeafPages * this.Engine.Pager.Geometry.PageSize;
 			yield return new("leafFillPct", leafCapacity == 0 ? 0 : (long) (100.0 * t.LeafLiveBytes / leafCapacity));
 			yield return new("fileBytes", this.FileSize);
@@ -241,7 +300,7 @@ namespace FoundationDB.FdbLite.Bench
 			Contract.Requires(this.Writer is null, "a batch is still open");
 			ReleasePin();
 			this.Engine.Dispose();
-			this.Engine = Open(this.Path, this.Geometry);
+			this.Engine = Open();
 			this.Version = this.Engine.Durable.DatabaseVersion;
 			return true;
 		}
@@ -250,7 +309,10 @@ namespace FoundationDB.FdbLite.Bench
 		{
 			ReleasePin();
 			this.Engine.Dispose();
-			try { File.Delete(this.Path); } catch { /* best effort */ }
+			if (this.DeleteOnDispose)
+			{
+				try { File.Delete(this.Path); } catch { /* best effort */ }
+			}
 		}
 
 	}

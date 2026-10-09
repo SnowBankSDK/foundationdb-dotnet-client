@@ -30,7 +30,7 @@ namespace FoundationDB.FdbLite.Bench
 
 	/// <summary>Driver for a sampling profiler: a warm-up pass over every selected workload, then 3 marked rounds per workload with 2-second idle gaps, so each workload shows up as a named, isolated burst in the timeline.</summary>
 	/// <remarks>
-	/// <para>Each workload runs inside its own <c>Workload_*</c> frame, marked <see cref="MethodImplOptions.NoInlining"/>, so a call tree and the allocation backtraces split by workload instead of pooling under the replay loop. A workload without a frame (a new one, not yet listed in <see cref="RunNamed"/>) still runs, under the plain replay frame, and the header says so.</para>
+	/// <para>Each workload runs inside its own <c>Workload_*</c> frame, marked <see cref="MethodImplOptions.NoInlining"/>, so a call tree and the allocation backtraces split by workload instead of pooling under the replay loop. A workload without a frame (a new one, not yet listed in <see cref="RunNamed{T}"/>) still runs, under the plain replay frame, and the header says so.</para>
 	/// <para>No statistics: the profiler is the instrument. The <c>###</c> markers carry a wall-clock stamp to correlate with the timeline.</para>
 	/// </remarks>
 	public static class ProfileMode
@@ -98,7 +98,7 @@ namespace FoundationDB.FdbLite.Bench
 			return 0;
 		}
 
-		private static bool HasFrame(Workload load) => load.Name is
+		public static bool HasFrame(Workload load) => load.Name is
 			"insert.seq.idx.v0" or "insert.seq.idx.v8" or "insert.seq.idx.v64" or "insert.seq.idx.v1k"
 			or "insert.seq.flat.v8" or "insert.seq.scatter.v8" or "insert.rand.idx.v8" or "insert.seq.idx.v8.batch1k"
 			or "insert.rand.idx.v8.batch100" or "insert.rand.idx.v8.batch10"
@@ -112,77 +112,80 @@ namespace FoundationDB.FdbLite.Bench
 			or "ledger.append.churn";
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
-		private static RunResult RunNamed(BenchOptions o, string engine, Workload load) => load.Name switch
+		public static RunResult RunNamed(BenchOptions o, string engine, Workload load) => RunNamed(l => Replay.Once(o, engine, l), load);
+
+		/// <summary>Runs <paramref name="run"/> on <paramref name="load"/> inside the <c>Workload_*</c> frame of its name, or under the plain frame for a workload without one.</summary>
+		public static T RunNamed<T>(Func<Workload, T> run, Workload load) => load.Name switch
 		{
-			"insert.seq.idx.v0" => Workload_insert_seq_idx_v0(o, engine, load),
-			"insert.seq.idx.v8" => Workload_insert_seq_idx_v8(o, engine, load),
-			"insert.seq.idx.v64" => Workload_insert_seq_idx_v64(o, engine, load),
-			"insert.seq.idx.v1k" => Workload_insert_seq_idx_v1k(o, engine, load),
-			"insert.seq.flat.v8" => Workload_insert_seq_flat_v8(o, engine, load),
-			"insert.seq.scatter.v8" => Workload_insert_seq_scatter_v8(o, engine, load),
-			"insert.rand.idx.v8" => Workload_insert_rand_idx_v8(o, engine, load),
-			"insert.seq.idx.v8.batch1k" => Workload_insert_seq_idx_v8_batch1k(o, engine, load),
-			"insert.rand.idx.v8.batch100" => Workload_insert_rand_idx_v8_batch100(o, engine, load),
-			"insert.rand.idx.v8.batch10" => Workload_insert_rand_idx_v8_batch10(o, engine, load),
-			"replace.same.seq" => Workload_replace_same_seq(o, engine, load),
-			"replace.same.rand" => Workload_replace_same_rand(o, engine, load),
-			"replace.same.skew" => Workload_replace_same_skew(o, engine, load),
-			"replace.grow.rand" => Workload_replace_grow_rand(o, engine, load),
-			"replace.shrink.rand" => Workload_replace_shrink_rand(o, engine, load),
-			"replace.same.v1k" => Workload_replace_same_v1k(o, engine, load),
-			"delete.rand.idx.v8" => Workload_delete_rand_idx_v8(o, engine, load),
-			"delete.seq.idx.v8" => Workload_delete_seq_idx_v8(o, engine, load),
-			"delete.range.idx.v8" => Workload_delete_range_idx_v8(o, engine, load),
-			"read.seq.idx.v8" => Workload_read_seq_idx_v8(o, engine, load),
-			"read.rand.idx.v8" => Workload_read_rand_idx_v8(o, engine, load),
-			"read.stride.idx.v8" => Workload_read_stride_idx_v8(o, engine, load),
-			"read.skew.idx.v8" => Workload_read_skew_idx_v8(o, engine, load),
-			"read.stride.idx.v1k" => Workload_read_stride_idx_v1k(o, engine, load),
-			"read.stride.flat.v8" => Workload_read_stride_flat_v8(o, engine, load),
-			"range.10.idx.v8" => Workload_range_10_idx_v8(o, engine, load),
-			"range.1k.idx.v8" => Workload_range_1k_idx_v8(o, engine, load),
-			"range.1k.idx.v8.verify" => Workload_range_1k_idx_v8_verify(o, engine, load),
-			"range.1k.idx.v8.keysonly" => Workload_range_1k_idx_v8_keysonly(o, engine, load),
-			"range.1k.idx.v8.reverse" => Workload_range_1k_idx_v8_reverse(o, engine, load),
-			"range.1k.idx.v1k" => Workload_range_1k_idx_v1k(o, engine, load),
-			"range.full.idx.v8" => Workload_range_full_idx_v8(o, engine, load),
-			"ledger.append.churn" => Workload_ledger_append_churn(o, engine, load),
-			_ => Replay.Once(o, engine, load),
+			"insert.seq.idx.v0" => Workload_insert_seq_idx_v0(run, load),
+			"insert.seq.idx.v8" => Workload_insert_seq_idx_v8(run, load),
+			"insert.seq.idx.v64" => Workload_insert_seq_idx_v64(run, load),
+			"insert.seq.idx.v1k" => Workload_insert_seq_idx_v1k(run, load),
+			"insert.seq.flat.v8" => Workload_insert_seq_flat_v8(run, load),
+			"insert.seq.scatter.v8" => Workload_insert_seq_scatter_v8(run, load),
+			"insert.rand.idx.v8" => Workload_insert_rand_idx_v8(run, load),
+			"insert.seq.idx.v8.batch1k" => Workload_insert_seq_idx_v8_batch1k(run, load),
+			"insert.rand.idx.v8.batch100" => Workload_insert_rand_idx_v8_batch100(run, load),
+			"insert.rand.idx.v8.batch10" => Workload_insert_rand_idx_v8_batch10(run, load),
+			"replace.same.seq" => Workload_replace_same_seq(run, load),
+			"replace.same.rand" => Workload_replace_same_rand(run, load),
+			"replace.same.skew" => Workload_replace_same_skew(run, load),
+			"replace.grow.rand" => Workload_replace_grow_rand(run, load),
+			"replace.shrink.rand" => Workload_replace_shrink_rand(run, load),
+			"replace.same.v1k" => Workload_replace_same_v1k(run, load),
+			"delete.rand.idx.v8" => Workload_delete_rand_idx_v8(run, load),
+			"delete.seq.idx.v8" => Workload_delete_seq_idx_v8(run, load),
+			"delete.range.idx.v8" => Workload_delete_range_idx_v8(run, load),
+			"read.seq.idx.v8" => Workload_read_seq_idx_v8(run, load),
+			"read.rand.idx.v8" => Workload_read_rand_idx_v8(run, load),
+			"read.stride.idx.v8" => Workload_read_stride_idx_v8(run, load),
+			"read.skew.idx.v8" => Workload_read_skew_idx_v8(run, load),
+			"read.stride.idx.v1k" => Workload_read_stride_idx_v1k(run, load),
+			"read.stride.flat.v8" => Workload_read_stride_flat_v8(run, load),
+			"range.10.idx.v8" => Workload_range_10_idx_v8(run, load),
+			"range.1k.idx.v8" => Workload_range_1k_idx_v8(run, load),
+			"range.1k.idx.v8.verify" => Workload_range_1k_idx_v8_verify(run, load),
+			"range.1k.idx.v8.keysonly" => Workload_range_1k_idx_v8_keysonly(run, load),
+			"range.1k.idx.v8.reverse" => Workload_range_1k_idx_v8_reverse(run, load),
+			"range.1k.idx.v1k" => Workload_range_1k_idx_v1k(run, load),
+			"range.full.idx.v8" => Workload_range_full_idx_v8(run, load),
+			"ledger.append.churn" => Workload_ledger_append_churn(run, load),
+			_ => run(load),
 		};
 
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_seq_idx_v0(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_seq_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_seq_idx_v64(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_seq_idx_v1k(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_seq_flat_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_seq_scatter_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_rand_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_seq_idx_v8_batch1k(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_rand_idx_v8_batch100(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_insert_rand_idx_v8_batch10(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_replace_same_seq(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_replace_same_rand(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_replace_same_skew(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_replace_grow_rand(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_replace_shrink_rand(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_replace_same_v1k(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_delete_rand_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_delete_seq_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_delete_range_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_read_seq_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_read_rand_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_read_stride_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_read_skew_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_read_stride_idx_v1k(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_read_stride_flat_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_range_10_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_range_1k_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_range_1k_idx_v8_verify(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_range_1k_idx_v8_keysonly(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_range_1k_idx_v8_reverse(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_range_1k_idx_v1k(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_range_full_idx_v8(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
-		[MethodImpl(MethodImplOptions.NoInlining)] private static RunResult Workload_ledger_append_churn(BenchOptions o, string engine, Workload load) => Replay.Once(o, engine, load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_seq_idx_v0<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_seq_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_seq_idx_v64<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_seq_idx_v1k<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_seq_flat_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_seq_scatter_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_rand_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_seq_idx_v8_batch1k<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_rand_idx_v8_batch100<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_insert_rand_idx_v8_batch10<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_replace_same_seq<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_replace_same_rand<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_replace_same_skew<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_replace_grow_rand<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_replace_shrink_rand<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_replace_same_v1k<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_delete_rand_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_delete_seq_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_delete_range_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_read_seq_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_read_rand_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_read_stride_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_read_skew_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_read_stride_idx_v1k<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_read_stride_flat_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_range_10_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_range_1k_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_range_1k_idx_v8_verify<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_range_1k_idx_v8_keysonly<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_range_1k_idx_v8_reverse<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_range_1k_idx_v1k<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_range_full_idx_v8<T>(Func<Workload, T> run, Workload load) => run(load);
+		[MethodImpl(MethodImplOptions.NoInlining)] private static T Workload_ledger_append_churn<T>(Func<Workload, T> run, Workload load) => run(load);
 
 	}
 

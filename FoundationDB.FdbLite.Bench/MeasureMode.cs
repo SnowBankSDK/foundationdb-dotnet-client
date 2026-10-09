@@ -155,7 +155,7 @@ namespace FoundationDB.FdbLite.Bench
 							try
 							{
 								var d = options.Open(engine, load.Name);
-								Replay.Run(d, load.Prepare, out _);
+								Replay.Prepare(d, load);
 								prepared[engine] = d;
 							}
 							catch (Exception ex)

@@ -53,7 +53,7 @@ namespace FoundationDB.FdbLite.Bench
 				var problems = new List<string>();
 
 				using var model = new ReferenceModel();
-				Replay.Run(model, load.Prepare, out _);
+				Replay.Prepare(model, load);
 				Replay.Run(model, load.Steps, out long expectedChecksum);
 				var expected = model.Scan(Slice.Empty, Slice.Nil, 0);
 
@@ -63,7 +63,7 @@ namespace FoundationDB.FdbLite.Bench
 					try
 					{
 						using var d = options.Open(engine, load.Name);
-						Replay.Run(d, load.Prepare, out _);
+						Replay.Prepare(d, load);
 						Replay.Run(d, load.Steps, out long checksum);
 
 						// 1. read checksum

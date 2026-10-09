@@ -41,7 +41,20 @@ namespace FoundationDB.FdbLite.Bench
 		public static double TimerResolutionNanos { get; } = 1_000_000_000.0 / Stopwatch.Frequency;
 
 		/// <summary>Nanoseconds above which an operation is recorded as slow for the burst analysis.</summary>
-		public const double SlowThresholdNanos = 500;
+		public static double SlowThresholdNanos { get; set; } = 500;
+
+		/// <param name="slowCapacity">Initial capacity of <see cref="SlowIndexes"/>.</param>
+		public LatencyProfile(int slowCapacity = 1_000_000)
+		{
+			this.SlowIndexes = new(slowCapacity);
+		}
+
+		/// <summary>Operations timed together as one sample, so the timer's tick is divided by this many.</summary>
+		/// <remarks>
+		/// <para>At 1 every operation is timed on its own, which cannot see below one tick (100 ns on a 10 MHz clock): a faster operation reads as 0 or as one whole tick, two artificial modes. A run of N operations timed together has a quantum of 100/N ns, which is what makes a 60 ns operation measurable.</para>
+		/// <para>The cost is attribution: a run is one sample, so a single slow operation is spread over its N neighbours, and <see cref="SlowIndexes"/> stays empty. A large N measures the fast mode, 1 isolates the tail.</para>
+		/// </remarks>
+		public int BatchSize { get; init; } = 1;
 
 		public RobustHistogram Set { get; } = new(RobustHistogram.TimeScale.Microseconds);
 
@@ -71,7 +84,7 @@ namespace FoundationDB.FdbLite.Bench
 		/// <para>The position is the evidence: a fixed per-operation tax scatters uniformly, a state-dependent cost arrives in bursts, and the period between bursts names the state.</para>
 		/// <para>Pre-sized, so the list never reallocates into the large object heap during the timed section, where the resulting collections would stall the operations being measured.</para>
 		/// </remarks>
-		public List<int> SlowIndexes { get; } = new(1_000_000);
+		public List<int> SlowIndexes { get; }
 
 		public void Merge(LatencyProfile other)
 		{

@@ -26,6 +26,7 @@
 
 namespace FoundationDB.FdbLite.Bench
 {
+	using SnowBank.Numerics;
 
 	/// <summary>What one timed (engine, workload) pass produced.</summary>
 	public sealed record RunResult(double NsPerOp, double BytesPerOp, long FileSize, Dictionary<string, long> Counters, LatencyProfile? Latency);
@@ -36,6 +37,19 @@ namespace FoundationDB.FdbLite.Bench
 
 		private static readonly double ToNanos = 1_000_000_000.0 / Stopwatch.Frequency;
 
+		/// <summary>Brings a fresh store to the state a workload measures against: the streamed load when the workload has one, the prepare steps otherwise. Never timed.</summary>
+		public static void Prepare(IKvDriver driver, Workload load)
+		{
+			if (load.PrepareStreamed is { } stream)
+			{
+				stream(driver);
+			}
+			else
+			{
+				Run(driver, load.Prepare, out _);
+			}
+		}
+
 		/// <summary>Replays a step array. Returns the elapsed wall time; reads are counted into <paramref name="checksum"/>, never compared here.</summary>
 		/// <remarks>Reads never interleave with an open batch: a read inside a batch would measure read-your-writes, which the raw engine does not have, so an open batch is committed before any read.</remarks>
 		public static TimeSpan Run(IKvDriver driver, KvStep[] steps, out long checksum, LatencyProfile? profile = null)
@@ -43,12 +57,35 @@ namespace FoundationDB.FdbLite.Bench
 			long sum = 0;
 			bool open = false;
 			int opIndex = 0;
+			// a run of consecutive operations of one kind timed as one sample divides the timer's tick by the run length
+			int batch = profile?.BatchSize ?? 1;
+			RobustHistogram? runHist = null;
+			long runStart = 0;
+			int runCount = 0;
+			void FlushRun()
+			{
+				if (runCount > 0 && runHist is not null)
+				{
+					runHist.AddNanos((Stopwatch.GetTimestamp() - runStart) * ToNanos / runCount);
+				}
+				runHist = null;
+				runCount = 0;
+			}
 			var sw = Stopwatch.StartNew();
 			foreach (var step in steps)
 			{
 				// one timestamp before the operation and one after, hoisted out of the switch so every arm is instrumented alike
 				var h = profile?.For(step.Op);
-				long t0 = h is not null ? Stopwatch.GetTimestamp() : 0;
+				long t0 = 0;
+				if (batch > 1)
+				{
+					if (!ReferenceEquals(runHist, h)) FlushRun(); // the operation kind changed: the run ends
+					if (h is not null && runCount == 0) { runHist = h; runStart = Stopwatch.GetTimestamp(); }
+				}
+				else if (h is not null)
+				{
+					t0 = Stopwatch.GetTimestamp();
+				}
 				switch (step.Op)
 				{
 					case KvOp.Set:
@@ -75,7 +112,11 @@ namespace FoundationDB.FdbLite.Bench
 						sum += driver.ScanCount(step.Key, step.EndKey, step.Limit, step.Reverse, step.ReadValues);
 						break;
 				}
-				if (h is not null)
+				if (batch > 1)
+				{
+					if (h is not null && ++runCount >= batch) FlushRun();
+				}
+				else if (h is not null)
 				{
 					double ns = (Stopwatch.GetTimestamp() - t0) * ToNanos;
 					h.AddNanos(ns);
@@ -84,6 +125,7 @@ namespace FoundationDB.FdbLite.Bench
 				}
 				++opIndex;
 			}
+			FlushRun();
 			if (open) driver.Commit();
 			sw.Stop();
 			checksum = sum;
@@ -111,7 +153,7 @@ namespace FoundationDB.FdbLite.Bench
 		public static RunResult Once(BenchOptions options, string engine, Workload load)
 		{
 			using var d = options.Open(engine, load.Name);
-			Run(d, load.Prepare, out _);
+			Prepare(d, load);
 			return Timed(d, load, options.Latency);
 		}
 

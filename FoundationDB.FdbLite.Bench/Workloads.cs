@@ -99,7 +99,16 @@ namespace FoundationDB.FdbLite.Bench
 		/// <summary>Brings the store to the state the measurement runs against. Replayed but never timed.</summary>
 		public KvStep[] Prepare { get; init; } = [];
 
+		/// <summary>Streamed alternative to <see cref="Prepare"/>, for a store too large to materialize as steps. Never timed, and identical for every engine.</summary>
+		public Action<IKvDriver>? PrepareStreamed { get; init; }
+
 		public required KvStep[] Steps { get; init; }
+
+		/// <summary>Logical items one op visits (rows per scan, 1 for point ops): the multiplier that turns ops/s into keys/s.</summary>
+		public int ItemsPerOp { get; init; } = 1;
+
+		/// <summary>Logical payload bytes one item carries (key plus value), for a derived MB/s figure. 0 when not meaningful.</summary>
+		public int BytesPerItem { get; init; }
 
 		/// <summary>Store operations in <see cref="Steps"/>, excluding commits: the denominator of ns/op.</summary>
 		public int Ops
@@ -174,32 +183,58 @@ namespace FoundationDB.FdbLite.Bench
 
 	}
 
+	/// <summary>Generates keys into one reused buffer, so a streamed load of millions of keys allocates nothing.</summary>
+	/// <remarks>Safe to reuse because every driver copies the bytes into its own page before returning. <see cref="KeySet"/> builds its keys from the same generator, so a streamed load and a materialized probe list address the same keys.</remarks>
+	public sealed class KeyGen
+	{
+
+		/// <summary>32 bytes: the 0xFE prefix byte, then a 31-character directory path.</summary>
+		/// <remarks>Built as bytes, not as a <c>u8</c> literal: in a string literal <c>\xFE</c> is the character U+00FE, which UTF-8 encodes as the two bytes C3 BE.</remarks>
+		private static readonly byte[] DirectoryRun = [ 0xFE, .."/acme/tenant-0042/orders/idx/x"u8 ];
+
+		public KeyGen(KeyShape shape)
+		{
+			this.Shape = shape;
+			this.Buffer = new byte[shape == KeyShape.Flat ? 16 : 36];
+			if (shape != KeyShape.Flat)
+			{
+				DirectoryRun.CopyTo(this.Buffer, 0);
+			}
+		}
+
+		private KeyShape Shape { get; }
+
+		private byte[] Buffer { get; }
+
+		/// <summary>Key of counter <paramref name="i"/>, in the shared buffer. The caller copies what it keeps.</summary>
+		public Slice Key(int i)
+		{
+			if (this.Shape == KeyShape.Flat)
+			{
+				BinaryPrimitives.WriteInt64BigEndian(this.Buffer.AsSpan(8), i);
+			}
+			else
+			{
+				BinaryPrimitives.WriteInt32BigEndian(this.Buffer.AsSpan(32), i);
+			}
+			return this.Buffer.AsSlice();
+		}
+
+	}
+
 	/// <summary>Pre-built key set, built once per workload and shared between prepare and replay.</summary>
 	public sealed class KeySet
 	{
-
-		private static ReadOnlySpan<byte> DirectoryRun => "\xFE/acme/tenant-0042/orders/idx/x"u8;
 
 		public KeySet(KeyShape shape, int count)
 		{
 			Contract.Positive(count);
 			this.Shape = shape;
 			this.Keys = new Slice[count];
-			int size = shape == KeyShape.Flat ? 16 : 36;
+			var gen = new KeyGen(shape);
 			for (int i = 0; i < count; i++)
 			{
-				var key = new byte[size];
-				if (shape == KeyShape.Flat)
-				{
-					BinaryPrimitives.WriteInt64BigEndian(key.AsSpan(8), i);
-				}
-				else
-				{
-					var run = DirectoryRun;
-					for (int j = 0; j < 32; j++) key[j] = run[j % run.Length];
-					BinaryPrimitives.WriteInt32BigEndian(key.AsSpan(32), shape == KeyShape.Scattered ? Scramble(i) : i);
-				}
-				this.Keys[i] = key.AsSlice();
+				this.Keys[i] = gen.Key(shape == KeyShape.Scattered ? Scramble(i) : i).ToArray().AsSlice();
 			}
 			if (shape == KeyShape.Scattered) Array.Sort(this.Keys, static (a, b) => a.Span.SequenceCompareTo(b.Span));
 		}
@@ -279,6 +314,7 @@ namespace FoundationDB.FdbLite.Bench
 				Family = "insert",
 				Shape = $"{count:N0} x {valueSize}B, {shape}, {order}, batch {batch:N0}",
 				Description = $"Inserts {count:N0} fresh {valueSize} B values under {order} {shape} keys into an empty store, committing every {batch:N0}.",
+				BytesPerItem = keys[0].Count + valueSize,
 				Steps = Seed(keys, valueSize, order, batch),
 			};
 		}
@@ -302,6 +338,7 @@ namespace FoundationDB.FdbLite.Bench
 				Family = "replace",
 				Shape = $"{replaces:N0} over {keyCount:N0}, {valueSize}B{(delta == 0 ? " same-len" : delta > 0 ? $" +{delta}B" : $" {delta}B")}, {order}, batch {batch:N0}",
 				Description = $"Overwrites {replaces:N0} existing values ({(delta == 0 ? "same length" : delta > 0 ? $"growing {delta} B" : $"shrinking {-delta} B")}) in {order} order over a seeded {keyCount:N0}-key store, committing every {batch:N0}.",
+				BytesPerItem = keys[0].Count + Math.Max(0, valueSize + delta),
 				Prepare = Seed(keys, valueSize, AccessOrder.Sequential, 100_000),
 				Steps = steps.ToArray(),
 			};
@@ -327,6 +364,7 @@ namespace FoundationDB.FdbLite.Bench
 				Family = "delete",
 				Shape = $"{deletes:N0} of {keyCount:N0}, {valueSize}B, {order}, batch {batch:N0}",
 				Description = $"Deletes single keys in {order} order out of a seeded {keyCount:N0}-key store of {valueSize} B values, committing every {batch:N0}.",
+				BytesPerItem = keys[0].Count + valueSize,
 				Prepare = Seed(keys, valueSize, AccessOrder.Sequential, 100_000),
 				Steps = steps.ToArray(),
 			};
@@ -349,6 +387,8 @@ namespace FoundationDB.FdbLite.Bench
 				Family = "delete",
 				Shape = $"{ranges:N0} ranges x {span:N0} of {keyCount:N0}, {valueSize}B",
 				Description = $"Clears {ranges:N0} random {span:N0}-key ranges from a seeded {keyCount:N0}-key store, one commit per range (one op = one whole range).",
+				ItemsPerOp = span,
+				BytesPerItem = keys[0].Count + valueSize,
 				Prepare = Seed(keys, valueSize, AccessOrder.Sequential, 100_000),
 				Steps = steps.ToArray(),
 			};
@@ -366,6 +406,7 @@ namespace FoundationDB.FdbLite.Bench
 				Family = "read",
 				Shape = $"{probes:N0} probes over {keyCount:N0} x {valueSize}B, {order}",
 				Description = $"Point-reads {probes:N0} keys in {order} order against a seeded {keyCount:N0}-key store of {valueSize} B values.",
+				BytesPerItem = keys[0].Count + valueSize,
 				Prepare = Seed(keys, valueSize, AccessOrder.Sequential, 100_000),
 				Steps = steps,
 			};
@@ -387,6 +428,8 @@ namespace FoundationDB.FdbLite.Bench
 				Family = "range",
 				Shape = $"{scans:N0} x {span:N0} rows over {keyCount:N0} x {valueSize}B{(reverse ? ", reverse" : "")}{(readValues ? ", +value" : ", keys only")}",
 				Description = $"Runs {scans:N0} {(reverse ? "reverse " : "")}range scans of {span:N0} rows each ({(readValues ? "keys and values" : "keys only")}) at random starts over a seeded {keyCount:N0}-key store (one op = one whole scan).",
+				ItemsPerOp = span,
+				BytesPerItem = keys[0].Count + (readValues ? valueSize : 0),
 				Prepare = Seed(keys, valueSize, AccessOrder.Sequential, 100_000),
 				Steps = steps,
 			};
@@ -420,6 +463,7 @@ namespace FoundationDB.FdbLite.Bench
 				Family = "mixed",
 				Shape = $"{records:N0} records, {updates} updates each in a {window:N0} window, {valueSize}B +{growth}B, batch {batch:N0}",
 				Description = $"Appends {records:N0} records at the right edge with {updates} updates each inside a trailing {window:N0}-record window, committing every {batch:N0}.",
+				BytesPerItem = keys[0].Count + valueSize,
 				Steps = steps.ToArray(),
 			};
 		}
@@ -433,8 +477,11 @@ namespace FoundationDB.FdbLite.Bench
 		public enum Scale { Smoke, Standard, Large }
 
 		/// <summary>Builds the 33 workloads of the matrix at the given scale.</summary>
-		public static IReadOnlyList<Workload> Build(Scale scale)
+		/// <param name="scale">Picks the key counts and the operation counts.</param>
+		/// <param name="readOpsMultiplier">Multiplies the operation counts of the read and range families only. Those operations are cheap, so at 1 their timed section lasts tens of milliseconds; more operations sharpen the measurement where more repeats would only average it.</param>
+		public static IReadOnlyList<Workload> Build(Scale scale, int readOpsMultiplier = 1)
 		{
+			Contract.Positive(readOpsMultiplier);
 			(int keys, int doc, int ops, int batch) = scale switch
 			{
 				Scale.Smoke => (20_000, 5_000, 10_000, 5_000),
@@ -474,15 +521,16 @@ namespace FoundationDB.FdbLite.Bench
 			w.Add(Workloads.ClearRanges("delete.range.idx.v8", KeyShape.Index, keys, Math.Max(10, ops / 2_000), 1_000, 8));
 
 			// point reads: the order is the axis; the value size decides whether the value area is touched
-			w.Add(Workloads.Read("read.seq.idx.v8", KeyShape.Index, keys, ops, 8, AccessOrder.Sequential));
-			w.Add(Workloads.Read("read.rand.idx.v8", KeyShape.Index, keys, ops, 8, AccessOrder.Random));
-			w.Add(Workloads.Read("read.stride.idx.v8", KeyShape.Index, keys, ops, 8, AccessOrder.Stride));
-			w.Add(Workloads.Read("read.skew.idx.v8", KeyShape.Index, keys, ops, 8, AccessOrder.Skewed));
-			w.Add(Workloads.Read("read.stride.idx.v1k", KeyShape.Index, doc, ops, 1024, AccessOrder.Stride));
-			w.Add(Workloads.Read("read.stride.flat.v8", KeyShape.Flat, keys, ops, 8, AccessOrder.Stride));
+			int rops = ops * readOpsMultiplier;
+			w.Add(Workloads.Read("read.seq.idx.v8", KeyShape.Index, keys, rops, 8, AccessOrder.Sequential));
+			w.Add(Workloads.Read("read.rand.idx.v8", KeyShape.Index, keys, rops, 8, AccessOrder.Random));
+			w.Add(Workloads.Read("read.stride.idx.v8", KeyShape.Index, keys, rops, 8, AccessOrder.Stride));
+			w.Add(Workloads.Read("read.skew.idx.v8", KeyShape.Index, keys, rops, 8, AccessOrder.Skewed));
+			w.Add(Workloads.Read("read.stride.idx.v1k", KeyShape.Index, doc, rops, 1024, AccessOrder.Stride));
+			w.Add(Workloads.Read("read.stride.flat.v8", KeyShape.Flat, keys, rops, 8, AccessOrder.Stride));
 
 			// range scans. The scan counts are what a timed section needs to last a few milliseconds.
-			int scans = Math.Max(1_000, ops / 4);
+			int scans = Math.Max(1_000, ops / 4) * readOpsMultiplier;
 			w.Add(Workloads.Scan("range.10.idx.v8", KeyShape.Index, keys, scans, 10, 8, false, true));
 			w.Add(Workloads.Scan("range.1k.idx.v8", KeyShape.Index, keys, scans / 20, 1_000, 8, false, true));
 			// the same scan, with every timed pass checking page checksums again on first touch (fdblite only):
