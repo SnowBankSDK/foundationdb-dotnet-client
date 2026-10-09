@@ -37,7 +37,7 @@ namespace SnowBank.Benchmarks
 	{
 		public FdbBenchConfig()
 		{
-			AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance));
+			AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Default));
 		}
 	}
 
