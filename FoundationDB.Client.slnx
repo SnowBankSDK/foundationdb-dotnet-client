@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Benchmarks/">
+    <Project Path="FoundationDB.FdbLite.Benchmarks/FoundationDB.FdbLite.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/Client/">
     <Project Path="FoundationDB.Aspire.Hosting/FoundationDB.Aspire.Hosting.csproj" />
     <Project Path="FoundationDB.Aspire/FoundationDB.Aspire.csproj" />
