@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/Benchmarks/">
+    <Project Path="FoundationDB.FdbLite.Bench/FoundationDB.FdbLite.Bench.csproj" />
     <Project Path="FoundationDB.FdbLite.Benchmarks/FoundationDB.FdbLite.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/Client/">

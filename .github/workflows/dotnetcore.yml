@@ -36,6 +36,12 @@ jobs:
     - name: Build (Release)
       run: dotnet build -c Release --no-restore -nowarn:CS1591
 
+    # The FdbLite correctness pass: every workload of the matrix replayed on the raw engine, on the
+    # emulator over it and on FakeDb, checked against an in-memory reference model. Docker-free,
+    # no native client, a few seconds at the smoke scale.
+    - name: Verify FdbLite (smoke)
+      run: dotnet run --no-build -c Release -f net11.0 --project FoundationDB.FdbLite.Bench -- verify smoke
+
     # Pack the libraries and tools
     - name: NuGet Pack
       env:

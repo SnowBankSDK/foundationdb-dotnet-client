@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		Replay harness for the FdbLite storage engine: a fixed matrix of workloads replayed on the raw engine, on the
+		emulator over it, and on FakeDb. The 'verify' mode checks every engine against an in-memory reference model
+		(the smoke test of the engine); 'measure' times the same workloads and writes a JSON file that a later run
+		compares against. Recipes: README.md. The BenchmarkDotNet suites live in FoundationDB.FdbLite.Benchmarks.
+	-->
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFrameworks>$(CoreSdkStorageVersions)</TargetFrameworks>
+		<LangVersion>preview</LangVersion>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<ServerGarbageCollection>true</ServerGarbageCollection>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>false</IsTestProject>
+		<GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+		<SignAssembly>true</SignAssembly>
+		<AssemblyOriginatorKeyFile>..\Common\foundationdb-net-client.snk</AssemblyOriginatorKeyFile>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<ItemGroup>
+		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+		<ProjectReference Include="..\FoundationDB.Client\FoundationDB.Client.csproj" />
+		<ProjectReference Include="..\FoundationDB.FakeDb\FoundationDB.FakeDb.csproj" />
+		<ProjectReference Include="..\FoundationDB.FdbLite\FoundationDB.FdbLite.csproj" />
+	</ItemGroup>
+
+</Project>
