@@ -115,7 +115,7 @@ A read-write transaction conflicts if another transaction commits a write to a k
   tr.AtomicMax(key, v); tr.AtomicMin(key, v);
   tr.AtomicAnd/Or/Xor(key, mask);
   ```
-  (Counters stored for atomic add **must** be fixed-width little-endian: `FdbValue.ToFixed64LittleEndian` / `Slice.FromFixed64`.)
+  (Counters stored for atomic add **must** be fixed-width little-endian: `FdbValue.ToFixed64LittleEndian`. `Slice.FromFixed64` builds the same bytes into an intermediate buffer that the transaction copies again, which FDB2001 reports.)
 
   ⚠️ **`AtomicMin` / `AtomicMax` compare LITTLE-ENDIAN, not lexicographically.** They also zero-extend or truncate the stored value to the length of your parameter first. That is correct for a fixed-width little-endian counter and **wrong for everything else**: on a tuple-encoded value, a UTF-8 string, a big-endian number or a `VersionStamp`, they will happily store the "larger" of two values under a comparison that has nothing to do with your ordering, and silently corrupt the key.
 

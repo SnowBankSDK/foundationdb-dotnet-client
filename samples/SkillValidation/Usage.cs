@@ -189,8 +189,8 @@ public static class Usage
 			tr.AtomicAdd64(counterKey, +1);
 			tr.AtomicIncrement64(counterKey);
 			tr.AtomicDecrement64(counterKey, clearIfZero: true);
-			tr.AtomicMax(counterKey, Slice.FromFixed64(5));
-			tr.AtomicMin(counterKey, Slice.FromFixed64(5));
+			tr.AtomicMax(counterKey, FdbValue.ToFixed64LittleEndian(5));
+			tr.AtomicMin(counterKey, FdbValue.ToFixed64LittleEndian(5));
 			tr.AtomicAnd(counterKey, Slice.FromFixed64(0xFF));
 			tr.AtomicOr(counterKey, Slice.FromFixed64(0xFF));
 			tr.AtomicXor(counterKey, Slice.FromFixed64(0xFF));
