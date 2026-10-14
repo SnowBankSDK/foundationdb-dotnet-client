@@ -49,7 +49,9 @@ namespace FoundationDB.Layers.Experimental.Indexing
 
 		public string Name { get; }
 
+#pragma warning disable FDB1001 // the caller passes the subspace and owns its lifetime: a fixed prefix, or one resolved for the transaction that uses this instance
 		public IKeySubspace Subspace { get; }
+#pragma warning restore FDB1001
 
 		public IEqualityComparer<TValue> ValueComparer { get; }
 

@@ -41,7 +41,9 @@ namespace FoundationDB.Layers.Blobs
 		}
 
 		/// <summary>Subspace used as a prefix for all hashsets in this collection</summary>
+#pragma warning disable FDB1001 // the caller passes the subspace and owns its lifetime: a fixed prefix, or one resolved for the transaction that uses this instance
 		public IKeySubspace Subspace { get; }
+#pragma warning restore FDB1001
 
 		#region Get
 
