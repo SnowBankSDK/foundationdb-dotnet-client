@@ -92,6 +92,40 @@ namespace SnowBank.Analyzers.Tests
 			""");
 
 		[Test]
+		public Task Reports_Reads_Through_A_Json_Method() => Verify.Analyzer<JsonValueNullTestAnalyzer>("""
+			#nullable enable
+			using SnowBank.Data.Json;
+			class C
+			{
+				bool M(JsonObject obj) => {|#0:obj.GetValueOrDefault("name") == null|};
+			}
+			""", Expected(0));
+
+		[Test]
+		public Task Ignores_Null_Tests_On_Values_That_Are_Not_Json_Reads() => Verify.Analyzer<JsonValueNullTestAnalyzer>("""
+			#nullable enable
+			using System;
+			using SnowBank.Data.Json;
+			class C
+			{
+				private readonly JsonObject field = null!;
+				JsonValue Property { get; } = JsonNull.Null;
+				static JsonValue Make() => JsonNull.Null;
+				void M(JsonObject data, JsonValue value)
+				{
+					// a parameter, a field, a property or the result of a method can be null whatever its annotation says
+					if (data == null) throw new ArgumentNullException(nameof(data));
+					_ = value is not null;
+					_ = Make() ?? JsonNull.Null;
+					_ = this.field != null;
+					_ = this.Property?.ToString();
+					JsonValue local = Make();
+					_ = local == null;
+				}
+			}
+			""");
+
+		[Test]
 		public Task Fixes_Equality() => Verify.CodeFix<JsonValueNullTestAnalyzer, JsonValueNullTestCodeFix>("""
 			#nullable enable
 			using SnowBank.Data.Json;
@@ -114,8 +148,9 @@ namespace SnowBank.Analyzers.Tests
 			using SnowBank.Data.Json;
 			class C
 			{
-				void M(JsonValue v)
+				void M(JsonObject obj)
 				{
+					JsonValue v = obj["name"];
 					_ = {|#0:v != null|};
 					_ = {|#1:v is null|};
 					_ = {|#2:v is not null|};
@@ -126,8 +161,9 @@ namespace SnowBank.Analyzers.Tests
 			using SnowBank.Data.Json;
 			class C
 			{
-				void M(JsonValue v)
+				void M(JsonObject obj)
 				{
+					JsonValue v = obj["name"];
 					_ = !v.IsNullOrMissing();
 					_ = v.IsNullOrMissing();
 					_ = !v.IsNullOrMissing();
