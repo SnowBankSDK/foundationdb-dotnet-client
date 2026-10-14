@@ -95,7 +95,7 @@ namespace SnowBank.Data.Json
 			/// <para>For a mutable object, see <see cref="JsonObject.Create(ValueTuple{string,JsonValue?},ValueTuple{string,JsonValue?})"/></para>
 			/// </remarks>
 			[Pure]
-			[Obsolete("Please use the JsonObject.Create([ (k, v), ... ]) instead.")]
+			[Obsolete("Please use the JsonObject.ReadOnly.Create([ (k, v), ... ]) instead.")]
 			[EditorBrowsable(EditorBrowsableState.Never)]
 			public static JsonObject Create((string Key, JsonValue? Value) item1, (string Key, JsonValue? Value) item2) => new(new(2, StringComparer.Ordinal)
 			{
