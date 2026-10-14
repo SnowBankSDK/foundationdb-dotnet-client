@@ -71,7 +71,7 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 		/// <para>This is not a bug in <c>PlaywrightWebBrowserTestComponent</c>. <c>RouteFulfillOptions.Headers</c> is
 		/// typed <c>IEnumerable&lt;KeyValuePair&lt;string, string&gt;&gt;</c> (not a <c>Dictionary</c>), so our own code
 		/// passes both <c>Set-Cookie</c> entries through un-collapsed (see <c>BindMeshNetworkRoutingAsync</c>) - but
-		/// Microsoft.Playwright 1.61.0's own <c>Core.Route.NormalizeFulfillParametersAsync</c> re-collapses that same
+		/// Microsoft.Playwright's own <c>Core.Route.NormalizeFulfillParametersAsync</c> (still in 1.63.0) re-collapses that same
 		/// enumerable into a <c>Dictionary&lt;string, string&gt;</c> keyed by lowercased header name before it is sent
 		/// to the browser, so duplicate header names still lose all but the last value. This happens inside the
 		/// Playwright binding itself, downstream of anything this component can influence.</para>
