@@ -60,15 +60,18 @@ namespace SnowBank.Data.Json
 		internal const string ReflectionSupportSwitchName = "SnowBank.Data.Json.CrystalJson.IsReflectionSupported";
 
 		/// <summary>Whether the runtime reflection (de)serialization path is available.</summary>
-		/// <remarks>Defaults to <see langword="true"/>. An application that publishes trimmed or Native AoT can set the
-		/// MSBuild feature <c>SnowBank.Data.Json.CrystalJson.IsReflectionSupported=false</c> (or the matching runtime
-		/// config switch): the trimmer then substitutes this property to <see langword="false"/> and removes the whole
-		/// reflection subtree, so a source-generated consumer builds with no trim warnings. Every reflection entry point
-		/// is guarded by this property, so with reflection off a reflected type throws <see cref="JsonReflectionDisabledException"/>.</remarks>
+		/// <remarks>
+		/// <para>Every reflection entry point is guarded by this property: with reflection off, a reflected type throws <see cref="JsonReflectionDisabledException"/>.</para>
+		/// <para>Defaults to <see langword="true"/>, except in a trimmed or Native AoT publish, where the package turns it off: the trimmer then substitutes
+		/// this property to <see langword="false"/> and removes the whole reflection subtree, so a source-generated consumer builds with no trim warnings.
+		/// An application that needs reflection in such a publish opts in with the MSBuild property <c>CrystalJsonIsReflectionSupported=true</c>,
+		/// and keeps the reflected members itself.</para>
+		/// </remarks>
 #if NET9_0_OR_GREATER
 		[System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(ReflectionSupportSwitchName)]
 		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute))]
 		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute))]
+		[System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL4000", Justification = "The package turns the switch off in a trimmed or Native AoT publish: it is on there only when the application opts in, and keeps the reflected members itself.")]
 #endif
 		public static bool IsReflectionSupported => AppContext.TryGetSwitch(ReflectionSupportSwitchName, out var enabled) ? enabled : true;
 

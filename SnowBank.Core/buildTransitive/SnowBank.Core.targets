@@ -1,0 +1,20 @@
+<Project>
+
+	<!-- The reflection paths of CrystalJson and TuPack are feature switches. In a trimmed or Native AoT publish they default
+	     to off: the trimmer removes them, and a reflected type throws instead of running members that the trimmer may have
+	     removed. An application that needs reflection there opts in with <CrystalJsonIsReflectionSupported>true</...> or
+	     <TuPackIsReflectionSupported>true</...>, and keeps the reflected members itself. A switch that the application
+	     already sets with its own RuntimeHostConfigurationOption is left alone. -->
+	<PropertyGroup Condition="'$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true'">
+		<CrystalJsonIsReflectionSupported Condition="'$(CrystalJsonIsReflectionSupported)' == ''">false</CrystalJsonIsReflectionSupported>
+		<TuPackIsReflectionSupported Condition="'$(TuPackIsReflectionSupported)' == ''">false</TuPackIsReflectionSupported>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<RuntimeHostConfigurationOption Include="SnowBank.Data.Json.CrystalJson.IsReflectionSupported" Value="$(CrystalJsonIsReflectionSupported)" Trim="true"
+			Condition="'$(CrystalJsonIsReflectionSupported)' != '' and '@(RuntimeHostConfigurationOption->WithMetadataValue('Identity', 'SnowBank.Data.Json.CrystalJson.IsReflectionSupported'))' == ''" />
+		<RuntimeHostConfigurationOption Include="SnowBank.Data.Tuples.TuPack.IsReflectionSupported" Value="$(TuPackIsReflectionSupported)" Trim="true"
+			Condition="'$(TuPackIsReflectionSupported)' != '' and '@(RuntimeHostConfigurationOption->WithMetadataValue('Identity', 'SnowBank.Data.Tuples.TuPack.IsReflectionSupported'))' == ''" />
+	</ItemGroup>
+
+</Project>
