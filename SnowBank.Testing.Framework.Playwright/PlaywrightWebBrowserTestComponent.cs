@@ -281,7 +281,7 @@ namespace SnowBank.Testing.Framework.Playwright
 					// throw on a duplicate key) is strictly better and lets several entries with the same header name
 					// survive AT OUR LAYER.
 					//
-					// KNOWN PLAYWRIGHT LIMITATION (verified against Microsoft.Playwright 1.63.0's own source,
+					// KNOWN PLAYWRIGHT LIMITATION (in the Playwright .NET binding's own source,
 					// Core/Route.cs, NormalizeFulfillParametersAsync): internally, route.FulfillAsync re-collapses this
 					// same IEnumerable into a `Dictionary<string, string>` keyed by the lowercased header name
 					// ("resultHeaders[header.Key.ToLowerInvariant()] = header.Value"), so a response with multiple
