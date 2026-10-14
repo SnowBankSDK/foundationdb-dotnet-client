@@ -37,7 +37,7 @@ namespace SnowBank.Analyzers.Tests
 
 		/// <summary>.NET 10 plus the ASP.NET Core shared framework (minimal APIs, dependency injection).</summary>
 		public static ReferenceAssemblies WithAspNetCore { get; } = ReferenceAssemblies.Net.Net100
-			.AddPackages([ new PackageIdentity("Microsoft.AspNetCore.App.Ref", "10.0.12") ]);
+			.AddPackages([ new PackageIdentity("Microsoft.AspNetCore.App.Ref", "10.0.13") ]);
 
 		/// <summary>SnowBank.Core, FoundationDB.Client, and their non-framework dependencies found next to the test assembly.</summary>
 		public static ImmutableArray<MetadataReference> Libraries { get; } = LoadLibraries();
