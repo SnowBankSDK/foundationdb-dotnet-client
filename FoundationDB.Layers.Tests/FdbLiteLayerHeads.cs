@@ -55,6 +55,7 @@ namespace FoundationDB.Client.Tests
 
 	/// <summary>Runs the suite against the persistent FdbLite provider (heap engine, no Docker, no native client).</summary>
 	[TestFixture]
+	[Obsolete]
 	public sealed class CounterFactsFdbLiteFacts : CounterFacts
 	{
 
@@ -163,6 +164,7 @@ namespace FoundationDB.Client.Tests
 
 	/// <summary>Runs the suite against the persistent FdbLite provider (heap engine, no Docker, no native client).</summary>
 	[TestFixture]
+	[Obsolete]
 	public sealed class StringInternFactsFdbLiteFacts : StringInternFacts
 	{
 
