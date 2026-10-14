@@ -158,13 +158,17 @@ namespace SnowBank.Data.Tuples.Binary
 			}
 		}
 
+		/// <summary>The chunk is the top-level encoding of a null item</summary>
+		/// <remarks>Every other item keeps the same encoding inside an embedded tuple: strings and bytes escape their own zeros, and embedded tuples carry their own terminator.</remarks>
+		private static bool IsNil(Slice chunk) => chunk.Count == 1 && chunk[0] == TupleTypes.Nil;
+
 		void ITuplePackable.PackTo(TupleWriter writer)
 		{
 			if (writer.Depth != 0)
-			{ // the chunks hold the top-level encoding of the items, and a null item is encoded differently inside an embedded tuple
-				for (int i = 0; i < m_slices.Length; i++)
+			{ // the chunks hold the top-level encoding of the items: only a null item is encoded differently inside an embedded tuple
+				foreach (var slice in m_slices.Span)
 				{
-					TuplePackers.SerializeObjectTo(writer, this[i]);
+					if (IsNil(slice)) writer.WriteNil(); else writer.Output.WriteBytes(slice);
 				}
 				return;
 			}
@@ -179,10 +183,10 @@ namespace SnowBank.Data.Tuples.Binary
 		public bool TryPackTo(ref TupleSpanWriter writer)
 		{
 			if (writer.Depth != 0)
-			{ // the chunks hold the top-level encoding of the items, and a null item is encoded differently inside an embedded tuple
-				for (int i = 0; i < m_slices.Length; i++)
+			{ // the chunks hold the top-level encoding of the items: only a null item is encoded differently inside an embedded tuple
+				foreach (var slice in m_slices.Span)
 				{
-					if (!TuplePackers.TrySerializeObjectTo(ref writer, this[i]))
+					if (!(IsNil(slice) ? writer.TryWriteNil() : writer.TryWriteLiteral(slice.Span)))
 					{
 						return false;
 					}
