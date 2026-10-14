@@ -62,7 +62,7 @@ namespace SnowBank.Analyzers.Tests
 				{
 					{|#1:Contract.Requires(!string.IsNullOrEmpty(name))|};
 					{|#2:Contract.Assert(!string.IsNullOrWhiteSpace(name))|};
-					{|#3:Contract.Debug.Requires(count > 0)|};
+					{|#3:Contract.Requires(count > 0)|};
 					{|#4:Contract.Requires(0 < size)|};
 					{|#5:Contract.Requires(ratio >= 0)|};
 					{|#6:Contract.Requires(null != name)|};
@@ -126,6 +126,20 @@ namespace SnowBank.Analyzers.Tests
 			""");
 
 		[Test]
+		public Task Ignores_Debug_Checks() => Verify.Analyzer<ContractArgumentAnalyzer>(Usings + """
+			public class C
+			{
+				// a Contract.Debug check is skipped in Release on purpose, for a caller that is trusted to pass valid arguments
+				public void M(string name, int count)
+				{
+					Contract.Debug.Requires(name != null);
+					Contract.Debug.Requires(count > 0);
+					Contract.Debug.Assert(name is not null);
+				}
+			}
+			""");
+
+		[Test]
 		public Task Fixes_Each_Shape() => Verify.CodeFix<ContractArgumentAnalyzer, ContractArgumentCodeFix>(Usings + """
 			public class C
 			{
@@ -134,7 +148,7 @@ namespace SnowBank.Analyzers.Tests
 					{|#0:Contract.Requires(name != null)|};
 					{|#1:Contract.Requires(!string.IsNullOrEmpty(name))|};
 					{|#2:Contract.Assert(!string.IsNullOrWhiteSpace(name))|};
-					{|#3:Contract.Debug.Requires(count > 0)|};
+					{|#3:Contract.Requires(count > 0)|};
 					{|#4:Contract.Requires(size >= 0)|};
 					{|#5:SnowBank.Diagnostics.Contracts.Contract.Requires(ratio > 0)|};
 				}
