@@ -11,9 +11,19 @@
 		<EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
 	</PropertyGroup>
 
+	<!-- AoT-compatible libraries run their analyzers in every build: the trim and AoT analysis keeps them free of warnings for
+	     trimmed and Native AoT consumers, and the SnowBank and FoundationDB rules run over the code that ships. -->
+	<PropertyGroup Condition="'$(IsAotCompatible)' == 'true'">
+		<RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+		<AttachDogfoodAnalyzers>true</AttachDogfoodAnalyzers>
+		<EnableNETAnalyzers>false</EnableNETAnalyzers>
+		<EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+	</PropertyGroup>
+
+	<!-- PrivateAssets="all": a packed library does not depend on the analyzer projects -->
 	<ItemGroup Condition="'$(AttachDogfoodAnalyzers)' == 'true'">
-		<ProjectReference Include="$(MSBuildThisFileDirectory)SnowBank.Core.Analyzers\SnowBank.Core.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-		<ProjectReference Include="$(MSBuildThisFileDirectory)FoundationDB.Client.Analyzers\FoundationDB.Client.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="$(MSBuildThisFileDirectory)SnowBank.Core.Analyzers\SnowBank.Core.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+		<ProjectReference Include="$(MSBuildThisFileDirectory)FoundationDB.Client.Analyzers\FoundationDB.Client.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
 	</ItemGroup>
 
 	<!-- NUnit.Analyzers comes from a package reference, so it is removed from the compiler inputs; source generators stay -->
