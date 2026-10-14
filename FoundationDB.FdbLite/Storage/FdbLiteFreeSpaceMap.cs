@@ -72,7 +72,7 @@ namespace FoundationDB.FdbLite
 		/// <summary>Records a range freed while building <paramref name="generation"/> (not reusable yet).</summary>
 		public void Free(uint start, uint count, ulong generation)
 		{
-			Contract.Requires(count > 0);
+			Contract.Positive(count);
 			Contract.Debug.Requires(this.Pending.Count == 0 || this.Pending.Last().Generation <= generation, "generations are monotonic");
 			this.Pending.Enqueue((generation, start, count));
 			Volatile.Write(ref this.PendingBlocks, this.PendingBlocks + count);
@@ -81,7 +81,7 @@ namespace FoundationDB.FdbLite
 		/// <summary>Records a range that is immediately reusable (never referenced by any retained tree: allocation waste, startup-sweep finds).</summary>
 		public void FreeImmediately(uint start, uint count)
 		{
-			Contract.Requires(count > 0);
+			Contract.Positive(count);
 			InsertReusable(start, count);
 		}
 

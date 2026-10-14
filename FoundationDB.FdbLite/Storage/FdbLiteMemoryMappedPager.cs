@@ -85,7 +85,7 @@ namespace FoundationDB.FdbLite
 		{
 			Contract.NotNullOrEmpty(path);
 			Contract.Requires(regionSizeInBytes >= geometry.PageSize && BitOperations.IsPow2(regionSizeInBytes));
-			Contract.Requires(initialSizeInBytes >= 0);
+			Contract.GreaterOrEqual(initialSizeInBytes, 0);
 			var handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, FileOptions.None);
 			var pager = new FdbLiteMemoryMappedPager(handle, geometry, regionSizeInBytes);
 			if (initialSizeInBytes > 0)
