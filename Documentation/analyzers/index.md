@@ -10,6 +10,8 @@ A project that references `FoundationDB.Client` runs both analyzers. A project t
 | Can corrupt or lose data | Warning | `SBK1xxx`, `FDB1xxx` |
 | Correct but slower | Warning | `SBK2xxx`, `FDB2xxx` |
 
+The performance rules (`SBK2xxx`, `FDB2xxx`) stay quiet in a test project, recognized by a reference to NUnit, xUnit, MSTest or TUnit: a test feeds the plain factories on purpose, to exercise them, and uses the BCL encoders as oracles. The other tiers run in tests too.
+
 Mute a whole tier in `.editorconfig`:
 
 ```ini

@@ -58,6 +58,15 @@ namespace SnowBank.Analyzers.Tests
 			Expected(3, "BitConverter.ToInt64(s.GetBytes(), 0)", "s.ToInt64()"));
 
 		[Test]
+		public Task Ignores_A_Test_Project() => Verify.AnalyzerInTestProject<SliceRoundTripAnalyzer>(Usings + """
+			class C
+			{
+				// a test uses the BCL encoders as an oracle
+				void M(Slice s) => _ = Encoding.UTF8.GetString(s.ToArray());
+			}
+			""");
+
+		[Test]
 		public Task Reports_Write_Round_Trips() => Verify.Analyzer<SliceRoundTripAnalyzer>(Usings + """
 			class C
 			{

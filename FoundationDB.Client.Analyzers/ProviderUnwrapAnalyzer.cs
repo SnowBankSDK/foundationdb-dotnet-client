@@ -28,6 +28,7 @@ namespace FoundationDB.Analyzers
 {
 	using System.Collections.Immutable;
 	using System.Linq;
+	using SnowBank.Analyzers;
 	using Microsoft.CodeAnalysis;
 	using Microsoft.CodeAnalysis.Diagnostics;
 	using Microsoft.CodeAnalysis.Operations;
@@ -48,6 +49,7 @@ namespace FoundationDB.Analyzers
 			context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
 			context.RegisterCompilationStartAction(start =>
 			{
+				if (TestProjects.IsTestProject(start.Compilation)) return;
 				var symbols = FdbSymbols.TryCreate(start.Compilation);
 				if (symbols?.IFdbDatabaseScopeProvider is null) return;
 				start.RegisterOperationAction(ctx => Analyze(ctx, (IVariableDeclaratorOperation) ctx.Operation, symbols), OperationKind.VariableDeclarator);
