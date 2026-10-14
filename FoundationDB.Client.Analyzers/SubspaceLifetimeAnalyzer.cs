@@ -36,7 +36,11 @@ namespace FoundationDB.Analyzers
 	using Microsoft.CodeAnalysis.Operations;
 
 	/// <summary>Reports a subspace or a layer state kept across transactions: in a field, an auto-property, or a singleton registration (FDB1001), or returned by a ReadAsync or ReadWriteAsync handler (FDB1002).</summary>
-	/// <remarks>The state types of the layers implemented in the compilation are known only once every type has been seen, so both rules report at compilation end.</remarks>
+	/// <remarks>
+	/// <para>The state types of the layers implemented in the compilation, and the types that are only created inside a transaction, are known only once every type has been seen, so both rules report at compilation end.</para>
+	/// <para>A member is not reported when it cannot outlive a transaction: an interface or abstract member, a readonly struct, a subspace built from a fixed prefix, or a member of a type created only inside a transaction (a per-transaction state).
+	/// A subspace returned by a handler is reported only when it escapes: used in a later transaction, returned by the method, or stored in a field or a property.</para>
+	/// </remarks>
 	[DiagnosticAnalyzer(LanguageNames.CSharp)]
 	public sealed class SubspaceLifetimeAnalyzer : DiagnosticAnalyzer
 	{
@@ -57,13 +61,14 @@ namespace FoundationDB.Analyzers
 				start.RegisterSyntaxNodeAction(ctx => AnalyzeField((FieldDeclarationSyntax) ctx.Node, ctx.SemanticModel, symbols, state), SyntaxKind.FieldDeclaration);
 				start.RegisterSyntaxNodeAction(ctx => AnalyzeProperty((PropertyDeclarationSyntax) ctx.Node, ctx.SemanticModel, symbols, state), SyntaxKind.PropertyDeclaration);
 				start.RegisterOperationAction(ctx => AnalyzeInvocation((IInvocationOperation) ctx.Operation, symbols, state), OperationKind.Invocation);
+				start.RegisterOperationAction(ctx => AnalyzeCreation((IObjectCreationOperation) ctx.Operation, ctx.ContainingSymbol, symbols, state), OperationKind.ObjectCreation);
 
 				start.RegisterCompilationEndAction(end =>
 				{
 					foreach (var (member, type, location) in state.Members.OrderBy(m => m.Location.SourceSpan.Start))
 					{
 						if (!IsSubspaceLike(type, symbols, state)) continue;
-						if (member.ContainingType is { } owner && state.LayerStates.ContainsKey(owner)) continue;
+						if (member.ContainingType is { } owner && (state.LayerStates.ContainsKey(owner) || IsTransactionScoped(owner, state))) continue;
 						end.ReportDiagnostic(Diagnostic.Create(FdbDescriptors.SubspaceStoredAcrossTransactions, location, member.Name));
 					}
 					foreach (var (name, type, location) in state.Registrations.OrderBy(r => r.Location.SourceSpan.Start))
@@ -87,7 +92,12 @@ namespace FoundationDB.Analyzers
 			public readonly ConcurrentBag<(ISymbol Member, ITypeSymbol Type, Location Location)> Members = new();
 			public readonly ConcurrentBag<(string Name, ITypeSymbol Type, Location Location)> Registrations = new();
 			public readonly ConcurrentBag<(ITypeSymbol Type, Location Location)> Results = new();
+			/// <summary>Types declared in the compilation that it creates, mapped to true while every creation seen is inside a transaction.</summary>
+			public readonly ConcurrentDictionary<INamedTypeSymbol, bool> Creations = new(SymbolEqualityComparer.Default);
 		}
+
+		/// <summary>Every creation of the type is inside a transaction: an instance lives as long as the transaction, like the state of a layer.</summary>
+		private static bool IsTransactionScoped(INamedTypeSymbol type, State state) => state.Creations.TryGetValue(type, out var scoped) && scoped;
 
 		/// <summary>The type is a subspace, or the state of a layer implemented in the compilation.</summary>
 		private static bool IsSubspaceLike(ITypeSymbol type, FdbSymbols symbols, State state)
@@ -120,7 +130,7 @@ namespace FoundationDB.Analyzers
 			foreach (var declarator in declaration.Declaration.Variables)
 			{
 				if (model.GetDeclaredSymbol(declarator) is not IFieldSymbol field || field.IsConst || !IsCandidateType(field.Type, symbols)) continue;
-				if (IsKeyStruct(field.ContainingType, symbols) || IsManualPrefix(declarator.Initializer, model, symbols)) continue;
+				if (IsReadOnlyStruct(field.ContainingType) || IsManualPrefix(declarator.Initializer, model, symbols)) continue;
 				state.Members.Add((field, field.Type, declarator.Identifier.GetLocation()));
 			}
 		}
@@ -131,19 +141,98 @@ namespace FoundationDB.Analyzers
 			if (declaration.ExpressionBody is not null || declaration.AccessorList is not { } accessors) return;
 			if (accessors.Accessors.Any(a => a.Body is not null || a.ExpressionBody is not null)) return;
 			if (model.GetDeclaredSymbol(declaration) is not { } property || !IsCandidateType(property.Type, symbols)) return;
-			if (IsKeyStruct(property.ContainingType, symbols) || IsManualPrefix(declaration.Initializer, model, symbols)) return;
+			// an interface or abstract property declares a member without storing anything
+			if (property.IsAbstract || property.ContainingType.TypeKind == TypeKind.Interface) return;
+			if (IsReadOnlyStruct(property.ContainingType) || IsManualPrefix(declaration.Initializer, model, symbols)) return;
 			state.Members.Add((property, property.Type, declaration.Identifier.GetLocation()));
 		}
 
-		/// <summary>A readonly struct that implements IFdbKey holds its subspace by design.</summary>
-		private static bool IsKeyStruct(INamedTypeSymbol? type, FdbSymbols symbols)
-			=> type is { IsReadOnly: true, TypeKind: TypeKind.Struct } && FdbSymbols.IsOrImplements(type, symbols.IFdbKey);
+		/// <summary>A readonly struct is a value (a key, a range) that holds its subspace by design; a field that stores the struct is reported for its own type.</summary>
+		private static bool IsReadOnlyStruct(INamedTypeSymbol? type) => type is { IsReadOnly: true, TypeKind: TypeKind.Struct };
 
-		/// <summary>The member is initialized with KeySubspace.FromKey(...), a fixed prefix that the directory layer never moves.</summary>
+		/// <summary>The member is initialized with KeySubspace.FromKey(...) or new KeySubspace(...), a fixed prefix that the directory layer never moves.</summary>
 		private static bool IsManualPrefix(EqualsValueClauseSyntax? initializer, SemanticModel model, FdbSymbols symbols)
-			=> initializer is not null
-				&& model.GetSymbolInfo(initializer.Value).Symbol is IMethodSymbol { Name: "FromKey" } method
-				&& SymbolEqualityComparer.Default.Equals(method.ContainingType, symbols.KeySubspace);
+		{
+			if (initializer is null) return false;
+			if (model.GetSymbolInfo(initializer.Value).Symbol is IMethodSymbol { Name: "FromKey" } method && SymbolEqualityComparer.Default.Equals(method.ContainingType, symbols.KeySubspace)) return true;
+			var value = model.GetOperation(initializer.Value);
+			while (value is IConversionOperation conversion) value = conversion.Operand;
+			return value is IObjectCreationOperation { Type: { } created } && SymbolEqualityComparer.Default.Equals(created, symbols.KeySubspace);
+		}
+
+		private static void AnalyzeCreation(IObjectCreationOperation op, ISymbol containingSymbol, FdbSymbols symbols, State state)
+		{
+			if (op.Type is not INamedTypeSymbol type || !type.Locations.Any(l => l.IsInSource)) return;
+			bool scoped = IsInsideTransaction(op, containingSymbol, symbols);
+			state.Creations.AddOrUpdate(type, scoped, (_, previous) => previous && scoped);
+		}
+
+		/// <summary>The operation runs inside a lambda, a local function or a method that receives a transaction.</summary>
+		private static bool IsInsideTransaction(IOperation op, ISymbol containingSymbol, FdbSymbols symbols)
+		{
+			for (var current = op.Parent; current is not null; current = current.Parent)
+			{
+				var parameters = current switch
+				{
+					IAnonymousFunctionOperation lambda => lambda.Symbol.Parameters,
+					ILocalFunctionOperation local => local.Symbol.Parameters,
+					_ => ImmutableArray<IParameterSymbol>.Empty,
+				};
+				if (parameters.Any(p => IsTransaction(p.Type, symbols))) return true;
+			}
+			return containingSymbol is IMethodSymbol method && method.Parameters.Any(p => IsTransaction(p.Type, symbols));
+		}
+
+		private static bool IsTransaction(ITypeSymbol? type, FdbSymbols symbols) => FdbSymbols.IsOrImplements(type, symbols.IFdbReadOnlyTransaction);
+
+		/// <summary>The result of the retry loop leaves the transaction: it is returned by the method, stored in a field or a property, or used in a later transaction.</summary>
+		/// <remarks>A result that is only read outside a transaction (logged, printed, compared) cannot point at a stale prefix in a later one.</remarks>
+		private static bool Escapes(IInvocationOperation op, FdbSymbols symbols)
+		{
+			IOperation current = op;
+			while (current.Parent is IAwaitOperation or IConversionOperation || current.Parent is IInvocationOperation { TargetMethod.Name: "ConfigureAwait" } configure && configure.Instance == current)
+			{
+				current = current.Parent!;
+			}
+
+			ILocalSymbol? local = null;
+			switch (current.Parent)
+			{
+				case IReturnOperation:
+					return true;
+				case IArgumentOperation { Parent: IInvocationOperation call }:
+					return TakesTransaction(call, symbols);
+				case ISimpleAssignmentOperation assignment when assignment.Value == current:
+					if (assignment.Target is IFieldReferenceOperation or IPropertyReferenceOperation) return true;
+					local = (assignment.Target as ILocalReferenceOperation)?.Local;
+					break;
+				case IVariableInitializerOperation { Parent: IVariableDeclaratorOperation declarator }:
+					local = declarator.Symbol;
+					break;
+			}
+			if (local is null) return false;
+
+			var root = current;
+			while (root.Parent is not null) root = root.Parent;
+			foreach (var reference in root.Descendants().OfType<ILocalReferenceOperation>())
+			{
+				if (!SymbolEqualityComparer.Default.Equals(reference.Local, local)) continue;
+				IOperation use = reference;
+				while (use.Parent is IConversionOperation) use = use.Parent;
+				if (use.Parent is IReturnOperation) return true;
+				if (use.Parent is ISimpleAssignmentOperation { Target: IFieldReferenceOperation or IPropertyReferenceOperation } store && store.Value == use) return true;
+				for (var parent = reference.Parent; parent is not null; parent = parent.Parent)
+				{
+					if (parent is IAnonymousFunctionOperation lambda && symbols.IsRetryLoopHandler(lambda)) return true;
+					if (parent is IInvocationOperation invocation && TakesTransaction(invocation, symbols)) return true;
+				}
+			}
+			return false;
+		}
+
+		/// <summary>The invocation runs on a transaction, or receives one as an argument.</summary>
+		private static bool TakesTransaction(IInvocationOperation invocation, FdbSymbols symbols)
+			=> IsTransaction(FdbSymbols.GetReceiver(invocation)?.Type, symbols) || invocation.Arguments.Any(a => IsTransaction(a.Value.Type, symbols));
 
 		private static void AnalyzeInvocation(IInvocationOperation op, FdbSymbols symbols, State state)
 		{
@@ -165,6 +254,7 @@ namespace FoundationDB.Analyzers
 				if (method.TypeParameters[i].Name == "TResult") result = method.TypeArguments[i];
 			}
 			if (result is null || !IsCandidateType(result, symbols)) return;
+			if (!Escapes(op, symbols)) return;
 
 			var handler = op.Arguments.FirstOrDefault(a => a.Parameter?.Name == "handler")?.Value;
 			while (handler is IDelegateCreationOperation or IConversionOperation) handler = handler is IDelegateCreationOperation d ? d.Target : ((IConversionOperation) handler).Operand;
