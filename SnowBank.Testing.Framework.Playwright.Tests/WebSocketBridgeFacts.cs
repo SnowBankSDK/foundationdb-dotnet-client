@@ -161,7 +161,7 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 		}
 
 		[Test]
-		public async Task Test_Page_Side_Close_Does_Not_Poison_The_Session()
+		public async Task Test_Page_Side_Close_Without_Arguments_Reaches_The_Server()
 		{
 			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
 			{
@@ -178,16 +178,15 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 				null,
 				new() { Timeout = 15_000 });
 
-			// close from page javascript WITHOUT arguments: Microsoft.Playwright 1.61 and 1.62 crash the driver connection
-			// on a close event without code or reason (KeyNotFoundException 'code'), fixed in 1.63; the bridge forwards the
-			// close to the server as 1000, and the server echoes that code back to the page
+			// close from page javascript without arguments, as the @microsoft/signalr client does during cleanup: the bridge
+			// forwards the close to the server with code 1000, and the server echoes that code back to the page
 			await browser.Page.EvaluateAsync("() => window.wsClose()");
 			await browser.Page.WaitForFunctionAsync(
 				"() => document.getElementById('log').textContent.includes('close:1000:')",
 				null,
 				new() { Timeout = 15_000 });
 
-			// the driver connection must have survived the close: the page is still scriptable
+			// a close event without code or reason must leave the Playwright driver connection usable: the page is still scriptable
 			var alive = await browser.Page.EvaluateAsync<int>("() => 6 * 7");
 			Assert.That(alive, Is.EqualTo(42), "the playwright session should still be alive after a page-side close");
 		}
