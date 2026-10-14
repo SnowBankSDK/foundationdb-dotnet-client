@@ -380,6 +380,69 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(errors, Is.Empty, "a Nullable struct collection/dictionary member's generated code must compile");
 		}
 
+		/// <summary>Containers and self-serialized entities declared in the global namespace, as in a top-level-statements <c>Program.cs</c></summary>
+		[Test]
+		public void Test_Types_In_The_Global_Namespace_Compile()
+		{
+			const string source = """
+				#nullable enable
+				public sealed record Order
+				{
+					public required string Id { get; init; }
+					public OrderLine[]? Lines { get; init; }
+				}
+
+				public sealed record OrderLine
+				{
+					public required string Sku { get; init; }
+					public int Quantity { get; init; }
+				}
+
+				[SnowBank.Data.Json.CrystalJsonConverter]
+				[SnowBank.Data.CrystalSerializable(typeof(Order))]
+				public static partial class AcmeSerializers
+				{
+				}
+
+				[SnowBank.Data.CrystalConverter]
+				[SnowBank.Data.Json.CrystalJsonOutput]
+				[SnowBank.Data.Xml.CrystalXmlOutput]
+				[SnowBank.Data.CrystalSerializable(typeof(Order))]
+				public static partial class AcmeXmlSerializers
+				{
+				}
+
+				[System.AttributeUsage(System.AttributeTargets.Class)]
+				[SnowBank.Data.Json.CrystalJsonSelfSerializable]
+				public sealed class AcmeDocumentAttribute : System.Attribute
+				{
+				}
+
+				[AcmeDocument]
+				public sealed partial record Invoice
+				{
+					public required string Id { get; init; }
+					public OrderLine? MainLine { get; init; }
+				}
+				""";
+
+			var compilation = GeneratorProbeHarness.Compile(source);
+			Assert.That(
+				compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error),
+				Is.Empty,
+				"the probe source must be valid on its own");
+
+			var (outputCompilation, generatorDiagnostics) = GeneratorProbeHarness.RunGenerator(compilation);
+			foreach (var diagnostic in generatorDiagnostics) { Log($"generator: {diagnostic}"); }
+			Assert.That(outputCompilation.SyntaxTrees.Skip(1).Select(static tree => tree.FilePath), Has.Some.Contains("Invoice"), "the self-serialized entity must be generated");
+			var errors = outputCompilation.GetDiagnostics().Where(static d => d.Severity >= DiagnosticSeverity.Warning).ToList();
+			foreach (var diagnostic in errors)
+			{
+				Log(diagnostic.ToString());
+			}
+			Assert.That(errors, Is.Empty, "the generated code of types in the global namespace must compile");
+		}
+
 		/// <summary>A floor-level (C# 9) compilation cannot host the proxy surface (it needs C# 11): the container must get the CJSON0020 informational nudge, exactly once</summary>
 		[Test]
 		public void Test_Proxy_Surface_Loss_Is_Reported_Once_Per_Container_Below_The_Proxy_Floor()
