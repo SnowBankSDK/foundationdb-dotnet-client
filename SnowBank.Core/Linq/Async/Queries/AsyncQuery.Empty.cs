@@ -95,6 +95,9 @@ namespace SnowBank.Linq
 			public Task<int> CountAsync(Func<TSource, CancellationToken, Task<bool>> predicate) => Task.FromResult(0);
 
 			/// <inheritdoc />
+#if NET8_0_OR_GREATER
+			[UnconditionalSuppressMessage("Trimming", "IL2087", Justification = "Only reached for a Nullable<T> of a value type: an uninitialized value type needs no constructor.")]
+#endif
 			public Task<TSource> SumAsync()
 			{
 				if (default(TSource) is not null)
