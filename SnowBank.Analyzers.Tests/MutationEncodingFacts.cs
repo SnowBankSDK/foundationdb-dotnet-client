@@ -179,6 +179,28 @@ namespace SnowBank.Analyzers.Tests
 			""");
 
 		[Test]
+		public Task Ignores_A_Stamp_Chosen_By_A_Condition() => Verify.Analyzer<MutationEncodingAnalyzer>(Usings + """
+			class C
+			{
+				void M(IFdbTransaction tr, IKeySubspace inbox, VersionStamp known, bool unresolved, Slice payload)
+				{
+					// the key holds the placeholder only when unresolved is true, and that branch calls SetVersionStampedKey
+					var stamp = unresolved ? tr.CreateUniqueVersionStamp() : known;
+					var key = inbox.Key(stamp);
+					if (unresolved)
+					{
+						tr.SetVersionStampedKey(key, payload);
+					}
+					else
+					{
+						tr.Set(key, payload);
+					}
+					tr.Set(inbox.Key(known.HasUserVersion ? known : tr.CreateVersionStamp()), payload);
+				}
+			}
+			""");
+
+		[Test]
 		public Task Fixes_Set_To_SetVersionStampedKey() => Verify.CodeFix<MutationEncodingAnalyzer, MutationEncodingCodeFix>(Usings + """
 			class C
 			{
