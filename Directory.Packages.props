@@ -33,7 +33,7 @@
     <PackageVersion Include="NodaTime" Version="3.3.3" />
     <PackageVersion Include="NodaTime.Testing" Version="3.3.3" />
     <PackageVersion Include="NUnit" Version="4.6.1" />
-    <PackageVersion Include="NUnit.Analyzers" Version="4.14.0" />
+    <PackageVersion Include="NUnit.Analyzers" Version="4.15.0" />
     <PackageVersion Include="NUnit.Console" Version="3.22.0" />
     <PackageVersion Include="NUnit.ConsoleRunner" Version="3.22.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.3.1" />
