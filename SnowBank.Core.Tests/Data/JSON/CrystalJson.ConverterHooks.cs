@@ -201,6 +201,25 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
+		public void Test_Codec_Encodes_And_Decodes_With_The_Converter_It_Was_Given()
+		{
+			// the hook writes the name in upper case and reads it back in lower case: reflection would do neither
+			var codec = SnowBank.Data.Json.Binary.CrystalJsonCodec.GetEncoder(HookedHost.HookedCat.Default, CrystalJsonSettings.JsonCompact);
+			var cat = new HookedCat { Name = "felix", Lives = 9 };
+
+			var encoded = codec.EncodeValue(cat);
+			Log($"encoded: {encoded:P}");
+			var decoded = codec.DecodeValue(Slice.FromStringUtf8("""["FELIX",9]"""));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(encoded.ToStringUtf8(), Is.EqualTo("""["FELIX",9]"""), "the codec must encode with its converter");
+				Assert.That(decoded?.Name, Is.EqualTo("felix"), "the codec must decode with its converter");
+				Assert.That(decoded?.Lives, Is.EqualTo(9));
+			}
+		}
+
+		[Test]
 		public void Test_Polymorphic_Hook_Owns_The_Discriminator()
 		{
 			HookedAnimal dog = new HookedDog { Name = "rex", Barks = true };

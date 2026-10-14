@@ -39,13 +39,15 @@ namespace SnowBank.Data.Json.Binary
 		/// <summary>Returns a codec that will encode instances of type <typeparamref name="T"/> into JSON</summary>
 		/// <param name="settings">Custom JSON serialization settings</param>
 		/// <param name="resolver">Custom JSON resolver</param>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static CrystalJsonCodec<T> GetEncoder<T>(CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null) => new(settings, resolver);
 
 		/// <summary>Returns a codec that will encode instances of type <typeparamref name="T"/> into JSON</summary>
 		/// <param name="converter">Custom JSON converter for type <typeparamref name="T"/></param>
 		/// <param name="settings">Custom JSON serialization settings</param>
 		/// <param name="resolver">Custom JSON resolver</param>
-		public static CrystalJsonCodec<T> GetEncoder<T>(IJsonConverter<T> converter, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null) => new(settings, resolver);
+		public static CrystalJsonCodec<T> GetEncoder<T>(IJsonConverter<T> converter, CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null) => new(converter, settings, resolver);
 
 	}
 
@@ -59,11 +61,15 @@ namespace SnowBank.Data.Json.Binary
 		private readonly IJsonConverter<T>? m_converter;
 
 		/// <summary>Constructs a <see cref="CrystalJsonCodec"/> using the default behavior</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public CrystalJsonCodec()
 			: this(null, null)
 		{ }
 
 		/// <summary>Constructs a <see cref="CrystalJsonCodec"/> using custom settings and resolver</summary>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public CrystalJsonCodec(CrystalJsonSettings? settings = null, ICrystalJsonTypeResolver? resolver = null)
 		{
 			m_settings = settings ?? CrystalJsonCodec.DefaultJsonSettings;
@@ -75,7 +81,7 @@ namespace SnowBank.Data.Json.Binary
 		{
 			m_converter = converter;
 			m_settings = settings ?? CrystalJsonCodec.DefaultJsonSettings;
-			m_resolver = CrystalJson.DefaultResolver;
+			m_resolver = resolver ?? CrystalJson.DefaultResolver;
 		}
 
 		/// <summary>Default JSON serialization settings used by this codec</summary>
@@ -87,16 +93,20 @@ namespace SnowBank.Data.Json.Binary
 		#region Value...
 
 		/// <inheritdoc />
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reflects only without a converter, and the constructors without one require unreferenced code.")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Reflects only without a converter, and the constructors without one require dynamic code.")]
 		public Slice EncodeValue(T? value)
 		{
 			return m_converter?.ToSlice(value, m_settings, m_resolver) ?? CrystalJson.ToSlice(value, m_settings, m_resolver);
 		}
 
 		/// <inheritdoc />
+		[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Reflects only without a converter, and the constructors without one require unreferenced code.")]
+		[UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Reflects only without a converter, and the constructors without one require dynamic code.")]
 		public T? DecodeValue(Slice encoded)
 		{
 			return encoded.IsNullOrEmpty ? default!
-				: m_converter != null ? m_converter.Unpack(encoded, m_resolver)
+				: m_converter != null ? m_converter.Unpack(CrystalJson.Parse(encoded, m_settings), m_resolver)
 				: CrystalJson.Deserialize<T?>(encoded, default, m_settings, m_resolver);
 		}
 
