@@ -71,7 +71,7 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 							ws.onclose = (e) => log('close:' + e.code + ':' + (e.reason || ''));
 							ws.onerror = () => log('error');
 							window.wsSend = (m) => ws.send(m);
-							window.wsClose = () => ws.close(); // deliberately argument-less: exercises the close-arguments shim
+							window.wsClose = () => ws.close(); // deliberately argument-less: a close event without code or reason
 						</script>
 					</body>
 					</html>
@@ -178,8 +178,9 @@ namespace SnowBank.Testing.Framework.Playwright.Tests
 				null,
 				new() { Timeout = 15_000 });
 
-			// close from page javascript WITHOUT arguments: on Microsoft.Playwright 1.61 a codeless close event
-			// crashes the driver connection (upstream bug) unless the component's close-arguments shim defaults it
+			// close from page javascript WITHOUT arguments: Microsoft.Playwright 1.61 and 1.62 crash the driver connection
+			// on a close event without code or reason (KeyNotFoundException 'code'), fixed in 1.63; the bridge forwards the
+			// close to the server as 1000, and the server echoes that code back to the page
 			await browser.Page.EvaluateAsync("() => window.wsClose()");
 			await browser.Page.WaitForFunctionAsync(
 				"() => document.getElementById('log').textContent.includes('close:1000:')",

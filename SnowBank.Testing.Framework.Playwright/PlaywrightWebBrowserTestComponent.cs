@@ -281,7 +281,7 @@ namespace SnowBank.Testing.Framework.Playwright
 					// throw on a duplicate key) is strictly better and lets several entries with the same header name
 					// survive AT OUR LAYER.
 					//
-					// KNOWN PLAYWRIGHT LIMITATION (verified against Microsoft.Playwright 1.61.0's own source,
+					// KNOWN PLAYWRIGHT LIMITATION (verified against Microsoft.Playwright 1.63.0's own source,
 					// Core/Route.cs, NormalizeFulfillParametersAsync): internally, route.FulfillAsync re-collapses this
 					// same IEnumerable into a `Dictionary<string, string>` keyed by the lowercased header name
 					// ("resultHeaders[header.Key.ToLowerInvariant()] = header.Value"), so a response with multiple
@@ -308,41 +308,9 @@ namespace SnowBank.Testing.Framework.Playwright
 
 		#region WebSocket Mesh Bridge...
 
-		/// <summary>Init script that forces every page-side <c>WebSocket.close()</c> to carry a close code and reason.</summary>
-		/// <remarks>
-		/// <para>Microsoft.Playwright 1.61 crashes on any WebSocket close event that omits <c>code</c>/<c>reason</c> (which the
-		/// protocol allows, the TS client types them <c>number | undefined</c>): <c>WebSocketRoute.OnMessage</c> reads them with
-		/// the throwing <c>JsonElement.GetProperty</c>, and the exception escapes <c>Connection.Dispatch</c>, poisoning the WHOLE
-		/// driver connection (the browser dies, every later call throws <c>TargetClosedException</c>). Reported upstream (2026-07).</para>
-		/// <para>The <c>@microsoft/signalr</c> client (and many others) call <c>ws.close()</c> with no arguments during cleanup,
-		/// so without this shim any such close kills the entire test mid-flight. It must be registered AFTER
-		/// <c>RouteWebSocketAsync</c>: the route installs its own init script that REPLACES <c>window.WebSocket</c> with a mock
-		/// class, and the patch must land on that mock's prototype, not on the native one.</para>
-		/// </remarks>
-		private const string WebSocketCloseArgumentsShim =
-			"""
-			{
-				const WS = window.WebSocket;
-				if (WS && WS.prototype && WS.prototype.close)
-				{
-					const origClose = WS.prototype.close;
-					WS.prototype.close = function(code, reason) { return origClose.call(this, code ?? 1000, reason ?? 'client-closed'); };
-				}
-			}
-			""";
-
-		private object WebSocketBridgeLock { get; } = new();
-
-		/// <summary>Bridged websocket routes that are still connected: teardown closes them with an explicit code before
-		/// the browser goes away, so no codeless close event reaches the 1.61 binding while the test is still running.</summary>
-		private List<IWebSocketRoute> LiveWebSocketRoutes { get; } = [];
-
 		private async Task BindMeshWebSocketRoutingAsync(IBrowserContext context)
 		{
 			await context.RouteWebSocketAsync("**/*", this.BridgePageWebSocket);
-
-			// must come after the route registration, so the shim patches the mock WebSocket class (see remarks on the shim)
-			await context.AddInitScriptAsync(WebSocketCloseArgumentsShim);
 		}
 
 		/// <summary>Bridges one page-created WebSocket to the in-memory <c>TestServer</c> of the virtual host its URL points to.</summary>
@@ -402,8 +370,6 @@ namespace SnowBank.Testing.Framework.Playwright
 				wsClient.SubProtocols.Add(protocol);
 			}
 			var serverWsTask = wsClient.ConnectAsync(uri, severed.Token);
-
-			lock (this.WebSocketBridgeLock) { this.LiveWebSocketRoutes.Add(pageWs); }
 
 			// page -> server: wired synchronously, sends chained in order behind the connect (see remarks)
 			var sendChain = (Task) serverWsTask;
@@ -504,7 +470,6 @@ namespace SnowBank.Testing.Framework.Playwright
 			{
 				serverWs?.Dispose();
 				severed.Dispose();
-				lock (this.WebSocketBridgeLock) { this.LiveWebSocketRoutes.Remove(pageWs); }
 			}
 		}
 
@@ -571,14 +536,6 @@ namespace SnowBank.Testing.Framework.Playwright
 			throw new InvalidOperationException($"The Chromium remote debugging endpoint did not answer on {endpoint}, the port may already be bound by another process (a previous parked session?); pick a unique port per test.");
 		}
 
-		/// <summary>Matches the exception signature of the playwright-dotnet 1.61 WebSocketRoute close-event bug (see
-		/// <see cref="WebSocketCloseArgumentsShim"/>): once the driver connection is poisoned, teardown calls surface it as
-		/// <c>TargetClosedException</c>/<c>PlaywrightException</c> wrapping "The given key was not present in the dictionary".</summary>
-		private static bool IsKnownWebSocketRouteCloseBug(Exception ex) =>
-			ex is KeyNotFoundException
-			|| (ex is PlaywrightException && ex.Message.Contains("The given key was not present", StringComparison.Ordinal))
-			|| (ex.InnerException is not null && IsKnownWebSocketRouteCloseBug(ex.InnerException));
-
 		#endregion
 
 		// Chromium install must happen at most once per process even if several browser
@@ -643,17 +600,6 @@ namespace SnowBank.Testing.Framework.Playwright
 			var packet = this.Services.GetService<PacketCaptureManager>();
 			if (packet != null && packet.IsRunning) packet.PrepareShutdown();
 
-			// close the still-bridged websockets with an explicit code while the driver connection is healthy:
-			// letting them die with the page would emit codeless close events that crash the 1.61 binding
-			// (see WebSocketCloseArgumentsShim remarks); the page-destruction ones are contained in OnDisposing.
-			IWebSocketRoute[] liveRoutes;
-			lock (this.WebSocketBridgeLock) { liveRoutes = this.LiveWebSocketRoutes.ToArray(); }
-			foreach (var ws in liveRoutes)
-			{
-				try { await ws.CloseAsync(new() { Code = 1000, Reason = "test shutdown" }); }
-				catch { /* the browser (or the driver connection) may already be gone */ }
-			}
-
 			if (this.Snapshots is { } snapshots)
 			{
 				try { await snapshots.WriteContactSheetAsync(ct); }
@@ -669,25 +615,13 @@ namespace SnowBank.Testing.Framework.Playwright
 			// getter here would mask the original startup exception with a secondary teardown failure
 			using (this.DriverCore)
 			{
-				try
+				await using (this.BrowserCore)
+				await using (this.BrowserContextCore)
 				{
-					await using (this.BrowserCore)
-					await using (this.BrowserContextCore)
-					{
-						var packet = this.Services.GetService<PacketCaptureManager>();
-						packet?.Shutdown();
+					var packet = this.Services.GetService<PacketCaptureManager>();
+					packet?.Shutdown();
 
-						await this.DestroyingHandler();
-					}
-				}
-				catch (Exception ex) when (IsKnownWebSocketRouteCloseBug(ex))
-				{
-					// destroying a page that ever had a routed WebSocket makes the upstream dispatcher emit
-					// closePage/closeServer with ONLY wasClean (no code/reason), even for sockets that closed
-					// cleanly earlier, and the 1.61 binding poisons the driver connection on it. Unavoidable
-					// from user code; the browser is being discarded anyway, so contain the known signature
-					// (the driver process itself is reaped by disposing DriverCore above).
-					this.Log($"# <WS> teardown hit the known playwright-dotnet 1.61 WebSocketRoute close-event bug (contained): {ex.GetType().Name}");
+					await this.DestroyingHandler();
 				}
 			}
 		}
