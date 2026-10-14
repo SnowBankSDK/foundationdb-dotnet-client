@@ -37,7 +37,7 @@ namespace FoundationDB.Layers.Collections.Tests
 	public abstract class MapFacts : FdbTest
 	{
 
-		[Test, Order(1)]
+		[Test, RunOrder(1)]
 		public async Task Test_FdbMap_Read_Write_Delete()
 		{
 			using (var db = await OpenTestPartitionAsync())
@@ -111,7 +111,7 @@ namespace FoundationDB.Layers.Collections.Tests
 
 		}
 
-		[Test, Order(2)]
+		[Test, RunOrder(2)]
 		public async Task Test_FdbMap_List()
 		{
 			using (var db = await OpenTestPartitionAsync())

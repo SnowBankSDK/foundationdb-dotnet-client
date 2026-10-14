@@ -58,7 +58,7 @@ namespace FoundationDB.Client.Tests
 
 		#endregion
 
-		[Test, Order(1)]
+		[Test, RunOrder(1)]
 		public void Test_Tenant_Name()
 		{
 			{ // Empty
@@ -122,7 +122,7 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
-		[Test, Order(2)]
+		[Test, RunOrder(2)]
 		public void Test_Can_Get_Tenant_Instance()
 		{
 
