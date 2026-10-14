@@ -140,6 +140,75 @@ namespace SnowBank.Analyzers.Tests
 			}
 			""");
 
+		[Test]
+		public Task Ignores_Interface_And_Abstract_Members() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
+			interface ITransactionState
+			{
+				IKeySubspace Location { get; }
+			}
+			abstract class StateBase
+			{
+				public abstract IKeySubspace Location { get; }
+			}
+			""");
+
+		[Test]
+		public Task Ignores_A_Subspace_Built_From_A_Prefix() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
+			class Store
+			{
+				public static readonly IKeySubspace Empty = new KeySubspace(Slice.Empty, SubspaceContext.Default);
+			}
+			""");
+
+		[Test]
+		public Task Ignores_A_Readonly_Struct() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
+			readonly struct Bounds
+			{
+				public Bounds(IKeySubspace subspace) => this.Subspace = subspace;
+				public readonly IKeySubspace Subspace;
+			}
+			""");
+
+		[Test]
+		public Task Ignores_A_Holder_Created_Only_Inside_A_Transaction() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
+			class Hose
+			{
+				private sealed class TransactionState
+				{
+					public TransactionState(IKeySubspace subspace) => this.Subspace = subspace;
+					public IKeySubspace Subspace { get; }
+				}
+				private sealed class Scratch
+				{
+					public IKeySubspace? Subspace { get; set; }
+				}
+				private async ValueTask<TransactionState> Resolve(IFdbReadOnlyTransaction tr)
+				{
+					var subspace = await tr.Context.Database.Root["hose"].Resolve(tr);
+					return new TransactionState(subspace!);
+				}
+				private Task<int> Read(IFdbDatabase db, CancellationToken ct) => db.ReadAsync(async tr =>
+				{
+					var scratch = new Scratch { Subspace = await db.Root["hose"].Resolve(tr) };
+					return 0;
+				}, ct);
+			}
+			""");
+
+		[Test]
+		public Task Reports_A_Holder_Created_Outside_A_Transaction() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
+			class Holder
+			{
+				public Holder(IKeySubspace subspace) => this.Subspace = subspace;
+				public IKeySubspace {|#0:Subspace|} { get; }
+			}
+			class Service
+			{
+				private readonly Holder holder;
+				public Service(IKeySubspace subspace) => this.holder = new Holder(subspace);
+			}
+			""", Stored(0, "Subspace"));
+
 		#endregion
 
 		#region FDB1002...
@@ -148,9 +217,11 @@ namespace SnowBank.Analyzers.Tests
 		public Task Reports_A_Subspace_Returned_From_ReadWriteAsync() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
 			class C
 			{
+				static void Use(IFdbTransaction tr, object state) { }
 				async Task M(IFdbDatabase db, CancellationToken ct)
 				{
 					var s = await db.ReadWriteAsync(tr => {|#0:db.Root["a"].CreateOrOpenAsync(tr)|}, ct);
+					await db.WriteAsync(tr => Use(tr, s), ct);
 				}
 			}
 			""", Returned(0));
@@ -159,6 +230,7 @@ namespace SnowBank.Analyzers.Tests
 		public Task Reports_A_Subspace_Returned_From_A_Block_Body() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
 			class C
 			{
+				static void Use(IFdbTransaction tr, object state) { }
 				async Task M(IFdbDatabase db, CancellationToken ct)
 				{
 					var s = await db.ReadWriteAsync(async tr =>
@@ -166,6 +238,7 @@ namespace SnowBank.Analyzers.Tests
 						var sub = await db.Root["a"].CreateOrOpenAsync(tr);
 						return {|#0:sub|};
 					}, ct);
+					await db.WriteAsync(tr => Use(tr, s), ct);
 				}
 			}
 			""", Returned(0));
@@ -174,12 +247,48 @@ namespace SnowBank.Analyzers.Tests
 		public Task Reports_A_Layer_State_Returned_From_ReadAsync() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + Layer + """
 			class C
 			{
+				static void Use(IFdbTransaction tr, object state) { }
 				async Task M(IFdbDatabase db, MyLayer layer, CancellationToken ct)
 				{
 					var s = await db.ReadAsync(tr => {|#0:layer.Resolve(tr).AsTask()|}, ct);
+					await db.WriteAsync(tr => Use(tr, s), ct);
 				}
 			}
 			""", Returned(0));
+
+		[Test]
+		public Task Reports_A_Subspace_Returned_By_The_Method() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
+			class C
+			{
+				async Task<FdbDirectorySubspace> M(IFdbDatabase db, CancellationToken ct) => await db.ReadWriteAsync(tr => {|#0:db.Root["a"].CreateOrOpenAsync(tr)|}, ct);
+			}
+			""", Returned(0));
+
+		[Test]
+		public Task Reports_A_Subspace_Kept_In_A_Field() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
+			class C
+			{
+				private object? cached;
+				async Task M(IFdbDatabase db, CancellationToken ct)
+				{
+					var s = await db.ReadWriteAsync(tr => {|#0:db.Root["a"].CreateOrOpenAsync(tr)|}, ct);
+					this.cached = s;
+				}
+			}
+			""", Returned(0));
+
+		[Test]
+		public Task Ignores_A_Subspace_Used_Only_Outside_Transactions() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
+			class C
+			{
+				async Task M(IFdbDatabase db, CancellationToken ct)
+				{
+					var s = await db.ReadWriteAsync(tr => db.Root["a"].CreateOrOpenAsync(tr), ct);
+					Console.WriteLine($"opened {s.Path}");
+					var unused = await db.ReadWriteAsync(tr => db.Root["b"].CreateOrOpenAsync(tr), ct);
+				}
+			}
+			""");
 
 		[Test]
 		public Task Ignores_WriteAsync() => Verify.Analyzer<SubspaceLifetimeAnalyzer>(Usings + """
