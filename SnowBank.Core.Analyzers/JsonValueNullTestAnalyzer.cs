@@ -28,10 +28,11 @@ namespace SnowBank.Analyzers
 {
 	using System.Collections.Immutable;
 	using Microsoft.CodeAnalysis;
+	using Microsoft.CodeAnalysis.CSharp.Syntax;
 	using Microsoft.CodeAnalysis.Diagnostics;
 	using Microsoft.CodeAnalysis.Operations;
 
-	/// <summary>Reports null tests on JsonValue expressions that the compiler knows are never null.</summary>
+	/// <summary>Reports null tests on values read from a JSON object or array, which return JsonNull.Missing for an absent member, never null.</summary>
 	[DiagnosticAnalyzer(LanguageNames.CSharp)]
 	public sealed class JsonValueNullTestAnalyzer : DiagnosticAnalyzer
 	{
@@ -85,12 +86,16 @@ namespace SnowBank.Analyzers
 			return op.ConstantValue is { HasValue: true, Value: null };
 		}
 
-		/// <summary>The expression has a JsonValue type, in a nullable context, and is either declared non-nullable or has a non-null flow state.</summary>
-		/// <remarks>The declared type matters because an earlier null test on the same variable turns its flow state to maybe-null.</remarks>
+		/// <summary>The expression is a JSON read with a JsonValue type, in a nullable context, and is either declared non-nullable or has a non-null flow state.</summary>
+		/// <remarks>
+		/// <para>Only a JSON read is known to be non-null: a parameter, a field, a property or the result of another method can hold null whatever its annotation says, and a null test on it is a legitimate guard.</para>
+		/// <para>The declared type matters because an earlier null test on the same variable turns its flow state to maybe-null.</para>
+		/// </remarks>
 		private static bool IsNeverNull(IOperation op, INamedTypeSymbol jsonValue, OperationAnalysisContext ctx)
 		{
-			while (op is IConversionOperation { IsImplicit: true } conversion) op = conversion.Operand;
+			op = Unwrap(op);
 			if (!InheritsFrom(op.Type, jsonValue)) return false;
+			if (!IsJsonRead(op, jsonValue, ctx.CancellationToken)) return false;
 
 			// library types are annotated whatever the caller's context: outside a nullable context the caller made no promise
 			var model = op.SemanticModel;
@@ -111,6 +116,47 @@ namespace SnowBank.Analyzers
 
 			var info = model.GetTypeInfo(op.Syntax, ctx.CancellationToken);
 			return info.Nullability.FlowState == NullableFlowState.NotNull;
+		}
+
+		/// <summary>The expression reads a member or an element of a JSON value (an indexer or a method of a JSON type, including an extension method), or is a local initialized with such a read.</summary>
+		private static bool IsJsonRead(IOperation op, INamedTypeSymbol jsonValue, System.Threading.CancellationToken ct)
+		{
+			switch (op)
+			{
+				case IPropertyReferenceOperation { Property.IsIndexer: true } indexer:
+				{
+					return InheritsFrom(indexer.Instance?.Type, jsonValue);
+				}
+				case IInvocationOperation invocation:
+				{
+					var method = invocation.TargetMethod;
+					var receiver = method.IsExtensionMethod ? (method.Parameters.Length > 0 ? method.Parameters[0].Type : null) : invocation.Instance?.Type;
+					return InheritsFrom(receiver, jsonValue);
+				}
+				case ILocalReferenceOperation local when op.SemanticModel is { } model:
+				{
+					foreach (var reference in local.Local.DeclaringSyntaxReferences)
+					{
+						if (reference.GetSyntax(ct) is VariableDeclaratorSyntax { Initializer.Value: { } initializer }
+							&& model.GetOperation(initializer, ct) is { } value
+							&& IsJsonRead(Unwrap(value), jsonValue, ct))
+						{
+							return true;
+						}
+					}
+					return false;
+				}
+				default:
+				{
+					return false;
+				}
+			}
+		}
+
+		private static IOperation Unwrap(IOperation op)
+		{
+			while (op is IConversionOperation { IsImplicit: true } conversion) op = conversion.Operand;
+			return op;
 		}
 
 		private static bool InheritsFrom(ITypeSymbol? type, INamedTypeSymbol baseType)
