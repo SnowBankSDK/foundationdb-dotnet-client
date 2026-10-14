@@ -983,10 +983,12 @@ ArrayList         [ 1, "two" ]  elements bind as CLR objects
 - **`JsonNull.Missing` ≠ `JsonNull.Null` ≠ `JsonNull.Error`.** All are "null", but distinct; use `IsNullOrMissing()` /
   `IsMissing()` to tell them apart. Empty/whitespace input parses to `Missing`; literal `"null"` parses to `Null`.
 - **Mutating a read-only `JsonObject`/`JsonArray` throws.** `ToMutable()` first, or build mutable.
-- **The reflection path can be removed from a trimmed / Native AoT publish** *(7.4.5+)*: set the MSBuild feature
-  `SnowBank.Data.Json.CrystalJson.IsReflectionSupported` to `false` (`RuntimeHostConfigurationOption`,
-  `Trim="true"`) and the trimmer removes the whole reflection subtree; a source-generated consumer then
-  publishes with no trim warnings, and a reflected type throws `JsonReflectionDisabledException`.
+- **The reflection path is off in a trimmed / Native AoT publish** *(7.4.7+)*: the package sets the feature
+  switch `SnowBank.Data.Json.CrystalJson.IsReflectionSupported` to `false` when `PublishTrimmed` or `PublishAot`
+  is on, and the trimmer removes the whole reflection subtree; a source-generated consumer publishes with no trim
+  warnings, and a reflected type throws `JsonReflectionDisabledException`. An application that needs reflection
+  there opts in with `<CrystalJsonIsReflectionSupported>true</CrystalJsonIsReflectionSupported>` and keeps the
+  reflected members itself (`TuPackIsReflectionSupported` is the same switch for the tuple encoders).
 - **`Equals` is loose, `StrictEquals` is exact.** `JsonNumber(123).Equals(JsonString("123"))` is `true`;
   `StrictEquals` is `false`. Don't use `JsonObject`/`JsonArray` as dictionary keys (hash is not value-stable).
 - **`Add("field", x)` vs `["field"].Add(x)`** - field-set (throws on existing) vs array-append. Pick the right one.

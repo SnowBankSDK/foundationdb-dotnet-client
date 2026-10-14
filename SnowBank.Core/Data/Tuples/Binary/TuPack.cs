@@ -45,10 +45,10 @@ namespace SnowBank.Data.Tuples
 		/// string, Guid, bool, and the other types with a compile-time fast path) never use this path, so they are
 		/// unaffected by the switch. Only uncommon element types, and any value packed through the untyped or boxed object
 		/// path, use the reflection-based builder.</para>
-		/// <para>An application that publishes trimmed or Native AoT can set the MSBuild feature
-		/// <c>SnowBank.Data.Tuples.TuPack.IsReflectionSupported=false</c> (or the matching runtime config switch): the
-		/// trimmer then substitutes this property to <see langword="false"/> and removes the reflection-based builder, so a
-		/// consumer that only uses well-known element types builds with no trim warnings. With reflection off, an exotic
+		/// <para>In a trimmed or Native AoT publish, the package turns the switch off: the trimmer then substitutes this property
+		/// to <see langword="false"/> and removes the reflection-based builder, so a consumer that only uses well-known element
+		/// types builds with no trim warnings. An application that needs the reflection-based builder in such a publish opts in
+		/// with the MSBuild property <c>TuPackIsReflectionSupported=true</c>, and keeps the reflected members itself. With reflection off, an exotic
 		/// element type (Nullable of a non-well-known type, a nested tuple, a ValueTuple, or a boxed object) throws
 		/// <see cref="NotSupportedException"/> instead of building a reflection-based encoder that the trimmer may have removed.</para>
 		/// </remarks>
@@ -56,6 +56,7 @@ namespace SnowBank.Data.Tuples
 		[System.Diagnostics.CodeAnalysis.FeatureSwitchDefinition(ReflectionSupportSwitchName)]
 		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresUnreferencedCodeAttribute))]
 		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute))]
+		[System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL4000", Justification = "The package turns the switch off in a trimmed or Native AoT publish: it is on there only when the application opts in, and keeps the reflected members itself.")]
 #endif
 		public static bool IsReflectionSupported => AppContext.TryGetSwitch(ReflectionSupportSwitchName, out var enabled) ? enabled : true;
 
