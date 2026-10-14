@@ -475,6 +475,7 @@ namespace SnowBank.Data.Json
 
 		[ContractAnnotation("=>true,result:notnull; =>false,result:null")]
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		internal bool TryConvertValueTypeObject(ref VisitingContext context, object value, Type type, [MaybeNullWhen(false)] out JsonValue result)
 		{
 			Contract.Debug.Requires(value != null && type != null);
@@ -649,6 +650,7 @@ namespace SnowBank.Data.Json
 		}
 
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		internal JsonValue VisitKeyValuePair(ref VisitingContext context, object value, Type type)
 		{
 			return s_cachedKeyValuePairVisitors.GetOrAdd(type, CompileKeyValuePairVisitor)(this, ref context, value);

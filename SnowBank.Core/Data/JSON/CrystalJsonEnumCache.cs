@@ -142,18 +142,30 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+		/// <summary>The boxed enum value at an index of the values of the enum type</summary>
+#if NET8_0_OR_GREATER
+		private static Enum ValueAt(Type enumType, Array underlyingValues, int index) => (Enum) Enum.ToObject(enumType, underlyingValues.GetValue(index)!);
+#else
+		private static Enum ValueAt(Type enumType, Array values, int index) => (Enum) values.GetValue(index)!;
+#endif
+
 		/// <summary>Generates the literal cache for all the values of a specific Enum type</summary>
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+#if !NET8_0_OR_GREATER
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+#endif
 		private static EnumCache AddEnumToCache(Type enumType)
 		{
 			Contract.Debug.Requires(enumType != null);
 			if (!typeof(Enum).IsAssignableFrom(enumType)) throw new InvalidOperationException($"Type {enumType.Name} is not a valid Enum type");
 
 			var names = Enum.GetNames(enumType);
-#pragma warning disable IL3050
+#if NET8_0_OR_GREATER
+			// the underlying values need no array of the enum type, which Native AoT may not be able to create
+			var values = Enum.GetValuesAsUnderlyingType(enumType);
+#else
 			var values = Enum.GetValues(enumType);
-#pragma warning restore IL3050
+#endif
 			Contract.Debug.Assert(names != null && values != null && names.Length == values.Length);
 
 			int count = names.Length;
@@ -179,7 +191,7 @@ namespace SnowBank.Data.Json
 			// => the fastest way is to iterate the list in reverse order
 			for (int i = count - 1; i >= 0; i--)
 			{
-				var value = (Enum) values.GetValue(i)!;
+				var value = ValueAt(enumType, values, i);
 				var token = tokens[i];
 				var literal = new JsonString(token ?? names[i]);
 				literals[value] = literal;
@@ -191,7 +203,7 @@ namespace SnowBank.Data.Json
 			var parser = new Dictionary<string, Enum>(count * 2, StringComparer.OrdinalIgnoreCase);
 			for (int i = 0; i < count; i++)
 			{
-				var value = (Enum) values.GetValue(i)!;
+				var value = ValueAt(enumType, values, i);
 				if (tokens[i] is string token && !parser.ContainsKey(token))
 				{
 					parser[token] = value;
@@ -210,7 +222,7 @@ namespace SnowBank.Data.Json
 			var fields = new List<FlagField>(count);
 			for (int i = 0; i < count; i++)
 			{
-				ulong bits = ToBits((Enum) values.GetValue(i)!, underlyingCode);
+				ulong bits = ToBits(ValueAt(enumType, values, i), underlyingCode);
 				if (bits == 0) continue;
 				fields.Add(new FlagField
 				{

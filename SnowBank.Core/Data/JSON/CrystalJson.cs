@@ -500,6 +500,8 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Serializes a boxed value into an indented JSON string, suitable for humans (logging, troubleshooting, ...)</summary>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static string Dump(object? value)
 		{
 			return Serialize(value, CrystalJsonSettings.JsonIndented);
@@ -507,6 +509,8 @@ namespace SnowBank.Data.Json
 
 		/// <summary>Serializes a value into an indented JSON string, suitable for humans (logging, troubleshooting, ...)</summary>
 		[Pure]
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		public static string Dump<TValue>(TValue? value)
 		{
 			return Serialize(value, CrystalJsonSettings.JsonIndented);
@@ -609,6 +613,51 @@ namespace SnowBank.Data.Json
 		/// <param name="pool">Pool used to allocate the content of the slice (use <see cref="ArrayPool{T}.Shared"/> if <see langword="null"/>)</param>
 		/// <param name="settings">Serialization settings (use default JSON settings if <see langword="null"/>)</param>
 		/// <returns>Slice of memory that contains the utf-8 encoded JSON document</returns>
+		/// <summary>Serializes a value that writes itself, without reflection</summary>
+		/// <param name="value">Instance to serialize</param>
+		/// <param name="settings">Custom serialization settings</param>
+		/// <returns><see cref="Slice"/> that contains the utf-8 encoded text representation of the value</returns>
+		[Pure]
+		public static Slice ToJsonSlice<TJsonSerializable>(TJsonSerializable? value, CrystalJsonSettings? settings = null)
+			where TJsonSerializable : IJsonSerializable
+		{
+			var writer = WriterPool.Allocate();
+			try
+			{
+				writer.Initialize(0, settings, null);
+				if (value is null) writer.WriteNull(); else value.JsonSerialize(writer);
+				return writer.GetUtf8Slice();
+			}
+			finally
+			{
+				writer.Dispose();
+				WriterPool.Free(writer);
+			}
+		}
+
+		/// <summary>Serializes a value that writes itself into a pooled buffer, without reflection</summary>
+		/// <param name="value">Instance to serialize</param>
+		/// <param name="pool">Pool used to allocate the content of the slice (use <see cref="ArrayPool{T}.Shared"/> if <see langword="null"/>)</param>
+		/// <param name="settings">Custom serialization settings</param>
+		/// <returns><see cref="SliceOwner"/> that contains the utf-8 encoded text representation of the value</returns>
+		[Pure, MustDisposeResource]
+		public static SliceOwner ToJsonSlice<TJsonSerializable>(TJsonSerializable? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null)
+			where TJsonSerializable : IJsonSerializable
+		{
+			var writer = WriterPool.Allocate();
+			try
+			{
+				writer.Initialize(0, settings, null);
+				if (value is null) writer.WriteNull(); else value.JsonSerialize(writer);
+				return writer.GetUtf8Slice(pool);
+			}
+			finally
+			{
+				writer.Dispose();
+				WriterPool.Free(writer);
+			}
+		}
+
 		[Pure]
 		public static SliceOwner ToJsonSlice(JsonValue? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null)
 		{
@@ -2252,7 +2301,7 @@ namespace SnowBank.Data.Json
 				_ = arr[4].As<DateTimeOffset>();
 				_ = arr[5].As<int[]>();
 				_ = arr[5].Get<string>("foo", "baz");
-				_ = CrystalJson.Parse(CrystalJson.Serialize(arr), CrystalJsonSettings.JsonReadOnly);
+				_ = CrystalJson.Parse(arr.ToJsonText(), CrystalJsonSettings.JsonReadOnly);
 				_ = arr.StrictEquals(arr);
 			}
 			// ReSharper disable once EmptyGeneralCatchClause

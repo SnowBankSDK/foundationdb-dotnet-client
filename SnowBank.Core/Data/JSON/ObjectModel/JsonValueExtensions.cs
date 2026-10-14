@@ -247,7 +247,7 @@ namespace SnowBank.Data.Json
 		/// <remarks>Only call this when interacting with legacy API that only accept byte[] arrays. Prefer <see cref="ToJsonSlice(JsonValue?,CrystalJsonSettings?)"/> that will reduce the number of needed memory copies and allocations</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[OverloadResolutionPriority(1)]
-		public static byte[] ToJsonBytes(this JsonValue? value) => CrystalJson.ToBytes(value);
+		public static byte[] ToJsonBytes(this JsonValue? value) => CrystalJson.ToJsonSlice(value).ToArray();
 
 		/// <summary>Serializes a <see cref="JsonValue"/> into a byte array, using custom settings</summary>
 		/// <param name="value">JSON value to serialize</param>
@@ -256,7 +256,7 @@ namespace SnowBank.Data.Json
 		/// <remarks>Only call this when interacting with legacy API that only accept byte[] arrays. Prefer <see cref="ToJsonSlice(JsonValue?,CrystalJsonSettings?)"/> that will reduce the number of needed memory copies and allocations</remarks>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[OverloadResolutionPriority(1)]
-		public static byte[] ToJsonBytes(this JsonValue? value, CrystalJsonSettings? settings) => CrystalJson.ToBytes(value, settings);
+		public static byte[] ToJsonBytes(this JsonValue? value, CrystalJsonSettings? settings) => CrystalJson.ToJsonSlice(value, settings).ToArray();
 
 		/// <summary>Serializes a <see cref="JsonValue"/> into a <see cref="Slice"/>, using custom settings</summary>
 		/// <param name="value">JSON value to serialize</param>
@@ -264,7 +264,7 @@ namespace SnowBank.Data.Json
 		/// <returns><see cref="Slice"/> that contains the utf-8 encoded text representation of the JSON value</returns>
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[OverloadResolutionPriority(1)]
-		public static Slice ToJsonSlice(this JsonValue? value, CrystalJsonSettings? settings = null) => CrystalJson.ToSlice(value, settings);
+		public static Slice ToJsonSlice(this JsonValue? value, CrystalJsonSettings? settings = null) => CrystalJson.ToJsonSlice(value, settings);
 
 		/// <summary>Serializes a <see cref="JsonValue"/> into a <see cref="Slice"/>, using custom settings</summary>
 		/// <param name="value">JSON value to serialize</param>
@@ -273,7 +273,7 @@ namespace SnowBank.Data.Json
 		/// <returns><see cref="Slice"/> that contains the utf-8 encoded text representation of the JSON value</returns>
 		[Pure, MustDisposeResource, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		[OverloadResolutionPriority(1)]
-		public static SliceOwner ToJsonSlice(this JsonValue? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null) => CrystalJson.ToSlice(value, pool, settings);
+		public static SliceOwner ToJsonSlice(this JsonValue? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null) => CrystalJson.ToJsonSlice(value, pool, settings);
 
 		/// <summary>Serializes a <see cref="IJsonSerializable"/> value into a <see cref="Slice"/>, using custom settings</summary>
 		/// <param name="value">Instance to serialize</param>
@@ -282,7 +282,7 @@ namespace SnowBank.Data.Json
 		[Pure, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static Slice ToJsonSlice<TJsonSerializable>(this TJsonSerializable? value, CrystalJsonSettings? settings = null)
 			where TJsonSerializable : IJsonSerializable
-			=> CrystalJson.ToSlice(value, settings);
+			=> CrystalJson.ToJsonSlice(value, settings);
 
 		/// <summary>Serializes a <see cref="IJsonSerializable"/> value into a <see cref="Slice"/>, using custom settings</summary>
 		/// <param name="value">Instance to serialize</param>
@@ -292,7 +292,7 @@ namespace SnowBank.Data.Json
 		[Pure, MustDisposeResource, MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static SliceOwner ToJsonSlice<TJsonSerializable>(this TJsonSerializable? value, ArrayPool<byte>? pool, CrystalJsonSettings? settings = null)
 			where TJsonSerializable : IJsonSerializable
-			=> CrystalJson.ToSlice(value, pool, settings);
+			=> CrystalJson.ToJsonSlice(value, pool, settings);
 
 		#endregion
 
