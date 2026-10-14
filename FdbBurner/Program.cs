@@ -76,11 +76,11 @@ namespace FdbBurner
 		private static async Task BurnerThread(IFdbDatabase db, CancellationToken ct)
 		{
 
-			var folder = await db.ReadWriteAsync(async tr =>
+			var location = db.Root["Benchmarks"]["Burner"]["Sequential"];
+			await db.WriteAsync(async tr =>
 			{
-				var x = await db.Root["Benchmarks"]["Burner"]["Sequential"].CreateOrOpenAsync(tr);
+				var x = await location.CreateOrOpenAsync(tr);
 				tr.ClearRange(x);
-				return x;
 			}, ct);
 
 			long pos = 0;
@@ -99,6 +99,8 @@ namespace FdbBurner
 					try
 					{
 						tr.Reset();
+						// resolved in each transaction: the directory can move between two of them
+						var folder = await location.Resolve(tr);
 
 						for(int i = 0; i < N; i++)
 						{
