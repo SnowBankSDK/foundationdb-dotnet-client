@@ -84,6 +84,7 @@
     <PackageVersion Include="System.IO.Hashing" Version="11.0.0-rc.2.26504.105" />
     <PackageVersion Include="System.IO.Pipelines" Version="11.0.0-rc.2.26504.105" />
     <PackageVersion Include="System.Reflection.Metadata" Version="11.0.0-rc.2.26504.105" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="11.0.0-rc.2.26504.105" />
     <PackageVersion Include="System.Text.Encoding.CodePages" Version="11.0.0-rc.2.26504.105" />
     <PackageVersion Include="System.Text.Json" Version="11.0.0-rc.2.26504.105" />
     <PackageVersion Include="System.Threading.Channels" Version="11.0.0-rc.2.26504.105" />
@@ -115,6 +116,7 @@
     <PackageVersion Include="System.IO.Hashing" Version="10.0.13" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.13" />
     <PackageVersion Include="System.Reflection.Metadata" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageVersion Include="System.Text.Encoding.CodePages" Version="10.0.13" />
     <PackageVersion Include="System.Text.Json" Version="10.0.13" />
     <PackageVersion Include="System.Threading.Channels" Version="10.0.13" />
@@ -146,6 +148,7 @@
     <PackageVersion Include="System.IO.Hashing" Version="10.0.13" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.13" />
     <PackageVersion Include="System.Reflection.Metadata" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageVersion Include="System.Text.Encoding.CodePages" Version="10.0.13" />
     <PackageVersion Include="System.Text.Json" Version="10.0.13" />
     <PackageVersion Include="System.Threading.Channels" Version="10.0.13" />
@@ -177,6 +180,7 @@
     <PackageVersion Include="System.IO.Hashing" Version="10.0.13" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.13" />
     <PackageVersion Include="System.Reflection.Metadata" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageVersion Include="System.Text.Encoding.CodePages" Version="10.0.13" />
     <PackageVersion Include="System.Text.Json" Version="10.0.13" />
     <PackageVersion Include="System.Threading.Channels" Version="10.0.13" />
