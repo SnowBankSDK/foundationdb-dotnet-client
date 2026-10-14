@@ -33,7 +33,8 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 	[TestFixture]
 	[Category("Core-SDK")]
 	[SetInvariantCulture]
-	[Parallelizable(ParallelScope.All)]
+	// the fixture runs in parallel with the others, but its own tests run one after the other, so that the canary runs first
+	[Parallelizable(ParallelScope.Self)]
 	public class ThrowHelperTests : SimpleTest
 	{
 
@@ -72,24 +73,31 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 		[Test, Canary]
 		public void Test_VerifyAssumptions()
 		{
-			// we need to check that given two overloads, one with a string, and one with an interpolated string handler,
-			// the compiler will invoke the former with literal strings, and the latter with explicit interpolated strings!
+			// the ThrowHelper methods come in pairs: one taking a string, and one taking an interpolated string handler.
+			// The compiler must pick the string overload for a constant string, and the handler overload for an interpolation of non-constant values.
 
 			const string hello = "hello";
 			const string world = "world";
+			string notConstant = hello;
 
-			// should invoke the string overload
-			Assume.That(TrustButVerify.CallMe("hello"), Is.EqualTo("CallMe(string):hello"));
-			Assume.That(TrustButVerify.CallMe("hello" + " world!"), Is.EqualTo("CallMe(string):hello world!"));
-			Assume.That(TrustButVerify.CallMe(hello), Is.EqualTo("CallMe(string):hello"));
+			// a constant string invokes the string overload
+			Assert.That(TrustButVerify.CallMe("hello"), Is.EqualTo("CallMe(string):hello"));
+			Assert.That(TrustButVerify.CallMe("hello" + " world!"), Is.EqualTo("CallMe(string):hello world!"));
+			Assert.That(TrustButVerify.CallMe(hello), Is.EqualTo("CallMe(string):hello"));
 
-			// should invoke the interpolated overload
-			Assume.That(TrustButVerify.CallMe($"{hello}, world!"), Is.EqualTo("CallMe(interpolated):hello, world!"));
-			Assume.That(TrustButVerify.CallMe($"{hello}, {world}!"), Is.EqualTo("CallMe(interpolated):hello, world!"));
-			Assume.That(TrustButVerify.CallMe($"{hello + ", " + world}!"), Is.EqualTo("CallMe(interpolated):hello, world!"));
+			// an interpolation of constant strings is itself a constant string
+			Assert.That(TrustButVerify.CallMe($"hello"), Is.EqualTo("CallMe(string):hello"));
+			Assert.That(TrustButVerify.CallMe($"{hello}, world!"), Is.EqualTo("CallMe(string):hello, world!"));
+			Assert.That(TrustButVerify.CallMe($"{hello}, {world}!"), Is.EqualTo("CallMe(string):hello, world!"));
+			Assert.That(TrustButVerify.CallMe($"{hello + ", " + world}!"), Is.EqualTo("CallMe(string):hello, world!"));
 
-			// cornercases:
-			Assume.That(TrustButVerify.CallMe($"hello"), Is.EqualTo("CallMe(string):hello"), "Interpolated string without any argument is erased by the compiler");
+			// a string variable invokes the string overload
+			Assert.That(TrustButVerify.CallMe(notConstant), Is.EqualTo("CallMe(string):hello"));
+
+			// an interpolation with at least one non-constant value invokes the interpolated overload
+			Assert.That(TrustButVerify.CallMe($"{notConstant}, world!"), Is.EqualTo("CallMe(interpolated):hello, world!"));
+			Assert.That(TrustButVerify.CallMe($"{notConstant}, {world}!"), Is.EqualTo("CallMe(interpolated):hello, world!"));
+			Assert.That(TrustButVerify.CallMe($"{1}+{2}=3"), Is.EqualTo("CallMe(interpolated):1+2=3"), "an interpolated number is not a constant string");
 		}
 
 		[Test]
