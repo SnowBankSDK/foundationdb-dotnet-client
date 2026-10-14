@@ -69,7 +69,7 @@ namespace SnowBank.Data.Json.Tests
 
 		[Test]
 		[Category("LongRunning")]
-		[Order(10)]
+		[RunOrder(10)]
 		public void Bench_Compare()
 		{
 			var priority = Thread.CurrentThread.Priority;
@@ -709,7 +709,7 @@ namespace SnowBank.Data.Json.Tests
 
 		[Test]
 		[Category("LongRunning")]
-		[Order(11)]
+		[RunOrder(11)]
 		public void Test_NG_Bench()
 		{
 			Log("Model Type                       Size | Ser<T>   (nanos)           (allocated) | Parse    (nanos)           (allocated) | Deser<T> (nanos)           (allocated) | Domify   (nanos)           (allocated) | JSON Text");

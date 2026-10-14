@@ -98,7 +98,7 @@ namespace FoundationDB.Testing.Tests
 	{
 
 		[Test]
-		[Order(0)]
+		[Canary]
 		public async Task Test_Can_Perform_Basic_Operations()
 		{
 			var store = new FakeDbStore();
@@ -167,7 +167,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(10)]
+		[RunOrder(10)]
 		public async Task Test_Can_Read_And_Write()
 		{
 			var store = new FakeDbStore();
@@ -190,7 +190,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(11)]
+		[RunOrder(11)]
 		public async Task Test_Can_ClearRange()
 		{
 
@@ -248,7 +248,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(12)]
+		[RunOrder(12)]
 		public async Task Test_Can_GetRange()
 		{
 			var store = new FakeDbStore();
@@ -304,7 +304,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(10)]
+		[RunOrder(10)]
 		public async Task Test_Can_Merge_Writes_To_Same_Key()
 		{
 			var store = new FakeDbStore();
@@ -387,7 +387,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(20)]
+		[RunOrder(20)]
 		public async Task Test_Can_Read_Your_Writes()
 		{
 			var store = new FakeDbStore();
@@ -442,7 +442,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(21)]
+		[RunOrder(21)]
 		public async Task Test_Can_ClearRange_ReadYourWrites()
 		{
 
@@ -515,7 +515,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(22)]
+		[RunOrder(22)]
 		public async Task Test_Can_GetRange_ReadYourWrites()
 		{
 			var store = new FakeDbStore();
@@ -601,7 +601,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(23)]
+		[RunOrder(23)]
 		public async Task Test_Can_GetRange_ReadYourWrites2()
 		{
 			var store = new FakeDbStore();
@@ -675,7 +675,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(30)]
+		[RunOrder(30)]
 		public async Task Test_Can_Read_SystemKeys()
 		{
 			var store = new FakeDbStore();
@@ -704,7 +704,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(31)]
+		[RunOrder(31)]
 		public async Task Test_Can_Write_SystemKeys()
 		{
 			var store = new FakeDbStore();
@@ -740,7 +740,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(31)]
+		[RunOrder(31)]
 		public async Task Test_Can_Read_And_Touch_MetadataVersionKey()
 		{
 			var store = new FakeDbStore();
@@ -787,7 +787,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(40)]
+		[RunOrder(40)]
 		public async Task Test_Can_Atomic_Add_Snapshot()
 		{
 			var store = new FakeDbStore();
@@ -827,7 +827,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(41)]
+		[RunOrder(41)]
 		public async Task Test_Can_Atomic_Add_ReadYourWrites()
 		{
 			var store = new FakeDbStore();
@@ -876,7 +876,7 @@ namespace FoundationDB.Testing.Tests
 		}
 
 		[Test]
-		[Order(100)]
+		[RunOrder(100)]
 		public async Task Test_Can_DirectoryLayer()
 		{
 			var store = new FakeDbStore();

@@ -69,7 +69,7 @@ namespace SnowBank.Diagnostics.Contracts.Tests
 			}
 		}
 
-		[Test, Order(0)]
+		[Test, Canary]
 		public void Test_VerifyAssumptions()
 		{
 			// we need to check that given two overloads, one with a string, and one with an interpolated string handler,
