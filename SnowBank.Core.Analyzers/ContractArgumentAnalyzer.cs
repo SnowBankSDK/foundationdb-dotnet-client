@@ -33,7 +33,8 @@ namespace SnowBank.Analyzers
 	using Microsoft.CodeAnalysis.Diagnostics;
 	using Microsoft.CodeAnalysis.Operations;
 
-	/// <summary>Reports Contract.Requires, Contract.Assert, or Contract.Debug.Requires used to check an argument of a public member (SBK1004).</summary>
+	/// <summary>Reports Contract.Requires or Contract.Assert used to check an argument of a public member (SBK1004).</summary>
+	/// <remarks>Contract.Debug checks are not reported: they are skipped in Release on purpose, for callers trusted to pass valid arguments.</remarks>
 	[DiagnosticAnalyzer(LanguageNames.CSharp)]
 	public sealed class ContractArgumentAnalyzer : DiagnosticAnalyzer
 	{
@@ -50,7 +51,6 @@ namespace SnowBank.Analyzers
 			context.RegisterCompilationStartAction(start =>
 			{
 				var contract = start.Compilation.GetTypeByMetadataName("SnowBank.Diagnostics.Contracts.Contract");
-				var debug = start.Compilation.GetTypeByMetadataName("SnowBank.Diagnostics.Contracts.Contract+Debug");
 				if (contract is null) return;
 
 				start.RegisterOperationAction(ctx =>
@@ -58,8 +58,7 @@ namespace SnowBank.Analyzers
 					var op = (IInvocationOperation) ctx.Operation;
 					var method = op.TargetMethod;
 					if (method.Name is not ("Requires" or "Assert")) return;
-					var owner = method.ContainingType;
-					if (!SymbolEqualityComparer.Default.Equals(owner, contract) && !SymbolEqualityComparer.Default.Equals(owner, debug)) return;
+					if (!SymbolEqualityComparer.Default.Equals(method.ContainingType, contract)) return;
 					// a custom message is not carried over by the rewrite, so the call is left alone
 					if (op.Arguments.Count(a => a.ArgumentKind == ArgumentKind.Explicit) != 1) return;
 					if (ctx.ContainingSymbol is not IMethodSymbol member || !IsPublicSurface(member)) return;
@@ -67,7 +66,7 @@ namespace SnowBank.Analyzers
 					var condition = Unwrap(op.Arguments[0].Value);
 					if (GetShape(condition, member, contract, ctx.Compilation) is not var (target, parameter, extra)) return;
 
-					string receiver = GetReceiverText(op.Syntax, SymbolEqualityComparer.Default.Equals(owner, debug));
+					string receiver = GetReceiverText(op.Syntax);
 					string replacement = $"{receiver}{target}({parameter.Name}{extra})";
 					var properties = ImmutableDictionary<string, string?>.Empty.Add(ReplacementProperty, replacement);
 					ctx.ReportDiagnostic(Diagnostic.Create(SbkDescriptors.ContractOnPublicArgument, op.Syntax.GetLocation(), properties, replacement));
@@ -143,14 +142,9 @@ namespace SnowBank.Analyzers
 		private static bool IsSignedNumber(ITypeSymbol type)
 			=> type.SpecialType is SpecialType.System_Int16 or SpecialType.System_Int32 or SpecialType.System_Int64 or SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_Decimal;
 
-		/// <summary>The receiver text of the call including the trailing dot ('Contract.', a qualified name, or empty under a static import), without the Debug part.</summary>
-		private static string GetReceiverText(SyntaxNode syntax, bool debug)
-		{
-			if (syntax is not InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access }) return "";
-			var receiver = access.Expression;
-			if (debug && receiver is MemberAccessExpressionSyntax inner) receiver = inner.Expression;
-			return receiver.ToString() + ".";
-		}
+		/// <summary>The receiver text of the call including the trailing dot ('Contract.', a qualified name, or empty under a static import).</summary>
+		private static string GetReceiverText(SyntaxNode syntax)
+			=> syntax is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access } ? access.Expression.ToString() + "." : "";
 
 		private static IOperation Unwrap(IOperation op)
 		{
