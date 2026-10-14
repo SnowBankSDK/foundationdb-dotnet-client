@@ -54,7 +54,7 @@ namespace FoundationDB.Client.Tests
 			using var provider = FdbDatabaseProvider.Create(options);
 
 			// the first open must fail: the coordinator is unreachable
-			var first = Assert.CatchAsync(async () => await provider.GetDatabase(this.Cancellation))!;
+			var first = (await Assert.CatchAsync(async () => await provider.GetDatabase(this.Cancellation)))!;
 			Log($"First attempt failed as expected: [{first.GetType().Name}] {first.Message}");
 
 			// the cluster "becomes reachable": the corrected address points at the live test container

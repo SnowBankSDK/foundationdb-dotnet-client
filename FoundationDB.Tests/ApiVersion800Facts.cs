@@ -44,8 +44,8 @@ namespace FoundationDB.Client.Tests
 			// With fdb_c 8.0, the process aborts on any call to a native tenant function, so reaching these assertions proves that the exception came first.
 			Assert.That(() => db.GetTenant(name), Throws.TypeOf<NotSupportedException>().With.Message.Contains("API version 800"));
 
-			Assert.ThrowsAsync<NotSupportedException>(() => db.ReadAsync(tr => Fdb.Tenants.GetTenantMode(tr), this.Cancellation));
-			Assert.ThrowsAsync<NotSupportedException>(() => db.WriteAsync(tr => Fdb.Tenants.CreateTenant(tr, name), this.Cancellation));
+			await Assert.ThrowsAsync<NotSupportedException>(() => db.ReadAsync(tr => Fdb.Tenants.GetTenantMode(tr), this.Cancellation));
+			await Assert.ThrowsAsync<NotSupportedException>(() => db.WriteAsync(tr => Fdb.Tenants.CreateTenant(tr, name), this.Cancellation));
 		}
 
 		[Test]

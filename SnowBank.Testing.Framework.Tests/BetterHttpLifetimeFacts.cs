@@ -74,7 +74,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// the SAME client's next request must now fail: the target host is resolved per-request against the LIVE map, which
 			// sees the node as down (a stopped node drops off the network -> simulated connect failure), not against a target
 			// captured when the handler was built.
-			Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetStringAsync(uri, this.Cancellation),
+			await Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetStringAsync(uri, this.Cancellation),
 				"a stopped host must fail the SAME client's next request");
 
 			await web.StartHost(this.Cancellation);
@@ -102,7 +102,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// defense turns an unregistered real name into a LOUD alarm, so the sanctioned way to get a quiet simulated DNS
 			// failure is an explicit Cut(pattern, NameResolution) at the resolution layer.
 			context.Topology.Cut("does-not-exist.acme.invalid", VirtualNetworkFault.NameResolution);
-			var ex = Assert.ThrowsAsync<HttpRequestException>(async () =>
+			var ex = await Assert.ThrowsAsync<HttpRequestException>(async () =>
 				await client.GetStringAsync(new Uri("https://does-not-exist.acme.invalid/ping"), this.Cancellation),
 				"an intended DNS cut must fail the SAME client's request");
 
@@ -424,7 +424,7 @@ namespace SnowBank.Testing.Framework.Tests
 			var winner = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5), this.Cancellation));
 			Assert.That(winner, Is.SameAs(task), "the per-call Timeout must fire once fake time advances past it");
 
-			var ex = Assert.ThrowsAsync<TaskCanceledException>(async () => await task);
+			var ex = await Assert.ThrowsAsync<TaskCanceledException>(async () => await task);
 			Assert.That(ex!.InnerException, Is.InstanceOf<TimeoutException>(),
 				"a per-call Timeout must surface as a TaskCanceledException wrapping a TimeoutException, the same shape as a real HttpClient.Timeout");
 		}

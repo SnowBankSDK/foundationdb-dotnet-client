@@ -173,7 +173,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// VirtualHttpClientHandler.SendAsync fix), so the pipeline handler's own catch produces the canonical shape.
 			await AdvanceAndPump(fake, TimeSpan.FromSeconds(31));
 
-			var ex = Assert.ThrowsAsync<TaskCanceledException>(async () => await task);
+			var ex = await Assert.ThrowsAsync<TaskCanceledException>(async () => await task);
 			Assert.That(ex!.InnerException, Is.InstanceOf<TimeoutException>(), "a client Timeout must surface as a TaskCanceledException wrapping a TimeoutException, the same shape as a real HttpClient.Timeout");
 		}
 

@@ -75,7 +75,7 @@ namespace FoundationDB.Testing.Tests
 			long v3 = await CommitValue(db, "hello", 3, this.Cancellation);
 
 			// v1 is now 6 s old: aged out, exactly like a real cluster
-			var ex = Assert.ThrowsAsync<FdbException>(async () => await ReadAtVersion(db, v1, "hello", this.Cancellation), "v1 is 6 s old and must have aged out");
+			var ex = await Assert.ThrowsAsync<FdbException>(async () => await ReadAtVersion(db, v1, "hello", this.Cancellation), "v1 is 6 s old and must have aged out");
 			Assert.That(ex!.Code, Is.EqualTo(FdbError.TransactionTooOld));
 
 			// v2 is 3 s old: still readable
@@ -111,7 +111,7 @@ namespace FoundationDB.Testing.Tests
 			long v2 = await CommitValue(db, "k", 2, this.Cancellation);
 			long v3 = await CommitValue(db, "k", 3, this.Cancellation);
 
-			var ex = Assert.ThrowsAsync<FdbException>(async () => await ReadAtVersion(db, v1, "k", this.Cancellation), "only the last 2 versions stay readable");
+			var ex = await Assert.ThrowsAsync<FdbException>(async () => await ReadAtVersion(db, v1, "k", this.Cancellation), "only the last 2 versions stay readable");
 			Assert.That(ex!.Code, Is.EqualTo(FdbError.TransactionTooOld));
 			Assert.That((await ReadAtVersion(db, v2, "k", this.Cancellation)).ToInt32(), Is.EqualTo(2));
 			Assert.That((await ReadAtVersion(db, v3, "k", this.Cancellation)).ToInt32(), Is.EqualTo(3));
@@ -150,7 +150,7 @@ namespace FoundationDB.Testing.Tests
 			long v1 = await CommitValue(db, "k", 1, this.Cancellation);
 			long v2 = await CommitValue(db, "k", 2, this.Cancellation);
 
-			var ex = Assert.ThrowsAsync<FdbException>(async () => await ReadAtVersion(db, v1, "k", this.Cancellation), "KeepLast(1) keeps the head only");
+			var ex = await Assert.ThrowsAsync<FdbException>(async () => await ReadAtVersion(db, v1, "k", this.Cancellation), "KeepLast(1) keeps the head only");
 			Assert.That(ex!.Code, Is.EqualTo(FdbError.TransactionTooOld));
 			Assert.That((await ReadAtVersion(db, v2, "k", this.Cancellation)).ToInt32(), Is.EqualTo(2));
 		}
@@ -177,7 +177,7 @@ namespace FoundationDB.Testing.Tests
 
 			Assert.That(calls, Is.GreaterThanOrEqualTo(3), "the policy must have run at every publish");
 			// the initial snapshot is the oldest retained entry, so v1 (the first commit) was a middle entry and dropped
-			var ex = Assert.ThrowsAsync<FdbException>(async () => await ReadAtVersion(db, v2, "k", this.Cancellation), "v2 was a middle entry when v3 published");
+			var ex = await Assert.ThrowsAsync<FdbException>(async () => await ReadAtVersion(db, v2, "k", this.Cancellation), "v2 was a middle entry when v3 published");
 			Assert.That(ex!.Code, Is.EqualTo(FdbError.TransactionTooOld));
 			Assert.That((await ReadAtVersion(db, v3, "k", this.Cancellation)).ToInt32(), Is.EqualTo(3), "the head always survives");
 		}
@@ -202,7 +202,7 @@ namespace FoundationDB.Testing.Tests
 			}
 
 			slow.Set(Slice.FromString("anchor"), Slice.FromInt32(42));
-			var ex = Assert.ThrowsAsync<FdbException>(async () => await slow.CommitAsync(), "the slow transaction's read version is 9 s old: below the conflict-history floor");
+			var ex = await Assert.ThrowsAsync<FdbException>(async () => await slow.CommitAsync(), "the slow transaction's read version is 9 s old: below the conflict-history floor");
 			Assert.That(ex!.Code, Is.EqualTo(FdbError.TransactionTooOld));
 		}
 
@@ -229,7 +229,7 @@ namespace FoundationDB.Testing.Tests
 			_ = await w1.GetAsync(Slice.FromString("contended"));
 			await CommitValue(db, "contended", 1, this.Cancellation);
 			w1.Set(Slice.FromString("contended"), Slice.FromInt32(2));
-			var ex = Assert.ThrowsAsync<FdbException>(async () => await w1.CommitAsync(), "an in-window conflict is still detected after pruning");
+			var ex = await Assert.ThrowsAsync<FdbException>(async () => await w1.CommitAsync(), "an in-window conflict is still detected after pruning");
 			Assert.That(ex!.Code, Is.EqualTo(FdbError.NotCommitted));
 		}
 

@@ -416,7 +416,7 @@ namespace FoundationDB.Client.Tests
 
 			// the UID must be valid. If not we should get error code FdbError.SnapshotInvalidUidString (2509)
 			Log("Creating snapshot with invalid uid...");
-			var ex = Assert.ThrowsAsync<FdbException>(async () => await db.CreateSnapshotAsync("invalid_uid", "test", this.Cancellation), "Should fail because the snapshot uid is invalid")!;
+			var ex = (await Assert.ThrowsAsync<FdbException>(async () => await db.CreateSnapshotAsync("invalid_uid", "test", this.Cancellation), "Should fail because the snapshot uid is invalid"))!;
 			Log($"> {ex.Code}: {ex.Message}");
 			Assert.That(ex.Code, Is.EqualTo(FdbError.SnapshotInvalidUidString));
 

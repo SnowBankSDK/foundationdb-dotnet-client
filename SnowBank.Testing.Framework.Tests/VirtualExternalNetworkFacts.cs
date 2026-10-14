@@ -129,9 +129,9 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
-		public void Test_Real_Tld_On_Lan_Fails_Registration()
+		public async Task Test_Real_Tld_On_Lan_Fails_Registration()
 		{
-			var ex = Assert.CatchAsync(async () => await MakeItSo(env => env.AddSimpleLan(lan => lan.WithMinimalWebHost("BADAPP", host =>
+			var ex = await Assert.CatchAsync(async () => await MakeItSo(env => env.AddSimpleLan(lan => lan.WithMinimalWebHost("BADAPP", host =>
 			{
 				host.Identity.Fqdn = "api.partner.com"; // a real TLD on a simulated network
 				host.ConfigureApplication(_ => { });
@@ -141,9 +141,9 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
-		public void Test_Simulated_Name_On_External_Fails_Registration()
+		public async Task Test_Simulated_Name_On_External_Fails_Registration()
 		{
-			var ex = Assert.CatchAsync(async () => await MakeItSo(env => env.AddSimpleExternal(ext => ext.WithMinimalWebHost("BADEXT", host =>
+			var ex = await Assert.CatchAsync(async () => await MakeItSo(env => env.AddSimpleExternal(ext => ext.WithMinimalWebHost("BADEXT", host =>
 			{
 				host.Identity.Fqdn = "mock.simulated"; // a .simulated name on the external network
 				host.ConfigureApplication(_ => { });
@@ -153,10 +153,10 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
-		public void Test_Real_Tld_Alias_On_Lan_Fails_Registration()
+		public async Task Test_Real_Tld_Alias_On_Lan_Fails_Registration()
 		{
 			// the guard classifies every name a host answers to, not just its FQDN
-			var ex = Assert.CatchAsync(async () => await MakeItSo(env => env.AddSimpleLan(lan => lan.WithMinimalWebHost("APP", host =>
+			var ex = await Assert.CatchAsync(async () => await MakeItSo(env => env.AddSimpleLan(lan => lan.WithMinimalWebHost("APP", host =>
 			{
 				host.Identity.Aliases.Add("api.partner.com"); // a real-TLD alias on a simulated host
 				host.ConfigureApplication(_ => { });
@@ -177,7 +177,7 @@ namespace SnowBank.Testing.Framework.Tests
 #pragma warning restore CS0618
 
 			// a real name nobody registered leaked into the test: a loud, specific alarm, not a quiet simulated DNS failure
-			var ex = Assert.CatchAsync(async () => await client.GetStringAsync(new Uri("https://api.leak.com/x"), this.Cancellation));
+			var ex = await Assert.CatchAsync(async () => await client.GetStringAsync(new Uri("https://api.leak.com/x"), this.Cancellation));
 			Assert.That(ex!.ToString(), Does.Contain("api.leak.com").And.Contain("Real URI"),
 				"an unregistered real name reaching the virtual network must trip the loud egress alarm");
 		}
@@ -189,7 +189,7 @@ namespace SnowBank.Testing.Framework.Tests
 				lan.WithMinimalWebHost("APP", host => host.ConfigureApplication(_ => { }))));
 			var map = context.GetWebHost("APP").GetRequiredService<INetworkMap>();
 
-			var ex = Assert.CatchAsync(async () => await map.DnsLookup("api.leak.com", null, this.Cancellation));
+			var ex = await Assert.CatchAsync(async () => await map.DnsLookup("api.leak.com", null, this.Cancellation));
 			Assert.That(ex!.ToString(), Does.Contain("api.leak.com").And.Contain("Real URI"),
 				"an unregistered real name must trip the loud alarm at resolve-time too");
 		}
@@ -208,7 +208,7 @@ namespace SnowBank.Testing.Framework.Tests
 			using var client = app.GetRequiredService<IBetterHttpClientFactory>().CreateClient(new Uri("https://api.partner.com"));
 #pragma warning restore CS0618
 
-			var ex = Assert.ThrowsAsync<HttpRequestException>(async () =>
+			var ex = await Assert.ThrowsAsync<HttpRequestException>(async () =>
 				await client.GetStringAsync(new Uri("https://api.partner.com/pay"), this.Cancellation));
 			Assert.That(ex!.InnerException, Is.InstanceOf<WebException>(), "an intended Cut gives the normal quiet DNS-failure shape");
 			Assert.That(((WebException) ex.InnerException!).Status, Is.EqualTo(WebExceptionStatus.NameResolutionFailure), "a Cut name resolves as a name-resolution failure");
@@ -226,7 +226,7 @@ namespace SnowBank.Testing.Framework.Tests
 			using var client = app.GetRequiredService<IBetterHttpClientFactory>().CreateClient(new Uri("https://ghost.lan.simulated"));
 #pragma warning restore CS0618
 
-			var ex = Assert.CatchAsync(async () => await client.GetStringAsync(new Uri("https://ghost.lan.simulated/x"), this.Cancellation));
+			var ex = await Assert.CatchAsync(async () => await client.GetStringAsync(new Uri("https://ghost.lan.simulated/x"), this.Cancellation));
 			Assert.That(ex!.ToString(), Does.Contain("ghost.lan.simulated").And.Contain("forgot to register"),
 				"an unregistered .simulated name must give the friendly forgot-to-register error, not the loud real-URI alarm");
 		}

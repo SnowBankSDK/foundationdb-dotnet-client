@@ -90,21 +90,21 @@ namespace FoundationDB.Client.Tests
 		}
 
 		[Test]
-		public void Test_Unexpected_Configure_Output_Fails_And_Names_The_Recipe()
+		public async Task Test_Unexpected_Configure_Output_Fails_And_Names_The_Recipe()
 		{
 			var cli = new FakeFdbCli();
 			cli.Enqueue(1, "Unable to connect to cluster");
 
-			var ex = Assert.ThrowsAsync<InvalidOperationException>(
+			var ex = (await Assert.ThrowsAsync<InvalidOperationException>(
 				() => Fdb.Provisioning.EnsureDatabaseConfiguredAsync(cli.Run, TimeSpan.FromSeconds(5), ct: this.Cancellation)
-			)!;
+			))!;
 
 			Assert.That(ex.Message, Does.Contain("configure new single ssd"), "the failure must name the manual recipe");
 			Assert.That(ex.Message, Does.Contain("Unable to connect to cluster"), "the failure must carry the fdbcli output");
 		}
 
 		[Test]
-		public void Test_Database_Never_Available_Times_Out_And_Names_The_Recipe()
+		public async Task Test_Database_Never_Available_Times_Out_And_Names_The_Recipe()
 		{
 			var cli = new FakeFdbCli();
 			cli.Enqueue(0, ConfigureCreated);
@@ -114,9 +114,9 @@ namespace FoundationDB.Client.Tests
 				cli.Enqueue(0, StatusUnavailable);
 			}
 
-			var ex = Assert.ThrowsAsync<InvalidOperationException>(
+			var ex = (await Assert.ThrowsAsync<InvalidOperationException>(
 				() => Fdb.Provisioning.EnsureDatabaseConfiguredAsync(cli.Run, TimeSpan.FromMilliseconds(250), probeInterval: TimeSpan.FromMilliseconds(10), ct: this.Cancellation)
-			)!;
+			))!;
 
 			Assert.That(ex.Message, Does.Contain("configure new single ssd"));
 		}
@@ -141,7 +141,7 @@ namespace FoundationDB.Client.Tests
 			await AdvanceAndPump(fake, TimeSpan.FromSeconds(40), TimeSpan.FromSeconds(1));
 
 			Assert.That(task.IsCompleted, Is.True, "advancing past the timeout on the injected clock must end the wait");
-			Assert.ThrowsAsync<InvalidOperationException>(async () => await task, "the database never became available, so it must time out");
+			await Assert.ThrowsAsync<InvalidOperationException>(async () => await task, "the database never became available, so it must time out");
 		}
 
 		[Test]

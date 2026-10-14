@@ -77,7 +77,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// cut ONLY the A -> B direction
 			context.Topology.Cut("ALICE", "BOB", VirtualNetworkFault.Severed);
 
-			var ex = Assert.ThrowsAsync<HttpRequestException>(async () => await clientA.GetStringAsync(uriBob, this.Cancellation),
+			var ex = await Assert.ThrowsAsync<HttpRequestException>(async () => await clientA.GetStringAsync(uriBob, this.Cancellation),
 				"the cut direction must fail");
 			// the Severed shape is "connection reset by peer": a WebException wrapping a SocketException(ConnectionReset)
 			Assert.That(ex!.InnerException, Is.InstanceOf<WebException>(), "a severed link must wrap a WebException");
@@ -117,7 +117,7 @@ namespace SnowBank.Testing.Framework.Tests
 
 			// Refused: the target actively refuses new connections (RST on SYN)
 			context.Topology.Cut("CLI", "API", VirtualNetworkFault.Refused);
-			var refused = Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetStringAsync(uri, this.Cancellation),
+			var refused = await Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetStringAsync(uri, this.Cancellation),
 				"a refused link must fail new connections");
 			Assert.That(refused!.InnerException, Is.InstanceOf<WebException>());
 			Assert.That(((WebException) refused.InnerException!).Status, Is.EqualTo(WebExceptionStatus.ConnectFailure),
@@ -128,7 +128,7 @@ namespace SnowBank.Testing.Framework.Tests
 
 			// NameResolution: the name no longer resolves (stale DNS, dead resolver)
 			context.Topology.Cut("CLI", "API", VirtualNetworkFault.NameResolution);
-			var dns = Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetStringAsync(uri, this.Cancellation),
+			var dns = await Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetStringAsync(uri, this.Cancellation),
 				"a dns-cut link must fail new connections");
 			Assert.That(dns!.InnerException, Is.InstanceOf<WebException>());
 			Assert.That(((WebException) dns.InnerException!).Status, Is.EqualTo(WebExceptionStatus.NameResolutionFailure),
@@ -177,7 +177,7 @@ namespace SnowBank.Testing.Framework.Tests
 			// cut the edge UNDER the established stream: the connection was initiated over CLI -> API, so it must abort
 			context.Topology.Cut("CLI", "API", VirtualNetworkFault.Severed);
 
-			Assert.CatchAsync(async () =>
+			await Assert.CatchAsync(async () =>
 			{
 				// a chunk already buffered in the in-process pipe may still deliver (same as bytes already in the kernel
 				// buffer when a real link is severed), but the abort must surface within a few reads - never an endless feed
@@ -233,7 +233,7 @@ namespace SnowBank.Testing.Framework.Tests
 			}
 			Assert.That(pending.IsCompleted, Is.True, "advancing virtual time past the connect budget must trip the timeout");
 
-			var ex = Assert.ThrowsAsync<HttpRequestException>(async () => await pending, "the parked connect must fail once its budget elapses");
+			var ex = await Assert.ThrowsAsync<HttpRequestException>(async () => await pending, "the parked connect must fail once its budget elapses");
 			Assert.That(ex!.InnerException, Is.InstanceOf<WebException>(), "a blackholed connect must fail with the connect-timeout shape");
 			Assert.That(((WebException) ex.InnerException!).Status, Is.EqualTo(WebExceptionStatus.ConnectFailure));
 			Assert.That(ex.InnerException!.InnerException, Is.InstanceOf<SocketException>());
@@ -335,7 +335,7 @@ namespace SnowBank.Testing.Framework.Tests
 			}
 			Assert.That(pendingRead.IsCompleted, Is.True, "advancing virtual time past the notice window must trip the read timeout");
 
-			var ex = Assert.CatchAsync(async () => await pendingRead, "the parked read must fail once the notice window elapses");
+			var ex = await Assert.CatchAsync(async () => await pendingRead, "the parked read must fail once the notice window elapses");
 			// the shape is a socket read timeout: an IOException carrying a SocketException(TimedOut)
 			var chain = ex;
 			SocketException? sockEx = null;
