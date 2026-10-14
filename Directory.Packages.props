@@ -197,8 +197,6 @@
     <PackageVersion Update="Microsoft.Extensions.Options" Version="8.0.0" />
     <PackageVersion Update="System.Collections.Immutable" Version="8.0.0" />
     <PackageVersion Update="System.IO.Hashing" Version="8.0.0" />
-    <!-- SourceLink is build-only; its 10.x transitively pins System.IO.Hashing>=10.0.8. Lower it on ns2.0 so it does not force the runtime Hashing floor up. -->
-    <PackageVersion Update="Microsoft.SourceLink.GitHub" Version="8.0.0" />
     <PackageVersion Update="System.IO.Pipelines" Version="6.0.0" />
     <PackageVersion Update="System.Threading.Channels" Version="6.0.0" />
     <!-- SignalR forces TimeProvider>=10.0.9 on net8+, but ns2.0 has no such consumer: keep the 8.0.1 LTS floor
