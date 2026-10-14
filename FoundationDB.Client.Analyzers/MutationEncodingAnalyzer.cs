@@ -100,13 +100,16 @@ namespace FoundationDB.Analyzers
 			ctx.ReportDiagnostic(Diagnostic.Create(FdbDescriptors.VersionStampedKeySet, location));
 		}
 
-		/// <summary>The expression calls CreateVersionStamp or CreateUniqueVersionStamp on a transaction, directly or through a local of the same method.</summary>
+		/// <summary>The expression calls CreateVersionStamp or CreateUniqueVersionStamp on a transaction, directly or through a local of the same method, outside any conditional.</summary>
+		/// <remarks>A placeholder chosen by a condition (<c>?:</c> or <c>??</c>) is in the key on one branch only, and the code usually calls Set on the other one.</remarks>
 		private static bool ContainsStamp(IOperation key, FdbSymbols symbols, SemanticModel? model)
 		{
-			foreach (var op in key.DescendantsAndSelf())
+			if (key is IConditionalOperation or ICoalesceOperation) return false;
+			if (key is IInvocationOperation { TargetMethod: { Name: "CreateVersionStamp" or "CreateUniqueVersionStamp" } method } && FdbSymbols.IsOrImplements(method.ContainingType, symbols.IFdbTransaction)) return true;
+			if (key is ILocalReferenceOperation local && FdbSymbols.GetLocalInitializer(local.Local, model) is { } initializer && ContainsStamp(initializer, symbols, model)) return true;
+			foreach (var child in key.ChildOperations)
 			{
-				if (op is IInvocationOperation { TargetMethod: { Name: "CreateVersionStamp" or "CreateUniqueVersionStamp" } method } && FdbSymbols.IsOrImplements(method.ContainingType, symbols.IFdbTransaction)) return true;
-				if (op is ILocalReferenceOperation local && FdbSymbols.GetLocalInitializer(local.Local, model) is { } initializer && ContainsStamp(initializer, symbols, model)) return true;
+				if (ContainsStamp(child, symbols, model)) return true;
 			}
 			return false;
 		}
