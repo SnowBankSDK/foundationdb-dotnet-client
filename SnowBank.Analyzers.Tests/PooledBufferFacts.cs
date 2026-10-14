@@ -131,6 +131,22 @@ namespace SnowBank.Analyzers.Tests
 		#region SBK2001...
 
 		[Test]
+		public Task Reports_Only_The_Correctness_Rule_In_A_Test_Project() => Verify.AnalyzerInTestProject<PooledBufferAnalyzer>(Usings + """
+			class C
+			{
+				void Send(byte[] bytes) { }
+				Slice M(byte[] payload)
+				{
+					var w = new SliceWriter(ArrayPool<byte>.Shared);
+					w.WriteInt32(1);
+					Send(w.GetBytes());
+					using var owner = Slice.FromBytes(payload, ArrayPool<byte>.Shared);
+					return {|#0:owner.Data|};
+				}
+			}
+			""", Escape(0, "owner.Data"));
+
+		[Test]
 		public Task Reports_A_Writer_Never_Disposed() => Verify.Analyzer<PooledBufferAnalyzer>(Usings + """
 			class C
 			{

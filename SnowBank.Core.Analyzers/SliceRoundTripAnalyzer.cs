@@ -49,6 +49,7 @@ namespace SnowBank.Analyzers
 			context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
 			context.RegisterCompilationStartAction(start =>
 			{
+				if (TestProjects.IsTestProject(start.Compilation)) return;
 				var slice = start.Compilation.GetTypeByMetadataName("System.Slice");
 				var encoding = start.Compilation.GetTypeByMetadataName("System.Text.Encoding");
 				var bitConverter = start.Compilation.GetTypeByMetadataName("System.BitConverter");

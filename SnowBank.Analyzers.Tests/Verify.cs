@@ -40,7 +40,16 @@ namespace SnowBank.Analyzers.Tests
 			where TAnalyzer : DiagnosticAnalyzer, new()
 			=> Analyzer<TAnalyzer>(source, TestReferences.Net100, OutputKind.DynamicallyLinkedLibrary, expected);
 
+		/// <summary>Runs the analyzer over a snippet compiled as a test project: it also references NUnit.</summary>
+		public static Task AnalyzerInTestProject<TAnalyzer>(string source, params DiagnosticResult[] expected)
+			where TAnalyzer : DiagnosticAnalyzer, new()
+			=> Analyzer<TAnalyzer>(source, TestReferences.Net100, OutputKind.DynamicallyLinkedLibrary, [ MetadataReference.CreateFromFile(typeof(Assert).Assembly.Location) ], expected);
+
 		public static Task Analyzer<TAnalyzer>(string source, ReferenceAssemblies references, OutputKind outputKind, params DiagnosticResult[] expected)
+			where TAnalyzer : DiagnosticAnalyzer, new()
+			=> Analyzer<TAnalyzer>(source, references, outputKind, [ ], expected);
+
+		private static Task Analyzer<TAnalyzer>(string source, ReferenceAssemblies references, OutputKind outputKind, MetadataReference[] extraReferences, DiagnosticResult[] expected)
 			where TAnalyzer : DiagnosticAnalyzer, new()
 		{
 			var test = new CSharpAnalyzerTest<TAnalyzer, DefaultVerifier>
@@ -50,6 +59,7 @@ namespace SnowBank.Analyzers.Tests
 			};
 			test.TestState.OutputKind = outputKind;
 			test.TestState.AdditionalReferences.AddRange(TestReferences.Libraries);
+			test.TestState.AdditionalReferences.AddRange(extraReferences);
 			test.ExpectedDiagnostics.AddRange(expected);
 			return test.RunAsync();
 		}

@@ -54,6 +54,18 @@ namespace SnowBank.Analyzers.Tests
 			""", Unwrapped(0));
 
 		[Test]
+		public Task Ignores_A_Test_Project() => Verify.AnalyzerInTestProject<ProviderUnwrapAnalyzer>(Usings + """
+			class C
+			{
+				async Task<long> M(IFdbDatabaseProvider provider, CancellationToken ct)
+				{
+					var db = await provider.GetDatabase(ct);
+					return await db.ReadAsync(tr => tr.GetReadVersionAsync(), ct);
+				}
+			}
+			""");
+
+		[Test]
 		public Task Reports_Uses_Of_Root_And_WriteAsync() => Verify.Analyzer<ProviderUnwrapAnalyzer>(Usings + """
 			class C
 			{

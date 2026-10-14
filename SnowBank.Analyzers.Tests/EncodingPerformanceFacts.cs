@@ -56,6 +56,19 @@ namespace SnowBank.Analyzers.Tests
 			""", Buffer(0, "Slice.FromString(json)", "FdbValue.ToTextUtf8(json)"));
 
 		[Test]
+		public Task Ignores_A_Test_Project() => Verify.AnalyzerInTestProject<EncodingPerformanceAnalyzer>(Usings + """
+			class C
+			{
+				// a test feeds the plain factories on purpose, to exercise them
+				void M(IFdbTransaction tr, IKeySubspace subspace, string json)
+				{
+					tr.Set(subspace.Key("a"), Slice.FromString(json));
+					tr.Clear(subspace.Key("a").ToSlice());
+				}
+			}
+			""");
+
+		[Test]
 		public Task Reports_Each_Factory_Of_The_Table() => Verify.Analyzer<EncodingPerformanceAnalyzer>(Usings + """
 			class C
 			{

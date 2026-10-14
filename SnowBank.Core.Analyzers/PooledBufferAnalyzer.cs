@@ -56,8 +56,11 @@ namespace SnowBank.Analyzers
 				var symbols = Symbols.TryCreate(start.Compilation);
 				if (symbols is null) return;
 
-				// SBK2001
-				start.RegisterOperationAction(ctx => AnalyzeDeclarator(ctx, (IVariableDeclaratorOperation) ctx.Operation, symbols), OperationKind.VariableDeclarator);
+				// SBK2001, a performance rule: quiet in a test project
+				if (!TestProjects.IsTestProject(start.Compilation))
+				{
+					start.RegisterOperationAction(ctx => AnalyzeDeclarator(ctx, (IVariableDeclaratorOperation) ctx.Operation, symbols), OperationKind.VariableDeclarator);
+				}
 
 				// SBK1001: the escape sites
 				start.RegisterOperationAction(ctx => AnalyzeEscape(ctx, ((IReturnOperation) ctx.Operation).ReturnedValue, symbols), OperationKind.Return, OperationKind.YieldReturn);
