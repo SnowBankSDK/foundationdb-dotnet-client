@@ -55,6 +55,7 @@
     <PackageVersion Include="StructuredFieldValues" Version="0.7.7" />
     <PackageVersion Include="System.CommandLine" Version="2.0.13" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
     <PackageVersion Include="Testcontainers" Version="4.15.0" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.8" />
   </ItemGroup>
