@@ -28,7 +28,9 @@
 	</PropertyGroup>
 	<ItemGroup Condition="'$(IsPackable)' == 'true'">
 		<!-- Include the GitHub source link provider for all packable projects -->
-		<PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+		<!-- netstandard2.0 uses the Source Link built into the SDK: the 10.x package raises the System.IO.Hashing floor
+		     of that target, and the 8.0.0 package depends on a vulnerable Microsoft.Build.Tasks.Git (CVE-2026-62900) -->
+		<PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
 		<!-- embed the various generated source files in the pdb (otherwise sourcelink test will complain)-->
 		<EmbeddedFiles Include="$(GeneratedAssemblyInfoFile)"/>
 		<EmbeddedFiles Include="$(GeneratedGlobalUsingsFile)"/>
