@@ -156,7 +156,7 @@ namespace FoundationDB.Layers.Counters
 				var res = await transaction.GetAsync(this.Subspace.Key(pk)).ConfigureAwait(false);
 
 				if (!res.IsNullOrEmpty) value += res.ToInt64();
-				transaction.Set(this.Subspace.Key(pk), Slice.FromFixed64(value));
+				transaction.Set(this.Subspace.Key(pk), FdbValue.ToFixed64LittleEndian(value));
 
 				return value;
 			}
@@ -185,7 +185,7 @@ namespace FoundationDB.Layers.Counters
 				var res = await transaction.GetAsync(this.Subspace.Key(pk)).ConfigureAwait(false);
 
 				long previous = res.IsNullOrEmpty ? 0 : res.ToInt64();
-				transaction.Set(this.Subspace.Key(pk), Slice.FromFixed64(value + previous));
+				transaction.Set(this.Subspace.Key(pk), FdbValue.ToFixed64LittleEndian(value + previous));
 
 				return previous;
 			}
