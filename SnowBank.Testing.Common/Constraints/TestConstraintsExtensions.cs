@@ -50,7 +50,8 @@ namespace SnowBank.Testing
 			public static Constraint InstanceOf<TException>(out Pokeball<TException> capture)
 				where TException : Exception
 			{
-				return Throws.InstanceOf<TException>().Catch(out capture);
+				// the Type overload has the same signature in NUnit 4 and 5, so this binary loads under both
+				return Throws.InstanceOf(typeof(TException)).Catch(out capture);
 			}
 
 		}
