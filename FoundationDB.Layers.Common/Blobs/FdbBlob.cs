@@ -210,7 +210,7 @@ namespace FoundationDB.Layers.Blobs
 				Contract.Debug.Requires(trans != null && size >= 0);
 
 				//note: python code converts the size into a string
-				trans.Set(SizeKey(), Slice.FromString(size.ToString()));
+				trans.Set(SizeKey(), FdbValue.ToTextUtf8(size.ToString()));
 			}
 
 			#endregion
