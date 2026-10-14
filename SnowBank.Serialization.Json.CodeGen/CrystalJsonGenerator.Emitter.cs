@@ -226,8 +226,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				var sb = new CSharpCodeBuilder();
 				AddFileHeaders(sb);
 
-				sb.AppendLine($"namespace {symbol.NameSpace}");
-				sb.EnterBlock("namespace");
+				OpenNamespace(sb, symbol);
 
 				if (!this.Metadata.IsSelfContained)
 				{
@@ -262,8 +261,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				sb.LeaveBlock("container");
 				sb.NewLine();
 
-				sb.LeaveBlock("namespace");
-				sb.NewLine();
+				CloseNamespace(sb, symbol);
 
 				this.Context.AddSource($"{GetContainerHintName()}.g.cs", sb.ToString());
 				GenerateTypeFiles(symbol, includedTypes);
@@ -405,8 +403,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 #endif
 
-					sb.AppendLine($"namespace {symbol.NameSpace}");
-					sb.EnterBlock("namespace");
+					OpenNamespace(sb, symbol);
 
 					// we don't want to have to specify the namespace everytime
 					sb.AppendLine($"using {KnownTypeSymbols.CrystalJsonNamespace};");
@@ -462,8 +459,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					sb.LeaveBlock("Container");
 					sb.NewLine();
 
-					sb.LeaveBlock("namespace");
-					sb.NewLine();
+					CloseNamespace(sb, symbol);
 
 					var hintName = typeDef.Name;
 					if (typeDef.Type.IsGenericType())
@@ -546,7 +542,24 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			/// <summary>Returns the base name of the generated source files for this container</summary>
 			/// <remarks>Self-serialized entities are namespace-qualified: unlike containers, distinct entities with the same name are common, and hint names must be unique.</remarks>
-			private string GetContainerHintName() => this.Metadata.IsSelfContained ? $"{this.Metadata.Type.NameSpace}.{this.Metadata.Type.Name}" : this.Metadata.Type.Name;
+			private string GetContainerHintName() => this.Metadata.IsSelfContained && this.Metadata.Type.NameSpace.Length > 0 ? $"{this.Metadata.Type.NameSpace}.{this.Metadata.Type.Name}" : this.Metadata.Type.Name;
+
+			/// <summary>Opens the namespace block of the container in a generated file</summary>
+			/// <remarks>A container in the global namespace gets no block: <c>namespace</c> requires a name.</remarks>
+			private static void OpenNamespace(CSharpCodeBuilder sb, TypeMetadata symbol)
+			{
+				if (symbol.NameSpace.Length == 0) return;
+				sb.AppendLine($"namespace {symbol.NameSpace}");
+				sb.EnterBlock("namespace");
+			}
+
+			/// <summary>Closes the block opened by <see cref="OpenNamespace"/></summary>
+			private static void CloseNamespace(CSharpCodeBuilder sb, TypeMetadata symbol)
+			{
+				if (symbol.NameSpace.Length == 0) return;
+				sb.LeaveBlock("namespace");
+				sb.NewLine();
+			}
 
 			/// <summary>Opens the single reserved scope that hosts all the generated code in self mode (no-op in container mode)</summary>
 			/// <remarks>The scope is entirely generated, so unlike the entity's partial (which is user code) it can carry the generated-code attributes.</remarks>
