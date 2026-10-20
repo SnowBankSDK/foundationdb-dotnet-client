@@ -78,6 +78,14 @@ namespace FoundationDB.Storage
 
 			public long Version => this.Inner.Version;
 
+			/// <summary>Returns the bytes of a value read by this transaction, in memory that the caller may keep after the transaction ends</summary>
+			/// <remarks>A value served from this transaction's own writes lives in its scratch arena, which goes back to a pool when the transaction ends, so it is copied (the native client copies every result). A value read from the committed snapshot is returned as is.</remarks>
+			internal Slice Detach(Value value) => value.Arena is not null && ReferenceEquals(value.Arena, this.Arena) ? value.Slice.Copy() : value.Slice;
+
+			/// <summary>Returns the bytes of a key read by this transaction, in memory that the caller may keep after the transaction ends</summary>
+			/// <remarks>A key that comes from this transaction's own writes or arguments lives in its scratch arena, so it is copied; a key read from the committed snapshot is returned as is.</remarks>
+			internal Slice Detach(Key key) => key.Arena is not null && ReferenceEquals(key.Arena, this.Arena) ? key.Slice.Copy() : key.Slice;
+
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public Value Read(KeyRange key, bool ryw, bool snapshotRead, bool accessSystemKeys)
 			{
@@ -346,7 +354,7 @@ namespace FoundationDB.Storage
 
 				for (int i = 0; i < keys.Length; i++)
 				{
-					buffer[i] = Read(keys[i], ryw, snapshotRead, accessSystemKeys).Slice;
+					buffer[i] = Detach(Read(keys[i], ryw, snapshotRead, accessSystemKeys));
 				}
 			}
 
@@ -928,7 +936,7 @@ namespace FoundationDB.Storage
 							}
 
 							Kenobi($"**** #{this.Id} => Take {cur.Key:K} = {cur.Value:V}");
-							res.Add(KeyValuePair.Create(cur.Key.Slice, cur.Value.Slice));
+							res.Add(KeyValuePair.Create(Detach(cur.Key), Detach(cur.Value)));
 							sum += cur.Key.Count;
 							sum += cur.Value.Count;
 						}
@@ -2302,7 +2310,7 @@ namespace FoundationDB.Storage
 					if (ct.IsCancellationRequested) return Task.FromCanceled<Slice>(ct);
 					lock (this.Lock)
 					{
-						var v = snap.Read(k, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
+						var v = snap.Detach(snap.Read(k, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys));
 						AccountReadOperation(1, v.Count);
 						return Task.FromResult(v);
 					}
@@ -2315,7 +2323,7 @@ namespace FoundationDB.Storage
 					lock (self.Lock)
 					{
 						ct.ThrowIfCancellationRequested();
-						var v = snap.Read(key, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
+						var v = snap.Detach(snap.Read(key, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys));
 						self.AccountReadOperation(1, v.Count);
 						return v;
 					}
@@ -2509,7 +2517,7 @@ namespace FoundationDB.Storage
 				{
 					lock (this.Lock)
 					{
-						var result = snap.Resolve<TCursor>(selectorCopy, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
+						var result = snap.Detach(snap.Resolve<TCursor>(selectorCopy, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys));
 						AccountReadOperation(1, result.Count);
 						return Task.FromResult<Slice>(result);
 					}
@@ -2523,7 +2531,7 @@ namespace FoundationDB.Storage
 					lock (self.Lock)
 					{
 						ct.ThrowIfCancellationRequested();
-						var result = snap.Resolve<TCursor>(selector, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
+						var result = snap.Detach(snap.Resolve<TCursor>(selector, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys));
 						self.AccountReadOperation(1, result.Count);
 						return result;
 					}
@@ -2539,7 +2547,7 @@ namespace FoundationDB.Storage
 				{
 					lock (this.Lock)
 					{
-						var result = snap.Resolve<TCursor>(selectorCopy, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
+						var result = snap.Detach(snap.Resolve<TCursor>(selectorCopy, GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys));
 						AccountReadOperation(1, result.Count);
 						return Task.FromResult<Slice>(result);
 					}
@@ -2553,7 +2561,7 @@ namespace FoundationDB.Storage
 					lock (self.Lock)
 					{
 						ct.ThrowIfCancellationRequested();
-						var result = snap.Resolve<TCursor>(selector, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
+						var result = snap.Detach(snap.Resolve<TCursor>(selector, self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys));
 						self.AccountReadOperation(1, result.Count);
 						return result;
 					}
@@ -2574,7 +2582,7 @@ namespace FoundationDB.Storage
 						long total = 0;
 						for (int i = 0; i < selectors.Length; i++)
 						{
-							var r = s.Resolve<TCursor>(this.Scratch.InternSelector(selectors[i]), GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys).Slice;
+							var r = s.Detach(s.Resolve<TCursor>(this.Scratch.InternSelector(selectors[i]), GetEffectiveRyw(snapshot), snapshot, this.OptionReadSystemKeys));
 							total += r.Count;
 							res[i] = r;
 						}
@@ -2596,7 +2604,7 @@ namespace FoundationDB.Storage
 						long total = 0;
 						for (int i = 0; i < selectors.Length; i++)
 						{
-							var r = s.Resolve<TCursor>(selectors[i], self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys).Slice;
+							var r = s.Detach(s.Resolve<TCursor>(selectors[i], self.GetEffectiveRyw(isSnapshotRead), isSnapshotRead, self.OptionReadSystemKeys));
 							total += r.Count;
 							res[i] = r;
 						}
@@ -2891,11 +2899,11 @@ namespace FoundationDB.Storage
 					self.AccountReadOperation(1, actual.Count);
 					if (actual.Equals(expected))
 					{
-						return (FdbValueCheckResult.Success, actual.Slice);
+						return (FdbValueCheckResult.Success, s.Detach(actual));
 					}
 					else
 					{
-						return (FdbValueCheckResult.Failed, actual.Slice);
+						return (FdbValueCheckResult.Failed, s.Detach(actual));
 					}
 				}
 			}
