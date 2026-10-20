@@ -73,7 +73,7 @@ namespace SnowBank.Data.Json
 		[System.Diagnostics.CodeAnalysis.FeatureGuard(typeof(System.Diagnostics.CodeAnalysis.RequiresDynamicCodeAttribute))]
 		[System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL4000", Justification = "The package turns the switch off in a trimmed or Native AoT publish: it is on there only when the application opts in, and keeps the reflected members itself.")]
 #endif
-		public static bool IsReflectionSupported => AppContext.TryGetSwitch(ReflectionSupportSwitchName, out var enabled) ? enabled : true;
+		public static bool IsReflectionSupported { get; } = AppContext.TryGetSwitch(ReflectionSupportSwitchName, out var enabled) ? enabled : true;
 
 		/// <summary>Options when save JSON to disk</summary>
 		[Flags]
