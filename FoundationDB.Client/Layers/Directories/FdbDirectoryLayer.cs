@@ -593,7 +593,8 @@ namespace FoundationDB.Client
 					}
 				}
 
-				return new Node(path, current, layer, partition, parent, prefixInParentPartition, chain);
+				// the directory cache keeps the prefixes beyond this transaction: copy them out of the read results
+				return new Node(path, current.Copy(), layer, partition, parent, prefixInParentPartition.Copy(), chain);
 			}
 
 			/// <summary>Open a subspace using the local cache</summary>
@@ -1616,7 +1617,8 @@ namespace FoundationDB.Client
 			public PartitionDescriptor CreateChild(FdbPath path, Slice prefix)
 			{
 				Contract.Debug.Requires(path.IsChildOf(this.Path), "Partition path is outside parent");
-				return new(path, prefix, this);
+				// the descriptor is kept by the directory cache beyond this transaction: copy the prefix read from the database
+				return new(path, prefix.Copy(), this);
 			}
 
 			public ValueTask<Slice> GetStampValue(IFdbReadOnlyTransaction tr)
@@ -1632,7 +1634,8 @@ namespace FoundationDB.Client
 
 			private async ValueTask<Slice> ReadStampValue(IFdbReadOnlyTransaction tr)
 			{
-				var value = await tr.GetAsync(this.GetStampKey()).ConfigureAwait(false);
+				// the stamp is the expected value of the cache's value checks in later transactions: copy it out of the read result
+				var value = (await tr.GetAsync(this.GetStampKey()).ConfigureAwait(false)).Copy();
 				this.CachedStampValue = value;
 				return value;
 			}
