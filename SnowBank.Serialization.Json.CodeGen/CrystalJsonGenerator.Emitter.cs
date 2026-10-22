@@ -2543,6 +2543,24 @@ namespace SnowBank.Serialization.Json.CodeGen
 						continue;
 					}
 
+					if (member.Type.IsDictionary(out var dictKeyType, out var dictValueType)
+					 && member.Type is { NameSpace: "System.Collections.Generic" }
+					 && ((dictKeyType.IsString() && member.Type.Name is "Dictionary" or "IDictionary") || (dictKeyType.IsInt32() && member.Type.Name is "Dictionary"))
+					 && IsLocallyGeneratedType(dictValueType, out target, out isNullableOfT) && !isNullableOfT)
+					{ // values written by the local serializer (see the pack side) are read back by it: through the runtime As<> fallback they
+					  // are bound by reflection, without the container's naming policy
+						string dictShape = dictKeyType.IsString() ? "Dictionary" : "DictionaryInt32";
+						if (member.IsRequired)
+						{
+							EmitUnpackAssignment(sb, member, $"/* local-required-{dictShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack{dictShape}({GetLocalSerializerRef(target)}, obj.GetValue({GetLocalPropertyNameRef(member)}), resolver: resolver, fieldName: {CSharpCodeBuilder.Constant(member.MemberName)})!");
+						}
+						else
+						{
+							EmitUnpackAssignment(sb, member, $"/* local-optional-{dictShape} */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.Unpack{dictShape}({GetLocalSerializerRef(target)}, obj[{GetLocalPropertyNameRef(member)}], {GetForgivingDefaultLiteral(member)}, resolver: resolver, fieldName: {CSharpCodeBuilder.Constant(member.MemberName)})!");
+						}
+						continue;
+					}
+
 					if (member.Type.IsEnumerable(out var elemType))
 					{
 						// note: we have to also know the target enumerable type: array? list? other?
@@ -3798,6 +3816,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{
 							sb.AppendLine($"writer.WriteFieldDictionary({propertyName}, {getterExpr}); // dict-fallback");
 						}
+						return;
+					}
+					if (keyType.IsInt32() && member.Type is { NameSpace: "System.Collections.Generic", Name: "Dictionary" } && IsLocallyGeneratedType(valueType, out subDef, out var isNullableValue) && !isNullableValue)
+					{
+						sb.AppendLine($"writer.WriteFieldDictionary({propertyName}, {getterExpr}, {GetLocalSerializerRef(subDef)}); // dict-int-local-serializer");
 						return;
 					}
 				}

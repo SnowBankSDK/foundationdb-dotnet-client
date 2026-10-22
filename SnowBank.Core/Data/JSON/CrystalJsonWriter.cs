@@ -5790,6 +5790,42 @@ namespace SnowBank.Data.Json
 			}
 		}
 
+		/// <summary>Writes a field that contains a dictionary with <see cref="int"/> keys expressed as a JSON Object, using a custom serializer</summary>
+		/// <param name="name">Name of the field</param>
+		/// <param name="map">Dictionary to write</param>
+		/// <param name="serializer">Custom value serializer</param>
+		public void WriteFieldDictionary<TValue>(string name, Dictionary<int, TValue>? map, IJsonSerializer<TValue> serializer)
+		{
+			if (map is not null)
+			{
+				WriteName(name);
+				VisitDictionary(map, serializer);
+			}
+			else if (!m_discardNulls)
+			{
+				WriteName(name);
+				WriteNull();
+			}
+		}
+
+		/// <summary>Writes a field that contains a dictionary with <see cref="int"/> keys expressed as a JSON Object, using a custom serializer</summary>
+		/// <param name="name">Name of the field</param>
+		/// <param name="map">Dictionary to write</param>
+		/// <param name="serializer">Custom value serializer</param>
+		public void WriteFieldDictionary<TValue>(JsonEncodedPropertyName name, Dictionary<int, TValue>? map, IJsonSerializer<TValue> serializer)
+		{
+			if (map is not null)
+			{
+				WriteName(name);
+				VisitDictionary(map, serializer);
+			}
+			else if (!m_discardNulls)
+			{
+				WriteName(name);
+				WriteNull();
+			}
+		}
+
 		#endregion
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -6370,6 +6406,47 @@ namespace SnowBank.Data.Json
 			foreach (var kvp in items)
 			{
 				WriteNameEscaped(kvp.Key);
+				serializer.Serialize(this, kvp.Value);
+			}
+			EndObject(state); // "}"
+		}
+
+		public void VisitDictionary<TValue>(Dictionary<int, TValue>? items, IJsonSerializer<TValue> serializer)
+		{
+			if (items is null)
+			{
+				WriteNull();
+				return;
+			}
+
+			if (this.Settings.DictionariesAsPairArrays)
+			{ // the legacy DCJS output shape was requested
+				var pairs = BeginArray();
+				bool first = true;
+				foreach (var kvp in items)
+				{
+					if (first) { WriteHeadSeparator(); first = false; } else { WriteTailSeparator(); }
+					var obj = BeginObject();
+					WriteName(s_pairKeyName);
+					WriteValue(kvp.Key);
+					WriteName(s_pairValueName);
+					serializer.Serialize(this, kvp.Value);
+					EndObject(obj);
+				}
+				EndArray(pairs);
+				return;
+			}
+
+			if (items.Count == 0)
+			{ // empty => "{}"
+				WriteEmptyObject(); // "{}"
+				return;
+			}
+
+			var state = BeginObject();
+			foreach (var kvp in items)
+			{
+				WriteUnsafeName(kvp.Key.ToString(CultureInfo.InvariantCulture)); // digits and a sign only: nothing to escape
 				serializer.Serialize(this, kvp.Value);
 			}
 			EndObject(state); // "}"
