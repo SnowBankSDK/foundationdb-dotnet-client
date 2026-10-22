@@ -430,15 +430,15 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Required_NullableForm_Member_Rejects_Null_And_Missing_But_Accepts_Unreadable()
+		public void Test_Required_NullableForm_Member_Reads_Null_And_Missing_As_No_Value()
 		{
-			// required = the pipeline's null/missing gate; a PRESENT value the converter maps to no-value passes it
+			// `required` constrains the C# initializer only: on a nullable member, a missing field and an explicit null both read as no-value
 			using (Assert.EnterMultipleScope())
 			{
-				Assert.That(() => ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("{ }"), Throws.InstanceOf<JsonBindingException>(), "a missing required member throws");
-				Assert.That(() => ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": null }"""), Throws.InstanceOf<JsonBindingException>(), "an explicit null on a required member throws");
+				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("{ }").Count, Is.Null, "a missing required nullable member reads as no-value");
+				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": null }""").Count, Is.Null, "an explicit null on a required nullable member reads as no-value");
 				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": "42" }""").Count, Is.EqualTo(42));
-				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": "" }""").Count, Is.Null, "present-but-unreadable satisfies the presence gate and the converter answers no-value");
+				Assert.That(ProbeConverterHost.ProbeRequiredNullableFormDto.Deserialize("""{ "Count": "" }""").Count, Is.Null, "a present value the converter cannot read maps to no-value");
 			}
 		}
 

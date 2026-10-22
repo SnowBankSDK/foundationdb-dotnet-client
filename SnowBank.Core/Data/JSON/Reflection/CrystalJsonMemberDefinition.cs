@@ -43,7 +43,7 @@ namespace SnowBank.Data.Json
 		OmitNullValues = 1 << 8,
 		/// <summary>The member is omitted when its value equals its default, regardless of the settings (<c>[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]</c>)</summary>
 		OmitDefaultValues = 1 << 9,
-		/// <summary>The member must be PRESENT in the document when binding (<c>[DataMember(IsRequired = true)]</c>): an absent member throws, an explicit <see langword="null"/> satisfies it (DCJS semantics), unlike <see cref="Required"/> which rejects null as well</summary>
+		/// <summary>The member must be PRESENT in the document when binding (<c>[DataMember(IsRequired = true)]</c>): an absent member throws, an explicit <see langword="null"/> satisfies it (DCJS semantics), unlike <see cref="Required"/>, where an absent member and an explicit null both count as no value</summary>
 		RequiredPresence = 1 << 10,
 		/// <summary>The member receives its value through a constructor parameter of the same name, so the member loop does not assign it after construction</summary>
 		ConstructorBound = 1 << 11,
@@ -114,11 +114,11 @@ namespace SnowBank.Data.Json
 		/// <summary>Flag set to <see langword="true"/> when the member is read-only or init-only</summary>
 		public bool IsReadOnly  => this.Flags.HasFlag(CrystalJsonMemberFlags.ReadOnly);
 
-		/// <summary>The member has the required keyword and cannot be null</summary>
+		/// <summary>The member has the C# <c>required</c> keyword</summary>
 		/// <remarks>Examples: <code>
 		/// int Foo { get; ... }              // IsRequired == false
 		/// string Foo { get; ... }           // IsRequired == false
-		/// required string? Foo { get; ... } // IsRequired == false
+		/// required string? Foo { get; ... } // IsRequired == true, but an absent member or an explicit null binds to null
 		/// 
 		/// required int Foo { get; ... }     // IsRequired == true
 		/// required string Foo { get; ... }  // IsRequired == true
@@ -126,7 +126,7 @@ namespace SnowBank.Data.Json
 		public bool IsRequired => this.Flags.HasFlag(CrystalJsonMemberFlags.Required);
 
 		/// <summary>The member must be present in the document when binding (<c>[DataMember(IsRequired = true)]</c>)</summary>
-		/// <remarks>An absent member throws; an explicit <see langword="null"/> satisfies it (DCJS semantics), unlike <see cref="IsRequired"/> which rejects null as well.</remarks>
+		/// <remarks>An absent member throws; an explicit <see langword="null"/> satisfies it (DCJS semantics). For <see cref="IsRequired"/>, an absent member and an explicit null both count as no value, which only a non-nullable member forbids.</remarks>
 		public bool IsRequiredPresence => this.Flags.HasFlag(CrystalJsonMemberFlags.RequiredPresence);
 
 		/// <summary>The member is bound through a constructor parameter (see <see cref="CrystalJsonTypeDefinition.ConstructorBinder"/>), and is not assigned after construction</summary>

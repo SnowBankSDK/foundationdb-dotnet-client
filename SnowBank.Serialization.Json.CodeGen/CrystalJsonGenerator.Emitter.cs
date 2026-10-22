@@ -2462,6 +2462,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 						continue;
 					}
 
+					if (member.IsRequired && !member.IsNotNull)
+					{ // `required` constrains the C# initializer, not the document: a missing field and an explicit null both bind a nullable member to null
+						member = member with { IsRequired = false };
+					}
+
 					if (member.CustomConverterType != null)
 					{ // a custom converter takes over the member's format form
 						var converterRef = GetMemberConverterRef(member);

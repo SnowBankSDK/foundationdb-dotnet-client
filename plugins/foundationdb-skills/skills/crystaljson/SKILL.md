@@ -422,7 +422,8 @@ w.Year = 2025;
 
 Absence propagates through a proxy the way it does through the DOM: a chain across a missing inner object keeps
 navigating (`proxy.Metadata.IsNullOrMissing()` tells you), an optional member reads as its default, and a
-`required` member absent from the document throws `JsonBindingException`, never a `NullReferenceException`
+`required` member of a non-nullable type absent from the document throws `JsonBindingException`, never a
+`NullReferenceException`
 (pinned by `Test_JsonReadOnlyProxy_With_Empty_Object` in `SnowBank.Serialization.Json.CodeGen.Tests`).
 
 *(7.4.5+)* A type that decides its own format (IJson* interfaces, or a container hook, section 7) gets NO
@@ -695,9 +696,9 @@ silently changes the output, so check the matrix before annotating a DTO:
 | STJ / Newtonsoft `[JsonConverter(typeof(X))]`, members **and** types | YES *(7.4.3+)* when `X` implements a converter facet; **silently ignored** otherwise (see section 7) | YES *(7.4.3+)*, same posture, facet checked at compile time |
 | Enum custom literals: `[JsonStringEnumMemberName]` (STJ 9+) / `[EnumMember(Value=...)]` on enum fields | YES *(7.4.3+)*, both directions | YES *(7.4.3+)*, both directions |
 | `[Key]` (DataAnnotations) | flag only | YES (drives the proxy Id) |
-| C# `required` | **enforced** on read *(7.4.3+)*: null-or-missing throws `JsonBindingException` | **enforced** (throws on a missing member) |
+| C# `required` | **enforced** on read *(7.4.3+)* for a non-nullable member: null-or-missing throws `JsonBindingException`. On a nullable member (`required string?`), a missing field and an explicit null both read as `null`: `required` constrains the C# initializer, not the document | **enforced** (throws on a missing member) |
 | `[DataContract]` + `[DataMember]` (opt-in + `Name=`) | YES, **including non-public members and accessors** *(7.4.3+, the hybrid rule: the attribute pair is the explicit opt-in and accessibility does not filter it, matching DCJS; `[JsonInclude]` alone still grants nothing there)* | YES *(7.4.3+)*, the same model: `[DataMember]` is the sole membership opt-in, accessibility does not filter (non-public members are reached through accessor thunks), and `Name=` renames are honoured |
-| `[DataMember]`'s `IsRequired = true` | **read side enforced** *(7.4.3+)*, DCJS-faithful: an ABSENT member throws, an explicit `null` satisfies (deliberately distinct from C# `required`, where null also throws). Write side unchanged (`WithNullMembers()` stays the frozen-reader recipe) | YES *(7.4.3+)*, same semantics, emitted as one presence guard per member |
+| `[DataMember]`'s `IsRequired = true` | **read side enforced** *(7.4.3+)*, DCJS-faithful: an ABSENT member throws, an explicit `null` satisfies (deliberately distinct from C# `required` on a non-nullable member, where null also throws). Write side unchanged (`WithNullMembers()` stays the frozen-reader recipe) | YES *(7.4.3+)*, same semantics, emitted as one presence guard per member |
 | `[DataMember]`'s `Order` / `EmitDefaultValue` | no | no |
 | `[OnSerializing]` / `[OnSerialized]` / `[OnDeserializing]` / `[OnDeserialized]` | YES *(7.4.3+)*, `void M()` on all four and `void M(JsonValue\|JsonObject\|JsonArray)` on the deserialize pair; the legacy `void M(StreamingContext)` throws at contract build | same shapes accepted; the legacy `StreamingContext` form is build error `CJSON0015` at the callsite |
 | STJ `IJsonOnSerializing` / `IJsonOnSerialized` / `IJsonOnDeserializing` / `IJsonOnDeserialized` interfaces | no, deliberately (see *Lifecycle* below) | no, deliberately |
@@ -774,7 +775,7 @@ reproduces its member selection and `Name=` renames, so an un-touched DTO keeps 
 - `[KnownType]` -> `[JsonPolymorphic(TypeDiscriminatorPropertyName = "__type")]` + `[JsonDerivedType(typeof(X), "Name:Ns")]`
 - `Order` -> nothing (member order is not part of the contract); `IsRequired = true` -> nothing *(7.4.3+)*: the
   reflection path enforces it on read with DCJS semantics (absent throws, explicit null satisfies). For a
-  stricter contract use C# `required` (null-or-missing throws, both paths).
+  stricter contract use C# `required` on a non-nullable member (null-or-missing throws, both paths).
 - Never put `[DataMember]` (or `[JsonInclude]`, or a `[JsonProperty]`-style rename) and an unconditional
   `[JsonIgnore]` on the same member: the combination is **refused loudly** on both paths *(7.4.3+)* - the
   reflection path throws when the type's contract is built, and the generator fails the build with error
@@ -938,7 +939,7 @@ TCollection? UnpackCollection<TCollection, T>(this IJsonDeserializer<T> serializ
 TCollection  UnpackRequiredCollection<TCollection, T>(this IJsonDeserializer<T> serializer, JsonValue? value, ...)
 ```
 
-`UnpackRequiredCollection` is the flavour behind a `required` member: absent or null throws rather than yielding the
+`UnpackRequiredCollection` is the flavour behind a `required` non-nullable member: absent or null throws rather than yielding the
 default. Both construct the declared collection type and fill it with `Add`, which is why a subclass arrives as itself.
 
 **Format and round-trip semantics** (pinned by tests):
