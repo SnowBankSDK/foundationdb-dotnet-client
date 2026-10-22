@@ -189,6 +189,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 			#endregion
 
+			/// <summary>Returns the member as the generated readers see it</summary>
+			/// <remarks>`required` constrains the C# initializer, not the document: a missing field and an explicit null both read as <c>null</c> for a member of a nullable type.</remarks>
+			private static CrystalJsonMemberMetadata ForReading(CrystalJsonMemberMetadata member)
+				=> member.IsRequired && !member.IsNotNull ? member with { IsRequired = false } : member;
+
 			/// <summary>Returns the member's default-value literal, ready to embed in a value position of the generated code</summary>
 			/// <remarks>The generated files force <c>#nullable enable</c> on themselves while the member's declared type may be non-nullable or oblivious, so a bare <c>null</c> default must be null-forgiving (<c>null!</c>): the <c>[NotNullIfNotNull]</c> contract on the <c>Get(name, defaultValue)</c> family then keeps the returned flow-state aligned with the declared member type.</remarks>
 			private static string GetForgivingDefaultLiteral(CrystalJsonMemberMetadata member) => member.DefaultLiteral == "null" ? "null!" : member.DefaultLiteral;
@@ -1156,8 +1161,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 						sb.BeginRegion("Type Safe Members...");
 						sb.NewLine();
 
-						foreach (var member in typeDef.Members)
+						foreach (var declared in typeDef.Members)
 						{
+							var member = ForReading(declared);
 							string? getterExpr = null;
 							string proxyType = member.Type.FullyQualifiedNameAnnotated;
 
@@ -1171,9 +1177,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 								else if (member.CustomConverterIsNullableForm)
 								{ // converter declared for the T? form itself: it owns every present value, the pipeline still owns null/missing
 									var valueType = GetNullableFormValueType(member);
-									getterExpr = member.IsRequired
-										? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm<{valueType}>({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null, null, {CSharpCodeBuilder.Constant(member.MemberName)})"
-										: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm<{valueType}>({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null)";
+									getterExpr = $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm<{valueType}>({converterRef}, m_value[{GetTargetPropertyNameRef(typeDef, member)}].ToJsonValue(), null)";
 								}
 								else if (member.IsRequired)
 								{
@@ -1440,8 +1444,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 						sb.BeginRegion("Public Members...");
 						sb.NewLine();
-						foreach (var member in typeDef.Members)
+						foreach (var declared in typeDef.Members)
 						{
+							var member = ForReading(declared);
 							var defaultValue = GetForgivingDefaultLiteral(member);
 
 							string proxyType = member.Type.FullyQualifiedNameAnnotated;
@@ -1459,9 +1464,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 								else if (member.CustomConverterIsNullableForm)
 								{ // converter declared for the T? form itself: it owns every present value, the pipeline still owns null/missing
 									var valueType = GetNullableFormValueType(member);
-									getterExpr = member.IsRequired
-										? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm<{valueType}>({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null, null, {CSharpCodeBuilder.Constant(member.MemberName)})"
-										: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm<{valueType}>({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null)";
+									getterExpr = $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm<{valueType}>({converterRef}, m_value.GetValue({GetTargetPropertyNameRef(typeDef, member)}), null)";
 								}
 								else if (member.IsRequired)
 								{
@@ -2462,10 +2465,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						continue;
 					}
 
-					if (member.IsRequired && !member.IsNotNull)
-					{ // `required` constrains the C# initializer, not the document: a missing field and an explicit null both bind a nullable member to null
-						member = member with { IsRequired = false };
-					}
+					member = ForReading(member);
 
 					if (member.CustomConverterType != null)
 					{ // a custom converter takes over the member's format form
@@ -2485,9 +2485,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 						if (member.CustomConverterIsNullableForm)
 						{ // converter declared for the T? form itself: it owns every present value, the pipeline still owns null/missing
 							var valueType = GetNullableFormValueType(member);
-							EmitUnpackAssignment(sb, member, member.IsRequired
-								? $"/* member-converter-nullable-form-required */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackRequiredNullableForm<{valueType}>({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver, obj, {CSharpCodeBuilder.Constant(member.MemberName)})"
-								: $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm<{valueType}>({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver)");
+							EmitUnpackAssignment(sb, member, $"/* member-converter-nullable-form */ {KnownTypeSymbols.JsonSerializerExtensionsFullName}.UnpackNullableForm<{valueType}>({converterRef}, obj[{GetLocalPropertyNameRef(member)}], resolver)");
 						}
 						else if (member.IsRequired)
 						{

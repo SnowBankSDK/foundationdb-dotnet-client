@@ -74,6 +74,21 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
+		public void Test_Generated_Proxies_Read_Missing_And_Null_Alike([Values("{ \"id\": \"a\" }", "{ \"id\": \"a\", \"note\": null, \"count\": null }")] string json)
+		{
+			var readOnly = ReqNullableConverters.ReqNullableHolder.ToReadOnly(JsonValue.Parse(json));
+			var mutable = ReqNullableConverters.ReqNullableHolder.ToMutable(JsonValue.Parse(json));
+
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(readOnly.Note, Is.Null);
+				Assert.That(readOnly.Count, Is.Null);
+				Assert.That(mutable.Note, Is.Null);
+				Assert.That(mutable.Count, Is.Null);
+			}
+		}
+
+		[Test]
 		public void Test_Generated_Missing_Non_Nullable_Required_Member_Throws([Values("{ }", "{ \"id\": null }")] string json)
 		{
 			Assert.That(() => ReqNullableConverters.ReqNullableHolder.Unpack(JsonValue.Parse(json)), Throws.InstanceOf<JsonBindingException>());
