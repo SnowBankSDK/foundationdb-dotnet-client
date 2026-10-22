@@ -107,8 +107,9 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
-		public void Test_Required_NullableForm_Member_Uses_The_Required_Helper()
+		public void Test_Required_NullableForm_Member_Reads_Like_An_Optional_One()
 		{
+			// `required` on a nullable member constrains the C# initializer only: a missing field and an explicit null both read as null
 			var (generated, diagnostics) = RunOn("""
 					public sealed record ProbeDto
 					{
@@ -119,8 +120,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			using (Assert.EnterMultipleScope())
 			{
 				Assert.That(diagnostics.Where(static d => d.Severity >= DiagnosticSeverity.Warning), Is.Empty);
-				Assert.That(generated, Does.Contain("UnpackRequiredNullableForm<int>("), "the presence gate stays the pipeline's, the converter still owns present values; the required variant spells its type argument out for the same reason as the optional one");
-				Assert.That(generated, Does.Contain("/* member-converter-nullable-form-required */"), "the required variant takes the nullable-form branch too");
+				Assert.That(generated, Does.Contain("UnpackNullableForm<int>("), "every read route takes the optional nullable-form helper");
+				Assert.That(generated, Does.Not.Contain("/* member-converter-nullable-form-required */"), "no read route throws on a missing field");
 			}
 		}
 
