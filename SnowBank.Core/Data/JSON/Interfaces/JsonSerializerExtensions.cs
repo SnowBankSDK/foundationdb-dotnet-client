@@ -624,6 +624,23 @@ namespace SnowBank.Data.Json
 			return ImmutableList.Create<T>(UnpackArray(serializer, array, resolver));
 		}
 
+		/// <summary>Fills a dictionary from the legacy DataContractJsonSerializer shape, <c>[ { "Key": ..., "Value": ... }, ... ]</c>, with either casing of the member names</summary>
+		private static Dictionary<TKey, TValue> FillFromLegacyPairs<TKey, TValue>(Dictionary<TKey, TValue> res, IJsonDeserializer<TValue> serializer, JsonArray pairs, Func<JsonValue, TKey> keyReader, ICrystalJsonTypeResolver? resolver)
+			where TKey : notnull
+		{
+			for (int i = 0; i < pairs.Count; i++)
+			{
+				if (pairs[i] is not JsonObject kv
+				 || !(kv.TryGetValue("Key", out var key) || kv.TryGetValue("key", out key))
+				 || !(kv.TryGetValue("Value", out var value) || kv.TryGetValue("value", out value)))
+				{
+					throw new JsonBindingException($"Cannot bind element #{i} of a legacy key/value-pair array to a dictionary entry: expected an object with a 'Key' and a 'Value' member (either casing).", JsonPath.Create(i), pairs[i], res.GetType());
+				}
+				res.Add(keyReader(key), serializer.Unpack(value, resolver));
+			}
+			return res;
+		}
+
 		/// <summary>Deserializes a <see cref="JsonArray"/> into an <see cref="Dictionary{TKey,TValue}"/> with <see cref="string"/> keys, stored into an optional field of a parent object</summary>
 		[Pure]
 		[return: NotNullIfNotNull(nameof(defaultValue))]
@@ -632,6 +649,7 @@ namespace SnowBank.Data.Json
 			{
 				null or JsonNull => defaultValue,
 				JsonObject obj => UnpackDictionary(serializer, obj, keyComparer, resolver),
+				JsonArray pairs => FillFromLegacyPairs(new Dictionary<string, TValue>(pairs.Count, keyComparer), serializer, pairs, static (k) => k.ToStringOrDefault() ?? throw new JsonBindingException("A legacy key/value pair has a null key.", k), resolver),
 				_ => throw (fieldName != null ? CrystalJson.Errors.Parsing_CannotCastFieldToJsonObject(value, fieldName) : CrystalJson.Errors.Parsing_CannotCastToJsonObject(value))
 			};
 
@@ -657,6 +675,7 @@ namespace SnowBank.Data.Json
 			{
 				null or JsonNull => defaultValue,
 				JsonObject obj   => UnpackDictionaryInt32(serializer, obj, resolver),
+				JsonArray pairs  => FillFromLegacyPairs(new Dictionary<int, TValue>(pairs.Count), serializer, pairs, static (k) => k.ToInt32(), resolver),
 				_                => throw (fieldName != null ? CrystalJson.Errors.Parsing_CannotCastFieldToJsonObject(value, fieldName) : CrystalJson.Errors.Parsing_CannotCastToJsonObject(value))
 			};
 
