@@ -299,7 +299,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 		public required bool IsRequired { get; init; }
 
 		/// <summary><c>true</c> if the member must be PRESENT in the document when binding (<c>[DataMember(IsRequired = true)]</c>)</summary>
-		/// <remarks>Deliberately distinct from <see cref="IsRequired"/>: an ABSENT member throws, but an explicit <c>null</c> satisfies it, which is what <c>DataContractJsonSerializer</c> does. The <c>required</c> keyword rejects null as well.</remarks>
+		/// <remarks>Deliberately distinct from <see cref="IsRequired"/>: an ABSENT member throws, but an explicit <c>null</c> satisfies it, which is what <c>DataContractJsonSerializer</c> does. For the <c>required</c> keyword, an absent member and an explicit null both count as no value, which only a non-nullable member forbids.</remarks>
 		public bool IsRequiredPresence { get; init; }
 
 		/// <summary><c>true</c> if <see cref="DefaultLiteral"/> is not the default for this type</summary>
