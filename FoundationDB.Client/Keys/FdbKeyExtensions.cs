@@ -62,7 +62,8 @@ namespace FoundationDB.Client
 		/// <param name="key">Key that will be used as a prefix</param>
 		/// <returns>Range that matches all keys that start with <paramref name="key"/> (excluded) followed by one or more tuple-encoded elements</returns>
 		/// <remarks>
-		/// <para>Ex: <c>subspace.GetKey(123).ToChildrenRange()</c> will match all the keys of the form <c>(..., 123, ...)</c>, but not <c>(..., 123)</c> itself.</para>
+		/// <para>Ex: <c>subspace.GetKey(123).ToKeyRange()</c> will match all the keys of the form <c>(..., 123, ...)</c>, but not <c>(..., 123)</c> itself.</para>
+		/// <para>Unlike <see cref="ToRange{TKey}"/>, which matches every key up to the next sibling of <paramref name="key"/>, this range stops at <c>(...).`\xFF`</c>: it leaves out the keys whose next byte after <paramref name="key"/> is <c>0xFF</c>, a byte that starts no tuple element.</para>
 		/// <para>Please be careful when using this with tuples where the last elements is a <see cref="string"/> or <see cref="Slice"/>: the encoding adds an extra <c>0x00</c> bytes after the element (ex: <c>"hello"</c> => <c>`\x02hello\x00`</c>), which means that <c>(..., "abc")</c> is <b>NOT</b> a child of <c>(..., "ab")</c></para>
 		/// </remarks>
 		[Pure]
