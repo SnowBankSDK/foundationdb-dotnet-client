@@ -73,6 +73,8 @@ namespace SnowBank.Data.Json.Tests
 			}
 		}
 
+#if !NETFRAMEWORK
+		// the generated proxies are not emitted for .NET Framework
 		[Test]
 		public void Test_Generated_Proxies_Read_Missing_And_Null_Alike([Values("{ \"id\": \"a\" }", "{ \"id\": \"a\", \"note\": null, \"count\": null }")] string json)
 		{
@@ -87,6 +89,7 @@ namespace SnowBank.Data.Json.Tests
 				Assert.That(mutable.Count, Is.Null);
 			}
 		}
+#endif
 
 		[Test]
 		public void Test_Generated_Missing_Non_Nullable_Required_Member_Throws([Values("{ }", "{ \"id\": null }")] string json)
