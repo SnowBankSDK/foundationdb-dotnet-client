@@ -1511,6 +1511,10 @@ namespace SnowBank.Testing.Framework
 			}
 		}
 
+		/// <summary>Resolves a relative path against this host, for the obsolete Http*Async helpers</summary>
+		/// <remarks>The obsolete helpers sent a relative path to the host itself, and existing tests still depend on it.</remarks>
+		private Uri ResolveObsoleteHelperUri(Uri uri) => uri.IsAbsoluteUri ? uri : new Uri(GetUri(), uri);
+
 		/// <summary>Helper for sending HTTP requests to or from this virtual host</summary>
 		public HttpHelper Http => new(this);
 
@@ -1763,7 +1767,7 @@ namespace SnowBank.Testing.Framework
 				var uri = this.Component.GetUri(relativePath);
 
 				using var client = this.Component.CreateLocalHttpClient(configure);
-				return await this.Component.ExecuteHttpGetTextAsync(client, uri, ct);
+				return await this.Component.ExecuteHttpPostTextAsync(client, uri, body, encoding, ct);
 			}
 
 			#endregion
@@ -1833,8 +1837,8 @@ namespace SnowBank.Testing.Framework
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
-			EnsureIsExternalUri(uri);
 
+			uri = ResolveObsoleteHelperUri(uri);
 			using var client = this.GetBetterHttpClient(uri);
 			return await ExecuteHttpGetBinaryAsync(client, uri, ct);
 		}
@@ -1869,7 +1873,7 @@ namespace SnowBank.Testing.Framework
 		/// </remarks>
 		[Obsolete("Use host.Http.GetTextAsync() instead")]
 		public Task<(HttpStatusCode Status, string? Body)> HttpGetTextAsync(string uri, BetterHttpShellOptions? options = null, CancellationToken ct = default)
-			=> HttpGetTextAsync(new Uri(uri, UriKind.Absolute), options, ct);
+			=> HttpGetTextAsync(new Uri(uri, UriKind.RelativeOrAbsolute), options, ct);
 
 		/// <summary>Executes an HTTP GET request from this host to another node, and returns the response body decoded as a string</summary>
 		/// <remarks>
@@ -1883,8 +1887,8 @@ namespace SnowBank.Testing.Framework
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
-			EnsureIsExternalUri(uri);
 
+			uri = ResolveObsoleteHelperUri(uri);
 			using var client = this.GetBetterHttpClient(uri, options);
 			return await ExecuteHttpGetTextAsync(client, uri, ct);
 		}
@@ -1909,7 +1913,7 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Executes an HTTP POST request from this host to another node, and returns the response body decoded as a string</summary>
 		[Obsolete("Use host.Http.PostTextAsync() instead")]
 		public Task<(HttpStatusCode Status, string? Body)> HttpPostTextAsync(string uri, string body, Encoding? encoding = null, BetterHttpShellOptions? options = null, CancellationToken ct = default)
-			=> HttpPostTextAsync(new Uri(uri, UriKind.Absolute), body, encoding, options, ct);
+			=> HttpPostTextAsync(new Uri(uri, UriKind.RelativeOrAbsolute), body, encoding, options, ct);
 
 		/// <summary>Executes an HTTP POST request from this host to another node, and returns the response body decoded as a string</summary>
 		[Obsolete("Use host.Http.PostTextAsync() instead")]
@@ -1920,8 +1924,8 @@ namespace SnowBank.Testing.Framework
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
-			EnsureIsExternalUri(uri);
 
+			uri = ResolveObsoleteHelperUri(uri);
 			using var client = this.GetBetterHttpClient(uri, options);
 			return await ExecuteHttpPostTextAsync(client, uri, body, encoding, ct);
 		}
@@ -1965,6 +1969,7 @@ namespace SnowBank.Testing.Framework
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
+			uri = ResolveObsoleteHelperUri(uri);
 			using var client = this.GetBetterHttpClient(uri, options);
 			return await ExecuteHttpGetJsonAsync(client, uri, ct);
 		}
@@ -1996,6 +2001,7 @@ namespace SnowBank.Testing.Framework
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
+			uri = ResolveObsoleteHelperUri(uri);
 			using var client = this.GetBetterHttpClient(uri, options);
 			return await ExecuteHttpPostJsonAsync<T>(client, uri, body, ct);
 		}
@@ -2030,6 +2036,7 @@ namespace SnowBank.Testing.Framework
 			ct.ThrowIfCancellationRequested();
 			EnsureStarted();
 
+			uri = ResolveObsoleteHelperUri(uri);
 			using var client = this.GetBetterHttpClient(uri, options);
 			return await ExecuteHttpPutJsonAsync(client, uri, body, ct);
 		}
