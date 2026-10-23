@@ -551,6 +551,10 @@ namespace SnowBank.Testing.Framework
 		/// <summary>Returns the assembly that would normally contain the assets for the emulated application</summary>
 		protected virtual Assembly? GetStaticAssetsRuntimeAssembly() => null;
 
+		/// <summary>Name of the hosting environment of the component (<see cref="Environments.Development"/> by default)</summary>
+		/// <remarks>The name is applied when the host builder is created, so it must be set before the component starts. Changing it later, through <see cref="ConfigureHostBuilder"/>, is not supported by ASP.NET Core and throws.</remarks>
+		public string EnvironmentName { get; set; } = Environments.Development;
+
 		public async ValueTask Init(CancellationToken startToken)
 		{
 			startToken.ThrowIfCancellationRequested();
@@ -590,10 +594,12 @@ namespace SnowBank.Testing.Framework
 
 				#endregion
 
+				// the environment, the content root and the web root must be set at creation: changing them through WebHost after CreateBuilder is not supported
 				var hostBuilder = WebApplication.CreateBuilder(new WebApplicationOptions()
 				{
 					ContentRootPath = contentRoot,
-					EnvironmentName = Environments.Development, // must be set at creation: WebHost.UseEnvironment() after CreateBuilder is no longer supported
+					WebRootPath = runtimeAssemblyKey != null && !string.IsNullOrEmpty(contentRoot) ? Path.Combine(contentRoot, "wwwroot") : null,
+					EnvironmentName = this.EnvironmentName,
 				});
 
 
@@ -607,12 +613,6 @@ namespace SnowBank.Testing.Framework
 
 				if (runtimeAssemblyKey != null)
 				{
-					if (!string.IsNullOrEmpty(contentRoot))
-					{
-						//hostBuilder.WebHost.UseContentRoot(contentRoot);
-						hostBuilder.WebHost.UseWebRoot(Path.Combine(contentRoot, "wwwroot"));
-					}
-
 					// assembly in which the calling test is located
 					if (!string.IsNullOrWhiteSpace(testAssemblyName))
 					{
@@ -629,8 +629,6 @@ namespace SnowBank.Testing.Framework
 				// Capture the current test context!
 				var testOutput = this.Context.LogOutput;
 				var testOutputError = this.Context.LogOutputError;
-
-				hostBuilder.WebHost.UseSetting("foo", "bar");
 
 				// configuration
 				{
