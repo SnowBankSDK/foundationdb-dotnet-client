@@ -241,11 +241,7 @@ namespace FoundationDB.Client.Native
 			{
 				foreach (var handle in handles)
 				{
-					if (handle != null && !handle.IsClosed && !handle.IsInvalid)
-					{
-						//REVIEW: there is a possibility of a race condition with Dispose() that could potentially call FutureDestroy(handle) at the same time (not verified)
-						FdbNative.FutureReleaseMemory(handle);
-					}
+					handle?.TryReleaseMemory();
 				}
 			}
 		}
@@ -268,11 +264,7 @@ namespace FoundationDB.Client.Native
 			{
 				foreach (var handle in handles)
 				{
-					if (handle != null && !handle.IsClosed && !handle.IsInvalid)
-					{
-						//REVIEW: there is a possibility of a race condition with Dispose() that could potentially call FutureDestroy(handle) at the same time (not verified)
-						FdbNative.FutureCancel(handle);
-					}
+					handle?.TryCancel();
 				}
 			}
 		}

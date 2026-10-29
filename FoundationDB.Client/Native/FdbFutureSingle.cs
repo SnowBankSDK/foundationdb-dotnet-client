@@ -371,25 +371,17 @@ namespace FoundationDB.Client.Native
 			m_handle?.Dispose();
 		}
 
+		// a concurrent Dispose cannot free the native future under these calls: the SafeHandle holds a reference
+		// for the duration of the call, and destroys the future only after the last reference is released
+
 		protected override void CancelHandles()
 		{
-			var handle = m_handle;
-			//REVIEW: there is a possibility of a race condition with Dispose() that could potentially call FutureDestroy(handle) at the same time (not verified)
-			if (handle != null && !handle.IsClosed && !handle.IsInvalid)
-			{
-				FdbNative.FutureCancel(handle);
-			}
+			m_handle?.TryCancel();
 		}
 
 		protected override void ReleaseMemory()
 		{
-			var handle = m_handle;
-
-			//REVIEW: there is a possibility of a race condition with Dispose() that could potentially call FutureDestroy(handle) at the same time (not verified)
-			if (handle != null && !handle.IsClosed && !handle.IsInvalid)
-			{
-				FdbNative.FutureReleaseMemory(handle);
-			}
+			m_handle?.TryReleaseMemory();
 		}
 
 	}
