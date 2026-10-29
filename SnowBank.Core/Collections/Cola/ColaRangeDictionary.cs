@@ -178,6 +178,17 @@ namespace SnowBank.Collections.CacheOblivious
 			m_keyComparer = source.m_keyComparer;
 			m_valueComparer = source.m_valueComparer;
 			m_items = source.m_items.Copy();
+			// Mark and Remove change entries in place, so the copy needs its own entries, or changes to one dictionary would show in the other.
+			for (int i = 0; i <= ColaStore.MAX_LEVEL; i++)
+			{
+				if (m_items.IsFree(i)) continue;
+				var level = m_items.GetLevel(i);
+				for (int j = 0; j < level.Length; j++)
+				{
+					var entry = level[j];
+					level[j] = new(entry.Begin, entry.End, entry.Value);
+				}
+			}
 			m_bounds = new(source.m_bounds.Begin, source.m_bounds.End, source.m_bounds.Value);
 		}
 
