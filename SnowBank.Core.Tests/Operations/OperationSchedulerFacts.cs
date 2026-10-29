@@ -341,6 +341,28 @@ namespace SnowBank.Operations.Tests
 			Assert.That(snapshot.Steps[1].Error?.Message, Is.EqualTo("boom"));
 		}
 
+		private sealed class ThrowingPublisher : IOperationPublisher
+		{
+			public void OnChanged(IOperationState operation) => throw new InvalidOperationException("publisher failure");
+
+			public void OnRemoved(IOperationState operation) => throw new InvalidOperationException("publisher failure");
+		}
+
+		[Test]
+		public async Task Test_A_Failing_Publisher_Does_Not_Fail_The_Operation()
+		{
+			// the publisher runs on the thread of the operation (each step notifies it): its errors stay out of the operation
+			var op = new TickOperation();
+			var scheduler = new OperationScheduler(TimeProvider.System, new ThrowingPublisher());
+			scheduler.Register(TickOperation.Type, op);
+
+			var handle = scheduler.Start<int, long>(TickOperation.Type, 2);
+			op.Tick.Release(2);
+			var outcome = await handle.Completion.WaitAsync(Timeout);
+			Assert.That(outcome.Kind, Is.EqualTo(OperationOutcomeKind.Succeeded));
+			Assert.That(outcome.Result, Is.EqualTo(2));
+		}
+
 		[Test]
 		public async Task Test_An_Ended_Operation_Is_Forgotten_After_Its_Retention()
 		{

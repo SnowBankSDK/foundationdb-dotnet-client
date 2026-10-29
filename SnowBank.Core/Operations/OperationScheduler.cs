@@ -153,7 +153,7 @@ namespace SnowBank.Operations
 				this.Entries[id] = entry;
 				Admit(entry);
 			}
-			this.Publisher.OnChanged(entry);
+			Notify(entry);
 			return new(entry, ConvertCompletion<TResult>(entry.Completion.Task));
 		}
 
@@ -195,7 +195,7 @@ namespace SnowBank.Operations
 				if (status != OperationControlStatus.Ok) return status;
 				status = entry!.RequestStop();
 			}
-			this.Publisher.OnChanged(entry);
+			Notify(entry);
 			return status;
 		}
 
@@ -212,7 +212,7 @@ namespace SnowBank.Operations
 				if (status != OperationControlStatus.Ok) return status;
 				status = entry!.RequestCancel();
 			}
-			this.Publisher.OnChanged(entry);
+			Notify(entry);
 			return status;
 		}
 
@@ -229,7 +229,7 @@ namespace SnowBank.Operations
 				if (status != OperationControlStatus.Ok) return status;
 				status = entry!.RequestResume();
 			}
-			this.Publisher.OnChanged(entry);
+			Notify(entry);
 			return status;
 		}
 
@@ -278,10 +278,29 @@ namespace SnowBank.Operations
 				if (!this.Entries.TryGetValue(entry.Id, out var current) || !ReferenceEquals(current, entry)) return;
 				this.Entries.Remove(entry.Id);
 			}
-			this.Publisher.OnRemoved(entry);
+			try
+			{
+				this.Publisher.OnRemoved(entry);
+			}
+			catch (Exception)
+			{
+				// a publisher logs its own errors: its failure must not reach the scheduler
+			}
 		}
 
-		internal void Notify(OperationEntry entry) => this.Publisher.OnChanged(entry);
+		/// <summary>Hands an urgent change to the publisher</summary>
+		/// <remarks>This runs on the thread of the operation (a step that opens, a run that ends): a publisher error must never fail the operation, so it is ignored here. A publisher logs its own errors.</remarks>
+		internal void Notify(OperationEntry entry)
+		{
+			try
+			{
+				this.Publisher.OnChanged(entry);
+			}
+			catch (Exception)
+			{
+				// see remarks
+			}
+		}
 
 	}
 
