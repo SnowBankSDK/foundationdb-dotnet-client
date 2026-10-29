@@ -273,6 +273,89 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
+		[Test]
+		public async Task Test_Single_Read_Cancelled_During_Registration_Is_Cancelled()
+		{
+			// the hook cancels the token while the read attaches its cancellation registration, so the registration
+			// callback runs inline in the middle of the setup: the read must end as a plain cancellation, and every
+			// read that follows must still work
+
+			using var db = await OpenTestPartitionAsync();
+			var location = db.Root;
+
+			await db.WriteAsync(async tr => tr.Set((await location.Resolve(tr)).Key("probe"), Slice.FromInt32(42)), this.Cancellation);
+
+			for (int i = 0; i < 100; i++)
+			{
+				using var cts = CancellationTokenSource.CreateLinkedTokenSource(this.Cancellation);
+				using var tr = db.BeginReadOnlyTransaction(cts.Token);
+				var subspace = await location.Resolve(tr);
+
+				int armed = 1;
+				FdbFuture.BeforeCancellationRegistration = () =>
+				{
+					if (Interlocked.Exchange(ref armed, 0) == 1) cts.Cancel();
+				};
+				try
+				{
+					Assert.That(async () => await tr.GetAsync(subspace.Key("probe")), Throws.InstanceOf<OperationCanceledException>());
+				}
+				finally
+				{
+					FdbFuture.BeforeCancellationRegistration = null;
+				}
+			}
+
+			var value = await db.ReadAsync(async tr => await tr.GetAsync((await location.Resolve(tr)).Key("probe")), this.Cancellation);
+			Assert.That(value.ToInt32(), Is.EqualTo(42));
+		}
+
+		[Test]
+		public async Task Test_Batch_Read_Cancelled_During_Registration_Is_Cancelled()
+		{
+			// same as the single read, for the wrapper that watches several native futures at once
+
+			using var db = await OpenTestPartitionAsync();
+			var location = db.Root;
+
+			await db.WriteAsync(async tr =>
+			{
+				var subspace = await location.Resolve(tr);
+				for (int k = 0; k < 4; k++)
+				{
+					tr.Set(subspace.Key("probe", k), Slice.FromInt32(k));
+				}
+			}, this.Cancellation);
+
+			for (int i = 0; i < 100; i++)
+			{
+				using var cts = CancellationTokenSource.CreateLinkedTokenSource(this.Cancellation);
+				using var tr = db.BeginReadOnlyTransaction(cts.Token);
+				var subspace = await location.Resolve(tr);
+
+				int armed = 1;
+				FdbFuture.BeforeCancellationRegistration = () =>
+				{
+					if (Interlocked.Exchange(ref armed, 0) == 1) cts.Cancel();
+				};
+				try
+				{
+					Assert.That(async () => await tr.GetValuesAsync(Enumerable.Range(0, 4).Select(k => subspace.Key("probe", k))), Throws.InstanceOf<OperationCanceledException>());
+				}
+				finally
+				{
+					FdbFuture.BeforeCancellationRegistration = null;
+				}
+			}
+
+			var values = await db.ReadAsync(async tr =>
+			{
+				var subspace = await location.Resolve(tr);
+				return await tr.GetValuesAsync(Enumerable.Range(0, 4).Select(k => subspace.Key("probe", k)));
+			}, this.Cancellation);
+			Assert.That(values.Select(v => v.ToInt32()), Is.EqualTo(new[] { 0, 1, 2, 3 }));
+		}
+
 	}
 
 }
