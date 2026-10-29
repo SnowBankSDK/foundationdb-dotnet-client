@@ -107,6 +107,11 @@ namespace FoundationDB.Client.Native
 				Volatile.Write(ref m_completionHandler, completionHandler);
 				Volatile.Write(ref m_resultSelector, resultSelector);
 
+				// the cookie exists before the cancellation registration: a token that fires from here on finds an armed
+				// future, cancels the native handles, and leaves the cleanup to the completion below (a cancelled handle
+				// is ready, so the loop skips it)
+				var prm = RegisterCallback(this);
+
 				if (ct.CanBeCanceled)
 				{ // register for cancellation before arming the callbacks (same order as FdbFutureSingle): a
 				  // registration created after arming can lose the race against its own completion, and a
@@ -114,9 +119,6 @@ namespace FoundationDB.Client.Native
 				  // (recycled) instance next
 					RegisterForCancellation(ct);
 				}
-
-				// add this instance to the list of pending futures
-				var prm = RegisterCallback(this);
 
 				foreach (var handle in handles)
 				{

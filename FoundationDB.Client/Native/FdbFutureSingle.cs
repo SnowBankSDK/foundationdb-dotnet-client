@@ -138,8 +138,6 @@ namespace FoundationDB.Client.Native
 						return;
 					}
 
-					// token still active
-					RegisterForCancellation(ct);
 				}
 
 #if DEBUG_FUTURES
@@ -151,8 +149,15 @@ namespace FoundationDB.Client.Native
 				m_state = state;
 				Volatile.Write(ref m_resultSelector, selector);
 
-				// add this instance to the list of pending futures
+				// the cookie exists before the cancellation registration: a token that fires from here on finds an armed
+				// future, cancels the native handle, and leaves the cleanup to the fire path, which runs once the
+				// callback below is set (on a cancelled handle, it fires at once)
 				var prm = RegisterCallback(this);
+
+				if (ct.CanBeCanceled)
+				{
+					RegisterForCancellation(ct);
+				}
 
 				// register the callback handler
 #if NET8_0_OR_GREATER
