@@ -109,6 +109,27 @@ namespace SnowBank.Collections.CacheOblivious.Test
 		}
 
 		[Test]
+		public void Test_RangeDictionary_Copy_Is_Isolated_From_Source()
+		{
+			using var source = new ColaRangeDictionary<int, long>();
+			source.Mark(0, 10, 1);
+			source.Mark(20, 30, 2);
+			source.Mark(40, 50, 3);
+			var before = source.Select(e => (e.Begin, e.End, e.Value)).ToArray();
+
+			using var copy = source.Copy();
+			copy.Mark(0, 10, 100);   // same bounds: overwrites the value of the existing range
+			copy.Mark(22, 25, 200);  // inside a range: splits it
+			copy.Mark(45, 60, 300);  // overlaps the end of a range: shrinks it
+			copy.Remove(5, 7, 0, (k, _) => k);
+
+			Assert.That(source.Select(e => (e.Begin, e.End, e.Value)).ToArray(), Is.EqualTo(before), "Changes to the copy must not be visible in the source");
+
+			source.Mark(40, 50, 4);
+			Assert.That(copy.Select(e => (e.Begin, e.End, e.Value)).ToArray(), Does.Not.Contain((40, 50, 4L)), "Changes to the source must not be visible in the copy");
+		}
+
+		[Test]
 		public void Test_RangeDictionary_Insert_In_Order_Non_Overlapping()
 		{
 			using var cola = new ColaRangeDictionary<int, string>();
