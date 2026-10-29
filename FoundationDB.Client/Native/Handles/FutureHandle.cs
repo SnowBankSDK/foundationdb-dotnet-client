@@ -44,6 +44,34 @@ namespace FoundationDB.Client.Native
 			Interlocked.Decrement(ref DebugCounters.FutureHandles);
 		}
 
+		/// <summary>Calls <c>fdb_future_cancel</c>, unless the future is already destroyed</summary>
+		internal void TryCancel()
+		{
+			if (this.IsClosed || this.IsInvalid) return;
+			try
+			{
+				FdbNative.FutureCancel(this);
+			}
+			catch (ObjectDisposedException)
+			{
+				// another thread destroyed the future after the check above: there is nothing left to cancel
+			}
+		}
+
+		/// <summary>Calls <c>fdb_future_release_memory</c>, unless the future is already destroyed</summary>
+		internal void TryReleaseMemory()
+		{
+			if (this.IsClosed || this.IsInvalid) return;
+			try
+			{
+				FdbNative.FutureReleaseMemory(this);
+			}
+			catch (ObjectDisposedException)
+			{
+				// another thread destroyed the future after the check above: its memory is already released
+			}
+		}
+
 		public override string ToString() => $"FutureHandle[0x{this.Handle:x}]";
 	}
 
