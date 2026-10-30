@@ -72,6 +72,7 @@ namespace SnowBank.Testing.Framework
 			{
 				handler(builder);
 			}
+			EveryWebHostServicesFeature.Apply(this, builder);
 		}
 
 		protected override void ConfigureApplication(WebApplication app)

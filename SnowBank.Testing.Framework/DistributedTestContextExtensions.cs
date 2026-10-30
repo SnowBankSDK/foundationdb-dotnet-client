@@ -231,6 +231,17 @@ namespace SnowBank.Testing.Framework
 
 		#region Features...
 
+		/// <summary>Configures the services of every web host of this environment, after the handlers of each host</summary>
+		/// <param name="env">Test environment</param>
+		/// <param name="handler">Receives the host and its builder, at each start of each web host</param>
+		/// <remarks>An extension that needs a service on every node of a test (for example a root that every cloud node trusts) adds it here once.</remarks>
+		public static void ConfigureEveryWebHost(this IDistributedTestEnvironmentBuilder env, Action<IDistributedTestComponent, WebApplicationBuilder> handler)
+		{
+			Contract.NotNull(env);
+			Contract.NotNull(handler);
+			env.GetOrCreateFeature(() => new EveryWebHostServicesFeature()).Handlers.Add(handler);
+		}
+
 		/// <summary>Gets a feature from this test environment</summary>
 		public static TFeature GetOrCreateFeature<TFeature>(this IDistributedTestFeatureCollection collection, Func<TFeature> factory)
 		{

@@ -77,6 +77,9 @@ namespace SnowBank.Testing.Framework
             {
                 handler(builder);
             }
+
+            // configuration logic shared by every web host of the environment
+            EveryWebHostServicesFeature.Apply(this, builder);
         }
 
         protected virtual void OnConfiguringServices(WebApplicationBuilder builder)
