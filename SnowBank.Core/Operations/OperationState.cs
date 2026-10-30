@@ -119,6 +119,10 @@ namespace SnowBank.Operations
 
 		/// <summary>Time since the value last changed, as seen by successive snapshots</summary>
 		public TimeSpan Idle { get; init; }
+
+		/// <summary>Units per second, measured over the last one to two seconds of snapshots (0 when the value did not move)</summary>
+		/// <remarks>The rate is measured from the second snapshot of the counter on. An observer extrapolates the value between two snapshots with it.</remarks>
+		public double Rate { get; init; }
 	}
 
 	/// <summary>Live view of an operation known to a scheduler</summary>

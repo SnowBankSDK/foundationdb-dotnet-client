@@ -384,6 +384,67 @@ namespace SnowBank.Operations.Tests
 			Assert.That(publisher.Removed, Is.EqualTo(new[] { handle.Id }));
 		}
 
+		[Test]
+		public async Task Test_Snapshots_Measure_The_Rate_Of_A_Counter_And_Report_Zero_When_It_Stalls()
+		{
+			var time = new FakeTimeProvider();
+			var op = new TickOperation();
+			var scheduler = new OperationScheduler(time);
+			scheduler.Register(TickOperation.Type, op);
+			var handle = scheduler.Start<int, long>(TickOperation.Type, 1000);
+			await WaitUntil(() => ItemsDone(handle.State.GetSnapshot()) == 0, Timeout, "first snapshot");
+
+			OperationProgressSnapshot Counter() => handle.State.GetSnapshot().Steps.Single(s => s.Id == "loop").Progress.Single();
+
+			// 10 items every 100 ms, for 3 s: 100 items per second, sampled every 100 ms
+			for (int i = 1; i <= 30; i++)
+			{
+				op.Tick.Release(10);
+				await WaitUntil(() => ItemsDone(handle.State.GetSnapshot()) == i * 10, Timeout, "ten more items");
+				time.Advance(TimeSpan.FromMilliseconds(100));
+				_ = handle.State.GetSnapshot();
+			}
+			var moving = Counter();
+			Log(moving);
+			Assert.That(moving.Rate, Is.EqualTo(100).Within(0.001));
+			Assert.That(moving.Idle, Is.EqualTo(TimeSpan.FromMilliseconds(100)), "the last items arrived one sample ago");
+
+			// the counter stops moving: the rate reaches 0 within two seconds, and the idle time grows
+			for (int i = 0; i < 20; i++)
+			{
+				time.Advance(TimeSpan.FromMilliseconds(100));
+				_ = handle.State.GetSnapshot();
+			}
+			var stalled = Counter();
+			Log(stalled);
+			Assert.That(stalled.Rate, Is.Zero);
+			Assert.That(stalled.Idle, Is.EqualTo(TimeSpan.FromMilliseconds(2100)));
+
+			op.Tick.Release(1000);
+			await handle.Completion.WaitAsync(Timeout);
+		}
+
+		[Test]
+		public async Task Test_The_Rate_Of_A_Counter_Is_Measured_From_Its_Second_Snapshot()
+		{
+			var time = new FakeTimeProvider();
+			var op = new TickOperation();
+			var scheduler = new OperationScheduler(time);
+			scheduler.Register(TickOperation.Type, op);
+			var handle = scheduler.Start<int, long>(TickOperation.Type, 1000);
+			await WaitUntil(() => ItemsDone(handle.State.GetSnapshot()) == 0, Timeout, "first snapshot");
+
+			time.Advance(TimeSpan.FromMilliseconds(200));
+			op.Tick.Release(50);
+			await WaitUntil(() => ItemsDone(handle.State.GetSnapshot()) == 50, Timeout, "fifty items");
+
+			var counter = handle.State.GetSnapshot().Steps.Single(s => s.Id == "loop").Progress.Single();
+			Assert.That(counter.Rate, Is.EqualTo(250).Within(0.001), "50 items in 200 ms");
+
+			op.Tick.Release(1000);
+			await handle.Completion.WaitAsync(Timeout);
+		}
+
 	}
 
 }

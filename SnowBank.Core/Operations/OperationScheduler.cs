@@ -378,7 +378,7 @@ namespace SnowBank.Operations
 		}
 	}
 
-	/// <summary>A counter, plus what the snapshots saw of it, to measure how long its value has not moved</summary>
+	/// <summary>A counter, plus what the snapshots saw of it, to measure how long its value has not moved and how fast it moves</summary>
 	internal sealed class OperationProgressTracker
 	{
 		public OperationProgressTracker(OperationProgress counter)
@@ -392,6 +392,34 @@ namespace SnowBank.Operations
 		public long LastDone { get; set; }
 
 		public long LastChangeTimestamp { get; set; }
+
+		/// <summary>Shortest span of a rate window</summary>
+		private static readonly TimeSpan RateWindow = TimeSpan.FromSeconds(1);
+
+		/// <summary>Value and time of the snapshot that opened the previous window: the rate is measured from there</summary>
+		private (long Done, long Timestamp) Anchor { get; set; }
+
+		/// <summary>Value and time of the snapshot that opened the current window</summary>
+		private (long Done, long Timestamp) Window { get; set; }
+
+		/// <summary>Records a snapshot of the counter, and returns its rate in units per second</summary>
+		/// <remarks>The rate covers one to two windows, so it reaches 0 within two windows of the last change.</remarks>
+		public double Sample(TimeProvider time, long done, long now)
+		{
+			if (this.Anchor.Timestamp == 0)
+			{
+				this.Anchor = this.Window = (done, now);
+				return 0;
+			}
+			if (time.GetElapsedTime(this.Window.Timestamp, now) >= RateWindow)
+			{
+				this.Anchor = this.Window;
+				this.Window = (done, now);
+			}
+			var span = time.GetElapsedTime(this.Anchor.Timestamp, now).TotalSeconds;
+			// a counter set back (a new attempt of a step) has no meaningful rate until it moves forward again
+			return span > 0 ? Math.Max(0, (done - this.Anchor.Done) / span) : 0;
+		}
 	}
 
 	/// <summary>An operation known to a scheduler: its phase, its step tree, and its current run</summary>
@@ -729,6 +757,7 @@ namespace SnowBank.Operations
 					Done = done,
 					Total = tracker.Counter.Total,
 					Idle = this.Time.GetElapsedTime(tracker.LastChangeTimestamp, now),
+					Rate = tracker.Sample(this.Time, done, now),
 				});
 			}
 			return list;
