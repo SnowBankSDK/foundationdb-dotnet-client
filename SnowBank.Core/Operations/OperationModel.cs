@@ -150,7 +150,8 @@ namespace SnowBank.Operations
 		}
 
 		/// <summary>Tests whether the grant covers an actor</summary>
-		public bool Covers(OperationActor actor) => this.IsRole ? actor.Roles.Contains(this.Value) : actor.Id == this.Value;
+		/// <remarks>A role matches ignoring case, as the roles of a node do; a principal id matches exactly.</remarks>
+		public bool Covers(OperationActor actor) => this.IsRole ? actor.Roles.Contains(this.Value, StringComparer.OrdinalIgnoreCase) : actor.Id == this.Value;
 
 		/// <inheritdoc />
 		public override string ToString() => (this.IsRole ? "role:" : "user:") + this.Value;

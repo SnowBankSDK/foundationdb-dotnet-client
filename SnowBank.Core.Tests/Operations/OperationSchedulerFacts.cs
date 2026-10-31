@@ -300,6 +300,8 @@ namespace SnowBank.Operations.Tests
 			var access = handle.State.GetSnapshot().Access;
 			Assert.That(access.CanObserve(new("user:bob", [ "support" ])), Is.True);
 			Assert.That(access.CanControl(new("user:bob", [ "support" ])), Is.False);
+			Assert.That(access.CanControl(new("user:dave", [ "Admin" ])), Is.True, "a role matches ignoring case");
+			Assert.That(access.CanControl(new("USER:ALICE", [ ])), Is.False, "a principal id matches exactly");
 
 			Assert.That(scheduler.Cancel(handle.Id, OperationActor.User("user:bob")), Is.EqualTo(OperationControlStatus.Denied));
 			Assert.That(scheduler.Stop(handle.Id, new("user:bob", [ "support" ])), Is.EqualTo(OperationControlStatus.Denied));
