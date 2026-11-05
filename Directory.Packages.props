@@ -10,6 +10,8 @@
     <PackageVersion Include="Grpc.AspNetCore" Version="2.84.0" />
     <PackageVersion Include="Grpc.Tools" Version="2.84.0" />
     <PackageVersion Include="MathNet.Numerics.Signed" Version="5.0.0" />
+    <!-- Transitive from Aspire.Hosting. Pinned up to override the vulnerable 2.5.302 (GHSA-qhrr-8q5h-9q3h, nested arrays past buffer length limits) -->
+    <PackageVersion Include="MessagePack" Version="2.5.303" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" Version="1.1.4" />
