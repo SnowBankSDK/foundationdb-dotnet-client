@@ -2077,10 +2077,9 @@ namespace SnowBank.Data.Json
 			}
 #else
 			// NullabilityInfoContext (.NET 6+) is not available: read the metadata the compiler emits for nullable
-			// reference types directly. A generic parameter, or a member without that metadata (oblivious code),
-			// counts as nullable: fewer non-null constraints enforced when binding, never a spurious "required" failure.
-			if (memberType.IsGenericParameter) return false;
-			return ReadNullableFlag(member) == 1;
+			// reference types directly. Only an annotated member (string?) is nullable: a member without that metadata
+			// (oblivious code) counts as non-null, as NullabilityState.Unknown does on the modern targets above.
+			return ReadNullableFlag(member) != 2;
 #endif
 		}
 
@@ -2571,8 +2570,8 @@ namespace SnowBank.Data.Json
 					var (member, parameter) = fields[i];
 					if (!obj.TryGetValue(member.Name, out var child))
 					{ // absent from the document
-						if (member.IsRequired || member.IsRequiredPresence)
-						{ // C# `required` and [DataMember(IsRequired=true)] both reject an absent member
+						if ((member.IsRequired && member.IsNotNull) || member.IsRequiredPresence)
+						{ // a C# `required` member of a non-nullable type, and [DataMember(IsRequired=true)], both need a value here
 							throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(obj, member.Name, null);
 						}
 						// the parameter's own default value wins over the member's, and both over the type's default
@@ -2580,8 +2579,8 @@ namespace SnowBank.Data.Json
 						continue;
 					}
 					if (child.IsNull)
-					{ // explicit null: rejects the C# `required` contract, but satisfies [DataMember(IsRequired=true)] (DCJS semantics)
-						if (member.IsRequired)
+					{ // explicit null: a value is missing only for a C# `required` member of a non-nullable type; null satisfies [DataMember(IsRequired=true)] (DCJS semantics)
+						if (member.IsRequired && member.IsNotNull)
 						{
 							throw CrystalJson.Errors.Parsing_FieldIsNullOrMissing(obj, member.Name, null);
 						}
