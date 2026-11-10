@@ -169,8 +169,8 @@ namespace FoundationDB.Client.Native
 					// this completion (as on the queued path), instead of recycling the instance or closing the handles
 					// while HandleCompletion reads them.
 					SetFlag(FdbFuture.Flags.UNPOOLED);
-					TrySetFlag(FdbFuture.Flags.FIRED);
 #endif
+					TrySetFlag(FdbFuture.Flags.FIRED);
 					UnregisterCallback(this);
 					HandleCompletion();
 					m_completionHandler = null;
@@ -335,6 +335,9 @@ namespace FoundationDB.Client.Native
 
 				if (future.HasFlag(FdbFuture.Flags.READY))
 				{
+					// from here the queued completion owns the cleanup (see FdbFutureSingle.FutureCompletionCallback)
+					future.TrySetFlag(FdbFuture.Flags.FIRED);
+
 					UnregisterCallback(future);
 
 					// the generic overload with 'preferLocal' is not available, using the legacy WaitCallback overload instead (which cannot favor the local thread's queue)
