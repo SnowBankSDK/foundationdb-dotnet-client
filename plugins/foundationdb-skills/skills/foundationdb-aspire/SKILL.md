@@ -96,16 +96,38 @@ Without it, a bare `dotnet run` on the AppHost crashes at startup: *"Failed to c
 
 ---
 
-## 5. The native client (`libfdb_c`) — `UseNativeClient()`
+## 5. The native client (`libfdb_c`): where it loads from
 
-The .NET client talks to the cluster through the native **`libfdb_c`** library. `options.UseNativeClient(allowSystemFallback: false)` loads **only** the copy shipped by the `FoundationDB.Client.Native` package.
+The .NET client talks to the cluster through the native **`libfdb_c`** library. Since 7.4.7 the binding loads it from **fixed paths only**. With the default (`FdbDatabaseProviderOptions.NativeLibraryPath` left `null`), it checks, in this order:
 
-That package ships `libfdb_c` for `linux-arm64`, `linux-x64`, `win-x64`, `osx-arm64`, and (since the 7.4.6 native repackaging) `osx-x64`, so `UseNativeClient(allowSystemFallback: false)` loads the redistributed client on macOS too, with no system install. Use the system fallback only when your `FoundationDB.Client.Native` pin predates the macOS RID you need:
+1. `runtimes/{rid}/native/` under the application folder, then the application folder itself: where the `FoundationDB.Client.Native` package deploys the library;
+2. the location of the official client installer: `%ProgramFiles%oundationdbindb_c.dll` (Windows), `/usr/lib/libfdb_c.so` (Linux), `/usr/local/lib/libfdb_c.dylib` (macOS).
 
-1. install a system `libfdb_c.dylib` (Homebrew `foundationdb`, or the official client package) of a matching version (§6) and matching CPU arch (an arm64 process cannot load an x64 dylib), and
-2. call `UseNativeClient(allowSystemFallback: true)`.
+It never searches `PATH` or `LD_LIBRARY_PATH` by default: those folders may be writable by other users or programs, and a library planted there would run inside the process. When none of the fixed paths holds the library, opening the database throws `DllNotFoundException`, and the message lists the paths it checked.
 
-The loader searches the **app's output directory** and the standard dyld paths, not `/usr/local/lib` by bare name. To force a system copy, place (or copy) `libfdb_c.dylib` next to the built app. Symptom when no client loads: `DllNotFoundException: Unable to load shared library 'fdb_c'`.
+The three ways to provide the library:
+
+- **Recommended: reference `FoundationDB.Client.Native`** with the major.minor of the cluster (`7.4.*` for a 7.4 cluster, `7.3.*` for 7.3; see §6). It ships `libfdb_c` for `linux-arm64`, `linux-x64`, `win-x64`, `osx-arm64` and `osx-x64`, so the default above finds it with no extra call. `options.UseNativeClient()` (an extension of that package) pins the load to the package copy only, and reports a missing library with `FileNotFoundException` while the services are configured, instead of when the database starts.
+- **A library in another folder:** set its full path.
+- **The operating-system search:** `options.UseSystemNativeClient()`, or `UseNativeClient(allowSystemFallback: true)` when the package copy is missing, restores the search of the runtime and the operating system, with the risk above. Use it only on a host you control.
+
+```csharp
+services.AddFoundationDb(740, options => options.UseNativeClient());                                       // package copy only
+services.AddFoundationDb(740, options => options.NativeLibraryPath = "/opt/foundationdb/lib/libfdb_c.so"); // explicit path
+services.AddFoundationDb(740, options => options.UseSystemNativeClient());                                 // OS search, with its risk
+```
+
+Without dependency injection, `Fdb.Options.SetNativeLibPath(path)` sets the path.
+
+**Network options** (for example the directory of the other client versions of the multi-version client) are set where the provider is registered, and the Aspire `configureProvider` callback can call it too:
+
+```csharp
+services.AddFoundationDb(740, options => options
+	.SetNetworkOption(FdbNetworkOption.ExternalClientDirectory, "/opt/foundationdb/clients")
+);
+```
+
+They apply in the order of the calls, after the trace and TLS options. The network thread starts once per process, so the options of the **first** provider that starts apply to the whole process.
 
 ---
 
@@ -131,7 +153,7 @@ For talking to **multiple** cluster versions from one process, FoundationDB's mu
 
 ⚠️ **GOTCHAS**
 - **Transactions that hang on a brand-new cluster** are almost always a client/cluster **version mismatch**, not a deadlock — check versions first.
-- **`DllNotFoundException: fdb_c`** ⇒ no native client found; on macOS the package ships none (see §5).
+- **`DllNotFoundException: fdb_c`** ⇒ none of the fixed paths holds the native client; the message lists them. Add `FoundationDB.Client.Native` with the major.minor of the cluster, or set `NativeLibraryPath` (see §5). A library only found through `PATH` or `LD_LIBRARY_PATH` is no longer loaded by default.
 - **AppHost `dotnet run` crash about ASPNETCORE_URLS / OTLP** ⇒ missing `launchSettings.json`, or just use `aspire run`.
 - **`AddFoundationDb` "ambiguous" / wrong overload** ⇒ you imported the wrong namespace; the AppHost call is on `IDistributedApplicationBuilder` (`Aspire.Hosting`), the client call on `IHostApplicationBuilder` (`Microsoft.Extensions.Hosting`).
 - `WithLifetime(ContainerLifetime.Persistent)` keeps the cluster's data across runs — handy in dev, but remember to `docker rm -f` it when you want a clean slate.
