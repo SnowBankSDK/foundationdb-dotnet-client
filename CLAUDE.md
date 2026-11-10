@@ -133,22 +133,28 @@ compares that stamp with `FdbNativeVersion`. The steps, and who does what:
    `osx-arm64` and `osx-x64` pairs from our release, `linux-x64` and `linux-arm64` pairs from upstream),
    checksums from the `.sha256` assets. `latest` moves only when the newest branch's newest version is
    meant to be the default package. One commit, `Fdb: add the <version> manifest entry`.
-3. **Session: fetch the branch's files.** In `FoundationDB.Client.Native`:
+3. **Session: the Aspire image constants.** Once the cluster image of that version is on Docker Hub, run
+   `scripts/check-fdb-image-tags.ps1 -Fix` (Linux and macOS: `scripts/check-fdb-image-tags.sh --fix`). It sets
+   the `LatestVersion7x` constants in `FoundationDB.Aspire.Hosting/FdbAspireHostingExtensions.cs` to the newest
+   image of each branch (the highest even patch, the non-AVX build), which `AddFoundationDb` starts under a
+   `Latest` version policy. One commit, `Aspire: default the <branch> cluster images to <version>`, and a line
+   in the release notes of the next SDK version.
+4. **Session: fetch the branch's files.** In `FoundationDB.Client.Native`:
    `.\DownloadBinaries.ps1 -version <version>` (Linux and macOS: `./DownloadBinaries.sh --version <version>`).
    It verifies every checksum and stamps `runtimes\fdb-native-version.txt`. Files of another version
    already present are replaced (the checksum check re-downloads them).
-4. **Session: pack the branch.** From the repository root:
+5. **Session: pack the branch.** From the repository root:
    `dotnet pack FoundationDB.Client.Native/FoundationDB.Client.Native.csproj -c Release -p:CORESDK_STANDALONE_BUILD=true -p:FdbNativeVersion=<version> -o artifacts/packages/native-<version>`
    (standalone, so the package carries the complete target set; the property may be omitted when
    `<version>` is the manifest's `latest`). A stamp mismatch stops the pack with the message naming both
    versions. Inspect the `.nupkg`: version `<version>`, `runtimes/<rid>/native/` holding one file per
    supported rid.
-5. **Session: prove the package.** Restore it into a throwaway console project (a `nuget.config`
+6. **Session: prove the package.** Restore it into a throwaway console project (a `nuget.config`
    pointing at the output folder) built for `win-x64` on net10.0, and check that the `fdb_c.dll` in the
    output hashes to the manifest entry's checksum.
-6. **Repeat 3 to 5 for the other branch** in the same tree: the download replaces the files and the stamp,
+7. **Repeat 4 to 6 for the other branch** in the same tree: the download replaces the files and the stamp,
    the pack takes the other `-p:FdbNativeVersion`. Nothing in the csproj changes between branches.
-7. **Owner: publish.** Push each `.nupkg` to nuget.org; the two branches are two versions of one package id,
+8. **Owner: publish.** Push each `.nupkg` to nuget.org; the two branches are two versions of one package id,
    and applications pin the branch their cluster runs (`7.3.*` or `7.4.*`).
 
 
