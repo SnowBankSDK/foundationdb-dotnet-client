@@ -95,9 +95,12 @@ namespace FoundationDB.Client.Native
 			Contract.Debug.Requires(!this.IsSettled, "rented instance is already settled");
 
 			if (handle.IsInvalid)
-			{ // it's dead, Jim !
-				SetFlag(FdbFuture.Flags.COMPLETED);
+			{ // it's dead, Jim ! Settle the task as HandleCompletion settles a closed or invalid handle: cancelled.
+			  // The cleanup releases the second reuse gate, and can recycle the instance, so nothing touches it after.
 				m_resultSelector = null;
+				handle.Dispose();
+				TrySetCanceled();
+				TryCleanup();
 				return;
 			}
 

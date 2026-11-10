@@ -211,6 +211,24 @@ namespace FoundationDB.Client.Tests
 			Assert.That(future.ReuseSignals, Is.EqualTo(2), "the new lifecycle still needs its own two releases");
 		}
 
+		[Test]
+		public void Test_Future_Over_An_Invalid_Handle_Settles_As_Cancelled()
+		{
+			// a default FutureHandle wraps no native future (IsInvalid): the wrapper must settle at once, the same way
+			// a completion settles a closed or invalid handle, instead of leaving its caller awaiting forever
+
+			for (int i = 0; i < 3; i++)
+			{ // the second and third rounds rent the instances that the first round returned to the pool
+				var task = FdbFuture.CreateTaskFromHandle(new FutureHandle(), 0, static (_, _) => 1, CancellationToken.None);
+				Assert.That(task.IsCompleted, Is.True, $"Task over an invalid handle, round #{i}");
+				Assert.That(task.IsCanceled, Is.True, $"Task over an invalid handle, round #{i}");
+
+				var vt = FdbFuture.CreateValueTaskFromHandle(new FutureHandle(), 0, static (_, _) => 1, CancellationToken.None);
+				Assert.That(vt.IsCompleted, Is.True, $"ValueTask over an invalid handle, round #{i}");
+				Assert.That(() => vt.GetAwaiter().GetResult(), Throws.InstanceOf<OperationCanceledException>(), $"ValueTask over an invalid handle, round #{i}");
+			}
+		}
+
 	}
 
 	/// <summary>Tests of the interaction between the future wrappers and the caller's cancellation token,
