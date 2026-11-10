@@ -44,7 +44,7 @@ namespace FoundationDB.Client.Native
 		/// <remarks>Mutable because pooled instances are re-initialized with a new batch of handles on each lifecycle</remarks>
 		private FutureHandle?[]? m_handles;
 
-		/// <summary>Counter of callbacks that still need to fire.</summary>
+		/// <summary>Counter of callbacks that still need to fire, plus one count that the setup thread holds until every callback is armed</summary>
 		private int m_pending;
 
 		/// <summary>Lambda used to extract the value from each FDBFuture</summary>
@@ -91,6 +91,7 @@ namespace FoundationDB.Client.Native
 			m_handles = handles;
 
 			bool abortAllHandles = false;
+			bool setupHeld = false;
 
 			try
 			{
@@ -120,6 +121,12 @@ namespace FoundationDB.Client.Native
 					RegisterForCancellation(ct);
 				}
 
+				// The setup thread holds one count while it arms the callbacks. Whichever decrement reaches zero, this
+				// thread's own or the last callback's, completes the future. The other side never touches the instance
+				// again, because a completion can recycle it at any time.
+				Interlocked.Increment(ref m_pending);
+				setupHeld = true;
+
 				foreach (var handle in handles)
 				{
 					if (handle is null || FdbNative.FutureIsReady(handle))
@@ -140,6 +147,8 @@ namespace FoundationDB.Client.Native
 #if DEBUG_FUTURES
 						System.Diagnostics.Debug.WriteLine("Failed to set callback for Future<" + typeof(T).Name + "> 0x" + handle.Handle.ToString("x") + " !!!");
 #endif
+						// no callback was armed on this handle, so no fire will ever release its count
+						Interlocked.Decrement(ref m_pending);
 						throw FdbNative.CreateExceptionFromError(err);
 					}
 				}
@@ -147,15 +156,22 @@ namespace FoundationDB.Client.Native
 				// allow the callbacks to handle completion
 				TrySetFlag(FdbFuture.Flags.READY);
 
-				if (Volatile.Read(ref m_pending) == 0)
+				FdbFuture.BeforeInlineCompletionCheck?.Invoke();
+
+				setupHeld = false;
+				if (Interlocked.Decrement(ref m_pending) == 0)
 				{ // all callbacks have already fired (or all handles were already completed)
-					UnregisterCallback(this);
 #if NET8_0_OR_GREATER
 					// inline completion: HandleCompletion below can release BOTH reuse gates synchronously, and this
 					// method still writes to the instance afterwards, so this (rare) lifecycle retires to the GC
-					// instead of getting recycled under our feet
+					// instead of getting recycled under our feet. Both flags are published before the cookie is
+					// released: a Cancel() that observes no cookie must also observe FIRED, and leave the cleanup to
+					// this completion (as on the queued path), instead of recycling the instance or closing the handles
+					// while HandleCompletion reads them.
 					SetFlag(FdbFuture.Flags.UNPOOLED);
+					TrySetFlag(FdbFuture.Flags.FIRED);
 #endif
+					UnregisterCallback(this);
 					HandleCompletion();
 					m_completionHandler = null;
 					m_resultSelector = null;
@@ -178,7 +194,7 @@ namespace FoundationDB.Client.Native
 				TrySetCanceled();
 
 #if NET8_0_OR_GREATER
-				if (Volatile.Read(ref m_pending) > 0)
+				if (setupHeld && Interlocked.Decrement(ref m_pending) > 0)
 				{ // some handles are already armed with the cookie: cancel them so that their fires drain;
 				  // the LAST fire releases the cookie and destroys the handles (freeing here would race the
 				  // network thread resolving the cookie)
@@ -292,7 +308,8 @@ namespace FoundationDB.Client.Native
 
 					TryCleanup();
 				}
-				// else: the ctor is still arming the other handles, and will observe m_pending == 0 itself
+				// the setup thread releases its own count only after it published READY, or after it set DISPOSED
+				// when it failed, so one of the two branches above always applies
 			}
 		}
 

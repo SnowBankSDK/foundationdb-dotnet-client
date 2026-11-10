@@ -72,6 +72,11 @@ namespace FoundationDB.Client.Native
 		/// sub-microsecond scheduling window inside the initialization of a future wrapper.</remarks>
 		internal static Action? BeforeCancellationRegistration;
 
+		/// <summary>Hook invoked by a batch future after it publishes READY and before it checks for an inline completion</summary>
+		/// <remarks>Always null in production; a test can install a stall here so that the native callbacks fire
+		/// inside the window where the setup thread and the fire path both see every handle done.</remarks>
+		internal static Action? BeforeInlineCompletionCheck;
+
 #if NET8_0_OR_GREATER
 
 		/// <summary>Entry point invoked by the fdb_c network thread when a future becomes ready</summary>
