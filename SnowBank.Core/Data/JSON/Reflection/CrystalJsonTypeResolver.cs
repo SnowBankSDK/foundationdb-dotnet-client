@@ -2076,12 +2076,63 @@ namespace SnowBank.Data.Json
 				}
 			}
 #else
-			// NullabilityInfoContext (.NET 6+) is not available: without the nullable-reference-type metadata reader,
-			// conservatively treat every reference-type member as nullable (fewer non-null constraints enforced when
-			// binding, never a spurious "required" failure)
-			return false;
+			// NullabilityInfoContext (.NET 6+) is not available: read the metadata the compiler emits for nullable
+			// reference types directly. A generic parameter, or a member without that metadata (oblivious code),
+			// counts as nullable: fewer non-null constraints enforced when binding, never a spurious "required" failure.
+			if (memberType.IsGenericParameter) return false;
+			return ReadNullableFlag(member) == 1;
 #endif
 		}
+
+#if !NET5_0_OR_GREATER
+
+		/// <summary>Reads the top-level nullable-reference-type flag of a field or property: 0 = oblivious, 1 = not null, 2 = nullable</summary>
+		/// <remarks>The compiler embeds its own copy of <c>NullableAttribute</c> and <c>NullableContextAttribute</c> into each
+		/// assembly that needs them, so both are matched by name and read through <see cref="CustomAttributeData"/>. A flag on
+		/// the member wins; otherwise the context of the closest declaring type applies.</remarks>
+		private static byte ReadNullableFlag(MemberInfo member)
+		{
+			if (TryReadNullableAttribute(member.GetCustomAttributesData(), "System.Runtime.CompilerServices.NullableAttribute", out var flag))
+			{
+				return flag;
+			}
+			for (var type = member.DeclaringType; type != null; type = type.DeclaringType)
+			{
+				if (TryReadNullableAttribute(type.GetCustomAttributesData(), "System.Runtime.CompilerServices.NullableContextAttribute", out flag))
+				{
+					return flag;
+				}
+			}
+			return 0;
+		}
+
+		private static bool TryReadNullableAttribute(IList<CustomAttributeData> attributes, string fullName, out byte flag)
+		{
+			foreach (var attribute in attributes)
+			{
+				if (attribute.AttributeType.FullName != fullName || attribute.ConstructorArguments.Count != 1)
+				{
+					continue;
+				}
+				switch (attribute.ConstructorArguments[0].Value)
+				{
+					case byte single:
+					{ // NullableAttribute(byte) or NullableContextAttribute(byte)
+						flag = single;
+						return true;
+					}
+					case IList<CustomAttributeTypedArgument> { Count: > 0 } flags when flags[0].Value is byte first:
+					{ // NullableAttribute(byte[]): the first entry is the flag of the member type itself
+						flag = first;
+						return true;
+					}
+				}
+			}
+			flag = 0;
+			return false;
+		}
+
+#endif
 
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
