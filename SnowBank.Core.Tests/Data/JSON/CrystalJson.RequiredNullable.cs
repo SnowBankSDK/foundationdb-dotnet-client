@@ -36,6 +36,28 @@ namespace SnowBank.Data.Json.Tests
 		public required int? Count { get; init; }
 	}
 
+	/// <summary>Built through its constructor: the reflection path binds the members to the constructor parameters</summary>
+	public sealed class ReqCtorHolder
+	{
+		public ReqCtorHolder(string id, string? note)
+		{
+			this.Id = id;
+			this.Note = note;
+		}
+
+		public required string Id { get; init; }
+
+		public required string? Note { get; init; }
+	}
+
+#nullable disable
+	/// <summary>Declared without nullable reference types: the compiler records no nullability on the member</summary>
+	public sealed class ReqObliviousHolder
+	{
+		public required string Id { get; init; }
+	}
+#nullable restore
+
 	[CrystalJsonConverter(CrystalJsonSerializerDefaults.Web)]
 	[CrystalSerializable(typeof(ReqNullableHolder))]
 	public static partial class ReqNullableConverters { }
@@ -113,6 +135,30 @@ namespace SnowBank.Data.Json.Tests
 		public void Test_Reflection_Missing_Non_Nullable_Required_Member_Throws([Values("{ }", "{ \"Id\": null }")] string json)
 		{
 			Assert.That(() => CrystalJson.Deserialize<ReqNullableHolder>(json), Throws.InstanceOf<JsonBindingException>());
+		}
+
+		[Test]
+		public void Test_Reflection_Constructor_Reads_Missing_And_Null_Alike([Values("{ \"Id\": \"a\" }", "{ \"Id\": \"a\", \"Note\": null }")] string json)
+		{
+			var decoded = CrystalJson.Deserialize<ReqCtorHolder>(json);
+			using (Assert.EnterMultipleScope())
+			{
+				Assert.That(decoded.Id, Is.EqualTo("a"));
+				Assert.That(decoded.Note, Is.Null);
+			}
+		}
+
+		[Test]
+		public void Test_Reflection_Constructor_Missing_Non_Nullable_Required_Member_Throws([Values("{ }", "{ \"Id\": null }")] string json)
+		{
+			Assert.That(() => CrystalJson.Deserialize<ReqCtorHolder>(json), Throws.InstanceOf<JsonBindingException>());
+		}
+
+		[Test]
+		public void Test_Reflection_Missing_Oblivious_Required_Member_Throws([Values("{ }", "{ \"Id\": null }")] string json)
+		{
+			// a member declared without nullable reference types counts as non-null, on every target
+			Assert.That(() => CrystalJson.Deserialize<ReqObliviousHolder>(json), Throws.InstanceOf<JsonBindingException>());
 		}
 
 	}
