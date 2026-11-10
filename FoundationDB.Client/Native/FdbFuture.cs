@@ -502,6 +502,28 @@ namespace FoundationDB.Client.Native
 #endif
 		}
 
+#if !NET8_0_OR_GREATER
+		/// <summary>Sets COMPLETED only when neither FIRED nor COMPLETED is set, in one atomic step</summary>
+		/// <returns>True when the caller owns the cleanup; false when a fire already handed it to the queued completion, or a cleanup already ran</returns>
+		private bool TryClaimCleanupBeforeFire()
+		{
+			var spinner = new SpinWait();
+			while (true)
+			{
+				int current = Volatile.Read(ref m_flags);
+				if ((current & (FdbFuture.Flags.FIRED | FdbFuture.Flags.COMPLETED)) != 0)
+				{
+					return false;
+				}
+				if (Interlocked.CompareExchange(ref m_flags, current | FdbFuture.Flags.COMPLETED, current) == current)
+				{
+					return true;
+				}
+				spinner.SpinOnce();
+			}
+		}
+#endif
+
 		protected bool TryCleanup()
 		{
 			// We try to clean up the future handle as soon as possible, meaning as soon as we have the result, or an error, or a cancellation
@@ -768,7 +790,14 @@ namespace FoundationDB.Client.Native
 						TryCleanup();
 					}
 #else
-					TryCleanup();
+					// a fire that has already queued its completion owns the cleanup: closing the handles here would
+					// destroy the native futures while that completion copies their results. The claim is atomic: a
+					// fire that lands between a separate check and the cleanup would queue a completion that reads
+					// the handles while they close.
+					if (TryClaimCleanupBeforeFire())
+					{
+						DoCleanup();
+					}
 #endif
 				}
 			}
@@ -821,13 +850,24 @@ namespace FoundationDB.Client.Native
 					TryCleanup();
 				}
 #else
-				try
-				{
-					TryCleanup();
+				if (HasFlag(FdbFuture.Flags.FIRED) && !HasFlag(FdbFuture.Flags.COMPLETED))
+				{ // the fire already queued the completion: that work item owns the cleanup (closing the handles here
+				  // would destroy the native futures while it copies their results); the task itself settles right now
+					if (!this.IsSettled)
+					{
+						TrySetCanceled();
+					}
 				}
-				finally
+				else
 				{
-					if (Volatile.Read(ref m_key) != IntPtr.Zero) UnregisterCallback(this);
+					try
+					{
+						TryCleanup();
+					}
+					finally
+					{
+						if (Volatile.Read(ref m_key) != IntPtr.Zero) UnregisterCallback(this);
+					}
 				}
 #endif
 			}

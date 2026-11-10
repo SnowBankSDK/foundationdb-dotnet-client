@@ -258,9 +258,13 @@ namespace FoundationDB.Client.Native
 			Debug.WriteLine("Future<" + typeof(T).Name + ">.Callback(0x" + futureHandle.ToString("x") + ", " + parameter.ToString("x") + ") has fired on thread #" + Environment.CurrentManagedThreadId.ToString());
 #endif
 
-			var future = GetFutureFromCallbackParameter(parameter);
+			var future = (FdbFutureSingle<TState, TResult>?) GetFutureFromCallbackParameter(parameter);
 			if (future != null)
 			{
+				// from here the queued completion owns the cleanup: a Cancel() or Dispose() that observes FIRED leaves
+				// the handle open for it, instead of destroying it while the completion reads the result
+				future.TrySetFlag(FdbFuture.Flags.FIRED);
+
 				UnregisterCallback(future);
 
 				ThreadPool.UnsafeQueueUserWorkItem(s_callback, future);
