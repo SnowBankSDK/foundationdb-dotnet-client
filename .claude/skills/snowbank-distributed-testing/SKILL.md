@@ -270,6 +270,30 @@ The scope is `AsyncLocal`-based: it flows into the assertion lambdas, nests corr
 running in parallel. Rule of thumb: **if a green run of your suite prints `#!# ContractFailed`, a negative test is
 missing this scope** — grep the output for `#!#` after adding precondition tests.
 
+## Ordering the tests of a fixture: `[Canary]` and `[RunOrder]`
+
+NUnit 5 marks `[Order]` as obsolete. Two attributes of `SnowBank.Testing.Common` order the tests of a fixture the same way on NUnit 4 and NUnit 5:
+
+- `[Canary]` runs a test first: an assumption whose failure explains the failures that follow (a hash algorithm, a wire format, a required service).
+- `[RunOrder(n)]` runs the tests by rank, the basic ones before the advanced ones.
+
+```csharp
+[TestFixture]
+public class OrderStoreFacts
+{
+	[Test, Canary]
+	public void Test_Hash_Algorithm_Did_Not_Change() { /*...*/ }
+
+	[Test, RunOrder(10)]
+	public void Test_Can_Read_And_Write() { /*...*/ }
+
+	[Test, RunOrder(20)]
+	public void Test_Can_Read_Your_Writes() { /*...*/ }
+}
+```
+
+Neither makes a test depend on another: every test still runs and reports its own result, and the order only holds for tests that do not run in parallel. Do not use NUnit's `[Order]` or `[DependsOnTest]`: a failed dependency drops its dependents from the results without reporting them as skipped. Ordering is not a way to share state between tests: each test sets up its own.
+
 ## Gotchas / current limitations
 
 - **`TimelineRenderOptions` (`ShowDetails` / `ShowStartup`) is wired but unused** — `DumpReport` always renders with `Default`. Don't rely on it yet (`//TODO` in `Timeline.cs`).
