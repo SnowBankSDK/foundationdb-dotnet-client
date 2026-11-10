@@ -1190,11 +1190,30 @@ namespace FoundationDB.Client.Tests
 					// ReSharper disable once DisposeOnUsingVariable
 					tr1.Dispose(); // force T1 to be dumped immediately
 
-					// T2 commits second
+					// T2 commits second. The allocator draws a random candidate in its window, so T2 conflicts with T1
+					// when both drew the same prefix (about once in 60 runs): a caller retries that conflict, and so
+					// does this test, which then checks that both directories exist.
 					Log("Committing T2...");
-					await tr2.CommitAsync();
-					Log("T2 committed");
+					try
+					{
+						await tr2.CommitAsync();
+						Log("T2 committed");
+					}
+					catch (FdbException ex) when (ex.Code == FdbError.NotCommitted)
+					{
+						Log("T2 conflicted with T1 (both drew the same prefix), retrying in a new transaction...");
+						await db.WriteAsync(async tr =>
+						{
+							var retried = await dl.CreateAsync(tr, FdbPath.Absolute("Second"));
+							tr.Set(retried.GetPrefix(), Text("This belongs to the second directory"));
+						}, this.Cancellation);
+						Log("T2 committed on retry");
+					}
 				}
+
+				var (firstExists, secondExists) = await db.ReadAsync(async tr => (await dl.ExistsAsync(tr, FdbPath.Absolute("First")), await dl.ExistsAsync(tr, FdbPath.Absolute("Second"))), this.Cancellation);
+				Assert.That(firstExists, Is.True, "the first directory must exist");
+				Assert.That(secondExists, Is.True, "the second directory must exist");
 			}
 			finally
 			{
