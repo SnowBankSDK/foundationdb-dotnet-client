@@ -356,6 +356,115 @@ namespace FoundationDB.Client.Tests
 			Assert.That(values.Select(v => v.ToInt32()), Is.EqualTo(new[] { 0, 1, 2, 3 }));
 		}
 
+		[Test]
+		public async Task Test_Batch_Read_Completed_During_Its_Setup_Leaves_The_Next_Read_Intact()
+		{
+			// the hook stalls the setup thread of a batch read after it publishes READY and before it checks for an
+			// inline completion, so the native callbacks fire inside that window: the fire path and the setup
+			// thread then both see every handle done. Only one of them may complete the read. A second completion
+			// runs on a wrapper that the first one already returned to the pool, and the next batch read then
+			// inherits a result (or an error) that belongs to the stalled one.
+
+			using var db = await OpenTestPartitionAsync();
+			var location = db.Root;
+
+			await db.WriteAsync(async tr =>
+			{
+				var subspace = await location.Resolve(tr);
+				for (int k = 0; k < 4; k++)
+				{
+					tr.Set(subspace.Key("probe", k), Slice.FromInt32(k));
+				}
+			}, this.Cancellation);
+
+			// a stalled read that comes back already completed proves that the callbacks fired inside the stall:
+			// without at least one, the test would pass without ever reaching the race
+			int coveredByStall = 0;
+
+			for (int i = 0; i < 20; i++)
+			{
+				int armed = 1;
+				FdbFuture.BeforeInlineCompletionCheck = () =>
+				{
+					// long enough for the read version and the four reads of a local cluster to come back
+					if (Interlocked.Exchange(ref armed, 0) == 1) Thread.Sleep(100);
+				};
+				try
+				{
+					var stalled = await db.ReadAsync(async tr =>
+					{
+						var subspace = await location.Resolve(tr);
+						var task = tr.GetValuesAsync(Enumerable.Range(0, 4).Select(k => subspace.Key("probe", k)));
+						if (task.IsCompleted) Interlocked.Increment(ref coveredByStall);
+						return await task;
+					}, this.Cancellation);
+					Assert.That(stalled.Select(v => v.ToInt32()), Is.EqualTo(new[] { 0, 1, 2, 3 }), $"stalled read #{i}");
+				}
+				finally
+				{
+					FdbFuture.BeforeInlineCompletionCheck = null;
+				}
+
+				var next = await db.ReadAsync(async tr =>
+				{
+					var subspace = await location.Resolve(tr);
+					return await tr.GetValuesAsync(Enumerable.Range(0, 4).Select(k => subspace.Key("probe", k)));
+				}, this.Cancellation);
+				Assert.That(next.Select(v => v.ToInt32()), Is.EqualTo(new[] { 0, 1, 2, 3 }), $"read after stalled read #{i}");
+			}
+
+			Assert.That(coveredByStall, Is.GreaterThan(0), "no stalled read completed inside its stall: the callbacks never fired in the window under test");
+		}
+
+		[Test]
+		public async Task Test_Batch_Read_Cancelled_After_Its_Callbacks_Are_Armed_Leaves_The_Next_Read_Intact()
+		{
+			// the hook cancels the token after the batch read armed its callbacks and published READY: the read
+			// must end as a plain cancellation, and the batch read that follows must not inherit anything from it
+
+			using var db = await OpenTestPartitionAsync();
+			var location = db.Root;
+
+			await db.WriteAsync(async tr =>
+			{
+				var subspace = await location.Resolve(tr);
+				for (int k = 0; k < 4; k++)
+				{
+					tr.Set(subspace.Key("probe", k), Slice.FromInt32(k));
+				}
+			}, this.Cancellation);
+
+			for (int i = 0; i < 50; i++)
+			{
+				using var cts = CancellationTokenSource.CreateLinkedTokenSource(this.Cancellation);
+				using (var tr = db.BeginReadOnlyTransaction(cts.Token))
+				{
+					var subspace = await location.Resolve(tr);
+
+					int armed = 1;
+					FdbFuture.BeforeInlineCompletionCheck = () =>
+					{
+						if (Interlocked.Exchange(ref armed, 0) == 1) cts.Cancel();
+					};
+					try
+					{
+						Assert.That(async () => await tr.GetValuesAsync(Enumerable.Range(0, 4).Select(k => subspace.Key("probe", k))), Throws.InstanceOf<OperationCanceledException>());
+					}
+					finally
+					{
+						FdbFuture.BeforeInlineCompletionCheck = null;
+					}
+				}
+
+				var next = await db.ReadAsync(async tr =>
+				{
+					var subspace = await location.Resolve(tr);
+					return await tr.GetValuesAsync(Enumerable.Range(0, 4).Select(k => subspace.Key("probe", k)));
+				}, this.Cancellation);
+				Assert.That(next.Select(v => v.ToInt32()), Is.EqualTo(new[] { 0, 1, 2, 3 }), $"read after cancelled read #{i}");
+			}
+		}
+
 	}
 
 }
