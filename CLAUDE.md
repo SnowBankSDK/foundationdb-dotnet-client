@@ -188,6 +188,8 @@ Full guidance, worked examples, and the list of reference layers to imitate are 
 
 These skills are also packaged as a Claude Code **plugin** ([`plugins/foundationdb-skills/`](plugins/foundationdb-skills/)) so consumers can install them (`/plugin marketplace add SnowBankSDK/foundationdb-dotnet-client`). The canonical skills live in `.claude/skills/`; the plugin's `skills/` is a **committed copy** kept in sync by the sync script ([`scripts/sync-plugin-skills.sh`](scripts/sync-plugin-skills.sh), or [`scripts/sync-plugin-skills.ps1`](scripts/sync-plugin-skills.ps1) on Windows), **after editing any skill, run that script** (`--check`/`-Check` verifies they haven't drifted) and bump the `version` in `plugins/foundationdb-skills/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
 
+The NuGet packages carry the skills too, so that a consumer gets the skills of the package version it references: a project declares `<PackSkill Include="<skill-name>" />`, and its package then contains `skills/<skill-name>/` (the rule is in [`Directory.Build.targets`](Directory.Build.targets)). The `dotnet-package-skills` tool copies these folders into the consumer's repository. Declare each skill in one project only, the one whose API it covers: the tool skips a skill name that two referenced packages both contain. A new skill needs its `PackSkill` line.
+
 ## Docs
 
 Human-facing docs live in [`Documentation/`](Documentation/) as Markdown (listed in [`Documentation/toc.yml`](Documentation/toc.yml)), rendered to a static site by [`SnowBank.DocGen`](SnowBank.DocGen/), a standalone .NET tool in this repo. It is **not** part of `FoundationDB.Client.slnx`; build and run it on its own:

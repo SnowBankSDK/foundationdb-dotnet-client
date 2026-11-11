@@ -32,6 +32,9 @@
 	<ItemGroup>
 		<None Include="../Common/snowbank.png" Pack="true" Visible="false" PackagePath="\" />
 		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
+		<PackSkill Include="crystaljson" />
+		<PackSkill Include="snowbank-slices-and-buffers" />
+		<PackSkill Include="snowbank-contracts" />
 		<!-- turns the reflection switches off in a trimmed or Native AoT publish of a consuming application -->
 		<None Include="./buildTransitive/SnowBank.Core.targets" Pack="true" PackagePath="buildTransitive\" />
 	</ItemGroup>

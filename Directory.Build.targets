@@ -33,4 +33,16 @@
 		</ItemGroup>
 	</Target>
 
+	<!-- Agent skills ship in the package of the API they cover. A project declares <PackSkill Include="skill-name" />,
+	     and its package then contains .claude/skills/<skill-name>/ as skills/<skill-name>/, the folder that the
+	     dotnet-package-skills tool reads. Declare a skill in one project only: a consumer that references two packages
+	     with the same skill name gets neither copy. -->
+	<Target Name="IncludeSkillsInPackage" BeforeTargets="_GetPackageFiles" Condition="'@(PackSkill)' != ''">
+		<Error Condition="!Exists('$(MSBuildThisFileDirectory).claude\skills\%(PackSkill.Identity)\SKILL.md')" Text="PackSkill '%(PackSkill.Identity)': .claude/skills/%(PackSkill.Identity)/SKILL.md does not exist." />
+		<ItemGroup>
+			<_PackSkillFile Include="$(MSBuildThisFileDirectory).claude\skills\%(PackSkill.Identity)\**\*" Exclude="$(MSBuildThisFileDirectory).claude\skills\%(PackSkill.Identity)\evals\**" SkillName="%(PackSkill.Identity)" />
+			<None Include="@(_PackSkillFile)" Pack="true" Visible="false" PackagePath="skills\%(_PackSkillFile.SkillName)\%(_PackSkillFile.RecursiveDir)%(_PackSkillFile.Filename)%(_PackSkillFile.Extension)" />
+		</ItemGroup>
+	</Target>
+
 </Project>

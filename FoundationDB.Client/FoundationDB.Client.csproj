@@ -29,6 +29,9 @@
 	<ItemGroup>
 		<None Include="../Common/foundationdb.png" Pack="true" Visible="false" PackagePath="\" />
 		<None Include="../README.md" Pack="true" Visible="false" PackagePath="\" />
+		<PackSkill Include="foundationdb-keys-and-layers" />
+		<PackSkill Include="foundationdb-transactions" />
+		<PackSkill Include="foundationdb-advanced-layers" />
 	</ItemGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
