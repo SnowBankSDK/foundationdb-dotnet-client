@@ -29,7 +29,6 @@
 	<ItemGroup>
 		<None Include="../Common/foundationdb.png" Pack="true" Visible="false" PackagePath="\" />
 		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
-		<PackSkill Include="foundationdb-aspire" />
 	</ItemGroup>
 
 	<ItemGroup>

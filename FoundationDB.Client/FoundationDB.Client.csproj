@@ -32,6 +32,7 @@
 		<PackSkill Include="foundationdb-keys-and-layers" />
 		<PackSkill Include="foundationdb-transactions" />
 		<PackSkill Include="foundationdb-advanced-layers" />
+		<PackSkill Include="foundationdb-aspire" />
 	</ItemGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
