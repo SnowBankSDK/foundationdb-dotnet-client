@@ -37,6 +37,13 @@ namespace SnowBank.Data.Json.Tests
 	[CrystalSerializable(typeof(ClosedShape))]
 	[CrystalSerializable(typeof(ClosedCommand))]
 	[CrystalSerializable(typeof(ClosedResult<int>))]
+	[CrystalSerializable(typeof(ClosedResult<string>))]
+	[CrystalSerializable(typeof(ClosedGap<int>))]
+	[CrystalSerializable(typeof(ClosedGap<List<int>>))]
+	[CrystalSerializable(typeof(ClosedBox<string>))]
+	[CrystalSerializable(typeof(ClosedBox<int>))]
+	[CrystalSerializable(typeof(ClosedLink<object, string>))]
+	[CrystalSerializable(typeof(ClosedLink<List<string>, IEnumerable<object>>))]
 	public static partial class ClosedGenConverters { }
 
 	public partial class CrystalJsonTest
@@ -71,6 +78,45 @@ namespace SnowBank.Data.Json.Tests
 				Check<ClosedCommand>(new StopCommand { Force = true }, (v, o) => ClosedGenConverters.ClosedCommand.ToJsonText(v, o), j => ClosedGenConverters.ClosedCommand.Deserialize(j), "StopCommand");
 				Check<ClosedResult<int>>(new ClosedSuccess<int> { Value = 42 }, (v, o) => ClosedGenConverters.ClosedResult_Int32.ToJsonText(v, o), j => ClosedGenConverters.ClosedResult_Int32.Deserialize(j), "ClosedSuccess");
 				Check<ClosedResult<int>>(new ClosedIntFailure { Error = "boom" }, (v, o) => ClosedGenConverters.ClosedResult_Int32.ToJsonText(v, o), j => ClosedGenConverters.ClosedResult_Int32.Deserialize(j), "ClosedIntFailure");
+			}
+		}
+
+		[Test]
+		public void Test_Generated_ClosedType_Skips_The_Derived_Types_That_Do_Not_Apply()
+		{
+			// the generated converters list the same derived types as the runtime path, for each construction of a generic root
+			void Check<TBase>(TBase value, Func<TBase, CrystalJsonSettings, string> write, Func<string, TBase> read) where TBase : class
+			{
+				var generated = write(value, CrystalJsonSettings.JsonCompact);
+				Log($"{typeof(TBase).Name}: {generated}");
+				Assert.That(JsonValue.Parse(generated), IsJson.EqualTo(JsonValue.Parse(CrystalJson.Serialize<TBase>(value, CrystalJsonSettings.JsonCompact))));
+				Assert.That(read(generated), Is.InstanceOf(value.GetType()));
+			}
+
+			void Rejects<TBase>(string json, Func<string, TBase> read) where TBase : class
+			{
+				// a discriminator of a derived type that does not apply is unknown to both paths
+				Assert.That(() => read(json), Throws.InstanceOf<JsonBindingException>(), $"generated: {json}");
+				Assert.That(() => CrystalJson.Deserialize<TBase>(json), Throws.InstanceOf<JsonBindingException>(), $"runtime: {json}");
+			}
+
+			using (Assert.EnterMultipleScope())
+			{
+				Check<ClosedResult<string>>(new ClosedSuccess<string> { Value = "x" }, (v, o) => ClosedGenConverters.ClosedResult_String.ToJsonText(v, o), j => ClosedGenConverters.ClosedResult_String.Deserialize(j));
+				Rejects("""{ "$type": "ClosedIntFailure", "Error": "boom" }""", j => ClosedGenConverters.ClosedResult_String.Deserialize(j));
+
+				Check<ClosedGap<int>>(new ClosedGapA<int> { Value = 1 }, (v, o) => ClosedGenConverters.ClosedGap_Int32.ToJsonText(v, o), j => ClosedGenConverters.ClosedGap_Int32.Deserialize(j));
+				Rejects("""{ "$type": "ClosedGapB", "Count": 1 }""", j => ClosedGenConverters.ClosedGap_Int32.Deserialize(j));
+				Check<ClosedGap<List<int>>>(new ClosedGapB<int> { Count = 2 }, (v, o) => ClosedGenConverters.ClosedGap_List.ToJsonText(v, o), j => ClosedGenConverters.ClosedGap_List.Deserialize(j));
+				Check<ClosedGap<List<int>>>(new ClosedGapA<List<int>> { Value = [ 1 ] }, (v, o) => ClosedGenConverters.ClosedGap_List.ToJsonText(v, o), j => ClosedGenConverters.ClosedGap_List.Deserialize(j));
+
+				Check<ClosedBox<string>>(new ClosedAnyBox<string> { Value = "x" }, (v, o) => ClosedGenConverters.ClosedBox_String.ToJsonText(v, o), j => ClosedGenConverters.ClosedBox_String.Deserialize(j));
+				Rejects("""{ "$type": "ClosedStructBox" }""", j => ClosedGenConverters.ClosedBox_String.Deserialize(j));
+				Check<ClosedBox<int>>(new ClosedStructBox<int> { Value = 3 }, (v, o) => ClosedGenConverters.ClosedBox_Int32.ToJsonText(v, o), j => ClosedGenConverters.ClosedBox_Int32.Deserialize(j));
+
+				Check<ClosedLink<object, string>>(new ClosedAnyLink<object, string> { To = "x" }, (v, o) => ClosedGenConverters.ClosedLink_Object_String.ToJsonText(v, o), j => ClosedGenConverters.ClosedLink_Object_String.Deserialize(j));
+				Rejects("""{ "$type": "ClosedUpcast" }""", j => ClosedGenConverters.ClosedLink_Object_String.Deserialize(j));
+				Check<ClosedLink<List<string>, IEnumerable<object>>>(new ClosedUpcast<List<string>, IEnumerable<object>> { From = [ "a" ] }, (v, o) => ClosedGenConverters.ClosedLink_List_IEnumerable.ToJsonText(v, o), j => ClosedGenConverters.ClosedLink_List_IEnumerable.Deserialize(j));
 			}
 		}
 

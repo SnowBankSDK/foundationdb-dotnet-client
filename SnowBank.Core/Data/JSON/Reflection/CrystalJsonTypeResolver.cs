@@ -2252,8 +2252,9 @@ namespace SnowBank.Data.Json
 		/// <item>A derived type that is itself <c>closed</c> is replaced by its own derived types, recursively.</item>
 		/// <item>A generic definition is closed over the type arguments of the base type.</item>
 		/// </list>
+		/// <para>One rule differs: a derived type that cannot be an instance of the constructed root is skipped. For <c>ClosedResult&lt;string&gt;</c>, <c>sealed class IntFailure : ClosedResult&lt;int&gt;</c> is skipped, and so is a generic derived type whose base or constraints do not match the type arguments. System.Text.Json 11 throws on these.</para>
 		/// </remarks>
-		/// <exception cref="InvalidOperationException">If <paramref name="root"/> is not closed or has no derived type, if a derived type cannot be bound to the type arguments of its base, or if two derived types have the same simple name.</exception>
+		/// <exception cref="InvalidOperationException">If <paramref name="root"/> is not closed, if no derived type applies to its type arguments, or if two derived types have the same simple name.</exception>
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
 		internal static List<KeyValuePair<Type, object?>> InferClosedTypeDerivedTypes(Type root, out HashSet<Type>? intermediates)
@@ -2271,7 +2272,9 @@ namespace SnowBank.Data.Json
 
 			if (res.Count == 0)
 			{
-				throw new InvalidOperationException($"Polymorphic configuration for type '{root.GetFriendlyName()}' should specify at least one derived type.");
+				throw new InvalidOperationException(root.IsConstructedGenericType
+					? $"Polymorphic configuration for type '{root.GetFriendlyName()}' should specify at least one derived type: no derived type of the closed type applies to its type arguments."
+					: $"Polymorphic configuration for type '{root.GetFriendlyName()}' should specify at least one derived type.");
 			}
 
 			intermediates = nestedClosedTypes;
@@ -2281,7 +2284,11 @@ namespace SnowBank.Data.Json
 			{
 				foreach (var declared in derivedTypes)
 				{
-					var derived = BindClosedTypeDerivedType(declared, closedType, root);
+					// NOTE: a derived type that does not apply to the type arguments of the root is skipped, by design. System.Text.Json 11 throws InvalidOperationException for the whole root instead.
+					if (BindClosedTypeDerivedType(declared, closedType) is not { } derived)
+					{
+						continue;
+					}
 
 					if (GetClosedTypeDerivedTypes(derived) is { } nested)
 					{ // a nested closed hierarchy contributes its own derived types, but not itself
@@ -2306,10 +2313,11 @@ namespace SnowBank.Data.Json
 		/// <summary>Returns the runtime type of a derived type listed by <c>[IsClosedTypeAttribute]</c>, for a given constructed base type</summary>
 		/// <param name="declared">The derived type, as listed by the attribute (a generic definition is possible)</param>
 		/// <param name="baseType">The closed base type, with its actual type arguments</param>
-		/// <param name="root">The root of the polymorphic hierarchy, for the error messages</param>
+		/// <returns>The derived type, constructed over the type arguments of <paramref name="baseType"/>, or <see langword="null"/> if no construction of <paramref name="declared"/> derives from <paramref name="baseType"/>.</returns>
+		/// <remarks>Examples for a <paramref name="baseType"/> of <c>Result&lt;string&gt;</c>: <c>Success&lt;T&gt; : Result&lt;T&gt;</c> gives <c>Success&lt;string&gt;</c>, while <c>IntFailure : Result&lt;int&gt;</c>, <c>Wrapped&lt;U&gt; : Result&lt;List&lt;U&gt;&gt;</c> and <c>Boxed&lt;T&gt; : Result&lt;T&gt; where T : struct</c> give <see langword="null"/>.</remarks>
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
 		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
-		private static Type BindClosedTypeDerivedType(Type declared, Type baseType, Type root)
+		private static Type? BindClosedTypeDerivedType(Type declared, Type baseType)
 		{
 			if (declared.IsGenericTypeDefinition)
 			{
@@ -2318,25 +2326,21 @@ namespace SnowBank.Data.Json
 				var bindings = new Type?[declared.GetGenericArguments().Length];
 				if (spec is null || !baseType.IsConstructedGenericType || !spec.IsGenericType || spec.GetGenericTypeDefinition() != baseType.GetGenericTypeDefinition() || !TryUnify(spec, baseType, bindings) || Array.IndexOf(bindings, null) >= 0)
 				{
-					throw new InvalidOperationException($"The open generic derived type '{declared.GetFriendlyName()}' could not be resolved for the polymorphic base type '{baseType.GetFriendlyName()}': the base type's arguments do not match the derived type's base specification.");
+					return null;
 				}
 
 				try
 				{
 					declared = declared.MakeGenericType(bindings!);
 				}
-				catch (ArgumentException e)
+				catch (ArgumentException)
 				{ // a generic constraint of the derived type is not satisfied
-					throw new InvalidOperationException($"The open generic derived type '{declared.GetFriendlyName()}' could not be resolved for the polymorphic base type '{baseType.GetFriendlyName()}': {e.Message}", e);
+					return null;
 				}
 			}
 
-			if (!baseType.IsAssignableFrom(declared))
-			{ // ex: 'sealed class G2 : G<int>' is listed by 'closed class G<T>', but is not a derived type of G<string>
-				throw new InvalidOperationException($"Specified type '{declared.GetFriendlyName()}' is not a supported derived type for the polymorphic type '{root.GetFriendlyName()}'.");
-			}
-
-			return declared;
+			// ex: 'sealed class G2 : G<int>' is listed by 'closed class G<T>', but is not a derived type of G<string>
+			return baseType.IsAssignableFrom(declared) ? declared : null;
 
 			static bool TryUnify(Type pattern, Type actual, Type?[] bindings)
 			{

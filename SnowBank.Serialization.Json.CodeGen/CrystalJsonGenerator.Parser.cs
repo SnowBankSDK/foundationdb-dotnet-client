@@ -2747,6 +2747,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <item>The discriminator of a derived type is its simple name, without type arguments.</item>
 			/// <item>A derived type that is itself <c>closed</c> is replaced by its own derived types, recursively.</item>
 			/// <item>A generic definition is constructed over the type arguments of the base type.</item>
+			/// <item>A derived type that cannot be an instance of the constructed root is skipped: <c>IntFailure : Result&lt;int&gt;</c> for <c>Result&lt;string&gt;</c>, or a generic derived type whose base or constraints do not match the type arguments. System.Text.Json 11 throws on these.</item>
 			/// <item>Explicit <c>[JsonDerivedType]</c> registrations replace the inferred list (<c>CJSON0029</c>).</item>
 			/// <item>The opt-in on a type that is not closed is an error (<c>CJSON0028</c>), and so is a hierarchy that cannot be inferred (<c>CJSON0030</c>).</item>
 			/// </list>
@@ -2801,7 +2802,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				if (error is null && res.Count == 0)
 				{
-					error = "the closed type has no derived type";
+					error = root.IsGenericType ? "no derived type applies to its type arguments" : "the closed type has no derived type";
 				}
 
 				if (error is not null)
@@ -2829,10 +2830,14 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (error is not null) return;
 
-						var derived = BindDerivedType(declared, closedType, out error);
+						var derived = BindDerivedType(this.KnownSymbols.Compilation, declared, closedType, out error);
 						if (derived is null)
 						{
-							error = $"'{declared.ToDisplayString()}' {error ?? "cannot be bound to the type arguments of"} '{closedType.ToDisplayString()}'";
+							if (error is null)
+							{ // NOTE: a derived type that does not apply to the type arguments of the root is skipped, by design. System.Text.Json 11 throws InvalidOperationException for the whole root instead.
+								continue;
+							}
+							error = $"'{declared.ToDisplayString()}' {error} '{closedType.ToDisplayString()}'";
 							return;
 						}
 
@@ -2890,10 +2895,12 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Returns the derived type that matches the actual type arguments of its base, or <see langword="null"/> if there is none</summary>
+			/// <param name="compilation">The compilation, for the constraint checks</param>
 			/// <param name="declared">A type that derives directly from the definition of <paramref name="baseType"/>, as declared (a generic definition is possible)</param>
 			/// <param name="baseType">The closed base type, with its actual type arguments</param>
-			/// <param name="error">Receives the end of the diagnostic message when the type cannot be bound: "&lt;reason&gt; '&lt;base type&gt;'"</param>
-			private static INamedTypeSymbol? BindDerivedType(INamedTypeSymbol declared, INamedTypeSymbol baseType, out string? error)
+			/// <param name="error">Receives the end of the diagnostic message when the hierarchy is not supported: "&lt;reason&gt; '&lt;base type&gt;'". Stays <see langword="null"/> when the type only does not apply to the type arguments of <paramref name="baseType"/>.</param>
+			/// <remarks>The rules match <c>CrystalJsonTypeResolver.BindClosedTypeDerivedType</c>: a derived type whose base or constraints do not match the type arguments gives <see langword="null"/> with no error.</remarks>
+			private static INamedTypeSymbol? BindDerivedType(Compilation compilation, INamedTypeSymbol declared, INamedTypeSymbol baseType, out string? error)
 			{
 				error = null;
 				var spec = declared.BaseType;
@@ -2915,21 +2922,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				var bindings = new ITypeSymbol?[declared.TypeParameters.Length];
 				if (!TryUnify(spec, baseType)) return null;
+				foreach (var binding in bindings)
+				{
+					if (binding is null) return null;
+				}
 				for (int i = 0; i < bindings.Length; i++)
 				{
-					if (bindings[i] is null) return null;
-					if (!SatisfiesConstraints(declared.TypeParameters[i], bindings[i]!))
-					{
-						error = $"does not satisfy the constraints of its type parameter '{declared.TypeParameters[i].Name}' for";
-						return null;
-					}
+					if (!SatisfiesConstraints(declared.TypeParameters[i], bindings[i]!)) return null;
 				}
 				return declared.Construct(bindings!);
 
-				static bool SatisfiesConstraints(ITypeParameterSymbol parameter, ITypeSymbol argument)
+				bool SatisfiesConstraints(ITypeParameterSymbol parameter, ITypeSymbol argument)
 				{
+					bool isNullableValueType = argument.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
 					if (parameter.HasReferenceTypeConstraint && !argument.IsReferenceType) return false;
-					if (parameter.HasValueTypeConstraint && (!argument.IsValueType || argument.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)) return false;
+					if (parameter.HasValueTypeConstraint && (!argument.IsValueType || isNullableValueType)) return false;
 					if (parameter.HasUnmanagedTypeConstraint && !argument.IsUnmanagedType) return false;
 					if (parameter.HasConstructorConstraint && !argument.IsValueType)
 					{
@@ -2940,33 +2947,47 @@ namespace SnowBank.Serialization.Json.CodeGen
 					}
 					foreach (var constraint in parameter.ConstraintTypes)
 					{
-						// a constraint that names other type parameters would need their bindings first: the compiler checks it in the generated code
-						if (ContainsTypeParameter(constraint)) continue;
-						if (!IsAssignableTo(argument, constraint)) return false;
+						// a constraint can name the other type parameters of the derived type ('where TFirst : TSecond'), which are replaced by their bindings first
+						if (Substitute(constraint) is not { } bound) return false;
+						if (SymbolEqualityComparer.Default.Equals(argument, bound)) continue;
+						// a nullable value type satisfies no constraint type other than object and ValueType (MakeGenericType throws, and the compiler reports CS0313)
+						if (isNullableValueType && bound.SpecialType is not (SpecialType.System_Object or SpecialType.System_ValueType)) return false;
+						var conversion = ((CSharpCompilation) compilation).ClassifyConversion(argument, bound);
+						if (!conversion.Exists || !conversion.IsImplicit || conversion.IsUserDefined || !(conversion.IsIdentity || conversion.IsReference || conversion.IsBoxing))
+						{
+							return false;
+						}
 					}
 					return true;
 				}
 
-				static bool ContainsTypeParameter(ITypeSymbol type) => type switch
+				ITypeSymbol? Substitute(ITypeSymbol type)
 				{
-					ITypeParameterSymbol => true,
-					IArrayTypeSymbol array => ContainsTypeParameter(array.ElementType),
-					INamedTypeSymbol named => named.TypeArguments.Any(ContainsTypeParameter),
-					_ => false,
-				};
-
-				static bool IsAssignableTo(ITypeSymbol argument, ITypeSymbol constraint)
-				{
-					if (SymbolEqualityComparer.Default.Equals(argument, constraint)) return true;
-					for (var current = argument.BaseType; current is not null; current = current.BaseType)
+					switch (type)
 					{
-						if (SymbolEqualityComparer.Default.Equals(current, constraint)) return true;
+						case ITypeParameterSymbol parameter when parameter.TypeParameterKind == TypeParameterKind.Type && SymbolEqualityComparer.Default.Equals(parameter.DeclaringType, declared):
+						{
+							return bindings[parameter.Ordinal];
+						}
+						case IArrayTypeSymbol array:
+						{
+							return Substitute(array.ElementType) is { } element ? compilation.CreateArrayTypeSymbol(element, array.Rank) : null;
+						}
+						case INamedTypeSymbol { IsGenericType: true } named:
+						{
+							var args = new ITypeSymbol[named.TypeArguments.Length];
+							for (int i = 0; i < args.Length; i++)
+							{
+								if (Substitute(named.TypeArguments[i]) is not { } arg) return null;
+								args[i] = arg;
+							}
+							return named.ConstructedFrom.Construct(args);
+						}
+						default:
+						{
+							return type;
+						}
 					}
-					foreach (var iface in argument.AllInterfaces)
-					{
-						if (SymbolEqualityComparer.Default.Equals(iface, constraint)) return true;
-					}
-					return constraint.SpecialType == SpecialType.System_Object;
 				}
 
 				bool TryUnify(ITypeSymbol pattern, ITypeSymbol actual)

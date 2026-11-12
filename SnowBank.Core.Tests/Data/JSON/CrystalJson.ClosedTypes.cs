@@ -273,6 +273,54 @@ namespace SnowBank.Data.Json.Tests
 		public T[]? Items { get; set; }
 	}
 
+	/// <summary>A derived type that applies only to the constructions of the root over a list type.</summary>
+	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+	public closed class ClosedGap<T>
+	{
+	}
+
+	public sealed class ClosedGapA<T> : ClosedGap<T>
+	{
+		public T? Value { get; set; }
+	}
+
+	public sealed class ClosedGapB<U> : ClosedGap<List<U>>
+	{
+		public int Count { get; set; }
+	}
+
+	/// <summary>A derived type with a generic constraint.</summary>
+	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+	public closed class ClosedBox<T>
+	{
+	}
+
+	public sealed class ClosedStructBox<T> : ClosedBox<T> where T : struct
+	{
+		public T Value { get; set; }
+	}
+
+	public sealed class ClosedAnyBox<T> : ClosedBox<T>
+	{
+		public T? Value { get; set; }
+	}
+
+	/// <summary>A derived type with a constraint that names another type parameter.</summary>
+	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+	public closed class ClosedLink<TFrom, TTo>
+	{
+	}
+
+	public sealed class ClosedUpcast<TFrom, TTo> : ClosedLink<TFrom, TTo> where TFrom : TTo
+	{
+		public TFrom? From { get; set; }
+	}
+
+	public sealed class ClosedAnyLink<TFrom, TTo> : ClosedLink<TFrom, TTo>
+	{
+		public TTo? To { get; set; }
+	}
+
 	/// <summary>A closed hierarchy declared inside a generic type.</summary>
 	public static class ClosedOuter<T>
 	{
@@ -425,10 +473,10 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_ClosedType_Generic_Bindings()
 		{
-			// one type parameter for both type arguments of the base: bound for ClosedPair<int, int>, unbindable for ClosedPair<int, string>
+			// one type parameter for both type arguments of the base: bound for ClosedPair<int, int>, and no derived type applies to ClosedPair<int, string>
 			Assert.That(CrystalJson.Serialize<ClosedPair<int, int>>(new ClosedSamePair<int> { First = 1 }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedSamePair","First":1}"""));
 			Assert.That(CrystalJson.Deserialize<ClosedPair<int, int>>("""{ "$type": "ClosedSamePair", "First": 1 }"""), Is.InstanceOf<ClosedSamePair<int>>());
-			Assert.That(() => CrystalJson.Deserialize<ClosedPair<int, string>>("""{ "$type": "ClosedSamePair" }"""), Throws.InstanceOf<InvalidOperationException>());
+			Assert.That(() => CrystalJson.Deserialize<ClosedPair<int, string>>("""{ "$type": "ClosedSamePair" }"""), Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("applies to its type arguments"));
 			Assert.That(() => STJ.JsonSerializer.Deserialize<ClosedPair<int, string>>("""{ "$type": "ClosedSamePair" }""", StjReflectionOptions), Throws.InstanceOf<InvalidOperationException>());
 
 			// a type parameter bound through an array type argument
@@ -488,9 +536,42 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Deserialize<ClosedResult<int>>("""{ "$type": "ClosedSuccess", "Value": 42 }"""), Is.InstanceOf<ClosedSuccess<int>>().With.Property(nameof(ClosedSuccess<>.Value)).EqualTo(42));
 			Assert.That(CrystalJson.Deserialize<ClosedResult<int>>("""{ "$type": "ClosedIntFailure", "Error": "boom" }"""), Is.InstanceOf<ClosedIntFailure>());
 
-			// ClosedIntFailure derives from ClosedResult<int> only: System.Text.Json rejects the whole hierarchy for ClosedResult<string>
-			Assert.That(() => CrystalJson.Deserialize<ClosedResult<string>>("""{ "$type": "ClosedSuccess", "Value": "x" }"""), Throws.InstanceOf<InvalidOperationException>());
-			Assert.That(() => STJ.JsonSerializer.Deserialize<ClosedResult<string>>("""{ "$type": "ClosedSuccess", "Value": "x" }""", StjReflectionOptions), Throws.InstanceOf<InvalidOperationException>());
+		}
+
+		[Test]
+		public void Test_ClosedType_Generic_Root_Skips_The_Derived_Types_That_Do_Not_Apply()
+		{
+			// ClosedIntFailure derives from ClosedResult<int> only, so ClosedResult<string> has one derived type
+			Assert.That(CrystalJson.Serialize<ClosedResult<string>>(new ClosedSuccess<string> { Value = "x" }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedSuccess","Value":"x"}"""));
+			Assert.That(CrystalJson.Deserialize<ClosedResult<string>>("""{ "$type": "ClosedSuccess", "Value": "x" }"""), Is.InstanceOf<ClosedSuccess<string>>().With.Property(nameof(ClosedSuccess<>.Value)).EqualTo("x"));
+			Assert.That(() => CrystalJson.Deserialize<ClosedResult<string>>("""{ "$type": "ClosedIntFailure", "Error": "boom" }"""), Throws.InstanceOf<JsonBindingException>());
+
+			// ClosedGapB<U> derives from ClosedGap<List<U>> only
+			Assert.That(CrystalJson.Serialize<ClosedGap<int>>(new ClosedGapA<int> { Value = 1 }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedGapA","Value":1}"""));
+			Assert.That(() => CrystalJson.Deserialize<ClosedGap<int>>("""{ "$type": "ClosedGapB", "Count": 1 }"""), Throws.InstanceOf<JsonBindingException>());
+			Assert.That(CrystalJson.Serialize<ClosedGap<List<int>>>(new ClosedGapB<int> { Count = 2 }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedGapB","Count":2}"""));
+			Assert.That(CrystalJson.Deserialize<ClosedGap<List<int>>>("""{ "$type": "ClosedGapA", "Value": [ 1 ] }"""), Is.InstanceOf<ClosedGapA<List<int>>>());
+
+			// ClosedStructBox<T> requires a value type
+			Assert.That(CrystalJson.Serialize<ClosedBox<string>>(new ClosedAnyBox<string> { Value = "x" }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedAnyBox","Value":"x"}"""));
+			Assert.That(() => CrystalJson.Deserialize<ClosedBox<string>>("""{ "$type": "ClosedStructBox" }"""), Throws.InstanceOf<JsonBindingException>());
+			Assert.That(CrystalJson.Deserialize<ClosedBox<int>>("""{ "$type": "ClosedStructBox", "Value": 3 }"""), Is.InstanceOf<ClosedStructBox<int>>());
+
+			// ClosedUpcast<TFrom, TTo> requires TFrom to convert to TTo, through variance as well
+			Assert.That(CrystalJson.Deserialize<ClosedLink<List<string>, IEnumerable<object>>>("""{ "$type": "ClosedUpcast", "From": [ "a" ] }"""), Is.InstanceOf<ClosedUpcast<List<string>, IEnumerable<object>>>());
+			Assert.That(() => CrystalJson.Deserialize<ClosedLink<object, string>>("""{ "$type": "ClosedUpcast" }"""), Throws.InstanceOf<JsonBindingException>());
+			Assert.That(CrystalJson.Deserialize<ClosedLink<object, string>>("""{ "$type": "ClosedAnyLink", "To": "x" }"""), Is.InstanceOf<ClosedAnyLink<object, string>>());
+
+			// control: the same roots work in System.Text.Json 11 when every derived type applies
+			Assert.That(STJ.JsonSerializer.Serialize<ClosedResult<int>>(new ClosedSuccess<int> { Value = 1 }, StjReflectionOptions), Is.EqualTo("""{"$type":"ClosedSuccess","Value":1}"""));
+			Assert.That(STJ.JsonSerializer.Serialize<ClosedGap<List<int>>>(new ClosedGapB<int> { Count = 2 }, StjReflectionOptions), Is.EqualTo("""{"$type":"ClosedGapB","Count":2}"""));
+			Assert.That(STJ.JsonSerializer.Serialize<ClosedBox<int>>(new ClosedAnyBox<int> { Value = 1 }, StjReflectionOptions), Is.EqualTo("""{"$type":"ClosedAnyBox","Value":1}"""));
+
+			// System.Text.Json 11 throws for the whole root as soon as one derived type does not apply. A change in that behavior shows up here.
+			Assert.That(() => STJ.JsonSerializer.Serialize<ClosedResult<string>>(new ClosedSuccess<string> { Value = "x" }, StjReflectionOptions), Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("ClosedIntFailure"));
+			Assert.That(() => STJ.JsonSerializer.Serialize<ClosedGap<int>>(new ClosedGapA<int> { Value = 1 }, StjReflectionOptions), Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("ClosedGapB"));
+			Assert.That(() => STJ.JsonSerializer.Serialize<ClosedBox<string>>(new ClosedAnyBox<string> { Value = "x" }, StjReflectionOptions), Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("ClosedStructBox"));
+			Assert.That(() => STJ.JsonSerializer.Serialize<ClosedLink<object, string>>(new ClosedAnyLink<object, string> { To = "x" }, StjReflectionOptions), Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("ClosedUpcast"));
 		}
 
 		[Test]

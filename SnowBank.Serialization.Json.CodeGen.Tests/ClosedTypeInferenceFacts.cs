@@ -246,18 +246,124 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("generic type"));
 		}
 
+		/// <summary>Returns the derived types of the root of a probe, as display strings</summary>
+		private static string[] DerivedOf(CrystalJsonContainerMetadata container, string prefix)
+			=> container.IncludedTypes.Single(t => t.IsPolymorphicRoot && t.Name.StartsWith(prefix, StringComparison.Ordinal)).DerivedTypes.Select(static x => x.Symbol.ToDisplayString()).ToArray();
+
 		[Test]
-		public void Test_Generic_Constraint_Violation_Is_Reported()
+		public void Test_Generic_Root_Skips_The_Derived_Types_Bound_To_Other_Type_Arguments()
 		{
-			var (_, diagnostics) = Run(Probe("""
+			const string TYPES = """
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Result<T> { }
+					public sealed class Success<T> : Result<T> { public T? Value { get; set; } }
+					public sealed class IntFailure : Result<int> { public string? Error { get; set; } }
+				""";
+
+			var (container, diagnostics) = Run(Probe(TYPES, "Result<string>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Result"), Is.EquivalentTo(new[] { "Probe.Success<string>" }));
+
+			// control: both derived types apply to Result<int>
+			(container, diagnostics) = Run(Probe(TYPES, "Result<int>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Result"), Is.EquivalentTo(new[] { "Probe.Success<int>", "Probe.IntFailure" }));
+		}
+
+		[Test]
+		public void Test_Generic_Root_Skips_The_Derived_Types_With_Another_Base_Construction()
+		{
+			const string TYPES = """
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Gap<T> { }
+					public sealed class GapA<T> : Gap<T> { }
+					public sealed class GapB<U> : Gap<System.Collections.Generic.List<U>> { }
+				""";
+
+			var (container, diagnostics) = Run(Probe(TYPES, "Gap<int>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Gap"), Is.EquivalentTo(new[] { "Probe.GapA<int>" }));
+
+			(container, diagnostics) = Run(Probe(TYPES, "Gap<System.Collections.Generic.List<int>>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Gap"), Is.EquivalentTo(new[] { "Probe.GapA<System.Collections.Generic.List<int>>", "Probe.GapB<int>" }));
+		}
+
+		[Test]
+		public void Test_Generic_Root_Skips_The_Derived_Types_Whose_Constraints_Fail()
+		{
+			const string TYPES = """
 					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
 					public closed class Box<T> { }
 					public sealed class StructBox<T> : Box<T> where T : struct { }
 					public sealed class AnyBox<T> : Box<T> { }
-				""", "Box<string>"));
+
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Link<TFrom, TTo> { }
+					public sealed class Upcast<TFrom, TTo> : Link<TFrom, TTo> where TFrom : TTo { }
+					public sealed class AnyLink<TFrom, TTo> : Link<TFrom, TTo> { }
+				""";
+
+			var (container, diagnostics) = Run(Probe(TYPES, "Box<string>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Box"), Is.EquivalentTo(new[] { "Probe.AnyBox<string>" }));
+
+			// a constraint that names another type parameter is checked against its binding
+			(container, diagnostics) = Run(Probe(TYPES, "Link<object, string>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Link"), Is.EquivalentTo(new[] { "Probe.AnyLink<object, string>" }));
+
+			// control: the constraint holds through a variant interface
+			(container, diagnostics) = Run(Probe(TYPES, "Link<System.Collections.Generic.List<string>, System.Collections.Generic.IEnumerable<object>>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Link"), Has.Length.EqualTo(2));
+		}
+
+		[Test]
+		public void Test_Generic_Root_With_No_Applicable_Derived_Type_Is_Reported()
+		{
+			var (_, diagnostics) = Run(Probe("""
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Pair<TFirst, TSecond> { }
+					public sealed class SamePair<T> : Pair<T, T> { }
+				""", "Pair<int, string>"));
 
 			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
-			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("constraints"));
+			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("no derived type"));
+		}
+
+		[Test]
+		public void Test_Errors_On_A_Derived_Type_That_Does_Not_Apply_Are_Not_Reported()
+		{
+			// an inaccessible derived type, and a duplicate simple name, are errors only for the constructions they apply to
+			const string TYPES = """
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Result<T> { }
+					public sealed class Success<T> : Result<T> { }
+					public static class Holder
+					{
+						private sealed class Hidden : Result<int> { }
+					}
+
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Outcome<T> { }
+					public sealed class Done<T> : Outcome<T> { }
+					public static class Other
+					{
+						public sealed class Done : Outcome<int> { }
+					}
+				""";
+
+			var (_, diagnostics) = Run(Probe(TYPES, "Result<string>", "Outcome<string>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+
+			(_, diagnostics) = Run(Probe(TYPES, "Result<int>"));
+			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
+			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("not accessible"));
+
+			(_, diagnostics) = Run(Probe(TYPES, "Outcome<int>"));
+			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
+			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("'Done'"));
 		}
 
 		[Test]
