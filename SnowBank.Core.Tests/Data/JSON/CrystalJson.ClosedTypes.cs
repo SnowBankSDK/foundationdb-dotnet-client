@@ -321,6 +321,64 @@ namespace SnowBank.Data.Json.Tests
 		public TTo? To { get; set; }
 	}
 
+	/// <summary>Derived types bound through a type nested in a generic type.</summary>
+	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+	public closed class ClosedSlot<T>
+	{
+	}
+
+	public sealed class ClosedHolder<U>
+	{
+		public sealed class Item
+		{
+		}
+	}
+
+	public sealed class ClosedAnySlot<T> : ClosedSlot<T>
+	{
+	}
+
+	public sealed class ClosedItemSlot<U> : ClosedSlot<ClosedHolder<U>.Item>
+	{
+	}
+
+	public sealed class ClosedIntItemSlot : ClosedSlot<ClosedHolder<int>.Item>
+	{
+	}
+
+	/// <summary>A derived type bound to a tuple type with element names.</summary>
+	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+	public closed class ClosedTupleResult<T>
+	{
+	}
+
+	public sealed class ClosedAnyTuple<T> : ClosedTupleResult<T>
+	{
+	}
+
+	public sealed class ClosedNamedTuple : ClosedTupleResult<(int A, int B)>
+	{
+	}
+
+	/// <summary>A derived type with an 'unmanaged' constraint.</summary>
+	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+	public closed class ClosedRaw<T>
+	{
+	}
+
+	public sealed class ClosedRawOnly<T> : ClosedRaw<T> where T : unmanaged
+	{
+	}
+
+	public sealed class ClosedAnyRaw<T> : ClosedRaw<T>
+	{
+	}
+
+	public struct ClosedManagedStruct
+	{
+		public string? Name { get; set; }
+	}
+
 	/// <summary>A closed hierarchy declared inside a generic type.</summary>
 	public static class ClosedOuter<T>
 	{
@@ -535,7 +593,14 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Serialize<ClosedResult<int>>(new ClosedIntFailure { Error = "boom" }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedIntFailure","Error":"boom"}"""));
 			Assert.That(CrystalJson.Deserialize<ClosedResult<int>>("""{ "$type": "ClosedSuccess", "Value": 42 }"""), Is.InstanceOf<ClosedSuccess<int>>().With.Property(nameof(ClosedSuccess<>.Value)).EqualTo(42));
 			Assert.That(CrystalJson.Deserialize<ClosedResult<int>>("""{ "$type": "ClosedIntFailure", "Error": "boom" }"""), Is.InstanceOf<ClosedIntFailure>());
+		}
 
+		/// <summary>Returns the derived types that the runtime path lists for a closed root</summary>
+		private static Type[] DerivedTypesOf<TRoot>()
+		{
+			var resolved = CrystalJson.DefaultResolver.ResolveJsonType(typeof(TRoot));
+			Assert.That(resolved, Is.Not.Null);
+			return resolved!.DerivedTypeMap?.Values.ToArray() ?? [ ];
 		}
 
 		[Test]
@@ -552,15 +617,26 @@ namespace SnowBank.Data.Json.Tests
 			Assert.That(CrystalJson.Serialize<ClosedGap<List<int>>>(new ClosedGapB<int> { Count = 2 }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedGapB","Count":2}"""));
 			Assert.That(CrystalJson.Deserialize<ClosedGap<List<int>>>("""{ "$type": "ClosedGapA", "Value": [ 1 ] }"""), Is.InstanceOf<ClosedGapA<List<int>>>());
 
-			// ClosedStructBox<T> requires a value type
+			// the constraint of ClosedStructBox<T> is 'struct'
 			Assert.That(CrystalJson.Serialize<ClosedBox<string>>(new ClosedAnyBox<string> { Value = "x" }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedAnyBox","Value":"x"}"""));
 			Assert.That(() => CrystalJson.Deserialize<ClosedBox<string>>("""{ "$type": "ClosedStructBox" }"""), Throws.InstanceOf<JsonBindingException>());
 			Assert.That(CrystalJson.Deserialize<ClosedBox<int>>("""{ "$type": "ClosedStructBox", "Value": 3 }"""), Is.InstanceOf<ClosedStructBox<int>>());
 
-			// ClosedUpcast<TFrom, TTo> requires TFrom to convert to TTo, through variance as well
+			// the constraint of ClosedUpcast<TFrom, TTo> is 'TFrom : TTo', which holds through variance as well
 			Assert.That(CrystalJson.Deserialize<ClosedLink<List<string>, IEnumerable<object>>>("""{ "$type": "ClosedUpcast", "From": [ "a" ] }"""), Is.InstanceOf<ClosedUpcast<List<string>, IEnumerable<object>>>());
 			Assert.That(() => CrystalJson.Deserialize<ClosedLink<object, string>>("""{ "$type": "ClosedUpcast" }"""), Throws.InstanceOf<JsonBindingException>());
 			Assert.That(CrystalJson.Deserialize<ClosedLink<object, string>>("""{ "$type": "ClosedAnyLink", "To": "x" }"""), Is.InstanceOf<ClosedAnyLink<object, string>>());
+
+			// the type arguments of a containing type are part of the match
+			Assert.That(DerivedTypesOf<ClosedSlot<ClosedHolder<int>.Item>>(), Is.EquivalentTo(new[] { typeof(ClosedAnySlot<ClosedHolder<int>.Item>), typeof(ClosedItemSlot<int>), typeof(ClosedIntItemSlot) }));
+			Assert.That(DerivedTypesOf<ClosedSlot<ClosedHolder<long>.Item>>(), Is.EquivalentTo(new[] { typeof(ClosedAnySlot<ClosedHolder<long>.Item>), typeof(ClosedItemSlot<long>) }));
+
+			// tuple element names are not part of the type
+			Assert.That(DerivedTypesOf<ClosedTupleResult<(int, int)>>(), Is.EquivalentTo(new[] { typeof(ClosedAnyTuple<(int, int)>), typeof(ClosedNamedTuple) }));
+
+			// an 'unmanaged' constraint excludes a struct with a reference field
+			Assert.That(DerivedTypesOf<ClosedRaw<ClosedManagedStruct>>(), Is.EquivalentTo(new[] { typeof(ClosedAnyRaw<ClosedManagedStruct>) }));
+			Assert.That(DerivedTypesOf<ClosedRaw<int>>(), Is.EquivalentTo(new[] { typeof(ClosedRawOnly<int>), typeof(ClosedAnyRaw<int>) }));
 
 			// control: the same roots work in System.Text.Json 11 when every derived type applies
 			Assert.That(STJ.JsonSerializer.Serialize<ClosedResult<int>>(new ClosedSuccess<int> { Value = 1 }, StjReflectionOptions), Is.EqualTo("""{"$type":"ClosedSuccess","Value":1}"""));

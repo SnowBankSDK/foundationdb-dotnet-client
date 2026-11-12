@@ -316,7 +316,11 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			// control: the constraint holds through a variant interface
 			(container, diagnostics) = Run(Probe(TYPES, "Link<System.Collections.Generic.List<string>, System.Collections.Generic.IEnumerable<object>>"));
 			Assert.That(IdsOf(diagnostics), Is.Empty);
-			Assert.That(DerivedOf(container, "Link"), Has.Length.EqualTo(2));
+			Assert.That(DerivedOf(container, "Link"), Is.EquivalentTo(new[]
+			{
+				"Probe.Upcast<System.Collections.Generic.List<string>, System.Collections.Generic.IEnumerable<object>>",
+				"Probe.AnyLink<System.Collections.Generic.List<string>, System.Collections.Generic.IEnumerable<object>>",
+			}));
 		}
 
 		[Test]
@@ -354,8 +358,10 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 					}
 				""";
 
-			var (_, diagnostics) = Run(Probe(TYPES, "Result<string>", "Outcome<string>"));
+			var (container, diagnostics) = Run(Probe(TYPES, "Result<string>", "Outcome<string>"));
 			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Result"), Is.EquivalentTo(new[] { "Probe.Success<string>" }));
+			Assert.That(DerivedOf(container, "Outcome"), Is.EquivalentTo(new[] { "Probe.Done<string>" }));
 
 			(_, diagnostics) = Run(Probe(TYPES, "Result<int>"));
 			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
@@ -364,6 +370,116 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			(_, diagnostics) = Run(Probe(TYPES, "Outcome<int>"));
 			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
 			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("'Done'"));
+		}
+
+		[Test]
+		public void Test_Type_Arguments_Of_A_Containing_Type_Are_Matched()
+		{
+			const string TYPES = """
+					public sealed class Holder<U> { public sealed class Item { } }
+
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Slot<T> { }
+					public sealed class AnySlot<T> : Slot<T> { }
+					public sealed class ItemSlot<U> : Slot<Holder<U>.Item> { }
+					public sealed class IntItemSlot : Slot<Holder<int>.Item> { }
+
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Pair<TFirst, TSecond> { }
+					public sealed class AnyPair<TFirst, TSecond> : Pair<TFirst, TSecond> { }
+					public sealed class IntItemPair<U> : Pair<U, Holder<int>.Item> { }
+				""";
+
+			var (container, diagnostics) = Run(Probe(TYPES, "Slot<Holder<int>.Item>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Slot"), Is.EquivalentTo(new[] { "Probe.AnySlot<Probe.Holder<int>.Item>", "Probe.ItemSlot<int>", "Probe.IntItemSlot" }));
+
+			(container, diagnostics) = Run(Probe(TYPES, "Slot<Holder<long>.Item>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Slot"), Is.EquivalentTo(new[] { "Probe.AnySlot<Probe.Holder<long>.Item>", "Probe.ItemSlot<long>" }));
+
+			(container, diagnostics) = Run(Probe(TYPES, "Pair<string, Holder<long>.Item>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Pair"), Is.EquivalentTo(new[] { "Probe.AnyPair<string, Probe.Holder<long>.Item>" }));
+		}
+
+		[Test]
+		public void Test_Tuple_Element_Names_Are_Not_Part_Of_The_Match()
+		{
+			const string TYPES = """
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class TupleResult<T> { }
+					public sealed class AnyTuple<T> : TupleResult<T> { }
+					public sealed class NamedTuple : TupleResult<(int A, int B)> { }
+				""";
+
+			var (container, diagnostics) = Run(Probe(TYPES, "TupleResult<(int, int)>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "TupleResult"), Has.Length.EqualTo(2).And.Contains("Probe.NamedTuple"));
+
+			(container, diagnostics) = Run(Probe(TYPES, "TupleResult<(int X, int Y)>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "TupleResult"), Has.Length.EqualTo(2).And.Contains("Probe.NamedTuple"));
+		}
+
+		[Test]
+		public void Test_Unmanaged_And_Nested_Generic_Constraints_Are_Checked()
+		{
+			const string TYPES = """
+					public struct Managed { public string? Name; }
+					public sealed class Holder<U> { public class Item { } }
+					public sealed class LongItem : Holder<long>.Item { }
+
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Raw<T> { }
+					public sealed class RawOnly<T> : Raw<T> where T : unmanaged { }
+					public sealed class AnyRaw<T> : Raw<T> { }
+
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Box<T, U> { }
+					public sealed class ItemBox<T, U> : Box<T, U> where T : Holder<U>.Item { }
+					public sealed class AnyBox<T, U> : Box<T, U> { }
+				""";
+
+			var (container, diagnostics) = Run(Probe(TYPES, "Raw<Managed>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Raw"), Is.EquivalentTo(new[] { "Probe.AnyRaw<Probe.Managed>" }));
+
+			(container, diagnostics) = Run(Probe(TYPES, "Raw<int>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Raw"), Is.EquivalentTo(new[] { "Probe.RawOnly<int>", "Probe.AnyRaw<int>" }));
+
+			// a constraint type nested in a generic type ('Holder<U>.Item') is bound through its containing type
+			(container, diagnostics) = Run(Probe(TYPES, "Box<LongItem, long>"));
+			Assert.That(diagnostics.Select(static d => d.Id), Does.Not.Contain("CJSON0001"), "the generator does not crash");
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Box"), Is.EquivalentTo(new[] { "Probe.ItemBox<Probe.LongItem, long>", "Probe.AnyBox<Probe.LongItem, long>" }));
+
+			(container, diagnostics) = Run(Probe(TYPES, "Box<LongItem, int>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Box"), Is.EquivalentTo(new[] { "Probe.AnyBox<Probe.LongItem, int>" }));
+		}
+
+		[Test]
+		public void Test_A_Derived_Type_Inside_A_Generic_Type_Is_Reported_Only_When_It_Applies()
+		{
+			const string TYPES = """
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Result<T> { }
+					public sealed class Success<T> : Result<T> { }
+					public static class Outer<X>
+					{
+						public sealed class Hidden : Result<System.Collections.Generic.List<X>> { }
+					}
+				""";
+
+			var (container, diagnostics) = Run(Probe(TYPES, "Result<string>"));
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			Assert.That(DerivedOf(container, "Result"), Is.EquivalentTo(new[] { "Probe.Success<string>" }));
+
+			(_, diagnostics) = Run(Probe(TYPES, "Result<System.Collections.Generic.List<int>>"));
+			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
+			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("generic type"));
 		}
 
 		[Test]

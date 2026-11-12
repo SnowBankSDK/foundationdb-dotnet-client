@@ -2895,42 +2895,52 @@ namespace SnowBank.Serialization.Json.CodeGen
 			}
 
 			/// <summary>Returns the derived type that matches the actual type arguments of its base, or <see langword="null"/> if there is none</summary>
-			/// <param name="compilation">The compilation, for the constraint checks</param>
+			/// <param name="compilation">The compilation, for the type comparisons and the constraint checks</param>
 			/// <param name="declared">A type that derives directly from the definition of <paramref name="baseType"/>, as declared (a generic definition is possible)</param>
 			/// <param name="baseType">The closed base type, with its actual type arguments</param>
-			/// <param name="error">Receives the end of the diagnostic message when the hierarchy is not supported: "&lt;reason&gt; '&lt;base type&gt;'". Stays <see langword="null"/> when the type only does not apply to the type arguments of <paramref name="baseType"/>.</param>
-			/// <remarks>The rules match <c>CrystalJsonTypeResolver.BindClosedTypeDerivedType</c>: a derived type whose base or constraints do not match the type arguments gives <see langword="null"/> with no error.</remarks>
+			/// <param name="error">Receives the end of the diagnostic message when the hierarchy is not supported: "&lt;reason&gt; '&lt;base type&gt;'". Stays <see langword="null"/> when the type does not apply to the type arguments of <paramref name="baseType"/>.</param>
+			/// <remarks>
+			/// <para>The rules are the ones of C#, and of <c>CrystalJsonTypeResolver.BindClosedTypeDerivedType</c>: a derived type whose base or constraints do not match the type arguments gives <see langword="null"/> with no error.</para>
+			/// <para>One case differs: the CLR also accepts the array conversions between element types of the same size (<c>int[]</c> for a constraint <c>IEnumerable&lt;uint&gt;</c>). C# rejects them, so the runtime path keeps such a derived type, and this method skips it.</para>
+			/// </remarks>
 			private static INamedTypeSymbol? BindDerivedType(Compilation compilation, INamedTypeSymbol declared, INamedTypeSymbol baseType, out string? error)
 			{
 				error = null;
 				var spec = declared.BaseType;
 				if (spec is null) return null;
 
+				// the type parameters of the derived type and of its containing types, bound by unification with the actual base type
+				var bindings = new Dictionary<ITypeParameterSymbol, ITypeSymbol>(SymbolEqualityComparer.Default);
+				if (!TryUnify(spec, baseType)) return null;
+
 				for (var container = declared.ContainingType; container is not null; container = container.ContainingType)
 				{
 					if (container.IsGenericType)
-					{ // the type arguments of the containing type would have to be bound as well
+					{ // the derived type applies, but the type arguments of its containing type would have to be bound as well
 						error = "is declared inside a generic type, which the source generator does not support, in the hierarchy of";
 						return null;
 					}
 				}
 
-				if (!declared.IsGenericType)
+				if (declared.TypeParameters.Length == 0)
 				{ // ex: 'sealed class IntFailure : Result<int>' only derives from Result<int>
-					return SymbolEqualityComparer.Default.Equals(spec, baseType) ? declared : null;
+					return declared;
 				}
 
-				var bindings = new ITypeSymbol?[declared.TypeParameters.Length];
-				if (!TryUnify(spec, baseType)) return null;
-				foreach (var binding in bindings)
+				var args = new ITypeSymbol[declared.TypeParameters.Length];
+				for (int i = 0; i < args.Length; i++)
 				{
-					if (binding is null) return null;
+					if (!bindings.TryGetValue(declared.TypeParameters[i], out var arg)) return null;
+					args[i] = arg;
 				}
-				for (int i = 0; i < bindings.Length; i++)
+				for (int i = 0; i < args.Length; i++)
 				{
-					if (!SatisfiesConstraints(declared.TypeParameters[i], bindings[i]!)) return null;
+					if (!SatisfiesConstraints(declared.TypeParameters[i], args[i])) return null;
 				}
-				return declared.Construct(bindings!);
+				return declared.Construct(args);
+
+				// identity conversion: the same type up to tuple element names, 'dynamic' and nullable annotations, as for the CLR
+				bool IsSameType(ITypeSymbol x, ITypeSymbol y) => SymbolEqualityComparer.Default.Equals(x, y) || ((CSharpCompilation) compilation).ClassifyConversion(x, y).IsIdentity;
 
 				bool SatisfiesConstraints(ITypeParameterSymbol parameter, ITypeSymbol argument)
 				{
@@ -2949,8 +2959,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						// a constraint can name the other type parameters of the derived type ('where TFirst : TSecond'), which are replaced by their bindings first
 						if (Substitute(constraint) is not { } bound) return false;
-						if (SymbolEqualityComparer.Default.Equals(argument, bound)) continue;
-						// a nullable value type satisfies no constraint type other than object and ValueType (MakeGenericType throws, and the compiler reports CS0313)
+						if (IsSameType(argument, bound)) continue;
+						// a nullable value type satisfies no constraint type other than object and ValueType (CS0313 in C#, an ArgumentException from MakeGenericType)
 						if (isNullableValueType && bound.SpecialType is not (SpecialType.System_Object or SpecialType.System_ValueType)) return false;
 						var conversion = ((CSharpCompilation) compilation).ClassifyConversion(argument, bound);
 						if (!conversion.Exists || !conversion.IsImplicit || conversion.IsUserDefined || !(conversion.IsIdentity || conversion.IsReference || conversion.IsBoxing))
@@ -2965,9 +2975,9 @@ namespace SnowBank.Serialization.Json.CodeGen
 				{
 					switch (type)
 					{
-						case ITypeParameterSymbol parameter when parameter.TypeParameterKind == TypeParameterKind.Type && SymbolEqualityComparer.Default.Equals(parameter.DeclaringType, declared):
+						case ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type } parameter:
 						{
-							return bindings[parameter.Ordinal];
+							return bindings.TryGetValue(parameter, out var bound) ? bound : null;
 						}
 						case IArrayTypeSymbol array:
 						{
@@ -2975,13 +2985,27 @@ namespace SnowBank.Serialization.Json.CodeGen
 						}
 						case INamedTypeSymbol { IsGenericType: true } named:
 						{
-							var args = new ITypeSymbol[named.TypeArguments.Length];
-							for (int i = 0; i < args.Length; i++)
+							// ex: 'Outer<U>.Inner' has no type arguments of its own, but its containing type has
+							INamedTypeSymbol? definition;
+							if (named.ContainingType is { } containing)
 							{
-								if (Substitute(named.TypeArguments[i]) is not { } arg) return null;
-								args[i] = arg;
+								if (Substitute(containing) is not INamedTypeSymbol boundContaining) return null;
+								definition = boundContaining.GetTypeMembers(named.Name, named.Arity).FirstOrDefault();
+								if (definition is null) return null;
 							}
-							return named.ConstructedFrom.Construct(args);
+							else
+							{
+								definition = named.OriginalDefinition;
+							}
+							if (named.Arity == 0) return definition;
+
+							var typeArgs = new ITypeSymbol[named.TypeArguments.Length];
+							for (int i = 0; i < typeArgs.Length; i++)
+							{
+								if (Substitute(named.TypeArguments[i]) is not { } typeArg) return null;
+								typeArgs[i] = typeArg;
+							}
+							return definition.Construct(typeArgs);
 						}
 						default:
 						{
@@ -2992,15 +3016,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				bool TryUnify(ITypeSymbol pattern, ITypeSymbol actual)
 				{
-					if (pattern is ITypeParameterSymbol parameter && parameter.TypeParameterKind == TypeParameterKind.Type && SymbolEqualityComparer.Default.Equals(parameter.DeclaringType, declared))
+					if (pattern is ITypeParameterSymbol { TypeParameterKind: TypeParameterKind.Type } parameter)
 					{
-						ref var slot = ref bindings[parameter.Ordinal];
-						if (slot is null)
-						{
-							slot = actual;
-							return true;
-						}
-						return SymbolEqualityComparer.Default.Equals(slot, actual);
+						if (bindings.TryGetValue(parameter, out var bound)) return IsSameType(bound, actual);
+						bindings[parameter] = actual;
+						return true;
 					}
 
 					if (pattern is IArrayTypeSymbol patternArray)
@@ -3012,7 +3032,8 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 					if (pattern is INamedTypeSymbol { IsGenericType: true } patternNamed)
 					{
-						if (actual is not INamedTypeSymbol { IsGenericType: true } actualNamed || !SymbolEqualityComparer.Default.Equals(patternNamed.OriginalDefinition, actualNamed.OriginalDefinition))
+						// 'IsGenericType' is also true for a type nested in a generic type ('Outer<U>.Inner'), whose type arguments are on the containing type
+						if (actual is not INamedTypeSymbol actualNamed || !SymbolEqualityComparer.Default.Equals(patternNamed.OriginalDefinition, actualNamed.OriginalDefinition))
 						{
 							return false;
 						}
@@ -3020,10 +3041,10 @@ namespace SnowBank.Serialization.Json.CodeGen
 						{
 							if (!TryUnify(patternNamed.TypeArguments[i], actualNamed.TypeArguments[i])) return false;
 						}
-						return true;
+						return patternNamed.ContainingType is null || (actualNamed.ContainingType is not null && TryUnify(patternNamed.ContainingType, actualNamed.ContainingType));
 					}
 
-					return SymbolEqualityComparer.Default.Equals(pattern, actual);
+					return IsSameType(pattern, actual);
 				}
 			}
 

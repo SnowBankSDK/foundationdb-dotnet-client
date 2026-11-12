@@ -2329,6 +2329,7 @@ namespace SnowBank.Data.Json
 					return null;
 				}
 
+				var definition = declared;
 				try
 				{
 					declared = declared.MakeGenericType(bindings!);
@@ -2337,10 +2338,36 @@ namespace SnowBank.Data.Json
 				{ // a generic constraint of the derived type is not satisfied
 					return null;
 				}
+
+#if NET
+				// an 'unmanaged' constraint reaches the CLR as a 'struct' constraint plus an attribute, and C# also requires a type without references
+				var parameters = definition.GetGenericArguments();
+				for (int i = 0; i < parameters.Length; i++)
+				{
+					if (IsUnmanagedConstraint(parameters[i]) && IsReferenceOrContainsReferences(bindings[i]!))
+					{
+						return null;
+					}
+				}
+#endif
 			}
 
 			// ex: 'sealed class G2 : G<int>' is listed by 'closed class G<T>', but is not a derived type of G<string>
 			return baseType.IsAssignableFrom(declared) ? declared : null;
+
+#if NET
+			static bool IsUnmanagedConstraint(Type parameter)
+			{
+				foreach (var attribute in parameter.CustomAttributes)
+				{
+					if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.IsUnmanagedAttribute") return true;
+				}
+				return false;
+			}
+
+			static bool IsReferenceOrContainsReferences(Type type)
+				=> (bool) typeof(RuntimeHelpers).GetMethod(nameof(RuntimeHelpers.IsReferenceOrContainsReferences))!.MakeGenericMethod(type).Invoke(null, null)!;
+#endif
 
 			static bool TryUnify(Type pattern, Type actual, Type?[] bindings)
 			{

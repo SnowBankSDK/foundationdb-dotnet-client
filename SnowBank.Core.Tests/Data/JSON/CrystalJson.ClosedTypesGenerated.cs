@@ -44,6 +44,10 @@ namespace SnowBank.Data.Json.Tests
 	[CrystalSerializable(typeof(ClosedBox<int>))]
 	[CrystalSerializable(typeof(ClosedLink<object, string>))]
 	[CrystalSerializable(typeof(ClosedLink<List<string>, IEnumerable<object>>))]
+	[CrystalSerializable(typeof(ClosedSlot<ClosedHolder<int>.Item>))]
+	[CrystalSerializable(typeof(ClosedTupleResult<(int, int)>))]
+	[CrystalSerializable(typeof(ClosedRaw<ClosedManagedStruct>))]
+	[CrystalSerializable(typeof(ClosedRaw<int>))]
 	public static partial class ClosedGenConverters { }
 
 	public partial class CrystalJsonTest
@@ -84,7 +88,7 @@ namespace SnowBank.Data.Json.Tests
 		[Test]
 		public void Test_Generated_ClosedType_Skips_The_Derived_Types_That_Do_Not_Apply()
 		{
-			// the generated converters list the same derived types as the runtime path, for each construction of a generic root
+			// for each construction of a generic root, the generated derived types are the ones of the runtime path
 			void Check<TBase>(TBase value, Func<TBase, CrystalJsonSettings, string> write, Func<string, TBase> read) where TBase : class
 			{
 				var generated = write(value, CrystalJsonSettings.JsonCompact);
@@ -117,6 +121,14 @@ namespace SnowBank.Data.Json.Tests
 				Check<ClosedLink<object, string>>(new ClosedAnyLink<object, string> { To = "x" }, (v, o) => ClosedGenConverters.ClosedLink_Object_String.ToJsonText(v, o), j => ClosedGenConverters.ClosedLink_Object_String.Deserialize(j));
 				Rejects("""{ "$type": "ClosedUpcast" }""", j => ClosedGenConverters.ClosedLink_Object_String.Deserialize(j));
 				Check<ClosedLink<List<string>, IEnumerable<object>>>(new ClosedUpcast<List<string>, IEnumerable<object>> { From = [ "a" ] }, (v, o) => ClosedGenConverters.ClosedLink_List_IEnumerable.ToJsonText(v, o), j => ClosedGenConverters.ClosedLink_List_IEnumerable.Deserialize(j));
+
+				// the type arguments of a containing type, tuple element names, and an 'unmanaged' constraint
+				Check<ClosedSlot<ClosedHolder<int>.Item>>(new ClosedItemSlot<int>(), (v, o) => ClosedGenConverters.ClosedSlot_Item.ToJsonText(v, o), j => ClosedGenConverters.ClosedSlot_Item.Deserialize(j));
+				Check<ClosedSlot<ClosedHolder<int>.Item>>(new ClosedIntItemSlot(), (v, o) => ClosedGenConverters.ClosedSlot_Item.ToJsonText(v, o), j => ClosedGenConverters.ClosedSlot_Item.Deserialize(j));
+				Check<ClosedTupleResult<(int, int)>>(new ClosedNamedTuple(), (v, o) => ClosedGenConverters.ClosedTupleResult_ValueTuple.ToJsonText(v, o), j => ClosedGenConverters.ClosedTupleResult_ValueTuple.Deserialize(j));
+				Check<ClosedRaw<ClosedManagedStruct>>(new ClosedAnyRaw<ClosedManagedStruct>(), (v, o) => ClosedGenConverters.ClosedRaw_ClosedManagedStruct.ToJsonText(v, o), j => ClosedGenConverters.ClosedRaw_ClosedManagedStruct.Deserialize(j));
+				Rejects("""{ "$type": "ClosedRawOnly" }""", j => ClosedGenConverters.ClosedRaw_ClosedManagedStruct.Deserialize(j));
+				Check<ClosedRaw<int>>(new ClosedRawOnly<int>(), (v, o) => ClosedGenConverters.ClosedRaw_Int32.ToJsonText(v, o), j => ClosedGenConverters.ClosedRaw_Int32.Deserialize(j));
 			}
 		}
 
