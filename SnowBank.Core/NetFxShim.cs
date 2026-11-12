@@ -20,15 +20,7 @@ namespace System.Runtime.CompilerServices
 	internal sealed class RequiredMemberAttribute : Attribute
 	{ }
 
-	[AttributeUsage(AttributeTargets.All, AllowMultiple = true, Inherited = false)]
-	internal sealed class CompilerFeatureRequiredAttribute : Attribute
-	{
-		public CompilerFeatureRequiredAttribute(string featureName) => this.FeatureName = featureName;
-		public string FeatureName { get; }
-		public bool IsOptional { get; init; }
-		public const string RefStructs = nameof(RefStructs);
-		public const string RequiredMembers = nameof(RequiredMembers);
-	}
+	// CompilerFeatureRequiredAttribute is public, in Polyfills/ClosedTypeAttributes.cs
 
 }
 
