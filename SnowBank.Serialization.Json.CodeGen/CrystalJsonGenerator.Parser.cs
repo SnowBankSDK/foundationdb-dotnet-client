@@ -1024,6 +1024,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 				// we have to extract all the properties that will be required later during the code generation phase
 
 				bool isPolymorphic = false;
+				bool inferClosedTypes = false;
 				string? typeDiscriminatorPropertyName = null;
 				List<(INamedTypeSymbol, TypeMetadata, object?)>? derivedTypes = null;
 
@@ -1068,9 +1069,23 @@ namespace SnowBank.Serialization.Json.CodeGen
 								{
 									typeDiscriminatorPropertyName = s;
 								}
+								else if (arg.Key == "InferClosedTypePolymorphism" && arg.Value.Value is bool b)
+								{
+									inferClosedTypes = b;
+								}
 							}
 							break;
 						}
+					}
+				}
+
+				if (inferClosedTypes)
+				{ // [JsonPolymorphic(InferClosedTypePolymorphism = true)]: the derived types of a closed class, unless [JsonDerivedType] lists them
+					var inferred = InferClosedTypeDerivedTypes(type, hasExplicitDerivedTypes: derivedTypes is not null);
+					if (inferred is not null)
+					{
+						derivedTypes = inferred;
+						isPolymorphic = true;
 					}
 				}
 
@@ -2707,6 +2722,234 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.Locations.Length > 0 ? member.Locations[0] : null,
 					// the annotation is dropped: the remedy names the type to decorate, and 'Shape?' is not what its declaration says
 					member.ToDisplayString(), declared.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString(), declared.TypeKind == TypeKind.Interface ? "interface" : "abstract class");
+			}
+
+			/// <summary><c>ITypeSymbol.IsClosed</c>, looked up by name on the running compiler</summary>
+			/// <remarks>The property exists in the compilers that know C# 15 (Microsoft.CodeAnalysis 5.9, and the .NET 11 SDK compiler). This generator compiles against an older Roslyn, which keeps the minimum SDK of its consumers low, so the property is looked up at run time, and is <see langword="null"/> on an older compiler.</remarks>
+			private static readonly System.Reflection.PropertyInfo? IsClosedProperty = typeof(ITypeSymbol).GetProperty("IsClosed");
+
+			/// <summary>Tests whether a type is a C# 15 <c>closed</c> class</summary>
+			/// <remarks>
+			/// <para>The compiler does not expose <c>[IsClosedTypeAttribute]</c> through <see cref="ISymbol.GetAttributes"/>, on a type declared in source or in a referenced assembly alike, so the attribute cannot be matched by name here.</para>
+			/// <para>On a compiler without <c>ITypeSymbol.IsClosed</c>, the <c>closed</c> modifier of a source declaration is the fallback. A type from a referenced assembly then reads as not closed.</para>
+			/// </remarks>
+			private static bool IsClosedType(INamedTypeSymbol type)
+			{
+				if (IsClosedProperty?.GetValue(type) is bool isClosed)
+				{
+					return isClosed;
+				}
+
+				foreach (var reference in type.DeclaringSyntaxReferences)
+				{
+					if (reference.GetSyntax() is TypeDeclarationSyntax declaration)
+					{
+						foreach (var modifier in declaration.Modifiers)
+						{
+							if (modifier.Text == "closed") return true;
+						}
+					}
+				}
+				return false;
+			}
+
+			/// <summary>Lists the derived types of a <c>closed</c> class with their discriminators, for <c>[JsonPolymorphic(InferClosedTypePolymorphism = true)]</c></summary>
+			/// <param name="root">The type that carries the attribute</param>
+			/// <param name="hasExplicitDerivedTypes">The type also carries <c>[JsonDerivedType]</c></param>
+			/// <returns>The derived types, or <see langword="null"/> if the explicit registrations apply or if a diagnostic was reported</returns>
+			/// <remarks>
+			/// <para>The rules are the ones of System.Text.Json and of the runtime path (<c>CrystalJsonTypeResolver.InferClosedTypeDerivedTypes</c>):</para>
+			/// <list type="bullet">
+			/// <item>The discriminator of a derived type is its simple name, without type arguments.</item>
+			/// <item>A derived type that is itself <c>closed</c> is replaced by its own derived types, recursively.</item>
+			/// <item>A generic definition is constructed over the type arguments of the base type.</item>
+			/// <item>Explicit <c>[JsonDerivedType]</c> registrations replace the inferred list (<c>CJSON0029</c>).</item>
+			/// <item>The opt-in on a type that is not closed is an error (<c>CJSON0028</c>), and so is a hierarchy that cannot be inferred (<c>CJSON0030</c>).</item>
+			/// </list>
+			/// <para>The derived types of a closed class are declared in the assembly of that class (the compiler rejects any other), so a walk over the types of that assembly finds them all.</para>
+			/// </remarks>
+			private List<(INamedTypeSymbol, TypeMetadata, object?)>? InferClosedTypeDerivedTypes(INamedTypeSymbol root, bool hasExplicitDerivedTypes)
+			{
+				var location = root.Locations.Length > 0 ? root.Locations[0] : this.ContextClassLocation;
+
+				if (!IsClosedType(root))
+				{
+					ReportDiagnostic(
+						new(
+							"CJSON0028",
+							"InferClosedTypePolymorphism requires a closed type",
+							"The type '{0}' enables JsonPolymorphicAttribute.InferClosedTypePolymorphism but is not a closed type, so no derived types can be inferred. Declare the type 'closed' or register its derived types using JsonDerivedTypeAttribute.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						location,
+						root.ToDisplayString()
+					);
+					return null;
+				}
+
+				if (hasExplicitDerivedTypes)
+				{
+					ReportDiagnostic(
+						new(
+							"CJSON0029",
+							"Explicit derived types replace the inferred derived types",
+							"The type '{0}' enables JsonPolymorphicAttribute.InferClosedTypePolymorphism and also carries JsonDerivedTypeAttribute. The explicit registrations replace the inferred list, so the derived types that they do not list cannot be serialized. Remove InferClosedTypePolymorphism, or remove the JsonDerivedTypeAttribute registrations.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Warning,
+							isEnabledByDefault: true
+						),
+						location,
+						root.ToDisplayString()
+					);
+					return null;
+				}
+
+				var res = new List<(INamedTypeSymbol, TypeMetadata, object?)>();
+				var names = new HashSet<string>(StringComparer.Ordinal);
+				string? error = null;
+				Walk(root);
+
+				if (error is null && res.Count == 0)
+				{
+					error = "the closed type has no derived type";
+				}
+
+				if (error is not null)
+				{
+					ReportDiagnostic(
+						new(
+							"CJSON0030",
+							"The derived types of a closed type cannot be inferred",
+							"The derived types of the closed type '{0}' cannot be inferred: {1}. Register the derived types with JsonDerivedTypeAttribute.",
+							"SnowBank.Serialization.Json.CodeGen",
+							DiagnosticSeverity.Error,
+							isEnabledByDefault: true
+						),
+						location,
+						root.ToDisplayString(), error
+					);
+					return null;
+				}
+
+				return res;
+
+				void Walk(INamedTypeSymbol closedType)
+				{
+					foreach (var declared in FindDirectDerivedTypes(closedType))
+					{
+						if (error is not null) return;
+
+						var derived = BindDerivedType(declared, closedType);
+						if (derived is null)
+						{
+							error = $"'{declared.ToDisplayString()}' cannot be bound to the type arguments of '{closedType.ToDisplayString()}'";
+							return;
+						}
+
+						if (IsClosedType(derived))
+						{ // a nested closed hierarchy contributes its own derived types, but not itself
+							Walk(derived);
+							continue;
+						}
+
+						if (!names.Add(derived.Name))
+						{
+							error = $"two derived types have the same simple name '{derived.Name}'";
+							return;
+						}
+						res.Add((derived, TypeMetadata.Create(derived), derived.Name));
+					}
+				}
+			}
+
+			/// <summary>Lists the types that derive directly from a class, in the assembly that declares it</summary>
+			private static List<INamedTypeSymbol> FindDirectDerivedTypes(INamedTypeSymbol type)
+			{
+				var definition = type.OriginalDefinition;
+				var res = new List<INamedTypeSymbol>();
+				Visit(definition.ContainingAssembly.GlobalNamespace);
+				// the order of the compiler's DerivedTypes list, which System.Text.Json reads
+				res.Sort(static (x, y) => StringComparer.Ordinal.Compare(x.MetadataName, y.MetadataName));
+				return res;
+
+				void Visit(INamespaceOrTypeSymbol container)
+				{
+					foreach (var member in container.GetMembers())
+					{
+						if (member is INamespaceSymbol ns)
+						{
+							Visit(ns);
+						}
+						else if (member is INamedTypeSymbol candidate)
+						{
+							if (candidate.TypeKind == TypeKind.Class && SymbolEqualityComparer.Default.Equals(candidate.BaseType?.OriginalDefinition, definition))
+							{
+								res.Add(candidate);
+							}
+							Visit(candidate);
+						}
+					}
+				}
+			}
+
+			/// <summary>Returns the derived type that matches the actual type arguments of its base, or <see langword="null"/> if there is none</summary>
+			/// <param name="declared">A type that derives directly from the definition of <paramref name="baseType"/>, as declared (a generic definition is possible)</param>
+			/// <param name="baseType">The closed base type, with its actual type arguments</param>
+			private static INamedTypeSymbol? BindDerivedType(INamedTypeSymbol declared, INamedTypeSymbol baseType)
+			{
+				var spec = declared.BaseType;
+				if (spec is null) return null;
+
+				if (!declared.IsGenericType)
+				{ // ex: 'sealed class IntFailure : Result<int>' only derives from Result<int>
+					return SymbolEqualityComparer.Default.Equals(spec, baseType) ? declared : null;
+				}
+
+				var bindings = new ITypeSymbol?[declared.TypeParameters.Length];
+				if (!TryUnify(spec, baseType)) return null;
+				foreach (var binding in bindings)
+				{
+					if (binding is null) return null;
+				}
+				return declared.Construct(bindings!);
+
+				bool TryUnify(ITypeSymbol pattern, ITypeSymbol actual)
+				{
+					if (pattern is ITypeParameterSymbol parameter && parameter.TypeParameterKind == TypeParameterKind.Type && SymbolEqualityComparer.Default.Equals(parameter.DeclaringType, declared))
+					{
+						ref var slot = ref bindings[parameter.Ordinal];
+						if (slot is null)
+						{
+							slot = actual;
+							return true;
+						}
+						return SymbolEqualityComparer.Default.Equals(slot, actual);
+					}
+
+					if (pattern is IArrayTypeSymbol patternArray)
+					{
+						return actual is IArrayTypeSymbol actualArray
+							&& patternArray.Rank == actualArray.Rank
+							&& TryUnify(patternArray.ElementType, actualArray.ElementType);
+					}
+
+					if (pattern is INamedTypeSymbol { IsGenericType: true } patternNamed)
+					{
+						if (actual is not INamedTypeSymbol { IsGenericType: true } actualNamed || !SymbolEqualityComparer.Default.Equals(patternNamed.OriginalDefinition, actualNamed.OriginalDefinition))
+						{
+							return false;
+						}
+						for (int i = 0; i < patternNamed.TypeArguments.Length; i++)
+						{
+							if (!TryUnify(patternNamed.TypeArguments[i], actualNamed.TypeArguments[i])) return false;
+						}
+						return true;
+					}
+
+					return SymbolEqualityComparer.Default.Equals(pattern, actual);
+				}
 			}
 
 			/// <summary>Tests whether a type is the declared root of a polymorphic tree, or inherits one from a base class or an interface</summary>

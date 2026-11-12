@@ -449,9 +449,8 @@ namespace SnowBank.Data.Json.Tests
 				Log($"{name}: {crystal}");
 				Log($"{new string(' ', name.Length)}  {stj}");
 
-				// same discriminator, written first, and the same members with the same values
-				Assert.That(JsonValue.Parse(crystal), IsJson.EqualTo(JsonValue.Parse(stj)), $"{name}: same document");
-				Assert.That(crystal.Substring(0, crystal.IndexOf(',')), Is.EqualTo(stj.Substring(0, stj.IndexOf(','))), $"{name}: same discriminator, first");
+				// same text: same discriminator written first, same members in the same order, same values
+				Assert.That(crystal, Is.EqualTo(stj), $"{name}: same JSON text");
 
 				// each side reads the other side's output
 				Assert.That(CrystalJson.Deserialize<TBase>(stj), Is.InstanceOf(value.GetType()));

@@ -105,12 +105,14 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		/// <summary>Runs the generator, returning the container metadata the parser produced for each container of the probe, keyed by container name</summary>
 		/// <remarks>Reads the driver's tracked incremental steps: this observes what the parser RESOLVED, which is the contract of a parsing-only change, before any of it reaches the emitted source.</remarks>
-		public static (Dictionary<string, CrystalJsonContainerMetadata> Containers, ImmutableArray<Diagnostic> GeneratorDiagnostics) RunGeneratorAndCaptureContainers(CSharpCompilation compilation)
+		/// <param name="compilation">The probe compilation</param>
+		/// <param name="parseOptions">Parse options of the generated code, which must match the ones of the probe (<see cref="ParseOptions"/> by default)</param>
+		public static (Dictionary<string, CrystalJsonContainerMetadata> Containers, ImmutableArray<Diagnostic> GeneratorDiagnostics) RunGeneratorAndCaptureContainers(CSharpCompilation compilation, CSharpParseOptions? parseOptions = null)
 		{
 			GeneratorDriver driver = CSharpGeneratorDriver.Create(
 				[ new CrystalJsonSourceGenerator().AsSourceGenerator() ],
 				additionalTexts: null,
-				parseOptions: ParseOptions,
+				parseOptions: parseOptions ?? ParseOptions,
 				optionsProvider: null,
 				//note: 'None' disables NO output (the diagnostics are reported through the source output, so they must stay enabled)
 				driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
