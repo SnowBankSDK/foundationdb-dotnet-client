@@ -2613,11 +2613,24 @@ namespace SnowBank.Data.Json
 						}
 					}
 
-					// a nested closed class of an inferred hierarchy has no discriminator of its own: it is abstract, and a document
-					// read with this type as the declared type carries the discriminator of a derived type, which the top type maps
-					if (!found && intermediates?.Contains(type) != true)
+					if (!found)
 					{
-						throw new InvalidOperationException($"Cannot resolve intermediate type '{type.GetFriendlyName()}' in the polymorphic chain under '{parent.GetFriendlyName()}' because there is no JsonDerivedType attribute for this specific type.");
+						if (intermediates?.Contains(type) != true)
+						{
+							throw new InvalidOperationException($"Cannot resolve intermediate type '{type.GetFriendlyName()}' in the polymorphic chain under '{parent.GetFriendlyName()}' because there is no JsonDerivedType attribute for this specific type.");
+						}
+
+						// a nested closed class of an inferred hierarchy has no discriminator of its own, because it is abstract.
+						// A document read with this type as the declared type carries the discriminator of one of its derived types:
+						// the map holds those only, so that the discriminator of a sibling type is rejected like an unknown one.
+						derivedTypeMap = new(JsonValueComparer.Default);
+						foreach (var t in derivedTypes)
+						{
+							if (t.Value != null && type.IsAssignableFrom(t.Key))
+							{
+								derivedTypeMap[JsonValue.FromValue(t.Value)] = t.Key;
+							}
+						}
 					}
 					baseType = parent;
 				}

@@ -226,6 +226,68 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 		}
 
 		[Test]
+		public void Test_Closed_Hierarchy_Inside_A_Generic_Type_Is_Reported()
+		{
+			var (_, diagnostics) = Run(Probe("""
+					public static class Outer<T>
+					{
+						[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+						public closed class Node { }
+						public sealed class Leaf : Node { public T? Value { get; set; } }
+					}
+				""", "Outer<int>.Node"));
+
+			Assert.That(diagnostics.Select(static d => d.Id), Does.Not.Contain("CJSON0001"), "the generator does not crash");
+			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
+			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("generic type"));
+		}
+
+		[Test]
+		public void Test_Generic_Constraint_Violation_Is_Reported()
+		{
+			var (_, diagnostics) = Run(Probe("""
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Box<T> { }
+					public sealed class StructBox<T> : Box<T> where T : struct { }
+					public sealed class AnyBox<T> : Box<T> { }
+				""", "Box<string>"));
+
+			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
+			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("constraints"));
+		}
+
+		[Test]
+		public void Test_Generic_Constraints_That_Hold_Are_Accepted()
+		{
+			var (container, diagnostics) = Run(Probe("""
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Box<T> { }
+					public sealed class StructBox<T> : Box<T> where T : struct, System.IComparable<T> { }
+					public sealed class AnyBox<T> : Box<T> where T : new() { }
+				""", "Box<int>"));
+
+			Assert.That(IdsOf(diagnostics), Is.Empty);
+			var derived = container.IncludedTypes.Single(static t => t.Name.StartsWith("Box", StringComparison.Ordinal)).DerivedTypes;
+			Assert.That(derived.Select(static x => x.Discriminator), Is.EquivalentTo(new object?[] { "StructBox", "AnyBox" }));
+		}
+
+		[Test]
+		public void Test_Inaccessible_Derived_Type_Is_Reported()
+		{
+			var (_, diagnostics) = Run(Probe("""
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class Shape
+					{
+						private sealed class Hidden : Shape { }
+						public sealed class Visible : Shape { }
+					}
+				""", "Shape"));
+
+			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0030" }));
+			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0030").GetMessage(), Does.Contain("not accessible"));
+		}
+
+		[Test]
 		public void Test_Generated_Code_For_A_Closed_Hierarchy_Compiles()
 		{
 			var compilation = GeneratorProbeHarness.Compile(Probe("""

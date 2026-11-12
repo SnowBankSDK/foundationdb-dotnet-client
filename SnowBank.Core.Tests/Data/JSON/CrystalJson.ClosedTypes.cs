@@ -251,6 +251,42 @@ namespace SnowBank.Data.Json.Tests
 		public string? Error { get; set; }
 	}
 
+	/// <summary>A derived type that uses one type parameter for both type arguments of the base.</summary>
+	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+	public closed class ClosedPair<TFirst, TSecond>
+	{
+	}
+
+	public sealed class ClosedSamePair<T> : ClosedPair<T, T>
+	{
+		public T? First { get; set; }
+	}
+
+	/// <summary>A derived type that binds its type parameter through an array type argument of the base.</summary>
+	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+	public closed class ClosedBag<T>
+	{
+	}
+
+	public sealed class ClosedArrayBag<T> : ClosedBag<T[]>
+	{
+		public T[]? Items { get; set; }
+	}
+
+	/// <summary>A closed hierarchy declared inside a generic type.</summary>
+	public static class ClosedOuter<T>
+	{
+		[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
+		public closed class Node
+		{
+		}
+
+		public sealed class Leaf : Node
+		{
+			public T? Value { get; set; }
+		}
+	}
+
 	/// <summary>Two derived types with the same simple name.</summary>
 	[STJ.Serialization.JsonPolymorphic(InferClosedTypePolymorphism = true)]
 	public closed class ClosedDuplicateNames
@@ -372,6 +408,39 @@ namespace SnowBank.Data.Json.Tests
 		}
 
 		[Test]
+		public void Test_ClosedType_Nested_Closed_Type_Rejects_Sibling_Discriminators()
+		{
+			// a document read as the nested closed type must carry the discriminator of one of ITS derived types
+			Assert.That(() => CrystalJson.Deserialize<ClosedPolygon>("""{ "$type": "ClosedCircle", "Radius": 1 }"""), Throws.InstanceOf<JsonBindingException>());
+			Assert.That(() => CrystalJson.Deserialize<ClosedPolygonHolder>("""{ "Polygon": { "$type": "ClosedCircle", "Radius": 1 } }"""), Throws.InstanceOf<JsonBindingException>());
+			// NOTE: a top-level array binds its items through a reflection call, which wraps the binding exception
+			Assert.That(() => CrystalJson.Deserialize<ClosedPolygon[]>("""[ { "$type": "ClosedCircle", "Radius": 1 } ]"""), Throws.InstanceOf<JsonBindingException>().Or.InnerException.InstanceOf<JsonBindingException>());
+			Assert.That(() => CrystalJson.Deserialize<ClosedPolygon>("""{ "Sides": 3 }"""), Throws.InstanceOf<JsonBindingException>());
+
+			// control: the discriminators of its own derived types are accepted
+			Assert.That(CrystalJson.Deserialize<ClosedPolygon>("""{ "$type": "ClosedSquare", "Side": 2 }"""), Is.InstanceOf<ClosedSquare>());
+			Assert.That(CrystalJson.Deserialize<ClosedPolygon[]>("""[ { "$type": "ClosedTriangle" }, { "$type": "ClosedSquare" } ]"""), Has.Length.EqualTo(2));
+		}
+
+		[Test]
+		public void Test_ClosedType_Generic_Bindings()
+		{
+			// one type parameter for both type arguments of the base: bound for ClosedPair<int, int>, unbindable for ClosedPair<int, string>
+			Assert.That(CrystalJson.Serialize<ClosedPair<int, int>>(new ClosedSamePair<int> { First = 1 }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedSamePair","First":1}"""));
+			Assert.That(CrystalJson.Deserialize<ClosedPair<int, int>>("""{ "$type": "ClosedSamePair", "First": 1 }"""), Is.InstanceOf<ClosedSamePair<int>>());
+			Assert.That(() => CrystalJson.Deserialize<ClosedPair<int, string>>("""{ "$type": "ClosedSamePair" }"""), Throws.InstanceOf<InvalidOperationException>());
+			Assert.That(() => STJ.JsonSerializer.Deserialize<ClosedPair<int, string>>("""{ "$type": "ClosedSamePair" }""", StjReflectionOptions), Throws.InstanceOf<InvalidOperationException>());
+
+			// a type parameter bound through an array type argument
+			Assert.That(CrystalJson.Serialize<ClosedBag<int[]>>(new ClosedArrayBag<int> { Items = [ 1, 2 ] }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"ClosedArrayBag","Items":[1,2]}"""));
+			Assert.That(CrystalJson.Deserialize<ClosedBag<int[]>>("""{ "$type": "ClosedArrayBag", "Items": [ 1, 2 ] }"""), Is.InstanceOf<ClosedArrayBag<int>>());
+
+			// a closed hierarchy declared inside a generic type
+			Assert.That(CrystalJson.Serialize<ClosedOuter<int>.Node>(new ClosedOuter<int>.Leaf { Value = 7 }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"Leaf","Value":7}"""));
+			Assert.That(CrystalJson.Deserialize<ClosedOuter<int>.Node>("""{ "$type": "Leaf", "Value": 7 }"""), Is.InstanceOf<ClosedOuter<int>.Leaf>());
+		}
+
+		[Test]
 		public void Test_ClosedType_Explicit_Derived_Types_Replace_Inference()
 		{
 			Assert.That(CrystalJson.Serialize<ClosedWithExplicitTypes>(new ExplicitLeafA { Value = 1 }, CrystalJsonSettings.JsonCompact), Is.EqualTo("""{"$type":"a","Value":1}"""));
@@ -470,6 +539,9 @@ namespace SnowBank.Data.Json.Tests
 				Check<ClosedWithExplicitTypes>(new ExplicitLeafA { Value = 1 });
 				Check<ClosedResult<int>>(new ClosedSuccess<int> { Value = 42 });
 				Check<ClosedResult<int>>(new ClosedIntFailure { Error = "boom" });
+				Check<ClosedPair<int, int>>(new ClosedSamePair<int> { First = 1 });
+				Check<ClosedBag<int[]>>(new ClosedArrayBag<int> { Items = [ 1, 2 ] });
+				Check<ClosedOuter<int>.Node>(new ClosedOuter<int>.Leaf { Value = 7 });
 			}
 		}
 

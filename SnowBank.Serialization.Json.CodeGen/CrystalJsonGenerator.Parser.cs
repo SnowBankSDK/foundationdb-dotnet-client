@@ -2841,10 +2841,17 @@ namespace SnowBank.Serialization.Json.CodeGen
 					{
 						if (error is not null) return;
 
-						var derived = BindDerivedType(declared, closedType);
+						var derived = BindDerivedType(declared, closedType, out error);
 						if (derived is null)
 						{
-							error = $"'{declared.ToDisplayString()}' cannot be bound to the type arguments of '{closedType.ToDisplayString()}'";
+							error = $"'{declared.ToDisplayString()}' {error ?? "cannot be bound to the type arguments of"} '{closedType.ToDisplayString()}'";
+							return;
+						}
+
+						// the generated code names every derived type, so each one must be accessible from the container
+						if (!this.KnownSymbols.Compilation.IsSymbolAccessibleWithin(derived, this.KnownSymbols.Compilation.Assembly))
+						{
+							error = $"'{derived.ToDisplayString()}' is not accessible from the generated code";
 							return;
 						}
 
@@ -2897,10 +2904,21 @@ namespace SnowBank.Serialization.Json.CodeGen
 			/// <summary>Returns the derived type that matches the actual type arguments of its base, or <see langword="null"/> if there is none</summary>
 			/// <param name="declared">A type that derives directly from the definition of <paramref name="baseType"/>, as declared (a generic definition is possible)</param>
 			/// <param name="baseType">The closed base type, with its actual type arguments</param>
-			private static INamedTypeSymbol? BindDerivedType(INamedTypeSymbol declared, INamedTypeSymbol baseType)
+			/// <param name="error">Receives the end of the diagnostic message when the type cannot be bound: "&lt;reason&gt; '&lt;base type&gt;'"</param>
+			private static INamedTypeSymbol? BindDerivedType(INamedTypeSymbol declared, INamedTypeSymbol baseType, out string? error)
 			{
+				error = null;
 				var spec = declared.BaseType;
 				if (spec is null) return null;
+
+				for (var container = declared.ContainingType; container is not null; container = container.ContainingType)
+				{
+					if (container.IsGenericType)
+					{ // the type arguments of the containing type would have to be bound as well
+						error = "is declared inside a generic type, which the source generator does not support, in the hierarchy of";
+						return null;
+					}
+				}
 
 				if (!declared.IsGenericType)
 				{ // ex: 'sealed class IntFailure : Result<int>' only derives from Result<int>
@@ -2909,11 +2927,59 @@ namespace SnowBank.Serialization.Json.CodeGen
 
 				var bindings = new ITypeSymbol?[declared.TypeParameters.Length];
 				if (!TryUnify(spec, baseType)) return null;
-				foreach (var binding in bindings)
+				for (int i = 0; i < bindings.Length; i++)
 				{
-					if (binding is null) return null;
+					if (bindings[i] is null) return null;
+					if (!SatisfiesConstraints(declared.TypeParameters[i], bindings[i]!))
+					{
+						error = $"does not satisfy the constraints of its type parameter '{declared.TypeParameters[i].Name}' for";
+						return null;
+					}
 				}
 				return declared.Construct(bindings!);
+
+				static bool SatisfiesConstraints(ITypeParameterSymbol parameter, ITypeSymbol argument)
+				{
+					if (parameter.HasReferenceTypeConstraint && !argument.IsReferenceType) return false;
+					if (parameter.HasValueTypeConstraint && (!argument.IsValueType || argument.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)) return false;
+					if (parameter.HasUnmanagedTypeConstraint && !argument.IsUnmanagedType) return false;
+					if (parameter.HasConstructorConstraint && !argument.IsValueType)
+					{
+						if (argument is not INamedTypeSymbol { IsAbstract: false } named || !named.InstanceConstructors.Any(static c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public))
+						{
+							return false;
+						}
+					}
+					foreach (var constraint in parameter.ConstraintTypes)
+					{
+						// a constraint that names other type parameters would need their bindings first: the compiler checks it in the generated code
+						if (ContainsTypeParameter(constraint)) continue;
+						if (!IsAssignableTo(argument, constraint)) return false;
+					}
+					return true;
+				}
+
+				static bool ContainsTypeParameter(ITypeSymbol type) => type switch
+				{
+					ITypeParameterSymbol => true,
+					IArrayTypeSymbol array => ContainsTypeParameter(array.ElementType),
+					INamedTypeSymbol named => named.TypeArguments.Any(ContainsTypeParameter),
+					_ => false,
+				};
+
+				static bool IsAssignableTo(ITypeSymbol argument, ITypeSymbol constraint)
+				{
+					if (SymbolEqualityComparer.Default.Equals(argument, constraint)) return true;
+					for (var current = argument.BaseType; current is not null; current = current.BaseType)
+					{
+						if (SymbolEqualityComparer.Default.Equals(current, constraint)) return true;
+					}
+					foreach (var iface in argument.AllInterfaces)
+					{
+						if (SymbolEqualityComparer.Default.Equals(iface, constraint)) return true;
+					}
+					return constraint.SpecialType == SpecialType.System_Object;
+				}
 
 				bool TryUnify(ITypeSymbol pattern, ITypeSymbol actual)
 				{
