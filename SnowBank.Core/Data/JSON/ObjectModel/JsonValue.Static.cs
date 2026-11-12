@@ -31,7 +31,7 @@ namespace SnowBank.Data.Json
 	using SnowBank.Runtime;
 	using SnowBank.Text;
 
-	public abstract partial class JsonValue
+	public closed partial class JsonValue
 	{
 
 		public static object BindValueType<T>(T value, Type type, ICrystalJsonTypeResolver resolver)

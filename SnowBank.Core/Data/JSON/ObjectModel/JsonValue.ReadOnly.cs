@@ -27,7 +27,7 @@
 namespace SnowBank.Data.Json
 {
 
-	public partial class JsonValue
+	public closed partial class JsonValue
 	{
 
 		/// <summary>Operations for <b>read-only</b> JSON values</summary>

@@ -31,7 +31,7 @@ namespace SnowBank.Data.Json
 	using System.Numerics;
 #endif
 
-	public abstract partial class JsonValue
+	public closed partial class JsonValue
 #if NET8_0_OR_GREATER
 		: INumberBase<JsonValue>, IComparisonOperators<JsonValue, JsonValue, bool>
 #endif

@@ -32,7 +32,10 @@ namespace SnowBank.Data.Json
 	using SnowBank.Text;
 
 	/// <summary>Represents a value in a JSON Document</summary>
-	/// <remarks>The value can be null or missing (<see cref="JsonNull"/>), a literal (<see cref="JsonString"/>, <see cref="JsonBoolean"/>, <see cref="JsonNumber"/>), an object (<see cref="JsonObject"/>) or an array (<see cref="JsonArray"/>)</remarks>
+	/// <remarks>
+	/// <para>The value can be null or missing (<see cref="JsonNull"/>), a literal (<see cref="JsonString"/>, <see cref="JsonBoolean"/>, <see cref="JsonNumber"/>, <see cref="JsonDateTime"/>), an object (<see cref="JsonObject"/>) or an array (<see cref="JsonArray"/>)</para>
+	/// <para>The class is <c>closed</c>: these seven types are the complete list of its subtypes, and no other assembly can derive from it. A C# 15 consumer can write a <c>switch</c> over a <see cref="JsonValue"/> that covers the seven types without a discard arm.</para>
+	/// </remarks>
 	[Serializable]
 	[PublicAPI]
 #if !NETSTANDARD2_0
@@ -41,7 +44,7 @@ namespace SnowBank.Data.Json
 #endif
 	[JetBrains.Annotations.CannotApplyEqualityOperator]
 	[DebuggerNonUserCode]
-	public abstract partial class JsonValue : IEquatable<JsonValue>, IComparable<JsonValue>, IJsonSerializable, IFormattable, ISliceSerializable, IConvertible
+	public closed partial class JsonValue : IEquatable<JsonValue>, IComparable<JsonValue>, IJsonSerializable, IFormattable, ISliceSerializable, IConvertible
 #if NET8_0_OR_GREATER
 		, IParsable<JsonValue>
 		, ISpanParsable<JsonValue>

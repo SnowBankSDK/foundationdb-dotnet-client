@@ -30,7 +30,7 @@ namespace SnowBank.Data.Json
 	using System.Net;
 	using System.Text;
 
-	public abstract partial class JsonValue
+	public closed partial class JsonValue
 	{
 
 		#region String...
