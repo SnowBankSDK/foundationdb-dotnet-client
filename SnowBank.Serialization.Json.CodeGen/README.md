@@ -24,6 +24,17 @@ Via a git sub-module, add a `ProjectReference` and flag it as a source analyzer.
 
 This package will only be used at build time, and should not be redistributed with the rest of tha application.
 
+The generator needs the .NET 9 SDK or later (Roslyn 4.12). With an older SDK, the generator does not run and the build reports no warning: the generated members are missing.
+
+The package holds two builds of the generator. The build that runs depends on the SDK:
+
+| SDK | Generator |
+|---|---|
+| .NET 11 or later | All features, including the inference of the derived types of a `closed` class (`[JsonPolymorphic(InferClosedTypePolymorphism = true)]`). |
+| .NET 9 and .NET 10 | All features except closed classes: the build reports CJSON0028 on `InferClosedTypePolymorphism = true`. |
+
+With a `ProjectReference` to the submodule, the build for the newest compilers runs, and it needs the .NET 11 SDK.
+
 ## How to use
 
 ### Containers
