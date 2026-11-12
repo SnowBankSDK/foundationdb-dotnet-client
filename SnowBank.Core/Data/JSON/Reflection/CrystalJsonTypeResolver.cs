@@ -2209,6 +2209,231 @@ namespace SnowBank.Data.Json
 			return false;
 		}
 
+		/// <summary>Full name of the C# 15 closed class marker attribute, matched by name so no reference to the type is needed.</summary>
+		internal const string IsClosedTypeAttributeFullName = "System.Runtime.CompilerServices.IsClosedTypeAttribute";
+
+		/// <summary>Returns the direct derived types of a C# 15 <c>closed</c> class.</summary>
+		/// <returns>The types listed by <c>[IsClosedTypeAttribute(DerivedTypes = ...)]</c>, or <see langword="null"/> when <paramref name="type"/> does not carry the attribute.</returns>
+		/// <remarks>
+		/// <para>The attribute is matched by full name, the same way System.Text.Json does it. The check works with the net11.0 runtime type, and with a copy declared by an assembly that targets an older framework.</para>
+		/// <para>On a constructed generic type, the list holds the derived types as declared: a generic definition such as <c>Derived&lt;&gt;</c>, or a type that closes the type arguments of the base.</para>
+		/// </remarks>
+		internal static Type[]? GetClosedTypeDerivedTypes(Type type)
+		{
+			foreach (var attr in type.GetCustomAttributesData())
+			{
+				if (attr.AttributeType.FullName != IsClosedTypeAttributeFullName) continue;
+
+				foreach (var arg in attr.NamedArguments)
+				{
+					if (arg.MemberName == "DerivedTypes" && arg.TypedValue.Value is IReadOnlyCollection<CustomAttributeTypedArgument> items)
+					{
+						var res = new Type[items.Count];
+						int i = 0;
+						foreach (var item in items)
+						{
+							res[i++] = (Type) item.Value!;
+						}
+						return res;
+					}
+				}
+				return [ ];
+			}
+			return null;
+		}
+
+		/// <summary>Lists the derived types of a <c>closed</c> class, with their type discriminators, for <c>[JsonPolymorphic(InferClosedTypePolymorphism = true)]</c></summary>
+		/// <param name="root">The closed class that carries the attribute</param>
+		/// <param name="intermediates">Receives the nested closed classes that were replaced by their own derived types, or <see langword="null"/> if there are none</param>
+		/// <remarks>
+		/// <para>The rules are the ones of System.Text.Json:</para>
+		/// <list type="bullet">
+		/// <item>The discriminator of a derived type is its simple name, without the generic arity suffix: <c>CartCreated</c>, or <c>Derived</c> for <c>Derived&lt;T&gt;</c>.</item>
+		/// <item>A derived type that is itself <c>closed</c> is replaced by its own derived types, recursively.</item>
+		/// <item>A generic definition is closed over the type arguments of the base type.</item>
+		/// </list>
+		/// </remarks>
+		/// <exception cref="InvalidOperationException">If <paramref name="root"/> is not closed or has no derived type, if a derived type cannot be bound to the type arguments of its base, or if two derived types have the same simple name.</exception>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		internal static List<KeyValuePair<Type, object?>> InferClosedTypeDerivedTypes(Type root, out HashSet<Type>? intermediates)
+		{
+			var direct = GetClosedTypeDerivedTypes(root);
+			if (direct is null)
+			{
+				throw new InvalidOperationException($"The type '{root.GetFriendlyName()}' enables JsonPolymorphicAttribute.InferClosedTypePolymorphism but is not a closed type, so no derived types can be inferred. Declare the type 'closed' or register its derived types using JsonDerivedTypeAttribute.");
+			}
+
+			var res = new List<KeyValuePair<Type, object?>>();
+			var names = new HashSet<string>(StringComparer.Ordinal);
+			HashSet<Type>? nestedClosedTypes = null;
+			Walk(root, direct);
+
+			if (res.Count == 0)
+			{
+				throw new InvalidOperationException($"Polymorphic configuration for type '{root.GetFriendlyName()}' should specify at least one derived type.");
+			}
+
+			intermediates = nestedClosedTypes;
+			return res;
+
+			void Walk(Type closedType, Type[] derivedTypes)
+			{
+				foreach (var declared in derivedTypes)
+				{
+					var derived = BindClosedTypeDerivedType(declared, closedType, root);
+
+					if (GetClosedTypeDerivedTypes(derived) is { } nested)
+					{ // a nested closed hierarchy contributes its own derived types, but not itself
+						(nestedClosedTypes ??= [ ]).Add(derived);
+						Walk(derived, nested);
+						continue;
+					}
+
+					var name = derived.Name;
+					int p = name.IndexOf('`');
+					if (p >= 0) name = name.Substring(0, p);
+
+					if (!names.Add(name))
+					{
+						throw new InvalidOperationException($"The polymorphic type '{root.GetFriendlyName()}' has already specified a type discriminator '{name}'. Two derived types of a closed hierarchy have the same simple name: register the derived types with explicit discriminators using JsonDerivedTypeAttribute.");
+					}
+					res.Add(new(derived, name));
+				}
+			}
+		}
+
+		/// <summary>Returns the runtime type of a derived type listed by <c>[IsClosedTypeAttribute]</c>, for a given constructed base type</summary>
+		/// <param name="declared">The derived type, as listed by the attribute (a generic definition is possible)</param>
+		/// <param name="baseType">The closed base type, with its actual type arguments</param>
+		/// <param name="root">The root of the polymorphic hierarchy, for the error messages</param>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		private static Type BindClosedTypeDerivedType(Type declared, Type baseType, Type root)
+		{
+			if (declared.IsGenericTypeDefinition)
+			{
+				// the derived type derives directly from the closed type: unify its base specification with the actual base type
+				var spec = declared.BaseType;
+				var bindings = new Type?[declared.GetGenericArguments().Length];
+				if (spec is null || !baseType.IsConstructedGenericType || !spec.IsGenericType || spec.GetGenericTypeDefinition() != baseType.GetGenericTypeDefinition() || !TryUnify(spec, baseType, bindings) || Array.IndexOf(bindings, null) >= 0)
+				{
+					throw new InvalidOperationException($"The open generic derived type '{declared.GetFriendlyName()}' could not be resolved for the polymorphic base type '{baseType.GetFriendlyName()}': the base type's arguments do not match the derived type's base specification.");
+				}
+
+				try
+				{
+					declared = declared.MakeGenericType(bindings!);
+				}
+				catch (ArgumentException e)
+				{ // a generic constraint of the derived type is not satisfied
+					throw new InvalidOperationException($"The open generic derived type '{declared.GetFriendlyName()}' could not be resolved for the polymorphic base type '{baseType.GetFriendlyName()}': {e.Message}", e);
+				}
+			}
+
+			if (!baseType.IsAssignableFrom(declared))
+			{ // ex: 'sealed class G2 : G<int>' is listed by 'closed class G<T>', but is not a derived type of G<string>
+				throw new InvalidOperationException($"Specified type '{declared.GetFriendlyName()}' is not a supported derived type for the polymorphic type '{root.GetFriendlyName()}'.");
+			}
+
+			return declared;
+
+			static bool TryUnify(Type pattern, Type actual, Type?[] bindings)
+			{
+				if (pattern.IsGenericParameter)
+				{
+					ref var slot = ref bindings[pattern.GenericParameterPosition];
+					if (slot is null)
+					{
+						slot = actual;
+						return true;
+					}
+					return slot == actual;
+				}
+
+				if (pattern.IsArray)
+				{
+					return actual.IsArray
+						&& pattern.GetArrayRank() == actual.GetArrayRank()
+						&& TryUnify(pattern.GetElementType()!, actual.GetElementType()!, bindings);
+				}
+
+				if (pattern.IsGenericType && pattern.ContainsGenericParameters)
+				{
+					if (!actual.IsGenericType || pattern.GetGenericTypeDefinition() != actual.GetGenericTypeDefinition())
+					{
+						return false;
+					}
+					var patternArgs = pattern.GetGenericArguments();
+					var actualArgs = actual.GetGenericArguments();
+					for (int i = 0; i < patternArgs.Length; i++)
+					{
+						if (!TryUnify(patternArgs[i], actualArgs[i], bindings)) return false;
+					}
+					return true;
+				}
+
+				return pattern == actual;
+			}
+		}
+
+		/// <summary>Lists the derived types of the root of a polymorphic hierarchy, with their type discriminators</summary>
+		/// <param name="parent">The type that carries <c>[JsonPolymorphic]</c></param>
+		/// <param name="explicitTypes">The derived types registered with <c>[JsonDerivedType]</c> on <paramref name="parent"/></param>
+		/// <param name="inferClosedTypes">The value of <c>JsonPolymorphicAttribute.InferClosedTypePolymorphism</c> on <paramref name="parent"/>, or <see langword="null"/> if the attribute does not set it</param>
+		/// <param name="intermediates">Receives the nested closed classes of an inferred hierarchy, or <see langword="null"/></param>
+		/// <returns>The derived types with their discriminators, or <see langword="null"/> if the hierarchy is not polymorphic.</returns>
+		/// <remarks>
+		/// <para>The rules are the ones of System.Text.Json:</para>
+		/// <list type="bullet">
+		/// <item>Explicit registrations replace the inferred list.</item>
+		/// <item>The opt-in on a type that is not closed throws, even when explicit registrations exist.</item>
+		/// <item><c>InferClosedTypePolymorphism = false</c> with no explicit registration turns polymorphism off for the hierarchy.</item>
+		/// </list>
+		/// </remarks>
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		[RequiresDynamicCode(AotMessages.RequiresDynamicCode)]
+		private static List<KeyValuePair<Type, object?>>? GetPolymorphicDerivedTypes(Type parent, List<KeyValuePair<Type, object?>> explicitTypes, bool? inferClosedTypes, out HashSet<Type>? intermediates)
+		{
+			intermediates = null;
+			if (inferClosedTypes != true)
+			{
+				return inferClosedTypes == false && explicitTypes.Count == 0 ? null : explicitTypes;
+			}
+
+			if (explicitTypes.Count > 0)
+			{
+				if (GetClosedTypeDerivedTypes(parent) is null)
+				{
+					throw new InvalidOperationException($"The type '{parent.GetFriendlyName()}' enables JsonPolymorphicAttribute.InferClosedTypePolymorphism but is not a closed type, so no derived types can be inferred. Declare the type 'closed' or register its derived types using JsonDerivedTypeAttribute.");
+				}
+				return explicitTypes;
+			}
+
+			return InferClosedTypeDerivedTypes(parent, out intermediates);
+		}
+
+		/// <summary>Reads <c>JsonPolymorphicAttribute.InferClosedTypePolymorphism</c> by name</summary>
+		/// <param name="parent">The type that carries <c>[JsonPolymorphic]</c></param>
+		/// <returns>The value set on the attribute, or <see langword="null"/> if the attribute does not set it.</returns>
+		/// <remarks>The property exists in System.Text.Json 11 and later. An application that targets net8.0, net10.0 or .NET Framework can still reference that version of the package, so the property is read from the attribute data instead of being bound at compile time.</remarks>
+		private static bool? GetInferClosedTypePolymorphism(Type parent)
+		{
+			foreach (var attr in parent.GetCustomAttributesData())
+			{
+				if (attr.AttributeType.FullName != "System.Text.Json.Serialization.JsonPolymorphicAttribute") continue;
+
+				foreach (var arg in attr.NamedArguments)
+				{
+					if (arg.MemberName == "InferClosedTypePolymorphism" && arg.TypedValue.Value is bool value)
+					{
+						return value;
+					}
+				}
+			}
+			return null;
+		}
+
 #if !NETSTANDARD2_0
 		// System.Text.Json interop is disabled on the netstandard2.0 build: [JsonPolymorphic]/[JsonDerivedType] on consumer DTOs are not recognized there
 		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
@@ -2244,6 +2469,17 @@ namespace SnowBank.Data.Json
 
 			parent = null;
 			return false;
+		}
+
+		[RequiresUnreferencedCode("This uses reflection over the target type; use a [CrystalJsonConverter] source-generated converter for trimming or AoT.")]
+		private static List<KeyValuePair<Type, object?>> GetJsonDerivedTypes(Type parent)
+		{
+			var res = new List<KeyValuePair<Type, object?>>();
+			foreach (var attr in parent.GetCustomAttributes<System.Text.Json.Serialization.JsonDerivedTypeAttribute>(inherit: false))
+			{
+				res.Add(new(attr.DerivedType, attr.TypeDiscriminator));
+			}
+			return res;
 		}
 #else
 		// the netstandard2.0 build does not reference System.Text.Json: recognize [JsonPolymorphic]/[JsonDerivedType]
@@ -2323,53 +2559,29 @@ namespace SnowBank.Data.Json
 
 			// look for polymorphic types (either on the type itself or one of its parent)
 #if !NETSTANDARD2_0
-			if (TryFindJsonPolymorphicAttribute(type, out var polymorphic, out var parent))
-			{
-				typeDiscriminatorProperty = new(polymorphic.TypeDiscriminatorPropertyName ?? "$type");
-
-				var derivedTypes = parent.GetCustomAttributes<System.Text.Json.Serialization.JsonDerivedTypeAttribute>(inherit: false);
-
-				if (type == parent)
-				{ // we are the top
-
-					// generate the type map
-					derivedTypeMap = new(derivedTypes.TryGetNonEnumeratedCount(out var count) ? count : 0, JsonValueComparer.Default);
-					foreach (var t in derivedTypes)
-					{
-						if (t.TypeDiscriminator == null) continue;
-						derivedTypeMap[JsonValue.FromValue(t.TypeDiscriminator)] = t.DerivedType;
-					}
-				}
-				else
-				{ // we are a derived type
-
-					// find our entry to extract the discriminator value
-					bool found = false;
-					foreach (var t in derivedTypes)
-					{
-						if (t.DerivedType == type)
-						{
-							if (t.TypeDiscriminator is not null)
-							{
-								Contract.Debug.Assert(t.TypeDiscriminator is string or int);
-								typeDiscriminatorValue = JsonValue.FromValue(t.TypeDiscriminator);
-							}
-							found = true;
-							break;
-						}
-					}
-
-					if (!found) throw new InvalidOperationException($"Cannot resolve intermediate type '{type.GetFriendlyName()}' in the polymorphic chain under '{parent.GetFriendlyName()}' because there is no JsonDerivedType attribute for this specific type.");
-					baseType = parent;
-				}
-			}
+			bool isPolymorphic = TryFindJsonPolymorphicAttribute(type, out var polymorphic, out var parent);
+			string? discriminatorName = polymorphic?.TypeDiscriminatorPropertyName;
 #else
-			// same logic as above, but reading the System.Text.Json attributes by name via reflection
-			if (TryFindJsonPolymorphicAttributeByName(type, out var discriminatorName, out var parent))
-			{
-				typeDiscriminatorProperty = new(discriminatorName ?? "$type");
+			// same logic, but reading the System.Text.Json attributes by name via reflection
+			bool isPolymorphic = TryFindJsonPolymorphicAttributeByName(type, out var discriminatorName, out var parent);
+#endif
+			// explicit [JsonDerivedType] registrations, or the derived types of a closed class for [JsonPolymorphic(InferClosedTypePolymorphism = true)]
+			HashSet<Type>? intermediates = null;
+			var derivedTypes = !isPolymorphic ? null : GetPolymorphicDerivedTypes(
+				parent!,
+#if !NETSTANDARD2_0
+				GetJsonDerivedTypes(parent!),
+#else
+				GetJsonDerivedTypesByName(parent!),
+#endif
+				GetInferClosedTypePolymorphism(parent!),
+				out intermediates
+			);
 
-				var derivedTypes = GetJsonDerivedTypesByName(parent);
+			if (derivedTypes is not null)
+			{
+				Contract.Debug.Assert(parent != null);
+				typeDiscriminatorProperty = new(discriminatorName ?? "$type");
 
 				if (type == parent)
 				{ // we are the top
@@ -2401,11 +2613,15 @@ namespace SnowBank.Data.Json
 						}
 					}
 
-					if (!found) throw new InvalidOperationException($"Cannot resolve intermediate type '{type.GetFriendlyName()}' in the polymorphic chain under '{parent.GetFriendlyName()}' because there is no JsonDerivedType attribute for this specific type.");
+					// a nested closed class of an inferred hierarchy has no discriminator of its own: it is abstract, and a document
+					// read with this type as the declared type carries the discriminator of a derived type, which the top type maps
+					if (!found && intermediates?.Contains(type) != true)
+					{
+						throw new InvalidOperationException($"Cannot resolve intermediate type '{type.GetFriendlyName()}' in the polymorphic chain under '{parent.GetFriendlyName()}' because there is no JsonDerivedType attribute for this specific type.");
+					}
 					baseType = parent;
 				}
 			}
-#endif
 
 			// enumerate the members
 			var members = GetMembersFromReflection(type);
