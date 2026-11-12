@@ -35,6 +35,7 @@
     <Project Path="SnowBank.Networking.Http/SnowBank.Networking.Http.csproj" />
     <Project Path="SnowBank.Networking.PacketCapture/SnowBank.Networking.PacketCapture.csproj" />
     <Project Path="SnowBank.Serialization.Json.CodeGen/SnowBank.Serialization.Json.CodeGen.csproj" />
+    <Project Path="SnowBank.Serialization.Json.CodeGen.Roslyn4.12/SnowBank.Serialization.Json.CodeGen.Roslyn4.12.csproj" />
     <Project Path="SnowBank.SourceAnalysis/SnowBank.SourceAnalysis.csproj" />
     <Project Path="SnowBank.Shell/SnowBank.Shell.csproj" />
     <Project Path="SnowBank.Testing.Common/SnowBank.Testing.Common.csproj" />
@@ -44,6 +45,7 @@
   <Folder Name="/Core/Tests/">
     <Project Path="SnowBank.Analyzers.Tests/SnowBank.Analyzers.Tests.csproj" />
     <Project Path="SnowBank.Core.Tests/SnowBank.Core.Tests.csproj" />
+    <Project Path="SnowBank.Serialization.Json.CodeGen.Roslyn4.12.Tests/SnowBank.Serialization.Json.CodeGen.Roslyn4.12.Tests.csproj" />
     <Project Path="SnowBank.Serialization.Json.CodeGen.Tests/SnowBank.Serialization.Json.CodeGen.Tests.csproj" />
     <Project Path="SnowBank.Shell.Tests/SnowBank.Shell.Tests.csproj" />
   </Folder>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!-- The roslyn4.12 build of the JSON source generator, for the compilers that predate C# 15 closed classes (Roslyn 4.12 to 5.8).
+	     Same sources as SnowBank.Serialization.Json.CodeGen, whose package holds this assembly under analyzers/dotnet/roslyn4.12/cs. -->
+	<PropertyGroup>
+		<JsonCodeGenRoslynVersion>4.12</JsonCodeGenRoslynVersion>
+		<IsPackable>false</IsPackable>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+	</PropertyGroup>
+
+	<Import Project="..\SnowBank.Serialization.Json.CodeGen\SnowBank.Serialization.Json.CodeGen.Build.props" />
+
+	<ItemGroup>
+		<Compile Include="..\SnowBank.Serialization.Json.CodeGen\**\*.cs" LinkBase="CodeGen" />
+	</ItemGroup>
+
+</Project>

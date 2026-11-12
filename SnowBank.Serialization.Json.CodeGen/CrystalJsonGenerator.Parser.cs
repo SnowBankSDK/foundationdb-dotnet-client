@@ -1398,7 +1398,7 @@ namespace SnowBank.Serialization.Json.CodeGen
 					case bool b: return CSharpCodeBuilder.Constant(b);
 					case char c: return CSharpCodeBuilder.Constant(c);
 				}
-				string literal = SymbolDisplay.FormatPrimitive(value, quoteStrings: true, useHexadecimalNumbers: false);
+				string? literal = SymbolDisplay.FormatPrimitive(value, quoteStrings: true, useHexadecimalNumbers: false);
 				var underlying = parameter.Type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T, TypeArguments.Length: 1 } nullable ? nullable.TypeArguments[0] : parameter.Type;
 				bool needsCast = underlying.TypeKind == TypeKind.Enum || underlying.SpecialType is SpecialType.System_Single or SpecialType.System_Decimal;
 				return needsCast ? $"({underlying.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}) {literal}" : literal;
@@ -2724,34 +2724,18 @@ namespace SnowBank.Serialization.Json.CodeGen
 					member.ToDisplayString(), declared.WithNullableAnnotation(NullableAnnotation.None).ToDisplayString(), declared.TypeKind == TypeKind.Interface ? "interface" : "abstract class");
 			}
 
-			/// <summary><c>ITypeSymbol.IsClosed</c>, looked up by name on the running compiler</summary>
-			/// <remarks>The property exists in the compilers that know C# 15 (Microsoft.CodeAnalysis 5.9, and the .NET 11 SDK compiler). This generator compiles against an older Roslyn, which keeps the minimum SDK of its consumers low, so the property is looked up at run time, and is <see langword="null"/> on an older compiler.</remarks>
-			private static readonly System.Reflection.PropertyInfo? IsClosedProperty = typeof(ITypeSymbol).GetProperty("IsClosed");
-
+#if ROSLYN5_9_OR_GREATER
 			/// <summary>Tests whether a type is a C# 15 <c>closed</c> class</summary>
-			/// <remarks>
-			/// <para>The compiler does not expose <c>[IsClosedTypeAttribute]</c> through <see cref="ISymbol.GetAttributes"/>, on a type declared in source or in a referenced assembly alike, so the attribute cannot be matched by name here.</para>
-			/// <para>On a compiler without <c>ITypeSymbol.IsClosed</c>, the <c>closed</c> modifier of a source declaration is the fallback. A type from a referenced assembly then reads as not closed.</para>
-			/// </remarks>
-			private static bool IsClosedType(INamedTypeSymbol type)
-			{
-				if (IsClosedProperty?.GetValue(type) is bool isClosed)
-				{
-					return isClosed;
-				}
-
-				foreach (var reference in type.DeclaringSyntaxReferences)
-				{
-					if (reference.GetSyntax() is TypeDeclarationSyntax declaration)
-					{
-						foreach (var modifier in declaration.Modifiers)
-						{
-							if (modifier.Text == "closed") return true;
-						}
-					}
-				}
-				return false;
-			}
+			/// <remarks>The compiler does not expose <c>[IsClosedTypeAttribute]</c> through <see cref="ISymbol.GetAttributes"/>, on a type declared in source or in a referenced assembly alike, so <see cref="ITypeSymbol.IsClosed"/> is the only test.</remarks>
+			// ITypeSymbol.IsClosed is experimental in Roslyn 5.9 (RSEXPERIMENTAL006), and it is the only way to tell a closed class
+#pragma warning disable RSEXPERIMENTAL006
+			private static bool IsClosedType(INamedTypeSymbol type) => type.IsClosed;
+#pragma warning restore RSEXPERIMENTAL006
+#else
+			/// <summary>Tests whether a type is a C# 15 <c>closed</c> class</summary>
+			/// <remarks>This build is for the compilers that predate closed classes (before Roslyn 5.9), so every type reads as not closed.</remarks>
+			private static bool IsClosedType(INamedTypeSymbol type) => false;
+#endif
 
 			/// <summary>Lists the derived types of a <c>closed</c> class with their discriminators, for <c>[JsonPolymorphic(InferClosedTypePolymorphism = true)]</c></summary>
 			/// <param name="root">The type that carries the attribute</param>
@@ -2778,7 +2762,11 @@ namespace SnowBank.Serialization.Json.CodeGen
 						new(
 							"CJSON0028",
 							"InferClosedTypePolymorphism requires a closed type",
+#if ROSLYN5_9_OR_GREATER
 							"The type '{0}' enables JsonPolymorphicAttribute.InferClosedTypePolymorphism but is not a closed type, so no derived types can be inferred. Declare the type 'closed' or register its derived types using JsonDerivedTypeAttribute.",
+#else
+							"The type '{0}' enables JsonPolymorphicAttribute.InferClosedTypePolymorphism, but the compiler predates closed classes, so no derived types can be inferred. Build with the .NET 11 SDK or later, or register the derived types using JsonDerivedTypeAttribute.",
+#endif
 							"SnowBank.Serialization.Json.CodeGen",
 							DiagnosticSeverity.Error,
 							isEnabledByDefault: true

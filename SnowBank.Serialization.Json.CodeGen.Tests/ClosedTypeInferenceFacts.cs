@@ -87,6 +87,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 
 		private static List<string> IdsOf(List<Diagnostic> diagnostics) => diagnostics.Select(static d => d.Id).Where(static id => id is "CJSON0028" or "CJSON0029" or "CJSON0030").ToList();
 
+#if ROSLYN5_9_OR_GREATER
 		[Test]
 		public void Test_Closed_Root_Infers_Derived_Types_With_Simple_Names()
 		{
@@ -171,6 +172,8 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(container.IncludedTypes.Any(static t => t.Name == "Plain"), Is.False, "nothing pulls the closed base of PlainLeaf into the container");
 		}
 
+#endif
+
 		[Test]
 		public void Test_OptIn_On_A_Class_That_Is_Not_Closed_Is_Reported()
 		{
@@ -184,6 +187,7 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(diagnostics.Single(static d => d.Id == "CJSON0028").Severity, Is.EqualTo(DiagnosticSeverity.Error));
 		}
 
+#if ROSLYN5_9_OR_GREATER
 		[Test]
 		public void Test_OptIn_With_Explicit_Derived_Types_Is_Reported_And_Uses_The_Explicit_List()
 		{
@@ -304,6 +308,40 @@ namespace SnowBank.Serialization.Json.CodeGen.Tests
 			Assert.That(errors, Is.Empty);
 			Assert.That(output.SyntaxTrees.Count(), Is.GreaterThan(1), "control: the generator emitted code");
 		}
+
+#else
+
+		[Test]
+		public void Test_OptIn_On_A_Closed_Class_Is_Reported_By_The_Build_For_Older_Compilers()
+		{
+			// the roslyn4.12 build is for the compilers that predate closed classes: no derived type is inferred
+			var (container, diagnostics) = Run(Probe("""
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					public closed class CartEvent { public string? CartId { get; set; } }
+					public sealed class CartCreated : CartEvent { public string? Owner { get; set; } }
+				""", "CartEvent"));
+
+			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0028" }));
+			var diagnostic = diagnostics.Single(static d => d.Id == "CJSON0028");
+			Assert.That(diagnostic.Severity, Is.EqualTo(DiagnosticSeverity.Error));
+			Assert.That(diagnostic.GetMessage(), Does.Contain("predates closed classes"));
+			Assert.That(container.IncludedTypes.Any(static t => t.Name == "CartCreated"), Is.False, "no derived type is inferred");
+		}
+
+		[Test]
+		public void Test_OptIn_With_Explicit_Derived_Types_Is_Reported_By_The_Build_For_Older_Compilers()
+		{
+			var (_, diagnostics) = Run(Probe("""
+					[JsonPolymorphic(InferClosedTypePolymorphism = true)]
+					[JsonDerivedType(typeof(Circle), "circle")]
+					public closed class Shape { }
+					public sealed class Circle : Shape { }
+				""", "Shape"));
+
+			Assert.That(IdsOf(diagnostics), Is.EqualTo(new[] { "CJSON0028" }));
+		}
+
+#endif
 
 	}
 

@@ -1,0 +1,57 @@
+<Project>
+
+	<!-- Settings shared by the two builds of the JSON source generator. The package holds both. At build time, the one that runs
+	     sits under the highest analyzers/dotnet/roslynX.Y folder that is not newer than the running compiler:
+	     - SnowBank.Serialization.Json.CodeGen (roslyn5.9): Microsoft.CodeAnalysis 5.9 and ROSLYN5_9_OR_GREATER, with inference of the derived types of C# 15 closed classes.
+	     - SnowBank.Serialization.Json.CodeGen.Roslyn4.12 (roslyn4.12): Microsoft.CodeAnalysis 4.12, for the compilers that predate closed classes.
+	     Each project sets JsonCodeGenRoslynVersion before the import of this file. -->
+
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<LangVersion>preview</LangVersion>
+		<Nullable>enable</Nullable>
+		<AssemblyName>SnowBank.Serialization.Json.CodeGen</AssemblyName>
+		<RootNamespace>SnowBank.Serialization.Json.CodeGen</RootNamespace>
+
+		<IsRoslynComponent>true</IsRoslynComponent>
+		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+
+		<CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
+		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+		<CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(JsonCodeGenRoslynVersion)' == '5.9'">
+		<JsonCodeGenRoslynPackageVersion>5.9.0</JsonCodeGenRoslynPackageVersion>
+		<JsonCodeGenAnalyzersPackageVersion>5.9.0</JsonCodeGenAnalyzersPackageVersion>
+		<DefineConstants>$(DefineConstants);ROSLYN5_9_OR_GREATER</DefineConstants>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(JsonCodeGenRoslynVersion)' == '4.12'">
+		<JsonCodeGenRoslynPackageVersion>4.12.0</JsonCodeGenRoslynPackageVersion>
+		<JsonCodeGenAnalyzersPackageVersion>3.11.0</JsonCodeGenAnalyzersPackageVersion>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="$(JsonCodeGenAnalyzersPackageVersion)" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(JsonCodeGenRoslynPackageVersion)" PrivateAssets="all" />
+		<PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.402" PrivateAssets="all" />
+	</ItemGroup>
+
+	<!-- Shared Roslyn helper source (CodeBuilder, TypeRef, RoslynExtensions, ...) consumed BY SOURCE: a generator cannot load a separate helper dll, so these files compile into this analyzer assembly. See SnowBank.SourceAnalysis. -->
+	<ItemGroup>
+		<Compile Include="$(MSBuildThisFileDirectory)..\SnowBank.SourceAnalysis\**\*.cs" Exclude="$(MSBuildThisFileDirectory)..\SnowBank.SourceAnalysis\GlobalUsings.cs" LinkBase="SourceAnalysis" />
+	</ItemGroup>
+
+	<PropertyGroup>
+		<!-- These two help work around NU5017 when it attempts to generate a .snupkg -->
+		<DebugType>embedded</DebugType>
+		<IncludeSymbols>false</IncludeSymbols>
+	</PropertyGroup>
+
+	<Target Name="CheckJsonCodeGenRoslynVersion" BeforeTargets="CoreCompile" Condition="'$(JsonCodeGenRoslynPackageVersion)' == ''">
+		<Error Text="JsonCodeGenRoslynVersion must be 5.9 or 4.12 (found '$(JsonCodeGenRoslynVersion)')" />
+	</Target>
+
+</Project>

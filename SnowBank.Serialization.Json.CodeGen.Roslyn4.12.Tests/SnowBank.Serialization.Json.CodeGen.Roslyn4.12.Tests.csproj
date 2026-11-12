@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!-- The facts of SnowBank.Serialization.Json.CodeGen.Tests, run against the roslyn4.12 build of the generator. The facts that
+	     need closed-class detection compile only when ROSLYN5_9_OR_GREATER is defined, and it is not defined here. -->
+	<PropertyGroup>
+		<!-- Microsoft.Testing.Platform runner (like every other test project): the assembly is a self-contained
+		     executable, run directly with `dotnet <dll>` instead of `dotnet test` / classic VSTest -->
+		<OutputType>Exe</OutputType>
+		<TargetFrameworks>net10.0</TargetFrameworks>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<RootNamespace>SnowBank.Serialization.Json.CodeGen.Tests</RootNamespace>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+	</PropertyGroup>
+
+	<Import Project="..\Common\VersionInfo.props" />
+
+	<PropertyGroup>
+		<IsTestProject>true</IsTestProject>
+		<EnableNUnitRunner>true</EnableNUnitRunner>
+		<IsPackable>false</IsPackable>
+		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="..\SnowBank.Serialization.Json.CodeGen.Tests\**\*.cs" LinkBase="Facts" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- in-process compilation harness (GeneratedCodeLanguageFloorFacts drives the generator through CSharpGeneratorDriver) -->
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" />
+		<PackageReference Include="Microsoft.Testing.Extensions.Telemetry" />
+		<PackageReference Include="Microsoft.Testing.Platform.MSBuild" />
+		<PackageReference Include="Microsoft.Testing.Extensions.VSTestBridge" />
+		<PackageReference Include="NUnit" />
+		<PackageReference Include="NUnit.Analyzers">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="NUnit3TestAdapter">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\SnowBank.Testing.Common\SnowBank.Testing.Common.csproj" />
+		<ProjectReference Include="..\SnowBank.Core\SnowBank.Core.csproj" />
+		<!-- both the analyzer (generates code for THIS project) and a plain reference (the facts instantiate the generator in-process) -->
+		<ProjectReference Include="..\SnowBank.Serialization.Json.CodeGen.Roslyn4.12\SnowBank.Serialization.Json.CodeGen.Roslyn4.12.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="true" />
+	</ItemGroup>
+
+</Project>

@@ -1,22 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+	<!-- The roslyn5.9 build of the generator, and the project that packs both builds. In-repo projects reference this one. -->
 	<PropertyGroup>
-		<TargetFramework>netstandard2.0</TargetFramework>
-		<LangVersion>preview</LangVersion>
-		<Nullable>enable</Nullable>
-		
-		<IsRoslynComponent>true</IsRoslynComponent>
-		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
-		<AnalyzerRoslynVersion>4.4</AnalyzerRoslynVersion>
-		<RoslynApiVersion>$(MicrosoftCodeAnalysisVersion_4_4)</RoslynApiVersion>
-		<DefineConstants>$(DefineConstants);ROSLYN4_0_OR_GREATER;ROSLYN4_4_OR_GREATER</DefineConstants>
-		
-		<CentralPackageVersionOverrideEnabled>true</CentralPackageVersionOverrideEnabled>
-		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-		<CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+		<JsonCodeGenRoslynVersion>5.9</JsonCodeGenRoslynVersion>
 	</PropertyGroup>
 
-	<Import Project="..\Common\VersionInfo.props" />
+	<Import Project="SnowBank.Serialization.Json.CodeGen.Build.props" />
 
 	<PropertyGroup>
 		<AssemblyTitle>SnowBank JSON Code Generator</AssemblyTitle>
@@ -31,33 +20,33 @@
 		<None Include="./README.md" Pack="true" Visible="false" PackagePath="\" />
 	</ItemGroup>
 
+	<!-- The roslyn4.12 build, packed next to this one -->
 	<ItemGroup>
-		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
-		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" PrivateAssets="all" />
-		<PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.402" PrivateAssets="all" />
+		<ProjectReference Include="..\SnowBank.Serialization.Json.CodeGen.Roslyn4.12\SnowBank.Serialization.Json.CodeGen.Roslyn4.12.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
 	</ItemGroup>
 
-	<!-- Shared Roslyn helper source (CodeBuilder, TypeRef, RoslynExtensions, ...) consumed BY SOURCE: a generator cannot load a separate helper dll, so these files compile into this analyzer assembly. See SnowBank.SourceAnalysis. -->
-	<ItemGroup>
-		<Compile Include="..\SnowBank.SourceAnalysis\**\*.cs" Exclude="..\SnowBank.SourceAnalysis\GlobalUsings.cs" LinkBase="SourceAnalysis" />
-	</ItemGroup>
-
-	<!-- For redistributing a source generator/analyzer as a nuget package, we need to manually change a few things: -->
-	<!-- 1) We need to make sure the dll is place in the 'analyzers/dotnet/cs' folder inside the package, or it won't be recognized as an Analyzer by the IDE-->
+	<!-- For redistributing a source generator as a nuget package, we need to manually change a few things: -->
+	<!-- 1) Each build goes under 'analyzers/dotnet/roslynX.Y/cs'. The one that runs has the highest X.Y that is not newer than the
+	        running compiler. Below Roslyn 4.12 none runs, and the build reports no CS8032. The unversioned 'analyzers/dotnet/cs'
+	        stays empty: an assembly there would run on every compiler, next to the versioned build. -->
 	<!-- 2) We need to set IncludeBuildOutput to false, otherwise it will also copy the dll in the 'lib/' folder, even though it is not supposed to be published alongside the consuming application.-->
-	<!-- 3) Chant a dark magic spell to work around NU5017 and NU5128 -->
 	<PropertyGroup>
 		<!-- Do not include the dll in the 'lib/' folder -->
 		<IncludeBuildOutput>false</IncludeBuildOutput>
 		<!-- Do not include the Roslyn dependencies either -->
 		<SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
-		<!-- These two help work around NU5017 when it attempts to generate a .snupkg -->
-		<DebugType>embedded</DebugType>
-		<IncludeSymbols>false</IncludeSymbols>
 	</PropertyGroup>
 	<ItemGroup>
-		<!-- Manually place the assembly in the 'analyzers/dotnet/cs' folder, so that it is recognized as a valid Analyzer -->
-		<None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" />
+		<None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/roslyn5.9/cs" Visible="false" />
 	</ItemGroup>
+
+	<Target Name="AddRoslyn412GeneratorToPackage" BeforeTargets="_GetPackageFiles">
+		<MSBuild Projects="..\SnowBank.Serialization.Json.CodeGen.Roslyn4.12\SnowBank.Serialization.Json.CodeGen.Roslyn4.12.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+			<Output TaskParameter="TargetOutputs" ItemName="_JsonCodeGenRoslyn412Assembly" />
+		</MSBuild>
+		<ItemGroup>
+			<None Include="@(_JsonCodeGenRoslyn412Assembly)" Pack="true" PackagePath="analyzers/dotnet/roslyn4.12/cs" Visible="false" />
+		</ItemGroup>
+	</Target>
 
 </Project>
