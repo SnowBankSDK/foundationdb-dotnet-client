@@ -1,5 +1,5 @@
 {
-	"latest": "7.4.8",
+	"latest": "7.4.9",
 	"versions": {
 		"8.0.0": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/8.0.0",
@@ -64,6 +64,72 @@
 					"rid": "osx-x64",
 					"url": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/download/8.0.0/fdbcli.x86_64",
 					"checksum": "c1cd91ad00b4d66c85d7821c304e142f5d867a3142e11fa1161a92e5052bbf5b"
+				}
+			]
+		},
+		"7.4.9": {
+			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.4.9",
+			"draft": true,
+			"files": [
+				{
+					"name": "fdb_c.dll",
+					"rid": "win-x64",
+					"url": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/download/7.4.9/fdb_c.dll",
+					"checksum": "4e99719faa81f1d775e9085cbaa008dc6dd9dcb909ac9a8996ca6216faa547aa"
+				},
+				{
+					"name": "fdbcli.exe",
+					"rid": "win-x64",
+					"url": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/download/7.4.9/fdbcli.exe",
+					"checksum": "5d5200abbb12d698ea8deaf1a539c02150207dc455b0070bd5e22562890421e6"
+				},
+				{
+					"name": "libfdb_c.so",
+					"rid": "linux-x64",
+					"url": "https://github.com/apple/foundationdb/releases/download/7.4.9/libfdb_c.x86_64.so",
+					"checksum": "eae9e3fbaba97fbb9286b0ec3b9978702fb8fd0107a9a54dcf8cbaf0412bb2d9"
+				},
+				{
+					"name": "fdbcli",
+					"rid": "linux-x64",
+					"url": "https://github.com/apple/foundationdb/releases/download/7.4.9/fdbcli.x86_64",
+					"checksum": "04fe1236c805229f677df32f3222eca878481d0af0ea46e36e378b798834d60a"
+				},
+				{
+					"name": "libfdb_c.so",
+					"rid": "linux-arm64",
+					"url": "https://github.com/apple/foundationdb/releases/download/7.4.9/libfdb_c.aarch64.so",
+					"checksum": "b5553bed70865a2fb4312748f17be26108c926b9783e0bc731a478f8b8755bcf"
+				},
+				{
+					"name": "fdbcli",
+					"rid": "linux-arm64",
+					"url": "https://github.com/apple/foundationdb/releases/download/7.4.9/fdbcli.aarch64",
+					"checksum": "060de06a44a6ae3cb50961a48c1c3f64579164a3e3a93d00b9cda1fe2a50d5b8"
+				},
+				{
+					"name": "libfdb_c.dylib",
+					"rid": "osx-arm64",
+					"url": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/download/7.4.9/libfdb_c.arm64.dylib",
+					"checksum": "0f8abe0e88b5a36059a031a0db33f614317a6b823fe650dbd78f0f0528b28e05"
+				},
+				{
+					"name": "fdbcli",
+					"rid": "osx-arm64",
+					"url": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/download/7.4.9/fdbcli.arm64",
+					"checksum": "6962d033e74a7de86038a35c709b563e188bed04e7ea2c2d004c926502a2f3dd"
+				},
+				{
+					"name": "libfdb_c.dylib",
+					"rid": "osx-x64",
+					"url": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/download/7.4.9/libfdb_c.x86_64.dylib",
+					"checksum": "21889e16544bda49ab0a26ff8a2cb93b9b0a19e61051df8d42faaa262079fdbc"
+				},
+				{
+					"name": "fdbcli",
+					"rid": "osx-x64",
+					"url": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/download/7.4.9/fdbcli.x86_64",
+					"checksum": "81aaae5033f7eabc623ff2bd98d7fcffbb0ff89d97ecf1d7da1f283c933a9edd"
 				}
 			]
 		},
