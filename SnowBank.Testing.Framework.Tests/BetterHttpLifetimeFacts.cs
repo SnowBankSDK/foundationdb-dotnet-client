@@ -286,6 +286,40 @@ namespace SnowBank.Testing.Framework.Tests
 		}
 
 		[Test]
+		public async Task Test_Cancelling_A_Request_Closes_The_Socket_While_The_Server_Withholds_Its_Response()
+		{
+			// A real loopback server reads the request and never answers. Cancelling the request makes the HttpClient dispose its
+			// connection stream, and that stream must close the socket: otherwise the pending read never completes and the
+			// cancelled call never returns. An IP address goes through the single-endpoint connect path.
+			using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+			listener.Start();
+			var port = ((IPEndPoint) listener.LocalEndpoint).Port;
+
+			var serverSawClose = Task.Run(async () =>
+			{
+				using var accepted = await listener.AcceptTcpClientAsync(this.Cancellation);
+				var stream = accepted.GetStream();
+				var buffer = new byte[4096];
+				// read until the client closes the connection (0 bytes), without ever writing a response
+				while (await stream.ReadAsync(buffer, this.Cancellation) > 0) { }
+			}, this.Cancellation);
+
+			using var handler = new NetworkMap().CreateTransportHandler(new BetterHttpClientOptions());
+			using var client = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+
+			using var cts = CancellationTokenSource.CreateLinkedTokenSource(this.Cancellation);
+			cts.CancelAfter(TimeSpan.FromMilliseconds(250));
+			var call = client.GetAsync(new Uri($"http://127.0.0.1:{port}/withheld"), cts.Token);
+
+			var finished = await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(10), this.Cancellation));
+			Assert.That(finished, Is.SameAs(call), "the cancelled request must return while the server still withholds its response");
+			Assert.That(async () => await call, Throws.InstanceOf<OperationCanceledException>(), "the request must end as cancelled");
+
+			finished = await Task.WhenAny(serverSawClose, Task.Delay(TimeSpan.FromSeconds(10), this.Cancellation));
+			Assert.That(finished, Is.SameAs(serverSawClose), "the server must see the client close the socket");
+		}
+
+		[Test]
 		public async Task Test_Remap_Reroutes_A_Live_Client_To_A_Different_Node()
 		{
 			// two distinct backends behind one public VIP; the origin (CLIENT) only lends its map for resolution.

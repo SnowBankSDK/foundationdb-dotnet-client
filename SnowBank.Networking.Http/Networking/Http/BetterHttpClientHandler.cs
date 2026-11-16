@@ -579,7 +579,8 @@ namespace SnowBank.Networking.Http
 				sw.Stop();
 				this.Network.RecordEndpointConnectionAttempt(endpoint, sw.Elapsed, null, hostName, GetLocalEndpointAddress(socket));
 				context?.Options.Hooks?.OnSocketConnected(context, socket);
-				return new NetworkStream(socket);
+				// the stream owns the socket: HttpClient aborts a request by disposing the stream, and only closing the socket ends a pending read
+				return new NetworkStream(socket, ownsSocket: true);
 			}
 			catch (Exception e)
 			{
