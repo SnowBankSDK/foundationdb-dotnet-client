@@ -40,7 +40,7 @@ namespace Aspire.Hosting
 	{
 
 		/// <summary>Tag for the latest v7.4 docker image</summary>
-		public static readonly Version LatestVersion74 = new Version(7, 4, 9);
+		public static readonly Version LatestVersion74 = new Version(7, 4, 10);
 
 		/// <summary>Tag for the latest v7.3 docker image</summary>
 		public static readonly Version LatestVersion73 = new Version(7, 3, 80);
