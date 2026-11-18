@@ -158,7 +158,7 @@ namespace FoundationDB.Client
 					OperationSize.Record(
 						size,
 						new("operation.retries", context.Retries),
-						new("operation.status", FdbError.Success)
+						new("operation.status", error)
 					);
 				}
 			}
@@ -167,15 +167,7 @@ namespace FoundationDB.Client
 
 		internal static void ReportOperationCommitted(IFdbTransaction trans, FdbOperationContext context)
 		{
-			if (OperationsCompleted.Enabled)
-			{
-				OperationsCompleted.Add(
-					1,
-					new("operation.retries", context.Retries),
-					new("operation.status", FdbError.Success)
-				);
-			}
-
+			// a committed operation is counted once, at the end of its attempt (ReportOperationCompleted)
 			if (OperationSize.Enabled)
 			{
 				long size = trans.Size;
