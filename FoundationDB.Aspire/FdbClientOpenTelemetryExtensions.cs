@@ -40,19 +40,25 @@ namespace OpenTelemetry.Trace
 			return provider;
 		}
 
+		// Every exported point carries a count per bucket, and each bucket can hold one exemplar, so a backend stores more for each bucket.
+		// A transaction is limited to 5 seconds and 10 MB, so the last bounds stop there.
+		private static readonly double[] DurationBoundaries = [ 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.5, 1, 5 ];
+
+		private static readonly double[] SizeBoundaries = [ 100, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 10_000_000 ];
+
 		/// <summary>Adds the FoundationDB source to the list of subscribed meters.</summary>
 		public static MeterProviderBuilder AddFoundationDbInstrumentation(this MeterProviderBuilder provider)
 		{
 			provider.AddMeter(FdbClientInstrumentation.MeterName)
 				.AddView(
 					"db.fdb.client.transactions.duration",
-					new ExplicitBucketHistogramConfiguration { Boundaries = [ 0, 0.001, 0.0025, 0.005, 0.0075, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 ], })
+					new ExplicitBucketHistogramConfiguration { Boundaries = DurationBoundaries, })
 				.AddView(
 					"db.fdb.client.operations.duration",
-					new ExplicitBucketHistogramConfiguration { Boundaries = [ 0, 0.001, 0.0025, 0.005, 0.0075, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 ], })
+					new ExplicitBucketHistogramConfiguration { Boundaries = DurationBoundaries, })
 				.AddView(
 					"db.fdb.client.operations.size",
-					new ExplicitBucketHistogramConfiguration { Boundaries = [ 0, 10, 20, 50, 100, 200, 500, 1_000, 2_000, 5_000, 10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000 ] })
+					new ExplicitBucketHistogramConfiguration { Boundaries = SizeBoundaries, })
 				;
 			return provider;
 		}
