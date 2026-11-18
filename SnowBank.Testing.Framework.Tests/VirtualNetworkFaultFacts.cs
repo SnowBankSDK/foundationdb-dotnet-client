@@ -29,6 +29,7 @@ namespace SnowBank.Testing.Framework.Tests
 	using System.IO;
 	using System.Net;
 	using System.Net.Sockets;
+	using System.Text;
 	using Microsoft.AspNetCore.Builder;
 	using Microsoft.AspNetCore.Http;
 	using NUnit.Framework;
@@ -190,6 +191,73 @@ namespace SnowBank.Testing.Framework.Tests
 					}
 				}
 			}, "severing the edge must abort the established stream");
+		}
+
+		[Test]
+		public async Task Test_An_Offline_Host_Delivers_Nothing_It_Writes_After_Going_Offline()
+		{
+			// the cut of a host runs one cancellation callback per connection: code woken by the first callback can still write
+			// on a connection whose own callback did not run yet, and those bytes must never reach the other end
+			var late = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+			var written = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+			var context = await MakeItSo(env => env.AddSimpleLan(lan =>
+			{
+				lan.WithMinimalWebHost("CLI", host => host.ConfigureApplication(_ => { }));
+				lan.WithMinimalWebHost("API", host =>
+				{
+					host.ConfigureApplication(app => app.MapGet("/stream", async (HttpContext ctx) =>
+					{
+						ctx.Response.ContentType = "text/plain";
+						await ctx.Response.WriteAsync("tick\n", ctx.RequestAborted);
+						await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+						await late.Task.WaitAsync(ctx.RequestAborted);
+						await ctx.Response.WriteAsync("late\n", ctx.RequestAborted);
+						await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+						written.TrySetResult();
+						await Task.Delay(Timeout.Infinite, ctx.RequestAborted);
+					}));
+				});
+			}));
+			var cli = context.GetWebHost("CLI");
+			var api = context.GetWebHost("API");
+
+			var map = (VirtualNetworkMap) cli.GetRequiredService<INetworkMap>();
+			using var client = new HttpClient(map.CreateTransportHandler(new BetterHttpClientOptions()), disposeHandler: false);
+			using var response = await client.GetAsync(api.GetUri("/stream"), HttpCompletionOption.ResponseHeadersRead, this.Cancellation);
+			await using var stream = await response.Content.ReadAsStreamAsync(this.Cancellation);
+			var buffer = new byte[256];
+			Assert.That(await stream.ReadAsync(buffer, this.Cancellation), Is.GreaterThan(0), "the stream delivers while the host is online");
+
+			// the client already waits for the next bytes, like the read loop of a duplex stream
+			var pending = stream.ReadAsync(buffer, this.Cancellation).AsTask();
+
+			// registered after the connection, so it runs before the callback that aborts the connection
+			var apiHost = ((VirtualNetworkMap) api.GetRequiredService<INetworkMap>()).Host;
+			using var registration = apiHost.OnlineToken.Register(() =>
+			{
+				late.TrySetResult();
+				written.Task.Wait(TimeSpan.FromSeconds(5));
+				((IAsyncResult) pending).AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(200));
+			});
+			api.SetOffline(true);
+			Assert.That(written.Task.IsCompleted, Is.True, "the server wrote after the host went offline");
+
+			var received = new StringBuilder();
+			try
+			{
+				int read = await pending;
+				received.Append(Encoding.UTF8.GetString(buffer, 0, read));
+				for (int i = 0; i < 100 && read > 0; i++)
+				{
+					read = await stream.ReadAsync(buffer, this.Cancellation);
+					received.Append(Encoding.UTF8.GetString(buffer, 0, read));
+				}
+			}
+			catch (Exception e) when (e is not AssertionException)
+			{ // the abort of the connection
+			}
+			Log($"received after the cut: '{received}'");
+			Assert.That(received.ToString(), Does.Not.Contain("late"), "bytes written after the host went offline never arrive");
 		}
 
 		[Test]

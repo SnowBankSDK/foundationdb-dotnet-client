@@ -296,7 +296,7 @@ namespace SnowBank.Networking
 					var reverseEdge = this.Map.Topology.GetOrCreateCutEdge(host.Id, this.Map.Host.Id);
 					if (request.Content is not null)
 					{
-						request.Content = new FaultGatedContent(request.Content, edge, this.Map.Topology);
+						request.Content = new FaultGatedContent(request.Content, edge, this.Map.Topology, this.Map.Host.OnlineToken, host.OnlineToken);
 					}
 
 					// `linked` registers callbacks on the hosts' long-lived OnlineTokens, so it must be disposed or they pile
@@ -304,7 +304,7 @@ namespace SnowBank.Networking
 					// the body is done: its read stream ends/errors/disposes, or the response is disposed (see SendAndReleaseAsync).
 					// cancellationToken (the caller's own token, as opposed to `linked`, which also folds in the hosts' internal
 					// online/cut tokens) is passed through separately, so a mid-flight cancellation can be given the canonical shape.
-					return SendAndReleaseAsync(invoker, request, linked, cancellationToken, reverseEdge, this.Map.Topology);
+					return SendAndReleaseAsync(invoker, request, linked, cancellationToken, reverseEdge, this.Map.Topology, this.Map.Host.OnlineToken, host.OnlineToken);
 				}
 
 				throw SimulatePortNotBoundFailure(hostName, port, $"Found no port {port} bound on location '{remote}' of target host '{host.Id}', visible from host '{this.Map.Host.Id}' ({this.Map.Host.Fqdn})");
@@ -352,7 +352,7 @@ namespace SnowBank.Networking
 		/// source until GC. That is bounded (one per live connection) and not a per-request leak - completed and
 		/// reconnected calls release deterministically. Releasing those at host-teardown would require either the sinks
 		/// disposing their calls/connections, or a host-teardown signal plumbed into the virtual transport.</remarks>
-		private static async Task<HttpResponseMessage> SendAndReleaseAsync(HttpMessageInvoker invoker, HttpRequestMessage request, CancellationTokenSource linked, CancellationToken callerCancellationToken, VirtualNetworkCutEdge reverseEdge, VirtualNetworkTopology topology)
+		private static async Task<HttpResponseMessage> SendAndReleaseAsync(HttpMessageInvoker invoker, HttpRequestMessage request, CancellationTokenSource linked, CancellationToken callerCancellationToken, VirtualNetworkCutEdge reverseEdge, VirtualNetworkTopology topology, CancellationToken localOnline, CancellationToken remoteOnline)
 		{
 			HttpResponseMessage response;
 			try
@@ -386,7 +386,7 @@ namespace SnowBank.Networking
 			{
 				// gate the response bytes against the reverse edge (they flow target -> source), then tie the linked
 				// source's release to the (outermost) content lifetime
-				response.Content = new ReleasingContent(new FaultGatedContent(response.Content, reverseEdge, topology), linked);
+				response.Content = new ReleasingContent(new FaultGatedContent(response.Content, reverseEdge, topology, localOnline, remoteOnline), linked);
 			}
 			else
 			{ // no body to attach the lifetime to -> release now
@@ -406,19 +406,28 @@ namespace SnowBank.Networking
 			base.Dispose(disposing);
 		}
 
-		/// <summary>Forwards an <see cref="HttpContent"/> while gating its byte flow on the state of one directional edge of the virtual network.</summary>
+		/// <summary>Forwards an <see cref="HttpContent"/> while gating its byte flow on the state of one directional edge of the virtual network, and on the state of the two hosts.</summary>
 		/// <remarks>Wrapped around every virtual request/response body, so that a <see cref="VirtualNetworkFaultKind.Blackhole"/> cut landing later (mid-stream) can silence the flow: while the edge is healthy the gate is a single volatile read per operation.</remarks>
 		private sealed class FaultGatedContent : HttpContent
 		{
 			private readonly HttpContent Inner;
 			private readonly VirtualNetworkCutEdge Edge;
 			private readonly VirtualNetworkTopology Topology;
+			private readonly CancellationToken LocalOnline;
+			private readonly CancellationToken RemoteOnline;
 
-			public FaultGatedContent(HttpContent inner, VirtualNetworkCutEdge edge, VirtualNetworkTopology topology)
+			/// <param name="inner">Body to forward</param>
+			/// <param name="edge">Directional edge that the bytes cross</param>
+			/// <param name="topology">Topology of the virtual network, for its clock</param>
+			/// <param name="localOnline">Online token of the host that opened the connection, captured when it opened</param>
+			/// <param name="remoteOnline">Online token of the host that accepted the connection, captured when it opened</param>
+			public FaultGatedContent(HttpContent inner, VirtualNetworkCutEdge edge, VirtualNetworkTopology topology, CancellationToken localOnline, CancellationToken remoteOnline)
 			{
 				this.Inner = inner;
 				this.Edge = edge;
 				this.Topology = topology;
+				this.LocalOnline = localOnline;
+				this.RemoteOnline = remoteOnline;
 				foreach (var header in inner.Headers)
 				{
 					this.Headers.TryAddWithoutValidation(header.Key, header.Value);
@@ -428,12 +437,12 @@ namespace SnowBank.Networking
 			// the inner content pushes its bytes (CopyToAsync -> inner.SerializeToStreamAsync) into a write-gated view of
 			// the destination, so a duplex/streaming body that keeps writing for the connection's whole life parks on the
 			// gate the moment the edge is blackholed
-			protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => this.Inner.CopyToAsync(new FaultGateStream(stream, this.Edge, this.Topology, leaveInnerOpen: true));
+			protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => this.Inner.CopyToAsync(new FaultGateStream(stream, this.Edge, this.Topology, this.LocalOnline, this.RemoteOnline, leaveInnerOpen: true));
 
-			protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) => this.Inner.CopyToAsync(new FaultGateStream(stream, this.Edge, this.Topology, leaveInnerOpen: true), cancellationToken);
+			protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) => this.Inner.CopyToAsync(new FaultGateStream(stream, this.Edge, this.Topology, this.LocalOnline, this.RemoteOnline, leaveInnerOpen: true), cancellationToken);
 
 			// the consumer pulls the bytes through a read-gated view of the inner stream
-			protected override async Task<Stream> CreateContentReadStreamAsync() => new FaultGateStream(await this.Inner.ReadAsStreamAsync().ConfigureAwait(false), this.Edge, this.Topology, leaveInnerOpen: false);
+			protected override async Task<Stream> CreateContentReadStreamAsync() => new FaultGateStream(await this.Inner.ReadAsStreamAsync().ConfigureAwait(false), this.Edge, this.Topology, this.LocalOnline, this.RemoteOnline, leaveInnerOpen: false);
 
 			protected override bool TryComputeLength(out long length)
 			{
@@ -469,13 +478,26 @@ namespace SnowBank.Networking
 			private readonly VirtualNetworkCutEdge Edge;
 			private readonly VirtualNetworkTopology Topology;
 			private readonly bool LeaveInnerOpen;
+			private readonly CancellationToken LocalOnline;
+			private readonly CancellationToken RemoteOnline;
 
-			public FaultGateStream(Stream inner, VirtualNetworkCutEdge edge, VirtualNetworkTopology topology, bool leaveInnerOpen)
+			public FaultGateStream(Stream inner, VirtualNetworkCutEdge edge, VirtualNetworkTopology topology, CancellationToken localOnline, CancellationToken remoteOnline, bool leaveInnerOpen)
 			{
 				this.Inner = inner;
 				this.Edge = edge;
 				this.Topology = topology;
+				this.LocalOnline = localOnline;
+				this.RemoteOnline = remoteOnline;
 				this.LeaveInnerOpen = leaveInnerOpen;
+			}
+
+			/// <summary>Throws when one of the two hosts went offline since the connection opened</summary>
+			/// <remarks>The cut of a host aborts its connections one callback at a time. Code woken by an earlier callback can still write on a
+			/// connection whose own callback did not run yet. The token of the host is cancelled before any callback runs, so this check stops those bytes.</remarks>
+			private void ThrowIfHostOffline()
+			{
+				if (this.LocalOnline.IsCancellationRequested) throw new OperationCanceledException(this.LocalOnline);
+				if (this.RemoteOnline.IsCancellationRequested) throw new OperationCanceledException(this.RemoteOnline);
 			}
 
 			private static IOException SimulateReadTimeout() => new("Unable to read data from the transport connection: the read operation timed out.", new System.Net.Sockets.SocketException(10060));
@@ -485,6 +507,7 @@ namespace SnowBank.Networking
 			/// <summary>Parks while the edge is blackholed; throws the read/write timeout shape if the notice window elapses (on virtual time) before a restore.</summary>
 			private async ValueTask GateAsync(bool writing, CancellationToken ct)
 			{
+				ThrowIfHostOffline();
 				var fault = this.Edge.ActiveFault;
 				while (fault is { Kind: VirtualNetworkFaultKind.Blackhole })
 				{
@@ -504,7 +527,10 @@ namespace SnowBank.Networking
 			public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
 			{
 				await GateAsync(writing: false, cancellationToken).ConfigureAwait(false);
-				return await this.Inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+				int read = await this.Inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+				// a read that waited across the cut of a host may complete with bytes written after the cut: they never arrive
+				ThrowIfHostOffline();
+				return read;
 			}
 
 			public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
