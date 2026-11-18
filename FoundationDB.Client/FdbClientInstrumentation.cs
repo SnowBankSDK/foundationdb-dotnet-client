@@ -59,12 +59,7 @@ namespace FoundationDB.Client
 			description: "The number of fdb operations that have been started."
 		);
 
-		private static Counter<int> OperationsCompleted { get; } = Meter.CreateCounter<int>(
-			"db.fdb.client.operations.completed",
-			unit: "{transaction}",
-			description: "The number of fdb operations that have been completed."
-		);
-
+		// The count of "db.fdb.client.operations.duration" gives the number of completed operations.
 		private static Histogram<double> OperationsDuration { get; } = Meter.CreateHistogram<double>(
 			"db.fdb.client.operations.duration",
 			unit: "s",
@@ -144,12 +139,6 @@ namespace FoundationDB.Client
 				}
 			}
 
-			OperationsCompleted.Add(
-				1,
-				new("operation.retries", context.Retries),
-				new("operation.status", error)
-			);
-
 			if (error != FdbError.Success && trans != null && OperationSize.Enabled)
 			{ // we need to record the size for failed attempts
 				long size = trans.Size;
@@ -158,7 +147,7 @@ namespace FoundationDB.Client
 					OperationSize.Record(
 						size,
 						new("operation.retries", context.Retries),
-						new("operation.status", FdbError.Success)
+						new("operation.status", error)
 					);
 				}
 			}
@@ -167,15 +156,6 @@ namespace FoundationDB.Client
 
 		internal static void ReportOperationCommitted(IFdbTransaction trans, FdbOperationContext context)
 		{
-			if (OperationsCompleted.Enabled)
-			{
-				OperationsCompleted.Add(
-					1,
-					new("operation.retries", context.Retries),
-					new("operation.status", FdbError.Success)
-				);
-			}
-
 			if (OperationSize.Enabled)
 			{
 				long size = trans.Size;
