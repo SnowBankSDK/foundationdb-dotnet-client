@@ -2,6 +2,7 @@ param (
 	[string]$version = "latest",
 	[string]$manifestPath = "./manifest.json",
 	[string]$outputDir = ".",
+	[string[]]$rid = @(),
 	[switch]$full,
 	[switch]$offline,
 	[switch]$force
@@ -29,6 +30,15 @@ $files = $manifest.versions.$version.files
 # Only keep 'fdbcli' entries when '-Full'' is specified
 if (-not $Full) {
 	$files = $files | Where-Object { $_.name -notmatch "fdbcli" }
+}
+
+# Only keep the requested runtime ids, when '-rid' is specified (ex: -rid win-x64)
+if ($rid.Count -gt 0) {
+	$files = @($files | Where-Object { $rid -contains $_.rid })
+	if ($files.Count -eq 0) {
+		Write-Error "No files for version '${version}' and rid(s) '$($rid -join ', ')'."
+		exit 1
+	}
 }
 
 Write-Host "Downloading $($files.Count) files for ${version}:" -ForegroundColor White
@@ -175,8 +185,14 @@ if (-not $offline) {
 	$stampDir = Join-Path -Path $outputDir -ChildPath "runtimes"
 	if (-not (Test-Path -Path $stampDir)) { New-Item -ItemType Directory -Path $stampDir | Out-Null }
 	$stampPath = Join-Path -Path (Resolve-Path -Path $stampDir).Path -ChildPath "fdb-native-version.txt"
-	[System.IO.File]::WriteAllText($stampPath, "$version`n")
-	Write-Host "Stamped runtimes\fdb-native-version.txt = $version" -ForegroundColor DarkGray
+	if ($rid.Count -eq 0) {
+		[System.IO.File]::WriteAllText($stampPath, "$version`n")
+		Write-Host "Stamped runtimes\fdb-native-version.txt = $version" -ForegroundColor DarkGray
+	} elseif ((Test-Path -Path $stampPath) -and ([System.IO.File]::ReadAllText($stampPath).Trim() -ne $version)) {
+		# a download filtered by rid holds only part of a version: the stamp of another version no longer describes runtimes\
+		Remove-Item -Path $stampPath -Force
+		Write-Host "Removed runtimes\fdb-native-version.txt, because runtimes\ now mixes versions" -ForegroundColor Yellow
+	}
 }
 
 Write-Host ""

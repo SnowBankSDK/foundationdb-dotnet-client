@@ -164,8 +164,15 @@ done
 # Record the version runtimes/ now holds. The csproj refuses to pack when this stamp differs from the package version.
 if [ "$offline" -eq 0 ]; then
 	mkdir -p "$output/runtimes"
-	printf '%s\n' "$resolved_version" > "$output/runtimes/fdb-native-version.txt"
-	printf '%sStamped runtimes/fdb-native-version.txt = %s%s\n' "$c_dim" "$resolved_version" "$c_reset"
+	stamp="$output/runtimes/fdb-native-version.txt"
+	if [ -z "${rids// /}" ]; then
+		printf '%s\n' "$resolved_version" > "$stamp"
+		printf '%sStamped runtimes/fdb-native-version.txt = %s%s\n' "$c_dim" "$resolved_version" "$c_reset"
+	elif [ -f "$stamp" ] && [ "$(tr -d '[:space:]' < "$stamp")" != "$resolved_version" ]; then
+		# a download filtered by rid holds only part of a version: the stamp of another version no longer describes runtimes/
+		rm -f "$stamp"
+		printf '%sRemoved runtimes/fdb-native-version.txt, because runtimes/ now mixes versions%s\n' "$c_yellow" "$c_reset"
+	fi
 fi
 
 printf '\n%sDone.%s downloaded=%d cached=%d skipped=%d\n' "$c_green" "$c_reset" "$downloaded" "$cached" "$skipped"
