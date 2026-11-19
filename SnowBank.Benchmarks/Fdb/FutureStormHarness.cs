@@ -178,20 +178,20 @@ namespace SnowBank.Benchmarks
 			var ct = lifetime.Token;
 
 			// same native library probing as the test suite
-			var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
-			if (probe.Path == null)
+			var path = FdbTest.ProbeNativeLibrary(out var failure);
+			if (path == null)
 			{
-				Console.Error.WriteLine($"Could not locate the native client library for platform '{probe.Rid}'. Looked in: {string.Join(", ", probe.ProbedPaths)}");
+				Console.Error.WriteLine(failure);
 				Console.Error.WriteLine("Run FoundationDB.Client.Native/DownloadBinaries.ps1 once for this worktree, then rebuild.");
 				return 1;
 			}
-			Fdb.Options.NativeLibPath = probe.Path;
-			Fdb.Start(Fdb.GetDefaultApiVersion());
+			Fdb.Options.NativeLibPath = path;
+			Fdb.Start(int.TryParse(Environment.GetEnvironmentVariable(FdbTest.ApiVersionVariable), out var apiVersion) ? apiVersion : 0);
 
 			// same container naming/port scheme as FdbTest, so the harness reuses the test suite's container
 			var runtimeVersion = new Version(Environment.Version.Major, Environment.Version.Minor);
-			var dockerImageTag = Environment.GetEnvironmentVariable("FDB_TEST_DOCKER_TAG");
-			if (string.IsNullOrEmpty(dockerImageTag)) dockerImageTag = "7.4.6";
+			var dockerImageTag = Environment.GetEnvironmentVariable(FdbTest.DockerImageTagVariable);
+			if (string.IsNullOrEmpty(dockerImageTag)) dockerImageTag = Version.Parse(Fdb.GetClientVersion().Version).ToString(3);
 			var serverVersion = Version.Parse(dockerImageTag);
 			int port = 4600 + (((10 * serverVersion.Major + serverVersion.Minor) * 13) + ((10 * runtimeVersion.Major + runtimeVersion.Minor) * 17)) % 100;
 			var containerSuffix = string.CreateInvariant($"-{serverVersion.Major}.{serverVersion.Minor}-net{runtimeVersion.Major}.{runtimeVersion.Minor}");
