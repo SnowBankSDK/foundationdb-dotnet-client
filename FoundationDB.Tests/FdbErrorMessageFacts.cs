@@ -45,16 +45,36 @@ namespace FoundationDB.Client.Tests
 			}
 		}
 
+		/// <summary>Codes added in fdb_c 7.4: a 7.3 <c>fdb_get_error</c> returns <c>UNKNOWN_ERROR</c> for them</summary>
+		private static readonly HashSet<int> AddedAt740 = [ 2175, 2389 ];
+
+		/// <summary>Codes with another message in fdb_c 7.3 (the table has the 7.4 text)</summary>
+		private static readonly Dictionary<int, string> RewordedBefore740 = new()
+		{
+			[1050] = "The disk queue adpater reset",
+		};
+
 		/// <summary>Every code of this build's <see cref="FdbError"/> enum answers from the table, with the exact <c>fdb_get_error</c> text</summary>
 		[Test]
 		public void Test_Managed_Message_Table_Matches_The_Native_Client()
 		{
 			var seen = new HashSet<int>();
+			bool client730 = Fdb.GetMaxApiVersion() < 740;
 			Assert.Multiple(() =>
 			{
 				foreach (var code in Enum.GetValues(typeof(FdbError)).Cast<FdbError>().OrderBy(c => (int) c))
 				{
 					if (!seen.Add((int) code)) continue;
+					if (client730 && AddedAt740.Contains((int) code))
+					{
+						Assert.That(FdbErrorDebugger.GetErrorMessage(code), Is.EqualTo("UNKNOWN_ERROR"), $"native message for {code} ({(int) code}), added in 7.4");
+						continue;
+					}
+					if (client730 && RewordedBefore740.TryGetValue((int) code, out var older))
+					{
+						Assert.That(FdbErrorDebugger.GetErrorMessage(code), Is.EqualTo(older), $"native message for {code} ({(int) code}), reworded in 7.4");
+						continue;
+					}
 					Assert.That(FdbErrorMessages.TryGetMessage(code), Is.EqualTo(FdbErrorDebugger.GetErrorMessage(code)), $"table entry for {code} ({(int) code})");
 				}
 			});
