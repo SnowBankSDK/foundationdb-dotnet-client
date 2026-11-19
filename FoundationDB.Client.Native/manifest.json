@@ -1,9 +1,8 @@
 {
-	"latest": "7.4.10",
+	"latest": "8.0.1",
 	"versions": {
 		"8.0.1": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/8.0.1",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -69,7 +68,6 @@
 		},
 		"8.0.0": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/8.0.0",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -135,7 +133,6 @@
 		},
 		"7.4.10": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.4.10",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -201,7 +198,6 @@
 		},
 		"7.4.9": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.4.9",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -267,7 +263,6 @@
 		},
 		"7.4.8": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.4.8",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -333,7 +328,6 @@
 		},
 		"7.4.7": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.4.7",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -400,7 +394,6 @@
 		},
 		"7.4.4": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.4.4",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -455,7 +448,6 @@
 		},
 		"7.3.80": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.3.80",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -521,7 +513,6 @@
 		},
 		"7.3.78": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.3.78",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -587,7 +578,6 @@
 		},
 		"7.3.68": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.3.68",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
@@ -642,7 +632,6 @@
 		},
 		"7.3.54": {
 			"uri": "https://github.com/SnowBankSDK/foundationdb-windows-build/releases/tag/7.3.54",
-			"draft": true,
 			"files": [
 				{
 					"name": "fdb_c.dll",
