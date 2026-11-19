@@ -1,6 +1,6 @@
 {
 	"comment": "Client, server and API version combinations for scripts/test-fdb. A version 'x.y' means the newest x.y entry of FoundationDB.Client.Native/manifest.json.",
-	"default": "8.0",
+	"default": "7.4",
 	"projects": [
 		{ "name": "FoundationDB.Tests", "filter": "TestCategory!=LongRunning&TestCategory!=Benchmark" },
 		{ "name": "FoundationDB.Layers.Tests", "filter": "TestCategory=RealCluster" }
@@ -8,10 +8,8 @@
 	"runs": [
 		{ "name": "7.3-api730", "client": "7.3", "api": 730 },
 		{ "name": "7.4-api740", "client": "7.4", "api": 740 },
-		{ "name": "8.0-api800", "client": "8.0", "api": 800 },
-		{ "name": "8.0-api740", "client": "8.0", "api": 740 },
-		{ "name": "8.0-api730", "client": "8.0", "api": 730 },
-		{ "name": "mismatch-server", "client": "8.0", "server": "7.4", "projects": [ "FoundationDB.Tests" ], "filter": "TestCategory=Fdb-Mismatch-Server" },
-		{ "name": "mismatch-api", "client": "7.4", "api": 800, "projects": [ "FoundationDB.Tests" ], "filter": "TestCategory=Fdb-Mismatch-Api" }
+		{ "name": "7.4-api730", "client": "7.4", "api": 730 },
+		{ "name": "mismatch-server", "client": "7.4", "server": "7.3", "projects": [ "FoundationDB.Tests" ], "filter": "TestCategory=Fdb-Mismatch-Server" },
+		{ "name": "mismatch-api", "client": "7.3", "api": 740, "projects": [ "FoundationDB.Tests" ], "filter": "TestCategory=Fdb-Mismatch-Api" }
 	]
 }
