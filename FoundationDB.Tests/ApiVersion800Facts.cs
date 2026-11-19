@@ -28,7 +28,7 @@ namespace FoundationDB.Client.Tests
 {
 
 	/// <summary>APIs added or removed at API version 800, run end to end against an 8.0 client and cluster</summary>
-	/// <remarks>The API version is selected once per process: these tests run with an 8.0 native client, <c>FDB_TEST_API_VERSION=800</c> and <c>FDB_TEST_DOCKER_TAG=8.0.0</c>, and are inconclusive otherwise.</remarks>
+	/// <remarks>The API version is selected once per process: these tests run with an 8.0 native client at API version 800 (the default with an 8.0 client), and are inconclusive otherwise.</remarks>
 	[TestFixture]
 	public class ApiVersion800Facts : FdbTest
 	{

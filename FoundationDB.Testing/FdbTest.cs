@@ -38,44 +38,61 @@ namespace FoundationDB.Client.Tests
 	public abstract class FdbTest : FdbSimpleTest
 	{
 
-		internal const string DockerImageTag73 = "7.3.68";
-		internal const string DockerImageTag74 = "7.4.7";
-		internal const string DockerImageTag80 = "8.0.1";
+		/// <summary>Environment variable with the path of the native client library (file or folder) that the tests load</summary>
+		/// <remarks>When it is not set, the library copied into the output folder of the test project is loaded.</remarks>
+		public const string NativeLibraryPathVariable = "FDB_TEST_NATIVE_LIB_PATH";
 
-		/// <summary>Returns the default server image tag for a native client version</summary>
-		/// <remarks>A client only connects to a server of its own major.minor version.</remarks>
-		private static string GetDefaultDockerImageTag(Version client) => (client.Major, client.Minor) switch
+		/// <summary>Environment variable with the tag of the server image (ex: <c>"8.0.1"</c>); by default, the image of the native client version</summary>
+		public const string DockerImageTagVariable = "FDB_TEST_DOCKER_TAG";
+
+		/// <summary>Environment variable with the API version of the test process (ex: <c>730</c>); by default, the highest version of both the binding and the native client</summary>
+		public const string ApiVersionVariable = "FDB_TEST_API_VERSION";
+
+		/// <summary>Returns the path of the native client library that the tests load, or <see langword="null"/> with the reason in <paramref name="failure"/></summary>
+		/// <remarks>The path in <see cref="NativeLibraryPathVariable"/> takes priority over the library in the output folder.</remarks>
+		public static string? ProbeNativeLibrary(out string failure)
 		{
-			(7, 3) => DockerImageTag73,
-			(7, 4) => DockerImageTag74,
-			(8, 0) => DockerImageTag80,
-			_ => client.ToString(3),
-		};
+			failure = "";
+			var path = Environment.GetEnvironmentVariable(NativeLibraryPathVariable);
+			if (!string.IsNullOrEmpty(path))
+			{
+				if (File.Exists(path) || Directory.Exists(path)) return path;
+				failure = $"{NativeLibraryPathVariable} is '{path}', and this path does not exist.";
+				return null;
+			}
+
+			var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
+			if (probe.Path == null)
+			{
+				failure = $"Could not locate the native client library for platform '{probe.Rid}'. Looked in the following places: {string.Join(", ", probe.ProbedPaths)}";
+			}
+			return probe.Path;
+		}
 
 		/// <summary>Starts the native client of this process, unless it already runs, and returns its version</summary>
 		private Version? StartNativeClient()
 		{
 			if (Fdb.ApiVersion == 0)
 			{
-				var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
-				if (probe.Path == null)
+				var path = ProbeNativeLibrary(out var failure);
+				if (path == null)
 				{
-					Assert.Fail($"Could not locate the native client library for platform '{probe.Rid}'. Looked in the following places: {string.Join(", ", probe.ProbedPaths)}");
+					Assert.Fail(failure);
 					return null;
 				}
 
-				Fdb.Options.NativeLibPath = probe.Path;
+				Fdb.Options.NativeLibPath = path;
 
 				int version = OverrideApiVersion;
-				// FDB_TEST_API_VERSION selects the API version of the whole test process (ex: 800, with FDB_TEST_DOCKER_TAG=8.0.0)
-				if (version == 0 && !int.TryParse(Environment.GetEnvironmentVariable("FDB_TEST_API_VERSION"), out version)) version = 0;
-				if (version == 0) version = Fdb.GetDefaultApiVersion();
+				if (version == 0 && !int.TryParse(Environment.GetEnvironmentVariable(ApiVersionVariable), out version)) version = 0;
+				if (version == 0) version = Fdb.GetMaxSafeApiVersion();
 				if (version > Fdb.GetMaxApiVersion())
 				{
 					Assume.That(version, Is.LessThanOrEqualTo(Fdb.GetMaxApiVersion()), "Unit tests require that the native fdb client version be at least equal to the current binding version!");
 				}
 
 				Fdb.Start(version);
+				Log($"Native client {Fdb.GetClientVersion().Version} at API version {Fdb.ApiVersion}, loaded from '{path}'");
 			}
 			else if (OverrideApiVersion != 0 && OverrideApiVersion != Fdb.ApiVersion)
 			{
@@ -115,6 +132,10 @@ namespace FoundationDB.Client.Tests
 		/// <remarks>Emulator-backed conformance fixtures (ex: FakeDb) override this with <see langword="false"/>, which skips the container and native library setup entirely.</remarks>
 		protected virtual bool UseRealServer => true;
 
+		/// <summary>When <see langword="true"/>, this fixture runs against a server of another major.minor version than the native client</summary>
+		/// <remarks>Only the fixtures about the failure of such a combination set it. By default, the fixture fails at once on a mismatch.</remarks>
+		protected virtual bool AllowServerVersionMismatch => false;
+
 		protected virtual Task OnBeforeAllTests() => Task.CompletedTask;
 
 		[OneTimeSetUp]
@@ -144,8 +165,21 @@ namespace FoundationDB.Client.Tests
 				}
 			}
 
-			var dockerImageTag = Environment.GetEnvironmentVariable("FDB_TEST_DOCKER_TAG");
-			if (string.IsNullOrEmpty(dockerImageTag)) dockerImageTag = clientVersion is not null ? GetDefaultDockerImageTag(clientVersion) : DockerImageTag74;
+			if (clientVersion is null && Fdb.ApiVersion != 0 && Version.TryParse(Fdb.GetClientVersion().Version, out var started))
+			{ // another fixture started the client
+				clientVersion = started;
+			}
+
+			var dockerImageTag = Environment.GetEnvironmentVariable(DockerImageTagVariable);
+			if (string.IsNullOrEmpty(dockerImageTag))
+			{
+				if (clientVersion is null)
+				{
+					Assert.Fail("The native client did not start, so the server image cannot follow its version.");
+					return;
+				}
+				dockerImageTag = clientVersion.ToString(3);
+			}
 
 			if (!Version.TryParse(dockerImageTag, out var targetServerVersion))
 			{
@@ -153,7 +187,7 @@ namespace FoundationDB.Client.Tests
 				return;
 			}
 
-			if (clientVersion is not null && (clientVersion.Major != targetServerVersion.Major || clientVersion.Minor != targetServerVersion.Minor))
+			if (!this.AllowServerVersionMismatch && clientVersion is not null && (clientVersion.Major != targetServerVersion.Major || clientVersion.Minor != targetServerVersion.Minor))
 			{ // otherwise every test runs into its timeout: a client cannot connect to a server of another major.minor version
 				Assert.Fail($"The native client is version {clientVersion.ToString(3)}, and FDB_TEST_DOCKER_TAG selects the server image {dockerImageTag}. A client only connects to a server of its own major.minor version: set FDB_TEST_DOCKER_TAG to a {clientVersion.Major}.{clientVersion.Minor}.x image, or leave it unset.");
 				return;

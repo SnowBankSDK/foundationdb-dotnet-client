@@ -39,10 +39,9 @@ namespace FoundationDB.Client.Tests
 			// pin the client library this repo redistributes before the first interop call: default probing
 			// can fall back to an older system-wide install (ex: a 7.3 client from PATH), and the sweep would
 			// then compare the table against the wrong client's messages
-			var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
-			if (probe.Path != null)
+			if (FdbTest.ProbeNativeLibrary(out _) is { } path)
 			{
-				Fdb.Options.NativeLibPath = probe.Path;
+				Fdb.Options.NativeLibPath = path;
 			}
 		}
 
