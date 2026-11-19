@@ -50,6 +50,18 @@ dotnet test <Project>.csproj -f net11.0                # ONE suite; always scope
 - `SnowBank.*.Tests` are pure and need no database.
 - **`FoundationDB.Tests` requires a running local FoundationDB cluster** and the native `fdb_c` library (`libfdb_c.dylib` on macOS, `libfdb_c.so` on Linux, `fdb_c.dll` on Windows). `FoundationDB.Client.Native` redistributes these.
   - ⚠️ Tests write to a dedicated subspace but **can corrupt data**, only point them at a throwaway local cluster.
+- **Client, server and API versions of a real-cluster run.** A native client only connects to a server of its own major.minor version, and the API version is selected once per process. Three environment variables set the combination of a test process:
+  - `FDB_TEST_NATIVE_LIB_PATH`: the native client library (file or folder). Default: the copy in the test output folder, which is the version `DownloadBinaries` last fetched into `FoundationDB.Client.Native/runtimes/`.
+  - `FDB_TEST_DOCKER_TAG`: the `foundationdb/foundationdb` server image. Default: the client version (an 8.0.1 client runs against the 8.0.1 image). With a tag of another major.minor, the fixture fails at once (except the `[Explicit]` mismatch fixtures).
+  - `FDB_TEST_API_VERSION`: the API version. Default: the highest version of both the binding and the client (800 for an 8.0 client on `master`, 740 for a 7.4 client).
+  - A plain `dotnet test` sets none of them, so it runs the newest client of the branch, its own server image, and the highest API version.
+- **Other combinations: `scripts/test-fdb.ps1` (Linux and macOS: `scripts/test-fdb.sh`).** Each run uses the test assemblies as built: build the test projects first. Each client version is cached under `artifacts/native/<version>/`, for the current platform only, and the cached files are checked against `manifest.json` before each run. Examples:
+  - `scripts/test-fdb.ps1 -Client 7.4`: the newest 7.4 client of the manifest, the 7.4 server, API 740, on every project of `scripts/test-matrix.json`.
+  - `scripts/test-fdb.ps1 -Client 8.0 -Api 730 -Project FoundationDB.Tests -Filter "FullyQualifiedName~Tenant"`: one combination, one project, some tests. `-Project` also finds the test assemblies of a parent repository (ex: `SnowBank.Layers.DocStore.Tests` in CloudLayer).
+  - `scripts/test-fdb.ps1 -Matrix` runs every combination of `scripts/test-matrix.json`, and `-Matrix -Run 7.3-api730,mismatch-api` runs some of them. Run the full matrix before a release, and when a bug may depend on the client, server or API version.
+  - The output of each run goes to `artifacts/test-results/fdb/<run>/<project>.txt`. The log of each run names the client version, the API version and the library path.
+  - `scripts/test-matrix.json` lists the supported combinations of the branch: 7.3, 7.4 and 8.0 on `master`, 7.3 and 7.4 on `release/7.4`. A version `x.y` there means the newest `x.y` entry of `manifest.json`.
+  - The mismatch fixtures (`FdbVersionMismatchFacts.cs`) are `[Explicit]`. Category `Fdb-Mismatch-Server`: a transaction times out against a server of another branch. Category `Fdb-Mismatch-Api`: `Fdb.Start` throws with an API version above the client maximum. Each category runs in a process of its own.
 - `FoundationDB.FakeDb` provides an in-memory fake for tests that don't want a real cluster.
 - Test classes use the `*Facts` naming convention (e.g. `FdbKeyFacts`, `TuPackFacts`).
 
@@ -80,7 +92,7 @@ public sealed class FooFakeDbFacts : FooFacts
 public sealed class FooRealClusterFacts : FooFacts { } // inherits the real-cluster FdbTest behavior
 ```
 
-**Workflow**: iterate against the `*FakeDbFacts` fixtures (Docker-free, instant); then run the `*RealClusterFacts` fixtures (opt-in via the `RealCluster` category or the Unit Test Sessions UI) to validate against a real cluster. Real-cluster runs require Docker and the native `fdb_c` client (one-time per worktree: `FoundationDB.Client.Native/DownloadBinaries.ps1` on Windows, or `DownloadBinaries.sh` on macOS/Linux, which needs `curl` + `python3`; pass `--rid osx-arm64` to fetch only the current platform's binaries). The same suites double as a ready-made realistic test bed for a future FdbLite backend (a third `*FdbLiteFacts` subclass).
+**Workflow**: iterate against the `*FakeDbFacts` fixtures (Docker-free, instant); then run the `*RealClusterFacts` fixtures (opt-in via the `RealCluster` category or the Unit Test Sessions UI) to validate against a real cluster. Real-cluster runs require Docker and the native `fdb_c` client (one-time per worktree: `FoundationDB.Client.Native/DownloadBinaries.ps1` on Windows, or `DownloadBinaries.sh` on macOS/Linux, which needs `curl` + `python3`; pass `--rid osx-arm64`, or `-rid win-x64` to the `.ps1`, to fetch only the current platform's binaries). The same suites double as a ready-made realistic test bed for a future FdbLite backend (a third `*FdbLiteFacts` subclass).
 
 ### The netstandard2.0 / net472 "lite" targets
 
