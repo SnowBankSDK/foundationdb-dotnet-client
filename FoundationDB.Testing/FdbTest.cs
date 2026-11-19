@@ -40,6 +40,51 @@ namespace FoundationDB.Client.Tests
 
 		internal const string DockerImageTag73 = "7.3.68";
 		internal const string DockerImageTag74 = "7.4.7";
+		internal const string DockerImageTag80 = "8.0.1";
+
+		/// <summary>Returns the default server image tag for a native client version</summary>
+		/// <remarks>A client only connects to a server of its own major.minor version.</remarks>
+		private static string GetDefaultDockerImageTag(Version client) => (client.Major, client.Minor) switch
+		{
+			(7, 3) => DockerImageTag73,
+			(7, 4) => DockerImageTag74,
+			(8, 0) => DockerImageTag80,
+			_ => client.ToString(3),
+		};
+
+		/// <summary>Starts the native client of this process, unless it already runs, and returns its version</summary>
+		private Version? StartNativeClient()
+		{
+			if (Fdb.ApiVersion == 0)
+			{
+				var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
+				if (probe.Path == null)
+				{
+					Assert.Fail($"Could not locate the native client library for platform '{probe.Rid}'. Looked in the following places: {string.Join(", ", probe.ProbedPaths)}");
+					return null;
+				}
+
+				Fdb.Options.NativeLibPath = probe.Path;
+
+				int version = OverrideApiVersion;
+				// FDB_TEST_API_VERSION selects the API version of the whole test process (ex: 800, with FDB_TEST_DOCKER_TAG=8.0.0)
+				if (version == 0 && !int.TryParse(Environment.GetEnvironmentVariable("FDB_TEST_API_VERSION"), out version)) version = 0;
+				if (version == 0) version = Fdb.GetDefaultApiVersion();
+				if (version > Fdb.GetMaxApiVersion())
+				{
+					Assume.That(version, Is.LessThanOrEqualTo(Fdb.GetMaxApiVersion()), "Unit tests require that the native fdb client version be at least equal to the current binding version!");
+				}
+
+				Fdb.Start(version);
+			}
+			else if (OverrideApiVersion != 0 && OverrideApiVersion != Fdb.ApiVersion)
+			{
+				//note: cannot change API version on the fly! :(
+				Assume.That(Fdb.ApiVersion, Is.EqualTo(OverrideApiVersion), "The API version selected is not what this test is expecting!");
+			}
+
+			return Version.TryParse(Fdb.GetClientVersion().Version, out var client) ? client : null;
+		}
 
 		protected int OverrideApiVersion;
 
@@ -89,12 +134,28 @@ namespace FoundationDB.Client.Tests
 			// We also use fdb version present in the docker image tag, in order to be able to test on multiple versions of fdb concurrently (that may use a different on-disk format).
 			// the tag will start with the version number, which we will use to have a different set of containers for the various version (73, 74, ...)
 			// ex: if the tag is "7.3.68", then the container name will be "fdb-test-7.3-net10". For the tag "7.4.6" it will be "fdb-test-7.4-net10"
+			// The first fixture starts the native client before it creates the container, because the default image follows the client version.
+			Version? clientVersion = null;
+			if (FdbTest.ServerContainer is null)
+			{
+				lock (Lock)
+				{
+					if (FdbTest.ServerContainer is null) clientVersion = StartNativeClient();
+				}
+			}
+
 			var dockerImageTag = Environment.GetEnvironmentVariable("FDB_TEST_DOCKER_TAG");
-			if (string.IsNullOrEmpty(dockerImageTag)) dockerImageTag = DockerImageTag74;
+			if (string.IsNullOrEmpty(dockerImageTag)) dockerImageTag = clientVersion is not null ? GetDefaultDockerImageTag(clientVersion) : DockerImageTag74;
 
 			if (!Version.TryParse(dockerImageTag, out var targetServerVersion))
 			{
 				Assert.Fail($"Failed to parse docker tag '{dockerImageTag}' to determine the version of the FoundationDB server.");
+				return;
+			}
+
+			if (clientVersion is not null && (clientVersion.Major != targetServerVersion.Major || clientVersion.Minor != targetServerVersion.Minor))
+			{ // otherwise every test runs into its timeout: a client cannot connect to a server of another major.minor version
+				Assert.Fail($"The native client is version {clientVersion.ToString(3)}, and FDB_TEST_DOCKER_TAG selects the server image {dockerImageTag}. A client only connects to a server of its own major.minor version: set FDB_TEST_DOCKER_TAG to a {clientVersion.Major}.{clientVersion.Minor}.x image, or leave it unset.");
 				return;
 			}
 
@@ -150,36 +211,6 @@ namespace FoundationDB.Client.Tests
 
 				try
 				{
-					var probe = FdbClientNativeExtensions.ProbeNativeLibraryPaths();
-					if (probe.Path == null)
-					{
-						Assert.Fail($"Could not locate the native client library for platform '{probe.Rid}'. Looked in the following places: {string.Join(", ", probe.ProbedPaths)}");
-						return;
-					}
-
-					Fdb.Options.NativeLibPath = probe.Path;
-
-					// We must ensure that FDB is running before executing the tests
-					// => By default, we always use 
-					if (Fdb.ApiVersion == 0)
-					{
-						int version = OverrideApiVersion;
-						// FDB_TEST_API_VERSION selects the API version of the whole test process (ex: 800, with FDB_TEST_DOCKER_TAG=8.0.0)
-						if (version == 0 && !int.TryParse(Environment.GetEnvironmentVariable("FDB_TEST_API_VERSION"), out version)) version = 0;
-						if (version == 0) version = Fdb.GetDefaultApiVersion();
-						if (version > Fdb.GetMaxApiVersion())
-						{
-							Assume.That(version, Is.LessThanOrEqualTo(Fdb.GetMaxApiVersion()), "Unit tests require that the native fdb client version be at least equal to the current binding version!");
-						}
-
-						Fdb.Start(version);
-					}
-					else if (OverrideApiVersion != 0 && OverrideApiVersion != Fdb.ApiVersion)
-					{
-						//note: cannot change API version on the fly! :(
-						Assume.That(Fdb.ApiVersion, Is.EqualTo(OverrideApiVersion), "The API version selected is not what this test is expecting!");
-					}
-
 					// only allow ~20 seconds for the container to start
 					// => most common failure is when Docker Desktop has not started yet on the local machine!
 					await container.StartContainer(TimeSpan.FromSeconds(20), this.Cancellation).ConfigureAwait(false);
