@@ -57,6 +57,15 @@ namespace FoundationDB.Client.Tests
 		/// <summary>Codes added in fdb_c 8.0: a 7.x <c>fdb_get_error</c> returns <c>UNKNOWN_ERROR</c> for them</summary>
 		private static readonly HashSet<int> AddedAt800 = [ 1251 ];
 
+		/// <summary>Codes added in fdb_c 7.4: a 7.3 <c>fdb_get_error</c> returns <c>UNKNOWN_ERROR</c> for them</summary>
+		private static readonly HashSet<int> AddedAt740 = [ 2175, 2389 ];
+
+		/// <summary>Codes with another message in fdb_c 7.3 (the table has the 7.4 text)</summary>
+		private static readonly Dictionary<int, string> RewordedBefore740 = new()
+		{
+			[1050] = "The disk queue adpater reset",
+		};
+
 		/// <summary>Codes with a new message in fdb_c 8.0 (the table has the 7.x text)</summary>
 		private static readonly Dictionary<int, string> RewordedAt800 = new()
 		{
@@ -69,6 +78,7 @@ namespace FoundationDB.Client.Tests
 		{
 			var seen = new HashSet<int>();
 			bool client800 = Fdb.GetMaxApiVersion() >= 800;
+			bool client730 = Fdb.GetMaxApiVersion() < 740;
 			Assert.Multiple(() =>
 			{
 				foreach (var code in Enum.GetValues(typeof(FdbError)).Cast<FdbError>().OrderBy(c => (int) c))
@@ -82,6 +92,16 @@ namespace FoundationDB.Client.Tests
 					if (!client800 && AddedAt800.Contains((int) code))
 					{
 						Assert.That(FdbErrorDebugger.GetErrorMessage(code), Is.EqualTo("UNKNOWN_ERROR"), $"native message for {code} ({(int) code}), added in 8.0");
+						continue;
+					}
+					if (client730 && AddedAt740.Contains((int) code))
+					{
+						Assert.That(FdbErrorDebugger.GetErrorMessage(code), Is.EqualTo("UNKNOWN_ERROR"), $"native message for {code} ({(int) code}), added in 7.4");
+						continue;
+					}
+					if (client730 && RewordedBefore740.TryGetValue((int) code, out var older))
+					{
+						Assert.That(FdbErrorDebugger.GetErrorMessage(code), Is.EqualTo(older), $"native message for {code} ({(int) code}), reworded in 7.4");
 						continue;
 					}
 					if (client800 && RewordedAt800.TryGetValue((int) code, out var reworded))
